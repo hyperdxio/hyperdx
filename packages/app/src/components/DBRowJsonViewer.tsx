@@ -20,6 +20,20 @@ import { notifications } from '@mantine/notifications';
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
 
+function buildJSONExtractStringQuery(
+  keyPath: string[],
+  parsedJsonRootPath: string[],
+): string | null {
+  const nestedPath = keyPath.slice(parsedJsonRootPath.length);
+  if (nestedPath.length === 0) {
+    return null; // No nested path to extract
+  }
+
+  const baseColumn = parsedJsonRootPath[parsedJsonRootPath.length - 1];
+  const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
+  return `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
+}
+
 import { RowSidePanelContext } from './DBRowSidePanel';
 
 function filterObjectRecursively(obj: any, filter: string): any {
@@ -181,14 +195,12 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
-              // Extract the nested path within the parsed JSON
-              const nestedPath = keyPath.slice(parsedJsonRootPath.length);
-              if (nestedPath.length > 0) {
-                // Build JSONExtractString query for the nested path
-                const baseColumn =
-                  parsedJsonRootPath[parsedJsonRootPath.length - 1];
-                const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
-                filterFieldPath = `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
+              const jsonQuery = buildJSONExtractStringQuery(
+                keyPath,
+                parsedJsonRootPath,
+              );
+              if (jsonQuery) {
+                filterFieldPath = jsonQuery;
               } else {
                 // We're at the root of the parsed JSON, treat as string
                 filterFieldPath = isJsonColumn
@@ -226,12 +238,12 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
-              const nestedPath = keyPath.slice(parsedJsonRootPath.length);
-              if (nestedPath.length > 0) {
-                const baseColumn =
-                  parsedJsonRootPath[parsedJsonRootPath.length - 1];
-                const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
-                searchFieldPath = `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
+              const jsonQuery = buildJSONExtractStringQuery(
+                keyPath,
+                parsedJsonRootPath,
+              );
+              if (jsonQuery) {
+                searchFieldPath = jsonQuery;
               }
             }
 
@@ -267,12 +279,12 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
-              const nestedPath = keyPath.slice(parsedJsonRootPath.length);
-              if (nestedPath.length > 0) {
-                const baseColumn =
-                  parsedJsonRootPath[parsedJsonRootPath.length - 1];
-                const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
-                chartFieldPath = `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
+              const jsonQuery = buildJSONExtractStringQuery(
+                keyPath,
+                parsedJsonRootPath,
+              );
+              if (jsonQuery) {
+                chartFieldPath = jsonQuery;
               }
             }
 
@@ -293,12 +305,12 @@ export function DBRowJsonViewer({
 
         // Handle parsed JSON from string columns using JSONExtractString
         if (isInParsedJson && parsedJsonRootPath) {
-          const nestedPath = keyPath.slice(parsedJsonRootPath.length);
-          if (nestedPath.length > 0) {
-            const baseColumn =
-              parsedJsonRootPath[parsedJsonRootPath.length - 1];
-            const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
-            columnFieldPath = `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
+          const jsonQuery = buildJSONExtractStringQuery(
+            keyPath,
+            parsedJsonRootPath,
+          );
+          if (jsonQuery) {
+            columnFieldPath = jsonQuery;
           }
         }
 
