@@ -25,6 +25,8 @@ export type GetLineActions = (arg0: {
   key: string;
   keyPath: string[];
   value: any;
+  isInParsedJson?: boolean;
+  parsedJsonRootPath?: string[];
 }) => LineAction[];
 
 // Store common state in an atom so that it can be shared between components
@@ -90,19 +92,36 @@ const LineMenu = React.memo(
     keyName,
     keyPath,
     value,
+    isInParsedJson,
+    parsedJsonRootPath,
   }: {
     keyName: string;
     keyPath: string[];
     value: any;
+    isInParsedJson?: boolean;
+    parsedJsonRootPath?: string[];
   }) => {
     const { getLineActions } = useAtomValue(hyperJsonAtom);
 
     const lineActions = React.useMemo(() => {
       if (getLineActions) {
-        return getLineActions({ key: keyName, keyPath, value });
+        return getLineActions({
+          key: keyName,
+          keyPath,
+          value,
+          isInParsedJson,
+          parsedJsonRootPath,
+        });
       }
       return [];
-    }, [getLineActions, keyName, keyPath, value]);
+    }, [
+      getLineActions,
+      keyName,
+      keyPath,
+      value,
+      isInParsedJson,
+      parsedJsonRootPath,
+    ]);
 
     return (
       <div className={styles.lineMenu}>
@@ -130,11 +149,15 @@ const Line = React.memo(
     keyPath: parentKeyPath,
     value,
     disableMenu,
+    isInParsedJson = false,
+    parsedJsonRootPath = [],
   }: {
     keyName: string;
     keyPath: string[];
     value: any;
     disableMenu: boolean;
+    isInParsedJson?: boolean;
+    parsedJsonRootPath?: string[];
   }) => {
     const { normallyExpanded } = useAtomValue(hyperJsonAtom);
 
@@ -194,6 +217,16 @@ const Line = React.memo(
       () => [...parentKeyPath, keyName],
       [keyName, parentKeyPath],
     );
+
+    // Determine the context for nested parsed JSON
+    const childIsInParsedJson = isInParsedJson || isStringValueValidJson;
+    const childParsedJsonRootPath = React.useMemo(() => {
+      if (isStringValueValidJson) {
+        // This is the start of a new parsed JSON context
+        return keyPath;
+      }
+      return parsedJsonRootPath;
+    }, [isStringValueValidJson, keyPath, parsedJsonRootPath]);
 
     // Hide LineMenu when selecting text in the value
     const valueRef = React.useRef<HTMLSpanElement>(null);
@@ -256,14 +289,22 @@ const Line = React.memo(
             )}
           </div>
           {hovered && !disableMenu && !isSelectingValue && (
-            <LineMenu keyName={keyName} keyPath={keyPath} value={value} />
+            <LineMenu
+              keyName={keyName}
+              keyPath={keyPath}
+              value={value}
+              isInParsedJson={isInParsedJson}
+              parsedJsonRootPath={parsedJsonRootPath}
+            />
           )}
         </div>
         {isExpanded && isExpandable && (
           <TreeNode
             data={expandedData}
             keyPath={keyPath}
-            disableMenu={isStringValueValidJson}
+            disableMenu={disableMenu}
+            isInParsedJson={childIsInParsedJson}
+            parsedJsonRootPath={childParsedJsonRootPath}
           />
         )}
       </>
@@ -276,10 +317,14 @@ function TreeNode({
   data,
   keyPath = [],
   disableMenu = false,
+  isInParsedJson = false,
+  parsedJsonRootPath = [],
 }: {
   data: object;
   keyPath?: string[];
   disableMenu?: boolean;
+  isInParsedJson?: boolean;
+  parsedJsonRootPath?: string[];
 }) {
   const [isExpanded, setIsExpanded] = React.useState(false);
 
@@ -300,6 +345,8 @@ function TreeNode({
           value={value}
           keyPath={keyPath}
           disableMenu={disableMenu}
+          isInParsedJson={isInParsedJson}
+          parsedJsonRootPath={parsedJsonRootPath}
         />
       ))}
       {originalLength > MAX_TREE_NODE_ITEMS && !isExpanded && (
