@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Fuse from 'fuse.js';
 import { OverlayTrigger } from 'react-bootstrap';
-import { TextInput, UnstyledButton } from '@mantine/core';
+import { Textarea, UnstyledButton } from '@mantine/core';
 
 import { useQueryHistory } from '@/utils';
 
@@ -27,7 +27,7 @@ export default function AutocompleteInput({
   queryHistoryType,
   'data-testid': dataTestId,
 }: {
-  inputRef: React.RefObject<HTMLInputElement>;
+  inputRef: React.RefObject<HTMLTextAreaElement>;
   value?: string;
   onChange: (value: string) => void;
   onSubmit?: () => void;
@@ -236,14 +236,19 @@ export default function AutocompleteInput({
       }}
       trigger={[]}
     >
-      <TextInput
+      <Textarea
         ref={inputRef}
-        type="text"
-        style={{ flexGrow: 1 }}
         placeholder={placeholder}
-        className="border-0 fs-8"
+        className="fs-8"
         value={value}
         size={size}
+        autosize
+        minRows={1}
+        maxRows={4}
+        style={{
+          flexGrow: 1,
+          resize: 'none',
+        }}
         data-testid={dataTestId}
         onChange={e => onChange(e.target.value)}
         onFocus={() => {
@@ -257,12 +262,12 @@ export default function AutocompleteInput({
           setIsSearchInputFocused(false);
         }}
         onKeyDown={e => {
-          if (e.key === 'Escape' && e.target instanceof HTMLInputElement) {
+          if (e.key === 'Escape' && e.target instanceof HTMLTextAreaElement) {
             e.target.blur();
           }
 
           // Autocomplete Navigation/Acceptance Keys
-          if (e.key === 'Tab' && e.target instanceof HTMLInputElement) {
+          if (e.key === 'Tab' && e.target instanceof HTMLTextAreaElement) {
             if (
               suggestedProperties.length > 0 &&
               selectedAutocompleteIndex < suggestedProperties.length &&
@@ -274,23 +279,31 @@ export default function AutocompleteInput({
               );
             }
           }
-          if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+          if (e.key === 'Enter' && e.target instanceof HTMLTextAreaElement) {
             if (
               suggestedProperties.length > 0 &&
               selectedAutocompleteIndex < suggestedProperties.length &&
               selectedAutocompleteIndex >= 0
             ) {
+              e.preventDefault();
               onAcceptSuggestion(
                 suggestedProperties[selectedAutocompleteIndex].value,
               );
             } else {
-              if (queryHistoryType && value) {
-                setQueryHistory(value);
+              // Allow shift+enter to still create new lines
+              if (!e.shiftKey) {
+                e.preventDefault();
+                if (queryHistoryType && value) {
+                  setQueryHistory(value);
+                }
+                onSubmit?.();
               }
-              onSubmit?.();
             }
           }
-          if (e.key === 'ArrowDown' && e.target instanceof HTMLInputElement) {
+          if (
+            e.key === 'ArrowDown' &&
+            e.target instanceof HTMLTextAreaElement
+          ) {
             if (suggestedProperties.length > 0) {
               setSelectedAutocompleteIndex(
                 Math.min(
@@ -301,7 +314,7 @@ export default function AutocompleteInput({
               );
             }
           }
-          if (e.key === 'ArrowUp' && e.target instanceof HTMLInputElement) {
+          if (e.key === 'ArrowUp' && e.target instanceof HTMLTextAreaElement) {
             if (suggestedProperties.length > 0) {
               setSelectedAutocompleteIndex(
                 Math.max(selectedAutocompleteIndex - 1, 0),
@@ -311,15 +324,15 @@ export default function AutocompleteInput({
         }}
         rightSectionWidth={ref.current?.clientWidth ?? 'auto'}
         rightSection={
-          <div ref={ref}>
-            {language != null && onLanguageChange != null && (
+          language != null && onLanguageChange != null ? (
+            <div ref={ref}>
               <InputLanguageSwitch
                 showHotkey={showHotkey && isSearchInputFocused}
                 language={language}
                 onLanguageChange={onLanguageChange}
               />
-            )}
-          </div>
+            </div>
+          ) : undefined
         }
       />
     </OverlayTrigger>

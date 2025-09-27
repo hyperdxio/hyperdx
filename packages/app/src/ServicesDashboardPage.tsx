@@ -968,6 +968,7 @@ function ServicesDashboardPage() {
                   language="sql"
                   label="WHERE"
                   enableHotkey
+                  allowMultiline={true}
                 />
               }
               luceneInput={

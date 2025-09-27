@@ -156,7 +156,7 @@ export default function SessionSubpanel({
   );
 
   // Event Filter Input =========================
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [_inputQuery, setInputQuery] = useState<string | undefined>(undefined);
   const inputQuery = _inputQuery ?? '';
   const [_searchedQuery, setSearchedQuery] = useQueryState('session_q', {
