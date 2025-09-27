@@ -1,5 +1,20 @@
 # @hyperdx/common-utils
 
+## 0.7.0
+
+### Minor Changes
+
+- 6c8efbcb: feat: Add persistent dashboard filters
+
+### Patch Changes
+
+- 8673f967: fix: json getKeyValues (useful for autocomplete)
+- 4ff55c0e: perf: disable CTE if disableRowLimit flag is true (getKeyValues method)
+- 816f90a3: fix: disable json filters for now
+- 24314a96: add dashboard import/export functionality
+- 8f06ce7b: perf: add prelimit CTE to getMapKeys query + store clickhouse settings in shared cache
+- e053c490: chore: Customize user-agent for Alerts ClickHouse client
+
 ## 0.6.0
 
 ### Minor Changes
