@@ -17,7 +17,10 @@ import {
   startCompletion,
 } from '@codemirror/autocomplete';
 import { sql, SQLDialect } from '@codemirror/lang-sql';
-import { Field, TableConnection } from '@hyperdx/common-utils/dist/metadata';
+import {
+  Field,
+  TableConnectionChoice,
+} from '@hyperdx/common-utils/dist/metadata';
 import { Paper, Text } from '@mantine/core';
 import CodeMirror, {
   Compartment,
@@ -28,7 +31,7 @@ import CodeMirror, {
   tooltips,
 } from '@uiw/react-codemirror';
 
-import { useAllFields } from '@/hooks/useMetadata';
+import { useMultipleAllFields } from '@/hooks/useMetadata';
 import { useQueryHistory } from '@/utils';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
@@ -105,7 +108,6 @@ const AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS = [
 const AUTOCOMPLETE_LIST_STRING = ` ${AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS.join(' ')}`;
 
 type SQLInlineEditorProps = {
-  tableConnections?: TableConnection | TableConnection[];
   autoCompleteFields?: Field[];
   filterField?: (field: Field) => boolean;
   value: string;
@@ -122,7 +124,7 @@ type SQLInlineEditorProps = {
   additionalSuggestions?: string[];
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
-};
+} & TableConnectionChoice;
 
 const styleTheme = EditorView.baseTheme({
   '&.cm-editor.cm-focused': {
@@ -142,6 +144,7 @@ const styleTheme = EditorView.baseTheme({
 });
 
 export default function SQLInlineEditor({
+  tableConnection,
   tableConnections,
   filterField,
   onChange,
@@ -159,7 +162,10 @@ export default function SQLInlineEditor({
   queryHistoryType,
   parentRef,
 }: SQLInlineEditorProps) {
-  const { data: fields } = useAllFields(tableConnections ?? []);
+  const _tableConnections = tableConnection
+    ? [tableConnection]
+    : tableConnections;
+  const { data: fields } = useMultipleAllFields(_tableConnections ?? []);
   const filteredFields = useMemo(() => {
     return filterField ? fields?.filter(filterField) : fields;
   }, [fields, filterField]);
@@ -396,7 +402,8 @@ function SQLInlineEditorControlledComponent({
   additionalSuggestions,
   queryHistoryType,
   ...props
-}: Omit<SQLInlineEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
+}: Omit<SQLInlineEditorProps, 'value' | 'onChange' | 'tableConnections'> &
+  UseControllerProps<any>) {
   const { field, fieldState } = useController(props);
 
   // Guard against wrongly typed values

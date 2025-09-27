@@ -79,19 +79,19 @@ function useMetricNames(
   }, [metricSource, dateRange]);
 
   const { data: gaugeMetrics } = useGetKeyValues({
-    chartConfigs: gaugeConfig,
+    chartConfig: gaugeConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
   });
   const { data: histogramMetrics } = useGetKeyValues({
-    chartConfigs: histogramConfig,
+    chartConfig: histogramConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
   });
   const { data: sumMetrics } = useGetKeyValues({
-    chartConfigs: sumConfig,
+    chartConfig: sumConfig,
     keys: ['MetricName'],
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,

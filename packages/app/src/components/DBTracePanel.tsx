@@ -156,7 +156,7 @@ export default function DBTracePanel({
           </Text>
           <Flex>
             <SQLInlineEditorControlled
-              tableConnections={tcFromSource(parentSourceData)}
+              tableConnection={tcFromSource(parentSourceData)}
               name="traceIdExpression"
               placeholder="Log Trace ID Column (ex. trace_id)"
               control={traceIdControl}
