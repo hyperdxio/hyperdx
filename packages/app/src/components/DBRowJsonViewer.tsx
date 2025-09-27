@@ -152,7 +152,7 @@ export function DBRowJsonViewer({
   }, [data, debouncedFilter]);
 
   const getLineActions = useCallback<GetLineActions>(
-    ({ keyPath, value }) => {
+    ({ keyPath, value, isInParsedJson, parsedJsonRootPath }) => {
       const actions: LineAction[] = [];
       const fieldPath = mergePath(keyPath, jsonColumns);
       const isJsonColumn =
@@ -177,10 +177,32 @@ export function DBRowJsonViewer({
           ),
           title: 'Add to Filters',
           onClick: () => {
-            onPropertyAddClick(
-              isJsonColumn ? `toString(${fieldPath})` : fieldPath,
-              value,
-            );
+            let filterFieldPath = fieldPath;
+
+            // Handle parsed JSON from string columns using JSONExtractString
+            if (isInParsedJson && parsedJsonRootPath) {
+              // Extract the nested path within the parsed JSON
+              const nestedPath = keyPath.slice(parsedJsonRootPath.length);
+              if (nestedPath.length > 0) {
+                // Build JSONExtractString query for the nested path
+                const baseColumn =
+                  parsedJsonRootPath[parsedJsonRootPath.length - 1];
+                const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
+                filterFieldPath = `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
+              } else {
+                // We're at the root of the parsed JSON, treat as string
+                filterFieldPath = isJsonColumn
+                  ? `toString(${fieldPath})`
+                  : fieldPath;
+              }
+            } else {
+              // Regular JSON column or non-JSON field
+              filterFieldPath = isJsonColumn
+                ? `toString(${fieldPath})`
+                : fieldPath;
+            }
+
+            onPropertyAddClick(filterFieldPath, value);
             notifications.show({
               color: 'green',
               message: `Added "${fieldPath} = ${value}" to filters`,
@@ -200,13 +222,29 @@ export function DBRowJsonViewer({
           ),
           title: 'Search for this value only',
           onClick: () => {
-            let defaultWhere = `${fieldPath} = ${
+            let searchFieldPath = fieldPath;
+
+            // Handle parsed JSON from string columns using JSONExtractString
+            if (isInParsedJson && parsedJsonRootPath) {
+              const nestedPath = keyPath.slice(parsedJsonRootPath.length);
+              if (nestedPath.length > 0) {
+                const baseColumn =
+                  parsedJsonRootPath[parsedJsonRootPath.length - 1];
+                const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
+                searchFieldPath = `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
+              }
+            }
+
+            let defaultWhere = `${searchFieldPath} = ${
               typeof value === 'string' ? `'${value}'` : value
             }`;
 
             // FIXME: TOTAL HACK
-            if (fieldPath == 'Timestamp' || fieldPath == 'TimestampTime') {
-              defaultWhere = `${fieldPath} = parseDateTime64BestEffort('${value}', 9)`;
+            if (
+              searchFieldPath == 'Timestamp' ||
+              searchFieldPath == 'TimestampTime'
+            ) {
+              defaultWhere = `${searchFieldPath} = parseDateTime64BestEffort('${value}', 9)`;
             }
             router.push(
               generateSearchUrl({
@@ -225,10 +263,23 @@ export function DBRowJsonViewer({
           label: <i className="bi bi-graph-up" />,
           title: 'Chart',
           onClick: () => {
+            let chartFieldPath = fieldPath;
+
+            // Handle parsed JSON from string columns using JSONExtractString
+            if (isInParsedJson && parsedJsonRootPath) {
+              const nestedPath = keyPath.slice(parsedJsonRootPath.length);
+              if (nestedPath.length > 0) {
+                const baseColumn =
+                  parsedJsonRootPath[parsedJsonRootPath.length - 1];
+                const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
+                chartFieldPath = `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
+              }
+            }
+
             router.push(
               generateChartUrl({
                 aggFn: 'avg',
-                field: fieldPath,
+                field: chartFieldPath,
                 groupBy: [],
               }),
             );
@@ -238,7 +289,20 @@ export function DBRowJsonViewer({
 
       // Toggle column action (non-object values)
       if (toggleColumn && typeof value !== 'object') {
-        const isIncluded = displayedColumns?.includes(fieldPath);
+        let columnFieldPath = fieldPath;
+
+        // Handle parsed JSON from string columns using JSONExtractString
+        if (isInParsedJson && parsedJsonRootPath) {
+          const nestedPath = keyPath.slice(parsedJsonRootPath.length);
+          if (nestedPath.length > 0) {
+            const baseColumn =
+              parsedJsonRootPath[parsedJsonRootPath.length - 1];
+            const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
+            columnFieldPath = `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
+          }
+        }
+
+        const isIncluded = displayedColumns?.includes(columnFieldPath);
         actions.push({
           key: 'toggle-column',
           label: isIncluded ? (
@@ -256,7 +320,7 @@ export function DBRowJsonViewer({
             ? `Remove ${fieldPath} column from results table`
             : `Add ${fieldPath} column to results table`,
           onClick: () => {
-            toggleColumn(fieldPath);
+            toggleColumn(columnFieldPath);
             notifications.show({
               color: 'green',
               message: `Column "${fieldPath}" ${
