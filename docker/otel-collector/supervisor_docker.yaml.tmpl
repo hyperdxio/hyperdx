@@ -16,6 +16,13 @@ capabilities:
   accepts_remote_config: true
   reports_remote_config: true
 
+telemetry:
+  logs:
+    output_paths:
+      - stdout
+      # Ensures the logs are written to disk as well as stdout if passthrough_logs is enabled
+      - /etc/otel/supervisor-data/agent.log
+
 agent:
   executable: /otelcontribcol
   config_files:
@@ -27,7 +34,7 @@ agent:
 {{- if getenv "OTEL_AGENT_FEATURE_GATE_ARG" }}
     - {{ getenv "OTEL_AGENT_FEATURE_GATE_ARG" }}
 {{- end }}
-  passthrough_logs: {{ getenv "OTEL_SUPERVISOR_PASSTHROUGH_LOGS" | default "false" }}
+  passthrough_logs: {{ getenv "OTEL_SUPERVISOR_PASSTHROUGH_LOGS" | default "true" }}
 
 storage:
   directory: /etc/otel/supervisor-data/
