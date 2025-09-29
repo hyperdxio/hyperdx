@@ -563,9 +563,6 @@ const DBSearchPageFiltersComponent = ({
   } = usePinnedFilters(sourceId ?? null);
   const { width, startResize } = useResizable(16, 'left');
 
-  const { data: countData } = useExplainQuery(chartConfig);
-  const numRows: number = countData?.[0]?.rows ?? 0;
-
   const { data: jsonColumns } = useJsonColumns({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,

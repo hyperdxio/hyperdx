@@ -313,12 +313,12 @@ export class Metadata {
           query_params: sql.params,
           connectionId,
           clickhouse_settings: {
-            max_rows_to_read: String(
-              this.getClickHouseSettings().max_rows_to_read ??
-                DEFAULT_METADATA_MAX_ROWS_TO_READ,
-            ),
-            read_overflow_mode: 'break',
             ...this.getClickHouseSettings(),
+            // Max 15 seconds to get keys
+            timeout_overflow_mode: 'break',
+            max_execution_time: 15,
+            // Set the value to 0 (unlimited) so that the LIMIT is used instead
+            max_rows_to_read: '0',
           },
         })
         .then(res => res.json<Record<string, unknown>>())
