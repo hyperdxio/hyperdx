@@ -10,6 +10,7 @@ import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
 import DefaultAlertProvider from '@/tasks/providers/default';
+import logger from '@/utils/logger';
 
 import { AggregatedAlertHistory } from '../checkAlerts';
 
@@ -107,13 +108,23 @@ export async function loadProvider(
         if (isValidProvider(providerInstance)) {
           return providerInstance;
         } else {
-          console.warn(`"${providerName}" does not implement AlertProvider`);
+          logger.warn({
+            message: `"${providerName}" does not implement AlertProvider`,
+            providerName,
+          });
         }
       } else {
-        console.warn(`"${providerName}" does not export default constructor`);
+        logger.warn({
+          message: `"${providerName}" does not export default constructor`,
+          providerName,
+        });
       }
     } catch (e) {
-      console.warn(`failed to load "${providerName}: ${e}"`);
+      logger.warn({
+        message: `failed to load "${providerName}: ${e}"`,
+        cause: e,
+        providerName,
+      });
     }
   }
 

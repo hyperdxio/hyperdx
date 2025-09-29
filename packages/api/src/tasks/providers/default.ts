@@ -230,6 +230,7 @@ export default class DefaultAlertProvider implements AlertProvider {
           alertId: alert.id,
           team: alert.team,
           channel: alert.channel,
+          provider: 'default',
         });
       }
     }
@@ -306,6 +307,7 @@ export default class DefaultAlertProvider implements AlertProvider {
       logger.info({
         message: `connection password not found`,
         connectionId: id,
+        provider: 'default',
       });
     }
 

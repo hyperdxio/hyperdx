@@ -463,11 +463,18 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
 
     this.provider = await loadProvider(this.args.provider);
     await this.provider.init();
+    logger.debug({
+      message: 'finished provider initialization',
+      provider: this.provider.constructor.name,
+      args: this.args,
+    });
 
     const alertTasks = await this.provider.getAlertTasks();
-    logger.info({
-      message: 'Fetched alert tasks to process',
-      taskCount: alertTasks.length,
+    const taskCount = alertTasks.length;
+    logger.debug({
+      message: `Fetched ${taskCount} alert tasks to process`,
+      taskCount,
+      args: this.args,
     });
 
     const teams = new Set(alertTasks.map(t => t.conn.team.toString()));
@@ -476,6 +483,12 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       const teamWebhooksById = await this.provider.getWebhooks(teamId);
       teamToWebhooks.set(teamId, teamWebhooksById);
     }
+    logger.debug({
+      message: `Obtained teams and webhooks for all alertTasks`,
+      args: this.args,
+      teamCount: teams.size,
+      teamWebhookCount: teamToWebhooks.size,
+    });
 
     for (const task of alertTasks) {
       const teamWebhooksById =
@@ -484,8 +497,16 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
         this.processAlertTask(task, teamWebhooksById),
       );
     }
+    logger.debug({
+      message: 'finished scheduling alert tasks on the task_queue',
+      args: this.args,
+    });
 
     await this.task_queue.onIdle();
+    logger.info({
+      message: 'finished processing all tasks on task_queue',
+      args: this.args,
+    });
   }
 
   name(): string {
