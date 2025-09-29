@@ -23,6 +23,7 @@ export default mongoose.model<IDashboard>(
         type: [String],
         default: [],
       },
+      filters: { type: mongoose.Schema.Types.Array, default: [] },
     },
     {
       timestamps: true,
