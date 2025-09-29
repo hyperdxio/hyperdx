@@ -83,5 +83,18 @@ services:
       interval: 1s
       timeout: 1s
       retries: 60
+  nginx:
+    image: nginx:alpine
+    ports:
+      - '4040:4040'
+    volumes:
+      - ./proxy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      HYPERDX_BASE_PATH: ${HYPERDX_BASE_PATH}
+    networks:
+      - internal
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    restart: always
 networks:
   internal:
