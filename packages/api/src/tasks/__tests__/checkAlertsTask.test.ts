@@ -20,7 +20,6 @@ import { CheckAlertsTaskArgs } from '../types';
 jest.mock('@/tasks/providers', () => {
   return {
     ...jest.requireActual('@/tasks/providers'),
-    isValidProvider: jest.fn().mockReturnValue(true),
     loadProvider: jest.fn(),
   };
 });
