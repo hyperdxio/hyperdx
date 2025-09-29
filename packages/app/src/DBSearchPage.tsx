@@ -1418,6 +1418,7 @@ function DBSearchPage() {
                   label="WHERE"
                   queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
                   enableHotkey
+                  allowMultiline={true}
                 />
               </Box>
             }
