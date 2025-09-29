@@ -61,7 +61,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
             NULLIF(${expressions.httpHost}, '')
           ),
           ''
-    ));`;
+    ))`;
 
   const spanAttributesExpression =
     source.eventAttributesExpression || 'SpanAttributes';
