@@ -73,13 +73,14 @@ export function processRowToWhereClause(
 
           // escaped strings needs raw, becuase sqlString will add another layer of escaping
           // data other than array/object will alwayas return with dobule quote(because of CH)
-          // remove dobule qoute to search correctly
+          // remove double quotes if present and escape single quotes
           return SqlString.format(`toString(??)='?'`, [
             valueExpr,
             SqlString.raw(
-              value[0] === '"' && value[value.length - 1] === '"'
+              (value[0] === '"' && value[value.length - 1] === '"'
                 ? value.slice(1, -1)
-                : value,
+                : value
+              ).replace(/'/g, "\\'"),
             ),
           ]);
         default:

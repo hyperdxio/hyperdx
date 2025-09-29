@@ -189,10 +189,10 @@ describe('processRowToWhereClause', () => {
       ],
     ]);
 
-    const row = { dynamic_field: '{\\"took\\":7, not a valid json' };
+    const row = { dynamic_field: '{\\"took\\":7, this ins\'t a valid json' };
     const result = processRowToWhereClause(row, columnMap);
     expect(result).toBe(
-      'toString(`dynamic_field`)=\'{\\"took\\":7, not a valid json\'',
+      "toString(`dynamic_field`)='{\\\"took\\\":7, this ins't a valid json'",
     );
   });
 
