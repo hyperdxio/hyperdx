@@ -71,7 +71,7 @@ import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
-import DashboardFiltersEditModal from './DashboardFiltersEditModal';
+import DashboardFiltersModal from './DashboardFiltersModal';
 import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
@@ -1160,7 +1160,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       >
         + Add New Tile
       </Button>
-      <DashboardFiltersEditModal
+      <DashboardFiltersModal
         opened={showVariablesModal}
         onClose={() => setShowVariablesModal(false)}
         filters={filters}
