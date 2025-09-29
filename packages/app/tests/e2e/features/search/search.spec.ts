@@ -117,8 +117,6 @@ test.describe('Search', { tag: '@search' }, () => {
       });
     });
 
-    //TODO: Add query test using sql
-
     test('Comprehensive Search Workflow - Search, View Results, Navigate Side Panel', async ({
       page,
     }) => {
