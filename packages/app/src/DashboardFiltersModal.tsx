@@ -232,6 +232,7 @@ const EmptyState = ({ onCreateFilter, onClose }: EmptyStateProps) => {
 
 interface DashboardFiltersListProps {
   filters: DashboardFilter[];
+  isLoading?: boolean;
   onEdit: (filter: DashboardFilter) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
@@ -240,6 +241,7 @@ interface DashboardFiltersListProps {
 
 const DashboardFiltersList = ({
   filters,
+  isLoading,
   onEdit,
   onRemove,
   onClose,
@@ -275,6 +277,12 @@ const DashboardFiltersList = ({
             </Group>
           </Paper>
         ))}
+        {isLoading && (
+          <div
+            className="spinner-border mx-auto"
+            style={{ width: 14, height: 14 }}
+          />
+        )}
         <Button
           variant="outline"
           color="gray.2"
@@ -291,19 +299,20 @@ const DashboardFiltersList = ({
 
 interface DashboardFiltersEditModalProps {
   opened: boolean;
-  onClose: () => void;
   filters: DashboardFilter[];
+  isLoading?: boolean;
+  onClose: () => void;
   onSaveFilter: (filter: DashboardFilter) => void;
   onRemoveFilter: (id: string) => void;
-  parentRef?: HTMLElement | null;
 }
 
 const NEW_FILTER_ID = 'new';
 
 const DashboardFiltersModal = ({
   opened,
-  onClose,
   filters,
+  isLoading,
+  onClose,
   onSaveFilter,
   onRemoveFilter,
 }: DashboardFiltersEditModalProps) => {
@@ -367,6 +376,7 @@ const DashboardFiltersModal = ({
         onRemove={handleRemoveFilter}
         onClose={onClose}
         onAddNew={handleAddNewFilter}
+        isLoading={isLoading}
       />
     );
   }

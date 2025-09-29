@@ -517,6 +517,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     dashboardHash,
     isLocalDashboard,
     isLocalDashboardEmpty,
+    isFetching: isFetchingDashboard,
+    isSetting: isSavingDashboard,
   } = useDashboard({
     dashboardId: dashboardId as string | undefined,
     presetConfig,
@@ -562,7 +564,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     parseAsString.withDefault('lucene'),
   );
 
-  const [showVariablesModal, setShowVariablesModal] = useState(false);
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
   const { filterValues, setFilterValue, filterQueries } =
@@ -1083,7 +1085,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             color="gray"
             px="xs"
             mr={6}
-            onClick={() => setShowVariablesModal(true)}
+            onClick={() => setShowFiltersModal(true)}
           >
             <IconFilterEdit strokeWidth={1} />
           </Button>
@@ -1161,11 +1163,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         + Add New Tile
       </Button>
       <DashboardFiltersModal
-        opened={showVariablesModal}
-        onClose={() => setShowVariablesModal(false)}
+        opened={showFiltersModal}
+        onClose={() => setShowFiltersModal(false)}
         filters={filters}
         onSaveFilter={handleSaveFilter}
         onRemoveFilter={handleRemoveFilter}
+        isLoading={isSavingDashboard || isFetchingDashboard}
       />
     </Box>
   );
