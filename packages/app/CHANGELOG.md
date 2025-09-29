@@ -1,5 +1,32 @@
 # @hyperdx/app
 
+## 2.6.0
+
+### Minor Changes
+
+- 8a24c32a: Feat: add highlight animation for recently moved filter checkboxes
+- 6c8efbcb: feat: Add persistent dashboard filters
+- 54d30b92: feat: Add support for filter by parsed JSON string
+
+### Patch Changes
+
+- fa25a0c9: Improve search error isolation
+- 8673f967: fix: json getKeyValues (useful for autocomplete)
+- 69a2a6af: fix: 'Around a time' duration update in TimePicker
+- ea5d2921: Improve memory efficiency in high row cound envs
+- 24314a96: add dashboard import/export functionality
+- 8f06ce7b: perf: add prelimit CTE to getMapKeys query + store clickhouse settings in shared cache
+- e053c490: chore: Customize user-agent for Alerts ClickHouse client
+- 7837a621: fix: Multiline support for WHERE Input boxes
+- Updated dependencies [8673f967]
+- Updated dependencies [4ff55c0e]
+- Updated dependencies [816f90a3]
+- Updated dependencies [24314a96]
+- Updated dependencies [8f06ce7b]
+- Updated dependencies [e053c490]
+- Updated dependencies [6c8efbcb]
+  - @hyperdx/common-utils@0.7.0
+
 ## 2.5.0
 
 ### Minor Changes

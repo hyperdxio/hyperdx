@@ -1,5 +1,24 @@
 # @hyperdx/api
 
+## 2.6.0
+
+### Minor Changes
+
+- 6c8efbcb: feat: Add persistent dashboard filters
+
+### Patch Changes
+
+- 77d0e56f: chore: Add spans for alert processing
+- e053c490: chore: Customize user-agent for Alerts ClickHouse client
+- Updated dependencies [8673f967]
+- Updated dependencies [4ff55c0e]
+- Updated dependencies [816f90a3]
+- Updated dependencies [24314a96]
+- Updated dependencies [8f06ce7b]
+- Updated dependencies [e053c490]
+- Updated dependencies [6c8efbcb]
+  - @hyperdx/common-utils@0.7.0
+
 ## 2.5.0
 
 ### Patch Changes
