@@ -16,6 +16,7 @@ import {
   Stack,
   Text,
   TextInput,
+  Title,
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
@@ -26,6 +27,8 @@ import { SourceSelectControlled } from './components/SourceSelect';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import { useSource, useSources } from './source';
 import { getMetricTableName } from './utils';
+
+import styles from '../styles/DashboardFiltersModal.module.scss';
 
 const MODAL_SIZE = 'sm';
 
@@ -217,7 +220,7 @@ const EmptyState = ({ onCreateFilter, onClose }: EmptyStateProps) => {
     <Modal opened onClose={onClose} size={MODAL_SIZE}>
       <Stack align="center" justify="center" pt="lg" pb="xl">
         <IconFilter />
-        <Text>No filters yet.</Text>
+        <Title order={4}>No filters yet.</Title>
         <Text size="sm" ta="center" px="xl">
           Add filters to let users quickly narrow data on key columns. Saved
           filters will stay with this dashboard.
@@ -250,30 +253,44 @@ const DashboardFiltersList = ({
   const { data: sources } = useSources();
 
   return (
-    <Modal opened onClose={onClose} title="Filters" size={MODAL_SIZE}>
-      <Stack>
+    <Modal
+      opened
+      onClose={onClose}
+      title="Filters"
+      size={MODAL_SIZE}
+      className={styles.modal}
+    >
+      <Stack className={styles.filtersContainer} gap="xs">
         {filters.map(filter => (
           <Paper
             key={filter.id}
-            // className="bg-grey p-2 rounded mb-2 border border-gray"
             withBorder
-            p="xs"
             bg={'dark.5'}
+            className={styles.filterPaper}
+            p="xs"
           >
-            <Group justify="space-between" mb="xs">
-              <Text>{filter.name}</Text>
+            <Group justify="space-between" className={styles.filterHeader}>
+              <Text size="xs">{filter.name}</Text>
               <Group>
-                <UnstyledButton onClick={() => onEdit(filter)}>
-                  <IconPencil size={18} />
+                <UnstyledButton
+                  onClick={() => onEdit(filter)}
+                  className={styles.filterActionButton}
+                >
+                  <IconPencil size={16} />
                 </UnstyledButton>
-                <UnstyledButton onClick={() => onRemove(filter.id)}>
-                  <IconTrash size={18} />
+                <UnstyledButton
+                  onClick={() => onRemove(filter.id)}
+                  className={`${styles.filterActionButton} ${styles.deleteButton}`}
+                >
+                  <IconTrash size={16} />
                 </UnstyledButton>
               </Group>
             </Group>
             <Group gap="xs">
               <i className="bi bi-collection"></i>
-              <Text>{sources?.find(s => s.id === filter.source)?.name}</Text>
+              <Text size="xs">
+                {sources?.find(s => s.id === filter.source)?.name}
+              </Text>
             </Group>
           </Paper>
         ))}
@@ -283,16 +300,13 @@ const DashboardFiltersList = ({
             style={{ width: 14, height: 14 }}
           />
         )}
-        <Button
-          variant="outline"
-          color="gray.2"
-          onClick={onAddNew}
-          mx="auto"
-          my="sm"
-        >
+      </Stack>
+
+      <Group justify="center" my="sm">
+        <Button variant="outline" color="gray.2" onClick={onAddNew}>
           Add new filter
         </Button>
-      </Stack>
+      </Group>
     </Modal>
   );
 };
