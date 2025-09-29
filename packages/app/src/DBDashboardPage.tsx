@@ -1018,6 +1018,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 onSubmit={onSubmit}
                 label="GLOBAL WHERE"
                 enableHotkey
+                allowMultiline={true}
               />
             ) : (
               <SearchInputV2
