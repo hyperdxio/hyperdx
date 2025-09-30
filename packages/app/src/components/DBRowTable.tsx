@@ -36,14 +36,21 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
+  ActionIcon,
   Box,
   Code,
   Flex,
+  Group,
   Modal,
   Text,
   Tooltip as MantineTooltip,
   UnstyledButton,
 } from '@mantine/core';
+import {
+  IconChevronDown,
+  IconChevronUp,
+  IconDotsVertical,
+} from '@tabler/icons-react';
 import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
   ColumnDef,
@@ -51,6 +58,7 @@ import {
   flexRender,
   getCoreRowModel,
   Row as TableRow,
+  SortingState,
   TableOptions,
   useReactTable,
 } from '@tanstack/react-table';
@@ -529,6 +537,8 @@ export const RawLogTable = memo(
       fetchMoreOnBottomReached(tableContainerRef.current);
     }, [fetchMoreOnBottomReached]);
 
+    const [sorting, setSorting] = useState<SortingState>([]);
+
     const reactTableProps = useMemo((): TableOptions<any> => {
       //TODO: fix any
       const onColumnSizingChange = (updaterOrValue: any) => {
@@ -544,9 +554,17 @@ export const RawLogTable = memo(
         columns,
         getCoreRowModel: getCoreRowModel(),
         // debugTable: true,
+        enableSorting: true,
+        manualSorting: true,
+        onSortingChange: setSorting,
+        state: {
+          sorting,
+        },
+        // onSortingChange: (helo: any) => {
         enableColumnResizing: true,
+
         columnResizeMode: 'onChange' as ColumnResizeMode,
-      };
+      } satisfies TableOptions<any>;
 
       const columnSizeProps = {
         state: {
@@ -701,9 +719,11 @@ export const RawLogTable = memo(
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header, headerIndex) => {
+                  const isLast = headerIndex === headerGroup.headers.length - 1;
+
                   return (
                     <th
-                      className="overflow-hidden text-truncate bg-hdx-dark"
+                      className="overflow-hidden bg-hdx-dark"
                       key={header.id}
                       colSpan={header.colSpan}
                       style={{
@@ -716,97 +736,101 @@ export const RawLogTable = memo(
                           header.getSize() === UNDEFINED_WIDTH
                             ? 0
                             : header.getSize(),
-                        position: 'relative',
                       }}
                     >
-                      {header.isPlaceholder ? null : (
-                        <div>
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                        </div>
-                      )}
-                      {header.column.getCanResize() &&
-                        headerIndex !== headerGroup.headers.length - 1 && (
-                          <div
-                            onMouseDown={header.getResizeHandler()}
-                            onTouchStart={header.getResizeHandler()}
-                            className={`resizer text-gray-600 cursor-col-resize ${
-                              header.column.getIsResizing() ? 'isResizing' : ''
-                            }`}
-                            style={{
-                              position: 'absolute',
-                              right: 4,
-                              top: 0,
-                              bottom: 0,
-                              width: 12,
-                            }}
-                          >
-                            <i className="bi bi-three-dots-vertical" />
-                          </div>
-                        )}
-                      {headerIndex === headerGroup.headers.length - 1 && (
-                        <div
-                          className="d-flex align-items-center"
-                          style={{
-                            position: 'absolute',
-                            right: 8,
-                            top: 0,
-                            bottom: 0,
-                          }}
-                        >
-                          {tableId != null &&
-                            Object.keys(columnSizeStorage).length > 0 && (
-                              <div
-                                className="fs-8 text-muted-hover disabled"
-                                role="button"
-                                onClick={() => setColumnSizeStorage({})}
-                                title="Reset Column Widths"
-                              >
-                                <i className="bi bi-arrow-clockwise" />
-                              </div>
+                      <Group wrap="nowrap" gap={0} align="center">
+                        {header.isPlaceholder ? null : (
+                          <Text truncate="end" size="xs" flex="1">
+                            {flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
                             )}
-                          {config && (
-                            <UnstyledButton
-                              onClick={() => handleSqlModalOpen(true)}
+                          </Text>
+                        )}
+                        <Group gap={0} wrap="nowrap" align="center">
+                          {header.column.getCanSort() && (
+                            <ActionIcon
+                              size="xxs"
+                              variant="subtle"
+                              color="gray"
+                              onClick={header.column.getToggleSortingHandler()}
                             >
-                              <MantineTooltip label="Show generated SQL">
-                                <i className="bi bi-code-square" />
-                              </MantineTooltip>
-                            </UnstyledButton>
+                              {header.column.getIsSorted() ? (
+                                <IconChevronDown size={16} />
+                              ) : (
+                                <IconChevronUp size={16} />
+                              )}
+                            </ActionIcon>
                           )}
-                          <UnstyledButton
-                            onClick={() => setWrapLinesEnabled(prev => !prev)}
-                            className="ms-2"
-                          >
-                            <MantineTooltip label="Wrap lines">
-                              <i className="bi bi-text-wrap" />
-                            </MantineTooltip>
-                          </UnstyledButton>
 
-                          <CsvExportButton
-                            data={csvData}
-                            filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
-                            className="fs-6 text-muted-hover ms-2"
-                          >
-                            <MantineTooltip
-                              label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
-                            >
-                              <i className="bi bi-download" />
-                            </MantineTooltip>
-                          </CsvExportButton>
-                          {onSettingsClick != null && (
+                          {header.column.getCanResize() && !isLast && (
                             <div
-                              className="fs-8 text-muted-hover ms-2"
-                              role="button"
-                              onClick={() => onSettingsClick()}
+                              onMouseDown={header.getResizeHandler()}
+                              onTouchStart={header.getResizeHandler()}
+                              className={cx(
+                                `resizer text-gray-600 cursor-col-resize`,
+                                header.column.getIsResizing() && 'isResizing',
+                              )}
                             >
-                              <i className="bi bi-gear-fill" />
+                              <IconDotsVertical size={12} />
                             </div>
                           )}
-                        </div>
-                      )}
+                          {isLast && (
+                            <Group gap={2}>
+                              {tableId &&
+                                Object.keys(columnSizeStorage).length > 0 && (
+                                  <div
+                                    className="fs-8 text-muted-hover disabled"
+                                    role="button"
+                                    onClick={() => setColumnSizeStorage({})}
+                                    title="Reset Column Widths"
+                                  >
+                                    <i className="bi bi-arrow-clockwise" />
+                                  </div>
+                                )}
+                              {config && (
+                                <UnstyledButton
+                                  onClick={() => handleSqlModalOpen(true)}
+                                >
+                                  <MantineTooltip label="Show generated SQL">
+                                    <i className="bi bi-code-square" />
+                                  </MantineTooltip>
+                                </UnstyledButton>
+                              )}
+                              <UnstyledButton
+                                onClick={() =>
+                                  setWrapLinesEnabled(prev => !prev)
+                                }
+                              >
+                                <MantineTooltip label="Wrap lines">
+                                  <i className="bi bi-text-wrap" />
+                                </MantineTooltip>
+                              </UnstyledButton>
+
+                              <CsvExportButton
+                                data={csvData}
+                                filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
+                                className="fs-6 text-muted-hover "
+                              >
+                                <MantineTooltip
+                                  label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+                                >
+                                  <i className="bi bi-download" />
+                                </MantineTooltip>
+                              </CsvExportButton>
+                              {onSettingsClick != null && (
+                                <div
+                                  className="fs-8 text-muted-hover"
+                                  role="button"
+                                  onClick={() => onSettingsClick()}
+                                >
+                                  <i className="bi bi-gear-fill" />
+                                </div>
+                              )}
+                            </Group>
+                          )}
+                        </Group>
+                      </Group>
                     </th>
                   );
                 })}
@@ -1174,6 +1198,7 @@ function DBSqlRowTableComponent({
       enabled:
         enabled && mergedConfig != null && getSelectLength(config.select) > 0,
       isLive,
+      // sort: config.orderBy,
       queryKeyPrefix,
     });
 
