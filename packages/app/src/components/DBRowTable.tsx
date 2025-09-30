@@ -44,7 +44,7 @@ import {
   Tooltip as MantineTooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { IconCheck, IconCopy } from '@tabler/icons-react';
+import { IconCheck, IconCopy, IconLink } from '@tabler/icons-react';
 import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
   ColumnDef,
@@ -498,8 +498,10 @@ export const RawLogTable = memo(
           header: '',
           size: 40,
           cell: info => {
-            const CopyButton = () => {
+            const RowButtons = () => {
               const [isCopied, setIsCopied] = useState(false);
+              const [isUrlCopied, setIsUrlCopied] = useState(false);
+
               const copyRowData = async () => {
                 const rowData = displayedColumns
                   .map(col => {
@@ -512,23 +514,81 @@ export const RawLogTable = memo(
                 setTimeout(() => setIsCopied(false), 2000);
               };
 
+              const copyRowUrl = async () => {
+                // Use the same approach as _onRowDetailsClick to get the row identifier
+                const rowWhere = generateRowId(info.row.original);
+
+                // Get current URL and preserve existing search parameters
+                const currentUrl = new URL(window.location.href);
+
+                // Add the row-specific parameters that would be set by onRowDetailsClick
+                currentUrl.searchParams.set('rowWhere', rowWhere);
+                if (config?.connection) {
+                  currentUrl.searchParams.set('rowSource', config.connection);
+                }
+
+                // Try to determine if this is trace data and add eventRowWhere
+                const row = info.row.original;
+                if (
+                  row.SpanId ||
+                  row.TraceId ||
+                  (source && source.kind === 'trace')
+                ) {
+                  const eventRowWhere = {
+                    id: rowWhere,
+                    type: 'trace',
+                  };
+                  currentUrl.searchParams.set(
+                    'eventRowWhere',
+                    JSON.stringify(eventRowWhere),
+                  );
+                }
+
+                await navigator.clipboard.writeText(currentUrl.toString());
+                setIsUrlCopied(true);
+                setTimeout(() => setIsUrlCopied(false), 2000);
+              };
+
               return (
-                <UnstyledButton
-                  onClick={e => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    copyRowData();
-                  }}
-                  className={cx('text-muted-hover', styles.copyButton, {
-                    [styles.copied]: isCopied,
-                  })}
-                  title={isCopied ? 'Copied!' : 'Copy row data'}
-                >
-                  {isCopied ? <IconCheck size={12} /> : <IconCopy size={12} />}
-                </UnstyledButton>
+                <div className={styles.rowButtons}>
+                  <UnstyledButton
+                    onClick={e => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      copyRowData();
+                    }}
+                    className={cx('text-muted-hover', styles.copyButton, {
+                      [styles.copied]: isCopied,
+                    })}
+                    title={isCopied ? 'Copied!' : 'Copy row data'}
+                  >
+                    {isCopied ? (
+                      <IconCheck size={12} />
+                    ) : (
+                      <IconCopy size={12} />
+                    )}
+                  </UnstyledButton>
+                  <UnstyledButton
+                    onClick={e => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      copyRowUrl();
+                    }}
+                    className={cx('text-muted-hover', styles.copyButton, {
+                      [styles.copied]: isUrlCopied,
+                    })}
+                    title={isUrlCopied ? 'Copied URL!' : 'Copy row URL'}
+                  >
+                    {isUrlCopied ? (
+                      <IconCheck size={12} />
+                    ) : (
+                      <IconLink size={12} />
+                    )}
+                  </UnstyledButton>
+                </div>
               );
             };
-            return <CopyButton />;
+            return <RowButtons />;
           },
         },
       ],
@@ -543,6 +603,9 @@ export const RawLogTable = memo(
         expandedRows,
         toggleRowExpansion,
         showExpandButton,
+        config,
+        source,
+        generateRowId,
       ],
     );
 

@@ -22,7 +22,7 @@ $button-height: 24px;
     font-weight: bold;
   }
 
-  &:hover .copyButton {
+  &:hover .rowButtons {
     opacity: 1;
   }
 
@@ -119,27 +119,32 @@ $button-height: 24px;
   }
 }
 
-.copyButton {
-  opacity: 0;
-  transition: opacity 0.2s ease-in-out;
-  padding: 4px;
-  border-radius: 4px;
+.rowButtons {
   position: absolute;
   top: 50%;
   right: 4px;
   transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  z-index: 10;
+}
+
+.copyButton {
+  padding: 4px;
+  border-radius: 4px;
   background-color: var(--mantine-color-dark-4);
   border: 1px solid var(--mantine-color-dark-3);
-  z-index: 10;
   width: 20px;
   height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: transform 0.2s ease-in-out;
 
   &:hover {
-    opacity: 1 !important;
-    transform: translateY(-50%) scale(1.05);
+    transform: scale(1.05);
   }
 
   &.copied {
