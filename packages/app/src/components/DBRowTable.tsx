@@ -44,6 +44,7 @@ import {
   Tooltip as MantineTooltip,
   UnstyledButton,
 } from '@mantine/core';
+import { IconCheck, IconCopy } from '@tabler/icons-react';
 import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
   ColumnDef,
@@ -491,6 +492,45 @@ export const RawLogTable = memo(
                   (isDate ? 170 : isMaybeSeverityText ? 115 : 160)),
           };
         }) as ColumnDef<any>[]),
+        // Copy column - always last
+        {
+          id: 'copy-row',
+          header: '',
+          size: 40,
+          cell: info => {
+            const CopyButton = () => {
+              const [isCopied, setIsCopied] = useState(false);
+              const copyRowData = async () => {
+                const rowData = displayedColumns
+                  .map(col => {
+                    const value = retrieveColumnValue(col, info.row.original);
+                    return `${columnNameMap?.[col] ?? col}: ${value}`;
+                  })
+                  .join('\n');
+                await navigator.clipboard.writeText(rowData);
+                setIsCopied(true);
+                setTimeout(() => setIsCopied(false), 2000);
+              };
+
+              return (
+                <UnstyledButton
+                  onClick={e => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    copyRowData();
+                  }}
+                  className={cx('text-muted-hover', styles.copyButton, {
+                    [styles.copied]: isCopied,
+                  })}
+                  title={isCopied ? 'Copied!' : 'Copy row data'}
+                >
+                  {isCopied ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                </UnstyledButton>
+              );
+            };
+            return <CopyButton />;
+          },
+        },
       ],
       [
         isUTC,
@@ -851,7 +891,7 @@ export const RawLogTable = memo(
                     {/* Content columns grouped as one button */}
                     <td
                       className="align-top overflow-hidden p-0"
-                      colSpan={columns.length - (showExpandButton ? 1 : 0)}
+                      colSpan={columns.length - (showExpandButton ? 1 : 0)} // Copy button is now positioned absolutely
                     >
                       <button
                         type="button"
@@ -864,15 +904,15 @@ export const RawLogTable = memo(
                       >
                         {row
                           .getVisibleCells()
-                          .slice(showExpandButton ? 1 : 0) // Skip expand column
-                          .map((cell, cellIndex) => {
+                          .slice(
+                            showExpandButton ? 1 : 0, // Skip expand column
+                            -1, // Skip copy column
+                          )
+                          .map(cell => {
                             const columnCustomClassName = (
                               cell.column.columnDef.meta as any
                             )?.className;
                             const columnSize = cell.column.getSize();
-                            const totalContentCells =
-                              row.getVisibleCells().length -
-                              (showExpandButton ? 1 : 0);
 
                             return (
                               <div
@@ -905,6 +945,16 @@ export const RawLogTable = memo(
                           })}
                       </button>
                     </td>
+
+                    {/* Copy button positioned absolutely */}
+                    {(() => {
+                      const copyCell =
+                        row.getVisibleCells()[row.getVisibleCells().length - 1];
+                      return flexRender(
+                        copyCell.column.columnDef.cell,
+                        copyCell.getContext(),
+                      );
+                    })()}
                   </tr>
                   {showExpandButton && isExpanded && (
                     <ExpandedLogRow
