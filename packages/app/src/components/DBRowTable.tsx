@@ -597,9 +597,7 @@ export const RawLogTable = memo(
         state: {
           sorting: orderByArray,
         },
-        // onSortingChange: (helo: any) => {
         enableColumnResizing: true,
-
         columnResizeMode: 'onChange' as ColumnResizeMode,
       } satisfies TableOptions<any>;
 
