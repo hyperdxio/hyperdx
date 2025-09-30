@@ -19,7 +19,7 @@ import {
   splitChartConfigs,
 } from '@/renderChartConfig';
 import { ChartConfigWithOptDateRange, SQLInterval } from '@/types';
-import { hashCode } from '@/utils';
+import { hashCode, splitAndTrimWithBracket } from '@/utils';
 
 // export @clickhouse/client-common types
 export type {
@@ -273,22 +273,42 @@ export class ClickHouseQueryError extends Error {
   }
 }
 
-export function extractColumnReference(
-  sql: string,
-  maxIterations = 10,
-): string | null {
-  let iterations = 0;
+const removeSquareBracketPairs = (sql: string, maxIterations = 10) => {
+  const bracketRegex = /\[[^[\]]*\]/g;
+  let iteration = 0;
+  while (bracketRegex.test(sql) && iteration < maxIterations) {
+    sql = sql.replace(bracketRegex, '');
+    iteration++;
+  }
+  return sql;
+};
 
-  // Loop until we remove all function calls and get just the column, with a maximum limit
-  while (/\w+\([^()]*\)/.test(sql) && iterations < maxIterations) {
-    // Replace the outermost function with its content
-    sql = sql.replace(/\w+\(([^()]*)\)/, '$1');
-    iterations++;
+/**
+ * Returns columns referenced in given expression, where the expression is a comma-separated list of SQL expressions
+ * E.g. "id, toStartOfInterval(timestamp, toIntervalDay(3)), user_id".
+ */
+export const extractColumnReferencesFromKey = (expr: string): string[] => {
+  const parser = new SQLParser.Parser();
+
+  const exprs = splitAndTrimWithBracket(expr);
+  if (!exprs?.length) {
+    return [];
   }
 
-  // If we reached the max iterations without resolving, return null to indicate an issue
-  return iterations < maxIterations ? sql.trim() : null;
-}
+  return exprs.flatMap(expr => {
+    try {
+      // Remove square bracket pairs to avoid parsing errors, since node-sql-parser does not have a ClickHouse dialect and the default dialect does not support them.
+      // E.g. "mapCol['key']" -> "mapCol"
+      const cleanedExpr = removeSquareBracketPairs(expr);
+      return parser
+        .columnList(`select ${cleanedExpr}`)
+        .map(col => col.split('::')[2]);
+    } catch (e) {
+      console.error('Error parsing column references from key', e, expr);
+      return [];
+    }
+  });
+};
 
 const castToNumber = (value: string | number) => {
   if (typeof value === 'string') {
