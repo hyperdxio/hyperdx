@@ -804,7 +804,8 @@ function DBSearchPage() {
       ({ select, where, whereLanguage, source, filters, orderBy }) => {
         setSearchedConfig({
           select,
-          where,
+          // Ensure that new lines are stripped since they can't be persisted to query params
+          where: where.replace(/\n/g, ' '),
           whereLanguage,
           source,
           filters,
