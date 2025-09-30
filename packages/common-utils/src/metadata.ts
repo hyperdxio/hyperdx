@@ -360,16 +360,17 @@ export class Metadata {
 
         try {
           // First try to use the Paths column
-          const sql = chSql`SELECT DISTINCT arrayJoin(${{ Identifier: `${column}Keys` }}) as path
+          const sql = chSql`SELECT DISTINCT arrayJoin(${{ Identifier: `${column}Keys` }}) as keys
           FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
           LIMIT ${{ Int32: maxKeys }}
           SETTINGS timeout_overflow_mode = 'break', max_execution_time = 2`;
 
           const keys = await this.clickhouseClient
-            .query<'JSON'>({
+            .query({
               query: sql.sql,
               query_params: sql.params,
               connectionId,
+              format: 'JSONColumnsWithMetadata',
               clickhouse_settings: {
                 max_rows_to_read: String(
                   this.getClickHouseSettings().max_rows_to_read ??
@@ -379,15 +380,16 @@ export class Metadata {
                 ...this.getClickHouseSettings(),
               },
             })
-            .then(res => res.json<{ path: string }>())
+            .then(res => res.json())
             .then(d => {
               const keys: { key: string; chType: string }[] = [];
-              for (const row of d.data) {
-                if (!row.path) {
+              for (const key of (d.data as unknown as { keys: string[] })
+                .keys) {
+                if (!key) {
                   continue;
                 }
                 keys.push({
-                  key: row.path,
+                  key: key,
                   chType: 'String', // Default to String type for path entries
                 });
               }
