@@ -954,7 +954,7 @@ export const RawLogTable = memo(
                     {/* Content columns grouped as one button */}
                     <td
                       className="align-top overflow-hidden p-0"
-                      colSpan={columns.length - (showExpandButton ? 1 : 0)} // Copy button is now positioned absolutely
+                      colSpan={columns.length - (showExpandButton ? 1 : 0)}
                     >
                       <button
                         type="button"
