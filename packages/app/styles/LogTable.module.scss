@@ -29,6 +29,14 @@ $button-height: 24px;
   &:hover .rowContentButton {
     background-color: var(--mantine-color-dark-5);
   }
+
+  &:has(.expandButton:hover) .rowButtons {
+    opacity: 0 !important;
+  }
+
+  &:has(.expandButton:hover) .rowContentButton {
+    background-color: transparent !important;
+  }
 }
 
 .expandedRowContent {
@@ -101,9 +109,10 @@ $button-height: 24px;
   height: $button-height;
   display: flex;
   align-items: center;
+  position: relative;
 
-  &:hover {
-    background-color: var(--mantine-color-dark-5);
+  &:hover .rowButtons {
+    opacity: 1;
   }
 
   &:focus,
@@ -121,14 +130,21 @@ $button-height: 24px;
 
 .rowButtons {
   position: absolute;
-  top: 50%;
-  right: 4px;
-  transform: translateY(-50%);
+  top: 0;
+  right: 0;
+  height: 100%;
+  padding-left: 10px;
+  padding-right: 4px;
   display: flex;
   gap: 2px;
   opacity: 0;
   transition: opacity 0.2s ease-in-out;
   z-index: 10;
+  align-items: center;
+
+  &:hover {
+    opacity: 1;
+  }
 }
 
 .copyButton {
@@ -142,6 +158,7 @@ $button-height: 24px;
   align-items: center;
   justify-content: center;
   transition: transform 0.2s ease-in-out;
+  pointer-events: auto;
 
   &:hover {
     transform: scale(1.05);
