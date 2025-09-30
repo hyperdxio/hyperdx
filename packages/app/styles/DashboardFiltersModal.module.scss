@@ -1,0 +1,23 @@
+.filtersContainer {
+  max-height: 400px;
+  overflow-y: auto;
+  border-top: 1px solid var(--mantine-color-dark-4);
+  border-bottom: 1px solid var(--mantine-color-dark-4);
+  padding: var(--mantine-spacing-sm) 0;
+  margin-bottom: var(--mantine-spacing-xs) 0;
+}
+
+.filterActionButton {
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
+.deleteButton {
+  &:hover {
+    color: var(--mantine-color-red-4);
+  }
+}

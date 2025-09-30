@@ -71,7 +71,7 @@ import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
-import DashboardFiltersEditModal from './DashboardFiltersEditModal';
+import DashboardFiltersModal from './DashboardFiltersModal';
 import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
@@ -517,6 +517,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     dashboardHash,
     isLocalDashboard,
     isLocalDashboardEmpty,
+    isFetching: isFetchingDashboard,
+    isSetting: isSavingDashboard,
   } = useDashboard({
     dashboardId: dashboardId as string | undefined,
     presetConfig,
@@ -562,7 +564,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     parseAsString.withDefault('lucene'),
   );
 
-  const [showVariablesModal, setShowVariablesModal] = useState(false);
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
   const { filterValues, setFilterValue, filterQueries } =
@@ -1084,7 +1086,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             color="gray"
             px="xs"
             mr={6}
-            onClick={() => setShowVariablesModal(true)}
+            onClick={() => setShowFiltersModal(true)}
           >
             <IconFilterEdit strokeWidth={1} />
           </Button>
@@ -1161,12 +1163,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       >
         + Add New Tile
       </Button>
-      <DashboardFiltersEditModal
-        opened={showVariablesModal}
-        onClose={() => setShowVariablesModal(false)}
+      <DashboardFiltersModal
+        opened={showFiltersModal}
+        onClose={() => setShowFiltersModal(false)}
         filters={filters}
         onSaveFilter={handleSaveFilter}
         onRemoveFilter={handleRemoveFilter}
+        isLoading={isSavingDashboard || isFetchingDashboard}
       />
     </Box>
   );
