@@ -812,7 +812,7 @@ export const RawLogTable = memo(
                               <IconDotsVertical size={12} />
                             </div>
                           )}
-                          {isLast && (
+                          {!isLoading && isLast && (
                             <Group gap={2}>
                               {tableId &&
                                 Object.keys(columnSizeStorage).length > 0 && (
