@@ -89,12 +89,9 @@ const DashboardFilterEditForm = ({
                 data-testid="source-selector"
                 rules={{ required: true }}
                 comboboxProps={{ withinPortal: true }}
-              />
-            </span>
-            <span className="me-2">
-              <SourceSchemaPreview
-                source={source}
-                iconStyles={{ color: 'dark.2' }}
+                sourceSchemaPreview={
+                  <SourceSchemaPreview source={source} variant="text" />
+                }
               />
             </span>
           </Group>

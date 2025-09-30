@@ -1215,13 +1215,10 @@ function DBSearchPage() {
               onCreate={openNewSourceModal}
               allowedSourceKinds={[SourceKind.Log, SourceKind.Trace]}
               data-testid="source-selector"
+              sourceSchemaPreview={
+                <SourceSchemaPreview source={inputSourceObj} variant="text" />
+              }
             />
-            <span className="ms-1">
-              <SourceSchemaPreview
-                source={inputSourceObj}
-                iconStyles={{ size: 'xs', color: 'dark.2' }}
-              />
-            </span>
             <Menu withArrow position="bottom-start">
               <Menu.Target>
                 <ActionIcon
