@@ -428,11 +428,11 @@ export abstract class BaseClickhouseClient {
     }
 
     // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
+    console.debug('--------------------------------------------------------');
     // eslint-disable-next-line no-console
-    console.log('Sending Query:', debugSql);
+    console.debug('Sending Query:', debugSql);
     // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
+    console.debug('--------------------------------------------------------');
   }
 
   protected processClickhouseSettings(

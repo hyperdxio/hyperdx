@@ -11,6 +11,12 @@ import { format, formatDistance } from 'date-fns';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
 import ms from 'ms';
+import {
+  createParser,
+  parseAsString,
+  parseAsStringLiteral,
+  useQueryState,
+} from 'nuqs';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Bar,
@@ -20,6 +26,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { z } from 'zod';
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
@@ -109,6 +116,27 @@ const ACCESSOR_MAP: Record<string, AccessorFn> = {
 
 const MAX_SCROLL_FETCH_LINES = 1000;
 const MAX_CELL_LENGTH = 500;
+
+export const parseAsSort = createParser({
+  parse(query) {
+    if (!query) return null;
+    const result = parseAsString.parse(query)?.split(' ') ?? [];
+    // pop the last element, then join the rest
+    const direction = result.pop() ?? 'ASC';
+    const key = result.join(' ');
+    const desc =
+      parseAsStringLiteral(['ASC', 'DESC']).parse(direction) ?? 'ASC';
+    if (!key) return null;
+    return {
+      id: key,
+      desc: desc === 'DESC',
+    };
+  },
+  serialize(value) {
+    if (!value) return '';
+    return `${value.id} ${value.desc ? 'DESC' : 'ASC'}`;
+  },
+});
 
 const getRowId = (row: Record<string, any>): string => row.__hyperdx_id;
 
@@ -445,6 +473,7 @@ export const RawLogTable = memo(
               column,
               jsColumnType,
             },
+            id: column,
             accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
             header: `${columnNameMap?.[column] ?? column}${isDate ? (isUTC ? ' (UTC)' : ' (Local)') : ''}`,
             cell: info => {
@@ -537,7 +566,8 @@ export const RawLogTable = memo(
       fetchMoreOnBottomReached(tableContainerRef.current);
     }, [fetchMoreOnBottomReached]);
 
-    const [sorting, setSorting] = useState<SortingState>([]);
+    const [orderBy, setOrderBy] = useQueryState('orderBy', parseAsSort);
+    const orderByArray = useMemo(() => (orderBy ? [orderBy] : []), [orderBy]);
 
     const reactTableProps = useMemo((): TableOptions<any> => {
       //TODO: fix any
@@ -556,9 +586,16 @@ export const RawLogTable = memo(
         // debugTable: true,
         enableSorting: true,
         manualSorting: true,
-        onSortingChange: setSorting,
+        onSortingChange: v => {
+          if (typeof v === 'function') {
+            const newSortVal = v(orderByArray);
+            setOrderBy(newSortVal.at(0) ?? null);
+          } else {
+            setOrderBy(v.at(0) ?? null);
+          }
+        },
         state: {
-          sorting,
+          sorting: orderByArray,
         },
         // onSortingChange: (helo: any) => {
         enableColumnResizing: true,
@@ -580,6 +617,8 @@ export const RawLogTable = memo(
       columns,
       dedupedRows,
       tableId,
+      orderByArray,
+      setOrderBy,
       columnSizeStorage,
       setColumnSizeStorage,
     ]);
