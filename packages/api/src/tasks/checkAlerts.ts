@@ -9,6 +9,7 @@ import {
   ChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
+import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import * as fns from 'date-fns';
 import { chunk, isString } from 'lodash';
 import { ObjectId } from 'mongoose';
@@ -38,6 +39,8 @@ import {
 import { CheckAlertsTaskArgs, HdxTask } from '@/tasks/types';
 import { roundDownToXMinutes, unflattenObject } from '@/tasks/util';
 import logger from '@/utils/logger';
+
+import { tasksTracer } from './tracer';
 
 export const doesExceedThreshold = (
   thresholdType: AlertThresholdType,
@@ -432,26 +435,37 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     alertTask: AlertTask,
     teamWebhooksById: Map<string, IWebhook>,
   ) {
-    const { alerts, conn } = alertTask;
-    logger.info({
-      message: 'Processing alerts in batch',
-      alertCount: alerts.length,
+    await tasksTracer.startActiveSpan('processAlertTask', async span => {
+      setTraceAttributes({
+        'hyperdx.alerts.team.id': alertTask.conn.team.toString(),
+        'hyperdx.alerts.connection.id': alertTask.conn.id,
+      });
+
+      try {
+        const { alerts, conn } = alertTask;
+        logger.info({
+          message: 'Processing alerts in batch',
+          alertCount: alerts.length,
+        });
+
+        const clickhouseClient = await this.provider.getClickHouseClient(conn);
+
+        for (const alert of alerts) {
+          await this.task_queue.add(() =>
+            processAlert(
+              alertTask.now,
+              alert,
+              clickhouseClient,
+              conn.id,
+              this.provider,
+              teamWebhooksById,
+            ),
+          );
+        }
+      } finally {
+        span.end();
+      }
     });
-
-    const clickhouseClient = await this.provider.getClickHouseClient(conn);
-
-    for (const alert of alerts) {
-      await this.task_queue.add(() =>
-        processAlert(
-          alertTask.now,
-          alert,
-          clickhouseClient,
-          conn.id,
-          this.provider,
-          teamWebhooksById,
-        ),
-      );
-    }
   }
 
   async execute(): Promise<void> {
@@ -467,6 +481,10 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       message: 'finished provider initialization',
       provider: this.provider.constructor.name,
       args: this.args,
+    });
+
+    setTraceAttributes({
+      'hyperdx.alerts.provider': this.provider.constructor.name,
     });
 
     const alertTasks = await this.provider.getAlertTasks();

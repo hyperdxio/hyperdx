@@ -135,23 +135,16 @@ const DashboardFilterEditForm = ({
               tooltipText="The data source that the filter values are queried from"
               error={formState.errors.source}
             >
-              <Group>
-                <span className="flex-grow-1">
-                  <SourceSelectControlled
-                    control={control}
-                    name="source"
-                    data-testid="source-selector"
-                    rules={{ required: true }}
-                    comboboxProps={{ withinPortal: true }}
-                  />
-                </span>
-                <span className="me-2">
-                  <SourceSchemaPreview
-                    source={source}
-                    iconStyles={{ color: 'dark.2' }}
-                  />
-                </span>
-              </Group>
+              <SourceSelectControlled
+                control={control}
+                name="source"
+                data-testid="source-selector"
+                rules={{ required: true }}
+                comboboxProps={{ withinPortal: true }}
+                sourceSchemaPreview={
+                  <SourceSchemaPreview source={source} variant="text" />
+                }
+              />
             </CustomInputWrapper>
             {sourceIsMetric && (
               <CustomInputWrapper

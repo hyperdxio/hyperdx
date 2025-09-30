@@ -4,6 +4,7 @@ import { Flex, Select } from '@mantine/core';
 import { useTablesDirect } from '@/clickhouse';
 
 import SourceSchemaPreview from './SourceSchemaPreview';
+import { SourceSelectRightSection } from './SourceSelect';
 
 export default function DBTableSelect({
   database,
@@ -36,6 +37,19 @@ export default function DBTableSelect({
     label: db.name,
   }));
 
+  const rightSectionProps = SourceSelectRightSection({
+    sourceSchemaPreview:
+      connectionId && database && table ? (
+        <SourceSchemaPreview
+          source={{
+            connection: connectionId,
+            from: { databaseName: database, tableName: table },
+          }}
+          variant="text"
+        />
+      ) : undefined,
+  });
+
   return (
     <Flex align="center" gap={8}>
       <Select
@@ -53,17 +67,7 @@ export default function DBTableSelect({
         ref={inputRef}
         size={size}
         className="flex-grow-1"
-      />
-      <SourceSchemaPreview
-        source={
-          connectionId && database && table
-            ? {
-                connection: connectionId,
-                from: { databaseName: database, tableName: table },
-              }
-            : undefined
-        }
-        iconStyles={{ color: 'gray.4' }}
+        {...rightSectionProps}
       />
     </Flex>
   );
