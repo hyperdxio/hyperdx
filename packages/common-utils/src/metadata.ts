@@ -357,47 +357,51 @@ export class Metadata {
         const where = metricName
           ? chSql`WHERE MetricName=${{ String: metricName }}`
           : '';
-        const sql = chSql`WITH all_paths AS
-        (
-            SELECT DISTINCT JSONDynamicPathsWithTypes(${{ Identifier: column }}) as paths
-            FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
-            LIMIT ${{ Int32: maxKeys }}
-            SETTINGS timeout_overflow_mode = 'break', max_execution_time = 2
-        )
-        SELECT groupUniqArrayMap(paths) as pathMap
-        FROM all_paths;`;
 
-        const keys = await this.clickhouseClient
-          .query<'JSON'>({
-            query: sql.sql,
-            query_params: sql.params,
-            connectionId,
-            clickhouse_settings: {
-              max_rows_to_read: String(
-                this.getClickHouseSettings().max_rows_to_read ??
-                  DEFAULT_METADATA_MAX_ROWS_TO_READ,
-              ),
-              read_overflow_mode: 'break',
-              ...this.getClickHouseSettings(),
-            },
-          })
-          .then(res => res.json<{ pathMap: Record<string, string[]> }>())
-          .then(d => {
-            const keys: { key: string; chType: string }[] = [];
-            for (const [key, typeArr] of Object.entries(d.data[0].pathMap)) {
-              if (!key || !typeArr || !Array.isArray(typeArr)) {
-                throw new Error(
-                  `Error fetching keys for filters (key: ${key}, typeArr: ${typeArr})`,
-                );
+        try {
+          // First try to use the Paths column
+          const sql = chSql`SELECT DISTINCT arrayJoin(${{ Identifier: `${column}Keys` }}) as path
+          FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
+          LIMIT ${{ Int32: maxKeys }}
+          SETTINGS timeout_overflow_mode = 'break', max_execution_time = 2`;
+
+          const keys = await this.clickhouseClient
+            .query<'JSON'>({
+              query: sql.sql,
+              query_params: sql.params,
+              connectionId,
+              clickhouse_settings: {
+                max_rows_to_read: String(
+                  this.getClickHouseSettings().max_rows_to_read ??
+                    DEFAULT_METADATA_MAX_ROWS_TO_READ,
+                ),
+                read_overflow_mode: 'break',
+                ...this.getClickHouseSettings(),
+              },
+            })
+            .then(res => res.json<{ path: string }>())
+            .then(d => {
+              const keys: { key: string; chType: string }[] = [];
+              for (const row of d.data) {
+                if (!row.path) {
+                  continue;
+                }
+                keys.push({
+                  key: row.path,
+                  chType: 'String', // Default to String type for path entries
+                });
               }
-              keys.push({
-                key: key,
-                chType: typeArr[0],
-              });
-            }
-            return keys;
-          });
-        return keys;
+              return keys;
+            });
+          return keys;
+        } catch (error) {
+          // If the Paths column doesn't exist, return empty array
+          console.warn(
+            `Column ${column}Paths not found in table ${databaseName}.${tableName}:`,
+            error,
+          );
+          return [];
+        }
       },
     );
   }
