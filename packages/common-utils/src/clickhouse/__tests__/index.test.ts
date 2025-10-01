@@ -22,17 +22,17 @@ describe('extractColumnReferencesFromKey', () => {
   });
 
   it('should handle map / json access expression', () => {
-    // This is imperfect due to lack of full ClickHouse SQL parsing - we don't pickup `otherMap` here.
+    // This is imperfect due to lack of full ClickHouse SQL parsing - we don't pickup the nested map access here.
     // It is not expected to be a common case that there are nested map accesses in a primary or partition key,
     // so we just want to make sure we don't error out in this case.
     expect(
       extractColumnReferencesFromKey("mapCol[otherMap['key']], col2"),
-    ).toEqual(['mapCol', 'col2']);
+    ).toEqual(['col2']);
   });
 
   it('should handle array accesses', () => {
     expect(extractColumnReferencesFromKey('arrayCol[1], col2')).toEqual([
-      'arrayCol',
+      'arrayCol[1]',
       'col2',
     ]);
   });

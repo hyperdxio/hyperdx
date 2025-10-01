@@ -273,19 +273,9 @@ export class ClickHouseQueryError extends Error {
   }
 }
 
-const removeSquareBracketPairs = (sql: string, maxIterations = 10) => {
-  const bracketRegex = /\[[^[\]]*\]/g;
-  let iteration = 0;
-  while (bracketRegex.test(sql) && iteration < maxIterations) {
-    sql = sql.replace(bracketRegex, '');
-    iteration++;
-  }
-  return sql;
-};
-
 /**
  * Returns columns referenced in given expression, where the expression is a comma-separated list of SQL expressions
- * E.g. "id, toStartOfInterval(timestamp, toIntervalDay(3)), user_id".
+ * E.g. "id, toStartOfInterval(timestamp, toIntervalDay(3)), user_id, json.a.b".
  */
 export const extractColumnReferencesFromKey = (expr: string): string[] => {
   const parser = new SQLParser.Parser();
@@ -297,12 +287,30 @@ export const extractColumnReferencesFromKey = (expr: string): string[] => {
 
   return exprs.flatMap(expr => {
     try {
-      // Remove square bracket pairs to avoid parsing errors, since node-sql-parser does not have a ClickHouse dialect and the default dialect does not support them.
-      // E.g. "mapCol['key']" -> "mapCol"
-      const cleanedExpr = removeSquareBracketPairs(expr);
-      return parser
-        .columnList(`select ${cleanedExpr}`)
+      // Strip out any JSON type expressions, eg. in json.a.:Int64, remove the .:Int64 part
+      const exprWithoutJsonType = expr.replace(/\.:[a-zA-Z0-9]+/g, '');
+
+      // Extract out any JSON path expressions, since node-sql-parser does not support them.
+      const jsonPathRegex = /\b[a-zA-Z0-9_]+\.[a-zA-Z0-9_.]+/g;
+      const jsonPaths = exprWithoutJsonType.match(jsonPathRegex) || [];
+
+      // Extract map or array access expressions, e.g. map['key'] or array[1], since node-sql-parser does not support them.
+      const mapAccessRegex = /\b[a-zA-Z0-9_]+\[([0-9]+|'[^']*')\]/g;
+      const mapAccesses = exprWithoutJsonType.match(mapAccessRegex) || [];
+
+      // Replace JSON paths and map/array accesses with a literal string ('') so that node-sql-parser ignores them
+      const exprWithoutJson = exprWithoutJsonType.replace(jsonPathRegex, "''");
+      const exprWithoutJsonOrMaps = exprWithoutJson.replace(
+        mapAccessRegex,
+        "''",
+      );
+
+      // Parse remaining column references with node-sql-parser
+      const parsedColumnList = parser
+        .columnList(`select ${exprWithoutJsonOrMaps}`)
         .map(col => col.split('::')[2]);
+
+      return [...new Set([...parsedColumnList, ...jsonPaths, ...mapAccesses])];
     } catch (e) {
       console.error('Error parsing column references from key', e, expr);
       return [];
