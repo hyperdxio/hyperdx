@@ -7,7 +7,7 @@ import React, {
   useState,
 } from 'react';
 import cx from 'classnames';
-import { format, formatDistance } from 'date-fns';
+import { formatDistance } from 'date-fns';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
 import ms from 'ms';
@@ -26,7 +26,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { z } from 'zod';
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
@@ -337,6 +336,9 @@ export const RawLogTable = memo(
     source,
     onExpandedRowsChange,
     collapseAllRows,
+    enableSorting = false,
+    onSortingChange,
+    sortOrder,
     showExpandButton = true,
   }: {
     wrapLines: boolean;
@@ -374,6 +376,9 @@ export const RawLogTable = memo(
     collapseAllRows?: boolean;
     showExpandButton?: boolean;
     renderRowDetails?: (row: Record<string, any>) => React.ReactNode;
+    enableSorting?: boolean;
+    sortOrder?: SortingState;
+    onSortingChange?: (v: SortingState | null) => void;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -566,9 +571,6 @@ export const RawLogTable = memo(
       fetchMoreOnBottomReached(tableContainerRef.current);
     }, [fetchMoreOnBottomReached]);
 
-    const [orderBy, setOrderBy] = useQueryState('orderBy', parseAsSort);
-    const orderByArray = useMemo(() => (orderBy ? [orderBy] : []), [orderBy]);
-
     const reactTableProps = useMemo((): TableOptions<any> => {
       //TODO: fix any
       const onColumnSizingChange = (updaterOrValue: any) => {
@@ -584,22 +586,22 @@ export const RawLogTable = memo(
         columns,
         getCoreRowModel: getCoreRowModel(),
         // debugTable: true,
-        enableSorting: true,
+        enableSorting,
         manualSorting: true,
         onSortingChange: v => {
           if (typeof v === 'function') {
-            const newSortVal = v(orderByArray);
-            setOrderBy(newSortVal.at(0) ?? null);
+            const newSortVal = v(sortOrder ?? []);
+            onSortingChange?.(newSortVal ?? null);
           } else {
-            setOrderBy(v.at(0) ?? null);
+            onSortingChange?.(v ?? null);
           }
         },
         state: {
-          sorting: orderByArray,
+          sorting: sortOrder ?? [],
         },
         enableColumnResizing: true,
         columnResizeMode: 'onChange' as ColumnResizeMode,
-      } satisfies TableOptions<any>;
+      };
 
       const columnSizeProps = {
         state: {
@@ -615,8 +617,9 @@ export const RawLogTable = memo(
       columns,
       dedupedRows,
       tableId,
-      orderByArray,
-      setOrderBy,
+      sortOrder,
+      enableSorting,
+      onSortingChange,
       columnSizeStorage,
       setColumnSizeStorage,
     ]);
@@ -1225,17 +1228,38 @@ function DBSqlRowTableComponent({
   showExpandButton?: boolean;
 }) {
   const { data: me } = api.useMe();
-  const mergedConfig = useConfigWithPrimaryAndPartitionKey({
-    ...searchChartConfigDefaults(me?.team),
-    ...config,
-  });
+
+  const [orderBy, setOrderBy] = useQueryState('orderBy', parseAsSort);
+  const orderByArray = useMemo(() => (orderBy ? [orderBy] : []), [orderBy]);
+
+  const onSortingChange = useCallback(
+    (v: SortingState | null) => {
+      setOrderBy(v?.[0] ?? null);
+    },
+    [setOrderBy],
+  );
+
+  const mergedConfigObj = useMemo(() => {
+    const base = {
+      ...searchChartConfigDefaults(me?.team),
+      ...config,
+    };
+    if (orderByArray.length) {
+      base.orderBy = orderByArray.map(o => ({
+        valueExpression: o.id,
+        ordering: o.desc ? 'DESC' : 'ASC',
+      }));
+    }
+    return base;
+  }, [me, config, orderByArray]);
+
+  const mergedConfig = useConfigWithPrimaryAndPartitionKey(mergedConfigObj);
 
   const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
     useOffsetPaginatedQuery(mergedConfig ?? config, {
       enabled:
         enabled && mergedConfig != null && getSelectLength(config.select) > 0,
       isLive,
-      // sort: config.orderBy,
       queryKeyPrefix,
     });
 
@@ -1432,6 +1456,9 @@ function DBSqlRowTableComponent({
         onExpandedRowsChange={onExpandedRowsChange}
         collapseAllRows={collapseAllRows}
         showExpandButton={showExpandButton}
+        enableSorting={true}
+        onSortingChange={onSortingChange}
+        sortOrder={orderByArray}
       />
     </>
   );
