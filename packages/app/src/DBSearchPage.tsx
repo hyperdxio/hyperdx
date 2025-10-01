@@ -541,7 +541,7 @@ function optimizeDefaultOrderBy(
   if (!sortingKey) return fallbackOrderBy;
 
   const orderByArr = [];
-  const sortKeys = sortingKey.split(',').map(key => key.trim());
+  const sortKeys = splitAndTrimWithBracket(sortingKey);
   for (let i = 0; i < sortKeys.length; i++) {
     const sortKey = sortKeys[i];
     if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
