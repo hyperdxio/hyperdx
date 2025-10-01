@@ -56,6 +56,7 @@ import {
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useIsFetching } from '@tanstack/react-query';
+import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -75,10 +76,7 @@ import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_LOCAL_MODE } from '@/config';
-import {
-  useAliasMapFromChartConfig,
-  useQueriedChartConfig,
-} from '@/hooks/useChartConfig';
+import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { withAppNav } from '@/layout';
 import {
@@ -1154,6 +1152,19 @@ function DBSearchPage() {
     [onSubmit],
   );
 
+  const onSortingChange = useCallback(
+    (sortState: SortingState | null) => {
+      setIsLive(false);
+      const sort = sortState?.at(0);
+      setSearchedConfig({
+        orderBy: sort
+          ? `${sort.id} ${sort.desc ? 'DESC' : 'ASC'}`
+          : defaultOrderBy,
+      });
+    },
+    [setIsLive, defaultOrderBy, setSearchedConfig],
+  );
+
   const handleTimeRangeSelect = useCallback(
     (d1: Date, d2: Date) => {
       onTimeRangeSelect(d1, d2);
@@ -1830,6 +1841,7 @@ function DBSearchPage() {
                           onError={handleTableError}
                           denoiseResults={denoiseResults}
                           collapseAllRows={collapseAllRows}
+                          onSortingChange={onSortingChange}
                         />
                       )}
                   </>

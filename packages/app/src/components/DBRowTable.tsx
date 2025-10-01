@@ -11,12 +11,6 @@ import { formatDistance } from 'date-fns';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
 import ms from 'ms';
-import {
-  createParser,
-  parseAsString,
-  parseAsStringLiteral,
-  useQueryState,
-} from 'nuqs';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Bar,
@@ -72,7 +66,10 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from '@/api';
 import { searchChartConfigDefaults } from '@/defaults';
-import { useRenderedSqlChartConfig } from '@/hooks/useChartConfig';
+import {
+  useAliasMapFromChartConfig,
+  useRenderedSqlChartConfig,
+} from '@/hooks/useChartConfig';
 import { useCsvExport } from '@/hooks/useCsvExport';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -115,27 +112,6 @@ const ACCESSOR_MAP: Record<string, AccessorFn> = {
 
 const MAX_SCROLL_FETCH_LINES = 1000;
 const MAX_CELL_LENGTH = 500;
-
-export const parseAsSort = createParser({
-  parse(query) {
-    if (!query) return null;
-    const result = parseAsString.parse(query)?.split(' ') ?? [];
-    // pop the last element, then join the rest
-    const direction = result.pop() ?? 'ASC';
-    const key = result.join(' ');
-    const desc =
-      parseAsStringLiteral(['ASC', 'DESC']).parse(direction) ?? 'ASC';
-    if (!key) return null;
-    return {
-      id: key,
-      desc: desc === 'DESC',
-    };
-  },
-  serialize(value) {
-    if (!value) return '';
-    return `${value.id} ${value.desc ? 'DESC' : 'ASC'}`;
-  },
-});
 
 const getRowId = (row: Record<string, any>): string => row.__hyperdx_id;
 
@@ -424,6 +400,9 @@ export const RawLogTable = memo(
     //we need a reference to the scrolling element for logic down below
     const tableContainerRef = useRef<HTMLDivElement>(null);
 
+    // Get the alias map from the config so we resolve correct column ids
+    const { data: aliasMap } = useAliasMapFromChartConfig(config);
+
     // Reset scroll when live tail is enabled for the first time
     const prevIsLive = usePrevious(isLive);
     useEffect(() => {
@@ -478,7 +457,8 @@ export const RawLogTable = memo(
               column,
               jsColumnType,
             },
-            id: column,
+            // Prefer real column name over alias when possible for ID
+            id: aliasMap?.[column] ?? column,
             accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
             header: `${columnNameMap?.[column] ?? column}${isDate ? (isUTC ? ' (UTC)' : ' (Local)') : ''}`,
             cell: info => {
@@ -1229,6 +1209,7 @@ function DBSqlRowTableComponent({
   collapseAllRows,
   showExpandButton = true,
   renderRowDetails,
+  onSortingChange,
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
@@ -1245,10 +1226,10 @@ function DBSqlRowTableComponent({
   onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
   collapseAllRows?: boolean;
   showExpandButton?: boolean;
+  onSortingChange?: (v: SortingState | null) => void;
 }) {
   const { data: me } = api.useMe();
 
-  // const [orderBy, setOrderBy] = useQueryState('orderBy', parseAsSort);
   const [orderBy, setOrderBy] = useState<SortingState[number] | null>(null);
   const orderByArray = useMemo(() => (orderBy ? [orderBy] : []), [orderBy]);
 
@@ -1256,8 +1237,9 @@ function DBSqlRowTableComponent({
     setOrderBy(null);
   }, [sourceId]);
 
-  const onSortingChange = useCallback(
+  const _onSortingChange = useCallback(
     (v: SortingState | null) => {
+      onSortingChange?.(v);
       setOrderBy(v?.[0] ?? null);
     },
     [setOrderBy],
@@ -1270,15 +1252,8 @@ function DBSqlRowTableComponent({
     };
     if (orderByArray.length) {
       base.orderBy = orderByArray.map(o => {
-        if (typeof base.select === 'string') {
-          return {
-            valueExpression: o.id,
-            ordering: o.desc ? 'DESC' : 'ASC',
-          };
-        }
-        const matchingSelect = base.select?.find(s => s.alias === o.id);
         return {
-          valueExpression: matchingSelect?.valueExpression ?? o.id,
+          valueExpression: o.id,
           ordering: o.desc ? 'DESC' : 'ASC',
         };
       });
@@ -1483,14 +1458,14 @@ function DBSqlRowTableComponent({
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
         loadingDate={loadingDate}
-        config={config}
+        config={mergedConfigObj}
         onChildModalOpen={onChildModalOpen}
         source={source}
         onExpandedRowsChange={onExpandedRowsChange}
         collapseAllRows={collapseAllRows}
         showExpandButton={showExpandButton}
         enableSorting={true}
-        onSortingChange={onSortingChange}
+        onSortingChange={_onSortingChange}
         sortOrder={orderByArray}
       />
     </>
