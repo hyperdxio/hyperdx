@@ -810,9 +810,9 @@ export const RawLogTable = memo(
                                 <div>
                                   <>
                                     {header.column.getIsSorted() === 'asc' ? (
-                                      <IconChevronDown size={16} />
-                                    ) : (
                                       <IconChevronUp size={16} />
+                                    ) : (
+                                      <IconChevronDown size={16} />
                                     )}
                                   </>
                                 </div>
