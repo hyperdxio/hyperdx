@@ -44,6 +44,7 @@ import {
   Tooltip as MantineTooltip,
   UnstyledButton,
 } from '@mantine/core';
+import { IconCopy, IconLink } from '@tabler/icons-react';
 import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
   ColumnDef,
@@ -78,6 +79,7 @@ import {
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
 import DBRowTableFieldWithPopover from './DBRowTableFieldWithPopover';
+import DBRowTableIconButton from './DBRowTableIconButton';
 import {
   createExpandButtonColumn,
   ExpandedLogRow,
@@ -86,6 +88,56 @@ import {
 import LogLevel from './LogLevel';
 
 import styles from '../../styles/LogTable.module.scss';
+
+// Row buttons component for copy functionality
+const RowButtons = ({
+  row,
+  getRowWhere,
+}: {
+  row: Record<string, any>;
+  getRowWhere: (row: Record<string, any>) => string;
+}) => {
+  const [isCopied, setIsCopied] = useState(false);
+  const [isUrlCopied, setIsUrlCopied] = useState(false);
+
+  const copyRowData = async () => {
+    const rowWhere = getRowWhere(row);
+    await navigator.clipboard.writeText(rowWhere);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const copyRowUrl = async () => {
+    const rowWhere = getRowWhere(row);
+    const currentUrl = new URL(window.location.href);
+    // Add the row identifier as query parameters
+    currentUrl.searchParams.set('rowWhere', rowWhere);
+    await navigator.clipboard.writeText(currentUrl.toString());
+    setIsUrlCopied(true);
+    setTimeout(() => setIsUrlCopied(false), 2000);
+  };
+
+  return (
+    <div className={styles.rowButtons}>
+      <DBRowTableIconButton
+        onClick={copyRowData}
+        variant="copy"
+        isActive={isCopied}
+        title={isCopied ? 'Copied row data!' : 'Copy row data'}
+      >
+        <IconCopy size={12} />
+      </DBRowTableIconButton>
+      <DBRowTableIconButton
+        onClick={copyRowUrl}
+        variant="copy"
+        isActive={isUrlCopied}
+        title={isUrlCopied ? 'Copied URL!' : 'Copy row URL'}
+      >
+        <IconLink size={12} />
+      </DBRowTableIconButton>
+    </div>
+  );
+};
 
 type Row = Record<string, any> & { duration: number };
 type AccessorFn = (row: Row, column: string) => any;
@@ -302,6 +354,7 @@ export const RawLogTable = memo(
     onExpandedRowsChange,
     collapseAllRows,
     showExpandButton = true,
+    getRowWhere,
   }: {
     wrapLines: boolean;
     displayedColumns: string[];
@@ -338,6 +391,7 @@ export const RawLogTable = memo(
     collapseAllRows?: boolean;
     showExpandButton?: boolean;
     renderRowDetails?: (row: Record<string, any>) => React.ReactNode;
+    getRowWhere?: (row: Record<string, any>) => string;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -909,6 +963,13 @@ export const RawLogTable = memo(
                               </div>
                             );
                           })}
+                        {/* Row-level copy buttons */}
+                        {getRowWhere && (
+                          <RowButtons
+                            row={row.original}
+                            getRowWhere={getRowWhere}
+                          />
+                        )}
                       </button>
                     </td>
                   </tr>
@@ -1376,6 +1437,7 @@ function DBSqlRowTableComponent({
         onExpandedRowsChange={onExpandedRowsChange}
         collapseAllRows={collapseAllRows}
         showExpandButton={showExpandButton}
+        getRowWhere={getRowWhere}
       />
     </>
   );
