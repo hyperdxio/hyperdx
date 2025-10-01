@@ -87,6 +87,112 @@ export function getFirstTimestampValueExpression(valueExpression: string) {
   return splitAndTrimWithBracket(valueExpression)[0];
 }
 
+/** Returns true if the given expression is a JSON expression, eg. `col.key.nestedKey` or "json_col"."key" */
+const isJsonExpression = (expr: string) => {
+  if (!expr.includes('.')) return false;
+
+  let isInDoubleQuote = false;
+  let isInBacktick = false;
+
+  const parts: string[] = [];
+  let current = '';
+  for (const c of expr) {
+    if (c === '"' && !isInBacktick) {
+      isInDoubleQuote = !isInDoubleQuote;
+      current += c;
+      continue;
+    } else if (c === '`' && !isInDoubleQuote) {
+      isInBacktick = !isInBacktick;
+      current += c;
+      continue;
+    } else if (c === '.' && !isInDoubleQuote && !isInBacktick) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+  }
+
+  if (!isInDoubleQuote && !isInBacktick) {
+    parts.push(current);
+  }
+
+  return parts.length > 1;
+};
+
+/**
+ * Finds and returns expressions within the given SQL string that represent JSON references (eg. `col.key.nestedKey`)
+ *
+ * Note - This function does not distinguish between json references and `table.column` references - both are returned.
+ */
+export function findJsonExpressions(sql: string) {
+  const expressions: { index: number; expr: string }[] = [];
+
+  let currentExpr = '';
+  const finishExpression = (expr: string, endIndex: number) => {
+    if (isJsonExpression(expr)) {
+      expressions.push({ index: endIndex - expr.length, expr });
+    }
+    currentExpr = '';
+  };
+
+  let i = 0;
+  let isInJsonTypeSpecifier = false;
+  while (i < sql.length) {
+    const c = sql.charAt(i);
+    if (c === "'") {
+      // Skip string literals
+      while (i < sql.length && sql.charAt(i) !== c) {
+        i++;
+      }
+      currentExpr = '';
+    } else if (/[\s{},+*/[\]]/.test(c)) {
+      isInJsonTypeSpecifier = false;
+      finishExpression(currentExpr, i);
+    } else if ('()'.includes(c) && !isInJsonTypeSpecifier) {
+      finishExpression(currentExpr, i);
+    } else if (c === ':') {
+      isInJsonTypeSpecifier = true;
+      currentExpr += c;
+    } else {
+      currentExpr += c;
+    }
+
+    i++;
+  }
+
+  finishExpression(currentExpr, i);
+  return expressions;
+}
+
+/**
+ * Replaces expressions within the given SQL string that represent JSON expressions (eg. `col.key.nestedKey`).
+ * Such expression are replaced with placeholders like `__hdx_json_replacement_0`. The resulting string and a
+ * map of replacements --> original expressions is returned.
+ *
+ * Note - This function does not distinguish between json references and `table.column` references - both are replaced.
+ */
+export function replaceJsonExpressions(sql: string) {
+  const jsonExpressions = findJsonExpressions(sql);
+
+  const replacements = new Map<string, string>();
+  let sqlWithReplacements = sql;
+  let indexOffsetFromInserts = 0;
+  let replacementCounter = 0;
+  for (const { expr, index } of jsonExpressions) {
+    const replacement = `__hdx_json_replacement_${replacementCounter++}`;
+    replacements.set(replacement, expr);
+
+    const effectiveIndex = index + indexOffsetFromInserts;
+    sqlWithReplacements =
+      sqlWithReplacements.slice(0, effectiveIndex) +
+      replacement +
+      sqlWithReplacements.slice(effectiveIndex + expr.length);
+    indexOffsetFromInserts += replacement.length - expr.length;
+  }
+
+  return { sqlWithReplacements, replacements };
+}
+
 export enum Granularity {
   FifteenSecond = '15 second',
   ThirtySecond = '30 second',

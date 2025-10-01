@@ -10,11 +10,12 @@ import {
 
 import {
   convertToDashboardTemplate,
+  findJsonExpressions,
   formatDate,
   getFirstOrderingItem,
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
-  removeTrailingDirection,
+  replaceJsonExpressions,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
 } from '../utils';
@@ -672,6 +673,276 @@ describe('utils', () => {
           },
         ],
       });
+    });
+  });
+
+  describe('findJsonAccesses', () => {
+    it('should handle empty expression', () => {
+      const sql = '';
+      const actual = findJsonExpressions(sql);
+      const expected = [];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find a single JSON access', () => {
+      const sql = 'SELECT a.b.c as alias1, col2 as alias2 FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 7, expr: 'a.b.c' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find multiple JSON access', () => {
+      const sql = 'SELECT a.b.c, d.e, col2 FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [
+        { index: 7, expr: 'a.b.c' },
+        { index: 14, expr: 'd.e' },
+      ];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find JSON access with type specifier', () => {
+      const sql = 'SELECT a.b.:UInt64, col2 FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 7, expr: 'a.b.:UInt64' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find JSON access with complex type specifier', () => {
+      const sql = 'SELECT a.b.:Array(String)  , col2 FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 7, expr: 'a.b.:Array(String)' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find JSON expressions in WHERE clause ', () => {
+      const sql =
+        'SELECT col2 FROM table WHERE a.b.:UInt64 = 1 AND toStartOfDay(a.date) = today()';
+      const actual = findJsonExpressions(sql);
+      const expected = [
+        { index: 29, expr: 'a.b.:UInt64' },
+        { index: 62, expr: 'a.date' },
+      ];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find JSON expressions in function calls', () => {
+      const sql = "SELECT JSONExtractString(a.b.c, 'key') FROM table";
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 25, expr: 'a.b.c' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should not find JSON expressions in quoted strings', () => {
+      const sql =
+        "SELECT a.b.c, ResourceAttributes['key.key2'], 'a.b.c' FROM table";
+      const actual = findJsonExpressions(sql);
+      const expected = [
+        {
+          index: 7,
+          expr: 'a.b.c',
+        },
+      ];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find JSON expressions in math expression', () => {
+      const sql =
+        'SELECT toStartOfDay(a.date + INTERVAL 1 DAY), toStartOfDay(a.date+INTERVAL 1 DAY)';
+      const actual = findJsonExpressions(sql);
+      const expected = [
+        { index: 20, expr: 'a.date' },
+        { index: 59, expr: 'a.date' },
+      ];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should not infinite loop due to unterminated strings', () => {
+      const sql = 'SELECT "';
+      const actual = findJsonExpressions(sql);
+      const expected = [];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should not infinite loop due to trailing whitespace', () => {
+      const sql = 'SELECT ';
+      const actual = findJsonExpressions(sql);
+      const expected = [];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should not infinite loop due to mismatched parenthesis', () => {
+      const sql = 'SELECT (';
+      const actual = findJsonExpressions(sql);
+      const expected = [];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should not infinite loop due to trailing json type specifier', () => {
+      const sql = 'SELECT a.b.:UInt64';
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 7, expr: 'a.b.:UInt64' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should not find JSON expressions in string that has escaped single quote', () => {
+      const sql = "SELECT 'a.b''''a.b.:UInt64', col2, c.d FROM table";
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 35, expr: 'c.d' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should not find JSON expressions in string that has escaped single quote 2', () => {
+      const sql = "SELECT '\\'a.b', col2, c.d FROM table";
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 22, expr: 'c.d' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find JSON expressions with underscores and numbers', () => {
+      const sql = 'SELECT json_col.col3.c FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 7, expr: 'json_col.col3.c' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find JSON expressions with backticks', () => {
+      const sql = 'SELECT `a`.`b`.`cde` FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 7, expr: '`a`.`b`.`cde`' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find JSON expressions with double quotes', () => {
+      const sql = 'SELECT "a"."b"."cde" FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 7, expr: '"a"."b"."cde"' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find JSON expressions in tuple', () => {
+      const sql = 'SELECT (a.b, c.d.e) FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [
+        { index: 8, expr: 'a.b' },
+        { index: 13, expr: 'c.d.e' },
+      ];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should not find JSON expressions inside identifiers', () => {
+      const sql = 'SELECT "a.b.c" FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find JSON expressions with weird identifier quoting', () => {
+      const sql = 'SELECT "a_b.2c".b."c." FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 7, expr: '"a_b.2c".b."c."' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find JSON expressions after *', () => {
+      const sql = 'SELECT *, a.b.c FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 10, expr: 'a.b.c' }];
+      expect(actual).toEqual(expected);
+    });
+  });
+
+  describe('replaceJsonAccesses', () => {
+    it('should handle empty expression', () => {
+      const sql = '';
+      const actual = replaceJsonExpressions(sql);
+      const expected = { replacements: new Map(), sqlWithReplacements: '' };
+      expect(actual).toEqual(expected);
+    });
+
+    it('should replace a single JSON access', () => {
+      const sql = 'SELECT a.b.c as alias1, col2 as alias2 FROM table';
+      const actual = replaceJsonExpressions(sql);
+      const expected = {
+        replacements: new Map([['__hdx_json_replacement_0', 'a.b.c']]),
+        sqlWithReplacements:
+          'SELECT __hdx_json_replacement_0 as alias1, col2 as alias2 FROM table',
+      };
+      expect(actual).toEqual(expected);
+    });
+
+    it('should replace multiple JSON access', () => {
+      const sql = 'SELECT a.b.c, d.e, col2 FROM table';
+      const actual = replaceJsonExpressions(sql);
+      const expected = {
+        replacements: new Map([
+          ['__hdx_json_replacement_0', 'a.b.c'],
+          ['__hdx_json_replacement_1', 'd.e'],
+        ]),
+        sqlWithReplacements:
+          'SELECT __hdx_json_replacement_0, __hdx_json_replacement_1, col2 FROM table',
+      };
+      expect(actual).toEqual(expected);
+    });
+
+    it('should replace JSON access with type specifier', () => {
+      const sql = 'SELECT a.b.:UInt64, col2 FROM table';
+      const actual = replaceJsonExpressions(sql);
+      const expected = {
+        replacements: new Map([['__hdx_json_replacement_0', 'a.b.:UInt64']]),
+        sqlWithReplacements: 'SELECT __hdx_json_replacement_0, col2 FROM table',
+      };
+      expect(actual).toEqual(expected);
+    });
+
+    it('should replace JSON access with complex type specifier', () => {
+      const sql = 'SELECT a.b.:Array(String), col2 FROM table';
+      const actual = replaceJsonExpressions(sql);
+      const expected = {
+        replacements: new Map([
+          ['__hdx_json_replacement_0', 'a.b.:Array(String)'],
+        ]),
+        sqlWithReplacements: 'SELECT __hdx_json_replacement_0, col2 FROM table',
+      };
+      expect(actual).toEqual(expected);
+    });
+
+    it('should replace JSON expressions in WHERE clause ', () => {
+      const sql =
+        'SELECT col2 FROM table WHERE a.b.:UInt64 = 1 AND toStartOfDay(a.date) = today()';
+      const actual = replaceJsonExpressions(sql);
+      const expected = {
+        replacements: new Map([
+          ['__hdx_json_replacement_0', 'a.b.:UInt64'],
+          ['__hdx_json_replacement_1', 'a.date'],
+        ]),
+        sqlWithReplacements:
+          'SELECT col2 FROM table WHERE __hdx_json_replacement_0 = 1 AND toStartOfDay(__hdx_json_replacement_1) = today()',
+      };
+      expect(actual).toEqual(expected);
+    });
+
+    it('should replace JSON expressions in function calls', () => {
+      const sql = "SELECT JSONExtractString(a.b.c, 'key') FROM table";
+      const actual = replaceJsonExpressions(sql);
+      const expected = {
+        replacements: new Map([['__hdx_json_replacement_0', 'a.b.c']]),
+        sqlWithReplacements:
+          "SELECT JSONExtractString(__hdx_json_replacement_0, 'key') FROM table",
+      };
+      expect(actual).toEqual(expected);
+    });
+
+    it('should not replace JSON expressions in quoted strings', () => {
+      const sql =
+        "SELECT a.b.c, ResourceAttributes['key.key2'], 'a.b.c' FROM table";
+      const actual = replaceJsonExpressions(sql);
+      const expected = {
+        replacements: new Map([['__hdx_json_replacement_0', 'a.b.c']]),
+        sqlWithReplacements:
+          "SELECT __hdx_json_replacement_0, ResourceAttributes['key.key2'], 'a.b.c' FROM table",
+      };
+      expect(actual).toEqual(expected);
     });
   });
 });

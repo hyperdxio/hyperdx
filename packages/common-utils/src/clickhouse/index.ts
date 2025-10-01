@@ -7,7 +7,6 @@ import type {
   ResponseJSON,
   Row,
 } from '@clickhouse/client-common';
-import { isSuccessfulResponse } from '@clickhouse/client-common';
 import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 import objectHash from 'object-hash';
@@ -18,8 +17,12 @@ import {
   setChartSelectsAlias,
   splitChartConfigs,
 } from '@/renderChartConfig';
-import { ChartConfigWithOptDateRange, SQLInterval } from '@/types';
-import { hashCode, splitAndTrimWithBracket } from '@/utils';
+import { ChartConfigWithOptDateRange } from '@/types';
+import {
+  hashCode,
+  replaceJsonExpressions,
+  splitAndTrimWithBracket,
+} from '@/utils';
 
 // export @clickhouse/client-common types
 export type {
@@ -680,8 +683,13 @@ export function chSqlToAliasMap(
 
   try {
     const sql = parameterizedQueryToSql(chSql);
+
+    // Replace JSON expressions with replacement tokens so that node-sql-parser can parse the SQL
+    const { sqlWithReplacements, replacements: jsonReplacementsToExpressions } =
+      replaceJsonExpressions(sql);
+
     const parser = new SQLParser.Parser();
-    const ast = parser.astify(sql, {
+    const ast = parser.astify(sqlWithReplacements, {
       database: 'Postgresql',
       parseOptions: { includeLocations: true },
     }) as SQLParser.Select;
@@ -697,7 +705,7 @@ export function chSqlToAliasMap(
                 : // normal alias
                   column.expr.column.expr.value;
           } else if (column.expr.loc != null) {
-            aliasMap[column.as] = sql.slice(
+            aliasMap[column.as] = sqlWithReplacements.slice(
               column.expr.loc.start.offset,
               column.expr.loc.end.offset,
             );
@@ -706,6 +714,13 @@ export function chSqlToAliasMap(
           }
         }
       });
+    }
+
+    // Replace the JSON replacement tokens with the original JSON expressions
+    for (const [alias, expression] of Object.entries(aliasMap)) {
+      if (jsonReplacementsToExpressions.has(expression)) {
+        aliasMap[alias] = jsonReplacementsToExpressions.get(expression)!;
+      }
     }
   } catch (e) {
     console.error('Error parsing alias map', e, 'for query', chSql);
