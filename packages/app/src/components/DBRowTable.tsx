@@ -46,12 +46,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import {
-  IconCheck,
-  IconCopy,
-  IconFilterPlus,
-  IconLink,
-} from '@tabler/icons-react';
+import { IconCopy, IconFilterPlus, IconLink } from '@tabler/icons-react';
 import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
   ColumnDef,
@@ -86,6 +81,7 @@ import {
 
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
+import DBRowTableIconButton from './DBRowTableIconButton';
 import {
   createExpandButtonColumn,
   ExpandedLogRow,
@@ -159,30 +155,24 @@ const FieldWithPopover = ({
               alignItems: 'center',
             }}
           >
-            <UnstyledButton
-              onClick={e => {
-                e.stopPropagation();
-                e.preventDefault();
-                copyFieldValue();
-              }}
-              tabIndex={-1}
-              className={styles.copyButton}
+            <DBRowTableIconButton
+              onClick={copyFieldValue}
+              variant="copy"
+              isActive={isCopied}
               title={isCopied ? 'Copied!' : 'Copy field value'}
+              iconSize={14}
             >
-              {isCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-            </UnstyledButton>
-            <UnstyledButton
-              onClick={e => {
-                e.stopPropagation();
-                e.preventDefault();
+              <IconCopy size={14} />
+            </DBRowTableIconButton>
+            <DBRowTableIconButton
+              onClick={() => {
                 // TODO: Implement add filter functionality
               }}
-              tabIndex={-1}
-              className={styles.copyButton}
+              variant="copy"
               title="Add filter (coming soon)"
             >
               <IconFilterPlus size={14} />
-            </UnstyledButton>
+            </DBRowTableIconButton>
           </div>
         </Popover.Dropdown>
       </Popover>
@@ -653,42 +643,24 @@ export const RawLogTable = memo(
 
               return (
                 <div className={styles.rowButtons}>
-                  <UnstyledButton
-                    onClick={e => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      copyRowData();
-                    }}
-                    className={cx('text-muted-hover', styles.copyButton, {
-                      [styles.copied]: isCopied,
-                    })}
+                  <DBRowTableIconButton
+                    onClick={copyRowData}
+                    variant="copy"
+                    isActive={isCopied}
                     title={isCopied ? 'Copied!' : 'Copy row data'}
-                    tabIndex={-1}
+                    iconSize={12}
                   >
-                    {isCopied ? (
-                      <IconCheck size={12} />
-                    ) : (
-                      <IconCopy size={12} />
-                    )}
-                  </UnstyledButton>
-                  <UnstyledButton
-                    onClick={e => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      copyRowUrl();
-                    }}
-                    className={cx('text-muted-hover', styles.copyButton, {
-                      [styles.copied]: isUrlCopied,
-                    })}
+                    <IconCopy size={12} />
+                  </DBRowTableIconButton>
+                  <DBRowTableIconButton
+                    onClick={copyRowUrl}
+                    variant="copy"
+                    isActive={isUrlCopied}
                     title={isUrlCopied ? 'Copied URL!' : 'Copy row URL'}
-                    tabIndex={-1}
+                    iconSize={12}
                   >
-                    {isUrlCopied ? (
-                      <IconCheck size={12} />
-                    ) : (
-                      <IconLink size={12} />
-                    )}
-                  </UnstyledButton>
+                    <IconLink size={12} />
+                  </DBRowTableIconButton>
                 </div>
               );
             };
@@ -977,6 +949,8 @@ export const RawLogTable = memo(
                           {config && (
                             <UnstyledButton
                               onClick={() => handleSqlModalOpen(true)}
+                              title="Show generated SQL"
+                              tabIndex={0}
                             >
                               <MantineTooltip label="Show generated SQL">
                                 <i className="bi bi-code-square" />
@@ -986,6 +960,8 @@ export const RawLogTable = memo(
                           <UnstyledButton
                             onClick={() => setWrapLinesEnabled(prev => !prev)}
                             className="ms-2"
+                            title="Wrap lines"
+                            tabIndex={0}
                           >
                             <MantineTooltip label="Wrap lines">
                               <i className="bi bi-text-wrap" />
