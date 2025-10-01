@@ -42,8 +42,8 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
-  ActionIcon,
   Box,
+  Button,
   Code,
   Flex,
   Group,
@@ -601,7 +601,7 @@ export const RawLogTable = memo(
         },
         enableColumnResizing: true,
         columnResizeMode: 'onChange' as ColumnResizeMode,
-      };
+      } satisfies TableOptions<any>;
 
       const columnSizeProps = {
         state: {
@@ -779,30 +779,49 @@ export const RawLogTable = memo(
                       }}
                     >
                       <Group wrap="nowrap" gap={0} align="center">
-                        {header.isPlaceholder ? null : (
+                        {!header.column.getCanSort() ? (
                           <Text truncate="end" size="xs" flex="1">
                             {flexRender(
                               header.column.columnDef.header,
                               header.getContext(),
                             )}
                           </Text>
-                        )}
-                        <Group gap={0} wrap="nowrap" align="center">
-                          {header.column.getCanSort() && (
-                            <ActionIcon
-                              size="xxs"
-                              variant="subtle"
-                              color="gray"
-                              onClick={header.column.getToggleSortingHandler()}
-                            >
-                              {header.column.getIsSorted() ? (
-                                <IconChevronDown size={16} />
-                              ) : (
-                                <IconChevronUp size={16} />
+                        ) : (
+                          <Button
+                            size="xxs"
+                            p={1}
+                            variant="subtle"
+                            color="gray"
+                            onClick={header.column.getToggleSortingHandler()}
+                            flex="1"
+                            justify="space-between"
+                          >
+                            <>
+                              {header.isPlaceholder ? null : (
+                                <Text truncate="end" size="xs" flex="1">
+                                  {flexRender(
+                                    header.column.columnDef.header,
+                                    header.getContext(),
+                                  )}
+                                </Text>
                               )}
-                            </ActionIcon>
-                          )}
 
+                              {header.column.getIsSorted() && (
+                                <div>
+                                  <>
+                                    {header.column.getIsSorted() === 'asc' ? (
+                                      <IconChevronDown size={16} />
+                                    ) : (
+                                      <IconChevronUp size={16} />
+                                    )}
+                                  </>
+                                </div>
+                              )}
+                            </>
+                          </Button>
+                        )}
+
+                        <Group gap={0} wrap="nowrap" align="center">
                           {header.column.getCanResize() && !isLast && (
                             <div
                               onMouseDown={header.getResizeHandler()}
@@ -816,7 +835,7 @@ export const RawLogTable = memo(
                             </div>
                           )}
                           {!isLoading && isLast && (
-                            <Group gap={2}>
+                            <Group gap={2} wrap="nowrap">
                               {tableId &&
                                 Object.keys(columnSizeStorage).length > 0 && (
                                   <div
