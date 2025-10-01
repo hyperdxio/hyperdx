@@ -27,7 +27,6 @@ agent:
 {{- if getenv "OTEL_AGENT_FEATURE_GATE_ARG" }}
     - {{ getenv "OTEL_AGENT_FEATURE_GATE_ARG" }}
 {{- end }}
-  passthrough_logs: {{ getenv "OTEL_SUPERVISOR_PASSTHROUGH_LOGS" | default "false" }}
 
 storage:
   directory: /etc/otel/supervisor-data/
