@@ -958,7 +958,10 @@ export const RawLogTable = memo(
                     >
                       <button
                         type="button"
-                        className={styles.rowContentButton}
+                        className={cx(styles.rowContentButton, {
+                          [styles.isWrapped]: wrapLinesEnabled,
+                          [styles.isTruncated]: !wrapLinesEnabled,
+                        })}
                         onClick={e => {
                           e.stopPropagation();
                           _onRowExpandClick(row.original);

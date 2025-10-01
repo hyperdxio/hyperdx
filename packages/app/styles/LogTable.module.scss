@@ -57,7 +57,7 @@ $button-height: 24px;
   justify-content: center;
   transition: background-color 0.15s ease-in-out;
   border-radius: 4px;
-  height: $button-height;
+  min-height: $button-height;
 
   &:hover {
     background-color: var(--mantine-color-dark-5);
@@ -106,7 +106,7 @@ $button-height: 24px;
   color: inherit;
   transition: background-color 0.15s ease-in-out;
   border-radius: 4px;
-  height: $button-height;
+  min-height: $button-height;
   display: flex;
   align-items: center;
   position: relative;
@@ -126,13 +126,21 @@ $button-height: 24px;
     box-shadow: none;
     background-color: var(--mantine-color-dark-5);
   }
+
+  &.isWrapped {
+    align-items: flex-start;
+    padding-block: 4px;
+  }
+
+  &.isTruncated {
+    align-items: center;
+  }
 }
 
 .rowButtons {
   position: absolute;
-  top: 0;
+  top: 2px;
   right: 0;
-  height: 100%;
   padding-left: 10px;
   padding-right: 4px;
   display: flex;
@@ -140,7 +148,7 @@ $button-height: 24px;
   opacity: 0;
   transition: opacity 0.2s ease-in-out;
   z-index: 10;
-  align-items: center;
+  align-items: flex-start;
 
   &:hover {
     opacity: 1;
