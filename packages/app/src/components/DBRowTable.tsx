@@ -584,89 +584,6 @@ export const RawLogTable = memo(
                   (isDate ? 170 : isMaybeSeverityText ? 115 : 160)),
           };
         }) as ColumnDef<any>[]),
-        // Copy column - always last
-        {
-          id: 'copy-row',
-          header: '',
-          size: 40,
-          cell: info => {
-            const RowButtons = () => {
-              const [isCopied, setIsCopied] = useState(false);
-              const [isUrlCopied, setIsUrlCopied] = useState(false);
-
-              const copyRowData = async () => {
-                const rowData = displayedColumns
-                  .map(col => {
-                    const value = retrieveColumnValue(col, info.row.original);
-                    return `${columnNameMap?.[col] ?? col}: ${value}`;
-                  })
-                  .join('\n');
-                await navigator.clipboard.writeText(rowData);
-                setIsCopied(true);
-                setTimeout(() => setIsCopied(false), 2000);
-              };
-
-              const copyRowUrl = async () => {
-                // Use the same approach as _onRowDetailsClick to get the row identifier
-                const rowWhere = generateRowId(info.row.original);
-
-                // Get current URL and preserve existing search parameters
-                const currentUrl = new URL(window.location.href);
-
-                // Add the row-specific parameters that would be set by onRowDetailsClick
-                currentUrl.searchParams.set('rowWhere', rowWhere);
-                if (config?.connection) {
-                  currentUrl.searchParams.set('rowSource', config.connection);
-                }
-
-                // Try to determine if this is trace data and add eventRowWhere
-                const row = info.row.original;
-                if (
-                  row.SpanId ||
-                  row.TraceId ||
-                  (source && source.kind === 'trace')
-                ) {
-                  const eventRowWhere = {
-                    id: rowWhere,
-                    type: 'trace',
-                  };
-                  currentUrl.searchParams.set(
-                    'eventRowWhere',
-                    JSON.stringify(eventRowWhere),
-                  );
-                }
-
-                await navigator.clipboard.writeText(currentUrl.toString());
-                setIsUrlCopied(true);
-                setTimeout(() => setIsUrlCopied(false), 2000);
-              };
-
-              return (
-                <div className={styles.rowButtons}>
-                  <DBRowTableIconButton
-                    onClick={copyRowData}
-                    variant="copy"
-                    isActive={isCopied}
-                    title={isCopied ? 'Copied!' : 'Copy row data'}
-                    iconSize={12}
-                  >
-                    <IconCopy size={12} />
-                  </DBRowTableIconButton>
-                  <DBRowTableIconButton
-                    onClick={copyRowUrl}
-                    variant="copy"
-                    isActive={isUrlCopied}
-                    title={isUrlCopied ? 'Copied URL!' : 'Copy row URL'}
-                    iconSize={12}
-                  >
-                    <IconLink size={12} />
-                  </DBRowTableIconButton>
-                </div>
-              );
-            };
-            return <RowButtons />;
-          },
-        },
       ],
       [
         isUTC,
@@ -1050,15 +967,15 @@ export const RawLogTable = memo(
                       >
                         {row
                           .getVisibleCells()
-                          .slice(
-                            showExpandButton ? 1 : 0, // Skip expand column
-                            -1, // Skip copy column
-                          )
+                          .slice(showExpandButton ? 1 : 0) // Skip expand
                           .map(cell => {
                             const columnCustomClassName = (
                               cell.column.columnDef.meta as any
                             )?.className;
                             const columnSize = cell.column.getSize();
+                            const totalContentCells =
+                              row.getVisibleCells().length -
+                              (showExpandButton ? 1 : 0);
                             const cellValue = cell.getValue<any>();
 
                             return (
@@ -1095,16 +1012,6 @@ export const RawLogTable = memo(
                           })}
                       </button>
                     </td>
-
-                    {/* Copy button positioned absolutely */}
-                    {(() => {
-                      const copyCell =
-                        row.getVisibleCells()[row.getVisibleCells().length - 1];
-                      return flexRender(
-                        copyCell.column.columnDef.cell,
-                        copyCell.getContext(),
-                      );
-                    })()}
                   </tr>
                   {showExpandButton && isExpanded && (
                     <ExpandedLogRow
