@@ -1248,8 +1248,13 @@ function DBSqlRowTableComponent({
 }) {
   const { data: me } = api.useMe();
 
-  const [orderBy, setOrderBy] = useQueryState('orderBy', parseAsSort);
+  // const [orderBy, setOrderBy] = useQueryState('orderBy', parseAsSort);
+  const [orderBy, setOrderBy] = useState<SortingState[number] | null>(null);
   const orderByArray = useMemo(() => (orderBy ? [orderBy] : []), [orderBy]);
+
+  useEffect(() => {
+    setOrderBy(null);
+  }, [sourceId]);
 
   const onSortingChange = useCallback(
     (v: SortingState | null) => {
@@ -1264,10 +1269,19 @@ function DBSqlRowTableComponent({
       ...config,
     };
     if (orderByArray.length) {
-      base.orderBy = orderByArray.map(o => ({
-        valueExpression: o.id,
-        ordering: o.desc ? 'DESC' : 'ASC',
-      }));
+      base.orderBy = orderByArray.map(o => {
+        if (typeof base.select === 'string') {
+          return {
+            valueExpression: o.id,
+            ordering: o.desc ? 'DESC' : 'ASC',
+          };
+        }
+        const matchingSelect = base.select?.find(s => s.alias === o.id);
+        return {
+          valueExpression: matchingSelect?.valueExpression ?? o.id,
+          ordering: o.desc ? 'DESC' : 'ASC',
+        };
+      });
     }
     return base;
   }, [me, config, orderByArray]);
