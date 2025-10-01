@@ -317,7 +317,7 @@ export const RawLogTable = memo(
     sortOrder,
     showExpandButton = true,
   }: {
-    wrapLines: boolean;
+    wrapLines?: boolean;
     displayedColumns: string[];
     onSettingsClick?: () => void;
     onInstructionsClick?: () => void;
@@ -333,7 +333,7 @@ export const RawLogTable = memo(
     hasNextPage?: boolean;
     highlightedLineId?: string;
     onScroll?: (scrollTop: number) => void;
-    isLive: boolean;
+    isLive?: boolean;
     onShowPatternsClick?: () => void;
     tableId?: string;
     columnNameMap?: Record<string, string>;
@@ -740,7 +740,6 @@ export const RawLogTable = memo(
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header, headerIndex) => {
                   const isLast = headerIndex === headerGroup.headers.length - 1;
-
                   return (
                     <th
                       className="overflow-hidden bg-hdx-dark"
@@ -775,6 +774,7 @@ export const RawLogTable = memo(
                             onClick={header.column.getToggleSortingHandler()}
                             flex="1"
                             justify="space-between"
+                            data-testid="raw-log-table-sort-button"
                           >
                             <>
                               {header.isPlaceholder ? null : (
@@ -787,7 +787,14 @@ export const RawLogTable = memo(
                               )}
 
                               {header.column.getIsSorted() && (
-                                <div>
+                                <div
+                                  data-testid="raw-log-table-sort-indicator"
+                                  className={
+                                    header.column.getIsSorted() === 'asc'
+                                      ? 'sorted-asc'
+                                      : 'sorted-desc'
+                                  }
+                                >
                                   <>
                                     {header.column.getIsSorted() === 'asc' ? (
                                       <IconChevronUp size={16} />
@@ -1061,7 +1068,7 @@ export const RawLogTable = memo(
                   ) : hasNextPage == false &&
                     isLoading == false &&
                     dedupedRows.length === 0 ? (
-                    <div className="my-3">
+                    <div className="my-3" data-testid="db-row-table-no-results">
                       No results found.
                       <Text mt="sm" c="gray.3">
                         Try checking the query explainer in the search bar if
