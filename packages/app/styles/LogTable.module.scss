@@ -176,3 +176,49 @@ $button-height: 24px;
     color: var(--mantine-color-green-6);
   }
 }
+
+.fieldTextContainer {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+
+  &:hover .fieldCopyButton {
+    opacity: 1;
+  }
+}
+
+.fieldText {
+  width: 100%;
+  overflow: hidden;
+}
+
+.fieldCopyButton {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  padding: 2px;
+  border-radius: 2px;
+  background-color: var(--mantine-color-dark-4);
+  border: 1px solid var(--mantine-color-dark-3);
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    opacity 0.2s ease-in-out,
+    transform 0.2s ease-in-out;
+  pointer-events: auto;
+  opacity: 0;
+  z-index: 10;
+
+  &:hover {
+    transform: scale(1.05);
+    opacity: 1 !important;
+  }
+
+  &.copied {
+    color: var(--mantine-color-green-6);
+    opacity: 1;
+  }
+}

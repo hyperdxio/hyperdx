@@ -951,7 +951,7 @@ export const RawLogTable = memo(
                       </td>
                     )}
 
-                    {/* Content columns grouped as one button */}
+                    {/* Content columns grouped back to preserve row hover/click */}
                     <td
                       className="align-top overflow-hidden p-0"
                       colSpan={columns.length - (showExpandButton ? 1 : 0)}
@@ -979,12 +979,53 @@ export const RawLogTable = memo(
                               cell.column.columnDef.meta as any
                             )?.className;
                             const columnSize = cell.column.getSize();
+                            const cellValue = cell.getValue<any>();
+
+                            const CopyButton = () => {
+                              const [isCopied, setIsCopied] = useState(false);
+
+                              const copyFieldValue = async () => {
+                                const value =
+                                  typeof cellValue === 'string'
+                                    ? cellValue
+                                    : `${cellValue}`;
+                                await navigator.clipboard.writeText(value);
+                                setIsCopied(true);
+                                setTimeout(() => setIsCopied(false), 2000);
+                              };
+
+                              return (
+                                <UnstyledButton
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    copyFieldValue();
+                                  }}
+                                  className={cx(
+                                    'text-muted-hover',
+                                    styles.fieldCopyButton,
+                                    {
+                                      [styles.copied]: isCopied,
+                                    },
+                                  )}
+                                  title={
+                                    isCopied ? 'Copied!' : 'Copy field value'
+                                  }
+                                >
+                                  {isCopied ? (
+                                    <IconCheck size={10} />
+                                  ) : (
+                                    <IconCopy size={10} />
+                                  )}
+                                </UnstyledButton>
+                              );
+                            };
 
                             return (
                               <div
                                 key={cell.id}
                                 className={cx(
-                                  'flex-shrink-0 overflow-hidden',
+                                  'flex-shrink-0 overflow-hidden position-relative',
                                   {
                                     'text-break': wrapLinesEnabled,
                                     'text-truncate': !wrapLinesEnabled,
@@ -1002,10 +1043,15 @@ export const RawLogTable = memo(
                                       : 'none',
                                 }}
                               >
-                                {flexRender(
-                                  cell.column.columnDef.cell,
-                                  cell.getContext(),
-                                )}
+                                <div className={styles.fieldTextContainer}>
+                                  <CopyButton />
+                                  <div className={styles.fieldText}>
+                                    {flexRender(
+                                      cell.column.columnDef.cell,
+                                      cell.getContext(),
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             );
                           })}
