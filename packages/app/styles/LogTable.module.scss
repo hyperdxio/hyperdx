@@ -209,6 +209,7 @@ $button-height: 24px;
 .fieldText.wrapped {
   word-break: break-word;
   white-space: normal;
+  display: flex;
 }
 
 .fieldTextPopover {
