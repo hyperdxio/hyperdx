@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
-import { Modal, Paper, Tabs, Text, TextProps, Tooltip } from '@mantine/core';
+import { Modal, Paper, Tabs, TextProps, Tooltip } from '@mantine/core';
+import { IconCode } from '@tabler/icons-react';
 
 import { useTableMetadata } from '@/hooks/useMetadata';
 
@@ -11,6 +12,7 @@ interface SourceSchemaInfoIconProps {
   isEnabled: boolean;
   tableCount: number;
   iconStyles?: Pick<TextProps, 'size' | 'color'>;
+  variant?: 'icon' | 'text';
 }
 
 const SourceSchemaInfoIcon = ({
@@ -18,6 +20,7 @@ const SourceSchemaInfoIcon = ({
   isEnabled,
   tableCount,
   iconStyles,
+  variant = 'icon',
 }: SourceSchemaInfoIconProps) => {
   const tooltipText = isEnabled
     ? tableCount > 1
@@ -33,11 +36,15 @@ const SourceSchemaInfoIcon = ({
       position="right"
       onClick={() => isEnabled && onClick()}
     >
-      <Text {...iconStyles}>
-        <i
-          className={`bi bi-code-square ${isEnabled ? 'cursor-pointer' : ''}`}
-        />
-      </Text>
+      {variant === 'text' ? (
+        <span
+          style={{ cursor: isEnabled ? 'pointer' : 'default', ...iconStyles }}
+        >
+          Schema
+        </span>
+      ) : (
+        <IconCode size={16} />
+      )}
     </Tooltip>
   );
 };
@@ -79,6 +86,7 @@ export interface SourceSchemaPreviewProps {
   source?: Pick<TSource, 'connection' | 'from' | 'metricTables'> &
     Partial<Pick<TSource, 'kind' | 'name'>>;
   iconStyles?: Pick<TextProps, 'size' | 'color'>;
+  variant?: 'icon' | 'text';
 }
 
 const METRIC_TYPE_NAMES: Record<MetricsDataType, string> = {
@@ -92,6 +100,7 @@ const METRIC_TYPE_NAMES: Record<MetricsDataType, string> = {
 const SourceSchemaPreview = ({
   source,
   iconStyles,
+  variant = 'icon',
 }: SourceSchemaPreviewProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -130,6 +139,7 @@ const SourceSchemaPreview = ({
         onClick={() => setIsModalOpen(true)}
         iconStyles={iconStyles}
         tableCount={tables.length}
+        variant={variant}
       />
       {isEnabled && (
         <Modal

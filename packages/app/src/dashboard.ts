@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import {
   DashboardFilter,
@@ -101,16 +101,19 @@ export function useDashboard({
 
   const updateDashboard = useUpdateDashboard();
 
-  const { data: remoteDashboard } = useQuery({
-    queryKey: ['dashboards'],
-    queryFn: () => {
-      return hdxServer('dashboards').json<Dashboard[]>();
-    },
-    select: data => {
-      return data.find(d => d.id === dashboardId);
-    },
-    enabled: dashboardId != null,
-  });
+  const { data: remoteDashboard, isFetching: isFetchingRemoteDashboard } =
+    useQuery({
+      queryKey: ['dashboards'],
+      queryFn: () => {
+        return hdxServer('dashboards').json<Dashboard[]>();
+      },
+      select: data => {
+        return data.find(d => d.id === dashboardId);
+      },
+      enabled: dashboardId != null,
+    });
+
+  const [isSetting, setIsSettingDashboard] = useState(false);
 
   const isLocalDashboard = dashboardId == null;
 
@@ -131,11 +134,14 @@ export function useDashboard({
         setLocalDashboard(newDashboard);
         onSuccess?.();
       } else {
+        setIsSettingDashboard(true);
         return updateDashboard.mutate(newDashboard, {
           onSuccess: () => {
+            setIsSettingDashboard(false);
             onSuccess?.();
           },
           onError: e => {
+            setIsSettingDashboard(false);
             notifications.show({
               color: 'red',
               title: 'Unable to save dashboard',
@@ -161,6 +167,8 @@ export function useDashboard({
     dashboardHash,
     isLocalDashboard,
     isLocalDashboardEmpty: localDashboard == null,
+    isFetching: isFetchingRemoteDashboard,
+    isSetting,
   };
 }
 
