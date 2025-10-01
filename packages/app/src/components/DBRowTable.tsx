@@ -459,6 +459,8 @@ export const RawLogTable = memo(
             },
             // Prefer real column name over alias when possible for ID
             id: aliasMap?.[column] ?? column,
+            // TODO: add support for sorting on Dynamic JSON fields
+            enableSorting: jsColumnType !== JSDataType.Dynamic,
             accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
             header: `${columnNameMap?.[column] ?? column}${isDate ? (isUTC ? ' (UTC)' : ' (Local)') : ''}`,
             cell: info => {
@@ -778,7 +780,12 @@ export const RawLogTable = memo(
                           >
                             <>
                               {header.isPlaceholder ? null : (
-                                <Text truncate="end" size="xs" flex="1">
+                                <Text
+                                  truncate="end"
+                                  size="xs"
+                                  flex="1"
+                                  c="white"
+                                >
                                   {flexRender(
                                     header.column.columnDef.header,
                                     header.getContext(),
