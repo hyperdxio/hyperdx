@@ -7,7 +7,7 @@ import React, {
   useState,
 } from 'react';
 import cx from 'classnames';
-import { format, formatDistance } from 'date-fns';
+import { formatDistance } from 'date-fns';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
 import ms from 'ms';
@@ -40,13 +40,10 @@ import {
   Code,
   Flex,
   Modal,
-  Popover,
   Text,
   Tooltip as MantineTooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { IconCopy, IconFilterPlus, IconLink } from '@tabler/icons-react';
 import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
   ColumnDef,
@@ -76,12 +73,11 @@ import {
   logLevelColor,
   useLocalStorage,
   usePrevious,
-  useWindowSize,
 } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
-import DBRowTableIconButton from './DBRowTableIconButton';
+import DBRowTableFieldWithPopover from './DBRowTableFieldWithPopover';
 import {
   createExpandButtonColumn,
   ExpandedLogRow,
@@ -90,95 +86,6 @@ import {
 import LogLevel from './LogLevel';
 
 import styles from '../../styles/LogTable.module.scss';
-
-// Field with popover component
-const FieldWithPopover = ({
-  children,
-  cellValue,
-  wrapLinesEnabled,
-}: {
-  children: React.ReactNode;
-  cellValue: any;
-  wrapLinesEnabled: boolean;
-}) => {
-  const [opened, { close, open }] = useDisclosure(false);
-  const [isCopied, setIsCopied] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout>();
-
-  const handleMouseEnter = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    open();
-  };
-
-  const handleMouseLeave = () => {
-    timeoutRef.current = setTimeout(() => {
-      close();
-    }, 100); // Small delay to allow moving to popover
-  };
-
-  const copyFieldValue = async () => {
-    const value = typeof cellValue === 'string' ? cellValue : `${cellValue}`;
-    await navigator.clipboard.writeText(value);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
-  };
-
-  return (
-    <div
-      className={cx(styles.fieldText, {
-        [styles.truncated]: !wrapLinesEnabled,
-        [styles.wrapped]: wrapLinesEnabled,
-      })}
-    >
-      <Popover width={80} position="top-start" offset={5} opened={opened}>
-        <Popover.Target>
-          <span
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            style={{ cursor: 'pointer' }}
-          >
-            {children}
-          </span>
-        </Popover.Target>
-        <Popover.Dropdown
-          style={{ pointerEvents: 'auto' }}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-          className={styles.fieldTextPopover}
-        >
-          <div
-            style={{
-              display: 'flex',
-              gap: '4px',
-              alignItems: 'center',
-            }}
-          >
-            <DBRowTableIconButton
-              onClick={copyFieldValue}
-              variant="copy"
-              isActive={isCopied}
-              title={isCopied ? 'Copied!' : 'Copy field value'}
-              iconSize={14}
-            >
-              <IconCopy size={14} />
-            </DBRowTableIconButton>
-            <DBRowTableIconButton
-              onClick={() => {
-                // TODO: Implement add filter functionality
-              }}
-              variant="copy"
-              title="Add filter (coming soon)"
-            >
-              <IconFilterPlus size={14} />
-            </DBRowTableIconButton>
-          </div>
-        </Popover.Dropdown>
-      </Popover>
-    </div>
-  );
-};
 
 type Row = Record<string, any> & { duration: number };
 type AccessorFn = (row: Row, column: string) => any;
@@ -237,7 +144,7 @@ function inferLogLevelColumn(rows: Record<string, any>[]) {
   return undefined;
 }
 
-const PatternTrendChartTooltip = (props: any) => {
+const PatternTrendChartTooltip = () => {
   return null;
 };
 
@@ -289,7 +196,7 @@ export const PatternTrendChart = ({
               // tickFormatter={tick =>
               //   format(new Date(tick * 1000), 'MMM d HH:mm')
               // }
-              tickFormatter={tick => ''}
+              tickFormatter={() => ''}
               minTickGap={50}
               tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
             />
@@ -454,14 +361,12 @@ export const RawLogTable = memo(
     }, [rows, dedupRows, generateRowMatcher]);
 
     const _onRowExpandClick = useCallback(
-      ({ __hyperdx_id, ...row }: Record<string, any>) => {
+      (row: Record<string, any>) => {
         onRowDetailsClick?.(row);
       },
       [onRowDetailsClick],
     );
 
-    const { width } = useWindowSize();
-    const isSmallScreen = (width ?? 1000) < 900;
     const {
       userPreferences: { isUTC },
     } = useUserPreferences();
@@ -596,9 +501,6 @@ export const RawLogTable = memo(
         expandedRows,
         toggleRowExpansion,
         showExpandButton,
-        config,
-        source,
-        generateRowId,
       ],
     );
 
@@ -973,9 +875,6 @@ export const RawLogTable = memo(
                               cell.column.columnDef.meta as any
                             )?.className;
                             const columnSize = cell.column.getSize();
-                            const totalContentCells =
-                              row.getVisibleCells().length -
-                              (showExpandButton ? 1 : 0);
                             const cellValue = cell.getValue<any>();
 
                             return (
@@ -997,7 +896,7 @@ export const RawLogTable = memo(
                                 }}
                               >
                                 <div className={styles.fieldTextContainer}>
-                                  <FieldWithPopover
+                                  <DBRowTableFieldWithPopover
                                     cellValue={cellValue}
                                     wrapLinesEnabled={wrapLinesEnabled}
                                   >
@@ -1005,7 +904,7 @@ export const RawLogTable = memo(
                                       cell.column.columnDef.cell,
                                       cell.getContext(),
                                     )}
-                                  </FieldWithPopover>
+                                  </DBRowTableFieldWithPopover>
                                 </div>
                               </div>
                             );
