@@ -26,6 +26,7 @@ COPY --from=col --chmod=755 /otelcol-contrib /otelcontribcol
 # Copy entrypoint and log rotation scripts
 COPY --chmod=755 ./entrypoint.sh /entrypoint.sh
 COPY --chmod=755 ./log-rotator.sh /log-rotator.sh
+COPY --chmod=755 ./log-tailer.sh /log-tailer.sh
 
 ## dev ##############################################################################################
 FROM base AS dev
