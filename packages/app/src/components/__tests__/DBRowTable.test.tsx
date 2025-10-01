@@ -45,6 +45,18 @@ describe('appendSelectWithPrimaryAndPartitionKey', () => {
     });
   });
 
+  it('should extract map columns', () => {
+    const result = appendSelectWithPrimaryAndPartitionKey(
+      'col1, col2',
+      ``,
+      `map2['key.2']`,
+    );
+    expect(result).toEqual({
+      additionalKeysLength: 1,
+      select: `col1,col2,map2['key.2']`,
+    });
+  });
+
   it('should extract array columns', () => {
     const result = appendSelectWithPrimaryAndPartitionKey(
       'col1, col2',

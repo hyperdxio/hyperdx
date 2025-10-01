@@ -287,27 +287,32 @@ export const extractColumnReferencesFromKey = (expr: string): string[] => {
 
   return exprs.flatMap(expr => {
     try {
+      // Extract map or array access expressions, e.g. map['key'] or array[1], since node-sql-parser does not support them.
+      const mapAccessRegex = /\b[a-zA-Z0-9_]+\[([0-9]+|'[^']*')\]/g;
+      const mapAccesses = expr.match(mapAccessRegex) || [];
+
+      // Replace map/array accesses with a literal string ('') so that node-sql-parser ignores them
+      const exprWithoutMaps = expr.replace(mapAccessRegex, "''");
+
       // Strip out any JSON type expressions, eg. in json.a.:Int64, remove the .:Int64 part
-      const exprWithoutJsonType = expr.replace(/\.:[a-zA-Z0-9]+/g, '');
+      const exprWithoutMapsOrJsonType = exprWithoutMaps.replace(
+        /\.:[a-zA-Z0-9]+/g,
+        '',
+      );
 
       // Extract out any JSON path expressions, since node-sql-parser does not support them.
       const jsonPathRegex = /\b[a-zA-Z0-9_]+\.[a-zA-Z0-9_.]+/g;
-      const jsonPaths = exprWithoutJsonType.match(jsonPathRegex) || [];
-
-      // Extract map or array access expressions, e.g. map['key'] or array[1], since node-sql-parser does not support them.
-      const mapAccessRegex = /\b[a-zA-Z0-9_]+\[([0-9]+|'[^']*')\]/g;
-      const mapAccesses = exprWithoutJsonType.match(mapAccessRegex) || [];
+      const jsonPaths = exprWithoutMapsOrJsonType.match(jsonPathRegex) || [];
 
       // Replace JSON paths and map/array accesses with a literal string ('') so that node-sql-parser ignores them
-      const exprWithoutJson = exprWithoutJsonType.replace(jsonPathRegex, "''");
-      const exprWithoutJsonOrMaps = exprWithoutJson.replace(
-        mapAccessRegex,
+      const exprWithoutMapsOrJson = exprWithoutMapsOrJsonType.replace(
+        jsonPathRegex,
         "''",
       );
 
       // Parse remaining column references with node-sql-parser
       const parsedColumnList = parser
-        .columnList(`select ${exprWithoutJsonOrMaps}`)
+        .columnList(`select ${exprWithoutMapsOrJson}`)
         .map(col => col.split('::')[2]);
 
       return [...new Set([...parsedColumnList, ...jsonPaths, ...mapAccesses])];
