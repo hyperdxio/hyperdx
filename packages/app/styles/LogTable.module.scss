@@ -189,11 +189,11 @@ $button-height: 24px;
   cursor: pointer;
   transition: background-color 0.2s ease-in-out;
 
-  &:hover span {
+  > span:hover {
     border-radius: 4px;
     background-color: color-mix(
       in srgb,
-      var(--mantine-color-dark-2) 10%,
+      var(--mantine-color-dark-2) 20%,
       transparent
     );
   }
@@ -209,4 +209,11 @@ $button-height: 24px;
 .fieldText.wrapped {
   word-break: break-word;
   white-space: normal;
+}
+
+.fieldTextPopover {
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
 }

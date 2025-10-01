@@ -136,7 +136,7 @@ const FieldWithPopover = ({
         [styles.wrapped]: wrapLinesEnabled,
       })}
     >
-      <Popover width={80} position="top" shadow="md" offset={5} opened={opened}>
+      <Popover width={80} position="top-start" offset={5} opened={opened}>
         <Popover.Target>
           <span
             onMouseEnter={handleMouseEnter}
@@ -150,11 +150,12 @@ const FieldWithPopover = ({
           style={{ pointerEvents: 'auto' }}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
+          className={styles.fieldTextPopover}
         >
           <div
             style={{
               display: 'flex',
-              gap: '8px',
+              gap: '4px',
               alignItems: 'center',
             }}
           >
