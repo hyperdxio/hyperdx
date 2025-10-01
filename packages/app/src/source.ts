@@ -5,7 +5,7 @@ import objectHash from 'object-hash';
 import store from 'store2';
 import {
   ColumnMeta,
-  extractColumnReference,
+  extractColumnReferencesFromKey,
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
@@ -252,7 +252,9 @@ export async function inferTableSourceConfig({
       connectionId,
     })
   ).primary_key;
-  const keys = splitAndTrimWithBracket(primaryKeys);
+  const primaryKeyColumns = new Set(
+    extractColumnReferencesFromKey(primaryKeys),
+  );
 
   const isOtelLogSchema = hasAllColumns(columns, [
     'Timestamp',
@@ -285,12 +287,7 @@ export async function inferTableSourceConfig({
 
   const timestampColumns = filterColumnMetaByType(columns, [JSDataType.Date]);
   const primaryKeyTimestampColumn = timestampColumns?.find(c =>
-    keys.find(
-      k =>
-        // If the key is a fn call like toUnixTimestamp(Timestamp), we need to strip it
-        // We can't use substr match since "Timestamp" would match "TimestampTime"
-        extractColumnReference(k) === c.name,
-    ),
+    primaryKeyColumns.has(c.name),
   );
 
   return {
