@@ -165,6 +165,7 @@ const FieldWithPopover = ({
                 e.preventDefault();
                 copyFieldValue();
               }}
+              tabIndex={-1}
               className={styles.copyButton}
               title={isCopied ? 'Copied!' : 'Copy field value'}
             >
@@ -176,6 +177,7 @@ const FieldWithPopover = ({
                 e.preventDefault();
                 // TODO: Implement add filter functionality
               }}
+              tabIndex={-1}
               className={styles.copyButton}
               title="Add filter (coming soon)"
             >
@@ -661,6 +663,7 @@ export const RawLogTable = memo(
                       [styles.copied]: isCopied,
                     })}
                     title={isCopied ? 'Copied!' : 'Copy row data'}
+                    tabIndex={-1}
                   >
                     {isCopied ? (
                       <IconCheck size={12} />
@@ -678,6 +681,7 @@ export const RawLogTable = memo(
                       [styles.copied]: isUrlCopied,
                     })}
                     title={isUrlCopied ? 'Copied URL!' : 'Copy row URL'}
+                    tabIndex={-1}
                   >
                     {isUrlCopied ? (
                       <IconCheck size={12} />
