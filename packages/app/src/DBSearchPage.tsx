@@ -543,7 +543,7 @@ function optimizeDefaultOrderBy(
   if (!sortingKey) return fallbackOrderBy;
 
   const orderByArr = [];
-  const sortKeys = sortingKey.split(',').map(key => key.trim());
+  const sortKeys = splitAndTrimWithBracket(sortingKey);
   for (let i = 0; i < sortKeys.length; i++) {
     const sortKey = sortKeys[i];
     if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
@@ -1215,13 +1215,10 @@ function DBSearchPage() {
               onCreate={openNewSourceModal}
               allowedSourceKinds={[SourceKind.Log, SourceKind.Trace]}
               data-testid="source-selector"
+              sourceSchemaPreview={
+                <SourceSchemaPreview source={inputSourceObj} variant="text" />
+              }
             />
-            <span className="ms-1">
-              <SourceSchemaPreview
-                source={inputSourceObj}
-                iconStyles={{ size: 'xs', color: 'dark.2' }}
-              />
-            </span>
             <Menu withArrow position="bottom-start">
               <Menu.Target>
                 <ActionIcon
@@ -1418,6 +1415,7 @@ function DBSearchPage() {
                   label="WHERE"
                   queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
                   enableHotkey
+                  allowMultiline={true}
                 />
               </Box>
             }

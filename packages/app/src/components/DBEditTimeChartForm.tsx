@@ -686,10 +686,9 @@ export default function EditTimeChartForm({
               control={control}
               name="source"
               data-testid="source-selector"
-            />
-            <SourceSchemaPreview
-              source={tableSource}
-              iconStyles={{ color: 'dark.2' }}
+              sourceSchemaPreview={
+                <SourceSchemaPreview source={tableSource} variant="text" />
+              }
             />
           </Flex>
 

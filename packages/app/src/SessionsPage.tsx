@@ -462,6 +462,7 @@ export default function SessionsPage() {
                       language="sql"
                       label="WHERE"
                       enableHotkey
+                      allowMultiline={true}
                     />
                   </Box>
                 }

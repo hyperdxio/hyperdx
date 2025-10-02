@@ -1,5 +1,6 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Tile } from '@hyperdx/common-utils/dist/types';
+import _ from 'lodash';
 
 import { ObjectId } from '@/models';
 import { IAlert } from '@/models/alert';
@@ -10,6 +11,7 @@ import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
 import DefaultAlertProvider from '@/tasks/providers/default';
+import logger from '@/utils/logger';
 
 import { AggregatedAlertHistory } from '../checkAlerts';
 
@@ -82,38 +84,26 @@ export interface AlertProvider {
   getClickHouseClient(connection: IConnection): Promise<ClickhouseClient>;
 }
 
-export function isValidProvider(obj: any): obj is AlertProvider {
-  return (
-    obj != null &&
-    typeof obj.init === 'function' &&
-    typeof obj.asyncDispose === 'function' &&
-    typeof obj.getAlertTasks === 'function' &&
-    typeof obj.buildLogSearchLink === 'function' &&
-    typeof obj.buildChartLink === 'function' &&
-    typeof obj.updateAlertState === 'function' &&
-    typeof obj.getWebhooks === 'function' &&
-    typeof obj.getClickHouseClient === 'function'
-  );
-}
+const ADDITIONAL_PROVIDERS: Record<string, () => AlertProvider> = {
+  // Additional alert provider create functions should appear in this object
+  // defined with a provider name.
+};
 
 export async function loadProvider(
   providerName?: string | undefined | null,
 ): Promise<AlertProvider> {
   if (providerName && providerName !== 'default') {
-    try {
-      const ProviderClass = (await import(`./${providerName}`)).default;
-      if (typeof ProviderClass === 'function') {
-        const providerInstance = new ProviderClass();
-        if (isValidProvider(providerInstance)) {
-          return providerInstance;
-        } else {
-          console.warn(`"${providerName}" does not implement AlertProvider`);
-        }
-      } else {
-        console.warn(`"${providerName}" does not export default constructor`);
+    const providerFn = _.get(ADDITIONAL_PROVIDERS, providerName);
+    if (providerFn) {
+      try {
+        return providerFn();
+      } catch (err) {
+        logger.error({
+          message: `error creating instance of ${providerName} provider; using default`,
+          cause: err,
+          providerName,
+        });
       }
-    } catch (e) {
-      console.warn(`failed to load "${providerName}: ${e}"`);
     }
   }
 

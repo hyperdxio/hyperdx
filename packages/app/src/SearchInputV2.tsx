@@ -58,7 +58,7 @@ export default function SearchInputV2({
     field: { onChange, value },
   } = useController(props);
 
-  const ref = useRef<HTMLInputElement>(null);
+  const ref = useRef<HTMLTextAreaElement>(null);
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
 
   const autoCompleteOptions = useAutoCompleteOptions(

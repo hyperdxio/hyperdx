@@ -1,12 +1,4 @@
-import {
-  memo,
-  RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -124,24 +116,33 @@ type SQLInlineEditorProps = {
   additionalSuggestions?: string[];
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
+  allowMultiline?: boolean;
 } & TableConnectionChoice;
 
-const styleTheme = EditorView.baseTheme({
-  '&.cm-editor.cm-focused': {
-    outline: '0px solid transparent',
-  },
-  '&.cm-editor': {
-    background: 'transparent !important',
-  },
-  '& .cm-tooltip-autocomplete': {
-    whiteSpace: 'nowrap',
-    wordWrap: 'break-word',
-    maxWidth: '100%',
-  },
-  '& .cm-scroller': {
-    overflowX: 'hidden',
-  },
-});
+const MAX_EDITOR_HEIGHT = '150px';
+
+const createStyleTheme = (allowMultiline: boolean = false) =>
+  EditorView.baseTheme({
+    '&.cm-editor.cm-focused': {
+      outline: '0px solid transparent',
+    },
+    '&.cm-editor': {
+      background: 'transparent !important',
+      ...(allowMultiline && { maxHeight: MAX_EDITOR_HEIGHT }),
+    },
+    '& .cm-tooltip-autocomplete': {
+      whiteSpace: 'nowrap',
+      wordWrap: 'break-word',
+      maxWidth: '100%',
+    },
+    '& .cm-scroller': {
+      overflowX: 'hidden',
+      ...(allowMultiline && {
+        maxHeight: MAX_EDITOR_HEIGHT,
+        overflowY: 'auto',
+      }),
+    },
+  });
 
 export default function SQLInlineEditor({
   tableConnection,
@@ -161,6 +162,7 @@ export default function SQLInlineEditor({
   additionalSuggestions = [],
   queryHistoryType,
   parentRef,
+  allowMultiline = false,
 }: SQLInlineEditorProps) {
   const _tableConnections = tableConnection
     ? [tableConnection]
@@ -287,7 +289,13 @@ export default function SQLInlineEditor({
         parent: parentRef,
         tooltipSpace: view => {
           const box = view.dom.getBoundingClientRect();
-          return { ...box, right: box.right ?? 0 };
+          const parentBox = parentRef.getBoundingClientRect();
+          return {
+            ...box,
+            right: box.right ?? 0,
+            top: parentBox.top ?? box.top,
+            bottom: parentBox.bottom ?? box.bottom,
+          };
         },
       }),
     ];
@@ -332,7 +340,8 @@ export default function SQLInlineEditor({
           }}
           extensions={[
             ...tooltipExt,
-            styleTheme,
+            createStyleTheme(allowMultiline),
+            ...(allowMultiline ? [EditorView.lineWrapping] : []),
             compartmentRef.current.of(
               sql({
                 upperCaseKeywords: true,
@@ -342,7 +351,7 @@ export default function SQLInlineEditor({
               keymap.of([
                 {
                   key: 'Enter',
-                  run: () => {
+                  run: view => {
                     if (onSubmit == null) {
                       return false;
                     }
@@ -353,6 +362,17 @@ export default function SQLInlineEditor({
                     return true;
                   },
                 },
+                ...(allowMultiline
+                  ? [
+                      {
+                        key: 'Shift-Enter',
+                        run: () => {
+                          // Allow default behavior (insert new line)
+                          return false;
+                        },
+                      },
+                    ]
+                  : []),
               ]),
             ),
             keymap.of([

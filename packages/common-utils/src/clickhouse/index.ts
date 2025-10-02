@@ -19,7 +19,7 @@ import {
   splitChartConfigs,
 } from '@/renderChartConfig';
 import { ChartConfigWithOptDateRange, SQLInterval } from '@/types';
-import { hashCode } from '@/utils';
+import { hashCode, splitAndTrimWithBracket } from '@/utils';
 
 // export @clickhouse/client-common types
 export type {
@@ -273,22 +273,55 @@ export class ClickHouseQueryError extends Error {
   }
 }
 
-export function extractColumnReference(
-  sql: string,
-  maxIterations = 10,
-): string | null {
-  let iterations = 0;
+/**
+ * Returns columns referenced in given expression, where the expression is a comma-separated list of SQL expressions
+ * E.g. "id, toStartOfInterval(timestamp, toIntervalDay(3)), user_id, json.a.b".
+ */
+export const extractColumnReferencesFromKey = (expr: string): string[] => {
+  const parser = new SQLParser.Parser();
 
-  // Loop until we remove all function calls and get just the column, with a maximum limit
-  while (/\w+\([^()]*\)/.test(sql) && iterations < maxIterations) {
-    // Replace the outermost function with its content
-    sql = sql.replace(/\w+\(([^()]*)\)/, '$1');
-    iterations++;
+  const exprs = splitAndTrimWithBracket(expr);
+  if (!exprs?.length) {
+    return [];
   }
 
-  // If we reached the max iterations without resolving, return null to indicate an issue
-  return iterations < maxIterations ? sql.trim() : null;
-}
+  return exprs.flatMap(expr => {
+    try {
+      // Extract map or array access expressions, e.g. map['key'] or array[1], since node-sql-parser does not support them.
+      const mapAccessRegex = /\b[a-zA-Z0-9_]+\[([0-9]+|'[^']*')\]/g;
+      const mapAccesses = expr.match(mapAccessRegex) || [];
+
+      // Replace map/array accesses with a literal string ('') so that node-sql-parser ignores them
+      const exprWithoutMaps = expr.replace(mapAccessRegex, "''");
+
+      // Strip out any JSON type expressions, eg. in json.a.:Int64, remove the .:Int64 part
+      const exprWithoutMapsOrJsonType = exprWithoutMaps.replace(
+        /\.:[a-zA-Z0-9]+/g,
+        '',
+      );
+
+      // Extract out any JSON path expressions, since node-sql-parser does not support them.
+      const jsonPathRegex = /\b[a-zA-Z0-9_]+\.[a-zA-Z0-9_.]+/g;
+      const jsonPaths = exprWithoutMapsOrJsonType.match(jsonPathRegex) || [];
+
+      // Replace JSON paths and map/array accesses with a literal string ('') so that node-sql-parser ignores them
+      const exprWithoutMapsOrJson = exprWithoutMapsOrJsonType.replace(
+        jsonPathRegex,
+        "''",
+      );
+
+      // Parse remaining column references with node-sql-parser
+      const parsedColumnList = parser
+        .columnList(`select ${exprWithoutMapsOrJson}`)
+        .map(col => col.split('::')[2]);
+
+      return [...new Set([...parsedColumnList, ...jsonPaths, ...mapAccesses])];
+    } catch (e) {
+      console.error('Error parsing column references from key', e, expr);
+      return [];
+    }
+  });
+};
 
 const castToNumber = (value: string | number) => {
   if (typeof value === 'string') {
@@ -373,6 +406,8 @@ export type ClickhouseClientOptions = {
   username?: string;
   password?: string;
   queryTimeout?: number;
+  /** Application name, used as the client's HTTP user-agent header */
+  application?: string;
 };
 
 export abstract class BaseClickhouseClient {
@@ -381,6 +416,7 @@ export abstract class BaseClickhouseClient {
   protected readonly password?: string;
   protected readonly queryTimeout?: number;
   protected client?: WebClickHouseClient | NodeClickHouseClient;
+  protected readonly application?: string;
   /*
    * Some clickhouse db's (the demo instance for example) make the
    * max_rows_to_read setting readonly and the query will fail if you try to
@@ -394,12 +430,14 @@ export abstract class BaseClickhouseClient {
     username,
     password,
     queryTimeout,
+    application,
   }: ClickhouseClientOptions) {
     this.host = host!;
     this.username = username;
     this.password = password;
     this.queryTimeout = queryTimeout;
     this.maxRowReadOnly = false;
+    this.application = application;
   }
 
   protected getClient(): WebClickHouseClient | NodeClickHouseClient {
