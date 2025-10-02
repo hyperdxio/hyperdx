@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
@@ -8,7 +8,6 @@ import { Box, Code, Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
 
 import { Table } from '@/HDXMultiSeriesTableChart';
-import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { omit, useIntersectionObserver } from '@/utils';
 
@@ -55,8 +54,21 @@ export default function DBTableChart({
     });
   const { observerRef: fetchMoreRef } = useIntersectionObserver(fetchNextPage);
 
-  // Get the alias map from the config so we resolve correct column ids
-  const { data: aliasMap } = useAliasMapFromChartConfig(queriedConfig);
+  // Returns an array of aliases, so we can check if something is using an alias
+  const aliasMap = useMemo(() => {
+    // If the config.select is a string, we can't infer this.
+    // One day, we could potentially run this through chSqlToAliasMap but AST parsing
+    //  doesn't work for most DBTableChart queries.
+    if (typeof config.select === 'string') {
+      return [];
+    }
+    return config.select.reduce((acc, select) => {
+      if (select.alias) {
+        acc.push(select.alias);
+      }
+      return acc;
+    }, [] as string[]);
+  }, [config?.select]);
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {
@@ -67,8 +79,10 @@ export default function DBTableChart({
     if (queriedConfig.groupBy && typeof queriedConfig.groupBy === 'string') {
       groupByKeys = queriedConfig.groupBy.split(',').map(v => v.trim());
     }
+
     return Object.keys(rows?.[0]).map(key => ({
-      id: aliasMap?.[key] ?? key,
+      // If it's an alias, wrap in quotes to support a variety of formats (ex "Time (ms)", "Req/s", etc)
+      id: aliasMap.includes(key) ? `"${key}"` : key,
       dataKey: key,
       displayName: key,
       numberFormat: groupByKeys.includes(key) ? undefined : config.numberFormat,
