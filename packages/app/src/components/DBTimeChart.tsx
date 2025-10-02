@@ -17,6 +17,7 @@ import { formatResponseForTimeChart, useTimeChartSettings } from '@/ChartUtils';
 import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { usePaginatedQueriedChartConfig } from '@/hooks/usePaginatedChartConfig';
 import { useSource } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
@@ -29,7 +30,7 @@ function DBTimeChartComponent({
   logReferenceTimestamp,
   onSettled,
   onTimeRangeSelect,
-  queryKeyPrefix,
+  queryKeyPrefix = '',
   referenceLines,
   setDisplayType,
   showDisplaySwitcher = true,
@@ -63,7 +64,7 @@ function DBTimeChartComponent({
   };
 
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
-    useQueriedChartConfig(queriedConfig, {
+    usePaginatedQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig],
       enabled,
