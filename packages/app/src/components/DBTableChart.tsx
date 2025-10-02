@@ -1,12 +1,14 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
+import { SortingState } from '@tanstack/react-table';
 
 import { Table } from '@/HDXMultiSeriesTableChart';
+import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { omit, useIntersectionObserver } from '@/utils';
 
@@ -15,17 +17,17 @@ import { SQLPreview } from './ChartSQLPreview';
 // TODO: Support clicking in to view matched events
 export default function DBTableChart({
   config,
-  onSortClick,
   getRowSearchLink,
   enabled = true,
   queryKeyPrefix,
 }: {
   config: ChartConfigWithOptDateRange;
-  onSortClick?: (seriesIndex: number) => void;
   getRowSearchLink?: (row: any) => string;
   queryKeyPrefix?: string;
   enabled?: boolean;
 }) {
+  const [sort, setSort] = useState<SortingState>([]);
+
   const queriedConfig = (() => {
     const _config = omit(config, ['granularity']);
     if (!_config.limit) {
@@ -33,6 +35,15 @@ export default function DBTableChart({
     }
     if (_config.groupBy && typeof _config.groupBy === 'string') {
       _config.orderBy = _config.groupBy;
+    }
+
+    if (sort.length) {
+      _config.orderBy = sort?.map(o => {
+        return {
+          valueExpression: o.id,
+          ordering: o.desc ? 'DESC' : 'ASC',
+        };
+      });
     }
     return _config;
   })();
@@ -44,6 +55,8 @@ export default function DBTableChart({
     });
   const { observerRef: fetchMoreRef } = useIntersectionObserver(fetchNextPage);
 
+  // Get the alias map from the config so we resolve correct column ids
+  const { data: aliasMap } = useAliasMapFromChartConfig(queriedConfig);
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {
@@ -55,11 +68,12 @@ export default function DBTableChart({
       groupByKeys = queriedConfig.groupBy.split(',').map(v => v.trim());
     }
     return Object.keys(rows?.[0]).map(key => ({
+      id: aliasMap?.[key] ?? key,
       dataKey: key,
       displayName: key,
       numberFormat: groupByKeys.includes(key) ? undefined : config.numberFormat,
     }));
-  }, [config.numberFormat, data]);
+  }, [config.numberFormat, aliasMap, queriedConfig.groupBy, data]);
 
   return isLoading && !data ? (
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
@@ -101,6 +115,8 @@ export default function DBTableChart({
       data={data?.data ?? []}
       columns={columns}
       getRowSearchLink={getRowSearchLink}
+      sorting={sort}
+      onSortingChange={setSort}
       tableBottom={
         hasNextPage && (
           <Text ref={fetchMoreRef} ta="center">

@@ -363,6 +363,7 @@ function InsertsTab({
           </Text>
           <DBTableChart
             config={{
+              dateRange: searchedTimeRange,
               select: [
                 `count() as "Part Count"`,
                 `sum(rows) as Rows`,

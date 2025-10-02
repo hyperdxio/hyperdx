@@ -87,6 +87,7 @@ import {
   useWindowSize,
 } from '@/utils';
 
+import TableHeader from './DBTable/TableHeader';
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
 import {
@@ -743,148 +744,63 @@ export const RawLogTable = memo(
                 {headerGroup.headers.map((header, headerIndex) => {
                   const isLast = headerIndex === headerGroup.headers.length - 1;
                   return (
-                    <th
-                      className="overflow-hidden bg-hdx-dark"
+                    <TableHeader
                       key={header.id}
-                      colSpan={header.colSpan}
-                      style={{
-                        width:
-                          header.getSize() === UNDEFINED_WIDTH
-                            ? '100%'
-                            : header.getSize(),
-                        // Allow unknown width columns to shrink to 0
-                        minWidth:
-                          header.getSize() === UNDEFINED_WIDTH
-                            ? 0
-                            : header.getSize(),
-                      }}
-                    >
-                      <Group wrap="nowrap" gap={0} align="center">
-                        {!header.column.getCanSort() ? (
-                          <Text truncate="end" size="xs" flex="1">
-                            {flexRender(
-                              header.column.columnDef.header,
-                              header.getContext(),
+                      header={header}
+                      isLast={isLast}
+                      lastItemButtons={
+                        <>
+                          {tableId &&
+                            Object.keys(columnSizeStorage).length > 0 && (
+                              <div
+                                className="fs-8 text-muted-hover disabled"
+                                role="button"
+                                onClick={() => setColumnSizeStorage({})}
+                                title="Reset Column Widths"
+                              >
+                                <i className="bi bi-arrow-clockwise" />
+                              </div>
                             )}
-                          </Text>
-                        ) : (
-                          <Button
-                            size="xxs"
-                            p={1}
-                            variant="subtle"
-                            color="gray"
-                            onClick={header.column.getToggleSortingHandler()}
-                            flex="1"
-                            justify="space-between"
-                            data-testid="raw-log-table-sort-button"
-                          >
-                            <>
-                              {header.isPlaceholder ? null : (
-                                <Text
-                                  truncate="end"
-                                  size="xs"
-                                  flex="1"
-                                  c="white"
-                                >
-                                  {flexRender(
-                                    header.column.columnDef.header,
-                                    header.getContext(),
-                                  )}
-                                </Text>
-                              )}
-
-                              {header.column.getIsSorted() && (
-                                <div
-                                  data-testid="raw-log-table-sort-indicator"
-                                  className={
-                                    header.column.getIsSorted() === 'asc'
-                                      ? 'sorted-asc'
-                                      : 'sorted-desc'
-                                  }
-                                >
-                                  <>
-                                    {header.column.getIsSorted() === 'asc' ? (
-                                      <IconChevronUp size={16} />
-                                    ) : (
-                                      <IconChevronDown size={16} />
-                                    )}
-                                  </>
-                                </div>
-                              )}
-                            </>
-                          </Button>
-                        )}
-
-                        <Group gap={0} wrap="nowrap" align="center">
-                          {header.column.getCanResize() && !isLast && (
-                            <div
-                              onMouseDown={header.getResizeHandler()}
-                              onTouchStart={header.getResizeHandler()}
-                              className={cx(
-                                `resizer text-gray-600 cursor-col-resize`,
-                                header.column.getIsResizing() && 'isResizing',
-                              )}
+                          {config && (
+                            <UnstyledButton
+                              onClick={() => handleSqlModalOpen(true)}
                             >
-                              <IconDotsVertical size={12} />
+                              <MantineTooltip label="Show generated SQL">
+                                <i className="bi bi-code-square" />
+                              </MantineTooltip>
+                            </UnstyledButton>
+                          )}
+                          <UnstyledButton
+                            onClick={() => setWrapLinesEnabled(prev => !prev)}
+                          >
+                            <MantineTooltip label="Wrap lines">
+                              <i className="bi bi-text-wrap" />
+                            </MantineTooltip>
+                          </UnstyledButton>
+
+                          <CsvExportButton
+                            data={csvData}
+                            filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
+                            className="fs-6 text-muted-hover "
+                          >
+                            <MantineTooltip
+                              label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+                            >
+                              <i className="bi bi-download" />
+                            </MantineTooltip>
+                          </CsvExportButton>
+                          {onSettingsClick != null && (
+                            <div
+                              className="fs-8 text-muted-hover"
+                              role="button"
+                              onClick={() => onSettingsClick()}
+                            >
+                              <i className="bi bi-gear-fill" />
                             </div>
                           )}
-                          {!isLoading && isLast && (
-                            <Group gap={2} wrap="nowrap">
-                              {tableId &&
-                                Object.keys(columnSizeStorage).length > 0 && (
-                                  <div
-                                    className="fs-8 text-muted-hover disabled"
-                                    role="button"
-                                    onClick={() => setColumnSizeStorage({})}
-                                    title="Reset Column Widths"
-                                  >
-                                    <i className="bi bi-arrow-clockwise" />
-                                  </div>
-                                )}
-                              {config && (
-                                <UnstyledButton
-                                  onClick={() => handleSqlModalOpen(true)}
-                                >
-                                  <MantineTooltip label="Show generated SQL">
-                                    <i className="bi bi-code-square" />
-                                  </MantineTooltip>
-                                </UnstyledButton>
-                              )}
-                              <UnstyledButton
-                                onClick={() =>
-                                  setWrapLinesEnabled(prev => !prev)
-                                }
-                              >
-                                <MantineTooltip label="Wrap lines">
-                                  <i className="bi bi-text-wrap" />
-                                </MantineTooltip>
-                              </UnstyledButton>
-
-                              <CsvExportButton
-                                data={csvData}
-                                filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
-                                className="fs-6 text-muted-hover "
-                              >
-                                <MantineTooltip
-                                  label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
-                                >
-                                  <i className="bi bi-download" />
-                                </MantineTooltip>
-                              </CsvExportButton>
-                              {onSettingsClick != null && (
-                                <div
-                                  className="fs-8 text-muted-hover"
-                                  role="button"
-                                  onClick={() => onSettingsClick()}
-                                >
-                                  <i className="bi bi-gear-fill" />
-                                </div>
-                              )}
-                            </Group>
-                          )}
-                        </Group>
-                      </Group>
-                    </th>
+                        </>
+                      }
+                    />
                   );
                 })}
               </tr>
@@ -1252,7 +1168,7 @@ function DBSqlRowTableComponent({
       onSortingChange?.(v);
       setOrderBy(v?.[0] ?? null);
     },
-    [setOrderBy],
+    [setOrderBy, onSortingChange],
   );
 
   const mergedConfigObj = useMemo(() => {
