@@ -179,7 +179,7 @@ const DashboardFilterEditForm = ({
               error={formState.errors.expression}
             >
               <SQLInlineEditorControlled
-                tableConnections={tableConnection}
+                tableConnection={tableConnection}
                 control={control}
                 name="expression"
                 placeholder="SQL column or expression"

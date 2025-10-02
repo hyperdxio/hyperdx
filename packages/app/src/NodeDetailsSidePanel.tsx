@@ -297,7 +297,7 @@ export default function NodeDetailsSidePanel({
 
   const { data: logServiceNames } = useGetKeyValues(
     {
-      chartConfigs: {
+      chartConfig: {
         from: logSource.from,
         where: `${logSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`,
         whereLanguage: 'lucene',

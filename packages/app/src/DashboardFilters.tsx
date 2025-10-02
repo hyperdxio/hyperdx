@@ -31,7 +31,7 @@ const DashboardFilterSelect = ({
 
   const { data: keys, isLoading: isKeyValuesLoading } = useGetKeyValues(
     {
-      chartConfigs: {
+      chartConfig: {
         dateRange,
         timestampValueExpression: timestampValueExpression!,
         connection: connection!,

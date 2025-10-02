@@ -37,7 +37,7 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   dataTestId,
 }) => {
   const { data, isLoading } = useGetKeyValues({
-    chartConfigs: chartConfig,
+    chartConfig,
     keys: [`${metricSource.resourceAttributesExpression}['${fieldName}']`],
   });
 
@@ -240,7 +240,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         dataTestId="cluster-filter-select"
       />
       <SearchInputV2
-        tableConnections={tcFromSource(metricSource)}
+        tableConnection={tcFromSource(metricSource)}
         placeholder="Search query"
         language="lucene"
         name="searchQuery"

@@ -6,7 +6,11 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
-import { deduplicate2dArray, useGetKeyValues } from '../useMetadata';
+import {
+  deduplicate2dArray,
+  useGetKeyValues,
+  useMultipleGetKeyValues,
+} from '../useMetadata';
 
 // Create a mock ChartConfig based on the Zod schema
 const createMockChartConfig = (
@@ -69,7 +73,7 @@ describe('useGetKeyValues', () => {
     const { result } = renderHook(
       () =>
         useGetKeyValues({
-          chartConfigs: mockChartConfig,
+          chartConfig: mockChartConfig,
           keys: mockKeys,
         }),
       { wrapper },
@@ -118,7 +122,7 @@ describe('useGetKeyValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useGetKeyValues({
+        useMultipleGetKeyValues({
           chartConfigs: mockChartConfigs,
           keys: mockKeys,
         }),
@@ -150,7 +154,7 @@ describe('useGetKeyValues', () => {
     const { result } = renderHook(
       () =>
         useGetKeyValues({
-          chartConfigs: mockChartConfig,
+          chartConfig: mockChartConfig,
           keys: [],
         }),
       { wrapper },
@@ -180,7 +184,7 @@ describe('useGetKeyValues', () => {
     const { result } = renderHook(
       () =>
         useGetKeyValues({
-          chartConfigs: mockChartConfig,
+          chartConfig: mockChartConfig,
           keys: mockKeys,
           limit: 50,
           disableRowLimit: true,
@@ -206,7 +210,7 @@ describe('useGetKeyValues', () => {
     const { result } = renderHook(
       () =>
         useGetKeyValues({
-          chartConfigs: mockChartConfig,
+          chartConfig: mockChartConfig,
           keys: mockKeys,
         }),
       { wrapper },

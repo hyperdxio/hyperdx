@@ -285,7 +285,7 @@ export default function PodDetailsSidePanel({
 
   const { data: logServiceNames } = useGetKeyValues(
     {
-      chartConfigs: {
+      chartConfig: {
         from: logSource.from,
         where: `${logSource?.resourceAttributesExpression}.k8s.pod.name:"${podName}"`,
         whereLanguage: 'lucene',
