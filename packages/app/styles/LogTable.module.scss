@@ -129,7 +129,6 @@ $button-height: 18px;
 
   &.isWrapped {
     align-items: flex-start;
-    padding-block: 4px;
   }
 
   &.isTruncated {
@@ -202,7 +201,6 @@ $button-height: 18px;
 .fieldText.truncated {
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: $button-height;
   min-height: $button-height;
 }
 
