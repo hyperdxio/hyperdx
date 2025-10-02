@@ -14,9 +14,11 @@ export interface DBRowTableFieldWithPopoverProps {
   wrapLinesEnabled: boolean;
 }
 
-export const DBRowTableFieldWithPopover: React.FC<
-  DBRowTableFieldWithPopoverProps
-= ({ children, cellValue, wrapLinesEnabled }: DBRowTableFieldWithPopoverProps) => {
+export const DBRowTableFieldWithPopover = ({
+  children,
+  cellValue,
+  wrapLinesEnabled,
+}: DBRowTableFieldWithPopoverProps) => {
   const [opened, { close, open }] = useDisclosure(false);
   const [isCopied, setIsCopied] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout>();
