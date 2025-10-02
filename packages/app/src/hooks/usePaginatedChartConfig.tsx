@@ -10,41 +10,65 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
-import { timeBucketByGranularity } from '@/ChartUtils';
+import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { getMetadata } from '@/metadata';
+import { generateTimeWindowsDescending } from '@/utils/searchWindows';
 
 interface AdditionalUseQueriedChartConfigOptions {
   onError?: (error: Error | ClickHouseQueryError) => void;
 }
 
 type TimeWindow = {
-  startTime: Date;
-  endTime: Date;
-  index: number;
+  dateRange: [Date, Date];
+  dateRangeEndInclusive?: boolean;
 };
 
 type TQueryFnData = Pick<ResponseJSON<any>, 'data' | 'meta' | 'rows'> & {};
 
-const getTimeWindows = (
-  config: ChartConfigWithOptDateRange,
+export const getGranularityAlignedTimeWindows = (
+  config: Pick<
+    ChartConfigWithOptDateRange,
+    'dateRange' | 'granularity' | 'dateRangeEndInclusive'
+  >,
+  windowDurationsSeconds?: number[],
 ): TimeWindow[] | [undefined] => {
   // Granularity is required for pagination, otherwise we could break other group-bys
   // Date range is required for pagination, otherwise we'd have infinite pages, or some unbounded page(s).
   if (!config.dateRange || !config.granularity) return [undefined];
 
   const [startDate, endDate] = config.dateRange;
-  const granularity = config.granularity; // could be 'auto'
-  const chartBuckets = timeBucketByGranularity(startDate, endDate, granularity); // TODO does this handle auto?
+  const granularity = config.granularity;
+  const windowsUnaligned = generateTimeWindowsDescending(
+    startDate,
+    endDate,
+    windowDurationsSeconds,
+  );
 
-  const chunkSize = 10;
   const windows = [];
-  for (let i = chartBuckets.length; i >= 0; i -= chunkSize) {
-    const endTime = chartBuckets[i] ?? endDate;
-    const startTime = chartBuckets[Math.max(i - chunkSize, 0)];
-    windows.push({ startTime, endTime, index: windows.length });
+  for (const [index, window] of windowsUnaligned.entries()) {
+    // Align windows to chart buckets
+    const alignedStart =
+      index === windowsUnaligned.length - 1
+        ? window.startTime
+        : toStartOfInterval(window.startTime, granularity);
+    const alignedEnd =
+      index === 0 ? endDate : toStartOfInterval(window.endTime, granularity);
+
+    // Skip windows that are covered by the previous window after it was aligned
+    if (
+      !windows.length ||
+      alignedStart < windows[windows.length - 1].dateRange[0]
+    ) {
+      windows.push({
+        dateRange: [alignedStart, alignedEnd] as [Date, Date],
+        // Ensure that windows don't overlap by making all but the first (most recent) exclusive
+        dateRangeEndInclusive:
+          index === 0 ? config.dateRangeEndInclusive : false,
+      });
+    }
   }
 
   return windows;
@@ -55,7 +79,7 @@ async function* fetchDataInChunks(
   clickhouseClient: ClickhouseClient,
   signal: AbortSignal,
 ) {
-  const windows = getTimeWindows(config);
+  const windows = getGranularityAlignedTimeWindows(config);
 
   let query = null;
   if (IS_MTVIEWS_ENABLED) {
@@ -72,14 +96,8 @@ async function* fetchDataInChunks(
   for (const window of windows) {
     const windowedConfig = {
       ...config,
+      ...(window ?? {}),
     };
-
-    if (window) {
-      windowedConfig.dateRange = [window.startTime, window.endTime];
-      // Ensure that windows don't overlap by making all but the first (most recent) exclusive
-      windowedConfig.dateRangeEndInclusive =
-        window.index === 0 ? config.dateRangeEndInclusive : false;
-    }
 
     const result = await clickhouseClient.queryChartConfig({
       config: windowedConfig,
