@@ -117,7 +117,7 @@ type SQLInlineEditorProps = {
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
   allowMultiline?: boolean;
-} & TableConnectionChoice;
+};
 
 const MAX_EDITOR_HEIGHT = '150px';
 
@@ -163,7 +163,7 @@ export default function SQLInlineEditor({
   queryHistoryType,
   parentRef,
   allowMultiline = false,
-}: SQLInlineEditorProps) {
+}: SQLInlineEditorProps & TableConnectionChoice) {
   const _tableConnections = tableConnection
     ? [tableConnection]
     : tableConnections;
@@ -416,8 +416,9 @@ function SQLInlineEditorControlledComponent({
   additionalSuggestions,
   queryHistoryType,
   ...props
-}: Omit<SQLInlineEditorProps, 'value' | 'onChange' | 'tableConnections'> &
-  UseControllerProps<any>) {
+}: Omit<SQLInlineEditorProps, 'value' | 'onChange'> &
+  UseControllerProps<any> &
+  TableConnectionChoice) {
   const { field, fieldState } = useController(props);
 
   // Guard against wrongly typed values
