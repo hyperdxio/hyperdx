@@ -1,4 +1,3 @@
-import { useEffect, useMemo } from 'react';
 import {
   ClickHouseQueryError,
   ResponseJSON,
@@ -6,9 +5,9 @@ import {
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import {
-  QueryFunction,
-  useInfiniteQuery,
-  UseInfiniteQueryOptions,
+  experimental_streamedQuery as streamedQuery,
+  useQuery,
+  UseQueryOptions,
 } from '@tanstack/react-query';
 
 import { timeBucketByGranularity } from '@/ChartUtils';
@@ -27,42 +26,14 @@ type TimeWindow = {
   index: number;
 };
 
-type TPageParam = number;
-
-type TQueryFnData = Pick<ResponseJSON<any>, 'data' | 'meta' | 'rows'> & {
-  window: TimeWindow | undefined;
-};
-
-type TData = {
-  pages: TQueryFnData[];
-  pageParams: TPageParam[];
-};
-
-type TQueryKey = readonly [string, ChartConfigWithOptDateRange];
-
-type TMeta = {
-  clickhouseClient: ClickhouseClient;
-};
-
-const flattenData = (data: TData | undefined): TQueryFnData | undefined => {
-  if (data == undefined || data.pages.length === 0) {
-    return undefined;
-  }
-
-  return {
-    data: data.pages.flatMap(page => page.data),
-    meta: data.pages[0].meta,
-    rows: data.pages.reduce((sum, page) => sum + (page.rows ?? 0), 0),
-    window: data.pages[data.pages.length - 1].window,
-  };
-};
+type TQueryFnData = Pick<ResponseJSON<any>, 'data' | 'meta' | 'rows'> & {};
 
 const getTimeWindows = (
   config: ChartConfigWithOptDateRange,
-): TimeWindow[] | undefined => {
+): TimeWindow[] | [undefined] => {
   // Granularity is required for pagination, otherwise we could break other group-bys
   // Date range is required for pagination, otherwise we'd have infinite pages, or some unbounded page(s).
-  if (!config.dateRange || !config.granularity) return undefined;
+  if (!config.dateRange || !config.granularity) return [undefined];
 
   const [startDate, endDate] = config.dateRange;
   const granularity = config.granularity; // could be 'auto'
@@ -79,52 +50,17 @@ const getTimeWindows = (
   return windows;
 };
 
-const getNextPageParam = (
-  lastPage: TQueryFnData | null,
+async function* fetchDataInChunks(
   config: ChartConfigWithOptDateRange,
-): TPageParam | undefined => {
-  if (!lastPage) {
-    return undefined;
-  }
-
+  clickhouseClient: ClickhouseClient,
+  signal: AbortSignal,
+) {
   const windows = getTimeWindows(config);
-  if (
-    !windows ||
-    lastPage.window === undefined ||
-    lastPage.window.index >= windows.length - 1
-  ) {
-    return undefined;
-  }
-
-  return lastPage.window.index + 1;
-};
-
-const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
-  pageParam,
-  signal,
-  meta,
-  queryKey,
-}) => {
-  const { clickhouseClient } = meta as TMeta;
-  const [, config] = queryKey;
-
-  const windowedConfig = {
-    ...config,
-  };
-
-  const windows = getTimeWindows(config);
-  if (windows && windows[pageParam]) {
-    const window = windows[pageParam];
-    windowedConfig.dateRange = [window.startTime, window.endTime];
-    // Ensure that windows don't overlap by making all but the first (most recent) exclusive
-    windowedConfig.dateRangeEndInclusive =
-      pageParam === 0 ? config.dateRangeEndInclusive : false;
-  }
 
   let query = null;
   if (IS_MTVIEWS_ENABLED) {
     const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
-      await buildMTViewSelectQuery(windowedConfig);
+      await buildMTViewSelectQuery(config);
     // TODO: show the DDLs in the UI so users can run commands manually
     // eslint-disable-next-line no-console
     console.log('dataTableDDL:', dataTableDDL);
@@ -133,76 +69,60 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     query = await renderMTViewConfig();
   }
 
-  const result = await clickhouseClient.queryChartConfig({
-    config: windowedConfig,
-    metadata: getMetadata(),
-    opts: {
-      abort_signal: signal,
-    },
-  });
+  for (const window of windows) {
+    const windowedConfig = {
+      ...config,
+    };
 
-  return {
-    ...result,
-    window: windows ? windows[pageParam] : undefined,
-  };
-};
+    if (window) {
+      windowedConfig.dateRange = [window.startTime, window.endTime];
+      // Ensure that windows don't overlap by making all but the first (most recent) exclusive
+      windowedConfig.dateRangeEndInclusive =
+        window.index === 0 ? config.dateRangeEndInclusive : false;
+    }
+
+    const result = await clickhouseClient.queryChartConfig({
+      config: windowedConfig,
+      metadata: getMetadata(),
+      opts: {
+        abort_signal: signal,
+      },
+    });
+
+    yield result;
+  }
+}
 
 export function usePaginatedQueriedChartConfig(
   config: ChartConfigWithOptDateRange,
-  options: Partial<
-    UseInfiniteQueryOptions<
-      TQueryFnData,
-      ClickHouseQueryError | Error,
-      TData,
-      TQueryFnData,
-      TQueryKey,
-      TPageParam
-    >
-  > &
+  options?: Partial<UseQueryOptions<ResponseJSON<any>>> &
     AdditionalUseQueriedChartConfigOptions,
 ) {
   const clickhouseClient = useClickhouseClient();
 
-  const paginatedQuery = useInfiniteQuery<
-    TQueryFnData,
-    ClickHouseQueryError | Error,
-    TData,
-    TQueryKey,
-    TPageParam
-  >({
+  const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     queryKey: ['', config],
-    queryFn,
-    initialPageParam: 0,
-    getNextPageParam: lastPage => {
-      return getNextPageParam(lastPage, config);
-    },
+    queryFn: streamedQuery({
+      streamFn: context =>
+        fetchDataInChunks(config, clickhouseClient, context.signal),
+      reducer: (acc, chunk) => {
+        return {
+          data: [...(acc?.data || []), ...(chunk.data || [])],
+          meta: chunk.meta,
+          rows: (acc?.rows || 0) + (chunk.rows || 0),
+        };
+      },
+      initialValue: { data: [], meta: [], rows: 0 } as TQueryFnData,
+    }),
+    retry: 1,
     refetchOnWindowFocus: false,
-    retry: 1, // How does this work with infinite queries / pagination?
-    meta: {
-      clickhouseClient,
-    },
     ...options,
   });
 
-  const { data, isError, error, hasNextPage, isFetching, fetchNextPage } =
-    paginatedQuery;
-  if (isError && options?.onError) {
-    options.onError(error);
+  if (query.isError && options?.onError) {
+    options.onError(query.error);
   }
-
-  // Auto-fetch next pages until all of the data is fetched
-  useEffect(() => {
-    if (hasNextPage && !isFetching) {
-      fetchNextPage();
-    }
-  }, [hasNextPage, isFetching, fetchNextPage]);
-
-  const flattenedData = useMemo(() => flattenData(data), [data]);
-
-  return {
-    ...paginatedQuery,
-    data: flattenedData,
-  };
+  return query;
 }
 
 // TODO: Can we always search backwards or do we need to support forwards too?
