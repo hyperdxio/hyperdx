@@ -11,6 +11,7 @@ import {
   UseInfiniteQueryOptions,
 } from '@tanstack/react-query';
 
+import { timeBucketByGranularity } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
@@ -59,25 +60,23 @@ const flattenData = (data: TData | undefined): TQueryFnData | undefined => {
 const getTimeWindows = (
   config: ChartConfigWithOptDateRange,
 ): TimeWindow[] | undefined => {
-  if (!config.dateRange) return [];
+  // Granularity is required for pagination, otherwise we could break other group-bys
+  // Date range is required for pagination, otherwise we'd have infinite pages, or some unbounded page(s).
+  if (!config.dateRange || !config.granularity) return undefined;
 
   const [startDate, endDate] = config.dateRange;
-  return [
-    {
-      startTime: new Date(startDate),
-      endTime: new Date(
-        startDate.getTime() + (endDate.getTime() - startDate.getTime()) / 2,
-      ),
-      index: 0,
-    },
-    {
-      startTime: new Date(
-        startDate.getTime() + (endDate.getTime() - startDate.getTime()) / 2 + 1,
-      ),
-      endTime: new Date(endDate),
-      index: 1,
-    },
-  ];
+  const granularity = config.granularity; // could be 'auto'
+  const chartBuckets = timeBucketByGranularity(startDate, endDate, granularity); // TODO does this handle auto?
+
+  const chunkSize = 10;
+  const windows = [];
+  for (let i = chartBuckets.length; i >= 0; i -= chunkSize) {
+    const endTime = chartBuckets[i] ?? endDate;
+    const startTime = chartBuckets[Math.max(i - chunkSize, 0)];
+    windows.push({ startTime, endTime, index: windows.length });
+  }
+
+  return windows;
 };
 
 const getNextPageParam = (
@@ -117,6 +116,9 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   if (windows && windows[pageParam]) {
     const window = windows[pageParam];
     windowedConfig.dateRange = [window.startTime, window.endTime];
+    // Ensure that windows don't overlap by making all but the first (most recent) exclusive
+    windowedConfig.dateRangeEndInclusive =
+      pageParam === 0 ? config.dateRangeEndInclusive : false;
   }
 
   let query = null;
@@ -188,6 +190,7 @@ export function usePaginatedQueriedChartConfig(
     options.onError(error);
   }
 
+  // Auto-fetch next pages until all of the data is fetched
   useEffect(() => {
     if (hasNextPage && !isFetching) {
       fetchNextPage();
@@ -204,7 +207,15 @@ export function usePaginatedQueriedChartConfig(
 
 // TODO: Can we always search backwards or do we need to support forwards too?
 // TODO: Check if this is impacted by timezones or DST changes
-// TODO: What happens if date range is not provided?
+// TODO: What happens if date range is not provided? --> No pagination, or a default pagination?
+//   - In the sidebar onboarding checklist component
+//   - where else?
 // TODO: See if we can combine this with the useOffsetPaginatedQuery stuff
 // TODO: How does live mode affect this?
 // TODO: Can we remove the IS_MTVIEWS_ENABLED stuff?
+// TODO: How is caching working?
+// TODO: Granularity not provided --> use any default, or is this every automatically added?
+//  - In the patterns table
+//  - where else?
+// TODO: What if we group by something that isn't a date?
+// - Probably OK if we are also grouping by time, but not OK if we aren't also grouping by time?
