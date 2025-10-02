@@ -265,7 +265,7 @@ export const TimePicker = ({
         </Group>
         <Group gap={1} align="stretch">
           <Card w={180} p={0}>
-            <ScrollArea mah={300} scrollbarSize={5}>
+            <ScrollArea h={300} scrollbarSize={5}>
               <Stack gap={0} p="xs">
                 {relativeTimeOptions.map((item, index) =>
                   item === 'divider' ? (
