@@ -4,7 +4,7 @@ import { Text } from '@mantine/core';
 import { keepPreviousData } from '@tanstack/react-query';
 
 import { useTimeChartSettings } from '@/ChartUtils';
-import { usePaginatedQueriedChartConfig } from '@/hooks/usePaginatedChartConfig';
+import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
 export function useSearchTotalCount(
   config: ChartConfigWithDateRange,
@@ -21,7 +21,7 @@ export function useSearchTotalCount(
     data: totalCountData,
     isLoading,
     isError,
-  } = usePaginatedQueriedChartConfig(queriedConfig, {
+  } = useQueriedChartConfig(queriedConfig, {
     queryKey: [queryKeyPrefix, queriedConfig],
     staleTime: 1000 * 60 * 5,
     refetchOnWindowFocus: false,

@@ -1,6 +1,6 @@
-import { getGranularityAlignedTimeWindows } from '../usePaginatedChartConfig';
+import { getGranularityAlignedTimeWindows } from '../useChartConfig';
 
-describe('usePaginatedChartConfig', () => {
+describe('useChartConfig', () => {
   describe('getTimeWindows', () => {
     it('returns [undefined] if no dateRange is provided', () => {
       expect(
