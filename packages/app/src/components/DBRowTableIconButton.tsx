@@ -34,7 +34,7 @@ export const DBRowTableIconButton: React.FC<DBRowTableIconButtonProps> = ({
 
   const baseClasses =
     variant === 'copy'
-      ? cx('text-muted-hover', styles.copyButton, {
+      ? cx('text-muted-hover', styles.iconActionButton, {
           [styles.copied]: isActive,
         })
       : className;

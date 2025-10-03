@@ -43,6 +43,11 @@ export const DBRowTableFieldWithPopover = ({
     setTimeout(() => setIsCopied(false), 2000);
   };
 
+  const buttonSize = 20;
+  const gapSize = 4;
+  const numberOfButtons = 2;
+  const numberOfGaps = numberOfButtons - 1;
+
   return (
     <div
       className={cx(styles.fieldText, {
@@ -50,7 +55,12 @@ export const DBRowTableFieldWithPopover = ({
         [styles.wrapped]: wrapLinesEnabled,
       })}
     >
-      <Popover width={80} position="top-start" offset={5} opened={opened}>
+      <Popover
+        width={buttonSize * numberOfButtons + gapSize * numberOfGaps}
+        position="top-start"
+        offset={5}
+        opened={opened}
+      >
         <Popover.Target>
           <span
             onMouseEnter={handleMouseEnter}
@@ -69,7 +79,7 @@ export const DBRowTableFieldWithPopover = ({
           <div
             style={{
               display: 'flex',
-              gap: '4px',
+              gap: `${gapSize}px`,
               alignItems: 'center',
             }}
           >
