@@ -80,6 +80,7 @@ export const DBRowTableFieldWithPopover = ({
         position="top-start"
         offset={5}
         opened={opened}
+        zIndex={10}
       >
         <Popover.Target>
           <span
