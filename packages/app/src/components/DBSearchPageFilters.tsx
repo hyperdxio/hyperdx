@@ -559,10 +559,16 @@ const DBSearchPageFiltersComponent = ({
     usePinnedFilters(sourceId ?? null);
   const { width, startResize } = useResizable(16, 'left');
 
-  const { data: jsonColumns } = useJsonColumns(tcFromChartConfig(chartConfig));
-  const { data, isLoading, error } = useAllFields(
-    tcFromChartConfig(chartConfig),
-  );
+  const { data: jsonColumns } = useJsonColumns({
+    databaseName: chartConfig.from.databaseName,
+    tableName: chartConfig.from.tableName,
+    connectionId: chartConfig.connection,
+  });
+  const { data, isLoading, error } = useAllFields({
+    databaseName: chartConfig.from.databaseName,
+    tableName: chartConfig.from.tableName,
+    connectionId: chartConfig.connection,
+  });
 
   const { data: source } = useSource({ id: sourceId });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
