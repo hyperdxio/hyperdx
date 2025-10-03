@@ -1,0 +1,35 @@
+http:
+  routers:
+    next-router:
+      entryPoints:
+        - web
+      rule: 'PathPrefix(`/_next`)'
+      service: app-service
+      middlewares:
+        - add-basepath
+
+    api-router:
+      entryPoints:
+        - web
+      rule: 'PathPrefix(`/api`)'
+      service: app-service
+      middlewares:
+        - add-basepath
+
+    basepath-router:
+      entryPoints:
+        - web
+      rule: 'PathPrefix(`{{ env "HYPERDX_BASE_PATH" }}`)'
+      service: app-service
+
+  middlewares:
+    add-basepath:
+      addPrefix:
+        prefix: '{{ env "HYPERDX_BASE_PATH" }}'
+
+  services:
+    app-service:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: 'http://127.0.0.1:8080'
