@@ -722,8 +722,14 @@ export function chSqlToAliasMap(
         aliasMap[alias] = jsonReplacementsToExpressions.get(expression)!;
       }
     }
+    return aliasMap;
   } catch (e) {
-    console.error('Error parsing alias map', e, 'for query', chSql);
+    console.error(
+      'Error parsing alias map with JSON removed',
+      e,
+      'for query',
+      chSql,
+    );
   }
 
   return aliasMap;

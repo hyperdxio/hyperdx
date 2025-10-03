@@ -676,7 +676,7 @@ describe('utils', () => {
     });
   });
 
-  describe('findJsonAccesses', () => {
+  describe('findJsonExpressions', () => {
     it('should handle empty expression', () => {
       const sql = '';
       const actual = findJsonExpressions(sql);
@@ -684,14 +684,14 @@ describe('utils', () => {
       expect(actual).toEqual(expected);
     });
 
-    it('should find a single JSON access', () => {
+    it('should find a single JSON expression', () => {
       const sql = 'SELECT a.b.c as alias1, col2 as alias2 FROM table';
       const actual = findJsonExpressions(sql);
       const expected = [{ index: 7, expr: 'a.b.c' }];
       expect(actual).toEqual(expected);
     });
 
-    it('should find multiple JSON access', () => {
+    it('should find multiple JSON expression', () => {
       const sql = 'SELECT a.b.c, d.e, col2 FROM table';
       const actual = findJsonExpressions(sql);
       const expected = [
@@ -701,14 +701,14 @@ describe('utils', () => {
       expect(actual).toEqual(expected);
     });
 
-    it('should find JSON access with type specifier', () => {
+    it('should find JSON expression with type specifier', () => {
       const sql = 'SELECT a.b.:UInt64, col2 FROM table';
       const actual = findJsonExpressions(sql);
       const expected = [{ index: 7, expr: 'a.b.:UInt64' }];
       expect(actual).toEqual(expected);
     });
 
-    it('should find JSON access with complex type specifier', () => {
+    it('should find JSON expression with complex type specifier', () => {
       const sql = 'SELECT a.b.:Array(String)  , col2 FROM table';
       const actual = findJsonExpressions(sql);
       const expected = [{ index: 7, expr: 'a.b.:Array(String)' }];
@@ -848,6 +848,20 @@ describe('utils', () => {
       const sql = 'SELECT *, a.b.c FROM table';
       const actual = findJsonExpressions(sql);
       const expected = [{ index: 10, expr: 'a.b.c' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should not find a decimal number expression', () => {
+      const sql = 'SELECT 10.50, 2.3, 2, 1.5 - a.b FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [{ index: 28, expr: 'a.b' }];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should not find a . as a JSON expression', () => {
+      const sql = 'SELECT . FROM table';
+      const actual = findJsonExpressions(sql);
+      const expected = [];
       expect(actual).toEqual(expected);
     });
   });

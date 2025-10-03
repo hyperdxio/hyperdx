@@ -100,15 +100,14 @@ const isJsonExpression = (expr: string) => {
     if (c === '"' && !isInBacktick) {
       isInDoubleQuote = !isInDoubleQuote;
       current += c;
-      continue;
     } else if (c === '`' && !isInDoubleQuote) {
       isInBacktick = !isInBacktick;
       current += c;
-      continue;
     } else if (c === '.' && !isInDoubleQuote && !isInBacktick) {
       parts.push(current);
       current = '';
-      continue;
+    } else {
+      current += c;
     }
   }
 
@@ -116,7 +115,7 @@ const isJsonExpression = (expr: string) => {
     parts.push(current);
   }
 
-  return parts.length > 1;
+  return parts.filter(p => p.trim().length > 0 && isNaN(Number(p))).length > 1;
 };
 
 /**
