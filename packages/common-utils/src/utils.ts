@@ -1,5 +1,6 @@
 // Port from ChartUtils + source.ts
 import { add as fnsAdd, format as fnsFormat } from 'date-fns';
+import { is } from 'date-fns/locale';
 import { formatInTimeZone } from 'date-fns-tz';
 import { z } from 'zod';
 
@@ -93,11 +94,16 @@ export const isJsonExpression = (expr: string) => {
 
   let isInDoubleQuote = false;
   let isInBacktick = false;
+  let isInSingleQuote = false;
 
   const parts: string[] = [];
   let current = '';
   for (const c of expr) {
-    if (c === '"' && !isInBacktick) {
+    if (c === "'" && !isInDoubleQuote && !isInBacktick) {
+      isInSingleQuote = !isInSingleQuote;
+    } else if (isInSingleQuote) {
+      continue;
+    } else if (c === '"' && !isInBacktick) {
       isInDoubleQuote = !isInDoubleQuote;
       current += c;
     } else if (c === '`' && !isInDoubleQuote) {
@@ -115,7 +121,16 @@ export const isJsonExpression = (expr: string) => {
     parts.push(current);
   }
 
-  return parts.filter(p => p.trim().length > 0 && isNaN(Number(p))).length > 1;
+  if (parts.some(p => p.trim().length === 0)) return false;
+
+  return (
+    parts.filter(
+      p =>
+        p.trim().length > 0 &&
+        isNaN(Number(p)) &&
+        !(p.startsWith("'") && p.endsWith("'")),
+    ).length > 1
+  );
 };
 
 /**

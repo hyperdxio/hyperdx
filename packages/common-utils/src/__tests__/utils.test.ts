@@ -790,6 +790,16 @@ describe('utils', () => {
       expect(isJsonExpression('  col.key  ')).toBe(true);
       expect(isJsonExpression('\ta.b\t')).toBe(true);
     });
+
+    it('should correctly handle single quoted strings', () => {
+      expect(isJsonExpression("'a'.b.c")).toBe(false);
+      expect(isJsonExpression("'a'.'b'")).toBe(false);
+      expect(isJsonExpression("'a' . 'b'")).toBe(false);
+      expect(isJsonExpression("'")).toBe(false);
+      expect(isJsonExpression("''")).toBe(false);
+      expect(isJsonExpression("`'a'`.b")).toBe(true);
+      expect(isJsonExpression("`'a`.b")).toBe(true);
+    });
   });
 
   describe('findJsonExpressions', () => {
