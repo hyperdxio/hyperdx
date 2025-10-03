@@ -123,7 +123,7 @@ export function useQueriedChartConfig(
   const clickhouseClient = useClickhouseClient();
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
-    queryKey: ['', config],
+    queryKey: [config],
     queryFn: streamedQuery({
       streamFn: context =>
         fetchDataInChunks(config, clickhouseClient, context.signal),

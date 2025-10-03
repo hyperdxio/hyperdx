@@ -29,7 +29,7 @@ function DBTimeChartComponent({
   logReferenceTimestamp,
   onSettled,
   onTimeRangeSelect,
-  queryKeyPrefix = '',
+  queryKeyPrefix,
   referenceLines,
   setDisplayType,
   showDisplaySwitcher = true,
