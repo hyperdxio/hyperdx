@@ -200,6 +200,26 @@ describe('chSqlToAliasMap - alias unit test', () => {
     };
     expect(res).toEqual(aliasMap);
   });
+
+  it('Alias, with JSON expressions', () => {
+    const chSqlInput: ChSql = {
+      sql: "SELECT Timestamp as ts,ResourceAttributes.service.name as service,Body,TimestampTime,ServiceName,TimestampTime FROM {HYPERDX_PARAM_1544803905:Identifier}.{HYPERDX_PARAM_129845054:Identifier} WHERE (TimestampTime >= fromUnixTimestamp64Milli({HYPERDX_PARAM_1456399765:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({HYPERDX_PARAM_1719057412:Int64})) AND (`ResourceAttributes`.`service`.`name` = 'serviceName') ORDER BY TimestampTime DESC LIMIT {HYPERDX_PARAM_49586:Int32} OFFSET {HYPERDX_PARAM_48:Int32}",
+      params: {
+        HYPERDX_PARAM_1544803905: 'default',
+        HYPERDX_PARAM_129845054: 'otel_logs',
+        HYPERDX_PARAM_1456399765: 1743038742000,
+        HYPERDX_PARAM_1719057412: 1743040542000,
+        HYPERDX_PARAM_49586: 200,
+        HYPERDX_PARAM_48: 0,
+      },
+    };
+    const res = chSqlToAliasMap(chSqlInput);
+    const aliasMap = {
+      ts: 'Timestamp',
+      service: 'ResourceAttributes.service.name',
+    };
+    expect(res).toEqual(aliasMap);
+  });
 });
 
 describe('computeRatio', () => {

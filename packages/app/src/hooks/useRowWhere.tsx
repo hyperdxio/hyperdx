@@ -66,7 +66,7 @@ export function processRowToWhereClause(
 
           // Currently we can't distinguish null or 'null'
           if (value === 'null') {
-            return SqlString.format(`isNull(??)`, [column]);
+            return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
           }
           if (value.length > 1000 || column.length > 1000) {
             console.warn('Search value/object key too large.');

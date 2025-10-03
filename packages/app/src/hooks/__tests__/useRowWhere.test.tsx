@@ -154,7 +154,7 @@ describe('processRowToWhereClause', () => {
     const row = { dynamic_field: 'null' };
     const result = processRowToWhereClause(row, columnMap);
 
-    expect(result).toBe('isNull(`dynamic_field`)');
+    expect(result).toBe('isNull(dynamic_field)');
   });
 
   it('should handle Dynamic columns with quoted string', () => {
