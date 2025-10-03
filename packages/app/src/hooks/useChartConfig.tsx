@@ -5,7 +5,10 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import {
+  DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+  renderChartConfig,
+} from '@hyperdx/common-utils/dist/renderChartConfig';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import {
@@ -14,7 +17,10 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
-import { toStartOfInterval } from '@/ChartUtils';
+import {
+  convertDateRangeToGranularityString,
+  toStartOfInterval,
+} from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
@@ -39,17 +45,24 @@ export const getGranularityAlignedTimeWindows = (
   >,
   windowDurationsSeconds?: number[],
 ): TimeWindow[] | [undefined] => {
-  // Granularity is required for pagination, otherwise we could break other group-bys
+  // Granularity is required for pagination, otherwise we could break other group-bys.
   // Date range is required for pagination, otherwise we'd have infinite pages, or some unbounded page(s).
   if (!config.dateRange || !config.granularity) return [undefined];
 
   const [startDate, endDate] = config.dateRange;
-  const granularity = config.granularity;
   const windowsUnaligned = generateTimeWindowsDescending(
     startDate,
     endDate,
     windowDurationsSeconds,
   );
+
+  const granularity =
+    config.granularity === 'auto' // TODO test this
+      ? convertDateRangeToGranularityString(
+          config.dateRange,
+          DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+        )
+      : config.granularity;
 
   const windows = [];
   for (const [index, window] of windowsUnaligned.entries()) {
@@ -137,7 +150,7 @@ export function useQueriedChartConfig(
       initialValue: { data: [], meta: [], rows: 0 } as TQueryFnData,
       reducer: (acc, chunk) => {
         return {
-          data: [...(acc?.data || []), ...(chunk.data || [])],
+          data: [...(chunk.data || []), ...(acc?.data || [])],
           meta: chunk.meta,
           rows: (acc?.rows || 0) + (chunk.rows || 0),
         };
@@ -155,13 +168,8 @@ export function useQueriedChartConfig(
   return query;
 }
 
-// TODO: Can we always search backwards or do we need to support forwards too?
 // TODO: Check if this is impacted by timezones or DST changes --> Everything UTC? Should be fine.
-// TODO: See if we can combine this with the useOffsetPaginatedQuery stuff
-// TODO: How does live mode affect this?
-// TODO: Can we remove the IS_MTVIEWS_ENABLED stuff?
-// TODO: How is caching working?
-// Test that this works as expected with no pagination in place (eg. no granularity or no date range)
+// TODO: Test that this works as expected with no pagination in place (eg. no granularity or no date range)
 
 export function useRenderedSqlChartConfig(
   config: ChartConfigWithOptDateRange,
