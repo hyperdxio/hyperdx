@@ -363,13 +363,31 @@ function InsertsTab({
           </Text>
           <DBTableChart
             config={{
+              dateRange: searchedTimeRange,
               select: [
-                `count() as "Part Count"`,
-                `sum(rows) as Rows`,
-                'database as Database',
-                'table as Table',
-                'partition as Partition',
-              ].join(','),
+                {
+                  aggFn: 'count',
+                  valueExpression: '',
+                  alias: 'Part Count',
+                },
+                {
+                  aggFn: 'sum',
+                  valueExpression: 'rows',
+                  alias: 'Rows',
+                },
+                {
+                  valueExpression: 'database',
+                  alias: 'Database',
+                },
+                {
+                  valueExpression: 'table',
+                  alias: 'Table',
+                },
+                {
+                  valueExpression: 'partition',
+                  alias: 'Partition',
+                },
+              ],
               from: {
                 databaseName: 'system',
                 tableName: 'parts',
@@ -661,10 +679,22 @@ function ClickhousePage() {
                 <DBTableChart
                   config={{
                     select: [
-                      `count() as "Count"`,
-                      `sum(query_duration_ms) as "Total Duration (ms)"`,
-                      `any(query) as "Query Example"`,
-                    ].join(','),
+                      {
+                        aggFn: 'count',
+                        valueExpression: '',
+                        alias: `Count`,
+                      },
+                      {
+                        aggFn: 'sum',
+                        valueExpression: 'query_duration_ms',
+                        alias: `Total Duration (ms)`,
+                      },
+                      {
+                        aggFn: 'any',
+                        valueExpression: 'query',
+                        alias: `Query Example`,
+                      },
+                    ],
                     dateRange: searchedTimeRange,
                     from,
                     where: `(

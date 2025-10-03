@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import {
   ChartConfigWithDateRange,
+  ChatConfigWithOptTimestamp,
   DashboardFilter,
   DashboardFilterSchema,
   DashboardSchema,
@@ -418,10 +419,11 @@ export const removeTrailingDirection = (s: string) => {
 };
 
 export const isTimestampExpressionInFirstOrderBy = (
-  config: ChartConfigWithDateRange,
+  config: ChatConfigWithOptTimestamp,
 ) => {
   const firstOrderingItem = getFirstOrderingItem(config.orderBy);
-  if (!firstOrderingItem) return false;
+  if (!firstOrderingItem || config.timestampValueExpression == null)
+    return false;
 
   const firstOrderingExpression =
     typeof firstOrderingItem === 'string'
