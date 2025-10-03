@@ -237,6 +237,45 @@ describe('useOffsetPaginatedQuery', () => {
       expect(result.current.data?.window.direction).toEqual('DESC');
     });
 
+    it('should finish pagination when windowing is not being used', async () => {
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2024-01-01T00:00:00Z'),
+          new Date('2024-01-02T00:00:00Z'),
+        ] as [Date, Date],
+        orderBy: 'ServiceName', // Not using windowing
+      });
+
+      // Mock the reader to return empty data for the first page
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['timestamp', 'message'] },
+            { json: () => ['DateTime', 'String'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      // Should have data from the entire range, without windowing
+      expect(result.current.data).toBeDefined();
+      expect(result.current.data?.window.windowIndex).toBe(0);
+      expect(result.current.data?.window.startTime).toEqual(
+        new Date('2024-01-01T00:00:00Z'), // startDate
+      );
+      expect(result.current.data?.window.endTime).toEqual(
+        new Date('2024-01-02T00:00:00Z'), // endDate
+      );
+      expect(result.current.data?.window.direction).toEqual('DESC');
+      expect(result.current.hasNextPage).toEqual(false); // There should be no more pages, since no results were found
+    });
+
     it('should handle very large time ranges with progressive bucketing', async () => {
       const config = createMockChartConfig({
         dateRange: [
