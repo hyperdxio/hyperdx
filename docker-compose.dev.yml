@@ -83,5 +83,28 @@ services:
       interval: 1s
       timeout: 1s
       retries: 60
+
+  # nginx:
+  #   image: nginx:alpine
+  #   ports:
+  #     - '4040:4040'
+  #   volumes:
+  #     - ./proxy/nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+  #   environment:
+  #     HYPERDX_BASE_PATH: ${HYPERDX_BASE_PATH}
+  #   network_mode: host
+  #   restart: always
+
+  # traefik:
+  #   image: traefik:latest
+  #   ports:
+  #     - '4040:4040'
+  #   volumes:
+  #     - ./proxy/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+  #     - ./proxy/traefik/config.yml:/etc/traefik/dynamic/config.yml:ro
+  #   environment:
+  #     HYPERDX_BASE_PATH: ${HYPERDX_BASE_PATH}
+  #   network_mode: host
+  #   restart: always
 networks:
   internal:
