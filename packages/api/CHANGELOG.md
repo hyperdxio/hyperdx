@@ -1,5 +1,14 @@
 # @hyperdx/api
 
+## 2.7.0
+
+### Patch Changes
+
+- e032af55: Add new logging pararmeter for otel collector
+- Updated dependencies [35c42222]
+- Updated dependencies [5210bb86]
+  - @hyperdx/common-utils@0.7.1
+
 ## 2.6.0
 
 ### Minor Changes

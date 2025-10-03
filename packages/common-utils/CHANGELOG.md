@@ -1,5 +1,12 @@
 # @hyperdx/common-utils
 
+## 0.7.1
+
+### Patch Changes
+
+- 35c42222: fix: Improve table key parsing
+- 5210bb86: refactor: clean up table connections
+
 ## 0.7.0
 
 ### Minor Changes

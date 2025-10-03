@@ -1,5 +1,22 @@
 # @hyperdx/app
 
+## 2.7.0
+
+### Minor Changes
+
+- 730325a5: Improve SourceSchemaPreview button integration in SourceSelect and DBTableSelect components.
+
+### Patch Changes
+
+- 35c42222: fix: Improve table key parsing
+- 1cda1485: Fixes scrolling in TimePicker
+- bd940f30: style: Improve dashboard filter modal UX
+- 62eddcf2: fix: Fix infinite querying on non-windowed searches
+- 5210bb86: refactor: clean up table connections
+- Updated dependencies [35c42222]
+- Updated dependencies [5210bb86]
+  - @hyperdx/common-utils@0.7.1
+
 ## 2.6.0
 
 ### Minor Changes
