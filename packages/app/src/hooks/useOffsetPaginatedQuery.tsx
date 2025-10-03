@@ -177,9 +177,10 @@ function getNextPageParam(
     };
   }
 
-  // If no more results in current window, move to next window
+  // If no more results in current window, move to next window (if windowing is being used)
+  const shouldUseWindowing = isTimestampExpressionInFirstOrderBy(config);
   const nextWindowIndex = currentWindow.windowIndex + 1;
-  if (nextWindowIndex < windows.length) {
+  if (shouldUseWindowing && nextWindowIndex < windows.length) {
     return {
       windowIndex: nextWindowIndex,
       offset: 0,
