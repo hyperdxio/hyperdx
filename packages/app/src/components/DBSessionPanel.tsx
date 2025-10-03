@@ -22,7 +22,7 @@ export const useSessionId = ({
   const { data: source } = useSource({ id: sourceId });
 
   const config = useMemo(() => {
-    if (!source) {
+    if (!source || !traceId) {
       return;
     }
     return {
