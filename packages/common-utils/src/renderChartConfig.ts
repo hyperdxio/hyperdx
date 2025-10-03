@@ -29,6 +29,9 @@ import {
   splitAndTrimWithBracket,
 } from '@/utils';
 
+/** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
+export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
+
 // FIXME: SQLParser.ColumnRef is incomplete
 type ColumnRef = SQLParser.ColumnRef & {
   array_index?: {
@@ -451,7 +454,10 @@ function timeBucketExpr({
   const unsafeInterval = {
     UNSAFE_RAW_SQL:
       interval === 'auto' && Array.isArray(dateRange)
-        ? convertDateRangeToGranularityString(dateRange, 60)
+        ? convertDateRangeToGranularityString(
+            dateRange,
+            DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+          )
         : interval,
   };
 
@@ -911,7 +917,10 @@ function renderDeltaExpression(
 ) {
   const interval =
     chartConfig.granularity === 'auto' && Array.isArray(chartConfig.dateRange)
-      ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
+      ? convertDateRangeToGranularityString(
+          chartConfig.dateRange,
+          DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+        )
       : chartConfig.granularity;
   const intervalInSeconds = convertGranularityToSeconds(interval ?? '');
 
@@ -1058,7 +1067,10 @@ async function translateMetricChartConfig(
         includedDataInterval:
           chartConfig.granularity === 'auto' &&
           Array.isArray(chartConfig.dateRange)
-            ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
+            ? convertDateRangeToGranularityString(
+                chartConfig.dateRange,
+                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+              )
             : chartConfig.granularity,
       },
       metadata,
@@ -1172,7 +1184,10 @@ async function translateMetricChartConfig(
       includedDataInterval:
         chartConfig.granularity === 'auto' &&
         Array.isArray(chartConfig.dateRange)
-          ? convertDateRangeToGranularityString(chartConfig.dateRange, 60)
+          ? convertDateRangeToGranularityString(
+              chartConfig.dateRange,
+              DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+            )
           : chartConfig.granularity,
     } as ChartConfigWithOptDateRangeEx;
 
