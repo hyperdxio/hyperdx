@@ -21,9 +21,13 @@ export const DBRowTableFieldWithPopover = ({
 }: DBRowTableFieldWithPopoverProps) => {
   const [opened, { close, open }] = useDisclosure(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [hoverDisabled, setHoverDisabled] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout>();
+  const hoverDisableTimeoutRef = useRef<NodeJS.Timeout>();
 
   const handleMouseEnter = () => {
+    if (hoverDisabled) return;
+
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
@@ -34,6 +38,22 @@ export const DBRowTableFieldWithPopover = ({
     timeoutRef.current = setTimeout(() => {
       close();
     }, 100); // Small delay to allow moving to popover
+  };
+
+  const handleClick = () => {
+    close();
+    setHoverDisabled(true);
+
+    if (hoverDisableTimeoutRef.current) {
+      clearTimeout(hoverDisableTimeoutRef.current);
+    }
+
+    // Prevent the popover from immediately reopening on hover for 1 second
+    // This gives users time to move their cursor or interact with modals
+    // without the popover interfering with their intended action
+    hoverDisableTimeoutRef.current = setTimeout(() => {
+      setHoverDisabled(false);
+    }, 1000);
   };
 
   const copyFieldValue = async () => {
@@ -65,6 +85,7 @@ export const DBRowTableFieldWithPopover = ({
           <span
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
+            onClick={handleClick}
             style={{ cursor: 'pointer' }}
           >
             {children}
