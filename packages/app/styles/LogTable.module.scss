@@ -9,9 +9,10 @@ $button-height: 18px;
 }
 
 .tableHead {
-  background: inherit;
+  background: var(--mantine-color-dark-8);
   position: sticky;
   top: 0;
+  z-index: 200;
 }
 
 .tableRow {

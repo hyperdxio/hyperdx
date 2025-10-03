@@ -44,6 +44,7 @@ import {
   Tooltip as MantineTooltip,
   UnstyledButton,
 } from '@mantine/core';
+import { IconGripVertical } from '@tabler/icons-react';
 import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
   ColumnDef,
@@ -744,7 +745,7 @@ export const RawLogTable = memo(
                               width: 12,
                             }}
                           >
-                            <i className="bi bi-three-dots-vertical" />
+                            <IconGripVertical size={12} />
                           </div>
                         )}
                       {headerIndex === headerGroup.headers.length - 1 && (
