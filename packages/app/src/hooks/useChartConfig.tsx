@@ -127,6 +127,14 @@ export function useQueriedChartConfig(
     queryFn: streamedQuery({
       streamFn: context =>
         fetchDataInChunks(config, clickhouseClient, context.signal),
+      /**
+       * This mode ensures that data remains in the cache until the next full streamed result is available.
+       * By default, the cache would be cleared before new data starts arriving, which results in the query briefly
+       * going back into the loading/pending state when multiple observers are sharing the query result resulting
+       * in flickering or render loops.
+       */
+      refetchMode: 'replace',
+      initialValue: { data: [], meta: [], rows: 0 } as TQueryFnData,
       reducer: (acc, chunk) => {
         return {
           data: [...(acc?.data || []), ...(chunk.data || [])],
@@ -134,7 +142,6 @@ export function useQueriedChartConfig(
           rows: (acc?.rows || 0) + (chunk.rows || 0),
         };
       },
-      initialValue: { data: [], meta: [], rows: 0 } as TQueryFnData,
     }),
     retry: 1,
     refetchOnWindowFocus: false,
@@ -144,23 +151,17 @@ export function useQueriedChartConfig(
   if (query.isError && options?.onError) {
     options.onError(query.error);
   }
+
   return query;
 }
 
 // TODO: Can we always search backwards or do we need to support forwards too?
-// TODO: Check if this is impacted by timezones or DST changes
-// TODO: What happens if date range is not provided? --> No pagination, or a default pagination?
-//   - In the sidebar onboarding checklist component
-//   - where else?
+// TODO: Check if this is impacted by timezones or DST changes --> Everything UTC? Should be fine.
 // TODO: See if we can combine this with the useOffsetPaginatedQuery stuff
 // TODO: How does live mode affect this?
 // TODO: Can we remove the IS_MTVIEWS_ENABLED stuff?
 // TODO: How is caching working?
-// TODO: Granularity not provided --> use any default, or is this every automatically added?
-//  - In the patterns table
-//  - where else?
-// TODO: What if we group by something that isn't a date?
-// - Probably OK if we are also grouping by time, but not OK if we aren't also grouping by time?
+// Test that this works as expected with no pagination in place (eg. no granularity or no date range)
 
 export function useRenderedSqlChartConfig(
   config: ChartConfigWithOptDateRange,
