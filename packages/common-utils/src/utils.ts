@@ -88,7 +88,7 @@ export function getFirstTimestampValueExpression(valueExpression: string) {
 }
 
 /** Returns true if the given expression is a JSON expression, eg. `col.key.nestedKey` or "json_col"."key" */
-const isJsonExpression = (expr: string) => {
+export const isJsonExpression = (expr: string) => {
   if (!expr.includes('.')) return false;
 
   let isInDoubleQuote = false;

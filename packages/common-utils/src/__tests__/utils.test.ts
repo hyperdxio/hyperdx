@@ -14,6 +14,7 @@ import {
   formatDate,
   getFirstOrderingItem,
   isFirstOrderByAscending,
+  isJsonExpression,
   isTimestampExpressionInFirstOrderBy,
   replaceJsonExpressions,
   splitAndTrimCSV,
@@ -673,6 +674,121 @@ describe('utils', () => {
           },
         ],
       });
+    });
+  });
+
+  describe('isJsonExpression', () => {
+    it('should return false for expressions without dots', () => {
+      expect(isJsonExpression('col')).toBe(false);
+      expect(isJsonExpression('columnName')).toBe(false);
+      expect(isJsonExpression('column_name')).toBe(false);
+    });
+
+    it('should return true for simple JSON expressions', () => {
+      expect(isJsonExpression('col.key')).toBe(true);
+      expect(isJsonExpression('column.property')).toBe(true);
+    });
+
+    it('should return true for nested JSON expressions', () => {
+      expect(isJsonExpression('col.key.nestedKey')).toBe(true);
+      expect(isJsonExpression('a.b.c')).toBe(true);
+      expect(isJsonExpression('json_col.col3.c')).toBe(true);
+    });
+
+    it('should return true for JSON expressions with double quotes', () => {
+      expect(isJsonExpression('"json_col"."key"')).toBe(true);
+      expect(isJsonExpression('"a"."b"."cde"')).toBe(true);
+      expect(isJsonExpression('"a_b.2c".b."c."')).toBe(true);
+    });
+
+    it('should return true for JSON expressions with backticks', () => {
+      expect(isJsonExpression('`a`.`b`.`cde`')).toBe(true);
+      expect(isJsonExpression('`col`.`key`')).toBe(true);
+    });
+
+    it('should return true for mixed quoting styles', () => {
+      expect(isJsonExpression('"a".b.`c`')).toBe(true);
+      expect(isJsonExpression('a."b".c')).toBe(true);
+    });
+
+    it('should return false for expressions with only one non-numeric part', () => {
+      expect(isJsonExpression('col.')).toBe(false);
+      expect(isJsonExpression('.col')).toBe(false);
+    });
+
+    it('should return false for decimal numbers', () => {
+      expect(isJsonExpression('10.50')).toBe(false);
+      expect(isJsonExpression('2.3')).toBe(false);
+      expect(isJsonExpression('1.5')).toBe(false);
+    });
+
+    it('should return false for table.column references with numeric column', () => {
+      expect(isJsonExpression('table.1')).toBe(false);
+    });
+
+    it('should return false for expressions with empty parts', () => {
+      expect(isJsonExpression('.')).toBe(false);
+      expect(isJsonExpression('..')).toBe(false);
+      expect(isJsonExpression('a..')).toBe(false);
+    });
+
+    it('should handle dots inside double quotes correctly', () => {
+      expect(isJsonExpression('"a.b.c"')).toBe(false);
+      expect(isJsonExpression('"a.b"."c.d"')).toBe(true);
+    });
+
+    it('should handle dots inside backticks correctly', () => {
+      expect(isJsonExpression('`a.b.c`')).toBe(false);
+      expect(isJsonExpression('`a.b`.`c.d`')).toBe(true);
+    });
+
+    it('should return true for mixed quoted and unquoted parts', () => {
+      expect(isJsonExpression('"col.with.dots".key')).toBe(true);
+      expect(isJsonExpression('col."key.with.dots"')).toBe(true);
+    });
+
+    it('should handle complex quoted identifiers', () => {
+      expect(isJsonExpression('"table.name"."column.name"."nested"')).toBe(
+        true,
+      );
+    });
+
+    it('should handle expressions with underscores and numbers', () => {
+      expect(isJsonExpression('col_1.key_2.nested_3')).toBe(true);
+      expect(isJsonExpression('table123.column456')).toBe(true);
+    });
+
+    it('should return false for single quoted identifier', () => {
+      expect(isJsonExpression('"singleColumn"')).toBe(false);
+      expect(isJsonExpression('`singleColumn`')).toBe(false);
+    });
+
+    it('should handle type specifiers', () => {
+      expect(isJsonExpression('a.b.:UInt64')).toBe(true);
+      expect(isJsonExpression('col.key.:String')).toBe(true);
+    });
+
+    it('should handle whitespace in parts', () => {
+      expect(isJsonExpression('a . b')).toBe(true);
+      expect(isJsonExpression('a.b. c')).toBe(true);
+    });
+
+    it('should handle leading whitespace', () => {
+      expect(isJsonExpression(' a.b.c')).toBe(true);
+      expect(isJsonExpression('  col.key')).toBe(true);
+      expect(isJsonExpression('\ta.b')).toBe(true);
+    });
+
+    it('should handle trailing whitespace', () => {
+      expect(isJsonExpression('a.b.c ')).toBe(true);
+      expect(isJsonExpression('col.key  ')).toBe(true);
+      expect(isJsonExpression('a.b\t')).toBe(true);
+    });
+
+    it('should handle leading and trailing whitespace', () => {
+      expect(isJsonExpression(' a.b.c ')).toBe(true);
+      expect(isJsonExpression('  col.key  ')).toBe(true);
+      expect(isJsonExpression('\ta.b\t')).toBe(true);
     });
   });
 
