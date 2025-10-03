@@ -68,21 +68,19 @@ export function processRowToWhereClause(
           if (value === 'null') {
             return SqlString.format(`isNull(??)`, [column]);
           }
-          if (value.length > 1000 || column.length > 1000) {
-            console.warn('Search value/object key too large.');
-          }
           // TODO: update when JSON type have new version
           // will not work for array/object dyanmic data
 
           // escaped strings needs raw, becuase sqlString will add another layer of escaping
           // data other than array/object will alwayas return with dobule quote(because of CH)
-          // remove dobule qoute to search correctly
-          return SqlString.format(`toString(?)='?'`, [
-            SqlString.raw(valueExpr),
+          // remove double quotes if present and escape single quotes
+          return SqlString.format(`toString(??)='?'`, [
+            valueExpr,
             SqlString.raw(
-              value[0] === '"' && value[value.length - 1] === '"'
+              (value[0] === '"' && value[value.length - 1] === '"'
                 ? value.slice(1, -1)
-                : value,
+                : value
+              ).replace(/'/g, "\\'"),
             ),
           ]);
         default:
