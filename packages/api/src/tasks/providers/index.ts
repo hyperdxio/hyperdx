@@ -14,6 +14,7 @@ import DefaultAlertProvider from '@/tasks/providers/default';
 import logger from '@/utils/logger';
 
 import { AggregatedAlertHistory } from '../checkAlerts';
+import { CheckAlertsTaskArgs } from '../types';
 
 export enum AlertTaskType {
   SAVED_SEARCH,
@@ -81,7 +82,10 @@ export interface AlertProvider {
   getWebhooks(teamId: string | ObjectId): Promise<Map<string, IWebhook>>;
 
   /** Create and return an authenticated ClickHouse client */
-  getClickHouseClient(connection: IConnection): Promise<ClickhouseClient>;
+  getClickHouseClient(
+    connection: IConnection,
+    requestTimeout?: number,
+  ): Promise<ClickhouseClient>;
 }
 
 const ADDITIONAL_PROVIDERS: Record<string, () => AlertProvider> = {
