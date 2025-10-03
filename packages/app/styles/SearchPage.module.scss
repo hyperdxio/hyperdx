@@ -156,7 +156,7 @@
   background-color: $bg-hdx-dark;
   padding-inline: var(--mantine-spacing-xs);
   padding-block: var(--mantine-spacing-xxs);
-  z-index: 20;
+  z-index: 1;
 }
 
 .timeChartContainer {
@@ -164,11 +164,11 @@
   padding-inline: var(--mantine-spacing-xs);
   padding-block: var(--mantine-spacing-xxs);
   height: 120px;
-  z-index: 20;
+  z-index: 1;
 }
 
 .searchForm {
   background-color: $body-bg;
-  z-index: 20;
+  z-index: 1;
   padding-bottom: var(--mantine-spacing-xs);
 }
