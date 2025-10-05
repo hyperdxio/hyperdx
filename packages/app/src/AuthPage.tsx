@@ -33,7 +33,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   const isLoggedIn = Boolean(!teamIsLoading && team && !team.isDemo);
 
   useEffect(() => {
-    if (isLoggedIn) {
+    if (isLoggedIn || IS_SELF_HOSTED_MODE) {
       router.push('/search');
     }
   }, [isLoggedIn, router]);
