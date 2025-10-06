@@ -1164,11 +1164,6 @@ function DBSqlRowTableComponent({
 
   const orderByArray = useMemo(() => (orderBy ? [orderBy] : []), [orderBy]);
 
-  useEffect(() => {
-    setOrderBy(initialSortBy?.at(0) ?? null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceId]);
-
   const _onSortingChange = useCallback(
     (v: SortingState | null) => {
       onSortingChange?.(v);
@@ -1176,6 +1171,14 @@ function DBSqlRowTableComponent({
     },
     [setOrderBy, onSortingChange],
   );
+
+  const prevSourceId = usePrevious(sourceId);
+  useEffect(() => {
+    if (prevSourceId && prevSourceId !== sourceId) {
+      _onSortingChange(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceId]);
 
   const mergedConfigObj = useMemo(() => {
     const base = {
