@@ -1,6 +1,6 @@
 import React from 'react';
 import cx from 'classnames';
-import { UnstyledButton } from '@mantine/core';
+import { Tooltip, UnstyledButton } from '@mantine/core';
 import { IconCheck } from '@tabler/icons-react';
 
 import styles from '../../../styles/LogTable.module.scss';
@@ -40,14 +40,23 @@ export const DBRowTableIconButton: React.FC<DBRowTableIconButtonProps> = ({
       : className;
 
   return (
-    <UnstyledButton
-      onClick={handleClick}
-      className={baseClasses}
-      title={title}
-      tabIndex={tabIndex}
+    <Tooltip
+      label={title}
+      position="top"
+      withArrow
+      disabled={!title}
+      openDelay={300}
+      closeDelay={100}
+      fz="xs"
     >
-      {isActive ? <IconCheck size={iconSize} /> : children}
-    </UnstyledButton>
+      <UnstyledButton
+        onClick={handleClick}
+        className={baseClasses}
+        tabIndex={tabIndex}
+      >
+        {isActive ? <IconCheck size={iconSize} /> : children}
+      </UnstyledButton>
+    </Tooltip>
   );
 };
 

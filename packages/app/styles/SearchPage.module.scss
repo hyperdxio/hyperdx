@@ -14,7 +14,7 @@
   flex-grow: 0;
   border-right: 1px solid var(--mantine-color-dark-6);
   overflow: hidden;
-  z-index: 1;
+  z-index: 3; // higher z-index to be above other elements
 
   :global {
     .mantine-TextInput-wrapper {
@@ -156,7 +156,7 @@
   background-color: $bg-hdx-dark;
   padding-inline: var(--mantine-spacing-xs);
   padding-block: var(--mantine-spacing-xxs);
-  z-index: 1;
+  z-index: 3;
 }
 
 .timeChartContainer {
@@ -164,11 +164,11 @@
   padding-inline: var(--mantine-spacing-xs);
   padding-block: var(--mantine-spacing-xxs);
   height: 120px;
-  z-index: 1;
+  z-index: 3;
 }
 
 .searchForm {
   background-color: $body-bg;
-  z-index: 1;
+  z-index: 4;
   padding-bottom: var(--mantine-spacing-xs);
 }

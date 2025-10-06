@@ -1,8 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useContext, useRef, useState } from 'react';
 import cx from 'classnames';
 import { Popover } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCopy, IconFilterPlus } from '@tabler/icons-react';
+import { IconCopy, IconFilterPlus, IconFilterX } from '@tabler/icons-react';
+
+import { RowSidePanelContext } from '../DBRowSidePanel';
 
 import DBRowTableIconButton from './DBRowTableIconButton';
 
@@ -12,18 +14,26 @@ export interface DBRowTableFieldWithPopoverProps {
   children: React.ReactNode;
   cellValue: any;
   wrapLinesEnabled: boolean;
+  columnName?: string;
 }
 
 export const DBRowTableFieldWithPopover = ({
   children,
   cellValue,
   wrapLinesEnabled,
+  columnName,
 }: DBRowTableFieldWithPopoverProps) => {
   const [opened, { close, open }] = useDisclosure(false);
   const [isCopied, setIsCopied] = useState(false);
   const [hoverDisabled, setHoverDisabled] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout>();
   const hoverDisableTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Get filter functionality from context
+  const { onPropertyAddClick } = useContext(RowSidePanelContext);
+
+  // Check if we have both the column name and filter function available
+  const canFilter = columnName && onPropertyAddClick && cellValue != null;
 
   const handleMouseEnter = () => {
     if (hoverDisabled) return;
@@ -63,9 +73,26 @@ export const DBRowTableFieldWithPopover = ({
     setTimeout(() => setIsCopied(false), 2000);
   };
 
+  const addFilter = () => {
+    if (canFilter) {
+      const value = typeof cellValue === 'string' ? cellValue : `${cellValue}`;
+      onPropertyAddClick(columnName, value);
+      handleClick(); // Close the popover
+    }
+  };
+
+  const addExcludeFilter = () => {
+    if (canFilter) {
+      const value = typeof cellValue === 'string' ? cellValue : `${cellValue}`;
+      // Use the 'exclude' action for the filter
+      (onPropertyAddClick as any)(columnName, value, 'exclude');
+      handleClick(); // Close the popover
+    }
+  };
+
   const buttonSize = 20;
   const gapSize = 4;
-  const numberOfButtons = 2;
+  const numberOfButtons = canFilter ? 4 : 1; // Copy + Filter Add + Filter Out (if filtering available)
   const numberOfGaps = numberOfButtons - 1;
 
   return (
@@ -80,7 +107,7 @@ export const DBRowTableFieldWithPopover = ({
         position="top-start"
         offset={5}
         opened={opened}
-        zIndex={0}
+        zIndex={1}
       >
         <Popover.Target>
           <span
@@ -113,15 +140,24 @@ export const DBRowTableFieldWithPopover = ({
             >
               <IconCopy size={14} />
             </DBRowTableIconButton>
-            <DBRowTableIconButton
-              onClick={() => {
-                // TODO: Implement add filter functionality
-              }}
-              variant="copy"
-              title="Add filter (coming soon)"
-            >
-              <IconFilterPlus size={14} />
-            </DBRowTableIconButton>
+            {canFilter && (
+              <>
+                <DBRowTableIconButton
+                  onClick={addFilter}
+                  variant="copy"
+                  title="Add filter"
+                >
+                  <IconFilterPlus size={14} />
+                </DBRowTableIconButton>
+                <DBRowTableIconButton
+                  onClick={addExcludeFilter}
+                  variant="copy"
+                  title="Exclude from results"
+                >
+                  <IconFilterX size={14} />
+                </DBRowTableIconButton>
+              </>
+            )}
           </div>
         </Popover.Dropdown>
       </Popover>

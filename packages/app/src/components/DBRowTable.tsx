@@ -740,7 +740,7 @@ export const RawLogTable = memo(
                             style={{
                               position: 'absolute',
                               right: 4,
-                              top: 0,
+                              top: 2,
                               bottom: 0,
                               width: 12,
                             }}
@@ -903,6 +903,10 @@ export const RawLogTable = memo(
                                   <DBRowTableFieldWithPopover
                                     cellValue={cellValue}
                                     wrapLinesEnabled={wrapLinesEnabled}
+                                    columnName={
+                                      (cell.column.columnDef.meta as any)
+                                        ?.column
+                                    }
                                   >
                                     {flexRender(
                                       cell.column.columnDef.cell,
