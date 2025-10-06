@@ -8,7 +8,7 @@ import {
 
 import * as useChartConfigModule from '../../hooks/useChartConfig';
 
-describe.only('RawLogTable', () => {
+describe('RawLogTable', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest
@@ -130,7 +130,7 @@ describe.only('RawLogTable', () => {
       expect(callback).toHaveBeenCalledWith([
         {
           desc: false,
-          id: 'col1_alias',
+          id: '"col1"',
         },
       ]);
     });
