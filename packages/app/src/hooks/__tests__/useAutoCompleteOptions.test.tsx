@@ -4,7 +4,11 @@ import { renderHook } from '@testing-library/react';
 
 import { LuceneLanguageFormatter } from '../../SearchInputV2';
 import { useAutoCompleteOptions } from '../useAutoCompleteOptions';
-import { useAllFields, useGetKeyValues, useJsonColumns } from '../useMetadata';
+import {
+  useJsonColumns,
+  useMultipleAllFields,
+  useMultipleGetKeyValues,
+} from '../useMetadata';
 
 if (!globalThis.structuredClone) {
   globalThis.structuredClone = (obj: any) => {
@@ -15,8 +19,8 @@ if (!globalThis.structuredClone) {
 // Mock dependencies
 jest.mock('../useMetadata', () => ({
   ...jest.requireActual('../useMetadata.tsx'),
-  useAllFields: jest.fn(),
-  useGetKeyValues: jest.fn(),
+  useMultipleAllFields: jest.fn(),
+  useMultipleGetKeyValues: jest.fn(),
   useJsonColumns: jest.fn(),
 }));
 
@@ -40,13 +44,11 @@ const mockFields: Field[] = [
   },
 ];
 
-const mockTableConnections = [
-  {
-    databaseName: 'test_db',
-    tableName: 'traces',
-    connectionId: 'conn1',
-  },
-];
+const mockTableConnection = {
+  databaseName: 'test_db',
+  tableName: 'traces',
+  connectionId: 'conn1',
+};
 
 describe('useAutoCompleteOptions', () => {
   beforeEach(() => {
@@ -54,11 +56,11 @@ describe('useAutoCompleteOptions', () => {
     jest.clearAllMocks();
 
     // Setup default mock implementations
-    (useAllFields as jest.Mock).mockReturnValue({
+    (useMultipleAllFields as jest.Mock).mockReturnValue({
       data: mockFields,
     });
 
-    (useGetKeyValues as jest.Mock).mockReturnValue({
+    (useMultipleGetKeyValues as jest.Mock).mockReturnValue({
       data: null,
     });
 
@@ -70,7 +72,7 @@ describe('useAutoCompleteOptions', () => {
   it('should return field options with correct lucene formatting', () => {
     const { result } = renderHook(() =>
       useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-        tableConnections: mockTableConnections,
+        tableConnection: mockTableConnection,
       }),
     );
 
@@ -98,7 +100,7 @@ describe('useAutoCompleteOptions', () => {
       },
     ];
 
-    (useGetKeyValues as jest.Mock).mockReturnValue({
+    (useMultipleGetKeyValues as jest.Mock).mockReturnValue({
       data: mockKeyValues,
     });
 
@@ -107,7 +109,7 @@ describe('useAutoCompleteOptions', () => {
         luceneFormatter,
         'ResourceAttributes.service.name',
         {
-          tableConnections: mockTableConnections,
+          tableConnection: mockTableConnection,
         },
       ),
     );
@@ -150,13 +152,13 @@ describe('useAutoCompleteOptions', () => {
       },
     ];
 
-    (useGetKeyValues as jest.Mock).mockReturnValue({
+    (useMultipleGetKeyValues as jest.Mock).mockReturnValue({
       data: mockKeyValues,
     });
 
     const { result } = renderHook(() =>
       useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-        tableConnections: mockTableConnections,
+        tableConnection: mockTableConnection,
       }),
     );
 
@@ -188,7 +190,7 @@ describe('useAutoCompleteOptions', () => {
   it('should handle additional suggestions', () => {
     const { result } = renderHook(() =>
       useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-        tableConnections: mockTableConnections,
+        tableConnection: mockTableConnection,
         additionalSuggestions: ['custom.field'],
       }),
     );

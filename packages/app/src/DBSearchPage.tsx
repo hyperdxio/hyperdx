@@ -102,6 +102,7 @@ import PatternTable from './components/PatternTable';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
+import { parseAsStringWithNewLines } from './utils/queryParsers';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
@@ -588,11 +589,11 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
-  where: parseAsString,
-  select: parseAsString,
+  where: parseAsStringWithNewLines,
+  select: parseAsStringWithNewLines,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
   filters: parseAsJson<Filter[]>(),
-  orderBy: parseAsString,
+  orderBy: parseAsStringWithNewLines,
 };
 
 function DBSearchPage() {
@@ -1276,7 +1277,7 @@ function DBSearchPage() {
           </Group>
           <Box style={{ minWidth: 100, flexGrow: 1 }}>
             <SQLInlineEditorControlled
-              tableConnections={tcFromSource(inputSourceObj)}
+              tableConnection={tcFromSource(inputSourceObj)}
               control={control}
               name="select"
               defaultValue={inputSourceObj?.defaultTableSelectExpression}
@@ -1290,7 +1291,7 @@ function DBSearchPage() {
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
             <SQLInlineEditorControlled
-              tableConnections={tcFromSource(inputSourceObj)}
+              tableConnection={tcFromSource(inputSourceObj)}
               control={control}
               name="orderBy"
               defaultValue={defaultOrderBy}
@@ -1412,7 +1413,7 @@ function DBSearchPage() {
             sqlInput={
               <Box style={{ width: '75%', flexGrow: 1 }}>
                 <SQLInlineEditorControlled
-                  tableConnections={tcFromSource(inputSourceObj)}
+                  tableConnection={tcFromSource(inputSourceObj)}
                   control={control}
                   name="where"
                   placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -1432,7 +1433,7 @@ function DBSearchPage() {
             }
             luceneInput={
               <SearchInputV2
-                tableConnections={tcFromSource(inputSourceObj)}
+                tableConnection={tcFromSource(inputSourceObj)}
                 control={control}
                 name="where"
                 onLanguageChange={lang =>

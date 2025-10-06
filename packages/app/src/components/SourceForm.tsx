@@ -165,7 +165,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
           helpText="DateTime column or expression that is part of your table's primary key."
         >
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -180,7 +180,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
           helpText="Default columns selected in search results (this can be customized per search later)"
         >
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -225,7 +225,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
         <Divider />
         <FormRow label={'Service Name Expression'}>
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -237,7 +237,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
         </FormRow>
         <FormRow label={'Log Level Expression'}>
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -249,7 +249,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
         </FormRow>
         <FormRow label={'Body Expression'}>
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -261,7 +261,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
         </FormRow>
         <FormRow label={'Log Attributes Expression'}>
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -273,7 +273,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
         </FormRow>
         <FormRow label={'Resource Attributes Expression'}>
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -288,7 +288,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
           helpText="This DateTime column is used to display search results."
         >
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -314,7 +314,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
 
         <FormRow label={'Trace Id Expression'}>
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -326,7 +326,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
         </FormRow>
         <FormRow label={'Span Id Expression'}>
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -343,7 +343,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
           helpText="Unique identifier for a given row, will be primary key if not specified. Used for showing full row details in search results."
         >
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -355,7 +355,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
         </FormRow> */}
         {/* <FormRow label={'Table Filter Expression'}>
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -370,7 +370,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
           helpText="Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log."
         >
           <SQLInlineEditorControlled
-            tableConnections={{
+            tableConnection={{
               databaseName,
               tableName,
               connectionId,
@@ -397,7 +397,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
         helpText="DateTime column or expression defines the start of the span"
       >
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -413,7 +413,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
         helpText="Default columns selected in search results (this can be customized per search later)"
       >
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -426,7 +426,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
       <Divider />
       <FormRow label={'Duration Expression'}>
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -464,7 +464,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
       </FormRow>
       <FormRow label={'Trace Id Expression'}>
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -476,7 +476,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
       </FormRow>
       <FormRow label={'Span Id Expression'}>
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -488,7 +488,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
       </FormRow>
       <FormRow label={'Parent Span Id Expression'}>
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -500,7 +500,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
       </FormRow>
       <FormRow label={'Span Name Expression'}>
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -512,7 +512,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
       </FormRow>
       <FormRow label={'Span Kind Expression'}>
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -543,7 +543,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
       </FormRow>
       <FormRow label={'Status Code Expression'}>
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -555,7 +555,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
       </FormRow>
       <FormRow label={'Status Message Expression'}>
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -567,7 +567,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
       </FormRow>
       <FormRow label={'Service Name Expression'}>
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -579,7 +579,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
       </FormRow>
       <FormRow label={'Resource Attributes Expression'}>
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -591,7 +591,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
       </FormRow>
       <FormRow label={'Event Attributes Expression'}>
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -606,7 +606,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
         helpText="Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)"
       >
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
@@ -621,7 +621,7 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
         helpText="Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log."
       >
         <SQLInlineEditorControlled
-          tableConnections={{
+          tableConnection={{
             databaseName,
             tableName,
             connectionId,
