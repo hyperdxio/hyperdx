@@ -408,7 +408,7 @@ export type ClickhouseClientOptions = {
   queryTimeout?: number;
   /** Application name, used as the client's HTTP user-agent header */
   application?: string;
-  /** Defines how long the client will wait for a response from the ClickHouse server before aborting the request */
+  /** Defines how long the client will wait for a response from the ClickHouse server before aborting the request, in milliseconds */
   requestTimeout?: number;
 };
 
