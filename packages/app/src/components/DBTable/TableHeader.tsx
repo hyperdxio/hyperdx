@@ -1,8 +1,8 @@
 import cx from 'classnames';
-import { Button, Group, Text, UnstyledButton } from '@mantine/core';
+import { Button, Group, Text } from '@mantine/core';
 import {
-  IconChevronDown,
-  IconChevronUp,
+  IconArrowDown,
+  IconArrowUp,
   IconDotsVertical,
 } from '@tabler/icons-react';
 import { flexRender, Header } from '@tanstack/react-table';
@@ -66,9 +66,9 @@ export default function TableHeader({
                 >
                   <>
                     {header.column.getIsSorted() === 'asc' ? (
-                      <IconChevronUp size={16} />
+                      <IconArrowUp size={12} />
                     ) : (
-                      <IconChevronDown size={16} />
+                      <IconArrowDown size={12} />
                     )}
                   </>
                 </div>

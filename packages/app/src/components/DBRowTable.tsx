@@ -458,8 +458,8 @@ export const RawLogTable = memo(
               column,
               jsColumnType,
             },
-            // Prefer real column name over alias when possible for ID
-            id: aliasMap?.[column] ?? column,
+            // If the column is an alias, wrap in quotes.
+            id: aliasMap?.[column] ? `"${column}"` : column,
             // TODO: add support for sorting on Dynamic JSON fields
             enableSorting: jsColumnType !== JSDataType.Dynamic,
             accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
