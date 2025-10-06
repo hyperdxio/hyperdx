@@ -717,9 +717,11 @@ export function chSqlToAliasMap(
     }
 
     // Replace the JSON replacement tokens with the original JSON expressions
-    for (const [alias, expression] of Object.entries(aliasMap)) {
-      if (jsonReplacementsToExpressions.has(expression)) {
-        aliasMap[alias] = jsonReplacementsToExpressions.get(expression)!;
+    for (const [alias, aliasExpression] of Object.entries(aliasMap)) {
+      for (const [replacement, original] of jsonReplacementsToExpressions) {
+        if (aliasExpression.includes(replacement)) {
+          aliasMap[alias] = aliasExpression.replaceAll(replacement, original);
+        }
       }
     }
     return aliasMap;

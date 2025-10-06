@@ -1,6 +1,5 @@
 // Port from ChartUtils + source.ts
 import { add as fnsAdd, format as fnsFormat } from 'date-fns';
-import { is } from 'date-fns/locale';
 import { formatInTimeZone } from 'date-fns-tz';
 import { z } from 'zod';
 

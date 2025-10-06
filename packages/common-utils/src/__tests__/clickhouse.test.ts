@@ -203,7 +203,7 @@ describe('chSqlToAliasMap - alias unit test', () => {
 
   it('Alias, with JSON expressions', () => {
     const chSqlInput: ChSql = {
-      sql: "SELECT Timestamp as ts,ResourceAttributes.service.name as service,Body,TimestampTime,ServiceName,TimestampTime FROM {HYPERDX_PARAM_1544803905:Identifier}.{HYPERDX_PARAM_129845054:Identifier} WHERE (TimestampTime >= fromUnixTimestamp64Milli({HYPERDX_PARAM_1456399765:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({HYPERDX_PARAM_1719057412:Int64})) AND (`ResourceAttributes`.`service`.`name` = 'serviceName') ORDER BY TimestampTime DESC LIMIT {HYPERDX_PARAM_49586:Int32} OFFSET {HYPERDX_PARAM_48:Int32}",
+      sql: "SELECT Timestamp as ts,ResourceAttributes.service.name as service,toStartOfDay(LogAttributes.start.`time`) as start_time,Body,TimestampTime,ServiceName,TimestampTime FROM {HYPERDX_PARAM_1544803905:Identifier}.{HYPERDX_PARAM_129845054:Identifier} WHERE (TimestampTime >= fromUnixTimestamp64Milli({HYPERDX_PARAM_1456399765:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({HYPERDX_PARAM_1719057412:Int64})) AND (`ResourceAttributes`.`service`.`name` = 'serviceName') ORDER BY TimestampTime DESC LIMIT {HYPERDX_PARAM_49586:Int32} OFFSET {HYPERDX_PARAM_48:Int32}",
       params: {
         HYPERDX_PARAM_1544803905: 'default',
         HYPERDX_PARAM_129845054: 'otel_logs',
@@ -217,6 +217,7 @@ describe('chSqlToAliasMap - alias unit test', () => {
     const aliasMap = {
       ts: 'Timestamp',
       service: 'ResourceAttributes.service.name',
+      start_time: 'toStartOfDay(LogAttributes.start.`time`)',
     };
     expect(res).toEqual(aliasMap);
   });
