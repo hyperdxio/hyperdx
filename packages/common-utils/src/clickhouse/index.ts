@@ -411,6 +411,8 @@ export type ClickhouseClientOptions = {
   queryTimeout?: number;
   /** Application name, used as the client's HTTP user-agent header */
   application?: string;
+  /** Defines how long the client will wait for a response from the ClickHouse server before aborting the request, in milliseconds */
+  requestTimeout?: number;
 };
 
 export abstract class BaseClickhouseClient {
@@ -426,7 +428,7 @@ export abstract class BaseClickhouseClient {
    * query with max_rows_to_read specified
    */
   protected maxRowReadOnly: boolean;
-  protected requestTimeout: number = 3600000; // TODO: make configurable
+  protected requestTimeout: number = 3600000;
 
   constructor({
     host,
@@ -434,6 +436,7 @@ export abstract class BaseClickhouseClient {
     password,
     queryTimeout,
     application,
+    requestTimeout,
   }: ClickhouseClientOptions) {
     this.host = host!;
     this.username = username;
@@ -441,6 +444,9 @@ export abstract class BaseClickhouseClient {
     this.queryTimeout = queryTimeout;
     this.maxRowReadOnly = false;
     this.application = application;
+    if (requestTimeout != null && requestTimeout >= 0) {
+      this.requestTimeout = requestTimeout;
+    }
   }
 
   protected getClient(): WebClickHouseClient | NodeClickHouseClient {
