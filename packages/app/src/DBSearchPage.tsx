@@ -592,10 +592,10 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
 const queryStateMap = {
   source: parseAsString,
   where: parseAsStringWithNewLines,
-  select: parseAsString,
+  select: parseAsStringWithNewLines,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
   filters: parseAsJson<Filter[]>(),
-  orderBy: parseAsString,
+  orderBy: parseAsStringWithNewLines,
 };
 
 function DBSearchPage() {
