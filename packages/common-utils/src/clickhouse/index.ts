@@ -425,7 +425,7 @@ export abstract class BaseClickhouseClient {
    * query with max_rows_to_read specified
    */
   protected maxRowReadOnly: boolean;
-  protected requestTimeout: number = 3600000; // TODO: make configurable
+  protected requestTimeout: number = 3600000;
 
   constructor({
     host,
