@@ -3,7 +3,7 @@ import { IconCopy, IconLink } from '@tabler/icons-react';
 
 import DBRowTableIconButton from './DBRowTableIconButton';
 
-import styles from '../../styles/LogTable.module.scss';
+import styles from '../../../styles/LogTable.module.scss';
 
 export interface DBRowTableRowButtonsProps {
   row: Record<string, any>;

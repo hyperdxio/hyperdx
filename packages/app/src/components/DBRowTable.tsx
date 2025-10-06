@@ -76,10 +76,10 @@ import {
   usePrevious,
 } from '@/utils';
 
+import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
+import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
-import DBRowTableFieldWithPopover from './DBRowTableFieldWithPopover';
-import DBRowTableRowButtons from './DBRowTableRowButtons';
 import {
   createExpandButtonColumn,
   ExpandedLogRow,

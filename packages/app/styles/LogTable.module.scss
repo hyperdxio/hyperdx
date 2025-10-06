@@ -12,7 +12,7 @@ $button-height: 18px;
   background: var(--mantine-color-dark-8);
   position: sticky;
   top: 0;
-  z-index: 200;
+  z-index: 2;
 }
 
 .tableRow {
@@ -147,7 +147,7 @@ $button-height: 18px;
   gap: 2px;
   opacity: 0;
   transition: opacity 0.2s ease-in-out;
-  z-index: 10;
+  z-index: 1;
   align-items: flex-start;
 
   &:hover {

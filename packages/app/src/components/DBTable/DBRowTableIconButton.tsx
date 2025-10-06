@@ -3,7 +3,7 @@ import cx from 'classnames';
 import { UnstyledButton } from '@mantine/core';
 import { IconCheck } from '@tabler/icons-react';
 
-import styles from '../../styles/LogTable.module.scss';
+import styles from '../../../styles/LogTable.module.scss';
 
 export interface DBRowTableIconButtonProps {
   onClick: (e: React.MouseEvent) => void;
