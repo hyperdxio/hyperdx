@@ -2,7 +2,7 @@ import React, { useContext, useRef, useState } from 'react';
 import cx from 'classnames';
 import { Popover } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCopy, IconFilterPlus, IconFilterX } from '@tabler/icons-react';
+import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
 import { RowSidePanelContext } from '../DBRowSidePanel';
 
@@ -145,14 +145,14 @@ export const DBRowTableFieldWithPopover = ({
                 <DBRowTableIconButton
                   onClick={addFilter}
                   variant="copy"
-                  title="Add filter"
+                  title="Toggle filter for this value"
                 >
-                  <IconFilterPlus size={14} />
+                  <IconFilter size={14} />
                 </DBRowTableIconButton>
                 <DBRowTableIconButton
                   onClick={addExcludeFilter}
                   variant="copy"
-                  title="Exclude from results"
+                  title="Exclude this value from results"
                 >
                   <IconFilterX size={14} />
                 </DBRowTableIconButton>
