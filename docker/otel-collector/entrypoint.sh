@@ -5,6 +5,12 @@ set -e
 # Arguments: log_file_path [max_size_mb] [max_archives] [check_interval_seconds]
 /log-rotator.sh /etc/otel/supervisor-data/agent.log 16 1 60 &
 
+# Start log tailer script in background for agent.log
+# Arguments: log_file_path [check_interval_seconds]
+if [ "$OTEL_SUPERVISOR_LOGS" = "true" ]; then
+    /log-tailer.sh /etc/otel/supervisor-data/agent.log 1 &
+fi
+
 # Render the supervisor config template using gomplate
 # Write to supervisor-data directory which has proper permissions for otel user
 gomplate -f /etc/otel/supervisor.yaml.tmpl -o /etc/otel/supervisor-data/supervisor-runtime.yaml

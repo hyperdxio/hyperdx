@@ -25,7 +25,7 @@ import {
   ClickHouseQueryError,
   ColumnMetaType,
   convertCHDataTypeToJSType,
-  extractColumnReference,
+  extractColumnReferencesFromKey,
   isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
@@ -1056,28 +1056,24 @@ export const RawLogTable = memo(
   },
 );
 
-function appendSelectWithPrimaryAndPartitionKey(
+export function appendSelectWithPrimaryAndPartitionKey(
   select: SelectList,
   primaryKeys: string,
   partitionKey: string,
 ): { select: SelectList; additionalKeysLength: number } {
-  const partitionKeyArr = partitionKey
-    .split(',')
-    .map(k => extractColumnReference(k.trim()))
-    .filter((k): k is string => k != null && k.length > 0);
-  const primaryKeyArr =
-    primaryKeys.trim() !== '' ? splitAndTrimWithBracket(primaryKeys) : [];
-  const allKeys = [...partitionKeyArr, ...primaryKeyArr];
+  const partitionKeyArr = extractColumnReferencesFromKey(partitionKey);
+  const primaryKeyArr = extractColumnReferencesFromKey(primaryKeys);
+  const allKeys = new Set([...partitionKeyArr, ...primaryKeyArr]);
   if (typeof select === 'string') {
     const selectSplit = splitAndTrimWithBracket(select);
     const selectColumns = new Set(selectSplit);
-    const additionalKeys = allKeys.filter(k => !selectColumns.has(k));
+    const additionalKeys = [...allKeys].filter(k => !selectColumns.has(k));
     return {
       select: [...selectColumns, ...additionalKeys].join(','),
       additionalKeysLength: additionalKeys.length,
     };
   } else {
-    const additionalKeys = allKeys.map(k => ({ valueExpression: k }));
+    const additionalKeys = [...allKeys].map(k => ({ valueExpression: k }));
     return {
       select: [...select, ...additionalKeys],
       additionalKeysLength: additionalKeys.length,
