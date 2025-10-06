@@ -43,6 +43,7 @@ import {
   Flex,
   Grid,
   Group,
+  Input,
   Menu,
   Modal,
   Paper,
@@ -55,6 +56,7 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import { IconPlayCard, IconPlayerPlay } from '@tabler/icons-react';
 import { useIsFetching } from '@tanstack/react-query';
 import CodeMirror from '@uiw/react-codemirror';
 
@@ -101,6 +103,7 @@ import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 import { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
+import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
@@ -1567,57 +1570,16 @@ function DBSearchPage() {
                   </Flex>
                 )}
               {analysisMode === 'delta' && searchedSource != null && (
-                <Flex direction="column" w="100%">
-                  <div
-                    style={{ minHeight: 210, maxHeight: 210, width: '100%' }}
-                  >
-                    <DBHeatmapChart
-                      config={{
-                        ...chartConfig,
-                        select: [
-                          {
-                            aggFn: 'heatmap',
-                            valueExpression:
-                              getDurationMsExpression(searchedSource),
-                          },
-                        ],
-                        dateRange: searchedTimeRange,
-                        displayType: DisplayType.Heatmap,
-                        granularity: 'auto',
-                        with: aliasWith,
-                      }}
-                      enabled={isReady}
-                      onFilter={(xMin, xMax, yMin, yMax) => {
-                        setOutlierSqlCondition(
-                          [
-                            `${searchedSource.durationExpression} >= ${yMin} * 1e${(searchedSource.durationPrecision ?? 9) - 3}`,
-                            `${searchedSource.durationExpression} <= ${yMax} * 1e${(searchedSource.durationPrecision ?? 9) - 3}`,
-                            `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} >= ${xMin}`,
-                            `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} <= ${xMax}`,
-                          ].join(' AND '),
-                        );
-                      }}
-                    />
-                  </div>
-                  {outlierSqlCondition ? (
-                    <DBDeltaChart
-                      config={{
-                        ...chartConfig,
-                        dateRange: searchedTimeRange,
-                      }}
-                      outlierSqlCondition={outlierSqlCondition ?? ''}
-                    />
-                  ) : (
-                    <Paper shadow="xs" p="xl" h="100%">
-                      <Center mih={100} h="100%">
-                        <Text size="sm" c="gray.4">
-                          Please highlight an outlier range in the heatmap to
-                          view the delta chart.
-                        </Text>
-                      </Center>
-                    </Paper>
-                  )}
-                </Flex>
+                <DBSearchHeatmapChart
+                  chartConfig={{
+                    ...chartConfig,
+                    dateRange: searchedTimeRange,
+                    // displayType: DisplayType.Heatmap,
+                    // granularity: 'auto',
+                    // with: aliasWith,
+                  }}
+                  source={searchedSource}
+                />
               )}
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {analysisMode === 'results' &&

@@ -259,7 +259,14 @@ const opt: uPlot.Options = {
 
 type HeatmapChartConfig = {
   displayType: DisplayType.Heatmap;
-  select: [{ aggFn: 'heatmap'; valueExpression: string }];
+  select: [
+    {
+      aggFn: 'heatmap';
+      valueExpression: string;
+      countExpression: string;
+      groupExpression: string;
+    },
+  ];
   from: ChartConfigWithDateRange['from'];
   where: ChartConfigWithDateRange['where'];
   dateRange: ChartConfigWithDateRange['dateRange'];
@@ -286,27 +293,73 @@ function HeatmapContainer({
   const nBuckets = 80;
 
   const valueExpression = config.select[0].valueExpression;
+  const countExpression = config.select[0].countExpression;
+  const groupExpression = config.select[0].groupExpression;
 
-  const minMaxConfig: ChartConfigWithDateRange = {
-    ...config,
-    orderBy: undefined,
-    granularity: undefined,
-    select: [
-      {
-        aggFn: 'min',
-        valueExpression,
-        // TODO: Select if we can be negative
-        aggCondition: `${valueExpression} >= 0`,
-        aggConditionLanguage: 'sql',
-        alias: 'min',
-      },
-      { aggFn: 'max', valueExpression, aggCondition: '', alias: 'max' },
-    ],
-  };
+  // When valueExpression is an aggregate like count(), we need to use a CTE
+  // to calculate it first before finding min/max
+  const isAggregateExpression =
+    valueExpression.includes('count(') ||
+    valueExpression.includes('countIf(') ||
+    valueExpression.includes('countDistinct(') ||
+    valueExpression.includes('sum(') ||
+    valueExpression.includes('avg(') ||
+    valueExpression.includes('distinct');
+
+  const minMaxConfig: ChartConfigWithDateRange = isAggregateExpression
+    ? {
+        ...config,
+        orderBy: undefined,
+        granularity: undefined,
+        select: [
+          {
+            aggFn: 'min',
+            // TODO: Select if we can be negative
+            aggCondition: `value_calc >= 0`,
+            aggConditionLanguage: 'sql',
+            valueExpression: 'value_calc',
+            alias: 'min',
+          },
+          {
+            aggFn: 'max',
+            valueExpression: 'value_calc',
+            alias: 'max',
+          },
+        ],
+        with: [
+          {
+            name: 'pre_calc',
+            chartConfig: {
+              ...config,
+              select: [{ valueExpression, alias: 'value_calc' }],
+              orderBy: undefined,
+            },
+          },
+        ],
+        timestampValueExpression: '__hdx_time_bucket',
+        from: { databaseName: '', tableName: 'pre_calc' },
+      }
+    : {
+        ...config,
+        orderBy: undefined,
+        granularity: undefined,
+        select: [
+          {
+            aggFn: 'min',
+            valueExpression,
+            // TODO: Select if we can be negative
+            aggCondition: `${valueExpression} >= 0`,
+            aggConditionLanguage: 'sql',
+            alias: 'min',
+          },
+          { aggFn: 'max', valueExpression, aggCondition: '', alias: 'max' },
+        ],
+      };
+
   const {
     data: minMaxData,
     isLoading: isMinMaxLoading,
-    isError: isMinMaxError,
+    error: minMaxError,
   } = useQueriedChartConfig(minMaxConfig, {
     queryKey: ['heatmap', minMaxConfig],
     enabled: enabled,
@@ -316,25 +369,68 @@ function HeatmapContainer({
   const min = Number.parseInt(minMaxData?.data?.[0]?.['min'] ?? '0', 10);
   const max = Number.parseInt(minMaxData?.data?.[0]?.['max'] ?? '0', 10);
 
-  const bucketConfig: ChartConfigWithDateRange = {
-    ...config,
-    select: [
-      { aggFn: 'count', valueExpression: '', aggCondition: '', alias: 'count' },
-    ],
-    groupBy: [
-      {
-        // TODO: ChSQL?
-        valueExpression: `widthBucket(${valueExpression}, ${min}, ${max}, ${nBuckets})`,
-        alias: 'bucket',
-      },
-    ],
-    orderBy: [{ valueExpression: 'bucket', ordering: 'ASC' }],
-    granularity,
-  };
+  const bucketConfig: ChartConfigWithDateRange = isAggregateExpression
+    ? {
+        ...config,
+        select: [
+          {
+            valueExpression: 'sum(value_count)',
+            alias: 'count',
+          },
+        ],
+        groupBy: [
+          {
+            valueExpression: `widthBucket(value_calc, ${min}, ${max}, ${nBuckets})`,
+            alias: 'x_bucket',
+          },
+        ],
+        with: [
+          {
+            name: 'pre_calc',
+            chartConfig: {
+              ...config,
+              select: [
+                { valueExpression, alias: 'value_calc' },
+                {
+                  valueExpression: countExpression,
+                  alias: 'value_count',
+                },
+                { valueExpression: groupExpression, alias: 'group_by' },
+              ],
+              groupBy: [
+                { valueExpression: groupExpression, alias: 'group_by' },
+              ],
+              granularity,
+              orderBy: undefined,
+            },
+          },
+        ],
+        timestampValueExpression: '__hdx_time_bucket',
+        from: { databaseName: '', tableName: 'pre_calc' },
+        orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
+        granularity,
+      }
+    : {
+        ...config,
+        select: [
+          {
+            valueExpression: countExpression,
+            alias: 'count', // error rate per user (errors/users)
+          },
+        ],
+        groupBy: [
+          {
+            valueExpression: `widthBucket(${valueExpression}, ${min}, ${max}, ${nBuckets})`,
+            alias: 'x_bucket',
+          },
+        ],
+        orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
+        granularity,
+      };
 
-  const { data, isLoading, isError } = useQueriedChartConfig(bucketConfig, {
+  const { data, isLoading, error } = useQueriedChartConfig(bucketConfig, {
     queryKey: ['heatmap_bucket', bucketConfig],
-    enabled: !!minMaxData && bucketConfig != null,
+    enabled: min != null && max != null && bucketConfig != null,
   });
 
   const generatedTsBuckets = timeBucketByGranularity(
@@ -342,12 +438,12 @@ function HeatmapContainer({
     dateRange[1],
     granularity,
   );
+
   const timestampColumn = inferTimestampColumn(data?.meta ?? []);
 
-  const time: number[] = [];
-  const bucket: number[] = [];
-  const count: number[] = [];
-
+  const time: number[] = []; // x values
+  const bucket: number[] = []; // y value series 1
+  const count: number[] = []; // y value series 2
   if (data != null && timestampColumn != null) {
     let dataIndex = 0;
 
@@ -362,10 +458,10 @@ function HeatmapContainer({
         if (
           row != null &&
           new Date(row[timestampColumn.name]).getTime() == generatedTs &&
-          row['bucket'] == j
+          row['x_bucket'] == j
         ) {
           time.push(new Date(row[timestampColumn.name]).getTime());
-          bucket.push(min + row['bucket'] * ((max - min) / nBuckets));
+          bucket.push(min + row['x_bucket'] * ((max - min) / nBuckets));
           count.push(Number.parseInt(row['count'], 10)); // UInt64 returns as string
 
           dataIndex++;
@@ -387,6 +483,16 @@ function HeatmapContainer({
       </Paper>
     );
   }
+  if (error || minMaxError) {
+    return (
+      <Paper shadow="xs" p="xl">
+        <Text size="sm" c="red.4" ta="center">
+          Error loading heatmap. Try expanding your search criteria.
+        </Text>
+      </Paper>
+    );
+  }
+
   if (time.length < 2 || generatedTsBuckets?.length < 2) {
     return (
       <Paper shadow="xs" p="xl">
@@ -397,6 +503,7 @@ function HeatmapContainer({
       </Paper>
     );
   }
+
   return (
     <Heatmap
       key={JSON.stringify(config)}
@@ -676,7 +783,7 @@ function Heatmap({
     >
       <UplotReact
         options={options}
-        // @ts-ignore TODO: uPlot types are wrong for mode 2 data
+        // @ts-expect-error TODO: uPlot types are wrong for mode 2 data
         data={[[], data]}
         resetScales={true}
       />
@@ -721,10 +828,10 @@ function Heatmap({
               <FormatTime value={highlightedPoint.xVal} />
             </div>
             <div>
-              <b>Duration:</b> {tickFormatter(highlightedPoint.yVal)}
+              <b>Y Value:</b> {tickFormatter(highlightedPoint.yVal)}
             </div>
             <div>
-              <b>Count:</b>{' '}
+              <b>Count Value:</b>{' '}
               {new Intl.NumberFormat('en-US', {
                 notation: 'standard',
                 compactDisplay: 'short',
