@@ -990,6 +990,36 @@ describe('utils', () => {
       const expected = [];
       expect(actual).toEqual(expected);
     });
+
+    it('should find a JSON expression with an identifier containing a single-quote', () => {
+      const sql = `SELECT Timestamp,ServiceName,SeverityText,Body,ResourceAttributes.hyperdx.distro."version'" FROM default.otel_logs WHERE (Timestamp >= fromUnixTimestamp64Milli(1759756098000) AND Timestamp <= fromUnixTimestamp64Milli(1759756998000)) ORDER BY Timestamp DESC`;
+      const actual = findJsonExpressions(sql);
+      const expected = [
+        { index: 47, expr: `ResourceAttributes.hyperdx.distro."version'"` },
+        { index: 97, expr: `default.otel_logs` },
+      ];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find a JSON expression with an identifier containing a double-quote', () => {
+      const sql =
+        'SELECT Timestamp,ServiceName,SeverityText,Body,ResourceAttributes.hyperdx.distro.`"version"`';
+      const actual = findJsonExpressions(sql);
+      const expected = [
+        { index: 47, expr: 'ResourceAttributes.hyperdx.distro.`"version"`' },
+      ];
+      expect(actual).toEqual(expected);
+    });
+
+    it('should find a JSON expression with an identifier containing a backtick', () => {
+      const sql =
+        'SELECT Timestamp,ServiceName,SeverityText,Body,ResourceAttributes.hyperdx.distro."`version`"';
+      const actual = findJsonExpressions(sql);
+      const expected = [
+        { index: 47, expr: 'ResourceAttributes.hyperdx.distro."`version`"' },
+      ];
+      expect(actual).toEqual(expected);
+    });
   });
 
   describe('replaceJsonAccesses', () => {

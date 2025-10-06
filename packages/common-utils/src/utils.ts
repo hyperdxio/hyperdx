@@ -141,6 +141,9 @@ export const isJsonExpression = (expr: string) => {
 export function findJsonExpressions(sql: string) {
   const expressions: { index: number; expr: string }[] = [];
 
+  let isInDoubleQuote = false;
+  let isInBacktick = false;
+
   let currentExpr = '';
   const finishExpression = (expr: string, endIndex: number) => {
     if (isJsonExpression(expr)) {
@@ -153,12 +156,18 @@ export function findJsonExpressions(sql: string) {
   let isInJsonTypeSpecifier = false;
   while (i < sql.length) {
     const c = sql.charAt(i);
-    if (c === "'") {
+    if (c === "'" && !isInDoubleQuote && !isInBacktick) {
       // Skip string literals
       while (i < sql.length && sql.charAt(i) !== c) {
         i++;
       }
       currentExpr = '';
+    } else if (c === '"' && !isInBacktick) {
+      isInDoubleQuote = !isInDoubleQuote;
+      currentExpr += c;
+    } else if (c === '`' && !isInDoubleQuote) {
+      isInBacktick = !isInBacktick;
+      currentExpr += c;
     } else if (/[\s{},+*/[\]]/.test(c)) {
       isInJsonTypeSpecifier = false;
       finishExpression(currentExpr, i);
