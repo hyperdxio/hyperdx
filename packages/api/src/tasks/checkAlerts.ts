@@ -448,7 +448,10 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
           alertCount: alerts.length,
         });
 
-        const clickhouseClient = await this.provider.getClickHouseClient(conn);
+        const clickhouseClient = await this.provider.getClickHouseClient(
+          conn,
+          this.args.sourceTimeoutMs,
+        );
 
         for (const alert of alerts) {
           await this.task_queue.add(() =>
