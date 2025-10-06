@@ -18,8 +18,8 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   const [isUrlCopied, setIsUrlCopied] = useState(false);
 
   const copyRowData = async () => {
-    const rowWhere = getRowWhere(row);
-    await navigator.clipboard.writeText(rowWhere);
+    const rowData = JSON.stringify(row, null, 2);
+    await navigator.clipboard.writeText(rowData);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
@@ -40,7 +40,9 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
         onClick={copyRowData}
         variant="copy"
         isActive={isCopied}
-        title={isCopied ? 'Copied row data!' : 'Copy row data'}
+        title={
+          isCopied ? 'Copied entire row as JSON!' : 'Copy entire row as JSON'
+        }
       >
         <IconCopy size={12} />
       </DBRowTableIconButton>
@@ -48,7 +50,11 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
         onClick={copyRowUrl}
         variant="copy"
         isActive={isUrlCopied}
-        title={isUrlCopied ? 'Copied URL!' : 'Copy row URL'}
+        title={
+          isUrlCopied
+            ? 'Copied shareable link!'
+            : 'Copy shareable link to this specific row'
+        }
       >
         <IconLink size={12} />
       </DBRowTableIconButton>
