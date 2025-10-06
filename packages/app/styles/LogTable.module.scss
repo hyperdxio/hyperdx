@@ -148,7 +148,7 @@ $button-height: 18px;
   gap: 2px;
   opacity: 0;
   transition: opacity 0.2s ease-in-out;
-  z-index: 1;
+  z-index: 0;
   align-items: flex-start;
 
   &:hover {
