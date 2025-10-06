@@ -1136,6 +1136,7 @@ function DBSqlRowTableComponent({
   showExpandButton = true,
   renderRowDetails,
   onSortingChange,
+  initialSortBy,
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
@@ -1152,15 +1153,20 @@ function DBSqlRowTableComponent({
   onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
   collapseAllRows?: boolean;
   showExpandButton?: boolean;
+  initialSortBy?: SortingState;
   onSortingChange?: (v: SortingState | null) => void;
 }) {
   const { data: me } = api.useMe();
 
-  const [orderBy, setOrderBy] = useState<SortingState[number] | null>(null);
+  const [orderBy, setOrderBy] = useState<SortingState[number] | null>(
+    initialSortBy?.[0] ?? null,
+  );
+
   const orderByArray = useMemo(() => (orderBy ? [orderBy] : []), [orderBy]);
 
   useEffect(() => {
-    setOrderBy(null);
+    setOrderBy(initialSortBy?.at(0) ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceId]);
 
   const _onSortingChange = useCallback(

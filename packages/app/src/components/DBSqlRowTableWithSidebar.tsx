@@ -37,6 +37,7 @@ interface Props {
   isNestedPanel?: boolean;
   breadcrumbPath?: BreadcrumbEntry[];
   onSortingChange?: (v: SortingState | null) => void;
+  initialSortBy?: SortingState;
 }
 
 export default function DBSqlRowTableWithSideBar({
@@ -54,6 +55,7 @@ export default function DBSqlRowTableWithSideBar({
   breadcrumbPath,
   onSidebarOpen,
   onSortingChange,
+  initialSortBy,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere');
@@ -94,6 +96,7 @@ export default function DBSqlRowTableWithSideBar({
         queryKeyPrefix={'dbSqlRowTable'}
         onSortingChange={onSortingChange}
         denoiseResults={denoiseResults}
+        initialSortBy={initialSortBy}
         renderRowDetails={r => {
           if (!sourceData) {
             return <div className="p-3 text-muted">Loading...</div>;
