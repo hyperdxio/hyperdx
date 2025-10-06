@@ -104,6 +104,7 @@ import PatternTable from './components/PatternTable';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
+import { parseAsStringWithNewLines } from './utils/queryParsers';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
@@ -590,11 +591,11 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
-  where: parseAsString,
-  select: parseAsString,
+  where: parseAsStringWithNewLines,
+  select: parseAsStringWithNewLines,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
   filters: parseAsJson<Filter[]>(),
-  orderBy: parseAsString,
+  orderBy: parseAsStringWithNewLines,
 };
 
 function DBSearchPage() {
