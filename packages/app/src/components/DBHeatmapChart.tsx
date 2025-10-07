@@ -3,11 +3,24 @@ import dynamic from 'next/dynamic';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
 import UplotReact from 'uplot-react';
-import { inferTimestampColumn } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  ClickHouseQueryError,
+  inferTimestampColumn,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { Divider, Paper, Text } from '@mantine/core';
-import { useElementSize } from '@mantine/hooks';
+import {
+  Box,
+  Button,
+  Code,
+  Divider,
+  Group,
+  Modal,
+  Paper,
+  Text,
+} from '@mantine/core';
+import { useDisclosure, useElementSize } from '@mantine/hooks';
+import { IconArrowsDiagonal } from '@tabler/icons-react';
 
 import {
   convertDateRangeToGranularityString,
@@ -17,6 +30,8 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { Chart, NumberFormat } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatNumber } from '@/utils';
+
+import { SQLPreview } from './ChartSQLPreview';
 
 type Mode2DataArray = [number[], number[], number[]];
 
@@ -328,7 +343,7 @@ function HeatmapContainer({
         ],
         with: [
           {
-            name: 'pre_calc',
+            name: 'min_max_calc',
             chartConfig: {
               ...config,
               select: [{ valueExpression, alias: 'value_calc' }],
@@ -337,7 +352,7 @@ function HeatmapContainer({
           },
         ],
         timestampValueExpression: '__hdx_time_bucket',
-        from: { databaseName: '', tableName: 'pre_calc' },
+        from: { databaseName: '', tableName: 'min_max_calc' },
       }
     : {
         ...config,
@@ -365,6 +380,8 @@ function HeatmapContainer({
     enabled: enabled,
   });
 
+  const [errorModal, errorModalControls] = useDisclosure();
+
   // UInt64 are returned as strings
   const min = Number.parseInt(minMaxData?.data?.[0]?.['min'] ?? '0', 10);
   const max = Number.parseInt(minMaxData?.data?.[0]?.['max'] ?? '0', 10);
@@ -386,7 +403,7 @@ function HeatmapContainer({
         ],
         with: [
           {
-            name: 'pre_calc',
+            name: 'bucket_calc',
             chartConfig: {
               ...config,
               select: [
@@ -406,7 +423,7 @@ function HeatmapContainer({
           },
         ],
         timestampValueExpression: '__hdx_time_bucket',
-        from: { databaseName: '', tableName: 'pre_calc' },
+        from: { databaseName: '', tableName: 'bucket_calc' },
         orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
         granularity,
       }
@@ -430,7 +447,7 @@ function HeatmapContainer({
 
   const { data, isLoading, error } = useQueriedChartConfig(bucketConfig, {
     queryKey: ['heatmap_bucket', bucketConfig],
-    enabled: min != null && max != null && bucketConfig != null,
+    enabled: minMaxData != null && bucketConfig != null,
   });
 
   const generatedTsBuckets = timeBucketByGranularity(
@@ -484,11 +501,50 @@ function HeatmapContainer({
     );
   }
   if (error || minMaxError) {
+    const _error: Error = error || minMaxError!;
     return (
-      <Paper shadow="xs" p="xl">
-        <Text size="sm" c="red.4" ta="center">
-          Error loading heatmap. Try expanding your search criteria.
+      <Paper shadow="xs" p="xl" ta="center" h="100%">
+        <Text size="sm" mt="sm">
+          Error loading chart, please check your query or try again later.
         </Text>
+        <Button
+          className="mx-auto"
+          variant="subtle"
+          color="red"
+          onClick={() => errorModalControls.open()}
+        >
+          <Group gap="xxs">
+            <IconArrowsDiagonal size={16} />
+            See Error Details
+          </Group>
+        </Button>
+        <Modal
+          opened={errorModal}
+          onClose={() => errorModalControls.close()}
+          title="Error Details"
+        >
+          <Group align="start">
+            <Text size="sm" ta="center">
+              Error Message:
+            </Text>
+            <Code
+              block
+              style={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {_error.message}
+            </Code>
+            {_error instanceof ClickHouseQueryError && (
+              <>
+                <Text my="sm" size="sm" ta="center">
+                  Sent Query:
+                </Text>
+                <SQLPreview data={_error?.query} enableCopy />
+              </>
+            )}
+          </Group>
+        </Modal>
       </Paper>
     );
   }
