@@ -10,7 +10,6 @@ import {
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
-  Box,
   Button,
   Code,
   Divider,
@@ -270,8 +269,6 @@ const opt: uPlot.Options = {
   ],
 };
 
-// const d = genData();
-
 type HeatmapChartConfig = {
   displayType: DisplayType.Heatmap;
   select: [
@@ -293,6 +290,23 @@ type HeatmapChartConfig = {
   with?: ChartConfigWithDateRange['with'];
 };
 
+const isAggregateFunction = (value: string) => {
+  const fns = [
+    'count',
+    'countIf',
+    'countDistinct',
+    'sum',
+    'avg',
+    'distinct',
+    'min',
+    'max',
+    'quantile',
+    'any',
+    'none',
+  ];
+  return fns.some(fn => value.includes(fn + '('));
+};
+
 function HeatmapContainer({
   config,
   enabled = true,
@@ -311,15 +325,8 @@ function HeatmapContainer({
   const countExpression = config.select[0].countExpression;
   const groupExpression = config.select[0].groupExpression;
 
-  // When valueExpression is an aggregate like count(), we need to use a CTE
-  // to calculate it first before finding min/max
-  const isAggregateExpression =
-    valueExpression.includes('count(') ||
-    valueExpression.includes('countIf(') ||
-    valueExpression.includes('countDistinct(') ||
-    valueExpression.includes('sum(') ||
-    valueExpression.includes('avg(') ||
-    valueExpression.includes('distinct');
+  // When valueExpression is an aggregate like count(), we need to use a CTE to calculate the heatmap
+  const isAggregateExpression = isAggregateFunction(valueExpression);
 
   const minMaxConfig: ChartConfigWithDateRange = isAggregateExpression
     ? {
