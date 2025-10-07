@@ -19,7 +19,7 @@
     "compression": "^1.7.4",
     "connect-mongo": "^4.6.0",
     "cors": "^2.8.5",
-    "cron": "^3.5.0",
+    "cron": "^4.3.1",
     "date-fns": "^2.28.0",
     "express": "^4.19.2",
     "express-rate-limit": "^6.7.1",
