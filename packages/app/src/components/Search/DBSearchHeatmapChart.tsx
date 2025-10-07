@@ -3,11 +3,15 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  TableConnection,
+  tcFromSource,
+} from '@hyperdx/common-utils/dist/metadata';
+import {
   ChartConfigWithDateRange,
   DisplayType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Collapse, Flex, TextInput } from '@mantine/core';
+import { Box, Button, Collapse, Flex, Grid } from '@mantine/core';
 import { ActionIcon } from '@mantine/core';
 import { Paper } from '@mantine/core';
 import { Center } from '@mantine/core';
@@ -22,6 +26,7 @@ import {
 
 import DBDeltaChart from '../DBDeltaChart';
 import DBHeatmapChart from '../DBHeatmapChart';
+import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
 const Schema = z.object({
   groupBy: z.string().trim().optional(),
@@ -50,6 +55,7 @@ export function DBSearchHeatmapChart({
       <Box mx="lg" mt="xs" mb={0}>
         <Collapse in={opened} style={{ flex: 1 }}>
           <DBSearchHeatmapForm
+            connection={tcFromSource(source)}
             defaultValues={{
               groupBy: fields.groupBy,
               value: fields.value,
@@ -142,9 +148,11 @@ export function DBSearchHeatmapChart({
 }
 
 function DBSearchHeatmapForm({
+  connection,
   defaultValues,
   onSubmit,
 }: {
+  connection: TableConnection;
   defaultValues: z.infer<typeof Schema>;
   onSubmit: (v: z.infer<typeof Schema>) => void;
 }) {
@@ -155,43 +163,57 @@ function DBSearchHeatmapForm({
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>
-      <Flex gap="xs" align="end" m="0" mb="xs">
-        <Flex gap="xs" align="start" m="0" flex="1">
-          <TextInput
-            placeholder="Value"
+      <Grid m="0" mb="xs">
+        <Grid.Col span={4}>
+          <SQLInlineEditorControlled
+            tableConnection={connection}
+            control={form.control}
+            name="value"
+            placeholder="SQL expression"
+            language="sql"
+            enableHotkey
             label="Value"
-            flex={1}
-            {...form.register('value')}
             error={form.formState.errors.value?.message}
-            required
+            rules={{ required: true }}
           />
-          <TextInput
-            placeholder="Count"
+        </Grid.Col>
+        <Grid.Col span={4}>
+          <SQLInlineEditorControlled
+            tableConnection={connection}
+            control={form.control}
+            name="count"
+            placeholder="SQL expression"
+            language="sql"
+            enableHotkey
             label="Count"
-            flex={1}
-            {...form.register('count')}
             error={form.formState.errors.count?.message}
-            required
+            rules={{ required: true }}
           />
-          <TextInput
-            placeholder="Group by"
+        </Grid.Col>
+        <Grid.Col span={3}>
+          <SQLInlineEditorControlled
+            tableConnection={connection}
+            control={form.control}
+            name="groupBy"
+            placeholder="SQL expression"
+            language="sql"
+            enableHotkey
             label="Group by"
-            flex={1}
-            {...form.register('groupBy')}
             error={form.formState.errors.groupBy?.message}
           />
-        </Flex>
-        {/* mb below is to align the play button with the text inputs */}
-        <ActionIcon
-          variant="outline"
-          type="submit"
-          size="lg"
-          mb="1px"
-          title="Run"
-        >
-          <IconPlayerPlay />
-        </ActionIcon>
-      </Flex>
+        </Grid.Col>
+        <Grid.Col span={1}>
+          <ActionIcon
+            w="100%"
+            variant="outline"
+            type="submit"
+            size="lg"
+            title="Run"
+          >
+            <IconPlayerPlay />
+          </ActionIcon>
+        </Grid.Col>
+      </Grid>
     </form>
   );
 }
