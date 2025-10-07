@@ -846,7 +846,9 @@ async function renderWith(
             chartConfig &&
             !ChartConfigSchema.safeParse(chartConfig).success
           ) {
-            throw new Error('non-conforming chartConfig object in CTE');
+            throw new Error(
+              `non-conforming chartConfig object in CTE: ${ChartConfigSchema.safeParse(chartConfig).error}`,
+            );
           }
 
           // Note that every NonRecursiveChartConfig object is also a ChartConfig object

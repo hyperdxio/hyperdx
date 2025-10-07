@@ -398,6 +398,7 @@ export default function EditTimeChartForm({
   onTimeRangeSelect,
   onClose,
   'data-testid': dataTestId,
+  submitRef,
 }: {
   dashboardId?: string;
   chartConfig: SavedChartConfig;
@@ -411,10 +412,12 @@ export default function EditTimeChartForm({
   onClose?: () => void;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   'data-testid'?: string;
+  submitRef?: React.MutableRefObject<(() => void) | undefined>;
 }) {
   const { control, watch, setValue, handleSubmit, register } =
     useForm<SavedChartConfig>({
       defaultValues: chartConfig,
+      values: chartConfig,
       resolver: zodResolver(zSavedChartConfig),
     });
 
@@ -514,6 +517,12 @@ export default function EditTimeChartForm({
       }
     })();
   }, [handleSubmit, setChartConfig, setQueriedConfig, tableSource, dateRange]);
+
+  useEffect(() => {
+    if (submitRef) {
+      submitRef.current = onSubmit;
+    }
+  }, [onSubmit, submitRef]);
 
   const handleSave = useCallback(
     (v: SavedChartConfig) => {
