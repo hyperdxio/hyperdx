@@ -422,7 +422,7 @@ export type DateRange = {
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
 
-export type ChatConfigWithOptTimestamp = Omit<
+export type ChartConfigWithOptTimestamp = Omit<
   ChartConfigWithDateRange,
   'timestampValueExpression'
 > & {
