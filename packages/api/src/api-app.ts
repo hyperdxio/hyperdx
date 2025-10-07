@@ -83,6 +83,7 @@ if (config.USAGE_STATS_ENABLED) {
 app.use('/', routers.rootRouter);
 
 // PRIVATE ROUTES
+app.use('/ai', isUserAuthenticated, routers.aiRouter);
 app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
 app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
 app.use('/me', isUserAuthenticated, routers.meRouter);
@@ -104,7 +105,7 @@ if (
   process.env.NODE_ENV !== 'production' &&
   process.env.ENABLE_SWAGGER === 'true'
 ) {
-  import('./utils/swagger')
+  import('./utils/swagger.js')
     .then(({ setupSwagger }) => {
       console.log('Swagger UI setup and available at /api/v2/docs');
       setupSwagger(app);

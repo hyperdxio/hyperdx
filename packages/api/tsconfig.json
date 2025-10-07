@@ -9,6 +9,7 @@
     },
     "rootDir": ".",
     "outDir": "build",
+    "moduleResolution": "Node16"
   },
   "include": [
     "src",
