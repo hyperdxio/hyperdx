@@ -171,7 +171,7 @@ function DBSearchHeatmapForm({
             name="value"
             placeholder="SQL expression"
             language="sql"
-            enableHotkey
+            onSubmit={form.handleSubmit(onSubmit)}
             label="Value"
             error={form.formState.errors.value?.message}
             rules={{ required: true }}
@@ -184,7 +184,7 @@ function DBSearchHeatmapForm({
             name="count"
             placeholder="SQL expression"
             language="sql"
-            enableHotkey
+            onSubmit={form.handleSubmit(onSubmit)}
             label="Count"
             error={form.formState.errors.count?.message}
             rules={{ required: true }}
@@ -197,7 +197,7 @@ function DBSearchHeatmapForm({
             name="groupBy"
             placeholder="SQL expression"
             language="sql"
-            enableHotkey
+            onSubmit={form.handleSubmit(onSubmit)}
             label="Group by"
             error={form.formState.errors.groupBy?.message}
           />
