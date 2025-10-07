@@ -37,9 +37,11 @@ const Schema = z.object({
 export function DBSearchHeatmapChart({
   chartConfig,
   source,
+  isReady,
 }: {
   chartConfig: ChartConfigWithDateRange;
   source: TSource;
+  isReady: boolean;
 }) {
   const [opened, { toggle }] = useDisclosure(false);
 
@@ -109,7 +111,7 @@ export function DBSearchHeatmapChart({
             granularity: 'auto',
             displayType: DisplayType.Heatmap,
           }}
-          enabled={true}
+          enabled={isReady}
           onFilter={(xMin, xMax, yMin, yMax) => {
             setFields({
               outlierSqlCondition: [
@@ -126,7 +128,7 @@ export function DBSearchHeatmapChart({
         <DBDeltaChart
           config={{
             ...chartConfig,
-            // dateRange: searchedTimeRange,
+            with: undefined,
           }}
           outlierSqlCondition={fields.outlierSqlCondition}
         />

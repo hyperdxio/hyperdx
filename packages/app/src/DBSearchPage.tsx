@@ -56,14 +56,11 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconPlayCard, IconPlayerPlay } from '@tabler/icons-react';
 import { useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
-import DBDeltaChart from '@/components/DBDeltaChart';
-import DBHeatmapChart from '@/components/DBHeatmapChart';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -90,7 +87,6 @@ import {
 import { useSearchPageFilterState } from '@/searchFilters';
 import SearchInputV2 from '@/SearchInputV2';
 import {
-  getDurationMsExpression,
   getFirstTimestampValueExpression,
   useSource,
   useSources,
@@ -1593,10 +1589,9 @@ function DBSearchPage() {
                   chartConfig={{
                     ...chartConfig,
                     dateRange: searchedTimeRange,
-                    // displayType: DisplayType.Heatmap,
-                    // granularity: 'auto',
-                    // with: aliasWith,
+                    with: aliasWith,
                   }}
+                  isReady={isReady}
                   source={searchedSource}
                 />
               )}
