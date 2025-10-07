@@ -275,8 +275,8 @@ type HeatmapChartConfig = {
     {
       aggFn: 'heatmap';
       valueExpression: string;
-      countExpression: string;
-      groupExpression: string;
+      countExpression?: string;
+      groupExpression?: string;
     },
   ];
   from: ChartConfigWithDateRange['from'];
@@ -322,7 +322,7 @@ function HeatmapContainer({
   const nBuckets = 80;
 
   const valueExpression = config.select[0].valueExpression;
-  const countExpression = config.select[0].countExpression;
+  const countExpression = config.select[0].countExpression ?? 'count()';
   const groupExpression = config.select[0].groupExpression;
 
   // When valueExpression is an aggregate like count(), we need to use a CTE to calculate the heatmap

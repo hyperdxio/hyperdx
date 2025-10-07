@@ -30,7 +30,7 @@ import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
 const Schema = z.object({
   groupBy: z.string().trim().optional(),
-  value: z.string().trim().min(1),
+  value: z.string().trim().optional(),
   count: z.string().trim().min(1),
 });
 
