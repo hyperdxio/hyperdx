@@ -105,7 +105,7 @@ if (
   process.env.NODE_ENV !== 'production' &&
   process.env.ENABLE_SWAGGER === 'true'
 ) {
-  import('./utils/swagger')
+  import('./utils/swagger.js')
     .then(({ setupSwagger }) => {
       console.log('Swagger UI setup and available at /api/v2/docs');
       setupSwagger(app);
