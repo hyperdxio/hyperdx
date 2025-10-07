@@ -7,7 +7,7 @@ import React, {
   useState,
 } from 'react';
 import cx from 'classnames';
-import { format, formatDistance } from 'date-fns';
+import { formatDistance } from 'date-fns';
 import { isString } from 'lodash';
 import curry from 'lodash/curry';
 import ms from 'ms';
@@ -37,13 +37,20 @@ import {
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
   Box,
+  Button,
   Code,
   Flex,
+  Group,
   Modal,
   Text,
   Tooltip as MantineTooltip,
   UnstyledButton,
 } from '@mantine/core';
+import {
+  IconChevronDown,
+  IconChevronUp,
+  IconDotsVertical,
+} from '@tabler/icons-react';
 import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
   ColumnDef,
@@ -51,6 +58,7 @@ import {
   flexRender,
   getCoreRowModel,
   Row as TableRow,
+  SortingState,
   TableOptions,
   useReactTable,
 } from '@tanstack/react-table';
@@ -58,7 +66,10 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from '@/api';
 import { searchChartConfigDefaults } from '@/defaults';
-import { useRenderedSqlChartConfig } from '@/hooks/useChartConfig';
+import {
+  useAliasMapFromChartConfig,
+  useRenderedSqlChartConfig,
+} from '@/hooks/useChartConfig';
 import { useCsvExport } from '@/hooks/useCsvExport';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -76,6 +87,7 @@ import {
   useWindowSize,
 } from '@/utils';
 
+import TableHeader from './DBTable/TableHeader';
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
 import {
@@ -301,9 +313,12 @@ export const RawLogTable = memo(
     source,
     onExpandedRowsChange,
     collapseAllRows,
+    enableSorting = false,
+    onSortingChange,
+    sortOrder,
     showExpandButton = true,
   }: {
-    wrapLines: boolean;
+    wrapLines?: boolean;
     displayedColumns: string[];
     onSettingsClick?: () => void;
     onInstructionsClick?: () => void;
@@ -319,7 +334,7 @@ export const RawLogTable = memo(
     hasNextPage?: boolean;
     highlightedLineId?: string;
     onScroll?: (scrollTop: number) => void;
-    isLive: boolean;
+    isLive?: boolean;
     onShowPatternsClick?: () => void;
     tableId?: string;
     columnNameMap?: Record<string, string>;
@@ -338,6 +353,9 @@ export const RawLogTable = memo(
     collapseAllRows?: boolean;
     showExpandButton?: boolean;
     renderRowDetails?: (row: Record<string, any>) => React.ReactNode;
+    enableSorting?: boolean;
+    sortOrder?: SortingState;
+    onSortingChange?: (v: SortingState | null) => void;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -382,6 +400,9 @@ export const RawLogTable = memo(
 
     //we need a reference to the scrolling element for logic down below
     const tableContainerRef = useRef<HTMLDivElement>(null);
+
+    // Get the alias map from the config so we resolve correct column ids
+    const { data: aliasMap } = useAliasMapFromChartConfig(config);
 
     // Reset scroll when live tail is enabled for the first time
     const prevIsLive = usePrevious(isLive);
@@ -437,6 +458,10 @@ export const RawLogTable = memo(
               column,
               jsColumnType,
             },
+            // If the column is an alias, wrap in quotes.
+            id: aliasMap?.[column] ? `"${column}"` : column,
+            // TODO: add support for sorting on Dynamic JSON fields
+            enableSorting: jsColumnType !== JSDataType.Dynamic,
             accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
             header: `${columnNameMap?.[column] ?? column}${isDate ? (isUTC ? ' (UTC)' : ' (Local)') : ''}`,
             cell: info => {
@@ -544,9 +569,22 @@ export const RawLogTable = memo(
         columns,
         getCoreRowModel: getCoreRowModel(),
         // debugTable: true,
+        enableSorting,
+        manualSorting: true,
+        onSortingChange: v => {
+          if (typeof v === 'function') {
+            const newSortVal = v(sortOrder ?? []);
+            onSortingChange?.(newSortVal ?? null);
+          } else {
+            onSortingChange?.(v ?? null);
+          }
+        },
+        state: {
+          sorting: sortOrder ?? [],
+        },
         enableColumnResizing: true,
         columnResizeMode: 'onChange' as ColumnResizeMode,
-      };
+      } satisfies TableOptions<any>;
 
       const columnSizeProps = {
         state: {
@@ -562,6 +600,9 @@ export const RawLogTable = memo(
       columns,
       dedupedRows,
       tableId,
+      sortOrder,
+      enableSorting,
+      onSortingChange,
       columnSizeStorage,
       setColumnSizeStorage,
     ]);
@@ -701,62 +742,15 @@ export const RawLogTable = memo(
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header, headerIndex) => {
+                  const isLast = headerIndex === headerGroup.headers.length - 1;
                   return (
-                    <th
-                      className="overflow-hidden text-truncate bg-hdx-dark"
+                    <TableHeader
                       key={header.id}
-                      colSpan={header.colSpan}
-                      style={{
-                        width:
-                          header.getSize() === UNDEFINED_WIDTH
-                            ? '100%'
-                            : header.getSize(),
-                        // Allow unknown width columns to shrink to 0
-                        minWidth:
-                          header.getSize() === UNDEFINED_WIDTH
-                            ? 0
-                            : header.getSize(),
-                        position: 'relative',
-                      }}
-                    >
-                      {header.isPlaceholder ? null : (
-                        <div>
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                        </div>
-                      )}
-                      {header.column.getCanResize() &&
-                        headerIndex !== headerGroup.headers.length - 1 && (
-                          <div
-                            onMouseDown={header.getResizeHandler()}
-                            onTouchStart={header.getResizeHandler()}
-                            className={`resizer text-gray-600 cursor-col-resize ${
-                              header.column.getIsResizing() ? 'isResizing' : ''
-                            }`}
-                            style={{
-                              position: 'absolute',
-                              right: 4,
-                              top: 0,
-                              bottom: 0,
-                              width: 12,
-                            }}
-                          >
-                            <i className="bi bi-three-dots-vertical" />
-                          </div>
-                        )}
-                      {headerIndex === headerGroup.headers.length - 1 && (
-                        <div
-                          className="d-flex align-items-center"
-                          style={{
-                            position: 'absolute',
-                            right: 8,
-                            top: 0,
-                            bottom: 0,
-                          }}
-                        >
-                          {tableId != null &&
+                      header={header}
+                      isLast={isLast}
+                      lastItemButtons={
+                        <>
+                          {tableId &&
                             Object.keys(columnSizeStorage).length > 0 && (
                               <div
                                 className="fs-8 text-muted-hover disabled"
@@ -778,7 +772,6 @@ export const RawLogTable = memo(
                           )}
                           <UnstyledButton
                             onClick={() => setWrapLinesEnabled(prev => !prev)}
-                            className="ms-2"
                           >
                             <MantineTooltip label="Wrap lines">
                               <i className="bi bi-text-wrap" />
@@ -788,7 +781,7 @@ export const RawLogTable = memo(
                           <CsvExportButton
                             data={csvData}
                             filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
-                            className="fs-6 text-muted-hover ms-2"
+                            className="fs-6 text-muted-hover "
                           >
                             <MantineTooltip
                               label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
@@ -798,16 +791,16 @@ export const RawLogTable = memo(
                           </CsvExportButton>
                           {onSettingsClick != null && (
                             <div
-                              className="fs-8 text-muted-hover ms-2"
+                              className="fs-8 text-muted-hover"
                               role="button"
                               onClick={() => onSettingsClick()}
                             >
                               <i className="bi bi-gear-fill" />
                             </div>
                           )}
-                        </div>
-                      )}
-                    </th>
+                        </>
+                      }
+                    />
                   );
                 })}
               </tr>
@@ -998,7 +991,7 @@ export const RawLogTable = memo(
                   ) : hasNextPage == false &&
                     isLoading == false &&
                     dedupedRows.length === 0 ? (
-                    <div className="my-3">
+                    <div className="my-3" data-testid="db-row-table-no-results">
                       No results found.
                       <Text mt="sm" c="gray.3">
                         Try checking the query explainer in the search bar if
@@ -1142,6 +1135,8 @@ function DBSqlRowTableComponent({
   collapseAllRows,
   showExpandButton = true,
   renderRowDetails,
+  onSortingChange,
+  initialSortBy,
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
@@ -1158,12 +1153,50 @@ function DBSqlRowTableComponent({
   onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
   collapseAllRows?: boolean;
   showExpandButton?: boolean;
+  initialSortBy?: SortingState;
+  onSortingChange?: (v: SortingState | null) => void;
 }) {
   const { data: me } = api.useMe();
-  const mergedConfig = useConfigWithPrimaryAndPartitionKey({
-    ...searchChartConfigDefaults(me?.team),
-    ...config,
-  });
+
+  const [orderBy, setOrderBy] = useState<SortingState[number] | null>(
+    initialSortBy?.[0] ?? null,
+  );
+
+  const orderByArray = useMemo(() => (orderBy ? [orderBy] : []), [orderBy]);
+
+  const _onSortingChange = useCallback(
+    (v: SortingState | null) => {
+      onSortingChange?.(v);
+      setOrderBy(v?.[0] ?? null);
+    },
+    [setOrderBy, onSortingChange],
+  );
+
+  const prevSourceId = usePrevious(sourceId);
+  useEffect(() => {
+    if (prevSourceId && prevSourceId !== sourceId) {
+      _onSortingChange(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceId]);
+
+  const mergedConfigObj = useMemo(() => {
+    const base = {
+      ...searchChartConfigDefaults(me?.team),
+      ...config,
+    };
+    if (orderByArray.length) {
+      base.orderBy = orderByArray.map(o => {
+        return {
+          valueExpression: o.id,
+          ordering: o.desc ? 'DESC' : 'ASC',
+        };
+      });
+    }
+    return base;
+  }, [me, config, orderByArray]);
+
+  const mergedConfig = useConfigWithPrimaryAndPartitionKey(mergedConfigObj);
 
   const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
     useOffsetPaginatedQuery(mergedConfig ?? config, {
@@ -1360,12 +1393,15 @@ function DBSqlRowTableComponent({
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
         loadingDate={loadingDate}
-        config={config}
+        config={mergedConfigObj}
         onChildModalOpen={onChildModalOpen}
         source={source}
         onExpandedRowsChange={onExpandedRowsChange}
         collapseAllRows={collapseAllRows}
         showExpandButton={showExpandButton}
+        enableSorting={true}
+        onSortingChange={_onSortingChange}
+        sortOrder={orderByArray}
       />
     </>
   );

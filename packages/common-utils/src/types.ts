@@ -421,6 +421,13 @@ export type DateRange = {
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
+
+export type ChatConfigWithOptTimestamp = Omit<
+  ChartConfigWithDateRange,
+  'timestampValueExpression'
+> & {
+  timestampValueExpression?: string;
+};
 // For non-time-based searches (ex. grab 1 row)
 export type ChartConfigWithOptDateRange = Omit<
   ChartConfig,
