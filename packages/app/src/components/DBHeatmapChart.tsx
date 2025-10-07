@@ -438,7 +438,7 @@ function HeatmapContainer({
         select: [
           {
             valueExpression: countExpression,
-            alias: 'count', // error rate per user (errors/users)
+            alias: 'count',
           },
         ],
         groupBy: [
@@ -453,7 +453,7 @@ function HeatmapContainer({
 
   const { data, isLoading, error } = useQueriedChartConfig(bucketConfig, {
     queryKey: ['heatmap_bucket', bucketConfig],
-    enabled: minMaxData != null && bucketConfig != null,
+    enabled: !!minMaxData && bucketConfig != null,
   });
 
   const generatedTsBuckets = timeBucketByGranularity(

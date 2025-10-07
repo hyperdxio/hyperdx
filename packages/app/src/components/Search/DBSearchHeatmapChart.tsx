@@ -95,9 +95,6 @@ export function DBSearchHeatmapChart({
           position: 'relative',
         }}
       >
-        {/* <div style={{ position: 'absolute', bottom: '20px', left: '20px' }}>
-          <IconSettings color="gray" />
-        </div> */}
         <DBHeatmapChart
           config={{
             ...chartConfig,
