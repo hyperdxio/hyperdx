@@ -1,58 +1,221 @@
-import { useEffect } from 'react';
-import objectHash from 'object-hash';
 import {
-  ChSql,
   chSqlToAliasMap,
   ClickHouseQueryError,
-  inferNumericColumn,
-  inferTimestampColumn,
   parameterizedQueryToSql,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import {
+  DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+  isMetricChartConfig,
+  isUsingGranularity,
+  renderChartConfig,
+} from '@hyperdx/common-utils/dist/renderChartConfig';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
-import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import {
+  ChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
+} from '@hyperdx/common-utils/dist/types';
+import {
+  experimental_streamedQuery as streamedQuery,
+  useQuery,
+  UseQueryOptions,
+} from '@tanstack/react-query';
 
+import {
+  convertDateRangeToGranularityString,
+  toStartOfInterval,
+} from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { getMetadata } from '@/metadata';
+import { generateTimeWindowsDescending } from '@/utils/searchWindows';
 
 interface AdditionalUseQueriedChartConfigOptions {
   onError?: (error: Error | ClickHouseQueryError) => void;
+  /**
+   * By default, queries with large date ranges are split into multiple smaller queries to
+   * avoid overloading the ClickHouse server and running into timeouts. In some cases, such
+   * as when data is being sampled across the entire range, this chunking is not desirable
+   * and can be disabled.
+   */
+  disableQueryChunking?: boolean;
 }
 
-// used for charting
+type TimeWindow = {
+  dateRange: [Date, Date];
+  dateRangeEndInclusive?: boolean;
+};
+
+type TQueryFnData = Pick<ResponseJSON<any>, 'data' | 'meta' | 'rows'> & {
+  isComplete: boolean;
+};
+
+const shouldUseChunking = (
+  config: ChartConfigWithOptDateRange,
+): config is ChartConfigWithDateRange & {
+  granularity: string;
+} => {
+  // Granularity is required for chunking, otherwise we could break other group-bys.
+  if (!isUsingGranularity(config)) return false;
+
+  // Date range is required for chunking, otherwise we'd have infinite chunks, or some unbounded chunk(s).
+  if (!config.dateRange) return false;
+
+  // TODO: enable chunking for metric charts when we're confident chunking will not break
+  // complex metric queries.
+  if (isMetricChartConfig(config)) return false;
+
+  return true;
+};
+
+export const getGranularityAlignedTimeWindows = (
+  config: ChartConfigWithDateRange & { granularity: string },
+  windowDurationsSeconds?: number[],
+): TimeWindow[] => {
+  const [startDate, endDate] = config.dateRange;
+  const windowsUnaligned = generateTimeWindowsDescending(
+    startDate,
+    endDate,
+    windowDurationsSeconds,
+  );
+
+  const granularity =
+    config.granularity === 'auto'
+      ? convertDateRangeToGranularityString(
+          config.dateRange,
+          DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+        )
+      : config.granularity;
+
+  const windows = [];
+  for (const [index, window] of windowsUnaligned.entries()) {
+    // Align windows to chart buckets
+    const alignedStart =
+      index === windowsUnaligned.length - 1
+        ? window.startTime
+        : toStartOfInterval(window.startTime, granularity);
+    const alignedEnd =
+      index === 0 ? endDate : toStartOfInterval(window.endTime, granularity);
+
+    // Skip windows that are covered by the previous window after it was aligned
+    if (
+      !windows.length ||
+      alignedStart < windows[windows.length - 1].dateRange[0]
+    ) {
+      windows.push({
+        dateRange: [alignedStart, alignedEnd] as [Date, Date],
+        // Ensure that windows don't overlap by making all but the first (most recent) exclusive
+        dateRangeEndInclusive:
+          index === 0 ? config.dateRangeEndInclusive : false,
+      });
+    }
+  }
+
+  return windows;
+};
+
+async function* fetchDataInChunks(
+  config: ChartConfigWithOptDateRange,
+  clickhouseClient: ClickhouseClient,
+  signal: AbortSignal,
+  disableQueryChunking: boolean = false,
+) {
+  const windows =
+    !disableQueryChunking && shouldUseChunking(config)
+      ? getGranularityAlignedTimeWindows(config)
+      : ([undefined] as const);
+
+  if (IS_MTVIEWS_ENABLED) {
+    const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
+      await buildMTViewSelectQuery(config);
+    // TODO: show the DDLs in the UI so users can run commands manually
+    // eslint-disable-next-line no-console
+    console.log('dataTableDDL:', dataTableDDL);
+    // eslint-disable-next-line no-console
+    console.log('mtViewDDL:', mtViewDDL);
+    await renderMTViewConfig();
+  }
+
+  for (let i = 0; i < windows.length; i++) {
+    const window = windows[i];
+
+    const windowedConfig = {
+      ...config,
+      ...(window ?? {}),
+    };
+
+    const result = await clickhouseClient.queryChartConfig({
+      config: windowedConfig,
+      metadata: getMetadata(),
+      opts: {
+        abort_signal: signal,
+      },
+    });
+
+    yield { chunk: result, isComplete: i === windows.length - 1 };
+  }
+}
+
+/**
+ * A hook providing data queried based on the provided chart config.
+ *
+ * If all of the following are true, the query will be chunked into multiple smaller queries:
+ * - The config includes a dateRange, granularity, and timestampValueExpression
+ * - `options.disableQueryChunking` is falsy
+ *
+ * For chunked queries, note the following:
+ * - `config.limit`, if provided, is applied to each chunk, so the total number
+ *    of rows returned may be up to `limit * number_of_chunks`.
+ * - The returned data will be ordered within each chunk, and chunks will
+ *    be ordered oldest-first, by the `timestampValueExpression`.
+ * - `isPending` is true until the first chunk is fetched. Once the first chunk
+ *    is available, `isPending` will be false and `isSuccess` will be true.
+ *    `isFetching` will be true until all chunks have been fetched.
+ * - `data.isComplete` indicates whether all chunks have been fetched.
+ */
 export function useQueriedChartConfig(
   config: ChartConfigWithOptDateRange,
-  options?: Partial<UseQueryOptions<ResponseJSON<any>>> &
+  options?: Partial<UseQueryOptions<TQueryFnData>> &
     AdditionalUseQueriedChartConfigOptions,
 ) {
   const clickhouseClient = useClickhouseClient();
-  const query = useQuery<ResponseJSON<any>, ClickHouseQueryError | Error>({
-    queryKey: [config],
-    queryFn: async ({ signal }) => {
-      let query = null;
-      if (IS_MTVIEWS_ENABLED) {
-        const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
-          await buildMTViewSelectQuery(config);
-        // TODO: show the DDLs in the UI so users can run commands manually
-        // eslint-disable-next-line no-console
-        console.log('dataTableDDL:', dataTableDDL);
-        // eslint-disable-next-line no-console
-        console.log('mtViewDDL:', mtViewDDL);
-        query = await renderMTViewConfig();
-      }
 
-      return clickhouseClient.queryChartConfig({
-        config,
-        metadata: getMetadata(),
-        opts: {
-          abort_signal: signal,
-        },
-      });
-    },
+  const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
+    // Include disableQueryChunking in the query key to ensure that queries with the
+    // same config but different disableQueryChunking values do not share a query
+    queryKey: [config, options?.disableQueryChunking ?? false],
+    queryFn: streamedQuery({
+      streamFn: context =>
+        fetchDataInChunks(
+          config,
+          clickhouseClient,
+          context.signal,
+          options?.disableQueryChunking,
+        ),
+      /**
+       * This mode ensures that data remains in the cache until the next full streamed result is available.
+       * By default, the cache would be cleared before new data starts arriving, which results in the query briefly
+       * going back into the loading/pending state when multiple observers are sharing the query result resulting
+       * in flickering or render loops.
+       */
+      refetchMode: 'replace',
+      initialValue: {
+        data: [],
+        meta: [],
+        rows: 0,
+        isComplete: false,
+      } as TQueryFnData,
+      reducer: (acc, { chunk, isComplete }) => {
+        return {
+          data: [...(chunk.data || []), ...(acc?.data || [])],
+          meta: chunk.meta,
+          rows: (acc?.rows || 0) + (chunk.rows || 0),
+          isComplete,
+        };
+      },
+    }),
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
