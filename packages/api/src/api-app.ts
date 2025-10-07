@@ -83,6 +83,7 @@ if (config.USAGE_STATS_ENABLED) {
 app.use('/', routers.rootRouter);
 
 // PRIVATE ROUTES
+app.use('/ai', isUserAuthenticated, routers.aiRouter);
 app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
 app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
 app.use('/me', isUserAuthenticated, routers.meRouter);
