@@ -19,11 +19,7 @@
   "[css]": {
     "editor.defaultFormatter": "stylelint.vscode-stylelint"
   },
-  "stylelint.validate": [
-    "css",
-    "postcss",
-    "scss"
-  ],
+  "stylelint.validate": ["css", "postcss", "scss"],
   "cssVariables.lookupFiles": [
     "**/*.css",
     "**/*.scss",
@@ -39,10 +35,6 @@
     "**/yarn.lock": true,
     "**/yarn-*.cjs": true
   },
-  "cSpell.words": [
-    "micropip",
-    "opamp",
-    "pyimport",
-    "pyodide"
-  ]
+  "cSpell.words": ["micropip", "opamp", "pyimport", "pyodide"],
+  "typescript.tsdk": "node_modules/typescript/lib"
 }

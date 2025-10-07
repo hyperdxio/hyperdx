@@ -46,3 +46,6 @@ export const DEFAULT_SOURCES = env.DEFAULT_SOURCES;
 export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;
 export const CLICKHOUSE_USER = env.CLICKHOUSE_USER as string;
 export const CLICKHOUSE_PASSWORD = env.CLICKHOUSE_PASSWORD as string;
+
+// AI Assistant
+export const ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY as string;
