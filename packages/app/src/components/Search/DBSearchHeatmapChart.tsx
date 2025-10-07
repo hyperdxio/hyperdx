@@ -1,11 +1,10 @@
-import { parseAsString, useQueryState, useQueryStates } from 'nuqs';
+import { parseAsString, useQueryStates } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   ChartConfigWithDateRange,
   DisplayType,
-  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Flex, InputLabel } from '@mantine/core';
@@ -24,15 +23,12 @@ import {
 import DBDeltaChart from '../DBDeltaChart';
 import DBHeatmapChart from '../DBHeatmapChart';
 
-// countExpression: "countDistinct(SpanAttributes['userId'])",
-// valueExpression: "countIf(StatusCode = 'Error')",
-// groupExpression: "SpanAttributes['userId']",
-
 const Schema = z.object({
   groupBy: z.string(),
   value: z.string(),
   count: z.string(),
 });
+
 export function DBSearchHeatmapChart({
   chartConfig,
   source,
@@ -65,9 +61,7 @@ export function DBSearchHeatmapChart({
     });
   };
 
-  // return <div>Hi</div>;
   return (
-    // <Paper h="auto" w="100%">
     <Flex direction="column" w="100%">
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <Flex gap="xs" align="center" m="xs" mb="0">

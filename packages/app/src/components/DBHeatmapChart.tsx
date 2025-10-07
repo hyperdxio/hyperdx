@@ -324,6 +324,7 @@ function HeatmapContainer({
   const minMaxConfig: ChartConfigWithDateRange = isAggregateExpression
     ? {
         ...config,
+        where: '',
         orderBy: undefined,
         granularity: undefined,
         select: [
@@ -389,6 +390,7 @@ function HeatmapContainer({
   const bucketConfig: ChartConfigWithDateRange = isAggregateExpression
     ? {
         ...config,
+        where: '',
         select: [
           {
             valueExpression: 'sum(value_count)',
@@ -412,10 +414,14 @@ function HeatmapContainer({
                   valueExpression: countExpression,
                   alias: 'value_count',
                 },
-                { valueExpression: groupExpression, alias: 'group_by' },
+                ...(groupExpression
+                  ? [{ valueExpression: groupExpression, alias: 'group_by' }]
+                  : []),
               ],
               groupBy: [
-                { valueExpression: groupExpression, alias: 'group_by' },
+                ...(groupExpression
+                  ? [{ valueExpression: groupExpression, alias: 'group_by' }]
+                  : []),
               ],
               granularity,
               orderBy: undefined,
