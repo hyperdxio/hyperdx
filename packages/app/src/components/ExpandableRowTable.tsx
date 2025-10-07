@@ -196,6 +196,7 @@ export const createExpandButtonColumn = (
   },
   size: 32,
   enableResizing: false,
+  enableSorting: false,
   meta: {
     className: 'text-center',
   },
