@@ -7,12 +7,13 @@ import {
   DisplayType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Flex, TextInput } from '@mantine/core';
+import { Box, Button, Collapse, Flex, TextInput } from '@mantine/core';
 import { ActionIcon } from '@mantine/core';
 import { Paper } from '@mantine/core';
 import { Center } from '@mantine/core';
 import { Text } from '@mantine/core';
-import { IconPlayerPlay } from '@tabler/icons-react';
+import { useDisclosure } from '@mantine/hooks';
+import { IconPlayerPlay, IconSettings } from '@tabler/icons-react';
 
 import {
   getDurationMsExpression,
@@ -35,6 +36,8 @@ export function DBSearchHeatmapChart({
   chartConfig: ChartConfigWithDateRange;
   source: TSource;
 }) {
+  const [opened, { toggle }] = useDisclosure(false);
+
   const [fields, setFields] = useQueryStates({
     groupBy: parseAsString.withDefault(''),
     value: parseAsString.withDefault(getDurationMsExpression(source)),
@@ -42,59 +45,53 @@ export function DBSearchHeatmapChart({
     outlierSqlCondition: parseAsString,
   });
 
-  const form = useForm({
-    resolver: zodResolver(Schema),
-    reValidateMode: 'onSubmit',
-    defaultValues: {
-      groupBy: fields.groupBy,
-      value: fields.value,
-      count: fields.count,
-    },
-  });
-
-  const onSubmit = (data: z.infer<typeof Schema>) => {
-    setFields({
-      groupBy: data.groupBy,
-      value: data.value,
-      count: data.count,
-    });
-  };
-
   return (
     <Flex direction="column" w="100%">
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <Flex gap="xs" align="center" m="xs" mb="0">
-          <Flex gap="xs" align="start" m="0" flex="1">
-            <TextInput
-              placeholder="Value"
-              label="Value"
-              flex={1}
-              {...form.register('value')}
-              error={form.formState.errors.value?.message}
-              required
-            />
-            <TextInput
-              placeholder="Count"
-              label="Count"
-              flex={1}
-              {...form.register('count')}
-              error={form.formState.errors.count?.message}
-              required
-            />
-            <TextInput
-              placeholder="Group by"
-              label="Group by"
-              flex={1}
-              {...form.register('groupBy')}
-              error={form.formState.errors.groupBy?.message}
-            />
-          </Flex>
-          <ActionIcon variant="outline" type="submit">
-            <IconPlayerPlay />
-          </ActionIcon>
+      <Box mx="lg" mt="xs" mb={0}>
+        <Collapse in={opened} style={{ flex: 1 }}>
+          <DBSearchHeatmapForm
+            defaultValues={{
+              groupBy: fields.groupBy,
+              value: fields.value,
+              count: fields.count,
+            }}
+            onSubmit={data => {
+              setFields({
+                groupBy: data.groupBy,
+                value: data.value,
+                count: data.count,
+              });
+            }}
+          />
+        </Collapse>
+        <Flex justify="flex-end">
+          <Button
+            onClick={toggle}
+            size="xxs"
+            variant="subtle"
+            color="gray"
+            leftSection={<IconSettings size={12} />}
+            styles={{
+              section: {
+                marginRight: '3px',
+              },
+            }}
+          >
+            {opened ? 'Hide' : ''} Graph Editor
+          </Button>
         </Flex>
-      </form>
-      <div style={{ minHeight: 210, maxHeight: 210, width: '100%' }}>
+      </Box>
+      <div
+        style={{
+          minHeight: 210,
+          maxHeight: 210,
+          width: '100%',
+          position: 'relative',
+        }}
+      >
+        {/* <div style={{ position: 'absolute', bottom: '20px', left: '20px' }}>
+          <IconSettings color="gray" />
+        </div> */}
         <DBHeatmapChart
           config={{
             ...chartConfig,
@@ -122,7 +119,6 @@ export function DBSearchHeatmapChart({
           }}
         />
       </div>
-
       {fields.outlierSqlCondition ? (
         <DBDeltaChart
           config={{
@@ -142,5 +138,60 @@ export function DBSearchHeatmapChart({
         </Paper>
       )}
     </Flex>
+  );
+}
+
+function DBSearchHeatmapForm({
+  defaultValues,
+  onSubmit,
+}: {
+  defaultValues: z.infer<typeof Schema>;
+  onSubmit: (v: z.infer<typeof Schema>) => void;
+}) {
+  const form = useForm({
+    resolver: zodResolver(Schema),
+    defaultValues,
+  });
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)}>
+      <Flex gap="xs" align="end" m="0" mb="xs">
+        <Flex gap="xs" align="start" m="0" flex="1">
+          <TextInput
+            placeholder="Value"
+            label="Value"
+            flex={1}
+            {...form.register('value')}
+            error={form.formState.errors.value?.message}
+            required
+          />
+          <TextInput
+            placeholder="Count"
+            label="Count"
+            flex={1}
+            {...form.register('count')}
+            error={form.formState.errors.count?.message}
+            required
+          />
+          <TextInput
+            placeholder="Group by"
+            label="Group by"
+            flex={1}
+            {...form.register('groupBy')}
+            error={form.formState.errors.groupBy?.message}
+          />
+        </Flex>
+        {/* mb below is to align the play button with the text inputs */}
+        <ActionIcon
+          variant="outline"
+          type="submit"
+          size="lg"
+          mb="1px"
+          title="Run"
+        >
+          <IconPlayerPlay />
+        </ActionIcon>
+      </Flex>
+    </form>
   );
 }
