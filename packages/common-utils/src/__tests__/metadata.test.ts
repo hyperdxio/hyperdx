@@ -280,8 +280,9 @@ describe('Metadata', () => {
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
         expect.objectContaining({
           clickhouse_settings: {
-            max_rows_to_read: String(3e6),
-            read_overflow_mode: 'break',
+            max_rows_to_read: '0',
+            timeout_overflow_mode: 'break',
+            max_execution_time: 15,
           },
         }),
       );
@@ -312,8 +313,9 @@ describe('Metadata', () => {
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
         expect.objectContaining({
           clickhouse_settings: {
-            max_rows_to_read: String(3e6),
-            read_overflow_mode: 'break',
+            max_rows_to_read: '0',
+            timeout_overflow_mode: 'break',
+            max_execution_time: 15,
           },
         }),
       );

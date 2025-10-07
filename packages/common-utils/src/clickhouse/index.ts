@@ -7,7 +7,6 @@ import type {
   ResponseJSON,
   Row,
 } from '@clickhouse/client-common';
-import { isSuccessfulResponse } from '@clickhouse/client-common';
 import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 import objectHash from 'object-hash';
@@ -18,8 +17,12 @@ import {
   setChartSelectsAlias,
   splitChartConfigs,
 } from '@/renderChartConfig';
-import { ChartConfigWithOptDateRange, SQLInterval } from '@/types';
-import { hashCode, splitAndTrimWithBracket } from '@/utils';
+import { ChartConfigWithOptDateRange } from '@/types';
+import {
+  hashCode,
+  replaceJsonExpressions,
+  splitAndTrimWithBracket,
+} from '@/utils';
 
 // export @clickhouse/client-common types
 export type {
@@ -408,6 +411,8 @@ export type ClickhouseClientOptions = {
   queryTimeout?: number;
   /** Application name, used as the client's HTTP user-agent header */
   application?: string;
+  /** Defines how long the client will wait for a response from the ClickHouse server before aborting the request, in milliseconds */
+  requestTimeout?: number;
 };
 
 export abstract class BaseClickhouseClient {
@@ -423,7 +428,7 @@ export abstract class BaseClickhouseClient {
    * query with max_rows_to_read specified
    */
   protected maxRowReadOnly: boolean;
-  protected requestTimeout: number = 3600000; // TODO: make configurable
+  protected requestTimeout: number = 3600000;
 
   constructor({
     host,
@@ -431,6 +436,7 @@ export abstract class BaseClickhouseClient {
     password,
     queryTimeout,
     application,
+    requestTimeout,
   }: ClickhouseClientOptions) {
     this.host = host!;
     this.username = username;
@@ -438,6 +444,9 @@ export abstract class BaseClickhouseClient {
     this.queryTimeout = queryTimeout;
     this.maxRowReadOnly = false;
     this.application = application;
+    if (requestTimeout != null && requestTimeout >= 0) {
+      this.requestTimeout = requestTimeout;
+    }
   }
 
   protected getClient(): WebClickHouseClient | NodeClickHouseClient {
@@ -680,8 +689,13 @@ export function chSqlToAliasMap(
 
   try {
     const sql = parameterizedQueryToSql(chSql);
+
+    // Replace JSON expressions with replacement tokens so that node-sql-parser can parse the SQL
+    const { sqlWithReplacements, replacements: jsonReplacementsToExpressions } =
+      replaceJsonExpressions(sql);
+
     const parser = new SQLParser.Parser();
-    const ast = parser.astify(sql, {
+    const ast = parser.astify(sqlWithReplacements, {
       database: 'Postgresql',
       parseOptions: { includeLocations: true },
     }) as SQLParser.Select;
@@ -697,7 +711,7 @@ export function chSqlToAliasMap(
                 : // normal alias
                   column.expr.column.expr.value;
           } else if (column.expr.loc != null) {
-            aliasMap[column.as] = sql.slice(
+            aliasMap[column.as] = sqlWithReplacements.slice(
               column.expr.loc.start.offset,
               column.expr.loc.end.offset,
             );
@@ -707,8 +721,23 @@ export function chSqlToAliasMap(
         }
       });
     }
+
+    // Replace the JSON replacement tokens with the original JSON expressions
+    for (const [alias, aliasExpression] of Object.entries(aliasMap)) {
+      for (const [replacement, original] of jsonReplacementsToExpressions) {
+        if (aliasExpression.includes(replacement)) {
+          aliasMap[alias] = aliasExpression.replaceAll(replacement, original);
+        }
+      }
+    }
+    return aliasMap;
   } catch (e) {
-    console.error('Error parsing alias map', e, 'for query', chSql);
+    console.error(
+      'Error parsing alias map with JSON removed',
+      e,
+      'for query',
+      chSql,
+    );
   }
 
   return aliasMap;

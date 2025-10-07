@@ -66,7 +66,7 @@ export function processRowToWhereClause(
 
           // Currently we can't distinguish null or 'null'
           if (value === 'null') {
-            return SqlString.format(`isNull(??)`, [column]);
+            return SqlString.format(`isNull(??)`, [valueExpr]);
           }
           // TODO: update when JSON type have new version
           // will not work for array/object dyanmic data
