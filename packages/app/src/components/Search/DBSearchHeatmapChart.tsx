@@ -7,8 +7,7 @@ import {
   DisplayType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Flex, InputLabel } from '@mantine/core';
-import { Input } from '@mantine/core';
+import { Flex, TextInput } from '@mantine/core';
 import { ActionIcon } from '@mantine/core';
 import { Paper } from '@mantine/core';
 import { Center } from '@mantine/core';
@@ -24,9 +23,9 @@ import DBDeltaChart from '../DBDeltaChart';
 import DBHeatmapChart from '../DBHeatmapChart';
 
 const Schema = z.object({
-  groupBy: z.string(),
-  value: z.string(),
-  count: z.string(),
+  groupBy: z.string().trim().optional(),
+  value: z.string().trim().min(1),
+  count: z.string().trim().min(1),
 });
 
 export function DBSearchHeatmapChart({
@@ -65,16 +64,31 @@ export function DBSearchHeatmapChart({
     <Flex direction="column" w="100%">
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <Flex gap="xs" align="center" m="xs" mb="0">
-          <InputLabel>Value</InputLabel>
-          <Input placeholder="Value" flex={1} {...form.register('value')} />
-          <InputLabel>Count</InputLabel>
-          <Input placeholder="Count" flex={1} {...form.register('count')} />
-          <InputLabel>Group by</InputLabel>
-          <Input
-            placeholder="Group by"
-            flex={1}
-            {...form.register('groupBy')}
-          />
+          <Flex gap="xs" align="start" m="0" flex="1">
+            <TextInput
+              placeholder="Value"
+              label="Value"
+              flex={1}
+              {...form.register('value')}
+              error={form.formState.errors.value?.message}
+              required
+            />
+            <TextInput
+              placeholder="Count"
+              label="Count"
+              flex={1}
+              {...form.register('count')}
+              error={form.formState.errors.count?.message}
+              required
+            />
+            <TextInput
+              placeholder="Group by"
+              label="Group by"
+              flex={1}
+              {...form.register('groupBy')}
+              error={form.formState.errors.groupBy?.message}
+            />
+          </Flex>
           <ActionIcon variant="outline" type="submit">
             <IconPlayerPlay />
           </ActionIcon>
