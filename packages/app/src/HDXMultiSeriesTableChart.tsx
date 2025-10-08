@@ -9,12 +9,14 @@ import {
   Getter,
   Row,
   Row as TableRow,
+  SortingState,
   useReactTable,
 } from '@tanstack/react-table';
 import { ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { CsvExportButton } from './components/CsvExportButton';
+import TableHeader from './components/DBTable/TableHeader';
 import { useCsvExport } from './hooks/useCsvExport';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { NumberFormat } from './types';
@@ -25,11 +27,13 @@ export const Table = ({
   groupColumnName,
   columns,
   getRowSearchLink,
-  onSortClick,
   tableBottom,
+  sorting,
+  onSortingChange,
 }: {
   data: any[];
   columns: {
+    id: string;
     dataKey: string;
     displayName: string;
     sortOrder?: 'asc' | 'desc';
@@ -39,8 +43,9 @@ export const Table = ({
   }[];
   groupColumnName?: string;
   getRowSearchLink?: (row: any) => string;
-  onSortClick?: (columnNumber: number) => void;
   tableBottom?: React.ReactNode;
+  sorting: SortingState;
+  onSortingChange: (sorting: SortingState) => void;
 }) => {
   const MIN_COLUMN_WIDTH_PX = 100;
   //we need a reference to the scrolling element for logic down below
@@ -79,54 +84,60 @@ export const Table = ({
       : []),
     ...columns
       .filter(c => c.visible !== false)
-      .map(({ dataKey, displayName, numberFormat, columnWidthPercent }, i) => ({
-        accessorKey: dataKey,
-        header: displayName,
-        accessorFn: (row: any) => row[dataKey],
-        cell: ({
-          getValue,
-          row,
-        }: {
-          getValue: Getter<number>;
-          row: Row<any>;
-        }) => {
-          const value = getValue();
-          let formattedValue: string | number | null = value ?? null;
-          if (numberFormat) {
-            formattedValue = formatNumber(value, numberFormat);
-          }
-          if (getRowSearchLink == null) {
-            return formattedValue;
-          }
+      .map(
+        (
+          { id, dataKey, displayName, numberFormat, columnWidthPercent },
+          i,
+        ) => ({
+          id: id,
+          accessorKey: dataKey,
+          header: displayName,
+          accessorFn: (row: any) => row[dataKey],
+          cell: ({
+            getValue,
+            row,
+          }: {
+            getValue: Getter<number>;
+            row: Row<any>;
+          }) => {
+            const value = getValue();
+            let formattedValue: string | number | null = value ?? null;
+            if (numberFormat) {
+              formattedValue = formatNumber(value, numberFormat);
+            }
+            if (getRowSearchLink == null) {
+              return formattedValue;
+            }
 
-          return (
-            <Link
-              href={getRowSearchLink(row.original)}
-              passHref
-              className={'align-top overflow-hidden py-1 pe-3'}
-              style={{
-                display: 'block',
-                color: 'inherit',
-                textDecoration: 'none',
-              }}
-            >
-              {formattedValue}
-            </Link>
-          );
-        },
-        size:
-          i === numColumns - 2
-            ? UNDEFINED_WIDTH
-            : tableWidth != null && columnWidthPercent != null
-              ? Math.max(
-                  tableWidth * (columnWidthPercent / 100),
-                  MIN_COLUMN_WIDTH_PX,
-                )
-              : tableWidth != null
-                ? tableWidth / numColumns
-                : 200,
-        enableResizing: i !== numColumns - 2,
-      })),
+            return (
+              <Link
+                href={getRowSearchLink(row.original)}
+                passHref
+                className={'align-top overflow-hidden py-1 pe-3'}
+                style={{
+                  display: 'block',
+                  color: 'inherit',
+                  textDecoration: 'none',
+                }}
+              >
+                {formattedValue}
+              </Link>
+            );
+          },
+          size:
+            i === numColumns - 2
+              ? UNDEFINED_WIDTH
+              : tableWidth != null && columnWidthPercent != null
+                ? Math.max(
+                    tableWidth * (columnWidthPercent / 100),
+                    MIN_COLUMN_WIDTH_PX,
+                  )
+                : tableWidth != null
+                  ? tableWidth / numColumns
+                  : 200,
+          enableResizing: i !== numColumns - 2,
+        }),
+      ),
   ];
 
   const table = useReactTable({
@@ -135,6 +146,19 @@ export const Table = ({
     getCoreRowModel: getCoreRowModel(),
     enableColumnResizing: true,
     columnResizeMode: 'onChange',
+    enableSorting: true,
+    manualSorting: true,
+    onSortingChange: v => {
+      if (typeof v === 'function') {
+        const newSortVal = v(sorting);
+        onSortingChange?.(newSortVal ?? null);
+      } else {
+        onSortingChange?.(v ?? null);
+      }
+    },
+    state: {
+      sorting,
+    },
   });
 
   const { rows } = table.getRowModel();
@@ -173,7 +197,7 @@ export const Table = ({
 
   return (
     <div
-      className="overflow-auto h-100 fs-8 bg-inherit"
+      className="overflow-auto h-100 fs-8 bg-inherit dark:bg-dark"
       ref={tableContainerRef}
     >
       <table className="w-100 bg-inherit" style={{ tableLayout: 'fixed' }}>
@@ -188,87 +212,33 @@ export const Table = ({
           {table.getHeaderGroups().map(headerGroup => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header, headerIndex) => {
-                const sortOrder = columns[headerIndex - 1]?.sortOrder;
                 return (
-                  <th
-                    className="overflow-hidden text-truncate"
+                  <TableHeader
                     key={header.id}
-                    colSpan={header.colSpan}
-                    style={{
-                      width:
-                        header.getSize() === UNDEFINED_WIDTH
-                          ? '100%'
-                          : header.getSize(),
-                      minWidth: 100,
-                      position: 'relative',
-                    }}
-                  >
-                    {header.isPlaceholder ? null : (
-                      <Flex justify="space-between">
-                        <div>
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                        </div>
-                        <Flex gap="sm">
-                          {headerIndex > 0 && onSortClick != null && (
-                            <div
-                              role="button"
-                              onClick={() => onSortClick(headerIndex - 1)}
+                    header={header}
+                    isLast={headerIndex === headerGroup.headers.length - 1}
+                    lastItemButtons={
+                      <>
+                        {headerIndex === headerGroup.headers.length - 1 && (
+                          <div className="d-flex align-items-center">
+                            <UnstyledButton
+                              onClick={() => setWrapLinesEnabled(prev => !prev)}
                             >
-                              {sortOrder === 'asc' ? (
-                                <Text c="green">
-                                  <i className="bi bi-sort-numeric-up-alt"></i>
-                                </Text>
-                              ) : sortOrder === 'desc' ? (
-                                <Text c="green">
-                                  <i className="bi bi-sort-numeric-down-alt"></i>
-                                </Text>
-                              ) : (
-                                <Text c="dark.2">
-                                  <i className="bi bi-sort-numeric-down-alt"></i>
-                                </Text>
-                              )}
-                            </div>
-                          )}
-                          {header.column.getCanResize() &&
-                            headerIndex !== headerGroup.headers.length - 1 && (
-                              <div
-                                onMouseDown={header.getResizeHandler()}
-                                onTouchStart={header.getResizeHandler()}
-                                className={`resizer text-gray-600 cursor-grab ${
-                                  header.column.getIsResizing()
-                                    ? 'isResizing'
-                                    : ''
-                                }`}
-                              >
-                                <IconGripVertical size={12} />
-                              </div>
-                            )}
-                          {headerIndex === headerGroup.headers.length - 1 && (
-                            <div className="d-flex align-items-center">
-                              <UnstyledButton
-                                onClick={() =>
-                                  setWrapLinesEnabled(prev => !prev)
-                                }
-                              >
-                                <i className="bi bi-text-wrap" />
-                              </UnstyledButton>
-                              <CsvExportButton
-                                data={csvData}
-                                filename="HyperDX_table_results"
-                                className="fs-8 text-muted-hover ms-2"
-                                title="Download table as CSV"
-                              >
-                                <i className="bi bi-download" />
-                              </CsvExportButton>
-                            </div>
-                          )}
-                        </Flex>
-                      </Flex>
-                    )}
-                  </th>
+                              <i className="bi bi-text-wrap" />
+                            </UnstyledButton>
+                            <CsvExportButton
+                              data={csvData}
+                              filename="HyperDX_table_results"
+                              className="fs-8 text-muted-hover ms-2"
+                              title="Download table as CSV"
+                            >
+                              <i className="bi bi-download" />
+                            </CsvExportButton>
+                          </div>
+                        )}
+                      </>
+                    }
+                  />
                 );
               })}
             </tr>

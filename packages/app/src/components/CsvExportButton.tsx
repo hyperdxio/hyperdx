@@ -1,5 +1,6 @@
 import React from 'react';
 import { useCSVDownloader } from 'react-papaparse';
+import { UnstyledButton } from '@mantine/core';
 
 interface CsvExportButtonProps {
   data: Record<string, any>[];
@@ -57,9 +58,8 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
   }
 
   return (
-    <div
+    <UnstyledButton
       className={className}
-      role="button"
       title={title}
       onClick={handleClick}
       {...props}
@@ -88,6 +88,6 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
       >
         {children}
       </CSVDownloader>
-    </div>
+    </UnstyledButton>
   );
 };
