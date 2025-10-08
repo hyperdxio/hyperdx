@@ -901,6 +901,10 @@ export const RawLogTable = memo(
                                       (cell.column.columnDef.meta as any)
                                         ?.column
                                     }
+                                    isChart={
+                                      (cell.column.columnDef.meta as any)
+                                        ?.column === '__hdx_pattern_trend'
+                                    }
                                   >
                                     {flexRender(
                                       cell.column.columnDef.cell,

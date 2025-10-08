@@ -15,6 +15,7 @@ export interface DBRowTableFieldWithPopoverProps {
   cellValue: any;
   wrapLinesEnabled: boolean;
   columnName?: string;
+  isChart?: boolean;
 }
 
 export const DBRowTableFieldWithPopover = ({
@@ -22,6 +23,7 @@ export const DBRowTableFieldWithPopover = ({
   cellValue,
   wrapLinesEnabled,
   columnName,
+  isChart = false,
 }: DBRowTableFieldWithPopoverProps) => {
   const [opened, { close, open }] = useDisclosure(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -86,11 +88,29 @@ export const DBRowTableFieldWithPopover = ({
   const numberOfButtons = canFilter ? 2 : 1; // Copy + Filter (if filtering available)
   const numberOfGaps = numberOfButtons - 1;
 
+  // If it's a chart, just render the children without popover functionality
+  if (isChart) {
+    return (
+      <div
+        className={cx(styles.fieldText, {
+          [styles.chart]: isChart,
+        })}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div
       className={cx(styles.fieldText, {
-        [styles.truncated]: !wrapLinesEnabled,
+        [styles.truncated]: !wrapLinesEnabled && !isChart,
         [styles.wrapped]: wrapLinesEnabled,
+        [styles.chart]: isChart,
       })}
     >
       <Popover

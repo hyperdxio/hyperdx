@@ -134,7 +134,7 @@ $button-height: 18px;
   }
 
   &.isTruncated {
-    align-items: center;
+    align-items: flex-start;
   }
 }
 
@@ -197,6 +197,11 @@ $button-height: 18px;
       var(--mantine-color-dark-2) 30%,
       transparent
     );
+  }
+
+  &.chart {
+    overflow: visible;
+    min-height: 50px;
   }
 }
 
