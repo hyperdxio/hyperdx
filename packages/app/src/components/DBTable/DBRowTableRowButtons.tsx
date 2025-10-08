@@ -8,11 +8,13 @@ import styles from '../../../styles/LogTable.module.scss';
 export interface DBRowTableRowButtonsProps {
   row: Record<string, any>;
   getRowWhere: (row: Record<string, any>) => string;
+  sourceId?: string;
 }
 
 export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   row,
   getRowWhere,
+  sourceId,
 }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [isUrlCopied, setIsUrlCopied] = useState(false);
@@ -29,6 +31,9 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
     const currentUrl = new URL(window.location.href);
     // Add the row identifier as query parameters
     currentUrl.searchParams.set('rowWhere', rowWhere);
+    if (sourceId) {
+      currentUrl.searchParams.set('rowSource', sourceId);
+    }
     await navigator.clipboard.writeText(currentUrl.toString());
     setIsUrlCopied(true);
     setTimeout(() => setIsUrlCopied(false), 2000);

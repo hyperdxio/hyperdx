@@ -920,6 +920,7 @@ export const RawLogTable = memo(
                           <DBRowTableRowButtons
                             row={row.original}
                             getRowWhere={getRowWhere}
+                            sourceId={source?.id}
                           />
                         )}
                       </button>
