@@ -2,4 +2,4 @@
 "@hyperdx/app": patch
 ---
 
-Improve search error isolation
+Fixes scrolling in TimePicker

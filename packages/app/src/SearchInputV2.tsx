@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { Field, TableConnection } from '@hyperdx/common-utils/dist/metadata';
+import {
+  Field,
+  TableConnectionChoice,
+} from '@hyperdx/common-utils/dist/metadata';
 import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 
 import AutocompleteInput from '@/AutocompleteInput';
@@ -25,6 +28,7 @@ export class LuceneLanguageFormatter implements ILanguageFormatter {
 
 const luceneLanguageFormatter = new LuceneLanguageFormatter();
 export default function SearchInputV2({
+  tableConnection,
   tableConnections,
   placeholder = 'Search your events for anything...',
   size = 'sm',
@@ -38,7 +42,6 @@ export default function SearchInputV2({
   'data-testid': dataTestId,
   ...props
 }: {
-  tableConnections?: TableConnection | TableConnection[];
   placeholder?: string;
   size?: 'xs' | 'sm' | 'lg';
   zIndex?: number;
@@ -49,19 +52,20 @@ export default function SearchInputV2({
   additionalSuggestions?: string[];
   queryHistoryType?: string;
   'data-testid'?: string;
-} & UseControllerProps<any>) {
+} & UseControllerProps<any> &
+  TableConnectionChoice) {
   const {
     field: { onChange, value },
   } = useController(props);
 
-  const ref = useRef<HTMLInputElement>(null);
+  const ref = useRef<HTMLTextAreaElement>(null);
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
 
   const autoCompleteOptions = useAutoCompleteOptions(
     luceneLanguageFormatter,
-    value != null ? `${value}` : '', // value can be null at times
+    value != null ? `${value}` : '',
     {
-      tableConnections,
+      tableConnection: tableConnection ? tableConnection : tableConnections,
       additionalSuggestions,
     },
   );

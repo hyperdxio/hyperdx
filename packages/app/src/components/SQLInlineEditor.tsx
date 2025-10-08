@@ -1,12 +1,4 @@
-import {
-  memo,
-  RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -17,7 +9,10 @@ import {
   startCompletion,
 } from '@codemirror/autocomplete';
 import { sql, SQLDialect } from '@codemirror/lang-sql';
-import { Field, TableConnection } from '@hyperdx/common-utils/dist/metadata';
+import {
+  Field,
+  TableConnectionChoice,
+} from '@hyperdx/common-utils/dist/metadata';
 import { Paper, Text } from '@mantine/core';
 import CodeMirror, {
   Compartment,
@@ -28,7 +23,7 @@ import CodeMirror, {
   tooltips,
 } from '@uiw/react-codemirror';
 
-import { useAllFields } from '@/hooks/useMetadata';
+import { useMultipleAllFields } from '@/hooks/useMetadata';
 import { useQueryHistory } from '@/utils';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
@@ -105,7 +100,6 @@ const AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS = [
 const AUTOCOMPLETE_LIST_STRING = ` ${AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS.join(' ')}`;
 
 type SQLInlineEditorProps = {
-  tableConnections?: TableConnection | TableConnection[];
   autoCompleteFields?: Field[];
   filterField?: (field: Field) => boolean;
   value: string;
@@ -122,26 +116,36 @@ type SQLInlineEditorProps = {
   additionalSuggestions?: string[];
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
+  allowMultiline?: boolean;
 };
 
-const styleTheme = EditorView.baseTheme({
-  '&.cm-editor.cm-focused': {
-    outline: '0px solid transparent',
-  },
-  '&.cm-editor': {
-    background: 'transparent !important',
-  },
-  '& .cm-tooltip-autocomplete': {
-    whiteSpace: 'nowrap',
-    wordWrap: 'break-word',
-    maxWidth: '100%',
-  },
-  '& .cm-scroller': {
-    overflowX: 'hidden',
-  },
-});
+const MAX_EDITOR_HEIGHT = '150px';
+
+const createStyleTheme = (allowMultiline: boolean = false) =>
+  EditorView.baseTheme({
+    '&.cm-editor.cm-focused': {
+      outline: '0px solid transparent',
+    },
+    '&.cm-editor': {
+      background: 'transparent !important',
+      ...(allowMultiline && { maxHeight: MAX_EDITOR_HEIGHT }),
+    },
+    '& .cm-tooltip-autocomplete': {
+      whiteSpace: 'nowrap',
+      wordWrap: 'break-word',
+      maxWidth: '100%',
+    },
+    '& .cm-scroller': {
+      overflowX: 'hidden',
+      ...(allowMultiline && {
+        maxHeight: MAX_EDITOR_HEIGHT,
+        overflowY: 'auto',
+      }),
+    },
+  });
 
 export default function SQLInlineEditor({
+  tableConnection,
   tableConnections,
   filterField,
   onChange,
@@ -158,8 +162,12 @@ export default function SQLInlineEditor({
   additionalSuggestions = [],
   queryHistoryType,
   parentRef,
-}: SQLInlineEditorProps) {
-  const { data: fields } = useAllFields(tableConnections ?? []);
+  allowMultiline = false,
+}: SQLInlineEditorProps & TableConnectionChoice) {
+  const _tableConnections = tableConnection
+    ? [tableConnection]
+    : tableConnections;
+  const { data: fields } = useMultipleAllFields(_tableConnections ?? []);
   const filteredFields = useMemo(() => {
     return filterField ? fields?.filter(filterField) : fields;
   }, [fields, filterField]);
@@ -281,7 +289,13 @@ export default function SQLInlineEditor({
         parent: parentRef,
         tooltipSpace: view => {
           const box = view.dom.getBoundingClientRect();
-          return { ...box, right: box.right ?? 0 };
+          const parentBox = parentRef.getBoundingClientRect();
+          return {
+            ...box,
+            right: box.right ?? 0,
+            top: parentBox.top ?? box.top,
+            bottom: parentBox.bottom ?? box.bottom,
+          };
         },
       }),
     ];
@@ -326,7 +340,8 @@ export default function SQLInlineEditor({
           }}
           extensions={[
             ...tooltipExt,
-            styleTheme,
+            createStyleTheme(allowMultiline),
+            ...(allowMultiline ? [EditorView.lineWrapping] : []),
             compartmentRef.current.of(
               sql({
                 upperCaseKeywords: true,
@@ -336,7 +351,7 @@ export default function SQLInlineEditor({
               keymap.of([
                 {
                   key: 'Enter',
-                  run: () => {
+                  run: view => {
                     if (onSubmit == null) {
                       return false;
                     }
@@ -347,6 +362,17 @@ export default function SQLInlineEditor({
                     return true;
                   },
                 },
+                ...(allowMultiline
+                  ? [
+                      {
+                        key: 'Shift-Enter',
+                        run: () => {
+                          // Allow default behavior (insert new line)
+                          return false;
+                        },
+                      },
+                    ]
+                  : []),
               ]),
             ),
             keymap.of([
@@ -390,7 +416,9 @@ function SQLInlineEditorControlledComponent({
   additionalSuggestions,
   queryHistoryType,
   ...props
-}: Omit<SQLInlineEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
+}: Omit<SQLInlineEditorProps, 'value' | 'onChange'> &
+  UseControllerProps<any> &
+  TableConnectionChoice) {
   const { field, fieldState } = useController(props);
 
   // Guard against wrongly typed values

@@ -5,6 +5,9 @@ import { z } from 'zod';
 
 import {
   ChartConfigWithDateRange,
+  ChatConfigWithOptTimestamp,
+  DashboardFilter,
+  DashboardFilterSchema,
   DashboardSchema,
   DashboardTemplateSchema,
   DashboardWithoutId,
@@ -83,6 +86,134 @@ export function splitAndTrimWithBracket(input: string): string[] {
 // this will return the first one. We'll want to refine this over time
 export function getFirstTimestampValueExpression(valueExpression: string) {
   return splitAndTrimWithBracket(valueExpression)[0];
+}
+
+/** Returns true if the given expression is a JSON expression, eg. `col.key.nestedKey` or "json_col"."key" */
+export const isJsonExpression = (expr: string) => {
+  if (!expr.includes('.')) return false;
+
+  let isInDoubleQuote = false;
+  let isInBacktick = false;
+  let isInSingleQuote = false;
+
+  const parts: string[] = [];
+  let current = '';
+  for (const c of expr) {
+    if (c === "'" && !isInDoubleQuote && !isInBacktick) {
+      isInSingleQuote = !isInSingleQuote;
+    } else if (isInSingleQuote) {
+      continue;
+    } else if (c === '"' && !isInBacktick) {
+      isInDoubleQuote = !isInDoubleQuote;
+      current += c;
+    } else if (c === '`' && !isInDoubleQuote) {
+      isInBacktick = !isInBacktick;
+      current += c;
+    } else if (c === '.' && !isInDoubleQuote && !isInBacktick) {
+      parts.push(current);
+      current = '';
+    } else {
+      current += c;
+    }
+  }
+
+  if (!isInDoubleQuote && !isInBacktick) {
+    parts.push(current);
+  }
+
+  if (parts.some(p => p.trim().length === 0)) return false;
+
+  return (
+    parts.filter(
+      p =>
+        p.trim().length > 0 &&
+        isNaN(Number(p)) &&
+        !(p.startsWith("'") && p.endsWith("'")),
+    ).length > 1
+  );
+};
+
+/**
+ * Finds and returns expressions within the given SQL string that represent JSON references (eg. `col.key.nestedKey`)
+ *
+ * Note - This function does not distinguish between json references and `table.column` references - both are returned.
+ */
+export function findJsonExpressions(sql: string) {
+  const expressions: { index: number; expr: string }[] = [];
+
+  let isInDoubleQuote = false;
+  let isInBacktick = false;
+
+  let currentExpr = '';
+  const finishExpression = (expr: string, endIndex: number) => {
+    if (isJsonExpression(expr)) {
+      expressions.push({ index: endIndex - expr.length, expr });
+    }
+    currentExpr = '';
+  };
+
+  let i = 0;
+  let isInJsonTypeSpecifier = false;
+  while (i < sql.length) {
+    const c = sql.charAt(i);
+    if (c === "'" && !isInDoubleQuote && !isInBacktick) {
+      // Skip string literals
+      while (i < sql.length && sql.charAt(i) !== c) {
+        i++;
+      }
+      currentExpr = '';
+    } else if (c === '"' && !isInBacktick) {
+      isInDoubleQuote = !isInDoubleQuote;
+      currentExpr += c;
+    } else if (c === '`' && !isInDoubleQuote) {
+      isInBacktick = !isInBacktick;
+      currentExpr += c;
+    } else if (/[\s{},+*/[\]]/.test(c)) {
+      isInJsonTypeSpecifier = false;
+      finishExpression(currentExpr, i);
+    } else if ('()'.includes(c) && !isInJsonTypeSpecifier) {
+      finishExpression(currentExpr, i);
+    } else if (c === ':') {
+      isInJsonTypeSpecifier = true;
+      currentExpr += c;
+    } else {
+      currentExpr += c;
+    }
+
+    i++;
+  }
+
+  finishExpression(currentExpr, i);
+  return expressions;
+}
+
+/**
+ * Replaces expressions within the given SQL string that represent JSON expressions (eg. `col.key.nestedKey`).
+ * Such expression are replaced with placeholders like `__hdx_json_replacement_0`. The resulting string and a
+ * map of replacements --> original expressions is returned.
+ *
+ * Note - This function does not distinguish between json references and `table.column` references - both are replaced.
+ */
+export function replaceJsonExpressions(sql: string) {
+  const jsonExpressions = findJsonExpressions(sql);
+
+  const replacements = new Map<string, string>();
+  let sqlWithReplacements = sql;
+  let indexOffsetFromInserts = 0;
+  let replacementCounter = 0;
+  for (const { expr, index } of jsonExpressions) {
+    const replacement = `__hdx_json_replacement_${replacementCounter++}`;
+    replacements.set(replacement, expr);
+
+    const effectiveIndex = index + indexOffsetFromInserts;
+    sqlWithReplacements =
+      sqlWithReplacements.slice(0, effectiveIndex) +
+      replacement +
+      sqlWithReplacements.slice(effectiveIndex + expr.length);
+    indexOffsetFromInserts += replacement.length - expr.length;
+  }
+
+  return { sqlWithReplacements, replacements };
 }
 
 export enum Granularity {
@@ -334,9 +465,28 @@ export function convertToDashboardTemplate(
     return tile;
   };
 
+  const convertToFilterTemplate = (
+    input: DashboardFilter,
+    sources: TSourceUnion[],
+  ): DashboardFilter => {
+    const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
+    // Extract name from source or default to '' if not found
+    filter.source =
+      sources.find(source => source.id === input.source)?.name ?? '';
+    return filter;
+  };
+
   for (const tile of input.tiles) {
     output.tiles.push(convertToTileTemplate(tile, sources));
   }
+
+  if (input.filters) {
+    output.filters = [];
+    for (const filter of input.filters ?? []) {
+      output.filters.push(convertToFilterTemplate(filter, sources));
+    }
+  }
+
   return output;
 }
 
@@ -356,11 +506,25 @@ export function convertToDashboardDocument(
     return structuredClone(input);
   };
 
+  // expecting that input.filters[0-n].source fields are already converted to ids
+  const convertToFilterDocument = (input: DashboardFilter): DashboardFilter => {
+    return structuredClone(input);
+  };
+
   for (const tile of input.tiles) {
     output.tiles.push(convertToTileDocument(tile));
   }
+
+  if (input.filters) {
+    output.filters = [];
+    for (const filter of input.filters) {
+      output.filters.push(convertToFilterDocument(filter));
+    }
+  }
+
   return output;
 }
+
 export const getFirstOrderingItem = (
   orderBy: ChartConfigWithDateRange['orderBy'],
 ) => {
@@ -383,10 +547,11 @@ export const removeTrailingDirection = (s: string) => {
 };
 
 export const isTimestampExpressionInFirstOrderBy = (
-  config: ChartConfigWithDateRange,
+  config: ChatConfigWithOptTimestamp,
 ) => {
   const firstOrderingItem = getFirstOrderingItem(config.orderBy);
-  if (!firstOrderingItem) return false;
+  if (!firstOrderingItem || config.timestampValueExpression == null)
+    return false;
 
   const firstOrderingExpression =
     typeof firstOrderingItem === 'string'

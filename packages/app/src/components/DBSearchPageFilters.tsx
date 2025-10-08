@@ -10,6 +10,7 @@ import {
 import cx from 'classnames';
 import {
   TableMetadata,
+  tcFromChartConfig,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
@@ -554,17 +555,9 @@ const DBSearchPageFiltersComponent = ({
   ) => {
     return _setFilterValue(property, value, action);
   };
-  const {
-    toggleFilterPin,
-    toggleFieldPin,
-    isFilterPinned,
-    isFieldPinned,
-    getPinnedFields,
-  } = usePinnedFilters(sourceId ?? null);
+  const { toggleFilterPin, toggleFieldPin, isFilterPinned, isFieldPinned } =
+    usePinnedFilters(sourceId ?? null);
   const { width, startResize } = useResizable(16, 'left');
-
-  const { data: countData } = useExplainQuery(chartConfig);
-  const numRows: number = countData?.[0]?.rows ?? 0;
 
   const { data: jsonColumns } = useJsonColumns({
     databaseName: chartConfig.from.databaseName,
@@ -647,7 +640,7 @@ const DBSearchPageFiltersComponent = ({
     isLoading: isFacetsLoading,
     isFetching: isFacetsFetching,
   } = useGetKeyValues({
-    chartConfigs: { ...chartConfig, dateRange },
+    chartConfig: { ...chartConfig, dateRange },
     limit: keyLimit,
     keys: keysToFetch,
   });

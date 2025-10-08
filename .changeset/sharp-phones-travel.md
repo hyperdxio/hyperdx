@@ -3,4 +3,4 @@
 "@hyperdx/app": patch
 ---
 
-add dashboard import/export functionality
+fix: Fix sidebar when selecting JSON property

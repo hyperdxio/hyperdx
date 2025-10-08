@@ -421,6 +421,13 @@ export type DateRange = {
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
+
+export type ChatConfigWithOptTimestamp = Omit<
+  ChartConfigWithDateRange,
+  'timestampValueExpression'
+> & {
+  timestampValueExpression?: string;
+};
 // For non-time-based searches (ex. grab 1 row)
 export type ChartConfigWithOptDateRange = Omit<
   ChartConfig,
@@ -466,11 +473,25 @@ export const TileTemplateSchema = TileSchema.extend({
 
 export type Tile = z.infer<typeof TileSchema>;
 
+export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
+
+export const DashboardFilterSchema = z.object({
+  id: z.string(),
+  type: DashboardFilterType,
+  name: z.string().min(1),
+  expression: z.string().min(1),
+  source: z.string().min(1),
+  sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+});
+
+export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
+
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
   tiles: z.array(TileSchema),
   tags: z.array(z.string()),
+  filters: z.array(DashboardFilterSchema).optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
 export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;
@@ -480,6 +501,7 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
 }).extend({
   version: z.string().min(1),
   tiles: z.array(TileTemplateSchema),
+  filters: z.array(DashboardFilterSchema).optional(),
 });
 
 export const ConnectionSchema = z.object({

@@ -9,6 +9,7 @@ import {
   ChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
+import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import * as fns from 'date-fns';
 import { chunk, isString } from 'lodash';
 import { ObjectId } from 'mongoose';
@@ -38,6 +39,8 @@ import {
 import { CheckAlertsTaskArgs, HdxTask } from '@/tasks/types';
 import { roundDownToXMinutes, unflattenObject } from '@/tasks/util';
 import logger from '@/utils/logger';
+
+import { tasksTracer } from './tracer';
 
 export const doesExceedThreshold = (
   thresholdType: AlertThresholdType,
@@ -432,26 +435,40 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     alertTask: AlertTask,
     teamWebhooksById: Map<string, IWebhook>,
   ) {
-    const { alerts, conn } = alertTask;
-    logger.info({
-      message: 'Processing alerts in batch',
-      alertCount: alerts.length,
+    await tasksTracer.startActiveSpan('processAlertTask', async span => {
+      setTraceAttributes({
+        'hyperdx.alerts.team.id': alertTask.conn.team.toString(),
+        'hyperdx.alerts.connection.id': alertTask.conn.id,
+      });
+
+      try {
+        const { alerts, conn } = alertTask;
+        logger.info({
+          message: 'Processing alerts in batch',
+          alertCount: alerts.length,
+        });
+
+        const clickhouseClient = await this.provider.getClickHouseClient(
+          conn,
+          this.args.sourceTimeoutMs,
+        );
+
+        for (const alert of alerts) {
+          await this.task_queue.add(() =>
+            processAlert(
+              alertTask.now,
+              alert,
+              clickhouseClient,
+              conn.id,
+              this.provider,
+              teamWebhooksById,
+            ),
+          );
+        }
+      } finally {
+        span.end();
+      }
     });
-
-    const clickhouseClient = await this.provider.getClickHouseClient(conn);
-
-    for (const alert of alerts) {
-      await this.task_queue.add(() =>
-        processAlert(
-          alertTask.now,
-          alert,
-          clickhouseClient,
-          conn.id,
-          this.provider,
-          teamWebhooksById,
-        ),
-      );
-    }
   }
 
   async execute(): Promise<void> {
@@ -463,11 +480,22 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
 
     this.provider = await loadProvider(this.args.provider);
     await this.provider.init();
+    logger.debug({
+      message: 'finished provider initialization',
+      provider: this.provider.constructor.name,
+      args: this.args,
+    });
+
+    setTraceAttributes({
+      'hyperdx.alerts.provider': this.provider.constructor.name,
+    });
 
     const alertTasks = await this.provider.getAlertTasks();
-    logger.info({
-      message: 'Fetched alert tasks to process',
-      taskCount: alertTasks.length,
+    const taskCount = alertTasks.length;
+    logger.debug({
+      message: `Fetched ${taskCount} alert tasks to process`,
+      taskCount,
+      args: this.args,
     });
 
     const teams = new Set(alertTasks.map(t => t.conn.team.toString()));
@@ -476,6 +504,12 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       const teamWebhooksById = await this.provider.getWebhooks(teamId);
       teamToWebhooks.set(teamId, teamWebhooksById);
     }
+    logger.debug({
+      message: `Obtained teams and webhooks for all alertTasks`,
+      args: this.args,
+      teamCount: teams.size,
+      teamWebhookCount: teamToWebhooks.size,
+    });
 
     for (const task of alertTasks) {
       const teamWebhooksById =
@@ -484,8 +518,16 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
         this.processAlertTask(task, teamWebhooksById),
       );
     }
+    logger.debug({
+      message: 'finished scheduling alert tasks on the task_queue',
+      args: this.args,
+    });
 
     await this.task_queue.onIdle();
+    logger.info({
+      message: 'finished processing all tasks on task_queue',
+      args: this.args,
+    });
   }
 
   name(): string {

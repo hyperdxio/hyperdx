@@ -230,6 +230,7 @@ export default class DefaultAlertProvider implements AlertProvider {
           alertId: alert.id,
           team: alert.team,
           channel: alert.channel,
+          provider: 'default',
         });
       }
     }
@@ -296,16 +297,15 @@ export default class DefaultAlertProvider implements AlertProvider {
     return new Map<string, IWebhook>(webhooks.map(w => [w.id, w]));
   }
 
-  async getClickHouseClient({
-    host,
-    username,
-    password,
-    id,
-  }: IConnection): Promise<ClickhouseClient> {
+  async getClickHouseClient(
+    { host, username, password, id }: IConnection,
+    requestTimeout?: number,
+  ): Promise<ClickhouseClient> {
     if (!password && password !== '') {
       logger.info({
         message: `connection password not found`,
         connectionId: id,
+        provider: 'default',
       });
     }
 
@@ -314,6 +314,7 @@ export default class DefaultAlertProvider implements AlertProvider {
       username,
       password,
       application: `hyperdx-alerts ${config.CODE_VERSION}`,
+      requestTimeout: requestTimeout ?? 30_000,
     });
   }
 }

@@ -3,4 +3,4 @@
 "@hyperdx/app": patch
 ---
 
-fix: json getKeyValues (useful for autocomplete)
+refactor: clean up table connections
