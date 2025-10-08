@@ -21,6 +21,7 @@ import {
   Anchor,
   Badge,
   Box,
+  Button,
   Card,
   Flex,
   Grid,
@@ -44,6 +45,7 @@ import { FormatPodStatus } from './components/KubeComponents';
 import { KubernetesFilters } from './components/KubernetesFilters';
 import OnboardingModal from './components/OnboardingModal';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
+import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import {
   convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
@@ -812,12 +814,21 @@ function KubernetesDashboardPage() {
     displayedTimeInputValue,
     setDisplayedTimeInputValue,
     onSearch,
+    onTimeRangeSelect,
   } = useTimeQuery({
     defaultValue: 'Past 1h',
     defaultTimeRange: [
       defaultTimeRange?.[0]?.getTime() ?? -1,
       defaultTimeRange?.[1]?.getTime() ?? -1,
     ],
+  });
+
+  const [isLive, setIsLive] = React.useState(false);
+
+  const { manualRefreshCooloff, refresh } = useDashboardRefresh({
+    searchedTimeRange: dateRange,
+    onTimeRangeSelect,
+    isLive,
   });
 
   const whereClause = searchQuery;
@@ -867,23 +878,36 @@ function KubernetesDashboardPage() {
           />
         </Group>
 
-        <form
-          data-testid="kubernetes-time-form"
-          onSubmit={e => {
-            e.preventDefault();
-            onSearch(displayedTimeInputValue);
-            return false;
-          }}
-        >
-          <TimePicker
-            data-testid="kubernetes-time-picker"
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={range => {
-              onSearch(range);
+        <Group gap="xs">
+          <form
+            data-testid="kubernetes-time-form"
+            onSubmit={e => {
+              e.preventDefault();
+              onSearch(displayedTimeInputValue);
+              return false;
             }}
-          />
-        </form>
+          >
+            <TimePicker
+              data-testid="kubernetes-time-picker"
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onSearch}
+            />
+          </form>
+          <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+            <Button
+              onClick={refresh}
+              loading={manualRefreshCooloff}
+              disabled={manualRefreshCooloff}
+              color="gray"
+              variant="outline"
+              title="Refresh dashboard"
+              px="xs"
+            >
+              <i className="bi bi-arrow-clockwise fs-5"></i>
+            </Button>
+          </Tooltip>
+        </Group>
       </Group>
       {metricSource && (
         <KubernetesFilters

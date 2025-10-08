@@ -22,6 +22,7 @@ import {
   SegmentedControl,
   Tabs,
   Text,
+  Tooltip,
 } from '@mantine/core';
 
 import {
@@ -43,6 +44,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { useJsonColumns } from '@/hooks/useMetadata';
 import { withAppNav } from '@/layout';
 import SearchInputV2 from '@/SearchInputV2';
@@ -895,10 +897,18 @@ function ServicesDashboardPage() {
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
 
-  const { searchedTimeRange, onSearch } = useNewTimeQuery({
+  const { searchedTimeRange, onSearch, onTimeRangeSelect } = useNewTimeQuery({
     initialDisplayValue: DEFAULT_INTERVAL,
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
+  });
+
+  const [isLive, setIsLive] = useState(false);
+
+  const { manualRefreshCooloff, refresh } = useDashboardRefresh({
+    searchedTimeRange,
+    onTimeRangeSelect,
+    isLive,
   });
 
   const onSubmit = useCallback(() => {
@@ -990,10 +1000,21 @@ function ServicesDashboardPage() {
             <TimePicker
               inputValue={displayedTimeInputValue}
               setInputValue={setDisplayedTimeInputValue}
-              onSearch={range => {
-                onSearch(range);
-              }}
+              onSearch={onSearch}
             />
+            <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+              <Button
+                onClick={refresh}
+                loading={manualRefreshCooloff}
+                disabled={manualRefreshCooloff}
+                color="gray"
+                variant="outline"
+                title="Refresh dashboard"
+                px="xs"
+              >
+                <i className="bi bi-arrow-clockwise fs-5"></i>
+              </Button>
+            </Tooltip>
             <Button variant="outline" type="submit" px="sm">
               <i className="bi bi-play"></i>
             </Button>

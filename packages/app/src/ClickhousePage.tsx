@@ -20,6 +20,7 @@ import {
   SegmentedControl,
   Tabs,
   Text,
+  Tooltip,
 } from '@mantine/core';
 import ReactCodeMirror from '@uiw/react-codemirror';
 
@@ -33,6 +34,7 @@ import DBHeatmapChart from './components/DBHeatmapChart';
 import { DBSqlRowTable } from './components/DBRowTable';
 import DBTableChart from './components/DBTableChart';
 import OnboardingModal from './components/OnboardingModal';
+import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useConnections } from './connection';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 
@@ -457,6 +459,14 @@ function ClickhousePage() {
     // showRelativeInterval: isLive,
   });
 
+  const [isLive, setIsLive] = useState(false);
+
+  const { manualRefreshCooloff, refresh } = useDashboardRefresh({
+    searchedTimeRange,
+    onTimeRangeSelect,
+    isLive,
+  });
+
   const filters = useMemo(() => {
     const { latencyMin, latencyMax } = latencyFilter;
     return [
@@ -497,21 +507,34 @@ function ClickhousePage() {
             size="xs"
           />
         </Group>
-        <form
-          onSubmit={e => {
-            e.preventDefault();
-            onSearch(displayedTimeInputValue);
-            return false;
-          }}
-        >
-          <TimePicker
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={range => {
-              onSearch(range);
+        <Group gap="xs">
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              onSearch(displayedTimeInputValue);
+              return false;
             }}
-          />
-        </form>
+          >
+            <TimePicker
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onSearch}
+            />
+          </form>
+          <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+            <Button
+              onClick={refresh}
+              loading={manualRefreshCooloff}
+              disabled={manualRefreshCooloff}
+              color="gray"
+              variant="outline"
+              title="Refresh dashboard"
+              px="xs"
+            >
+              <i className="bi bi-arrow-clockwise fs-5"></i>
+            </Button>
+          </Tooltip>
+        </Group>
       </Group>
       <Tabs
         mt="md"
