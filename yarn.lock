@@ -4555,7 +4555,7 @@ __metadata:
     ts-node: "npm:^10.8.1"
     tsc-alias: "npm:^1.8.8"
     tsconfig-paths: "npm:^4.2.0"
-    typescript: "npm:5.9.3"
+    typescript: "npm:^5.9.3"
     uuid: "npm:^8.3.2"
     winston: "npm:^3.10.0"
     zod: "npm:3.25"
@@ -4642,7 +4642,7 @@ __metadata:
     msw: "npm:^2.3.0"
     msw-storybook-addon: "npm:^2.0.2"
     next: "npm:^14.2.32"
-    next-query-params: "npm:^4.1.0"
+    next-query-params: "npm:^4.3.1"
     next-runtime-env: "npm:1"
     next-seo: "npm:^4.28.1"
     nextra: "npm:2.0.1"
@@ -4685,7 +4685,7 @@ __metadata:
     stylelint-prettier: "npm:^5.0.0"
     timestamp-nano: "npm:^1.0.1"
     ts-jest: "npm:^29.2.6"
-    typescript: "npm:^4.9.5"
+    typescript: "npm:^5.9.3"
     uplot: "npm:^1.6.31"
     uplot-react: "npm:^1.2.2"
     use-query-params: "npm:^2.1.2"
@@ -4737,7 +4737,7 @@ __metadata:
     tsc-alias: "npm:^1.8.8"
     tsconfig-paths: "npm:^4.2.0"
     tsup: "npm:^8.4.0"
-    typescript: "npm:^4.9.5"
+    typescript: "npm:^5.9.3"
     uuid: "npm:^8.3.2"
     zod: "npm:3.25"
   languageName: unknown
@@ -22214,16 +22214,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"next-query-params@npm:^4.1.0":
-  version: 4.1.0
-  resolution: "next-query-params@npm:4.1.0"
+"next-query-params@npm:^4.3.1":
+  version: 4.3.1
+  resolution: "next-query-params@npm:4.3.1"
   dependencies:
     tslib: "npm:^2.0.3"
   peerDependencies:
-    next: ^10.0.0 || ^11.0.0 || ^12.0.0 || ^13.0.0
+    next: ^10.0.0 || ^11.0.0 || ^12.0.0 || ^13.0.0 || ^14.0.0
     react: ^16.8.0 || ^17.0.0 || ^18.0.0
     use-query-params: ^2.0.0
-  checksum: 10c0/0e1c0cd270956742be0f17cfded0fead834bee966ca350d5dd5a17a6109d9da9ad101cae4f68065b20ebfd3da89f05121ccb7eeb3424977fb20305ced70e486f
+  checksum: 10c0/d5752b77b7d3606f36703ac664cf95a75fe0bf1c297c1f06083fe61883a6c037d633558208d4f3e03744b31a079a712ced025da7bdb6f90216eb0ec17b7509a3
   languageName: node
   linkType: hard
 
@@ -22642,13 +22642,13 @@ __metadata:
   linkType: hard
 
 "nuqs@npm:^1.17.0":
-  version: 1.17.0
-  resolution: "nuqs@npm:1.17.0"
+  version: 1.20.0
+  resolution: "nuqs@npm:1.20.0"
   dependencies:
     mitt: "npm:^3.0.1"
   peerDependencies:
     next: ">=13.4 <14.0.2 || ^14.0.3"
-  checksum: 10c0/98e26518fdeda9518defe8abb34fd722f9fbc6d62dc7713dbc7bf365b5afc4c7c934088d7c7ed528621c222017841411241f0cfe97c615a3e7fb4d80354e8349
+  checksum: 10c0/8e1b67a96c6fda21023924db03b31f3eecf387097ee23685f35fbd1118ff202d1f8f3efd5e1e45bb5736e701a13da0d6cefc98cbe813315dc6462c2e38e2c93f
   languageName: node
   linkType: hard
 
@@ -28505,7 +28505,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"typescript@npm:5.9.3":
+"typescript@npm:^5.9.3":
   version: 5.9.3
   resolution: "typescript@npm:5.9.3"
   bin:
@@ -28515,33 +28515,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"typescript@npm:^4.9.5":
-  version: 4.9.5
-  resolution: "typescript@npm:4.9.5"
-  bin:
-    tsc: bin/tsc
-    tsserver: bin/tsserver
-  checksum: 10c0/5f6cad2e728a8a063521328e612d7876e12f0d8a8390d3b3aaa452a6a65e24e9ac8ea22beb72a924fd96ea0a49ea63bb4e251fb922b12eedfb7f7a26475e5c56
-  languageName: node
-  linkType: hard
-
-"typescript@patch:typescript@npm%3A5.9.3#optional!builtin<compat/typescript>":
+"typescript@patch:typescript@npm%3A^5.9.3#optional!builtin<compat/typescript>":
   version: 5.9.3
   resolution: "typescript@patch:typescript@npm%3A5.9.3#optional!builtin<compat/typescript>::version=5.9.3&hash=cef18b"
   bin:
     tsc: bin/tsc
     tsserver: bin/tsserver
   checksum: 10c0/6f7e53bf0d9702350deeb6f35e08b69cbc8b958c33e0ec77bdc0ad6a6c8e280f3959dcbfde6f5b0848bece57810696489deaaa53d75de3578ff255d168c1efbd
-  languageName: node
-  linkType: hard
-
-"typescript@patch:typescript@npm%3A^4.9.5#optional!builtin<compat/typescript>":
-  version: 4.9.5
-  resolution: "typescript@patch:typescript@npm%3A4.9.5#optional!builtin<compat/typescript>::version=4.9.5&hash=289587"
-  bin:
-    tsc: bin/tsc
-    tsserver: bin/tsserver
-  checksum: 10c0/e3333f887c6829dfe0ab6c1dbe0dd1e3e2aeb56c66460cb85c5440c566f900c833d370ca34eb47558c0c69e78ced4bfe09b8f4f98b6de7afed9b84b8d1dd06a1
   languageName: node
   linkType: hard
 

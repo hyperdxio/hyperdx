@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "module": "Node16",
-    "moduleResolution": "node",
+    "moduleResolution": "Node16",
     "lib": ["ES2022", "dom"],
     "allowSyntheticDefaultImports": true,
     "downlevelIteration": true,

@@ -45,7 +45,7 @@
     "tsc-alias": "^1.8.8",
     "tsconfig-paths": "^4.2.0",
     "tsup": "^8.4.0",
-    "typescript": "^4.9.5"
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "dev": "nodemon --watch ./src --ext ts --exec \"yarn dev:build\"",
