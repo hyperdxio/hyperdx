@@ -2,4 +2,4 @@
 "@hyperdx/app": minor
 ---
 
-Add copy-to-clipboard buttons in RawLogTable for log line data and URLs, with improved button styling.
+Add toggle filters button, copy field, and per-row copy-to-clipboard for JSON data and modal URLs in RawLogTable
