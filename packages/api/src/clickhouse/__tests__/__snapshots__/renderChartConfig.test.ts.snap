@@ -1,5 +1,86 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
+exports[`renderChartConfig K8s Semantic Convention Migrations with metricNameSql should handle gauge metric with metricNameSql and groupBy 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "arrayElement(ResourceAttributes, 'k8s.pod.name')": "test-pod",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 45,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+    "arrayElement(ResourceAttributes, 'k8s.pod.name')": "test-pod",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 50,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "arrayElement(ResourceAttributes, 'k8s.pod.name')": "test-pod",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 55,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:03:00Z",
+    "arrayElement(ResourceAttributes, 'k8s.pod.name')": "test-pod",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 60,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:04:00Z",
+    "arrayElement(ResourceAttributes, 'k8s.pod.name')": "test-pod",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 65,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "arrayElement(ResourceAttributes, 'k8s.pod.name')": "test-pod",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 70,
+  },
+]
+`;
+
+exports[`renderChartConfig K8s Semantic Convention Migrations with metricNameSql should handle metrics without metricNameSql (backward compatibility) 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 45,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 50,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 55,
+  },
+]
+`;
+
+exports[`renderChartConfig K8s Semantic Convention Migrations with metricNameSql should query k8s.pod.cpu.utilization gauge metric using metricNameSql to handle both old and new conventions 1`] = `
+Array [
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 45,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:01:00Z",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 50,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:02:00Z",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 55,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:03:00Z",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 60,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:04:00Z",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 65,
+  },
+  Object {
+    "__hdx_time_bucket": "2022-01-05T00:05:00Z",
+    "avg(toFloat64OrDefault(toString(LastValue)))": 70,
+  },
+]
+`;
+
 exports[`renderChartConfig Query Events - Logs simple select + group by query logs 1`] = `
 Array [
   Object {
