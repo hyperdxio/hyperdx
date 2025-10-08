@@ -2,7 +2,7 @@ import React, { useContext, useRef, useState } from 'react';
 import cx from 'classnames';
 import { Popover } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconCopy, IconFilter } from '@tabler/icons-react';
+import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
 import { RowSidePanelContext } from '../DBRowSidePanel';
 
@@ -83,14 +83,22 @@ export const DBRowTableFieldWithPopover = ({
   const addFilter = () => {
     if (canFilter) {
       const value = typeof cellValue === 'string' ? cellValue : `${cellValue}`;
-      onPropertyAddClick(columnName, value);
+      onPropertyAddClick(columnName, value, 'include');
+      handleClick(); // Close the popover
+    }
+  };
+
+  const excludeFilter = () => {
+    if (canFilter) {
+      const value = typeof cellValue === 'string' ? cellValue : `${cellValue}`;
+      onPropertyAddClick(columnName, value, 'exclude');
       handleClick(); // Close the popover
     }
   };
 
   const buttonSize = 20;
   const gapSize = 4;
-  const numberOfButtons = canFilter ? 2 : 1; // Copy + Filter (if filtering available)
+  const numberOfButtons = canFilter ? 3 : 1; // Copy + Include Filter + Exclude Filter (if filtering available)
   const numberOfGaps = numberOfButtons - 1;
 
   // If it's a chart, just render the children without popover functionality
@@ -157,13 +165,22 @@ export const DBRowTableFieldWithPopover = ({
               <IconCopy size={14} />
             </DBRowTableIconButton>
             {canFilter && (
-              <DBRowTableIconButton
-                onClick={addFilter}
-                variant="copy"
-                title="Toggle filter for this value"
-              >
-                <IconFilter size={14} />
-              </DBRowTableIconButton>
+              <>
+                <DBRowTableIconButton
+                  onClick={addFilter}
+                  variant="copy"
+                  title="Toggle filter for this value"
+                >
+                  <IconFilter size={14} />
+                </DBRowTableIconButton>
+                <DBRowTableIconButton
+                  onClick={excludeFilter}
+                  variant="copy"
+                  title="Exclude this value"
+                >
+                  <IconFilterX size={14} />
+                </DBRowTableIconButton>
+              </>
             )}
           </div>
         </Popover.Dropdown>
