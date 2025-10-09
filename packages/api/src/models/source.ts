@@ -128,5 +128,6 @@ export const SessionSource = Source.discriminator<
   SourceKind.Session,
   new mongoose.Schema<Extract<TSource, { kind: SourceKind.Session }>>({
     traceSourceId: String,
+    timestampValueExpression: String,
   }),
 );
