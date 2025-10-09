@@ -4648,7 +4648,7 @@ __metadata:
     nextra: "npm:2.0.1"
     nextra-theme-docs: "npm:^2.0.2"
     numbro: "npm:^2.4.0"
-    nuqs: "npm:^1.17.0"
+    nuqs: "npm:^2.7.1"
     object-hash: "npm:^3.0.0"
     postcss: "npm:^8.4.38"
     postcss-preset-mantine: "npm:^1.15.0"
@@ -8444,7 +8444,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@standard-schema/spec@npm:^1.0.0":
+"@standard-schema/spec@npm:1.0.0, @standard-schema/spec@npm:^1.0.0":
   version: 1.0.0
   resolution: "@standard-schema/spec@npm:1.0.0"
   checksum: 10c0/a1ab9a8bdc09b5b47aa8365d0e0ec40cc2df6437be02853696a0e377321653b0d3ac6f079a8c67d5ddbe9821025584b1fb71d9cc041a6666a96f1fadf2ece15f
@@ -21915,13 +21915,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mitt@npm:^3.0.1":
-  version: 3.0.1
-  resolution: "mitt@npm:3.0.1"
-  checksum: 10c0/3ab4fdecf3be8c5255536faa07064d05caa3dd332bd318ff02e04621f7b3069ca1de9106cfe8e7ced675abfc2bec2ce4c4ef321c4a1bb1fb29df8ae090741913
-  languageName: node
-  linkType: hard
-
 "mixme@npm:^0.5.1":
   version: 0.5.9
   resolution: "mixme@npm:0.5.9"
@@ -22641,14 +22634,30 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nuqs@npm:^1.17.0":
-  version: 1.20.0
-  resolution: "nuqs@npm:1.20.0"
+"nuqs@npm:^2.7.1":
+  version: 2.7.1
+  resolution: "nuqs@npm:2.7.1"
   dependencies:
-    mitt: "npm:^3.0.1"
+    "@standard-schema/spec": "npm:1.0.0"
   peerDependencies:
-    next: ">=13.4 <14.0.2 || ^14.0.3"
-  checksum: 10c0/8e1b67a96c6fda21023924db03b31f3eecf387097ee23685f35fbd1118ff202d1f8f3efd5e1e45bb5736e701a13da0d6cefc98cbe813315dc6462c2e38e2c93f
+    "@remix-run/react": ">=2"
+    "@tanstack/react-router": ^1
+    next: ">=14.2.0"
+    react: ">=18.2.0 || ^19.0.0-0"
+    react-router: ^6 || ^7
+    react-router-dom: ^6 || ^7
+  peerDependenciesMeta:
+    "@remix-run/react":
+      optional: true
+    "@tanstack/react-router":
+      optional: true
+    next:
+      optional: true
+    react-router:
+      optional: true
+    react-router-dom:
+      optional: true
+  checksum: 10c0/dbc7affc1a4cf19dc4d4dd327baa4ac6d1e998dd6303a44d916316433cf71e1c2d2e1ff1b3808c4729a78a8b9b89b65b78814cda003621768ce8f695527b8a82
   languageName: node
   linkType: hard
 
