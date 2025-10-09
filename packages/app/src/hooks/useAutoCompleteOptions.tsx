@@ -4,10 +4,11 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
 import {
   deduplicate2dArray,
-  useAllFields,
-  useGetKeyValues,
+  useJsonColumns,
+  useMultipleAllFields,
+  useMultipleGetKeyValues,
 } from '@/hooks/useMetadata';
-import { toArray } from '@/utils';
+import { mergePath, toArray } from '@/utils';
 
 export interface ILanguageFormatter {
   formatFieldValue: (f: Field) => string;
@@ -22,15 +23,21 @@ export function useAutoCompleteOptions(
   formatter: ILanguageFormatter,
   value: string,
   {
-    tableConnections,
+    tableConnection,
     additionalSuggestions,
   }: {
-    tableConnections?: TableConnection | TableConnection[];
+    tableConnection?: TableConnection | TableConnection[];
     additionalSuggestions?: string[];
   },
 ) {
   // Fetch and gather all field options
-  const { data: fields } = useAllFields(tableConnections ?? []);
+  const { data: fields } = useMultipleAllFields(
+    tableConnection
+      ? Array.isArray(tableConnection)
+        ? tableConnection
+        : [tableConnection]
+      : [],
+  );
   const { fieldCompleteOptions, fieldCompleteMap } = useMemo(() => {
     const _columns = (fields ?? []).filter(c => c.jsType !== null);
 
@@ -71,35 +78,43 @@ export function useAutoCompleteOptions(
       setSearchField(null);
     }
   }, [searchField, setSearchField, value, formatter]);
+  const tcForJson = Array.isArray(tableConnection)
+    ? tableConnection.length > 0
+      ? tableConnection[0]
+      : undefined
+    : tableConnection;
+  const { data: jsonColumns } = useJsonColumns(
+    tcForJson ?? {
+      tableName: '',
+      databaseName: '',
+      connectionId: '',
+    },
+  );
   const searchKeys = useMemo(
     () =>
-      searchField
-        ? [
-            searchField.path.length > 1
-              ? `${searchField.path[0]}['${searchField.path[1]}']`
-              : searchField.path[0],
-          ]
+      searchField && jsonColumns
+        ? [mergePath(searchField.path, jsonColumns)]
         : [],
-    [searchField],
+    [searchField, jsonColumns],
   );
 
   // hooks to get key values
-  const chartConfigs: ChartConfigWithDateRange[] = toArray(
-    tableConnections,
-  ).map(({ databaseName, tableName, connectionId }) => ({
-    connection: connectionId,
-    from: {
-      databaseName,
-      tableName,
-    },
-    timestampValueExpression: '',
-    select: '',
-    where: '',
-    // TODO: Pull in date for query as arg
-    // just assuming 1/2 day is okay to query over right now
-    dateRange: [new Date(NOW - (86400 * 1000) / 2), new Date(NOW)],
-  }));
-  const { data: keyVals } = useGetKeyValues({
+  const chartConfigs: ChartConfigWithDateRange[] = toArray(tableConnection).map(
+    ({ databaseName, tableName, connectionId }) => ({
+      connection: connectionId,
+      from: {
+        databaseName,
+        tableName,
+      },
+      timestampValueExpression: '',
+      select: '',
+      where: '',
+      // TODO: Pull in date for query as arg
+      // just assuming 1/2 day is okay to query over right now
+      dateRange: [new Date(NOW - (86400 * 1000) / 2), new Date(NOW)],
+    }),
+  );
+  const { data: keyVals } = useMultipleGetKeyValues({
     chartConfigs,
     keys: searchKeys,
   });

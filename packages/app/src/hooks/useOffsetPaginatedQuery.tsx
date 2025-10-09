@@ -7,7 +7,7 @@ import {
   ColumnMetaType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
@@ -26,12 +26,12 @@ import { omit } from '@/utils';
 
 type TQueryKey = readonly [
   string,
-  ChartConfigWithDateRange,
+  ChartConfigWithOptTimestamp,
   number | undefined,
 ];
 function queryKeyFn(
   prefix: string,
-  config: ChartConfigWithDateRange,
+  config: ChartConfigWithOptTimestamp,
   queryTimeout?: number,
 ): TQueryKey {
   return [prefix, config, queryTimeout];
@@ -130,7 +130,7 @@ function generateTimeWindowsAscending(startDate: Date, endDate: Date) {
 
 // Get time window from page param
 function getTimeWindowFromPageParam(
-  config: ChartConfigWithDateRange,
+  config: ChartConfigWithOptTimestamp,
   pageParam: TPageParam,
 ): TimeWindow {
   const [startDate, endDate] = config.dateRange;
@@ -148,7 +148,7 @@ function getTimeWindowFromPageParam(
 function getNextPageParam(
   lastPage: TQueryFnData | null,
   allPages: TQueryFnData[],
-  config: ChartConfigWithDateRange,
+  config: ChartConfigWithOptTimestamp,
 ): TPageParam | undefined {
   if (lastPage == null) {
     return undefined;
@@ -177,9 +177,10 @@ function getNextPageParam(
     };
   }
 
-  // If no more results in current window, move to next window
+  // If no more results in current window, move to next window (if windowing is being used)
+  const shouldUseWindowing = isTimestampExpressionInFirstOrderBy(config);
   const nextWindowIndex = currentWindow.windowIndex + 1;
-  if (nextWindowIndex < windows.length) {
+  if (shouldUseWindowing && nextWindowIndex < windows.length) {
     return {
       windowIndex: nextWindowIndex,
       offset: 0,
@@ -427,7 +428,7 @@ function flattenData(data: TData | undefined): TQueryFnData | null {
 }
 
 export default function useOffsetPaginatedQuery(
-  config: ChartConfigWithDateRange,
+  config: ChartConfigWithOptTimestamp,
   {
     isLive,
     enabled = true,

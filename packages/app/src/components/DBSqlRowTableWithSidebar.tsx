@@ -7,6 +7,7 @@ import {
   type TLogSource,
   type TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
+import { SortingState } from '@tanstack/react-table';
 
 import { useSource } from '@/source';
 import TabBar from '@/TabBar';
@@ -37,6 +38,8 @@ interface Props {
   collapseAllRows?: boolean;
   isNestedPanel?: boolean;
   breadcrumbPath?: BreadcrumbEntry[];
+  onSortingChange?: (v: SortingState | null) => void;
+  initialSortBy?: SortingState;
 }
 
 export default function DBSqlRowTableWithSideBar({
@@ -53,6 +56,8 @@ export default function DBSqlRowTableWithSideBar({
   isNestedPanel,
   breadcrumbPath,
   onSidebarOpen,
+  onSortingChange,
+  initialSortBy,
 }: Props) {
   const { data: sourceLog } = useSource({
     id: sourceId,
@@ -99,7 +104,9 @@ export default function DBSqlRowTableWithSideBar({
         enabled={enabled}
         isLive={isLive ?? true}
         queryKeyPrefix={'dbSqlRowTable'}
+        onSortingChange={onSortingChange}
         denoiseResults={denoiseResults}
+        initialSortBy={initialSortBy}
         renderRowDetails={r => {
           if (!sourceData) {
             return <div className="p-3 text-muted">Loading...</div>;

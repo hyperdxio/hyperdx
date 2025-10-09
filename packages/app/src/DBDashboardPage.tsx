@@ -4,21 +4,22 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 import produce from 'immer';
-import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
+import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
-import { useHotkeys } from 'react-hotkeys-hook';
 import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
-import { AlertState, SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertState,
+  DashboardFilter,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -27,12 +28,10 @@ import {
   SearchConditionLanguage,
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
+import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/utils';
 import {
-  ActionIcon,
-  Badge,
   Box,
   Button,
-  CopyButton,
   Flex,
   Group,
   Indicator,
@@ -40,15 +39,13 @@ import {
   Menu,
   Modal,
   Paper,
-  Popover,
-  ScrollArea,
   Text,
   Title,
   Tooltip,
-  Transition,
 } from '@mantine/core';
-import { useHover, usePrevious } from '@mantine/hooks';
+import { useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import { IconFilterEdit } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
@@ -67,14 +64,16 @@ import {
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
+import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { parseAsStringWithNewLines } from './utils/queryParsers';
 import api from './api';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
-import GranularityPicker, {
-  GranularityPickerControlled,
-} from './GranularityPicker';
+import DashboardFilters from './DashboardFilters';
+import DashboardFiltersModal from './DashboardFiltersModal';
+import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
 import SearchInputV2 from './SearchInputV2';
@@ -85,7 +84,7 @@ import {
 } from './source';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 import { useConfirm } from './useConfirm';
-import { getMetricTableName, hashCode, omit } from './utils';
+import { getMetricTableName } from './utils';
 import { useZIndex, ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
@@ -500,6 +499,19 @@ function DashboardName({
   );
 }
 
+// Download an object to users computer as JSON using specified name
+function downloadObjectAsJson(object: object, fileName = 'output') {
+  const dataStr =
+    'data:text/json;charset=utf-8,' +
+    encodeURIComponent(JSON.stringify(object));
+  const downloadAnchorNode = document.createElement('a');
+  downloadAnchorNode.setAttribute('href', dataStr);
+  downloadAnchorNode.setAttribute('download', fileName + '.json');
+  document.body.appendChild(downloadAnchorNode); // required for firefox
+  downloadAnchorNode.click();
+  downloadAnchorNode.remove();
+}
+
 function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const confirm = useConfirm();
 
@@ -512,6 +524,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     dashboardHash,
     isLocalDashboard,
     isLocalDashboardEmpty,
+    isFetching: isFetchingDashboard,
+    isSetting: isSavingDashboard,
   } = useDashboard({
     dashboardId: dashboardId as string | undefined,
     presetConfig,
@@ -550,12 +564,43 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   ) as [SQLInterval | undefined, (value: SQLInterval | undefined) => void];
   const [where, setWhere] = useQueryState(
     'where',
-    parseAsString.withDefault(''),
+    parseAsStringWithNewLines.withDefault(''),
   );
   const [whereLanguage, setWhereLanguage] = useQueryState(
     'whereLanguage',
     parseAsString.withDefault('lucene'),
   );
+
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
+
+  const filters = dashboard?.filters ?? [];
+  const { filterValues, setFilterValue, filterQueries } =
+    useDashboardFilters(filters);
+
+  const handleSaveFilter = (filter: DashboardFilter) => {
+    if (!dashboard) return;
+
+    setDashboard(
+      produce(dashboard, draft => {
+        const filterIndex =
+          draft.filters?.findIndex(p => p.id === filter.id) ?? -1;
+        if (draft.filters && filterIndex !== -1) {
+          draft.filters[filterIndex] = filter;
+        } else {
+          draft.filters = [...(draft.filters ?? []), filter];
+        }
+      }),
+    );
+  };
+
+  const handleRemoveFilter = (id: string) => {
+    if (!dashboard) return;
+
+    setDashboard({
+      ...dashboard,
+      filters: dashboard.filters?.filter(p => p.id !== id) ?? [],
+    });
+  };
 
   const [isLive, setIsLive] = useState(false);
 
@@ -663,6 +708,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 type: whereLanguage === 'sql' ? 'sql' : 'lucene',
                 condition: where,
               },
+              ...(filterQueries ?? []),
             ]}
             onTimeRangeSelect={onTimeRangeSelect}
             isHighlighed={highlightedTileId === chart.id}
@@ -794,6 +840,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [isSaving, setIsSaving] = useState(false);
 
+  const hasTiles = dashboard && dashboard.tiles.length > 0;
+
   return (
     <Box p="sm">
       <Head>
@@ -896,8 +944,47 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               </Menu.Target>
 
               <Menu.Dropdown>
+                {hasTiles && (
+                  <Menu.Item
+                    leftSection={<i className="bi bi-download" />}
+                    onClick={() => {
+                      if (!sources || !dashboard) {
+                        notifications.show({
+                          color: 'red',
+                          message: 'Export Failed',
+                        });
+                        return;
+                      }
+                      downloadObjectAsJson(
+                        convertToDashboardTemplate(
+                          dashboard,
+                          // TODO: fix this type issue
+                          sources,
+                        ),
+                        dashboard?.name,
+                      );
+                    }}
+                  >
+                    Export Dashboard
+                  </Menu.Item>
+                )}
+                <Menu.Item
+                  leftSection={<i className="bi bi-upload" />}
+                  onClick={() => {
+                    if (dashboard && !dashboard.tiles.length) {
+                      router.push(
+                        `/dashboards/import?dashboardId=${dashboard.id}`,
+                      );
+                    } else {
+                      router.push('/dashboards/import');
+                    }
+                  }}
+                >
+                  {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
+                </Menu.Item>
                 <Menu.Item
                   leftSection={<i className="bi bi-trash-fill" />}
+                  color="red"
                   onClick={() =>
                     deleteDashboard.mutate(dashboard?.id ?? '', {
                       onSuccess: () => {
@@ -940,6 +1027,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 onSubmit={onSubmit}
                 label="GLOBAL WHERE"
                 enableHotkey
+                allowMultiline={true}
               />
             ) : (
               <SearchInputV2
@@ -995,13 +1083,31 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             title="Refresh dashboard"
             px="xs"
           >
-            <i className="bi bi-arrow-clockwise text-slate-400 fs-5"></i>
+            <i className="bi bi-arrow-clockwise fs-5"></i>
+          </Button>
+        </Tooltip>
+        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+          <Button
+            variant="outline"
+            type="submit"
+            color="gray"
+            px="xs"
+            mr={6}
+            onClick={() => setShowFiltersModal(true)}
+          >
+            <IconFilterEdit strokeWidth={1} />
           </Button>
         </Tooltip>
         <Button variant="outline" type="submit" color="green">
           <i className="bi bi-play"></i>
         </Button>
       </Flex>
+      <DashboardFilters
+        filters={filters}
+        filterValues={filterValues}
+        onSetFilterValue={setFilterValue}
+        dateRange={searchedTimeRange}
+      />
       <Box mt="sm">
         {dashboard != null && dashboard.tiles != null ? (
           <ErrorBoundary
@@ -1064,6 +1170,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       >
         + Add New Tile
       </Button>
+      <DashboardFiltersModal
+        opened={showFiltersModal}
+        onClose={() => setShowFiltersModal(false)}
+        filters={filters}
+        onSaveFilter={handleSaveFilter}
+        onRemoveFilter={handleRemoveFilter}
+        isLoading={isSavingDashboard || isFetchingDashboard}
+      />
     </Box>
   );
 }

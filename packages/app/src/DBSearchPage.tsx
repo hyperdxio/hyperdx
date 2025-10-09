@@ -55,7 +55,8 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { useIsFetching } from '@tanstack/react-query';
+import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
+import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -75,10 +76,7 @@ import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_LOCAL_MODE } from '@/config';
-import {
-  useAliasMapFromChartConfig,
-  useQueriedChartConfig,
-} from '@/hooks/useChartConfig';
+import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { withAppNav } from '@/layout';
 import {
@@ -104,6 +102,10 @@ import PatternTable from './components/PatternTable';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
+import {
+  parseAsSortingStateString,
+  parseAsStringWithNewLines,
+} from './utils/queryParsers';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
@@ -553,7 +555,7 @@ function optimizeDefaultOrderBy(
   if (!sortingKey) return fallbackOrderBy;
 
   const orderByArr = [];
-  const sortKeys = sortingKey.split(',').map(key => key.trim());
+  const sortKeys = splitAndTrimWithBracket(sortingKey);
   for (let i = 0; i < sortKeys.length; i++) {
     const sortKey = sortKeys[i];
     if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
@@ -600,11 +602,11 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
-  where: parseAsString,
-  select: parseAsString,
+  where: parseAsStringWithNewLines,
+  select: parseAsStringWithNewLines,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
   filters: parseAsJson<Filter[]>(),
-  orderBy: parseAsString,
+  orderBy: parseAsStringWithNewLines,
 };
 
 function DBSearchPage() {
@@ -1123,7 +1125,10 @@ function DBSearchPage() {
     }
   }, [isReady, queryReady, isChartConfigLoading, onSearch]);
 
-  const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
+  const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig, {
+    placeholderData: keepPreviousData,
+    queryKey: ['aliasMap', dbSqlRowTableConfig, 'withPlaceholder'],
+  });
 
   const aliasWith = useMemo(
     () =>
@@ -1180,21 +1185,30 @@ function DBSearchPage() {
     [onSubmit],
   );
 
+  const onSortingChange = useCallback(
+    (sortState: SortingState | null) => {
+      setIsLive(false);
+      const sort = sortState?.at(0);
+      setSearchedConfig({
+        orderBy: sort
+          ? `${sort.id} ${sort.desc ? 'DESC' : 'ASC'}`
+          : defaultOrderBy,
+      });
+    },
+    [setIsLive, defaultOrderBy, setSearchedConfig],
+  );
+  // Parse the orderBy string into a SortingState. We need the string
+  // version in other places so we keep this parser separate.
+  const orderByConfig = parseAsSortingStateString.parse(
+    searchedConfig.orderBy ?? '',
+  );
+
   const handleTimeRangeSelect = useCallback(
     (d1: Date, d2: Date) => {
       onTimeRangeSelect(d1, d2);
       setIsLive(false);
     },
     [onTimeRangeSelect],
-  );
-
-  const onTimeChartError = useCallback(
-    (error: Error | ClickHouseQueryError) =>
-      setQueryErrors(prev => ({
-        ...prev,
-        DBTimeChart: error,
-      })),
-    [setQueryErrors],
   );
 
   const filtersChartConfig = useMemo<ChartConfigWithDateRange>(() => {
@@ -1250,13 +1264,13 @@ function DBSearchPage() {
               onCreate={openNewSourceModal}
               allowedSourceKinds={ALLOWED_SOURCE_KINDS}
               data-testid="source-selector"
+              sourceSchemaPreview={
+                <SourceSchemaPreview
+                  tableConnection={tcFromSource(inputSourceObj)}
+                  variant="text"
+                />
+              }
             />
-            <span className="ms-1">
-              <SourceSchemaPreview
-                source={inputSourceObj}
-                iconStyles={{ size: 'xs', color: 'dark.2' }}
-              />
-            </span>
             <Menu withArrow position="bottom-start">
               <Menu.Target>
                 <ActionIcon
@@ -1303,7 +1317,7 @@ function DBSearchPage() {
           </Group>
           <Box style={{ minWidth: 100, flexGrow: 1 }}>
             <SQLInlineEditorControlled
-              tableConnections={tcFromSource(inputSourceObj)}
+              tableConnection={tcFromSource(inputSourceObj)}
               control={control}
               name="select"
               defaultValue={inputSourceObj?.defaultTableSelectExpression}
@@ -1317,7 +1331,7 @@ function DBSearchPage() {
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
             <SQLInlineEditorControlled
-              tableConnections={tcFromSource(inputSourceObj)}
+              tableConnection={tcFromSource(inputSourceObj)}
               control={control}
               name="orderBy"
               defaultValue={defaultOrderBy}
@@ -1439,7 +1453,7 @@ function DBSearchPage() {
             sqlInput={
               <Box style={{ width: '75%', flexGrow: 1 }}>
                 <SQLInlineEditorControlled
-                  tableConnections={tcFromSource(inputSourceObj)}
+                  tableConnection={tcFromSource(inputSourceObj)}
                   control={control}
                   name="where"
                   placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -1453,12 +1467,13 @@ function DBSearchPage() {
                   label="WHERE"
                   queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
                   enableHotkey
+                  allowMultiline={true}
                 />
               </Box>
             }
             luceneInput={
               <SearchInputV2
-                tableConnections={tcFromSource(inputSourceObj)}
+                tableConnection={tcFromSource(inputSourceObj)}
                 control={control}
                 name="where"
                 onLanguageChange={lang =>
@@ -1586,7 +1601,6 @@ function DBSearchPage() {
                           showDisplaySwitcher={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
-                          onError={onTimeChartError}
                         />
                       </Box>
                     )}
@@ -1701,7 +1715,6 @@ function DBSearchPage() {
                             showDisplaySwitcher={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
-                            onError={onTimeChartError}
                           />
                         </Box>
                       )}
@@ -1875,6 +1888,8 @@ function DBSearchPage() {
                           onError={handleTableError}
                           denoiseResults={denoiseResults}
                           collapseAllRows={collapseAllRows}
+                          onSortingChange={onSortingChange}
+                          initialSortBy={orderByConfig ? [orderByConfig] : []}
                         />
                       )}
                   </>

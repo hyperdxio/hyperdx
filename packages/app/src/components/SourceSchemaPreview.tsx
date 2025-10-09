@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
-import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
-import { Modal, Paper, Tabs, Text, TextProps, Tooltip } from '@mantine/core';
+import {
+  MetricsDataType,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
+import { Modal, Paper, Tabs, TextProps, Tooltip } from '@mantine/core';
+import { IconCode } from '@tabler/icons-react';
 
 import { useTableMetadata } from '@/hooks/useMetadata';
 
@@ -12,6 +17,7 @@ interface SourceSchemaInfoIconProps {
   isEnabled: boolean;
   tableCount: number;
   iconStyles?: Pick<TextProps, 'size' | 'color'>;
+  variant?: 'icon' | 'text';
 }
 
 const SourceSchemaInfoIcon = ({
@@ -19,6 +25,7 @@ const SourceSchemaInfoIcon = ({
   isEnabled,
   tableCount,
   iconStyles,
+  variant = 'icon',
 }: SourceSchemaInfoIconProps) => {
   const tooltipText = isEnabled
     ? tableCount > 1
@@ -34,11 +41,15 @@ const SourceSchemaInfoIcon = ({
       position="right"
       onClick={() => isEnabled && onClick()}
     >
-      <Text {...iconStyles}>
-        <i
-          className={`bi bi-code-square ${isEnabled ? 'cursor-pointer' : ''}`}
-        />
-      </Text>
+      {variant === 'text' ? (
+        <span
+          style={{ cursor: isEnabled ? 'pointer' : 'default', ...iconStyles }}
+        >
+          Schema
+        </span>
+      ) : (
+        <IconCode size={16} />
+      )}
     </Tooltip>
   );
 };
@@ -77,9 +88,10 @@ const TableSchemaPreview = ({
 };
 
 export interface SourceSchemaPreviewProps {
-  source?: TSource;
+  metricTables?: TMetricSource['metricTables'];
   tableConnection?: TableConnection;
   iconStyles?: Pick<TextProps, 'size' | 'color'>;
+  variant?: 'icon' | 'text';
 }
 
 const METRIC_TYPE_NAMES: Record<MetricsDataType, string> = {
@@ -91,36 +103,29 @@ const METRIC_TYPE_NAMES: Record<MetricsDataType, string> = {
 };
 
 const SourceSchemaPreview = ({
-  source,
   tableConnection,
   iconStyles,
+  variant = 'icon',
+  metricTables,
 }: SourceSchemaPreviewProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const isMetricSource = source?.kind === 'metric';
   const tables: (TableSchemaPreviewProps & { title: string })[] = [];
-  if (source && isMetricSource) {
+  if (tableConnection && metricTables) {
     tables.push(
       ...Object.values(MetricsDataType)
         .map(metricType => ({
           metricType,
-          tableName: source.metricTables?.[metricType],
+          tableName: metricTables?.[metricType],
         }))
         .filter(({ tableName }) => !!tableName)
         .map(({ metricType, tableName }) => ({
-          databaseName: source.from.databaseName,
+          databaseName: tableConnection.databaseName,
           tableName: tableName!,
-          connectionId: source.connection,
+          connectionId: tableConnection.connectionId,
           title: METRIC_TYPE_NAMES[metricType],
         })),
     );
-  } else if (source && source.from.tableName) {
-    tables.push({
-      databaseName: source.from.databaseName,
-      tableName: source.from.tableName,
-      connectionId: source.connection,
-      title: source.name ?? source.from.tableName,
-    });
   } else if (tableConnection) {
     tables.push({
       databaseName: tableConnection.databaseName,
@@ -130,7 +135,7 @@ const SourceSchemaPreview = ({
     });
   }
 
-  const isEnabled = (!!source || !!tableConnection) && tables.length > 0;
+  const isEnabled = !!tableConnection && tables.length > 0;
 
   return (
     <>
@@ -139,6 +144,7 @@ const SourceSchemaPreview = ({
         onClick={() => setIsModalOpen(true)}
         iconStyles={iconStyles}
         tableCount={tables.length}
+        variant={variant}
       />
       {isEnabled && (
         <Modal

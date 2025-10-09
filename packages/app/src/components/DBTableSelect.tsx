@@ -1,9 +1,11 @@
 import { useController, UseControllerProps } from 'react-hook-form';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Flex, Select } from '@mantine/core';
 
 import { useTablesDirect } from '@/clickhouse';
 
 import SourceSchemaPreview from './SourceSchemaPreview';
+import { SourceSelectRightSection } from './SourceSelect';
 
 export default function DBTableSelect({
   database,
@@ -36,6 +38,24 @@ export default function DBTableSelect({
     label: db.name,
   }));
 
+  const rightSectionProps = SourceSelectRightSection({
+    sourceSchemaPreview:
+      connectionId && database && table ? (
+        <SourceSchemaPreview
+          variant="text"
+          tableConnection={
+            connectionId && database && table
+              ? {
+                  connectionId,
+                  databaseName: database,
+                  tableName: table,
+                }
+              : undefined
+          }
+        />
+      ) : undefined,
+  });
+
   return (
     <Flex align="center" gap={8}>
       <Select
@@ -53,18 +73,7 @@ export default function DBTableSelect({
         ref={inputRef}
         size={size}
         className="flex-grow-1"
-      />
-      <SourceSchemaPreview
-        tableConnection={
-          connectionId && database && table
-            ? {
-                connectionId,
-                databaseName: database,
-                tableName: table,
-              }
-            : undefined
-        }
-        iconStyles={{ color: 'gray.4' }}
+        {...rightSectionProps}
       />
     </Flex>
   );

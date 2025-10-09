@@ -451,7 +451,7 @@ export default function SessionsPage() {
                 sqlInput={
                   <Box style={{ width: '50%', flexGrow: 1 }}>
                     <SQLInlineEditorControlled
-                      tableConnections={tcFromSource(traceTrace)}
+                      tableConnection={tcFromSource(traceTrace)}
                       onSubmit={onSubmit}
                       control={control}
                       name="where"
@@ -464,12 +464,13 @@ export default function SessionsPage() {
                       language="sql"
                       label="WHERE"
                       enableHotkey
+                      allowMultiline={true}
                     />
                   </Box>
                 }
                 luceneInput={
                   <SearchInputV2
-                    tableConnections={tcFromSource(traceTrace)}
+                    tableConnection={tcFromSource(traceTrace)}
                     control={control}
                     name="where"
                     onLanguageChange={lang =>

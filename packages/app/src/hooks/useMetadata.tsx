@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import objectHash from 'object-hash';
 import {
   ColumnMeta,
@@ -20,6 +21,25 @@ import api from '@/api';
 import { getMetadata } from '@/metadata';
 import { toArray } from '@/utils';
 
+// Hook to get metadata with proper settings applied
+// TODO: replace all getMetadata calls with useMetadataWithSettings
+export function useMetadataWithSettings() {
+  const metadata = getMetadata();
+  const { data: me } = api.useMe();
+  const settingsApplied = useRef(false);
+
+  useEffect(() => {
+    if (me?.team?.metadataMaxRowsToRead && !settingsApplied.current) {
+      metadata.setClickHouseSettings({
+        max_rows_to_read: me.team.metadataMaxRowsToRead,
+      });
+      settingsApplied.current = true;
+    }
+  }, [me?.team?.metadataMaxRowsToRead, metadata]);
+
+  return metadata;
+}
+
 export function useColumns(
   {
     databaseName,
@@ -32,10 +52,10 @@ export function useColumns(
   },
   options?: Partial<UseQueryOptions<ColumnMeta[]>>,
 ) {
+  const metadata = useMetadataWithSettings();
   return useQuery<ColumnMeta[]>({
     queryKey: ['useMetadata.useColumns', { databaseName, tableName }],
     queryFn: async () => {
-      const metadata = getMetadata();
       return metadata.getColumns({
         databaseName,
         tableName,
@@ -48,62 +68,45 @@ export function useColumns(
 }
 
 export function useJsonColumns(
-  {
-    databaseName,
-    tableName,
-    connectionId,
-  }: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  },
+  tableConnection: TableConnection | undefined,
   options?: Partial<UseQueryOptions<string[]>>,
 ) {
+  const metadata = useMetadataWithSettings();
   return useQuery<string[]>({
-    queryKey: ['useMetadata.useJsonColumns', { databaseName, tableName }],
+    queryKey: ['useMetadata.useJsonColumns', tableConnection],
     queryFn: async () => {
-      const metadata = getMetadata();
-      const columns = await metadata.getColumns({
-        databaseName,
-        tableName,
-        connectionId,
-      });
+      if (!tableConnection) return [];
+      const columns = await metadata.getColumns(tableConnection);
       return (
         filterColumnMetaByType(columns, [JSDataType.JSON])?.map(
           column => column.name,
         ) ?? []
       );
     },
-    enabled: !!databaseName && !!tableName && !!connectionId,
+    enabled:
+      tableConnection &&
+      !!tableConnection.databaseName &&
+      !!tableConnection.tableName &&
+      !!tableConnection.connectionId,
     ...options,
   });
 }
 
-export function useAllFields(
-  _tableConnections: TableConnection | TableConnection[],
+export function useMultipleAllFields(
+  tableConnections: TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>>,
 ) {
-  const tableConnections = Array.isArray(_tableConnections)
-    ? _tableConnections
-    : [_tableConnections];
-  const metadata = getMetadata();
+  const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
   return useQuery<Field[]>({
     queryKey: [
-      'useMetadata.useAllFields',
+      'useMetadata.useMultipleAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
     ],
     queryFn: async () => {
       const team = me?.team;
       if (team?.fieldMetadataDisabled) {
         return [];
-      }
-
-      // TODO: set the settings at the top level so that it doesn't have to be set for each useQuery
-      if (team?.metadataMaxRowsToRead) {
-        metadata.setClickHouseSettings({
-          max_rows_to_read: team.metadataMaxRowsToRead,
-        });
       }
 
       const fields2d = await Promise.all(
@@ -125,6 +128,16 @@ export function useAllFields(
   });
 }
 
+export function useAllFields(
+  tableConnection: TableConnection | undefined,
+  options?: Partial<UseQueryOptions<Field[]>>,
+) {
+  return useMultipleAllFields(
+    tableConnection ? [tableConnection] : [],
+    options,
+  );
+}
+
 export function useTableMetadata(
   {
     databaseName,
@@ -137,7 +150,7 @@ export function useTableMetadata(
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
-  const metadata = getMetadata();
+  const metadata = useMetadataWithSettings();
   return useQuery<TableMetadata>({
     queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
     queryFn: async () => {
@@ -153,7 +166,7 @@ export function useTableMetadata(
   });
 }
 
-export function useGetKeyValues(
+export function useMultipleGetKeyValues(
   {
     chartConfigs,
     keys,
@@ -167,9 +180,8 @@ export function useGetKeyValues(
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
-  const metadata = getMetadata();
+  const metadata = useMetadataWithSettings();
   const chartConfigsArr = toArray(chartConfigs);
-  const { data: me, isFetched } = api.useMe();
   return useQuery<{ key: string; value: string[] }[]>({
     queryKey: [
       'useMetadata.useGetKeyValues',
@@ -178,14 +190,6 @@ export function useGetKeyValues(
       disableRowLimit,
     ],
     queryFn: async () => {
-      const team = me?.team;
-
-      // TODO: set the settings at the top level so that it doesn't have to be set for each useQuery
-      if (team?.metadataMaxRowsToRead) {
-        metadata.setClickHouseSettings({
-          max_rows_to_read: team.metadataMaxRowsToRead,
-        });
-      }
       return (
         await Promise.all(
           chartConfigsArr.map(chartConfig =>
@@ -200,10 +204,65 @@ export function useGetKeyValues(
       ).flatMap(v => v);
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
-    enabled: !!keys.length && isFetched,
+    enabled: !!keys.length,
     placeholderData: keepPreviousData,
     ...options,
   });
+}
+
+export function useGetValuesDistribution(
+  {
+    chartConfig,
+    key,
+    limit,
+  }: {
+    chartConfig: ChartConfigWithDateRange;
+    key: string;
+    limit: number;
+  },
+  options?: Omit<UseQueryOptions<Map<string, number>, Error>, 'queryKey'>,
+) {
+  const metadata = useMetadataWithSettings();
+  return useQuery<Map<string, number>>({
+    queryKey: ['useMetadata.useGetValuesDistribution', chartConfig, key],
+    queryFn: async () => {
+      return await metadata.getValuesDistribution({
+        chartConfig,
+        key,
+        limit,
+      });
+    },
+    staleTime: Infinity,
+    enabled: !!key,
+    placeholderData: keepPreviousData,
+    retry: false,
+    ...options,
+  });
+}
+
+export function useGetKeyValues(
+  {
+    chartConfig,
+    keys,
+    limit,
+    disableRowLimit,
+  }: {
+    chartConfig?: ChartConfigWithDateRange;
+    keys: string[];
+    limit?: number;
+    disableRowLimit?: boolean;
+  },
+  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
+) {
+  return useMultipleGetKeyValues(
+    {
+      chartConfigs: chartConfig ? [chartConfig] : [],
+      keys,
+      limit,
+      disableRowLimit,
+    },
+    options,
+  );
 }
 
 export function deduplicateArray<T extends object>(array: T[]): T[] {

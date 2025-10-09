@@ -268,7 +268,7 @@ export default function ContextSubpanel({
                 sqlInput={
                   originalLanguage === 'lucene' ? null : (
                     <SQLInlineEditorControlled
-                      tableConnections={tcFromSource(source)}
+                      tableConnection={tcFromSource(source)}
                       control={control}
                       name="where"
                       placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -281,7 +281,7 @@ export default function ContextSubpanel({
                 luceneInput={
                   originalLanguage === 'sql' ? null : (
                     <SearchInputV2
-                      tableConnections={tcFromSource(source)}
+                      tableConnection={tcFromSource(source)}
                       control={control}
                       name="where"
                       language="lucene"

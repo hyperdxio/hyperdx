@@ -1,6 +1,16 @@
-import { memo, useCallback, useEffect, useId, useMemo, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import cx from 'classnames';
 import {
   TableMetadata,
+  tcFromChartConfig,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
@@ -30,11 +40,12 @@ import { useExplainQuery } from '@/hooks/useExplainQuery';
 import {
   useAllFields,
   useGetKeyValues,
+  useGetValuesDistribution,
   useJsonColumns,
   useTableMetadata,
 } from '@/hooks/useMetadata';
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
-import { getMetadata } from '@/metadata';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
@@ -65,6 +76,9 @@ type FilterCheckboxProps = {
   onClickOnly?: VoidFunction;
   onClickExclude?: VoidFunction;
   onClickPin: VoidFunction;
+  className?: string;
+  percentage?: number;
+  isPercentageLoading?: boolean;
 };
 
 export const TextButton = ({
@@ -94,6 +108,26 @@ export const TextButton = ({
   );
 };
 
+type FilterPercentageProps = {
+  percentage: number;
+  isLoading?: boolean;
+};
+
+const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
+  const formattedPercentage =
+    percentage < 1
+      ? `<1%`
+      : percentage >= 99.5
+        ? `>99%`
+        : `~${Math.round(percentage)}%`;
+
+  return (
+    <Text size="xs" c="gray.3" className={isLoading ? 'effect-pulse' : ''}>
+      {formattedPercentage}
+    </Text>
+  );
+};
+
 const emptyFn = () => {};
 export const FilterCheckbox = ({
   value,
@@ -103,10 +137,13 @@ export const FilterCheckbox = ({
   onClickOnly,
   onClickExclude,
   onClickPin,
+  className,
+  percentage,
+  isPercentageLoading,
 }: FilterCheckboxProps) => {
   return (
     <div
-      className={classes.filterCheckbox}
+      className={cx(classes.filterCheckbox, className)}
       data-testid={`filter-checkbox-${label}`}
     >
       <Group
@@ -134,15 +171,30 @@ export const FilterCheckbox = ({
           fz="xxs"
           color="gray"
         >
-          <Text
-            size="xs"
-            c={value === 'excluded' ? 'red.4' : 'gray.3'}
-            truncate="end"
+          <Group
             w="100%"
-            title={label}
+            gap="xs"
+            wrap="nowrap"
+            justify="space-between"
+            pe={'11px'}
+            miw={0}
           >
-            {label}
-          </Text>
+            <Text
+              size="xs"
+              c={value === 'excluded' ? 'red.4' : 'gray.3'}
+              truncate="end"
+              flex={1}
+              title={label}
+            >
+              {label}
+            </Text>
+            {percentage != null && (
+              <FilterPercentage
+                percentage={percentage}
+                isLoading={isPercentageLoading}
+              />
+            )}
+          </Group>
         </Tooltip>
       </Group>
       <div className={classes.filterActions}>
@@ -196,6 +248,8 @@ export type FilterGroupProps = {
   hasLoadedMore: boolean;
   isDefaultExpanded?: boolean;
   'data-testid'?: string;
+  chartConfig: ChartConfigWithDateRange;
+  isLive?: boolean;
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
@@ -218,18 +272,69 @@ export const FilterGroup = ({
   hasLoadedMore,
   isDefaultExpanded,
   'data-testid': dataTestId,
+  chartConfig,
+  isLive,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   // "Show More" button when there's lots of options
   const [shouldShowMore, setShowMore] = useState(false);
   // Accordion expanded state
   const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
+  // Track recently moved items for highlight animation
+  const [recentlyMoved, setRecentlyMoved] = useState<Set<string>>(new Set());
+  // Show what percentage of the data has each value
+  const [showDistributions, setShowDistributions] = useState(false);
+  // For live searches, don't refresh percentages when date range changes
+  const [dateRange, setDateRange] = useState<[Date, Date]>(
+    chartConfig.dateRange,
+  );
+
+  const toggleShowDistributions = () => {
+    if (!showDistributions) {
+      setExpanded(true);
+      setDateRange(chartConfig.dateRange);
+    }
+    setShowDistributions(prev => !prev);
+  };
+
+  useEffect(() => {
+    if (!isLive) {
+      setDateRange(chartConfig.dateRange);
+    }
+  }, [chartConfig.dateRange, isLive]);
 
   useEffect(() => {
     if (isDefaultExpanded) {
       setExpanded(true);
     }
   }, [isDefaultExpanded]);
+
+  const {
+    data: distributionData,
+    isFetching: isFetchingDistribution,
+    error: distributionError,
+  } = useGetValuesDistribution(
+    {
+      chartConfig: { ...chartConfig, dateRange },
+      key: name,
+      limit: 100, // The 100 most common values are enough to find any values that are present in at least 1% of rows
+    },
+    {
+      enabled: showDistributions,
+    },
+  );
+
+  useEffect(() => {
+    if (distributionError) {
+      notifications.show({
+        color: 'red',
+        title: 'Error loading filter distribution',
+        message: distributionError?.message,
+        autoClose: 5000,
+      });
+      setShowDistributions(false);
+    }
+  }, [distributionError]);
 
   const totalFiltersSize =
     selectedValues.included.size + selectedValues.excluded.size;
@@ -278,6 +383,13 @@ export const FilterGroup = ({
       if (aExcluded && !bExcluded) return -1;
       if (!aExcluded && bExcluded) return 1;
 
+      // Then sort by estimated percentage of rows with this value, if available
+      const aPercentage = distributionData?.get(a.value) ?? 0;
+      const bPercentage = distributionData?.get(b.value) ?? 0;
+      if (aPercentage !== bPercentage) {
+        return bPercentage - aPercentage;
+      }
+
       // Finally sort alphabetically/numerically
       return a.value.localeCompare(b.value, undefined, { numeric: true });
     });
@@ -296,8 +408,30 @@ export const FilterGroup = ({
     augmentedOptions,
     selectedValues,
     totalFiltersSize,
+    distributionData,
   ]);
 
+  // Simple highlight animation when checkbox is checked
+  const handleChange = useCallback(
+    (value: string) => {
+      const wasIncluded = selectedValues.included.has(value);
+
+      // If checking (not unchecking), trigger highlight animation
+      if (!wasIncluded) {
+        setRecentlyMoved(prev => new Set(prev).add(value));
+        setTimeout(() => {
+          setRecentlyMoved(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(value);
+            return newSet;
+          });
+        }, 600);
+      }
+
+      onChange(value);
+    },
+    [onChange, selectedValues],
+  );
   const showShowMoreButton =
     !search &&
     augmentedOptions.length > MAX_FILTER_GROUP_ITEMS &&
@@ -367,6 +501,22 @@ export const FilterGroup = ({
               </Tooltip>
             </Accordion.Control>
             <Group gap="xxxs" wrap="nowrap">
+              <ActionIcon
+                size="xs"
+                variant="subtle"
+                color="gray"
+                onClick={toggleShowDistributions}
+                title={
+                  showDistributions ? 'Hide distribution' : 'Show distribution'
+                }
+                data-testid={`toggle-distribution-button-${name}`}
+                aria-checked={showDistributions}
+                role="checkbox"
+              >
+                <i
+                  className={`bi ${isFetchingDistribution ? 'spinner-border spinner-border-sm' : showDistributions ? 'bi-bar-chart-line-fill' : 'bi-bar-chart-line'}`}
+                />
+              </ActionIcon>
               {onFieldPinClick && (
                 <ActionIcon
                   size="xs"
@@ -374,6 +524,7 @@ export const FilterGroup = ({
                   color="gray"
                   onClick={onFieldPinClick}
                   title={isFieldPinned ? 'Unpin field' : 'Pin field'}
+                  me={'4px'}
                 >
                   <i
                     className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
@@ -403,6 +554,9 @@ export const FilterGroup = ({
                   key={option.value}
                   label={option.label}
                   pinned={isPinned(option.value)}
+                  className={
+                    recentlyMoved.has(option.value) ? classes.recentlyMoved : ''
+                  }
                   value={
                     selectedValues.included.has(option.value)
                       ? 'included'
@@ -410,10 +564,16 @@ export const FilterGroup = ({
                         ? 'excluded'
                         : false
                   }
-                  onChange={() => onChange(option.value)}
+                  onChange={() => handleChange(option.value)}
                   onClickOnly={() => onOnlyClick(option.value)}
                   onClickExclude={() => onExcludeClick(option.value)}
                   onClickPin={() => onPinClick(option.value)}
+                  isPercentageLoading={isFetchingDistribution}
+                  percentage={
+                    showDistributions && distributionData
+                      ? (distributionData.get(option.value) ?? 0)
+                      : undefined
+                  }
                 />
               ))}
               {optionsLoading ? (
@@ -517,17 +677,9 @@ const DBSearchPageFiltersComponent = ({
   ) => {
     return _setFilterValue(property, value, action);
   };
-  const {
-    toggleFilterPin,
-    toggleFieldPin,
-    isFilterPinned,
-    isFieldPinned,
-    getPinnedFields,
-  } = usePinnedFilters(sourceId ?? null);
+  const { toggleFilterPin, toggleFieldPin, isFilterPinned, isFieldPinned } =
+    usePinnedFilters(sourceId ?? null);
   const { width, startResize } = useResizable(16, 'left');
-
-  const { data: countData } = useExplainQuery(chartConfig);
-  const numRows: number = countData?.[0]?.rows ?? 0;
 
   const { data: jsonColumns } = useJsonColumns({
     databaseName: chartConfig.from.databaseName,
@@ -610,11 +762,12 @@ const DBSearchPageFiltersComponent = ({
     isLoading: isFacetsLoading,
     isFetching: isFacetsFetching,
   } = useGetKeyValues({
-    chartConfigs: { ...chartConfig, dateRange },
+    chartConfig: { ...chartConfig, dateRange },
     limit: keyLimit,
     keys: keysToFetch,
   });
 
+  const metadata = useMetadataWithSettings();
   const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
   const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
     new Set(),
@@ -623,7 +776,6 @@ const DBSearchPageFiltersComponent = ({
     async (key: string) => {
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
-        const metadata = getMetadata();
         const newKeyVals = await metadata.getKeyValues({
           chartConfig: {
             ...chartConfig,
@@ -870,6 +1022,8 @@ const DBSearchPageFiltersComponent = ({
                   (filterState[facet.key].included.size > 0 ||
                     filterState[facet.key].excluded.size > 0))
               }
+              chartConfig={chartConfig}
+              isLive={isLive}
             />
           ))}
 

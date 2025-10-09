@@ -105,6 +105,7 @@ export const DerivedColumnSchema = z.intersection(
     alias: z.string().optional(),
     metricType: z.nativeEnum(MetricsDataType).optional(),
     metricName: z.string().optional(),
+    metricNameSql: z.string().optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -421,6 +422,13 @@ export type DateRange = {
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
+
+export type ChartConfigWithOptTimestamp = Omit<
+  ChartConfigWithDateRange,
+  'timestampValueExpression'
+> & {
+  timestampValueExpression?: string;
+};
 // For non-time-based searches (ex. grab 1 row)
 export type ChartConfigWithOptDateRange = Omit<
   ChartConfig,
@@ -429,25 +437,26 @@ export type ChartConfigWithOptDateRange = Omit<
   timestampValueExpression?: string;
 } & Partial<DateRange>;
 
-export const SavedChartConfigSchema = z.intersection(
-  z.intersection(
-    z.object({
-      name: z.string(),
-      source: z.string(),
-      alert: z.union([
-        AlertBaseSchema.optional(),
-        ChartAlertBaseSchema.optional(),
-      ]),
-    }),
+export const SavedChartConfigSchema = z
+  .object({
+    name: z.string(),
+    source: z.string(),
+    alert: z.union([
+      AlertBaseSchema.optional(),
+      ChartAlertBaseSchema.optional(),
+    ]),
+  })
+  .extend(
     _ChartConfigSchema.omit({
       connection: true,
       timestampValueExpression: true,
-    }),
-  ),
-  SelectSQLStatementSchema.omit({
-    from: true,
-  }),
-);
+    }).shape,
+  )
+  .extend(
+    SelectSQLStatementSchema.omit({
+      from: true,
+    }).shape,
+  );
 
 export type SavedChartConfig = z.infer<typeof SavedChartConfigSchema>;
 
@@ -459,17 +468,42 @@ export const TileSchema = z.object({
   h: z.number(),
   config: SavedChartConfigSchema,
 });
+export const TileTemplateSchema = TileSchema.extend({
+  config: TileSchema.shape.config.omit({ alert: true }),
+});
 
 export type Tile = z.infer<typeof TileSchema>;
+
+export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
+
+export const DashboardFilterSchema = z.object({
+  id: z.string(),
+  type: DashboardFilterType,
+  name: z.string().min(1),
+  expression: z.string().min(1),
+  source: z.string().min(1),
+  sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+});
+
+export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string().min(1),
   tiles: z.array(TileSchema),
   tags: z.array(z.string()),
+  filters: z.array(DashboardFilterSchema).optional(),
 });
-
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
+export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;
+
+export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
+  tags: true,
+}).extend({
+  version: z.string().min(1),
+  tiles: z.array(TileTemplateSchema),
+  filters: z.array(DashboardFilterSchema).optional(),
+});
 
 export const ConnectionSchema = z.object({
   id: z.string(),

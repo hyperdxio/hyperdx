@@ -3,19 +3,12 @@
   "compilerOptions": {
     "baseUrl": "./src",
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"]
     },
     "rootDir": ".",
     "outDir": "build",
+    "moduleResolution": "Node16"
   },
-  "include": [
-    "src",
-    "migrations",
-    "scripts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["src", "migrations", "scripts"],
+  "exclude": ["node_modules"]
 }

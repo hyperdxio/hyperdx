@@ -157,7 +157,7 @@ export default function SessionSubpanel({
   );
 
   // Event Filter Input =========================
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [_inputQuery, setInputQuery] = useState<string | undefined>(undefined);
   const inputQuery = _inputQuery ?? '';
   const [_searchedQuery, setSearchedQuery] = useQueryState('session_q', {
@@ -489,7 +489,7 @@ export default function SessionSubpanel({
           >
             {whereLanguage === 'sql' ? (
               <SQLInlineEditorControlled
-                tableConnections={tcFromSource(traceSource)}
+                tableConnection={tcFromSource(traceSource)}
                 control={control}
                 name="where"
                 placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -499,7 +499,7 @@ export default function SessionSubpanel({
               />
             ) : (
               <SearchInputV2
-                tableConnections={tcFromSource(traceSource)}
+                tableConnection={tcFromSource(traceSource)}
                 control={control}
                 name="where"
                 language="lucene"

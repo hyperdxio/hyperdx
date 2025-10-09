@@ -7,7 +7,6 @@ import type {
   ResponseJSON,
   Row,
 } from '@clickhouse/client-common';
-import { isSuccessfulResponse } from '@clickhouse/client-common';
 import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 import objectHash from 'object-hash';
@@ -18,8 +17,12 @@ import {
   setChartSelectsAlias,
   splitChartConfigs,
 } from '@/renderChartConfig';
-import { ChartConfigWithOptDateRange, SQLInterval } from '@/types';
-import { hashCode } from '@/utils';
+import { ChartConfigWithOptDateRange } from '@/types';
+import {
+  hashCode,
+  replaceJsonExpressions,
+  splitAndTrimWithBracket,
+} from '@/utils';
 
 // export @clickhouse/client-common types
 export type {
@@ -273,22 +276,55 @@ export class ClickHouseQueryError extends Error {
   }
 }
 
-export function extractColumnReference(
-  sql: string,
-  maxIterations = 10,
-): string | null {
-  let iterations = 0;
+/**
+ * Returns columns referenced in given expression, where the expression is a comma-separated list of SQL expressions
+ * E.g. "id, toStartOfInterval(timestamp, toIntervalDay(3)), user_id, json.a.b".
+ */
+export const extractColumnReferencesFromKey = (expr: string): string[] => {
+  const parser = new SQLParser.Parser();
 
-  // Loop until we remove all function calls and get just the column, with a maximum limit
-  while (/\w+\([^()]*\)/.test(sql) && iterations < maxIterations) {
-    // Replace the outermost function with its content
-    sql = sql.replace(/\w+\(([^()]*)\)/, '$1');
-    iterations++;
+  const exprs = splitAndTrimWithBracket(expr);
+  if (!exprs?.length) {
+    return [];
   }
 
-  // If we reached the max iterations without resolving, return null to indicate an issue
-  return iterations < maxIterations ? sql.trim() : null;
-}
+  return exprs.flatMap(expr => {
+    try {
+      // Extract map or array access expressions, e.g. map['key'] or array[1], since node-sql-parser does not support them.
+      const mapAccessRegex = /\b[a-zA-Z0-9_]+\[([0-9]+|'[^']*')\]/g;
+      const mapAccesses = expr.match(mapAccessRegex) || [];
+
+      // Replace map/array accesses with a literal string ('') so that node-sql-parser ignores them
+      const exprWithoutMaps = expr.replace(mapAccessRegex, "''");
+
+      // Strip out any JSON type expressions, eg. in json.a.:Int64, remove the .:Int64 part
+      const exprWithoutMapsOrJsonType = exprWithoutMaps.replace(
+        /\.:[a-zA-Z0-9]+/g,
+        '',
+      );
+
+      // Extract out any JSON path expressions, since node-sql-parser does not support them.
+      const jsonPathRegex = /\b[a-zA-Z0-9_]+\.[a-zA-Z0-9_.]+/g;
+      const jsonPaths = exprWithoutMapsOrJsonType.match(jsonPathRegex) || [];
+
+      // Replace JSON paths and map/array accesses with a literal string ('') so that node-sql-parser ignores them
+      const exprWithoutMapsOrJson = exprWithoutMapsOrJsonType.replace(
+        jsonPathRegex,
+        "''",
+      );
+
+      // Parse remaining column references with node-sql-parser
+      const parsedColumnList = parser
+        .columnList(`select ${exprWithoutMapsOrJson}`)
+        .map(col => col.split('::')[2]);
+
+      return [...new Set([...parsedColumnList, ...jsonPaths, ...mapAccesses])];
+    } catch (e) {
+      console.error('Error parsing column references from key', e, expr);
+      return [];
+    }
+  });
+};
 
 const castToNumber = (value: string | number) => {
   if (typeof value === 'string') {
@@ -373,6 +409,10 @@ export type ClickhouseClientOptions = {
   username?: string;
   password?: string;
   queryTimeout?: number;
+  /** Application name, used as the client's HTTP user-agent header */
+  application?: string;
+  /** Defines how long the client will wait for a response from the ClickHouse server before aborting the request, in milliseconds */
+  requestTimeout?: number;
 };
 
 export abstract class BaseClickhouseClient {
@@ -381,25 +421,32 @@ export abstract class BaseClickhouseClient {
   protected readonly password?: string;
   protected readonly queryTimeout?: number;
   protected client?: WebClickHouseClient | NodeClickHouseClient;
+  protected readonly application?: string;
   /*
    * Some clickhouse db's (the demo instance for example) make the
    * max_rows_to_read setting readonly and the query will fail if you try to
    * query with max_rows_to_read specified
    */
   protected maxRowReadOnly: boolean;
-  protected requestTimeout: number = 3600000; // TODO: make configurable
+  protected requestTimeout: number = 3600000;
 
   constructor({
     host,
     username,
     password,
     queryTimeout,
+    application,
+    requestTimeout,
   }: ClickhouseClientOptions) {
     this.host = host!;
     this.username = username;
     this.password = password;
     this.queryTimeout = queryTimeout;
     this.maxRowReadOnly = false;
+    this.application = application;
+    if (requestTimeout != null && requestTimeout >= 0) {
+      this.requestTimeout = requestTimeout;
+    }
   }
 
   protected getClient(): WebClickHouseClient | NodeClickHouseClient {
@@ -423,11 +470,11 @@ export abstract class BaseClickhouseClient {
     }
 
     // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
+    console.debug('--------------------------------------------------------');
     // eslint-disable-next-line no-console
-    console.log('Sending Query:', debugSql);
+    console.debug('Sending Query:', debugSql);
     // eslint-disable-next-line no-console
-    console.log('--------------------------------------------------------');
+    console.debug('--------------------------------------------------------');
   }
 
   protected processClickhouseSettings(
@@ -642,8 +689,13 @@ export function chSqlToAliasMap(
 
   try {
     const sql = parameterizedQueryToSql(chSql);
+
+    // Replace JSON expressions with replacement tokens so that node-sql-parser can parse the SQL
+    const { sqlWithReplacements, replacements: jsonReplacementsToExpressions } =
+      replaceJsonExpressions(sql);
+
     const parser = new SQLParser.Parser();
-    const ast = parser.astify(sql, {
+    const ast = parser.astify(sqlWithReplacements, {
       database: 'Postgresql',
       parseOptions: { includeLocations: true },
     }) as SQLParser.Select;
@@ -659,7 +711,7 @@ export function chSqlToAliasMap(
                 : // normal alias
                   column.expr.column.expr.value;
           } else if (column.expr.loc != null) {
-            aliasMap[column.as] = sql.slice(
+            aliasMap[column.as] = sqlWithReplacements.slice(
               column.expr.loc.start.offset,
               column.expr.loc.end.offset,
             );
@@ -669,8 +721,23 @@ export function chSqlToAliasMap(
         }
       });
     }
+
+    // Replace the JSON replacement tokens with the original JSON expressions
+    for (const [alias, aliasExpression] of Object.entries(aliasMap)) {
+      for (const [replacement, original] of jsonReplacementsToExpressions) {
+        if (aliasExpression.includes(replacement)) {
+          aliasMap[alias] = aliasExpression.replaceAll(replacement, original);
+        }
+      }
+    }
+    return aliasMap;
   } catch (e) {
-    console.error('Error parsing alias map', e, 'for query', chSql);
+    console.error(
+      'Error parsing alias map with JSON removed',
+      e,
+      'for query',
+      chSql,
+    );
   }
 
   return aliasMap;
