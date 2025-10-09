@@ -78,10 +78,7 @@ export function processRowToWhereClause(
           // remove double quote to search correctly
           return SqlString.format(
             "toJSONString(?) = toJSONString(JSONExtract(?, 'Dynamic'))",
-            [
-              SqlString.raw(valueExpr), // e.g. log3
-              value, // your JSON string; driver will quote it
-            ],
+            [SqlString.raw(valueExpr), value],
           );
 
         default:

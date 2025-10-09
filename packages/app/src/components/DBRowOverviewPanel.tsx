@@ -295,7 +295,12 @@ export function RowOverviewPanel({
                   {...(onPropertyAddClick
                     ? {
                         onPropertyAddClick,
-                        sqlExpression: `${source.resourceAttributesExpression}['${key}']`,
+                        sqlExpression: jsonColumns?.includes(
+                          source.resourceAttributesExpression,
+                        )
+                          ? // If resource attributes is a JSON column, we need to cast the key to a string so we can run where X in Y queries
+                            `toString(${source.resourceAttributesExpression}.${key})`
+                          : `${source.resourceAttributesExpression}['${key}']`,
                       }
                     : {
                         onPropertyAddClick: undefined,
