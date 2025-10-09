@@ -27,6 +27,7 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
+  FilterSchema,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -102,10 +103,7 @@ import PatternTable from './components/PatternTable';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
-import {
-  parseAsSortingStateString,
-  parseAsStringWithNewLines,
-} from './utils/queryParsers';
+import { parseAsSortingStateString } from './utils/queryParsers';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
@@ -592,11 +590,11 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
-  where: parseAsStringWithNewLines,
-  select: parseAsStringWithNewLines,
+  where: parseAsString,
+  select: parseAsString,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
-  filters: parseAsJson<Filter[]>(),
-  orderBy: parseAsStringWithNewLines,
+  filters: parseAsJson(z.array(FilterSchema)),
+  orderBy: parseAsString,
 };
 
 function DBSearchPage() {
@@ -605,7 +603,9 @@ function DBSearchPage() {
   const paths = window.location.pathname.split('/');
   const savedSearchId = paths.length === 3 ? paths[2] : null;
 
-  const [searchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
+  const [searchedConfig, setSearchedConfig] = useQueryStates(queryStateMap, {
+    clearOnDefault: false,
+  });
 
   const { data: savedSearch } = useSavedSearch(
     { id: `${savedSearchId}` },
@@ -744,8 +744,11 @@ function DBSearchPage() {
     const { source, where, select, whereLanguage, filters } = searchedConfig;
     const isSearchConfigEmpty =
       !source && !where && !select && !whereLanguage && !filters?.length;
+    // there is a chance that the nuqs is doing an initial render (source is null in state, set in URL)
+    // so we double check that the URL is empty as well before assuming the search config is empty.
+    const hasParams = new URLSearchParams(window.location.search).has('source');
 
-    if (isSearchConfigEmpty) {
+    if (!hasParams && isSearchConfigEmpty) {
       // Landed on saved search (if we just landed on a searchId route)
       if (
         savedSearch != null && // Make sure saved search data is loaded
@@ -774,6 +777,7 @@ function DBSearchPage() {
       }
     }
   }, [
+    isReady,
     savedSearch,
     searchedConfig,
     setSearchedConfig,

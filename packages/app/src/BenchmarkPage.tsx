@@ -7,6 +7,7 @@ import {
   useQueryState,
 } from 'nuqs';
 import { useForm } from 'react-hook-form';
+import z from 'zod';
 import { DataFormat } from '@hyperdx/common-utils/dist/clickhouse';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
@@ -147,15 +148,15 @@ function useIndexes(
 }
 
 function BenchmarkPage() {
-  const [queries, setQueries] = useQueryState<string[]>(
+  const [queries, setQueries] = useQueryState(
     'queries',
-    parseAsJson(),
+    parseAsJson(z.array(z.string())),
   );
-  const [connections, setConnections] = useQueryState<string[]>(
+  const [connections, setConnections] = useQueryState(
     'connections',
-    parseAsJson(),
+    parseAsJson(z.array(z.string())),
   );
-  const [iterations, setIterations] = useQueryState<number>(
+  const [iterations, setIterations] = useQueryState(
     'iterations',
     parseAsInteger.withDefault(3),
   );

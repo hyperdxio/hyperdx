@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import {
   DashboardFilter,
+  DashboardSchema,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
@@ -96,7 +97,7 @@ export function useDashboard({
 
   const [localDashboard, setLocalDashboard] = useQueryState(
     'dashboard',
-    parseAsJson<Dashboard>(),
+    parseAsJson(DashboardSchema),
   );
 
   const updateDashboard = useUpdateDashboard();

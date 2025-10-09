@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
+import z from 'zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
@@ -92,7 +93,7 @@ export default function DBTracePanel({
 
   const [eventRowWhere, setEventRowWhere] = useQueryState(
     'eventRowWhere',
-    parseAsJson<{ id: string; type: string }>(),
+    parseAsJson(z.object({ id: z.string(), type: z.string() })),
   );
 
   const {

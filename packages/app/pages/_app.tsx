@@ -5,6 +5,7 @@ import Head from 'next/head';
 import { NextAdapter } from 'next-query-params';
 import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
+import { NuqsAdapter } from 'nuqs/adapters/next/pages';
 import SSRProvider from 'react-bootstrap/SSRProvider';
 import { QueryParamProvider } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
@@ -120,18 +121,25 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       </Head>
 
       <SSRProvider>
-        <HDXQueryParamProvider>
-          <QueryParamProvider adapter={NextAdapter}>
-            <QueryClientProvider client={queryClient}>
-              <ThemeWrapper fontFamily={userPreferences.font}>
-                {getLayout(<Component {...pageProps} />)}
-                {confirmModal}
-              </ThemeWrapper>
-              <ReactQueryDevtools initialIsOpen={true} />
-              {background}
-            </QueryClientProvider>
-          </QueryParamProvider>
-        </HDXQueryParamProvider>
+        <NuqsAdapter
+          defaultOptions={{
+            // adding this in to maintain v1->v2 compatibility. We can remove this in the future.
+            clearOnDefault: false,
+          }}
+        >
+          <HDXQueryParamProvider>
+            <QueryParamProvider adapter={NextAdapter}>
+              <QueryClientProvider client={queryClient}>
+                <ThemeWrapper fontFamily={userPreferences.font}>
+                  {getLayout(<Component {...pageProps} />)}
+                  {confirmModal}
+                </ThemeWrapper>
+                <ReactQueryDevtools initialIsOpen={true} />
+                {background}
+              </QueryClientProvider>
+            </QueryParamProvider>
+          </HDXQueryParamProvider>
+        </NuqsAdapter>
       </SSRProvider>
     </React.Fragment>
   );
