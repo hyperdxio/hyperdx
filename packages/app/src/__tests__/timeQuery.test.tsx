@@ -60,7 +60,7 @@ const { location: savedLocation } = window;
 // This was originally disabled for nuqs v2 upgrade,
 // however, after upgrading it seems that the code has diverged from the tests
 // and the tests are no longer valid.
-// We should improve or re-write the tests to be more in line with the code.
+// TODO: We should improve or re-write the tests to be more in line with the code.
 describe.skip('useTimeQuery tests', () => {
   let testRouter: TestRouter;
   let locationMock: LocationMock;
