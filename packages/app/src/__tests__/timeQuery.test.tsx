@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useImperativeHandle } from 'react';
 import { useRouter } from 'next/router';
 import { NextAdapter } from 'next-query-params';
+import { NuqsTestingAdapter } from 'nuqs/adapters/testing';
 import { QueryParamProvider } from 'use-query-params';
 import { LocationMock } from '@jedmao/location';
 import { render } from '@testing-library/react';
@@ -37,7 +38,9 @@ function TestWrapper({
     setUserPreference({ isUTC });
   }, [setUserPreference, isUTC]);
   return (
-    <QueryParamProvider adapter={NextAdapter}>{children}</QueryParamProvider>
+    <NuqsTestingAdapter>
+      <QueryParamProvider adapter={NextAdapter}>{children}</QueryParamProvider>
+    </NuqsTestingAdapter>
   );
 }
 
@@ -54,14 +57,16 @@ const TestComponent = React.forwardRef(function Component(
 
 const { location: savedLocation } = window;
 
-// TODO: Issues with testing nuqs :(
-// https://github.com/47ng/nuqs/issues/259
+// This was originally disabled for nuqs v2 upgrade,
+// however, after upgrading it seems that the code has diverged from the tests
+// and the tests are no longer valid.
+// We should improve or re-write the tests to be more in line with the code.
 describe.skip('useTimeQuery tests', () => {
   let testRouter: TestRouter;
   let locationMock: LocationMock;
 
   beforeAll(() => {
-    // @ts-ignore - This complains because we can only delete optional operands
+    // @ts-expect-error - This complains because we can only delete optional operands
     delete window.location;
   });
 
@@ -69,7 +74,7 @@ describe.skip('useTimeQuery tests', () => {
     jest.resetAllMocks();
     locationMock = new LocationMock('https://www.hyperdx.io/');
     testRouter = new TestRouter(locationMock);
-    // @ts-ignore - this is a mock
+    // @ts-expect-error - this is a mock
     window.location = locationMock;
 
     (useRouter as jest.Mock).mockReturnValue(testRouter);
@@ -78,7 +83,7 @@ describe.skip('useTimeQuery tests', () => {
   });
 
   afterAll(() => {
-    // @ts-ignore - this is a mock
+    // @ts-expect-error - this is a mock
     window.location = savedLocation;
   });
 

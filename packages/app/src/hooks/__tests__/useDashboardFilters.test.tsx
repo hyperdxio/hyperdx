@@ -1,11 +1,11 @@
+import { act } from 'react';
+import { withNuqsTestingAdapter } from 'nuqs/adapters/testing';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
-import { act, renderHook } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 
 import useDashboardFilters from '../useDashboardFilters';
 
-// TODO: Re-enable tests after nuqs is upgraded to support unit testing
-// https://github.com/47ng/nuqs/issues/259
-describe.skip('useDashboardFilters', () => {
+describe('useDashboardFilters', () => {
   const mockFilters: DashboardFilter[] = [
     {
       id: 'filter1',
@@ -31,128 +31,156 @@ describe.skip('useDashboardFilters', () => {
   ];
 
   it('should initialize with empty filter values', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+    const { result } = renderHook(() => useDashboardFilters(mockFilters), {
+      wrapper: withNuqsTestingAdapter(),
+    });
 
     expect(result.current.filterValues).toEqual({});
     expect(result.current.filterQueries).toEqual([]);
   });
 
   it('should set filter values correctly', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+    const { result } = renderHook(() => useDashboardFilters(mockFilters), {
+      wrapper: withNuqsTestingAdapter(),
+    });
 
     act(() => {
-      result.current.setFilterValue('filter1', 'production');
+      result.current.setFilterValue('environment', 'production');
     });
 
     expect(result.current.filterValues).toEqual({
-      filter1: 'production',
+      environment: {
+        included: new Set(['production']),
+        excluded: new Set(),
+      },
     });
   });
 
   it('should set multiple filter values', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+    const { result } = renderHook(() => useDashboardFilters(mockFilters), {
+      wrapper: withNuqsTestingAdapter(),
+    });
 
     act(() => {
-      result.current.setFilterValue('filter1', 'production');
-      result.current.setFilterValue('filter2', 'api-service');
+      result.current.setFilterValue('environment', 'production');
+      result.current.setFilterValue('service.name', 'api-service');
     });
 
     expect(result.current.filterValues).toEqual({
-      filter1: 'production',
-      filter2: 'api-service',
+      environment: {
+        included: new Set(['production']),
+        excluded: new Set(),
+      },
+      'service.name': {
+        included: new Set(['api-service']),
+        excluded: new Set(),
+      },
     });
   });
 
   it('should remove filter value when set to null', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
-
-    act(() => {
-      result.current.setFilterValue('filter1', 'production');
-      result.current.setFilterValue('filter2', 'api-service');
+    const { result } = renderHook(() => useDashboardFilters(mockFilters), {
+      wrapper: withNuqsTestingAdapter(),
     });
 
     act(() => {
-      result.current.setFilterValue('filter1', null);
+      result.current.setFilterValue('environment', 'production');
+      result.current.setFilterValue('service.name', 'api-service');
+    });
+
+    act(() => {
+      result.current.setFilterValue('environment', null);
     });
 
     expect(result.current.filterValues).toEqual({
-      filter2: 'api-service',
+      'service.name': {
+        included: new Set(['api-service']),
+        excluded: new Set(),
+      },
     });
   });
 
   it('should convert filter values to SQL filters', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+    const { result } = renderHook(() => useDashboardFilters(mockFilters), {
+      wrapper: withNuqsTestingAdapter(),
+    });
 
     act(() => {
-      result.current.setFilterValue('filter1', 'production');
-      result.current.setFilterValue('filter2', 'api-service');
+      result.current.setFilterValue('environment', 'production');
+      result.current.setFilterValue('service.name', 'api-service');
     });
 
     expect(result.current.filterQueries).toEqual([
       {
         type: 'sql',
-        condition: "environment = 'production'",
+        condition: "environment IN ('production')",
       },
       {
         type: 'sql',
-        condition: "service.name = 'api-service'",
+        condition: "service.name IN ('api-service')",
       },
     ]);
   });
 
   it('should handle numeric filter values', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+    const { result } = renderHook(() => useDashboardFilters(mockFilters), {
+      wrapper: withNuqsTestingAdapter(),
+    });
 
     act(() => {
-      result.current.setFilterValue('filter3', '200');
+      result.current.setFilterValue('status_code', '200');
     });
 
     expect(result.current.filterQueries).toEqual([
       {
         type: 'sql',
-        condition: "status_code = '200'",
+        condition: "status_code IN ('200')",
       },
     ]);
   });
 
   it('should ignore filter values for non-existent filters', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+    const { result } = renderHook(() => useDashboardFilters(mockFilters), {
+      wrapper: withNuqsTestingAdapter(),
+    });
 
     act(() => {
-      result.current.setFilterValue('filter1', 'production');
+      result.current.setFilterValue('environment', 'production');
       result.current.setFilterValue('nonexistent', 'value');
     });
 
     expect(result.current.filterQueries).toEqual([
       {
         type: 'sql',
-        condition: "environment = 'production'",
+        condition: "environment IN ('production')",
       },
     ]);
   });
 
   it('should update SQL filters when filter values change', () => {
-    const { result } = renderHook(() => useDashboardFilters(mockFilters));
+    const { result } = renderHook(() => useDashboardFilters(mockFilters), {
+      wrapper: withNuqsTestingAdapter(),
+    });
 
     act(() => {
-      result.current.setFilterValue('filter1', 'staging');
+      result.current.setFilterValue('environment', 'staging');
     });
 
     expect(result.current.filterQueries).toEqual([
       {
         type: 'sql',
-        condition: "environment = 'staging'",
+        condition: "environment IN ('staging')",
       },
     ]);
 
     act(() => {
-      result.current.setFilterValue('filter1', 'production');
+      result.current.setFilterValue('environment', 'production');
     });
 
     expect(result.current.filterQueries).toEqual([
       {
         type: 'sql',
-        condition: "environment = 'production'",
+        condition: "environment IN ('production')",
       },
     ]);
   });
@@ -173,21 +201,33 @@ describe.skip('useDashboardFilters', () => {
       ({ filters }) => useDashboardFilters(filters),
       {
         initialProps: { filters: mockFilters },
+        wrapper: withNuqsTestingAdapter({
+          searchParams: '?filters=[]',
+          // Needed or else we get
+          // Warning: Cannot update a component (`TestComponent`) while rendering a different component (`NuqsTestingAdapter`).
+          resetUrlUpdateQueueOnMount: false,
+        }),
       },
     );
 
     act(() => {
-      result.current.setFilterValue('filter1', 'production');
+      result.current.setFilterValue('environment', 'production');
     });
 
     expect(result.current.filterValues).toEqual({
-      filter1: 'production',
+      environment: {
+        included: new Set(['production']),
+        excluded: new Set(),
+      },
     });
 
     rerender({ filters: newFilters });
 
     expect(result.current.filterValues).toEqual({
-      filter1: 'production',
+      environment: {
+        included: new Set(['production']),
+        excluded: new Set(),
+      },
     });
   });
 });
