@@ -1,4 +1,5 @@
 import type { ClickHouseSettings } from '@clickhouse/client-common';
+import { omit, pick } from 'lodash';
 
 import {
   BaseClickhouseClient,
@@ -568,6 +569,87 @@ export class Metadata {
       tableMetadata.partition_key = tableMetadata.partition_key.slice(1, -1);
     }
     return tableMetadata;
+  }
+
+  async getValuesDistribution({
+    chartConfig,
+    key,
+    samples = 100_000,
+    limit = 100,
+  }: {
+    chartConfig: ChartConfigWithDateRange;
+    key: string;
+    samples?: number;
+    limit?: number;
+  }) {
+    const cacheKeyConfig = pick(chartConfig, [
+      'connection',
+      'from',
+      'dateRange',
+      'filters',
+      'where',
+      'with',
+    ]);
+    return this.cache.getOrFetch(
+      `${JSON.stringify(cacheKeyConfig)}.${key}.valuesDistribution`,
+      async () => {
+        const config: ChartConfigWithDateRange = {
+          ...chartConfig,
+          with: [
+            ...(chartConfig.with || []),
+            // Add CTE to get total row count and sample factor
+            {
+              name: 'tableStats',
+              chartConfig: {
+                ...omit(chartConfig, ['with', 'groupBy', 'orderBy', 'limit']),
+                select: `count() as total, greatest(CAST(total / ${samples} AS UInt32), 1) as sample_factor`,
+              },
+            },
+          ],
+          // Add sampling condition as a filter. The query will still read all rows to evaluate
+          // the sampling condition, but will only read values column from selected rows.
+          filters: [
+            ...(chartConfig.filters || []),
+            {
+              type: 'sql',
+              condition: `cityHash64(${chartConfig.timestampValueExpression}, rand()) % (SELECT sample_factor FROM tableStats) = 0`,
+            },
+          ],
+          select: `${key} AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage`,
+          orderBy: '__hdx_percentage DESC',
+          groupBy: `__hdx_value`,
+          limit: { limit },
+        };
+
+        const sql = await renderChartConfig(config, this);
+
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId: chartConfig.connection,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              // Set max_rows_to_group_by to avoid using too much memory when grouping on high cardinality key columns
+              max_rows_to_group_by: `${limit * 10}`,
+              group_by_overflow_mode: 'any',
+            },
+          })
+          .then(res =>
+            res.json<{
+              __hdx_value: string;
+              __hdx_percentage: string | number;
+            }>(),
+          );
+
+        return new Map(
+          json.data.map(({ __hdx_value, __hdx_percentage }) => [
+            __hdx_value,
+            Number(__hdx_percentage),
+          ]),
+        );
+      },
+    );
   }
 
   async getKeyValues({

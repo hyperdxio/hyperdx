@@ -210,6 +210,36 @@ export function useMultipleGetKeyValues(
   });
 }
 
+export function useGetValuesDistribution(
+  {
+    chartConfig,
+    key,
+    limit,
+  }: {
+    chartConfig: ChartConfigWithDateRange;
+    key: string;
+    limit: number;
+  },
+  options?: Omit<UseQueryOptions<Map<string, number>, Error>, 'queryKey'>,
+) {
+  const metadata = useMetadataWithSettings();
+  return useQuery<Map<string, number>>({
+    queryKey: ['useMetadata.useGetValuesDistribution', chartConfig, key],
+    queryFn: async () => {
+      return await metadata.getValuesDistribution({
+        chartConfig,
+        key,
+        limit,
+      });
+    },
+    staleTime: Infinity,
+    enabled: !!key,
+    placeholderData: keepPreviousData,
+    retry: false,
+    ...options,
+  });
+}
+
 export function useGetKeyValues(
   {
     chartConfig,

@@ -1,11 +1,20 @@
+import { UseQueryOptions, UseQueryResult } from '@tanstack/react-query';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+
+import { useGetValuesDistribution } from '@/hooks/useMetadata';
 
 import {
   cleanedFacetName,
   FilterGroup,
   type FilterGroupProps,
 } from '../DBSearchPageFilters';
+
+jest.mock('@/hooks/useMetadata', () => ({
+  useGetValuesDistribution: jest
+    .fn()
+    .mockReturnValue({ data: undefined, isFetching: false, error: undefined }),
+}));
 
 describe('cleanedFacetName', () => {
   describe('basic functionality', () => {
@@ -202,12 +211,24 @@ describe('FilterGroup', () => {
     loadMoreLoading: false,
     hasLoadedMore: false,
     isDefaultExpanded: true,
+    chartConfig: {
+      from: {
+        databaseName: 'test_db',
+        tableName: 'test_table',
+      },
+      select: '',
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: '',
+      connection: 'test_connection',
+      dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+    },
   };
 
   it('should sort options alphabetically by default', () => {
     renderWithMantine(<FilterGroup {...defaultProps} />);
 
-    const options = screen.getAllByRole('checkbox');
+    const options = screen.getAllByTestId(/filter-checkbox-input/g);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/apple|banana|zebra/);
     expect(labels[0]).toHaveTextContent('apple');
@@ -226,12 +247,74 @@ describe('FilterGroup', () => {
       />,
     );
 
-    const options = screen.getAllByRole('checkbox');
+    const options = screen.getAllByTestId(/filter-checkbox-input/g);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/apple|banana|zebra/);
     expect(labels[0]).toHaveTextContent('apple');
     expect(labels[1]).toHaveTextContent('zebra');
     expect(labels[2]).toHaveTextContent('banana');
+  });
+
+  it('should show selected items first, then sort by counts, if percentages when they are enabled', () => {
+    jest.mocked(useGetValuesDistribution).mockReturnValue({
+      data: new Map([
+        ['apple', 30],
+        ['banana', 20],
+        ['zebra', 50],
+      ]),
+      isFetching: false,
+      error: null,
+    } as UseQueryResult<Map<string, number>>);
+
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        selectedValues={{
+          included: new Set(['banana']),
+          excluded: new Set(),
+        }}
+      />,
+    );
+
+    const options = screen.getAllByTestId(/filter-checkbox-input/g);
+    expect(options).toHaveLength(3);
+    const labels = screen.getAllByText(/apple|banana|zebra/);
+    expect(labels[0]).toHaveTextContent('banana'); // Selected
+    expect(labels[1]).toHaveTextContent('zebra'); // 50%
+    expect(labels[2]).toHaveTextContent('apple'); // 30%
+  });
+
+  it('should show percentages, if enabled', async () => {
+    jest.mocked(useGetValuesDistribution).mockReturnValue({
+      data: new Map([
+        ['apple', 99.2],
+        ['zebra', 0.6],
+      ]),
+      isFetching: false,
+      error: null,
+    } as UseQueryResult<Map<string, number>>);
+
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        selectedValues={{
+          included: new Set(),
+          excluded: new Set(),
+        }}
+      />,
+    );
+
+    const showPercentages = screen.getByTestId(
+      'toggle-distribution-button-Test Filter',
+    );
+    await userEvent.click(showPercentages);
+
+    const options = screen.getAllByTestId(/filter-checkbox-input/g);
+    expect(options).toHaveLength(3);
+    const labels = screen.getAllByText(/%/);
+    expect(labels[0]).toHaveTextContent('~99%'); // apple
+    expect(labels[1]).toHaveTextContent('<1%'); // zebra
+    expect(labels[2]).toHaveTextContent('<1%'); // banana
   });
 
   it('should handle excluded items', () => {
@@ -245,7 +328,7 @@ describe('FilterGroup', () => {
       />,
     );
 
-    const options = screen.getAllByRole('checkbox');
+    const options = screen.getAllByTestId(/filter-checkbox-input/g);
     expect(options).toHaveLength(3);
     const labels = screen.getAllByText(/apple|banana|zebra/);
     expect(labels[0]).toHaveTextContent('apple'); // included first
@@ -276,7 +359,7 @@ describe('FilterGroup', () => {
     );
 
     // Should show MAX_FILTER_GROUP_ITEMS (10) by default
-    let options = screen.getAllByRole('checkbox');
+    let options = screen.getAllByTestId(/filter-checkbox-input/g);
     expect(options).toHaveLength(10);
 
     // Selected items should be visible even if they would be beyond MAX_FILTER_GROUP_ITEMS
@@ -289,7 +372,7 @@ describe('FilterGroup', () => {
     await userEvent.click(showMoreButton);
 
     // Should show all items
-    options = screen.getAllByRole('checkbox');
+    options = screen.getAllByTestId(/filter-checkbox-input/g);
     expect(options).toHaveLength(15);
   });
 
