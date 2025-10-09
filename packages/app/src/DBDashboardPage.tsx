@@ -59,6 +59,7 @@ import {
   type Tile,
   useCreateDashboard,
   useDeleteDashboard,
+  useDuplicateDashboard,
 } from '@/dashboard';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -776,6 +777,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   const deleteDashboard = useDeleteDashboard();
+  const duplicateDashboard = useDuplicateDashboard();
 
   // Search tile
   const [rowId, setRowId] = useQueryState('rowWhere');
@@ -938,6 +940,35 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               </Menu.Target>
 
               <Menu.Dropdown>
+                <Menu.Item
+                  leftSection={<i className="bi bi-copy" />}
+                  onClick={() => {
+                    if (!dashboard?.id) {
+                      return;
+                    }
+                    duplicateDashboard.mutate(dashboard.id, {
+                      onSuccess: data => {
+                        notifications.show({
+                          color: 'green',
+                          message: 'Dashboard duplicated successfully',
+                        });
+                        router.push(`/dashboards/${data.id}`);
+                      },
+                      onError: () => {
+                        notifications.show({
+                          color: 'red',
+                          message: (
+                            <>
+                              Failed to duplicate dashboard. <ContactSupportText />
+                            </>
+                          ),
+                        });
+                      },
+                    });
+                  }}
+                >
+                  Duplicate Dashboard
+                </Menu.Item>
                 {hasTiles && (
                   <Menu.Item
                     leftSection={<i className="bi bi-download" />}

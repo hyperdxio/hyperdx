@@ -11,6 +11,7 @@ import { validateRequest } from 'zod-express-middleware';
 import {
   createDashboard,
   deleteDashboard,
+  duplicateDashboard,
   getDashboard,
   getDashboards,
   updateDashboard,
@@ -82,6 +83,35 @@ router.patch(
       );
 
       res.json(updatedDashboard);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  '/:id/duplicate',
+  validateRequest({
+    params: z.object({ id: objectIdSchema }),
+  }),
+  async (req, res, next) => {
+    try {
+      const { teamId, userId } = getNonNullUserWithTeam(req);
+      const { id: dashboardId } = req.params;
+
+      const dashboard = await getDashboard(dashboardId, teamId);
+
+      if (dashboard == null) {
+        return res.sendStatus(404);
+      }
+
+      const newDashboard = await duplicateDashboard(
+        dashboardId,
+        teamId,
+        userId,
+      );
+
+      res.json(newDashboard.toJSON());
     } catch (e) {
       next(e);
     }

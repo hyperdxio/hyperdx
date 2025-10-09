@@ -185,3 +185,34 @@ export async function updateDashboard(
 
   return updatedDashboard;
 }
+
+export async function duplicateDashboard(
+  dashboardId: string,
+  teamId: ObjectId,
+  userId?: ObjectId,
+) {
+  const originalDashboard = await Dashboard.findOne({
+    _id: dashboardId,
+    team: teamId,
+  });
+
+  if (originalDashboard == null) {
+    throw new Error('Dashboard not found');
+  }
+
+  const dashboardData = originalDashboard.toJSON();
+
+  // Create new dashboard with copied data
+  const newDashboard = await createDashboard(
+    teamId,
+    {
+      name: `${dashboardData.name} (Copy)`,
+      tiles: dashboardData.tiles,
+      tags: dashboardData.tags,
+      filters: dashboardData.filters,
+    },
+    userId,
+  );
+
+  return newDashboard;
+}
