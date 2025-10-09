@@ -7,7 +7,7 @@ import {
   ColumnMetaType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
-import { ChatConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
@@ -26,12 +26,12 @@ import { omit } from '@/utils';
 
 type TQueryKey = readonly [
   string,
-  ChatConfigWithOptTimestamp,
+  ChartConfigWithOptTimestamp,
   number | undefined,
 ];
 function queryKeyFn(
   prefix: string,
-  config: ChatConfigWithOptTimestamp,
+  config: ChartConfigWithOptTimestamp,
   queryTimeout?: number,
 ): TQueryKey {
   return [prefix, config, queryTimeout];
@@ -130,7 +130,7 @@ function generateTimeWindowsAscending(startDate: Date, endDate: Date) {
 
 // Get time window from page param
 function getTimeWindowFromPageParam(
-  config: ChatConfigWithOptTimestamp,
+  config: ChartConfigWithOptTimestamp,
   pageParam: TPageParam,
 ): TimeWindow {
   const [startDate, endDate] = config.dateRange;
@@ -148,7 +148,7 @@ function getTimeWindowFromPageParam(
 function getNextPageParam(
   lastPage: TQueryFnData | null,
   allPages: TQueryFnData[],
-  config: ChatConfigWithOptTimestamp,
+  config: ChartConfigWithOptTimestamp,
 ): TPageParam | undefined {
   if (lastPage == null) {
     return undefined;
@@ -428,7 +428,7 @@ function flattenData(data: TData | undefined): TQueryFnData | null {
 }
 
 export default function useOffsetPaginatedQuery(
-  config: ChatConfigWithOptTimestamp,
+  config: ChartConfigWithOptTimestamp,
   {
     isLive,
     enabled = true,
