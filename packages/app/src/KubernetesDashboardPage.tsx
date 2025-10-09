@@ -823,6 +823,7 @@ function KubernetesDashboardPage() {
     ],
   });
 
+  // For future use if Live button is added
   const [isLive, setIsLive] = React.useState(false);
 
   const { manualRefreshCooloff, refresh } = useDashboardRefresh({

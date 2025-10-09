@@ -459,6 +459,7 @@ function ClickhousePage() {
     // showRelativeInterval: isLive,
   });
 
+  // For future use if Live button is added
   const [isLive, setIsLive] = useState(false);
 
   const { manualRefreshCooloff, refresh } = useDashboardRefresh({
