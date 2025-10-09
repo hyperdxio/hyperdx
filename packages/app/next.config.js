@@ -8,8 +8,10 @@ const withNextra = require('nextra')({
   themeConfig: './src/nextra.config.tsx',
 });
 
+const basePath = process.env.NEXT_PUBLIC_HYPERDX_BASE_PATH;
+
 module.exports = {
-  basePath: process.env.HYPERDX_BASE_PATH || '',
+  basePath: basePath,
   experimental: {
     instrumentationHook: true,
     // External packages to prevent bundling issues with Next.js 14

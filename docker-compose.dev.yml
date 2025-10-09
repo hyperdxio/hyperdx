@@ -91,7 +91,7 @@ services:
   #   volumes:
   #     - ./proxy/nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
   #   environment:
-  #     HYPERDX_BASE_PATH: ${HYPERDX_BASE_PATH}
+  #     HYPERDX_BASE_PATH: ${HYPERDX_BASE_PATH:-/}
   #   network_mode: host
   #   restart: always
 
@@ -103,8 +103,9 @@ services:
   #     - ./proxy/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
   #     - ./proxy/traefik/config.yml:/etc/traefik/dynamic/config.yml:ro
   #   environment:
-  #     HYPERDX_BASE_PATH: ${HYPERDX_BASE_PATH}
+  #     HYPERDX_BASE_PATH: ${HYPERDX_BASE_PATH:-/}
   #   network_mode: host
   #   restart: always
+
 networks:
   internal:
