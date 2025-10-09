@@ -902,6 +902,7 @@ function KubernetesDashboardPage() {
               color="gray"
               variant="outline"
               title="Refresh dashboard"
+              aria-label="Refresh dashboard"
               px="xs"
             >
               <i className="bi bi-arrow-clockwise fs-5"></i>
