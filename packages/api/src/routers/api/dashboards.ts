@@ -3,7 +3,6 @@ import {
   DashboardWithoutIdSchema,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
-import { groupBy } from 'lodash';
 import _ from 'lodash';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
