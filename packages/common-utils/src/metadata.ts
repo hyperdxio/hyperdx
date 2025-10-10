@@ -348,8 +348,6 @@ export class Metadata {
     column: string;
     maxKeys?: number;
   } & TableConnection) {
-    // HDX-2480 delete line below to reenable json filters
-    return []; // Need to disable JSON keys for the time being.
     const cacheKey = metricName
       ? `${databaseName}.${tableName}.${column}.${metricName}.keys`
       : `${databaseName}.${tableName}.${column}.keys`;
@@ -357,18 +355,11 @@ export class Metadata {
     return this.cache.getOrFetch<{ key: string; chType: string }[]>(
       cacheKey,
       async () => {
-        const where = metricName
-          ? chSql`WHERE MetricName=${{ String: metricName }}`
-          : '';
-        const sql = chSql`WITH all_paths AS
-        (
-            SELECT DISTINCT JSONDynamicPathsWithTypes(${{ Identifier: column }}) as paths
-            FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
-            LIMIT ${{ Int32: maxKeys }}
-            SETTINGS timeout_overflow_mode = 'break', max_execution_time = 2
-        )
-        SELECT groupUniqArrayMap(paths) as pathMap
-        FROM all_paths;`;
+        const sql = chSql`
+          SELECT DISTINCT arrayJoin(substreams) AS encoded_key
+          FROM system.parts_columns
+          WHERE (database = ${{ String: databaseName }}) AND (table = ${{ String: tableName }}) AND (column = ${{ String: column }}) AND encoded_key ILIKE '%dynamic_structure%'
+          `;
 
         const keys = await this.clickhouseClient
           .query<'JSON'>({
@@ -376,26 +367,22 @@ export class Metadata {
             query_params: sql.params,
             connectionId,
             clickhouse_settings: {
-              max_rows_to_read: String(
-                this.getClickHouseSettings().max_rows_to_read ??
-                  DEFAULT_METADATA_MAX_ROWS_TO_READ,
-              ),
+              max_rows_to_read: '0',
               read_overflow_mode: 'break',
               ...this.getClickHouseSettings(),
             },
           })
-          .then(res => res.json<{ pathMap: Record<string, string[]> }>())
+          .then(res => res.json<{ encoded_key: string }>())
           .then(d => {
             const keys: { key: string; chType: string }[] = [];
-            for (const [key, typeArr] of Object.entries(d.data[0].pathMap)) {
-              if (!key || !typeArr || !Array.isArray(typeArr)) {
-                throw new Error(
-                  `Error fetching keys for filters (key: ${key}, typeArr: ${typeArr})`,
-                );
-              }
+            for (const row of d.data) {
+              const decodedKey = decodeURIComponent(row.encoded_key);
               keys.push({
-                key: key,
-                chType: typeArr[0],
+                key: decodedKey.slice(
+                  `${column}.`.length,
+                  decodedKey.lastIndexOf('.dynamic_structure'),
+                ),
+                chType: 'String',
               });
             }
             return keys;
@@ -488,8 +475,6 @@ export class Metadata {
     });
 
     for (const c of columns) {
-      // HDX-2480 delete condition below to reenable json filters
-      if (c.type === 'JSON') continue;
       fields.push({
         path: [c.name],
         type: c.type,
