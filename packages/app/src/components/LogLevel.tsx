@@ -10,6 +10,7 @@ export default function LogLevel({
 
   return (
     <Text
+      component="span"
       size="xs"
       c={
         levelClass === 'error'

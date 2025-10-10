@@ -1,21 +1,43 @@
 @import './variables';
 
+$button-height: 18px;
+
 .table {
   table-layout: fixed;
-  border-spacing: 0 2px;
+  border-spacing: 0;
   border-collapse: separate;
 }
 
 .tableHead {
-  background: inherit;
+  background: var(--mantine-color-dark-8);
   position: sticky;
   top: 0;
+  z-index: 1;
+  height: 24px;
 }
 
 .tableRow {
+  position: relative;
+
   &__selected {
-    background-color: $slate-800;
+    background-color: var(--mantine-color-dark-5);
     font-weight: bold;
+  }
+
+  &:hover .rowButtons {
+    opacity: 1;
+  }
+
+  &:hover .rowContentButton {
+    background-color: var(--mantine-color-dark-5);
+  }
+
+  &:has(.expandButton:hover) .rowButtons {
+    opacity: 0 !important;
+  }
+
+  &:has(.expandButton:hover) .rowContentButton {
+    background-color: transparent !important;
   }
 }
 
@@ -37,21 +59,22 @@
   justify-content: center;
   transition: background-color 0.15s ease-in-out;
   border-radius: 4px;
+  min-height: $button-height;
 
   &:hover {
-    background-color: $slate-800;
+    background-color: var(--mantine-color-dark-5);
   }
 
   &:focus,
   &:focus-visible {
-    background-color: $slate-800;
+    background-color: var(--mantine-color-dark-5);
     outline: none;
   }
 
   &:active {
     outline: none;
     box-shadow: none;
-    background-color: $slate-800;
+    background-color: var(--mantine-color-dark-5);
   }
 
   svg {
@@ -66,8 +89,8 @@
 
 .expandButtonSeparator {
   width: 1px;
-  height: 12px;
-  border-right: 1px solid $slate-800;
+  height: calc($button-height - 8px);
+  border-right: 1px solid var(--mantine-color-dark-4);
   margin-left: 2px;
   margin-right: 2px;
   display: inline-block;
@@ -80,28 +103,123 @@
   padding: 0;
   margin: 0;
   width: 100%;
-  height: 100%;
   cursor: pointer;
-  display: flex;
-  align-items: stretch;
   text-align: left;
   color: inherit;
   transition: background-color 0.15s ease-in-out;
   border-radius: 4px;
+  min-height: $button-height;
+  display: flex;
+  align-items: center;
+  position: relative;
 
-  &:hover {
-    background-color: $slate-800;
+  &:hover .rowButtons {
+    opacity: 1;
   }
 
   &:focus,
   &:focus-visible {
-    background-color: $slate-800;
+    background-color: var(--mantine-color-dark-5);
     outline: none;
   }
 
   &:active {
     outline: none;
     box-shadow: none;
-    background-color: $slate-800;
+    background-color: var(--mantine-color-dark-5);
   }
+
+  &.isWrapped {
+    align-items: flex-start;
+  }
+
+  &.isTruncated {
+    align-items: flex-start;
+  }
+}
+
+.rowButtons {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  padding-left: 10px;
+  padding-right: 4px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  z-index: 0;
+  align-items: flex-start;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
+.iconActionButton {
+  padding: 4px;
+  border-radius: 4px;
+  background-color: var(--mantine-color-dark-4);
+  border: 1px solid var(--mantine-color-dark-3);
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease-in-out;
+  pointer-events: auto;
+
+  &:hover {
+    transform: scale(1.05);
+  }
+
+  &.copied {
+    color: var(--mantine-color-green-6);
+  }
+}
+
+.fieldTextContainer {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.fieldText {
+  overflow: hidden;
+  padding: 2px 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease-in-out;
+
+  > span:hover {
+    border-radius: 4px;
+    background-color: color-mix(
+      in srgb,
+      var(--mantine-color-dark-2) 30%,
+      transparent
+    );
+  }
+
+  &.chart {
+    overflow: visible;
+    min-height: 50px;
+  }
+}
+
+.fieldText.truncated {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-height: $button-height;
+}
+
+.fieldText.wrapped {
+  word-break: break-word;
+  white-space: normal;
+  display: flex;
+}
+
+.fieldTextPopover {
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
 }

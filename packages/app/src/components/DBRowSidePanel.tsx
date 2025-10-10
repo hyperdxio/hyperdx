@@ -40,7 +40,11 @@ import 'react-modern-drawer/dist/index.css';
 import styles from '@/../styles/LogSidePanel.module.scss';
 
 export type RowSidePanelContextProps = {
-  onPropertyAddClick?: (keyPath: string, value: string) => void;
+  onPropertyAddClick?: (
+    keyPath: string,
+    value: string,
+    action?: 'only' | 'exclude' | 'include',
+  ) => void;
   generateSearchUrl?: ({
     where,
     whereLanguage,

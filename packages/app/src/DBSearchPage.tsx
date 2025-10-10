@@ -1226,7 +1226,11 @@ function DBSearchPage() {
         />
       )}
       <OnboardingModal />
-      <form data-testid="search-form" onSubmit={onFormSubmit}>
+      <form
+        data-testid="search-form"
+        onSubmit={onFormSubmit}
+        className={searchPageStyles.searchForm}
+      >
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
           <Group gap="4px" wrap="nowrap">
@@ -1497,7 +1501,6 @@ function DBSearchPage() {
       )}
       <Flex
         direction="column"
-        mt="sm"
         style={{ overflow: 'hidden', height: '100%' }}
         className="bg-hdx-dark"
       >
@@ -1535,12 +1538,8 @@ function DBSearchPage() {
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
                   <Flex direction="column" w="100%" gap="0px">
-                    <Box style={{ height: 20, minHeight: 20 }} p="xs" pb="md">
-                      <Group
-                        justify="space-between"
-                        mb={4}
-                        style={{ width: '100%' }}
-                      >
+                    <Box className={searchPageStyles.searchStatsContainer}>
+                      <Group justify="space-between" style={{ width: '100%' }}>
                         <SearchTotalCountChart
                           config={histogramTimeChartConfig}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
@@ -1555,12 +1554,7 @@ function DBSearchPage() {
                       </Group>
                     </Box>
                     {!hasQueryError && (
-                      <Box
-                        style={{ height: 120, minHeight: 120 }}
-                        p="xs"
-                        pb="md"
-                        mb="md"
-                      >
+                      <Box className={searchPageStyles.timeChartContainer}>
                         <DBTimeChart
                           sourceId={searchedConfig.source ?? undefined}
                           showLegend={false}
@@ -1646,32 +1640,40 @@ function DBSearchPage() {
                   chartConfig &&
                   histogramTimeChartConfig && (
                     <>
-                      <Box style={{ height: 20, minHeight: 20 }} p="xs" pb="md">
+                      <Box className={searchPageStyles.searchStatsContainer}>
                         <Group
                           justify="space-between"
-                          mb={4}
                           style={{ width: '100%' }}
                         >
                           <SearchTotalCountChart
                             config={histogramTimeChartConfig}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                           />
-                          <SearchNumRows
-                            config={{
-                              ...chartConfig,
-                              dateRange: searchedTimeRange,
-                            }}
-                            enabled={isReady}
-                          />
+                          <Group gap="sm" align="center">
+                            {shouldShowLiveModeHint &&
+                              analysisMode === 'results' &&
+                              denoiseResults != true && (
+                                <Button
+                                  size="compact-xs"
+                                  variant="outline"
+                                  onClick={handleResumeLiveTail}
+                                >
+                                  <i className="bi text-success bi-lightning-charge-fill me-2" />
+                                  Resume Live Tail
+                                </Button>
+                              )}
+                            <SearchNumRows
+                              config={{
+                                ...chartConfig,
+                                dateRange: searchedTimeRange,
+                              }}
+                              enabled={isReady}
+                            />
+                          </Group>
                         </Group>
                       </Box>
                       {!hasQueryError && (
-                        <Box
-                          style={{ height: 120, minHeight: 120 }}
-                          p="xs"
-                          pb="md"
-                          mb="md"
-                        >
+                        <Box className={searchPageStyles.timeChartContainer}>
                           <DBTimeChart
                             sourceId={searchedConfig.source ?? undefined}
                             showLegend={false}
@@ -1803,31 +1805,6 @@ function DBSearchPage() {
                   </>
                 ) : (
                   <>
-                    {shouldShowLiveModeHint &&
-                      analysisMode === 'results' &&
-                      denoiseResults != true && (
-                        <div
-                          className="d-flex justify-content-center"
-                          style={{ height: 0 }}
-                        >
-                          <div
-                            style={{
-                              position: 'relative',
-                              top: -20,
-                              zIndex: 2,
-                            }}
-                          >
-                            <Button
-                              size="compact-xs"
-                              variant="outline"
-                              onClick={handleResumeLiveTail}
-                            >
-                              <i className="bi text-success bi-lightning-charge-fill me-2" />
-                              Resume Live Tail
-                            </Button>
-                          </div>
-                        </div>
-                      )}
                     {chartConfig &&
                       searchedConfig.source &&
                       dbSqlRowTableConfig &&
