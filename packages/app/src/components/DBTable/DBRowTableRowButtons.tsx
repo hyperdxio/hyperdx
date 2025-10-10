@@ -21,7 +21,32 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
 
   const copyRowData = async () => {
     try {
-      const rowData = JSON.stringify(row, null, 2);
+      // Filter out internal metadata fields that start with __ or are generated IDs
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { __hyperdx_id, ...cleanRow } = row;
+
+      // Parse JSON string fields to make them proper JSON objects
+      const parsedRow = Object.entries(cleanRow).reduce(
+        (acc, [key, value]) => {
+          if (
+            (typeof value === 'string' && value.startsWith('{')) ||
+            value.startsWith('[')
+          ) {
+            try {
+              acc[key] = JSON.parse(value);
+            } catch {
+              // If parsing fails, keep the original string
+              acc[key] = value;
+            }
+          } else {
+            acc[key] = value;
+          }
+          return acc;
+        },
+        {} as Record<string, any>,
+      );
+
+      const rowData = JSON.stringify(parsedRow, null, 2);
       await navigator.clipboard.writeText(rowData);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);

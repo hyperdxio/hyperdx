@@ -12,7 +12,7 @@ import styles from '../../../styles/LogTable.module.scss';
 
 export interface DBRowTableFieldWithPopoverProps {
   children: React.ReactNode;
-  cellValue: any;
+  cellValue: unknown;
   wrapLinesEnabled: boolean;
   columnName?: string;
   isChart?: boolean;
@@ -87,7 +87,8 @@ export const DBRowTableFieldWithPopover = ({
 
   const copyFieldValue = async () => {
     try {
-      const value = typeof cellValue === 'string' ? cellValue : `${cellValue}`;
+      const value =
+        typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
       await navigator.clipboard.writeText(value);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
@@ -99,7 +100,8 @@ export const DBRowTableFieldWithPopover = ({
 
   const addFilter = () => {
     if (canFilter) {
-      const value = typeof cellValue === 'string' ? cellValue : `${cellValue}`;
+      const value =
+        typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
       onPropertyAddClick(columnName, value, 'include');
       handleClick(); // Close the popover
     }
@@ -107,7 +109,8 @@ export const DBRowTableFieldWithPopover = ({
 
   const excludeFilter = () => {
     if (canFilter) {
-      const value = typeof cellValue === 'string' ? cellValue : `${cellValue}`;
+      const value =
+        typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
       onPropertyAddClick(columnName, value, 'exclude');
       handleClick(); // Close the popover
     }
