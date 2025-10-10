@@ -764,7 +764,7 @@ export const RawLogTable = memo(
                                 </MantineTooltip>
                               </UnstyledButton>
                             )}
-                          {config && (
+                          {config && !isLoading && (
                             <UnstyledButton
                               onClick={() => handleSqlModalOpen(true)}
                               title="Show generated SQL"
@@ -775,26 +775,30 @@ export const RawLogTable = memo(
                               </MantineTooltip>
                             </UnstyledButton>
                           )}
-                          <UnstyledButton
-                            onClick={() => setWrapLinesEnabled(prev => !prev)}
-                            title="Wrap lines"
-                          >
-                            <MantineTooltip label="Wrap lines">
-                              <IconTextWrap size={16} />
-                            </MantineTooltip>
-                          </UnstyledButton>
-
-                          <CsvExportButton
-                            data={csvData}
-                            filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
-                            className="fs-6 text-muted-hover "
-                          >
-                            <MantineTooltip
-                              label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+                          {!isLoading && (
+                            <UnstyledButton
+                              onClick={() => setWrapLinesEnabled(prev => !prev)}
+                              title="Wrap lines"
                             >
-                              <IconDownload size={16} />
-                            </MantineTooltip>
-                          </CsvExportButton>
+                              <MantineTooltip label="Wrap lines">
+                                <IconTextWrap size={16} />
+                              </MantineTooltip>
+                            </UnstyledButton>
+                          )}
+
+                          {!isLoading && (
+                            <CsvExportButton
+                              data={csvData}
+                              filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
+                              className="fs-6 text-muted-hover "
+                            >
+                              <MantineTooltip
+                                label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+                              >
+                                <IconDownload size={16} />
+                              </MantineTooltip>
+                            </CsvExportButton>
+                          )}
                           {onSettingsClick != null && (
                             <UnstyledButton
                               onClick={() => onSettingsClick()}
