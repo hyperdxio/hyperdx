@@ -23,10 +23,11 @@ import { IconArrowsDiagonal } from '@tabler/icons-react';
 
 import {
   convertDateRangeToGranularityString,
+  isAggregateFunction,
   timeBucketByGranularity,
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { Chart, NumberFormat } from '@/types';
+import { NumberFormat } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatNumber } from '@/utils';
 
@@ -288,23 +289,6 @@ type HeatmapChartConfig = {
   filters?: ChartConfigWithDateRange['filters'];
   connection: string;
   with?: ChartConfigWithDateRange['with'];
-};
-
-const isAggregateFunction = (value: string) => {
-  const fns = [
-    'count',
-    'countIf',
-    'countDistinct',
-    'sum',
-    'avg',
-    'distinct',
-    'min',
-    'max',
-    'quantile',
-    'any',
-    'none',
-  ];
-  return fns.some(fn => value.includes(fn + '('));
 };
 
 function HeatmapContainer({
