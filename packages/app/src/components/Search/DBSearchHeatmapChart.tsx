@@ -29,7 +29,6 @@ import DBHeatmapChart from '../DBHeatmapChart';
 import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
 const Schema = z.object({
-  groupBy: z.string().trim().optional(),
   value: z.string().trim().min(1),
   count: z.string().trim().optional(),
 });
@@ -43,10 +42,7 @@ export function DBSearchHeatmapChart({
   source: TSource;
   isReady: boolean;
 }) {
-  const [opened, { toggle }] = useDisclosure(false);
-
   const [fields, setFields] = useQueryStates({
-    groupBy: parseAsString.withDefault(''),
     value: parseAsString.withDefault(getDurationMsExpression(source)),
     count: parseAsString.withDefault('count()'),
     outlierSqlCondition: parseAsString,
@@ -55,39 +51,19 @@ export function DBSearchHeatmapChart({
   return (
     <Flex direction="column" w="100%" style={{ overflow: 'hidden' }}>
       <Box mx="lg" mt="xs" mb={0}>
-        <Collapse in={opened} style={{ flex: 1 }}>
-          <DBSearchHeatmapForm
-            connection={tcFromSource(source)}
-            defaultValues={{
-              groupBy: fields.groupBy,
-              value: fields.value,
-              count: fields.count,
-            }}
-            onSubmit={data => {
-              setFields({
-                groupBy: data.groupBy,
-                value: data.value,
-                count: data.count,
-              });
-            }}
-          />
-        </Collapse>
-        <Flex justify="flex-end">
-          <Button
-            onClick={toggle}
-            size="xxs"
-            variant="subtle"
-            color="gray"
-            leftSection={<IconSettings size={12} />}
-            styles={{
-              section: {
-                marginRight: '3px',
-              },
-            }}
-          >
-            {opened ? 'Hide' : ''} Graph Editor
-          </Button>
-        </Flex>
+        <DBSearchHeatmapForm
+          connection={tcFromSource(source)}
+          defaultValues={{
+            value: fields.value,
+            count: fields.count,
+          }}
+          onSubmit={data => {
+            setFields({
+              value: data.value,
+              count: data.count,
+            });
+          }}
+        />
       </Box>
       <div
         style={{
@@ -105,7 +81,6 @@ export function DBSearchHeatmapChart({
                 aggFn: 'heatmap',
                 valueExpression: fields.value,
                 countExpression: fields.count || undefined,
-                groupExpression: fields.groupBy || undefined,
               },
             ],
             granularity: 'auto',
@@ -191,20 +166,6 @@ function DBSearchHeatmapForm({
             label="Count"
             error={form.formState.errors.count?.message}
             rules={{ required: true }}
-          />
-        </div>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <SQLInlineEditorControlled
-            tableConnection={connection}
-            control={form.control}
-            name="groupBy"
-            size="xs"
-            tooltipText="Optionally group data points before plotting — defines how Value and Count are aggregated."
-            placeholder="SQL expression"
-            language="sql"
-            onSubmit={form.handleSubmit(onSubmit)}
-            label="Group by"
-            error={form.formState.errors.groupBy?.message}
           />
         </div>
         <ActionIcon
