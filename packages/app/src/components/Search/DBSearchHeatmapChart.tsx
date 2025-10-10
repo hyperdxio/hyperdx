@@ -11,7 +11,7 @@ import {
   DisplayType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Collapse, Flex, Grid } from '@mantine/core';
+import { Box, Button, Collapse, Flex } from '@mantine/core';
 import { ActionIcon } from '@mantine/core';
 import { Paper } from '@mantine/core';
 import { Center } from '@mantine/core';
@@ -30,8 +30,8 @@ import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
 const Schema = z.object({
   groupBy: z.string().trim().optional(),
-  value: z.string().trim().optional(),
-  count: z.string().trim().min(1),
+  value: z.string().trim().min(1),
+  count: z.string().trim().optional(),
 });
 
 export function DBSearchHeatmapChart({
@@ -53,7 +53,7 @@ export function DBSearchHeatmapChart({
   });
 
   return (
-    <Flex direction="column" w="100%">
+    <Flex direction="column" w="100%" style={{ overflow: 'hidden' }}>
       <Box mx="lg" mt="xs" mb={0}>
         <Collapse in={opened} style={{ flex: 1 }}>
           <DBSearchHeatmapForm
@@ -104,8 +104,8 @@ export function DBSearchHeatmapChart({
               {
                 aggFn: 'heatmap',
                 valueExpression: fields.value,
-                countExpression: fields.count,
-                groupExpression: fields.groupBy,
+                countExpression: fields.count || undefined,
+                groupExpression: fields.groupBy || undefined,
               },
             ],
             granularity: 'auto',
@@ -162,12 +162,14 @@ function DBSearchHeatmapForm({
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>
-      <Grid m="0" mb="xs">
-        <Grid.Col span={4}>
+      <Flex m="0" mb="xs" align="stretch" gap="xs">
+        <div style={{ flex: 1, overflow: 'hidden' }}>
           <SQLInlineEditorControlled
             tableConnection={connection}
             control={form.control}
             name="value"
+            size="xs"
+            tooltipText="Controls the Y axis range and scale — defines the metric plotted vertically."
             placeholder="SQL expression"
             language="sql"
             onSubmit={form.handleSubmit(onSubmit)}
@@ -175,44 +177,46 @@ function DBSearchHeatmapForm({
             error={form.formState.errors.value?.message}
             rules={{ required: true }}
           />
-        </Grid.Col>
-        <Grid.Col span={4}>
+        </div>
+        <div style={{ flex: 1, overflow: 'hidden' }}>
           <SQLInlineEditorControlled
             tableConnection={connection}
             control={form.control}
             name="count"
             placeholder="SQL expression"
             language="sql"
+            size="xs"
+            tooltipText="Controls the color intensity (Z axis) — shows how frequently or strongly each value occurs."
             onSubmit={form.handleSubmit(onSubmit)}
             label="Count"
             error={form.formState.errors.count?.message}
             rules={{ required: true }}
           />
-        </Grid.Col>
-        <Grid.Col span={3}>
+        </div>
+        <div style={{ flex: 1, overflow: 'hidden' }}>
           <SQLInlineEditorControlled
             tableConnection={connection}
             control={form.control}
             name="groupBy"
+            size="xs"
+            tooltipText="Optionally group data points before plotting — defines how Value and Count are aggregated."
             placeholder="SQL expression"
             language="sql"
             onSubmit={form.handleSubmit(onSubmit)}
             label="Group by"
             error={form.formState.errors.groupBy?.message}
           />
-        </Grid.Col>
-        <Grid.Col span={1}>
-          <ActionIcon
-            w="100%"
-            variant="outline"
-            type="submit"
-            size="lg"
-            title="Run"
-          >
-            <IconPlayerPlay />
-          </ActionIcon>
-        </Grid.Col>
-      </Grid>
+        </div>
+        <ActionIcon
+          w="40px"
+          variant="outline"
+          type="submit"
+          h="auto"
+          title="Run"
+        >
+          <IconPlayerPlay />
+        </ActionIcon>
+      </Flex>
     </form>
   );
 }
