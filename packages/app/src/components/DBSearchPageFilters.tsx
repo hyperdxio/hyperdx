@@ -781,7 +781,12 @@ const DBSearchPageFiltersComponent = ({
             ...chartConfig,
             dateRange,
           },
-          keys: [key],
+          keys: [
+            key
+              .split('.')
+              .map(v => `\`${v}\``)
+              .join('.'),
+          ],
           limit: 200,
           disableRowLimit: true,
         });
