@@ -1,4 +1,4 @@
-import React, { useContext, useRef, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import cx from 'classnames';
 import { Popover } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -30,6 +30,18 @@ export const DBRowTableFieldWithPopover = ({
   const [hoverDisabled, setHoverDisabled] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout>();
   const hoverDisableTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Cleanup timeouts on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (hoverDisableTimeoutRef.current) {
+        clearTimeout(hoverDisableTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Get filter functionality from context
   const { onPropertyAddClick } = useContext(RowSidePanelContext);
@@ -74,10 +86,15 @@ export const DBRowTableFieldWithPopover = ({
   };
 
   const copyFieldValue = async () => {
-    const value = typeof cellValue === 'string' ? cellValue : `${cellValue}`;
-    await navigator.clipboard.writeText(value);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+    try {
+      const value = typeof cellValue === 'string' ? cellValue : `${cellValue}`;
+      await navigator.clipboard.writeText(value);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      // Optionally show an error toast notification to the user
+    }
   };
 
   const addFilter = () => {
@@ -138,6 +155,8 @@ export const DBRowTableFieldWithPopover = ({
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             onClick={handleClick}
+            tabIndex={-1}
+            aria-hidden="true"
             style={{ cursor: 'pointer' }}
           >
             {children}

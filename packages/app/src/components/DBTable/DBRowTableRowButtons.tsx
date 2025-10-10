@@ -20,23 +20,33 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   const [isUrlCopied, setIsUrlCopied] = useState(false);
 
   const copyRowData = async () => {
-    const rowData = JSON.stringify(row, null, 2);
-    await navigator.clipboard.writeText(rowData);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+    try {
+      const rowData = JSON.stringify(row, null, 2);
+      await navigator.clipboard.writeText(rowData);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy row data to clipboard:', error);
+      // Optionally show an error toast notification to the user
+    }
   };
 
   const copyRowUrl = async () => {
-    const rowWhere = getRowWhere(row);
-    const currentUrl = new URL(window.location.href);
-    // Add the row identifier as query parameters
-    currentUrl.searchParams.set('rowWhere', rowWhere);
-    if (sourceId) {
-      currentUrl.searchParams.set('rowSource', sourceId);
+    try {
+      const rowWhere = getRowWhere(row);
+      const currentUrl = new URL(window.location.href);
+      // Add the row identifier as query parameters
+      currentUrl.searchParams.set('rowWhere', rowWhere);
+      if (sourceId) {
+        currentUrl.searchParams.set('rowSource', sourceId);
+      }
+      await navigator.clipboard.writeText(currentUrl.toString());
+      setIsUrlCopied(true);
+      setTimeout(() => setIsUrlCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy URL to clipboard:', error);
+      // Optionally show an error toast notification to the user
     }
-    await navigator.clipboard.writeText(currentUrl.toString());
-    setIsUrlCopied(true);
-    setTimeout(() => setIsUrlCopied(false), 2000);
   };
 
   return (
