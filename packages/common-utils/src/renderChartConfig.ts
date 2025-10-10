@@ -1,9 +1,24 @@
 import isPlainObject from 'lodash/isPlainObject';
 import * as SQLParser from 'node-sql-parser';
+import SqlString from 'sqlstring';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
 import { Metadata } from '@/metadata';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
+
+/**
+ * Helper function to create a MetricName filter condition.
+ * Uses metricNameSql if available (for dynamic SQL), otherwise falls back to metricName.
+ */
+function createMetricNameFilter(
+  metricName: string,
+  metricNameSql?: string,
+): string {
+  return SqlString.format(
+    'MetricName = ?',
+    metricNameSql ? SqlString.raw(metricNameSql) : [metricName],
+  );
+}
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
@@ -940,7 +955,7 @@ async function translateMetricChartConfig(
     throw new Error('multi select or string select on metrics not supported');
   }
 
-  const { metricType, metricName, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
+  const { metricType, metricName, metricNameSql, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
   if (metricType === MetricsDataType.Gauge && metricName) {
     const timeBucketCol = '__hdx_time_bucket2';
     const timeExpr = timeBucketExpr({
@@ -963,7 +978,7 @@ async function translateMetricChartConfig(
           ...(filters ?? []),
           {
             type: 'sql',
-            condition: `MetricName = '${metricName}'`,
+            condition: createMetricNameFilter(metricName, metricNameSql),
           },
         ],
       },
@@ -1054,7 +1069,7 @@ async function translateMetricChartConfig(
           ...(filters ?? []),
           {
             type: 'sql',
-            condition: `MetricName = '${metricName}'`,
+            condition: createMetricNameFilter(metricName, metricNameSql),
           },
         ],
         includedDataInterval:
@@ -1168,7 +1183,7 @@ async function translateMetricChartConfig(
         ...(filters ?? []),
         {
           type: 'sql',
-          condition: `MetricName = '${metricName}'`,
+          condition: createMetricNameFilter(metricName, metricNameSql),
         },
       ],
       includedDataInterval:
