@@ -233,11 +233,11 @@ const DBRowSidePanel = ({
       if (!source?.resourceAttributesExpression || !normalizedRow) {
         return false;
       }
+
+      const resourceAttrs = normalizedRow['__hdx_resource_attributes'];
       return (
-        normalizedRow[source.resourceAttributesExpression]?.['k8s.pod.uid'] !=
-          null ||
-        normalizedRow[source.resourceAttributesExpression]?.['k8s.node.name'] !=
-          null
+        resourceAttrs?.['k8s.pod.uid'] != null ||
+        resourceAttrs?.['k8s.node.name'] != null
       );
     } catch (e) {
       console.error(e);
