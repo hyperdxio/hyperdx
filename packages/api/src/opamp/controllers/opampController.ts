@@ -303,7 +303,7 @@ export class OpampController {
 
       // Decode the AgentToServer message
       const agentToServer = decodeAgentToServer(req.body);
-      logger.debug('agentToServer', agentToServer);
+      logger.debug({ agentToServer }, 'agentToServer');
       logger.debug(
         // @ts-ignore
         `Received message from agent: ${agentToServer.instanceUid?.toString(
@@ -353,7 +353,7 @@ export class OpampController {
       res.setHeader('Content-Type', 'application/x-protobuf');
       res.send(encodedResponse);
     } catch (error) {
-      logger.error('Error handling OpAMP message:', error);
+      logger.error({ err: error }, 'Error handling OpAMP message');
       res.status(500).send('Internal Server Error');
     }
   }

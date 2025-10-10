@@ -4,7 +4,7 @@ import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import * as HyperDX from '@hyperdx/node-opentelemetry';
 import ms from 'ms';
 import os from 'os';
-import winston from 'winston';
+import pino from 'pino';
 
 import * as config from '@/config';
 import Connection from '@/models/connection';
@@ -12,19 +12,19 @@ import { Source, SourceDocument } from '@/models/source';
 import Team from '@/models/team';
 import User from '@/models/user';
 
-const logger = winston.createLogger({
+const logger = pino({
   level: 'info',
-  format: winston.format.json(),
-  transports: [
-    HyperDX.getWinstonTransport('info', {
-      headers: {
-        Authorization: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key
-      },
-      baseUrl: 'https://in-otel.hyperdx.io/v1/logs',
-      maxLevel: 'info',
-      service: 'hyperdx-oss-usage-stats',
-    }),
-  ],
+  transport: {
+    targets: [
+      HyperDX.getPinoTransport('info', {
+        headers: {
+          Authorization: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key
+        },
+        baseUrl: 'https://in-otel.hyperdx.io/v1/logs',
+        service: 'hyperdx-oss-usage-stats',
+      }),
+    ],
+  },
 });
 
 function extractTableNames(source: SourceDocument): string[] {
