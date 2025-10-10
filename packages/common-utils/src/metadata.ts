@@ -633,6 +633,8 @@ export class Metadata {
               // Set max_rows_to_group_by to avoid using too much memory when grouping on high cardinality key columns
               max_rows_to_group_by: `${limit * 10}`,
               group_by_overflow_mode: 'any',
+              // disable max_rows_to_read limit since this is a sampled query that only happens after the user toggles it on
+              max_rows_to_read: '0',
             },
           })
           .then(res =>
