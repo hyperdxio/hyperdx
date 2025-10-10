@@ -2,6 +2,7 @@ import {
   DashboardWithoutIdSchema,
   Tile,
 } from '@hyperdx/common-utils/dist/types';
+import { randomUUID } from 'crypto';
 import { map, partition, uniq } from 'lodash';
 import { z } from 'zod';
 
@@ -202,12 +203,18 @@ export async function duplicateDashboard(
 
   const dashboardData = originalDashboard.toJSON();
 
+  // Regenerate tile IDs to prevent alert conflicts
+  const tilesWithNewIds = dashboardData.tiles.map(tile => ({
+    ...tile,
+    id: randomUUID(),
+  }));
+
   // Create new dashboard with copied data
   const newDashboard = await createDashboard(
     teamId,
     {
       name: `${dashboardData.name} (Copy)`,
-      tiles: dashboardData.tiles,
+      tiles: tilesWithNewIds,
       tags: dashboardData.tags,
       filters: dashboardData.filters,
     },

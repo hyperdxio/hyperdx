@@ -959,7 +959,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                           color: 'red',
                           message: (
                             <>
-                              Failed to duplicate dashboard. <ContactSupportText />
+                              Failed to duplicate dashboard.{' '}
+                              <ContactSupportText />
                             </>
                           ),
                         });

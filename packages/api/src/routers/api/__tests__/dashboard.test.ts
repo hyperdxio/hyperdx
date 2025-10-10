@@ -359,4 +359,99 @@ describe('dashboard router', () => {
     // Alert should have updated threshold
     expect(updatedAlertRecord.threshold).toBe(updatedThreshold);
   });
+
+  it('can duplicate a dashboard', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const duplicatedDashboard = await agent
+      .post(`/dashboards/${dashboard.body.id}/duplicate`)
+      .expect(200);
+
+    // Verify basic properties
+    expect(duplicatedDashboard.body.name).toBe(
+      `${MOCK_DASHBOARD.name} (Copy)`,
+    );
+    expect(duplicatedDashboard.body.tiles.length).toBe(
+      MOCK_DASHBOARD.tiles.length,
+    );
+    expect(duplicatedDashboard.body.tags).toEqual(MOCK_DASHBOARD.tags);
+
+    // Verify different dashboard ID
+    expect(duplicatedDashboard.body.id).not.toBe(dashboard.body.id);
+
+    // Verify tile IDs are regenerated (not the same as original)
+    const originalTileIds = dashboard.body.tiles.map(tile => tile.id);
+    const duplicatedTileIds = duplicatedDashboard.body.tiles.map(
+      tile => tile.id,
+    );
+    expect(duplicatedTileIds).not.toEqual(originalTileIds);
+
+    // Verify all duplicated tile IDs are unique
+    expect(new Set(duplicatedTileIds).size).toBe(duplicatedTileIds.length);
+  });
+
+  it('returns 404 when duplicating non-existent dashboard', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const nonExistentId = new mongoose.Types.ObjectId().toString();
+
+    await agent.post(`/dashboards/${nonExistentId}/duplicate`).expect(404);
+  });
+
+  it('duplicates dashboard with alerts and creates new alerts with new tile IDs', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    // Create dashboard with tiles that have alerts
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [
+          makeTile({ alert: MOCK_ALERT }),
+          makeTile({ alert: { ...MOCK_ALERT, threshold: 2 } }),
+        ],
+        tags: [],
+      })
+      .expect(200);
+
+    // Verify alerts were created for original dashboard
+    const originalAlerts = await agent.get(`/alerts`).expect(200);
+    expect(originalAlerts.body.data.length).toBe(2);
+    const originalTileIds = dashboard.body.tiles.map(tile => tile.id);
+    expect(originalAlerts.body.data.map(alert => alert.tileId).sort()).toEqual(
+      originalTileIds.sort(),
+    );
+
+    // Duplicate the dashboard
+    const duplicatedDashboard = await agent
+      .post(`/dashboards/${dashboard.body.id}/duplicate`)
+      .expect(200);
+
+    // Verify alerts were created for duplicated dashboard with new tile IDs
+    const allAlerts = await agent.get(`/alerts`).expect(200);
+    expect(allAlerts.body.data.length).toBe(4); // 2 original + 2 duplicated
+
+    const duplicatedTileIds = duplicatedDashboard.body.tiles.map(
+      tile => tile.id,
+    );
+
+    // Verify duplicated dashboard has different tile IDs
+    expect(duplicatedTileIds).not.toEqual(originalTileIds);
+
+    // Verify all tile IDs (original + duplicated) have alerts
+    const allTileIdsWithAlerts = allAlerts.body.data
+      .map(alert => alert.tileId)
+      .sort();
+    const expectedTileIds = [...originalTileIds, ...duplicatedTileIds].sort();
+    expect(allTileIdsWithAlerts).toEqual(expectedTileIds);
+
+    // Verify alert settings are preserved (threshold values)
+    const duplicatedAlerts = allAlerts.body.data.filter(alert =>
+      duplicatedTileIds.includes(alert.tileId),
+    );
+    expect(duplicatedAlerts.map(a => a.threshold).sort()).toEqual([1, 2]);
+  });
 });
