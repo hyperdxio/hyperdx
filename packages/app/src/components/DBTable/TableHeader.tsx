@@ -3,7 +3,7 @@ import { Button, Group, Text } from '@mantine/core';
 import {
   IconArrowDown,
   IconArrowUp,
-  IconDotsVertical,
+  IconGripVertical,
 } from '@tabler/icons-react';
 import { flexRender, Header } from '@tanstack/react-table';
 
@@ -87,7 +87,7 @@ export default function TableHeader({
                 header.column.getIsResizing() && 'isResizing',
               )}
             >
-              <IconDotsVertical size={12} />
+              <IconGripVertical size={12} />
             </div>
           )}
           {isLast && (
