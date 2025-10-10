@@ -347,9 +347,12 @@ const getPopulatedChannel = (
         findWebhookByName(channelIdOrNamePrefix, teamWebhooksById);
 
       if (!webhook) {
-        logger.error('webhook not found', {
-          webhookId: channelIdOrNamePrefix,
-        });
+        logger.error(
+          {
+            webhookId: channelIdOrNamePrefix,
+          },
+          'webhook not found',
+        );
         return undefined;
       }
       return { type: 'webhook', channel: webhook };

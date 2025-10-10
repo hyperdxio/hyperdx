@@ -1,57 +1,86 @@
-import { getWinstonTransport } from '@hyperdx/node-opentelemetry';
-import expressWinston from 'express-winston';
-import winston, { addColors } from 'winston';
-
 import {
-  APP_TYPE,
-  HYPERDX_API_KEY,
-  HYPERDX_LOG_LEVEL,
-  IS_PROD,
-} from '@/config';
+  getPinoMixinFunction,
+  getPinoTransport,
+} from '@hyperdx/node-opentelemetry';
+import type { Request, Response } from 'express';
+import pino from 'pino';
+import pinoHttp from 'pino-http';
 
-// LOCAL DEV ONLY
-addColors({
-  error: 'bold red',
-  warn: 'bold yellow',
-  info: 'white',
-  http: 'gray',
-  verbose: 'bold magenta',
-  debug: 'green',
-  silly: 'cyan',
-});
+import * as config from '@/config';
 
-const MAX_LEVEL = HYPERDX_LOG_LEVEL ?? 'debug';
-const DEFAULT_FORMAT = winston.format.combine(
-  winston.format.errors({ stack: true }),
-  winston.format.json(),
-);
+const MAX_LEVEL = config.HYPERDX_LOG_LEVEL ?? 'debug';
 
-const hyperdxTransport = HYPERDX_API_KEY
-  ? getWinstonTransport(MAX_LEVEL, {
-      bufferSize: APP_TYPE === 'scheduled-task' ? 1 : 100,
+const hyperdxTransport = config.HYPERDX_API_KEY
+  ? getPinoTransport(MAX_LEVEL, {
+      detectResources: true,
     })
   : null;
 
-export const expressLogger = expressWinston.logger({
+// Configure transport based on environment and whether HyperDX is enabled
+const getTransport = () => {
+  const targets: any[] = [];
+
+  // Add HyperDX transport if API key is configured
+  if (hyperdxTransport) {
+    targets.push(hyperdxTransport);
+  }
+
+  if (config.IS_DEV) {
+    // In development, use pino-pretty for nice console output
+    targets.push({
+      target: 'pino-pretty',
+      level: MAX_LEVEL,
+      options: {
+        colorize: true,
+        translateTime: 'SYS:standard',
+        ignore: 'pid,hostname,trace_id,span_id,trace_flags',
+      },
+    });
+  } else {
+    targets.push({
+      target: 'pino/file',
+      level: MAX_LEVEL,
+      options: { destination: 1 }, // this writes to STDOUT
+    });
+  }
+
+  // If only one target, return it directly; otherwise return multi-transport
+  if (targets.length === 0) {
+    return undefined;
+  } else if (targets.length === 1) {
+    return targets[0];
+  } else {
+    return { targets };
+  }
+};
+
+const logger = pino({
   level: MAX_LEVEL,
-  format: DEFAULT_FORMAT,
-  msg: IS_PROD
-    ? undefined
-    : 'HTTP {{res.statusCode}} {{req.method}} {{req.url}} {{res.responseTime}}ms',
-  transports: [
-    new winston.transports.Console(),
-    ...(hyperdxTransport ? [hyperdxTransport] : []),
-  ],
-  meta: IS_PROD,
+  transport: getTransport(),
+  mixin: getPinoMixinFunction,
 });
 
-const logger = winston.createLogger({
-  level: MAX_LEVEL,
-  format: DEFAULT_FORMAT,
-  transports: [
-    new winston.transports.Console(),
-    ...(hyperdxTransport ? [hyperdxTransport] : []),
-  ],
+export const expressLogger = pinoHttp({
+  logger,
+  customLogLevel: (_req, res, err) => {
+    if (res.statusCode >= 400 && res.statusCode < 500) {
+      return 'warn';
+    } else if (res.statusCode >= 500 || err) {
+      return 'error';
+    }
+    return 'info';
+  },
+  customSuccessMessage: (req: Request, res: Response) => {
+    return `HTTP ${req.method} ${req.originalUrl}`;
+  },
+  customErrorMessage: (req: Request, res: Response, err) => {
+    return `HTTP ${req.method} ${req.originalUrl}`;
+  },
+  // enable this to debug request and response data
+  serializers: {
+    req: () => undefined,
+    res: () => undefined,
+  },
 });
 
 export default logger;
