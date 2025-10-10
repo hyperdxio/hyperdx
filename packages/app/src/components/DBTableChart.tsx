@@ -2,8 +2,7 @@ import { useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
-  ChartConfigWithOptDateRange,
-  ChatConfigWithOptTimestamp,
+  ChartConfigWithOptTimestamp,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
@@ -21,7 +20,7 @@ export default function DBTableChart({
   enabled = true,
   queryKeyPrefix,
 }: {
-  config: ChatConfigWithOptTimestamp;
+  config: ChartConfigWithOptTimestamp;
   getRowSearchLink?: (row: any) => string;
   queryKeyPrefix?: string;
   enabled?: boolean;

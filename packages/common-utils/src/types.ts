@@ -105,6 +105,7 @@ export const DerivedColumnSchema = z.intersection(
     alias: z.string().optional(),
     metricType: z.nativeEnum(MetricsDataType).optional(),
     metricName: z.string().optional(),
+    metricNameSql: z.string().optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -422,7 +423,7 @@ export type DateRange = {
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
 
-export type ChatConfigWithOptTimestamp = Omit<
+export type ChartConfigWithOptTimestamp = Omit<
   ChartConfigWithDateRange,
   'timestampValueExpression'
 > & {

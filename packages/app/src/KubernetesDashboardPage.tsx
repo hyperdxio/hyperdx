@@ -1,31 +1,21 @@
 import * as React from 'react';
+import { useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
 import sub from 'date-fns/sub';
-import {
-  parseAsFloat,
-  parseAsStringEnum,
-  useQueryState,
-  useQueryStates,
-} from 'nuqs';
+import { useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
-  SearchConditionLanguage,
-  SourceKind,
-  TSource,
-} from '@hyperdx/common-utils/dist/types';
-import {
-  Anchor,
   Badge,
   Box,
+  Button,
   Card,
   Flex,
   Grid,
   Group,
-  Loader,
   ScrollArea,
   SegmentedControl,
   Skeleton,
@@ -37,25 +27,26 @@ import {
 
 import { TimePicker } from '@/components/TimePicker';
 
-import { ConnectionSelectControlled } from './components/ConnectionSelect';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
 import { KubernetesFilters } from './components/KubernetesFilters';
 import OnboardingModal from './components/OnboardingModal';
+import SourceSchemaPreview from './components/SourceSchemaPreview';
+import { SourceSelectControlled } from './components/SourceSelect';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
+import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import {
   convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import { useConnections } from './connection';
 import { withAppNav } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
-import { getEventBody, useSource, useSources } from './source';
+import { useSources } from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
@@ -768,30 +759,85 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
 const CHART_HEIGHT = 300;
 
+export const resolveSourceIds = (
+  _logSourceId: string | null | undefined,
+  _metricSourceId: string | null | undefined,
+  sources: TSource[] | undefined,
+) => {
+  if (_logSourceId && _metricSourceId) {
+    return [_logSourceId, _metricSourceId];
+  }
+
+  // Default the metric source to the first one from the same connection as the log source
+  if (_logSourceId && !_metricSourceId && sources) {
+    const { connection } = sources.find(s => s.id === _logSourceId) ?? {};
+    const metricSource = sources.find(
+      s => s.connection === connection && s.kind === SourceKind.Metric,
+    );
+    return [_logSourceId, metricSource?.id];
+  }
+
+  // Default the log source to the first one from the same connection as the metric source
+  if (!_logSourceId && _metricSourceId && sources) {
+    const { connection } = sources.find(s => s.id === _metricSourceId) ?? {};
+    const logSource = sources.find(
+      s => s.connection === connection && s.kind === SourceKind.Log,
+    );
+    return [logSource?.id, _metricSourceId];
+  }
+
+  // Find a Log and Metric source from the same connection
+  if (sources) {
+    const connections = sources.map(s => s.connection);
+    const connectionWithBothSourceKinds = connections.find(
+      conn =>
+        sources.some(s => s.connection === conn && s.kind === SourceKind.Log) &&
+        sources.some(
+          s => s.connection === conn && s.kind === SourceKind.Metric,
+        ),
+    );
+    const logSource = sources.find(
+      s =>
+        s.connection === connectionWithBothSourceKinds &&
+        s.kind === SourceKind.Log,
+    );
+    const metricSource = sources.find(
+      s =>
+        s.connection === connectionWithBothSourceKinds &&
+        s.kind === SourceKind.Metric,
+    );
+    return [logSource?.id, metricSource?.id];
+  }
+
+  return [_logSourceId, _metricSourceId];
+};
+
 function KubernetesDashboardPage() {
-  const { data: connections } = useConnections();
-  const [_connection, setConnection] = useQueryState('connection');
+  const { data: sources } = useSources();
 
-  const connection = _connection ?? connections?.[0]?.id ?? '';
+  const [_logSourceId, setLogSourceId] = useQueryState('logSource');
+  const [_metricSourceId, setMetricSourceId] = useQueryState('metricSource');
 
-  // TODO: Let users select log + metric sources
-  const { data: sources, isLoading: isLoadingSources } = useSources();
-  const logSource = sources?.find(
-    s => s.kind === SourceKind.Log && s.connection === connection,
+  const [logSourceId, metricSourceId] = useMemo(
+    () => resolveSourceIds(_logSourceId, _metricSourceId, sources),
+    [_logSourceId, _metricSourceId, sources],
   );
-  const metricSource = sources?.find(
-    s => s.kind === SourceKind.Metric && s.connection === connection,
-  );
+
+  const logSource = sources?.find(s => s.id === logSourceId);
+  const metricSource = sources?.find(s => s.id === metricSourceId);
 
   const { control, watch } = useForm({
     values: {
-      connection,
+      logSourceId,
+      metricSourceId,
     },
   });
 
   watch((data, { name, type }) => {
-    if (name === 'connection' && type === 'change') {
-      setConnection(data.connection ?? null);
+    if (name === 'logSourceId' && type === 'change') {
+      setLogSourceId(data.logSourceId ?? null);
+    } else if (name === 'metricSourceId' && type === 'change') {
+      setMetricSourceId(data.metricSourceId ?? null);
     }
   });
 
@@ -812,12 +858,22 @@ function KubernetesDashboardPage() {
     displayedTimeInputValue,
     setDisplayedTimeInputValue,
     onSearch,
+    onTimeRangeSelect,
   } = useTimeQuery({
     defaultValue: 'Past 1h',
     defaultTimeRange: [
       defaultTimeRange?.[0]?.getTime() ?? -1,
       defaultTimeRange?.[1]?.getTime() ?? -1,
     ],
+  });
+
+  // For future use if Live button is added
+  const [isLive, setIsLive] = React.useState(false);
+
+  const { manualRefreshCooloff, refresh } = useDashboardRefresh({
+    searchedTimeRange: dateRange,
+    onTimeRangeSelect,
+    isLive,
   });
 
   const whereClause = searchQuery;
@@ -859,31 +915,59 @@ function KubernetesDashboardPage() {
           <Text c="gray.4" size="xl">
             Kubernetes Dashboard
           </Text>
-          <ConnectionSelectControlled
-            data-testid="kubernetes-connection-select"
+          <SourceSelectControlled
+            name="logSourceId"
             control={control}
-            name="connection"
+            allowedSourceKinds={[SourceKind.Log]}
             size="xs"
+            allowDeselect={false}
+            sourceSchemaPreview={
+              <SourceSchemaPreview source={logSource} variant="text" />
+            }
+          />
+          <SourceSelectControlled
+            name="metricSourceId"
+            control={control}
+            allowedSourceKinds={[SourceKind.Metric]}
+            size="xs"
+            allowDeselect={false}
+            sourceSchemaPreview={
+              <SourceSchemaPreview source={metricSource} variant="text" />
+            }
           />
         </Group>
 
-        <form
-          data-testid="kubernetes-time-form"
-          onSubmit={e => {
-            e.preventDefault();
-            onSearch(displayedTimeInputValue);
-            return false;
-          }}
-        >
-          <TimePicker
-            data-testid="kubernetes-time-picker"
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={range => {
-              onSearch(range);
+        <Group gap="xs">
+          <form
+            data-testid="kubernetes-time-form"
+            onSubmit={e => {
+              e.preventDefault();
+              onSearch(displayedTimeInputValue);
+              return false;
             }}
-          />
-        </form>
+          >
+            <TimePicker
+              data-testid="kubernetes-time-picker"
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onSearch}
+            />
+          </form>
+          <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+            <Button
+              onClick={refresh}
+              loading={manualRefreshCooloff}
+              disabled={manualRefreshCooloff}
+              color="gray"
+              variant="outline"
+              title="Refresh dashboard"
+              aria-label="Refresh dashboard"
+              px="xs"
+            >
+              <i className="bi bi-arrow-clockwise fs-5"></i>
+            </Button>
+          </Tooltip>
+        </Group>
       </Group>
       {metricSource && (
         <KubernetesFilters
