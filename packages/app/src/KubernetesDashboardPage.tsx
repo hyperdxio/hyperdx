@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import cx from 'classnames';
@@ -832,6 +832,18 @@ function KubernetesDashboardPage() {
       metricSourceId,
     },
   });
+
+  useEffect(() => {
+    if (logSourceId && logSourceId !== _logSourceId) {
+      setLogSourceId(logSourceId);
+    }
+  }, [logSourceId, _logSourceId, setLogSourceId]);
+
+  useEffect(() => {
+    if (metricSourceId && metricSourceId !== _metricSourceId) {
+      setMetricSourceId(metricSourceId);
+    }
+  }, [metricSourceId, _metricSourceId, setMetricSourceId]);
 
   watch((data, { name, type }) => {
     if (name === 'logSourceId' && type === 'change') {
