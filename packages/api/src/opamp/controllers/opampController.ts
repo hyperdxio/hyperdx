@@ -94,11 +94,20 @@ type CollectorConfig = {
       password: string;
       ttl: string;
       timeout: string;
+      logs_table_name: string;
+      traces_table_name: string;
       retry_on_failure: {
         enabled: boolean;
         initial_interval: string;
         max_interval: string;
         max_elapsed_time: string;
+      };
+    };
+    'otlphttp/internal'?: {
+      endpoint: string;
+      headers: {
+        authorization: string;
+        compression: string;
       };
     };
   };
@@ -121,6 +130,38 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
     // Only allow INGESTION_API_KEY for dev or all-in-one images for security reasons
     if (config.INGESTION_API_KEY) {
       apiKeys.push(config.INGESTION_API_KEY);
+    }
+  }
+
+  let clickhouseExporterTables = {
+    logs_table_name: 'otel_logs',
+    traces_table_name: 'otel_traces',
+  };
+  let otlpForward: string[] | undefined;
+  let otlpExporter: {
+    'otlphttp/internal': NonNullable<
+      CollectorConfig['exporters']
+    >['otlphttp/internal'];
+  } = {
+    'otlphttp/internal': undefined,
+  };
+  if (config.IS_DEV) {
+    if (config.IS_JSON_OPAMP) {
+      clickhouseExporterTables = {
+        logs_table_name: 'otel_logs_json',
+        traces_table_name: 'otel_traces_json',
+      };
+    } else {
+      otlpForward = ['otlphttp/internal'];
+      otlpExporter = {
+        'otlphttp/internal': {
+          endpoint: 'http://host.docker.internal:14318',
+          headers: {
+            authorization: apiKeys.length > 0 ? apiKeys[0] : '',
+            compression: 'gzip',
+          },
+        },
+      };
     }
   }
 
@@ -217,7 +258,9 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
           max_interval: '30s',
           max_elapsed_time: '300s',
         },
+        ...clickhouseExporterTables,
       },
+      ...(otlpExporter ? otlpExporter : {}),
     },
     service: {
       extensions: [],
@@ -225,7 +268,7 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
         traces: {
           receivers: ['nop'],
           processors: ['memory_limiter', 'batch'],
-          exporters: ['clickhouse'],
+          exporters: ['clickhouse', ...(otlpForward ? otlpForward : [])],
         },
         metrics: {
           // TODO: prometheus needs to be authenticated
@@ -236,7 +279,7 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
         'logs/in': {
           // TODO: fluentforward needs to be authenticated
           receivers: ['fluentforward'],
-          exporters: ['routing/logs'],
+          exporters: ['routing/logs', ...(otlpForward ? otlpForward : [])],
         },
         'logs/out-default': {
           receivers: ['routing/logs'],
