@@ -173,10 +173,10 @@ describe('processRowToWhereClause', () => {
     const row = { dynamic_field: '"quoted_value"' };
     const result = processRowToWhereClause(row, columnMap);
 
-    expect(result).toBe("toString(dynamic_field)='quoted_value'");
+    expect(result).toBe("toString(`dynamic_field`)='quoted_value'");
   });
 
-  it('should handle Dynamic columns with escaped values', () => {
+  it('should handle Dynamic columns with escaped values and single quote', () => {
     const columnMap = new Map([
       [
         'dynamic_field',
@@ -189,10 +189,30 @@ describe('processRowToWhereClause', () => {
       ],
     ]);
 
-    const row = { dynamic_field: '{\\"took\\":7, not a valid json' };
+    const row = { dynamic_field: '{\\"took\\":7, this ins\'t a valid json' };
     const result = processRowToWhereClause(row, columnMap);
     expect(result).toBe(
-      'toString(dynamic_field)=\'{\\"took\\":7, not a valid json\'',
+      "toString(`dynamic_field`)='{\\\"took\\\":7, this ins\\'t a valid json'",
+    );
+  });
+
+  it('should handle Dynamic columns with delimited identifier', () => {
+    const columnMap = new Map([
+      [
+        'dynamic_field.nested.needs\\toBeEscaped',
+        {
+          name: 'dynamic_field.nested\\ToBeEscaped',
+          type: 'Dynamic',
+          valueExpr: 'dynamic_field.nested.needs\\ToBeEscaped',
+          jsType: JSDataType.Dynamic,
+        },
+      ],
+    ]);
+
+    const row = { 'dynamic_field.nested.needs\\toBeEscaped': 'some string' };
+    const result = processRowToWhereClause(row, columnMap);
+    expect(result).toBe(
+      `toString(\`dynamic_field\`.\`nested\`.\`needs\\ToBeEscaped\`)='some string'`,
     );
   });
 
