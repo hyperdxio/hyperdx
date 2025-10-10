@@ -72,19 +72,15 @@ export function processRowToWhereClause(
             console.warn('Search value/object key too large.');
           }
           // TODO: update when JSON type have new version
-          // will not work for array/object dyanmic data
 
-          // escaped strings needs raw, becuase sqlString will add another layer of escaping
-          // data other than array/object will alwayas return with dobule quote(because of CH)
-          // remove dobule qoute to search correctly
-          return SqlString.format(`toString(?)='?'`, [
-            SqlString.raw(valueExpr),
-            SqlString.raw(
-              value[0] === '"' && value[value.length - 1] === '"'
-                ? value.slice(1, -1)
-                : value,
-            ),
-          ]);
+          // escaped strings needs raw, because sqlString will add another layer of escaping
+          // data other than array/object will always return with double quote(because of CH)
+          // remove double quote to search correctly
+          return SqlString.format(
+            "toJSONString(?) = toJSONString(JSONExtract(?, 'Dynamic'))",
+            [SqlString.raw(valueExpr), value],
+          );
+
         default:
           // Handle nullish values
           if (value == null) {
