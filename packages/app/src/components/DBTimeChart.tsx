@@ -62,7 +62,7 @@ function DBTimeChartComponent({
     limit: { limit: 100000 },
   };
 
-  const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
+  const { data, isLoading, isError, error, isSuccess, isFetching } =
     useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig],
@@ -75,7 +75,6 @@ function DBTimeChartComponent({
     }
   }, [isError, isErrorExpanded, errorExpansion]);
 
-  const isLoadingOrPlaceholder = isLoading || isPlaceholderData;
   const { data: source } = useSource({ id: sourceId });
 
   const { graphResults, timestampColumn, groupKeys, lineNames, lineColors } =
@@ -338,7 +337,7 @@ function DBTimeChartComponent({
           graphResults={graphResults}
           groupKeys={groupKeys}
           isClickActive={false}
-          isLoading={isLoadingOrPlaceholder}
+          isLoading={isFetching}
           lineColors={lineColors}
           lineNames={lineNames}
           logReferenceTimestamp={logReferenceTimestamp}

@@ -29,10 +29,11 @@ export default function PatternTable({
 
   const [selectedPattern, setSelectedPattern] = useState<Pattern | null>(null);
 
-  const { totalCount, isLoading: isTotalCountLoading } = useSearchTotalCount(
-    totalCountConfig,
-    totalCountQueryKeyPrefix,
-  );
+  const {
+    totalCount,
+    isLoading: isTotalCountLoading,
+    isTotalCountComplete,
+  } = useSearchTotalCount(totalCountConfig, totalCountQueryKeyPrefix);
 
   const {
     data: groupedResults,
@@ -46,7 +47,8 @@ export default function PatternTable({
     totalCount,
   });
 
-  const isLoading = isTotalCountLoading || isGroupedPatternsLoading;
+  const isLoading =
+    isTotalCountLoading || !isTotalCountComplete || isGroupedPatternsLoading;
 
   const sortedGroupedResults = useMemo(() => {
     return Object.values(groupedResults).sort(

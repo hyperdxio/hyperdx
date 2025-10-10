@@ -28,6 +28,8 @@ export function useSearchTotalCount(
     placeholderData: keepPreviousData, // no need to flash loading state when in live tail
   });
 
+  const isTotalCountComplete = !!totalCountData?.isComplete;
+
   const totalCount = useMemo(() => {
     return totalCountData?.data?.reduce(
       (p: number, v: any) => p + Number.parseInt(v['count()']),
@@ -39,6 +41,7 @@ export function useSearchTotalCount(
     totalCount,
     isLoading,
     isError,
+    isTotalCountComplete,
   };
 }
 
