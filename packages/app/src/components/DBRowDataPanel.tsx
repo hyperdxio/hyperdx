@@ -115,7 +115,13 @@ export function useRowData({
 }
 
 export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {
-  return meta?.filter(m => m.type === 'JSON').map(m => m.name) ?? [];
+  return (
+    meta
+      // The type could either be just 'JSON' or it could be 'JSON(<parameters>)'
+      // this is a basic way to match both cases
+      ?.filter(m => m.type === 'JSON' || m.type.startsWith('JSON('))
+      .map(m => m.name) ?? []
+  );
 }
 
 export function RowDataPanel({
