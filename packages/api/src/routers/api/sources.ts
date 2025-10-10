@@ -1,6 +1,7 @@
 import {
+  SourceKind,
   SourceSchema,
-  sourceSchemaWithout,
+  SourceSchemaNoId,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { z } from 'zod';
@@ -23,13 +24,27 @@ router.get('/', async (req, res, next) => {
 
     const sources = await getSources(teamId.toString());
 
-    return res.json(sources.map(s => s.toJSON({ getters: true })));
+    const out = sources.map(s => {
+      // Typescript gets confused about calling toJSON on the union type, but
+      // breaking it out into a switch statement keeps TS happy
+      switch (s.kind) {
+        case SourceKind.Log:
+          return s.toJSON({ getters: true });
+        case SourceKind.Trace:
+          return s.toJSON({ getters: true });
+        case SourceKind.Metric:
+          return s.toJSON({ getters: true });
+        case SourceKind.Session:
+          return s.toJSON({ getters: true });
+        default:
+          throw new Error(`Source found with invalid kind ${(s as any).kind}`);
+      }
+    });
+    return res.json(out);
   } catch (e) {
     next(e);
   }
 });
-
-const SourceSchemaNoId = sourceSchemaWithout({ id: true });
 
 router.post(
   '/',
@@ -40,11 +55,10 @@ router.post(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
-      // TODO: HDX-1768 Eliminate type assertion
       const source = await createSource(teamId.toString(), {
         ...req.body,
         team: teamId,
-      } as any);
+      });
 
       res.json(source);
     } catch (e) {
@@ -65,11 +79,10 @@ router.put(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
-      // TODO: HDX-1768 Eliminate type assertion
       const source = await updateSource(teamId.toString(), req.params.id, {
         ...req.body,
         team: teamId,
-      } as any);
+      });
 
       if (!source) {
         res.status(404).send('Source not found');

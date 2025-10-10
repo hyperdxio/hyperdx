@@ -3,7 +3,7 @@ import { addDays, differenceInDays, subDays } from 'date-fns';
 import {
   DateRange,
   MetricsDataType,
-  TSource,
+  TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
@@ -18,7 +18,7 @@ const chartConfigByMetricType = ({
   metricType,
 }: {
   dateRange?: DateRange['dateRange'];
-  metricSource: TSource;
+  metricSource: TMetricSource;
   metricType: MetricsDataType;
 }) => {
   const now = new Date();
@@ -55,7 +55,7 @@ const chartConfigByMetricType = ({
 };
 
 function useMetricNames(
-  metricSource: TSource,
+  metricSource: TMetricSource,
   dateRange?: DateRange['dateRange'],
 ) {
   const { gaugeConfig, histogramConfig, sumConfig } = useMemo(() => {
@@ -121,7 +121,7 @@ export function MetricNameSelect({
   setMetricName: (metricName: string) => void;
   isLoading?: boolean;
   isError?: boolean;
-  metricSource: TSource;
+  metricSource: TMetricSource;
 }) {
   const SEPARATOR = ':::::::';
 

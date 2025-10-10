@@ -32,7 +32,9 @@ import {
 import {
   ChartConfigWithDateRange,
   SelectList,
-  TSource,
+  SourceKind,
+  type TLogSource,
+  type TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
@@ -352,7 +354,7 @@ export const RawLogTable = memo(
     loadingDate?: Date;
     config?: ChartConfigWithDateRange;
     onChildModalOpen?: (open: boolean) => void;
-    source?: TSource;
+    source?: TTraceSource | TLogSource;
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
     collapseAllRows?: boolean;
     showExpandButton?: boolean;
@@ -1294,13 +1296,21 @@ function DBSqlRowTableComponent({
     }
   }, [isError, onError, error]);
 
-  const { data: source } = useSource({ id: sourceId });
+  const { data: logSource } = useSource({ id: sourceId, kind: SourceKind.Log });
+  const { data: traceSource } = useSource({
+    id: sourceId,
+    kind: SourceKind.Trace,
+  });
+  const source = logSource ?? traceSource;
   const patternColumn = columns[columns.length - 1];
   const groupedPatterns = useGroupedPatterns({
     config,
     samples: 10_000,
     bodyValueExpression: patternColumn ?? '',
-    severityTextExpression: source?.severityTextExpression ?? '',
+    severityTextExpression:
+      (source && 'severityTextExpression' in source
+        ? source.severityTextExpression
+        : '') ?? '',
     totalCount: undefined,
     enabled: denoiseResults,
   });

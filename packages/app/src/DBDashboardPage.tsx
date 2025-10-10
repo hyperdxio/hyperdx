@@ -18,7 +18,7 @@ import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
 import {
   AlertState,
   DashboardFilter,
-  TSourceUnion,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ChartConfigWithDateRange,
@@ -178,14 +178,18 @@ const Tile = forwardRef(
             connection: source.connection,
             dateRange,
             granularity,
-            timestampValueExpression: source.timestampValueExpression,
+            timestampValueExpression: source.timestampValueExpression ?? '',
             from: {
               databaseName: source.from?.databaseName || 'default',
               tableName: tableName || '',
             },
-            implicitColumnExpression: source.implicitColumnExpression,
+            ...('implicitColumnExpression' in source
+              ? { implicitColumnExpression: source.implicitColumnExpression }
+              : {}),
             filters,
-            metricTables: source.metricTables,
+            ...('metricTables' in source
+              ? { metricTables: source.metricTables }
+              : {}),
           });
         }
       }
@@ -352,7 +356,9 @@ const Tile = forwardRef(
                   dateRange,
                   select:
                     queriedConfig.select ||
-                    source?.defaultTableSelectExpression ||
+                    (source && 'defaultTableSelectExpression' in source
+                      ? source.defaultTableSelectExpression
+                      : undefined) ||
                     '',
                   groupBy: undefined,
                   granularity: undefined,
@@ -953,7 +959,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                         convertToDashboardTemplate(
                           dashboard,
                           // TODO: fix this type issue
-                          sources as TSourceUnion[],
+                          sources,
                         ),
                         dashboard?.name,
                       );

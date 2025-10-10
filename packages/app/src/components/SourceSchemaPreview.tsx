@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
+import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
+import {
+  MetricsDataType,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Modal, Paper, Tabs, TextProps, Tooltip } from '@mantine/core';
 import { IconCode } from '@tabler/icons-react';
 
@@ -83,8 +88,8 @@ const TableSchemaPreview = ({
 };
 
 export interface SourceSchemaPreviewProps {
-  source?: Pick<TSource, 'connection' | 'from' | 'metricTables'> &
-    Partial<Pick<TSource, 'kind' | 'name'>>;
+  metricTables?: TMetricSource['metricTables'];
+  tableConnection?: TableConnection;
   iconStyles?: Pick<TextProps, 'size' | 'color'>;
   variant?: 'icon' | 'text';
 }
@@ -98,39 +103,39 @@ const METRIC_TYPE_NAMES: Record<MetricsDataType, string> = {
 };
 
 const SourceSchemaPreview = ({
-  source,
+  tableConnection,
   iconStyles,
   variant = 'icon',
+  metricTables,
 }: SourceSchemaPreviewProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const isMetricSource = source?.kind === 'metric';
   const tables: (TableSchemaPreviewProps & { title: string })[] = [];
-  if (source && isMetricSource) {
+  if (tableConnection && metricTables) {
     tables.push(
       ...Object.values(MetricsDataType)
         .map(metricType => ({
           metricType,
-          tableName: source.metricTables?.[metricType],
+          tableName: metricTables?.[metricType],
         }))
         .filter(({ tableName }) => !!tableName)
         .map(({ metricType, tableName }) => ({
-          databaseName: source.from.databaseName,
+          databaseName: tableConnection.databaseName,
           tableName: tableName!,
-          connectionId: source.connection,
+          connectionId: tableConnection.connectionId,
           title: METRIC_TYPE_NAMES[metricType],
         })),
     );
-  } else if (source && source.from.tableName) {
+  } else if (tableConnection) {
     tables.push({
-      databaseName: source.from.databaseName,
-      tableName: source.from.tableName,
-      connectionId: source.connection,
-      title: source.name ?? source.from.tableName,
+      databaseName: tableConnection.databaseName,
+      tableName: tableConnection.tableName,
+      connectionId: tableConnection.connectionId,
+      title: tableConnection.tableName,
     });
   }
 
-  const isEnabled = !!source && tables.length > 0;
+  const isEnabled = !!tableConnection && tables.length > 0;
 
   return (
     <>

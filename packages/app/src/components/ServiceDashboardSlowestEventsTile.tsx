@@ -1,5 +1,6 @@
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import type { Filter, TSource } from '@hyperdx/common-utils/dist/types';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { Filter, TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Group, Text } from '@mantine/core';
 
 import { ChartBox } from '@/components/ChartBox';
@@ -19,7 +20,7 @@ export default function SlowestEventsTile({
   enabled = true,
   extraFilters = [],
 }: {
-  source: TSource;
+  source: TTraceSource;
   dateRange: [Date, Date];
   height?: number;
   title: React.ReactNode;
@@ -27,11 +28,7 @@ export default function SlowestEventsTile({
   enabled?: boolean;
   extraFilters?: Filter[];
 }) {
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
+  const { data: jsonColumns = [] } = useJsonColumns(tcFromSource(source));
   const expressions = getExpressions(source, jsonColumns);
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(

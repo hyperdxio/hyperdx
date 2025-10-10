@@ -8,6 +8,7 @@ import {
   SearchCondition,
   SearchConditionLanguage,
   TSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
@@ -43,7 +44,7 @@ export function useSessions(
     where,
     whereLanguage,
   }: {
-    traceSource?: TSource;
+    traceSource?: TTraceSource;
     sessionSource?: TSource;
     dateRange: DateRange['dateRange'];
     where?: SearchCondition;

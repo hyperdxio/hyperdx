@@ -1,7 +1,11 @@
 import React, { memo, useCallback, useState } from 'react';
 import cx from 'classnames';
 import { useQueryState } from 'nuqs';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import type {
+  TLogSource,
+  TSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { IconChevronRight } from '@tabler/icons-react';
 
 import styles from '../../styles/LogTable.module.scss';
@@ -33,7 +37,7 @@ export const ExpandedLogRow = memo(
     children: React.ReactNode;
     columnsLength: number;
     virtualKey: string;
-    source?: TSource;
+    source?: TLogSource | TTraceSource;
     rowId: string;
     measureElement?: (element: HTMLElement | null) => void;
     virtualIndex?: number;

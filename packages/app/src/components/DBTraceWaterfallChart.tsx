@@ -5,7 +5,8 @@ import {
   ChartConfig,
   ChartConfigWithDateRange,
   SourceKind,
-  TSource,
+  type TLogSource,
+  type TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 
@@ -53,7 +54,7 @@ function barColor(condition: {
   return isHighlighted ? '#A9AFB7' : '#6A7077';
 }
 
-function getTableBody(tableModel: TSource) {
+function getTableBody(tableModel: TLogSource | TTraceSource): string {
   if (tableModel?.kind === SourceKind.Trace) {
     return getSpanEventBody(tableModel) ?? '';
   } else if (tableModel?.kind === SourceKind.Log) {
@@ -65,19 +66,22 @@ function getTableBody(tableModel: TSource) {
   }
 }
 
-function getConfig(source: TSource, traceId: string) {
+function getConfig(source: TLogSource | TTraceSource, traceId: string) {
   const alias = {
     Body: getTableBody(source),
     Timestamp: getDisplayedTimestampValueExpression(source),
-    Duration: source.durationExpression
-      ? getDurationSecondsExpression(source)
-      : '',
     TraceId: source.traceIdExpression ?? '',
     SpanId: source.spanIdExpression ?? '',
-    ParentSpanId: source.parentSpanIdExpression ?? '',
-    StatusCode: source.statusCodeExpression ?? '',
+    ...(source.kind === SourceKind.Trace
+      ? {
+          Duration: getDurationSecondsExpression(source) ?? '',
+          ParentSpanId: source.parentSpanIdExpression ?? '',
+          StatusCode: source.statusCodeExpression ?? '',
+        }
+      : {
+          SeverityText: source.severityTextExpression ?? '',
+        }),
     ServiceName: source.serviceNameExpression ?? '',
-    SeverityText: source.severityTextExpression ?? '',
     SpanAttributes: source.eventAttributesExpression ?? '',
   };
   const select = [
@@ -101,52 +105,48 @@ function getConfig(source: TSource, traceId: string) {
           },
         ]
       : []),
+    ...('Duration' in alias
+      ? [
+          {
+            // in Seconds, f64 holds ns precision for durations up to ~3 months
+            valueExpression: alias.Duration,
+            alias: 'Duration',
+          },
+        ]
+      : []),
+    ...('ParentSpanId' in alias
+      ? [
+          {
+            valueExpression: alias.ParentSpanId,
+            alias: 'ParentSpanId',
+          },
+        ]
+      : []),
+    ...('StatusCode' in alias
+      ? [
+          {
+            valueExpression: alias.StatusCode,
+            alias: 'StatusCode',
+          },
+        ]
+      : []),
+    ...('SpanAttributes' in alias
+      ? [
+          {
+            valueExpression: alias.SpanAttributes,
+            alias: 'SpanAttributes',
+          },
+        ]
+      : []),
+    ...('SeverityText' in alias
+      ? [
+          {
+            valueExpression: alias.SeverityText,
+            alias: 'SeverityText',
+          },
+        ]
+      : []),
   ];
-
-  if (source.kind === SourceKind.Trace) {
-    select.push(
-      ...[
-        {
-          // in Seconds, f64 holds ns precision for durations up to ~3 months
-          valueExpression: alias.Duration,
-          alias: 'Duration',
-        },
-        {
-          valueExpression: alias.ParentSpanId,
-          alias: 'ParentSpanId',
-        },
-        ...(alias.StatusCode
-          ? [
-              {
-                valueExpression: alias.StatusCode,
-                alias: 'StatusCode',
-              },
-            ]
-          : []),
-        ...(alias.SpanAttributes
-          ? [
-              {
-                valueExpression: alias.SpanAttributes,
-                alias: 'SpanAttributes',
-              },
-            ]
-          : []),
-      ],
-    );
-  } else if (source.kind === SourceKind.Log) {
-    select.push(
-      ...[
-        ...(alias.SeverityText
-          ? [
-              {
-                valueExpression: alias.SeverityText,
-                alias: 'SeverityText',
-              },
-            ]
-          : []),
-      ],
-    );
-  }
   const config = {
     select,
     from: source.from,
@@ -154,7 +154,7 @@ function getConfig(source: TSource, traceId: string) {
     where: `${alias.TraceId} = '${traceId}'`,
     limit: { limit: 10000 },
     connection: source.connection,
-  };
+  } satisfies ChartConfig;
   return { config, alias, type: source.kind };
 }
 
@@ -186,7 +186,7 @@ export function useEventsAroundFocus({
   traceId,
   enabled,
 }: {
-  tableSource: TSource;
+  tableSource: TLogSource | TTraceSource;
   focusDate: Date;
   dateRange: [Date, Date];
   traceId: string;
@@ -250,8 +250,8 @@ export function DBTraceWaterfallChartContainer({
   highlightedRowWhere,
   initialRowHighlightHint,
 }: {
-  traceTableSource: TSource;
-  logTableSource: TSource | null;
+  traceTableSource: TTraceSource;
+  logTableSource: TLogSource | null;
   traceId: string;
   dateRange: [Date, Date];
   focusDate: Date;

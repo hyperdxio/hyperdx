@@ -7,8 +7,14 @@ import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import {
+  SourceKind,
+  type TMetricSource,
+  type TSource,
+} from '@hyperdx/common-utils/dist/types';
+import {
+  Anchor,
   Badge,
   Box,
   Button,
@@ -46,7 +52,7 @@ import { withAppNav } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
-import { useSources } from './source';
+import { useSource, useSources } from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
@@ -136,7 +142,7 @@ export const InfraPodsStatusTable = ({
   where,
 }: {
   dateRange: [Date, Date];
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
 }) => {
   const [phaseFilter, setPhaseFilter] = React.useState('running');
@@ -433,7 +439,7 @@ const NodesTable = ({
   where,
   dateRange,
 }: {
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
   dateRange: [Date, Date];
 }) => {
@@ -602,7 +608,7 @@ const NamespacesTable = ({
   where,
 }: {
   dateRange: [Date, Date];
-  metricSource: TSource;
+  metricSource: TMetricSource;
   where: string;
 }) => {
   const groupBy = ['k8s.namespace.name'];
@@ -822,9 +828,15 @@ function KubernetesDashboardPage() {
     () => resolveSourceIds(_logSourceId, _metricSourceId, sources),
     [_logSourceId, _metricSourceId, sources],
   );
-
-  const logSource = sources?.find(s => s.id === logSourceId);
-  const metricSource = sources?.find(s => s.id === metricSourceId);
+  // TODO: Let users select log + metric sources
+  const { data: logSource } = useSource({
+    id: logSourceId,
+    kind: SourceKind.Log,
+  });
+  const { data: metricSource } = useSource({
+    id: metricSourceId,
+    kind: SourceKind.Metric,
+  });
 
   const { control, watch } = useForm({
     values: {
@@ -934,7 +946,10 @@ function KubernetesDashboardPage() {
             size="xs"
             allowDeselect={false}
             sourceSchemaPreview={
-              <SourceSchemaPreview source={logSource} variant="text" />
+              <SourceSchemaPreview
+                tableConnection={tcFromSource(logSource)}
+                variant="text"
+              />
             }
           />
           <SourceSelectControlled
@@ -944,7 +959,11 @@ function KubernetesDashboardPage() {
             size="xs"
             allowDeselect={false}
             sourceSchemaPreview={
-              <SourceSchemaPreview source={metricSource} variant="text" />
+              <SourceSchemaPreview
+                tableConnection={tcFromSource(metricSource)}
+                metricTables={metricSource?.metricTables}
+                variant="text"
+              />
             }
           />
         </Group>

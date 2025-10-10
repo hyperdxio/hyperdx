@@ -3,7 +3,9 @@ import { useQueryState } from 'nuqs';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
-  TSource,
+  SourceKind,
+  type TLogSource,
+  type TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
@@ -57,7 +59,15 @@ export default function DBSqlRowTableWithSideBar({
   onSortingChange,
   initialSortBy,
 }: Props) {
-  const { data: sourceData } = useSource({ id: sourceId });
+  const { data: sourceLog } = useSource({
+    id: sourceId,
+    kind: SourceKind.Log,
+  });
+  const { data: sourceTrace } = useSource({
+    id: sourceId,
+    kind: SourceKind.Trace,
+  });
+  const sourceData = sourceLog ?? sourceTrace;
   const [rowId, setRowId] = useQueryState('rowWhere');
   const [, setRowSource] = useQueryState('rowSource');
 
@@ -126,7 +136,7 @@ function RowOverviewPanelWrapper({
   source,
   rowId,
 }: {
-  source: TSource;
+  source: TTraceSource | TLogSource;
   rowId: string;
 }) {
   // Use localStorage to persist the selected tab

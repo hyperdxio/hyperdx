@@ -13,7 +13,7 @@ import {
   DashboardWithoutId,
   SQLInterval,
   TileTemplateSchema,
-  TSourceUnion,
+  TSource,
 } from '@/types';
 
 export const isBrowser: boolean =
@@ -445,7 +445,7 @@ type TileTemplate = z.infer<typeof TileTemplateSchema>;
 
 export function convertToDashboardTemplate(
   input: Dashboard,
-  sources: TSourceUnion[],
+  sources: TSource[],
 ): DashboardTemplate {
   const output: DashboardTemplate = {
     version: '0.1.0',
@@ -455,7 +455,7 @@ export function convertToDashboardTemplate(
 
   const convertToTileTemplate = (
     input: Dashboard['tiles'][0],
-    sources: TSourceUnion[],
+    sources: TSource[],
   ): TileTemplate => {
     const tile = TileTemplateSchema.strip().parse(structuredClone(input));
     // Extract name from source or default to '' if not found
@@ -467,7 +467,7 @@ export function convertToDashboardTemplate(
 
   const convertToFilterTemplate = (
     input: DashboardFilter,
-    sources: TSourceUnion[],
+    sources: TSource[],
   ): DashboardFilter => {
     const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
     // Extract name from source or default to '' if not found

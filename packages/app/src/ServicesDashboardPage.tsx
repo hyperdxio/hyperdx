@@ -12,7 +12,7 @@ import {
   DisplayType,
   Filter,
   SourceKind,
-  TSource,
+  type TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -61,7 +61,7 @@ type AppliedConfig = {
 };
 
 function getScopedFilters(
-  source: TSource,
+  source: TTraceSource,
   appliedConfig: AppliedConfig,
   includeIsSpanKindServer = true,
 ): Filter[] {
@@ -92,12 +92,8 @@ function ServiceSelectControlled({
   size?: string;
   onCreate?: () => void;
 } & UseControllerProps<any>) {
-  const { data: source } = useSource({ id: sourceId });
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
+  const { data: source } = useSource({ id: sourceId, kind: SourceKind.Trace });
+  const { data: jsonColumns = [] } = useJsonColumns(tcFromSource(source));
   const expressions = getExpressions(source, jsonColumns);
 
   const queriedConfig = {
@@ -156,16 +152,12 @@ export function EndpointLatencyChart({
   appliedConfig = {},
   extraFilters = [],
 }: {
-  source: TSource;
+  source: TTraceSource;
   dateRange: [Date, Date];
   appliedConfig?: AppliedConfig;
   extraFilters?: Filter[];
 }) {
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
+  const { data: jsonColumns = [] } = useJsonColumns(tcFromSource(source));
   const expressions = getExpressions(source, jsonColumns);
   const [latencyChartType, setLatencyChartType] = useState<
     'line' | 'histogram'
@@ -271,12 +263,11 @@ function HttpTab({
   searchedTimeRange: [Date, Date];
   appliedConfig: AppliedConfig;
 }) {
-  const { data: source } = useSource({ id: appliedConfig.source });
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
+  const { data: source } = useSource({
+    id: appliedConfig.source,
+    kind: ALLOWED_SOURCE_KIND,
   });
+  const { data: jsonColumns = [] } = useJsonColumns(tcFromSource(source));
   const expressions = getExpressions(source, jsonColumns);
 
   const [reqChartType, setReqChartType] = useQueryState(
@@ -548,12 +539,11 @@ function DatabaseTab({
   searchedTimeRange: [Date, Date];
   appliedConfig: AppliedConfig;
 }) {
-  const { data: source } = useSource({ id: appliedConfig.source });
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
+  const { data: source } = useSource({
+    id: appliedConfig.source,
+    kind: ALLOWED_SOURCE_KIND,
   });
+  const { data: jsonColumns = [] } = useJsonColumns(tcFromSource(source));
   const expressions = getExpressions(source, jsonColumns);
 
   const [chartType, setChartType] = useState<'table' | 'list'>('list');
@@ -802,7 +792,10 @@ function ErrorsTab({
   searchedTimeRange: [Date, Date];
   appliedConfig: AppliedConfig;
 }) {
-  const { data: source } = useSource({ id: appliedConfig.source });
+  const { data: source } = useSource({
+    id: appliedConfig.source,
+    kind: SourceKind.Trace,
+  });
   const { data: jsonColumns = [] } = useJsonColumns({
     databaseName: source?.from?.databaseName || '',
     tableName: source?.from?.tableName || '',
@@ -851,6 +844,7 @@ function ErrorsTab({
   );
 }
 
+const ALLOWED_SOURCE_KIND = SourceKind.Trace;
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 
@@ -885,6 +879,7 @@ function ServicesDashboardPage() {
   const sourceId = watch('source');
   const { data: source } = useSource({
     id: watch('source'),
+    kind: ALLOWED_SOURCE_KIND,
   });
 
   useEffect(() => {
@@ -954,7 +949,7 @@ function ServicesDashboardPage() {
             <SourceSelectControlled
               control={control}
               name="source"
-              allowedSourceKinds={[SourceKind.Trace]}
+              allowedSourceKinds={[ALLOWED_SOURCE_KIND]}
             />
             <ServiceSelectControlled
               sourceId={sourceId}

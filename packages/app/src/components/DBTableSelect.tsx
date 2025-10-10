@@ -1,4 +1,5 @@
 import { useController, UseControllerProps } from 'react-hook-form';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Flex, Select } from '@mantine/core';
 
 import { useTablesDirect } from '@/clickhouse';
@@ -41,11 +42,16 @@ export default function DBTableSelect({
     sourceSchemaPreview:
       connectionId && database && table ? (
         <SourceSchemaPreview
-          source={{
-            connection: connectionId,
-            from: { databaseName: database, tableName: table },
-          }}
           variant="text"
+          tableConnection={
+            connectionId && database && table
+              ? {
+                  connectionId,
+                  databaseName: database,
+                  tableName: table,
+                }
+              : undefined
+          }
         />
       ) : undefined,
   });

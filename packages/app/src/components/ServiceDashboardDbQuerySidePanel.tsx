@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
 import Drawer from 'react-modern-drawer';
-import type { Filter } from '@hyperdx/common-utils/dist/types';
+import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { type Filter, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Grid, Group, Text } from '@mantine/core';
 
 import { INTEGER_NUMBER_FORMAT, MS_NUMBER_FORMAT } from '@/ChartUtils';
@@ -26,12 +27,8 @@ export default function ServiceDashboardDbQuerySidePanel({
   service?: string;
   searchedTimeRange: [Date, Date];
 }) {
-  const { data: source } = useSource({ id: sourceId });
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
+  const { data: source } = useSource({ id: sourceId, kind: SourceKind.Trace });
+  const { data: jsonColumns = [] } = useJsonColumns(tcFromSource(source));
   const expressions = getExpressions(source, jsonColumns);
 
   const [dbQuery, setDbQuery] = useQueryState('dbquery', parseAsString);

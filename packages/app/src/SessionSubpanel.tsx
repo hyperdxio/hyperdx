@@ -10,7 +10,8 @@ import {
   DateRange,
   SearchCondition,
   SearchConditionLanguage,
-  TSource,
+  TSessionSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -50,8 +51,8 @@ export default function SessionSubpanel({
   where,
   whereLanguage = 'lucene',
 }: {
-  traceSource: TSource;
-  sessionSource: TSource;
+  traceSource: TTraceSource;
+  sessionSource: TSessionSource;
   session: { serviceName: string };
   generateSearchUrl?: (query?: string, timeRange?: [Date, Date]) => string;
   generateChartUrl?: (config: {

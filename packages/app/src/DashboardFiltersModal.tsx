@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Controller, FieldError, useForm } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
+import {
+  TableConnection,
+  tcFromSource,
+} from '@hyperdx/common-utils/dist/metadata';
 import {
   DashboardFilter,
   MetricsDataType,
@@ -107,7 +110,7 @@ const DashboardFilterEditForm = ({
 
   const sourceIsMetric = source?.kind === SourceKind.Metric;
   const metricTypes = Object.values(MetricsDataType).filter(
-    type => source?.metricTables?.[type],
+    type => source?.kind === SourceKind.Metric && source?.metricTables?.[type],
   );
 
   const [modalContentRef, setModalContentRef] = useState<HTMLElement | null>(
@@ -142,7 +145,10 @@ const DashboardFilterEditForm = ({
                 rules={{ required: true }}
                 comboboxProps={{ withinPortal: true }}
                 sourceSchemaPreview={
-                  <SourceSchemaPreview source={source} variant="text" />
+                  <SourceSchemaPreview
+                    tableConnection={tcFromSource(source)}
+                    variant="text"
+                  />
                 }
               />
             </CustomInputWrapper>

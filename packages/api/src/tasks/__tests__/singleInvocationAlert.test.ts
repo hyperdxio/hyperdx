@@ -12,7 +12,7 @@ import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
-import { Source } from '@/models/source';
+import { LogSource } from '@/models/source';
 import Webhook from '@/models/webhook';
 import { processAlert } from '@/tasks/checkAlerts';
 import { AlertDetails, AlertTaskType, loadProvider } from '@/tasks/providers';
@@ -100,7 +100,7 @@ describe('Single Invocation Alert Test', () => {
     });
 
     // Create source
-    const source = await Source.create({
+    const source = await LogSource.create({
       kind: 'log',
       team: team._id,
       from: {
@@ -288,7 +288,7 @@ describe('Single Invocation Alert Test', () => {
     });
 
     // Create source
-    const source = await Source.create({
+    const source = (await LogSource.create({
       kind: 'log',
       team: team._id,
       from: {
@@ -298,7 +298,7 @@ describe('Single Invocation Alert Test', () => {
       timestampValueExpression: 'Timestamp',
       connection: connection.id,
       name: 'Test Logs',
-    });
+    })) as any;
 
     // Create dashboard with multiple tiles - the alerting tile is NOT the first one
     const dashboard = await new Dashboard({

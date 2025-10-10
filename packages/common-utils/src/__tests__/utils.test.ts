@@ -5,7 +5,7 @@ import {
   DashboardSchema,
   MetricsDataType,
   SourceKind,
-  TSourceUnion,
+  TSource,
 } from '@/types';
 
 import {
@@ -486,7 +486,7 @@ describe('utils', () => {
         ],
       };
 
-      const sources: TSourceUnion[] = [
+      const sources: TSource[] = [
         {
           id: 'source1',
           name: 'Logs',
@@ -607,7 +607,7 @@ describe('utils', () => {
         ],
       };
 
-      const sources: TSourceUnion[] = [
+      const sources: TSource[] = [
         {
           id: 'source1',
           name: 'Logs',

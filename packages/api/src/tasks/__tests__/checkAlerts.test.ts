@@ -1,5 +1,5 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { AlertState } from '@hyperdx/common-utils/dist/types';
+import { AlertState, SourceKind } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import ms from 'ms';
 
@@ -19,7 +19,7 @@ import AlertHistory from '@/models/alertHistory';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
-import { Source } from '@/models/source';
+import { LogSource, MetricSource } from '@/models/source';
 import Webhook from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
 import {
@@ -121,9 +121,9 @@ describe('checkAlerts', () => {
         interval: '1m',
       },
       source: {
-        id: 'fake-source-id' as any,
-        kind: 'log' as any,
-        team: 'team-123' as any,
+        id: 'fake-source-id',
+        kind: SourceKind.Log,
+        team: 'team-123',
         from: {
           databaseName: 'default',
           tableName: 'otel_logs',
@@ -131,7 +131,7 @@ describe('checkAlerts', () => {
         timestampValueExpression: 'Timestamp',
         connection: 'connection-123' as any,
         name: 'Logs',
-      },
+      } as any,
       savedSearch: {
         _id: 'fake-saved-search-id' as any,
         team: 'team-123' as any,
@@ -670,7 +670,7 @@ describe('checkAlerts', () => {
         username: config.CLICKHOUSE_USER,
         password: config.CLICKHOUSE_PASSWORD,
       });
-      const source = await Source.create({
+      const source = (await LogSource.create({
         kind: 'log',
         team: team._id,
         from: {
@@ -680,7 +680,7 @@ describe('checkAlerts', () => {
         timestampValueExpression: 'Timestamp',
         connection: connection.id,
         name: 'Logs',
-      });
+      })) as any;
       const savedSearch = await new SavedSearch({
         team: team._id,
         name: 'My Search',
@@ -912,7 +912,7 @@ describe('checkAlerts', () => {
         username: config.CLICKHOUSE_USER,
         password: config.CLICKHOUSE_PASSWORD,
       });
-      const source = await Source.create({
+      const source = (await LogSource.create({
         kind: 'log',
         team: team._id,
         from: {
@@ -922,7 +922,7 @@ describe('checkAlerts', () => {
         timestampValueExpression: 'Timestamp',
         connection: connection.id,
         name: 'Logs',
-      });
+      })) as any;
       const dashboard = await new Dashboard({
         name: 'My Dashboard',
         team: team._id,
@@ -1162,7 +1162,7 @@ describe('checkAlerts', () => {
         username: config.CLICKHOUSE_USER,
         password: config.CLICKHOUSE_PASSWORD,
       });
-      const source = await Source.create({
+      const source = (await LogSource.create({
         kind: 'log',
         team: team._id,
         from: {
@@ -1172,7 +1172,7 @@ describe('checkAlerts', () => {
         timestampValueExpression: 'Timestamp',
         connection: connection.id,
         name: 'Logs',
-      });
+      })) as any;
       const dashboard = await new Dashboard({
         name: 'My Dashboard',
         team: team._id,
@@ -1387,7 +1387,7 @@ describe('checkAlerts', () => {
         username: config.CLICKHOUSE_USER,
         password: config.CLICKHOUSE_PASSWORD,
       });
-      const source = await Source.create({
+      const source = (await MetricSource.create({
         kind: 'metric',
         team: team._id,
         from: {
@@ -1402,7 +1402,7 @@ describe('checkAlerts', () => {
         timestampValueExpression: 'TimeUnix',
         connection: connection.id,
         name: 'Metrics',
-      });
+      })) as any;
       const dashboard = await new Dashboard({
         name: 'My Dashboard',
         team: team._id,
