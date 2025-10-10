@@ -119,7 +119,7 @@ const InfraSubpanelGroup = ({
                       where,
                       groupBy: [],
                       aggFn: 'avg',
-                      field: `${fieldPrefix}cpu.utilization - Gauge`,
+                      field: `${fieldPrefix}cpu.usage - Gauge`,
                       table: 'metrics',
                       numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
                     },
