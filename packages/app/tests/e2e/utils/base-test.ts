@@ -2,7 +2,7 @@ import { expect, test as base } from '@playwright/test';
 
 // Extend the base test to automatically handle Tanstack devtools
 export const test = base.extend({
-  page: async ({ page }, use) => {
+  page: async ({ page }, run) => {
     await page.addInitScript(() => {
       window.localStorage.setItem('TanstackQueryDevtools.open', 'false');
       window.sessionStorage.setItem(
@@ -143,7 +143,7 @@ export const test = base.extend({
         ]),
       );
     });
-    await use(page);
+    await run(page);
   },
 });
 
