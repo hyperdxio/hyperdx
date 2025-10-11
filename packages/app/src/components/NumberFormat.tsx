@@ -31,7 +31,7 @@ const FORMAT_ICONS: Record<string, string> = {
   time: 'clock',
 };
 
-export const NumberFormatForm: React.VFC<{
+export const NumberFormatForm: React.FC<{
   value?: NumberFormat;
   onApply: (value: NumberFormat) => void;
   onClose: () => void;
@@ -201,7 +201,7 @@ export const NumberFormatForm: React.VFC<{
 
 const TEST_NUMBER = 1234;
 
-export const NumberFormatInput: React.VFC<{
+export const NumberFormatInput: React.FC<{
   value?: NumberFormat;
   onChange: (value?: NumberFormat) => void;
 }> = ({ value, onChange }) => {

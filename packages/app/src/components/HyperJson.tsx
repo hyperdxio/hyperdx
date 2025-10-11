@@ -372,7 +372,7 @@ const HydrateAtoms = ({
   initialValues,
 }: {
   initialValues: HyperJsonAtom;
-  children: React.ReactElement;
+  children: React.ReactElement<any>;
 }) => {
   useHydrateAtoms([[hyperJsonAtom, initialValues]]);
   const set = useSetAtom(hyperJsonAtom);

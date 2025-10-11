@@ -16,10 +16,8 @@
   overflow: hidden;
   z-index: 3; // higher z-index to be above other elements
 
-  :global {
-    .mantine-TextInput-wrapper {
-      background-color: transparent;
-    }
+  :global(.mantine-TextInput-wrapper) {
+    background-color: transparent;
 
     .mantine-TextInput-input {
       height: 20px;

@@ -27,7 +27,7 @@ export default function AutocompleteInput({
   queryHistoryType,
   'data-testid': dataTestId,
 }: {
-  inputRef: React.RefObject<HTMLTextAreaElement>;
+  inputRef: React.RefObject<HTMLTextAreaElement | null>;
   value?: string;
   onChange: (value: string) => void;
   onSubmit?: () => void;
@@ -237,7 +237,7 @@ export default function AutocompleteInput({
       trigger={[]}
     >
       <Textarea
-        ref={inputRef}
+        ref={inputRef as any}
         placeholder={placeholder}
         className="fs-8"
         value={value}
