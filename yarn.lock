@@ -4488,6 +4488,8 @@ __metadata:
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@hyperdx/passport-local-mongoose": "npm:^9.0.1"
     "@opentelemetry/api": "npm:^1.8.0"
+    "@opentelemetry/host-metrics": "npm:^0.35.5"
+    "@opentelemetry/sdk-metrics": "npm:^1.30.1"
     "@slack/webhook": "npm:^6.1.0"
     "@types/compression": "npm:^1.7.3"
     "@types/cors": "npm:^2.8.14"
@@ -6590,6 +6592,17 @@ __metadata:
   peerDependencies:
     "@opentelemetry/api": ^1.0.0
   checksum: 10c0/e2918387c0ddc1835779f5551f5f04b3c1331643f05e3cf6019abf169de035c55be8112a30d5ee0dfef6938cbe260e84c426d5a46bce6f9eb6b2c9b916a425f6
+  languageName: node
+  linkType: hard
+
+"@opentelemetry/host-metrics@npm:^0.35.5":
+  version: 0.35.5
+  resolution: "@opentelemetry/host-metrics@npm:0.35.5"
+  dependencies:
+    systeminformation: "npm:5.23.8"
+  peerDependencies:
+    "@opentelemetry/api": ^1.3.0
+  checksum: 10c0/3065ab9f8b2f02e26d12298d9a8171cf8370b0af0fd2dd08f7b14685a2587093e31aa46e4a04563c9833914990dcaa7ab858cb7d8f2a0d129f2d41a604df9243
   languageName: node
   linkType: hard
 
@@ -27623,6 +27636,16 @@ __metadata:
     "@pkgr/core": "npm:^0.1.0"
     tslib: "npm:^2.6.2"
   checksum: 10c0/d8b89e1bf30ba3ffb469d8418c836ad9c0c062bf47028406b4d06548bc66af97155ea2303b96c93bf5c7c0f0d66153a6fbd6924c76521b434e6a9898982abc2e
+  languageName: node
+  linkType: hard
+
+"systeminformation@npm:5.23.8":
+  version: 5.23.8
+  resolution: "systeminformation@npm:5.23.8"
+  bin:
+    systeminformation: lib/cli.js
+  checksum: 10c0/d4d750d82345081a6a12200ec8f559ff65a8c28d9797d4368c246682ee02131ee08a4227e4401b6680839f0f0e1a72758071fd84eae2f0584a89e948d583703f
+  conditions: (os=darwin | os=linux | os=win32 | os=freebsd | os=openbsd | os=netbsd | os=sunos | os=android)
   languageName: node
   linkType: hard
 
