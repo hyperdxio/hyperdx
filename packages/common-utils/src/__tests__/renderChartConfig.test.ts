@@ -434,7 +434,7 @@ describe('renderChartConfig', () => {
             valueExpression: 'Value',
             metricName: 'k8s.pod.cpu.utilization',
             metricNameSql:
-              "if(greaterOrEquals(ScopeVersion, '0.125.0'), 'k8s.pod.cpu.usage', 'k8s.pod.cpu.utilization')",
+              "(MetricName = 'k8s.pod.cpu.utilization' OR MetricName = 'k8s.pod.cpu.usage')",
             metricType: MetricsDataType.Gauge,
           },
         ],
@@ -449,10 +449,10 @@ describe('renderChartConfig', () => {
       const generatedSql = await renderChartConfig(config, mockMetadata);
       const actual = parameterizedQueryToSql(generatedSql);
 
-      // Verify the SQL contains the dynamic metric name condition
-      expect(actual).toContain(
-        "MetricName = if(greaterOrEquals(ScopeVersion, '0.125.0'), 'k8s.pod.cpu.usage', 'k8s.pod.cpu.utilization')",
-      );
+      // Verify the SQL contains the OR-based metric name condition
+      expect(actual).toContain('k8s.pod.cpu.utilization');
+      expect(actual).toContain('k8s.pod.cpu.usage');
+      expect(actual).toMatch(/MetricName = .* OR MetricName = /);
       expect(actual).toMatchSnapshot();
     });
 
@@ -479,7 +479,7 @@ describe('renderChartConfig', () => {
             valueExpression: 'Value',
             metricName: 'k8s.node.cpu.utilization',
             metricNameSql:
-              "if(greaterOrEquals(ScopeVersion, '0.125.0'), 'k8s.node.cpu.usage', 'k8s.node.cpu.utilization')",
+              "(MetricName = 'k8s.node.cpu.utilization' OR MetricName = 'k8s.node.cpu.usage')",
             metricType: MetricsDataType.Sum,
           },
         ],
@@ -494,9 +494,9 @@ describe('renderChartConfig', () => {
       const generatedSql = await renderChartConfig(config, mockMetadata);
       const actual = parameterizedQueryToSql(generatedSql);
 
-      expect(actual).toContain(
-        "MetricName = if(greaterOrEquals(ScopeVersion, '0.125.0'), 'k8s.node.cpu.usage', 'k8s.node.cpu.utilization')",
-      );
+      expect(actual).toContain('k8s.node.cpu.utilization');
+      expect(actual).toContain('k8s.node.cpu.usage');
+      expect(actual).toMatch(/MetricName = .* OR MetricName = /);
       expect(actual).toMatchSnapshot();
     });
 
@@ -522,7 +522,7 @@ describe('renderChartConfig', () => {
             valueExpression: 'Value',
             metricName: 'container.cpu.utilization',
             metricNameSql:
-              "if(greaterOrEquals(ScopeVersion, '0.125.0'), 'container.cpu.usage', 'container.cpu.utilization')",
+              "(MetricName = 'container.cpu.utilization' OR MetricName = 'container.cpu.usage')",
             metricType: MetricsDataType.Histogram,
           },
         ],
@@ -537,9 +537,9 @@ describe('renderChartConfig', () => {
       const generatedSql = await renderChartConfig(config, mockMetadata);
       const actual = parameterizedQueryToSql(generatedSql);
 
-      expect(actual).toContain(
-        "MetricName = if(greaterOrEquals(ScopeVersion, '0.125.0'), 'container.cpu.usage', 'container.cpu.utilization')",
-      );
+      expect(actual).toContain('container.cpu.utilization');
+      expect(actual).toContain('container.cpu.usage');
+      expect(actual).toMatch(/MetricName = .* OR MetricName = /);
       expect(actual).toMatchSnapshot();
     });
 
@@ -565,7 +565,7 @@ describe('renderChartConfig', () => {
             valueExpression: 'Value',
             metricName: 'k8s.pod.cpu.utilization',
             metricNameSql:
-              "if(greaterOrEquals(ScopeVersion, '0.125.0'), 'k8s.pod.cpu.usage', 'k8s.pod.cpu.utilization')",
+              "(MetricName = 'k8s.pod.cpu.utilization' OR MetricName = 'k8s.pod.cpu.usage')",
             metricType: MetricsDataType.Histogram,
           },
         ],
@@ -581,9 +581,9 @@ describe('renderChartConfig', () => {
       const generatedSql = await renderChartConfig(config, mockMetadata);
       const actual = parameterizedQueryToSql(generatedSql);
 
-      expect(actual).toContain(
-        "MetricName = if(greaterOrEquals(ScopeVersion, '0.125.0'), 'k8s.pod.cpu.usage', 'k8s.pod.cpu.utilization')",
-      );
+      expect(actual).toContain('k8s.pod.cpu.utilization');
+      expect(actual).toContain('k8s.pod.cpu.usage');
+      expect(actual).toMatch(/MetricName = .* OR MetricName = /);
       expect(actual).toMatchSnapshot();
     });
 
@@ -624,9 +624,9 @@ describe('renderChartConfig', () => {
       const generatedSql = await renderChartConfig(config, mockMetadata);
       const actual = parameterizedQueryToSql(generatedSql);
 
-      // Should use the simple string comparison for regular metrics
+      // Should use the simple string comparison for regular metrics (not OR-based)
       expect(actual).toContain("MetricName = 'some.regular.metric'");
-      expect(actual).not.toContain('if(greaterOrEquals(ScopeVersion');
+      expect(actual).not.toMatch(/MetricName = .* OR MetricName = /);
       expect(actual).toMatchSnapshot();
     });
   });
