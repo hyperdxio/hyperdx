@@ -832,5 +832,9 @@ const mergeImplicitTerms = (node: any): any => {
     };
   }
 
-  return node;
+  return {
+    ...node,
+    left,
+    right,
+  };
 };
