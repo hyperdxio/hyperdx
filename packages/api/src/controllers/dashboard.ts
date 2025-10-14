@@ -185,3 +185,40 @@ export async function updateDashboard(
 
   return updatedDashboard;
 }
+
+export async function duplicateDashboard(
+  dashboardId: string,
+  teamId: ObjectId,
+  userId?: ObjectId,
+) {
+  const dashboard = await Dashboard.findOne({
+    _id: dashboardId,
+    team: teamId,
+  });
+
+  if (dashboard == null) {
+    throw new Error('Dashboard not found');
+  }
+
+  // Generate new unique IDs for all tiles
+  const newTiles = dashboard.tiles.map(tile => ({
+    ...tile,
+    id: Math.floor(100000000 * Math.random()).toString(36),
+    // Remove alert configuration from tiles (per requirement)
+    config: {
+      ...tile.config,
+      alert: undefined,
+    },
+  }));
+
+  const newDashboard = await new Dashboard({
+    name: `${dashboard.name} (Copy)`,
+    tiles: newTiles,
+    tags: dashboard.tags,
+    filters: dashboard.filters,
+    team: teamId,
+  }).save();
+
+  // No alerts are copied per requirement
+  return newDashboard;
+}
