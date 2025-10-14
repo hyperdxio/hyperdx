@@ -189,7 +189,7 @@ export async function updateDashboard(
 export async function duplicateDashboard(
   dashboardId: string,
   teamId: ObjectId,
-  userId?: ObjectId,
+  _userId?: ObjectId,
 ) {
   const dashboard = await Dashboard.findOne({
     _id: dashboardId,
