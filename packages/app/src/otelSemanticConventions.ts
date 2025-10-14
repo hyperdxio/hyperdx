@@ -42,8 +42,7 @@ export function getMetricNameSql(metricName: string): string | undefined {
     return undefined;
   }
 
-  return SqlString.format('(MetricName = ? OR MetricName = ?)', [
-    metricName,
-    migration.newName,
+  return SqlString.format('MetricName IN (?)', [
+    [metricName, migration.newName],
   ]);
 }

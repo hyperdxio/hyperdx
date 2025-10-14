@@ -5,21 +5,21 @@ describe('otelSemanticConventions', () => {
     it('should return SQL for k8s.pod.cpu.utilization migration', () => {
       const result = getMetricNameSql('k8s.pod.cpu.utilization');
       expect(result).toBe(
-        "(MetricName = 'k8s.pod.cpu.utilization' OR MetricName = 'k8s.pod.cpu.usage')",
+        "MetricName IN ('k8s.pod.cpu.utilization', 'k8s.pod.cpu.usage')",
       );
     });
 
     it('should return SQL for k8s.node.cpu.utilization migration', () => {
       const result = getMetricNameSql('k8s.node.cpu.utilization');
       expect(result).toBe(
-        "(MetricName = 'k8s.node.cpu.utilization' OR MetricName = 'k8s.node.cpu.usage')",
+        "MetricName IN ('k8s.node.cpu.utilization', 'k8s.node.cpu.usage')",
       );
     });
 
     it('should return SQL for container.cpu.utilization migration', () => {
       const result = getMetricNameSql('container.cpu.utilization');
       expect(result).toBe(
-        "(MetricName = 'container.cpu.utilization' OR MetricName = 'container.cpu.usage')",
+        "MetricName IN ('container.cpu.utilization', 'container.cpu.usage')",
       );
     });
 
