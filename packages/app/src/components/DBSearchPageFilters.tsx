@@ -58,6 +58,7 @@ import {
   FilterSettingsFacetPanel,
   FilterSettingsGeneralSettingsPanel,
 } from './DBSearch/FilterSettingsPopup';
+import DBSearchSharedFilters from './DBSearch/SharedFilters';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
@@ -922,6 +923,8 @@ const DBSearchPageFiltersComponent = ({
               </Tabs.Tab>
             </Tabs.List>
           </Tabs>
+
+          <DBSearchSharedFilters />
 
           <Flex align="center" justify="space-between">
             <Flex className={isFacetsFetching ? 'effect-pulse' : ''}>

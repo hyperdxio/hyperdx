@@ -1,4 +1,3 @@
-import { Label } from 'recharts';
 import {
   ActionIcon,
   Button,
@@ -8,7 +7,7 @@ import {
   Popover,
   Text,
 } from '@mantine/core';
-import { IconDots, IconDotsVertical, IconSettings } from '@tabler/icons-react';
+import { IconDotsVertical, IconSettings } from '@tabler/icons-react';
 
 function FilterSettingsPopover({
   target,
