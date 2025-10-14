@@ -8,16 +8,17 @@ import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 
 /**
  * Helper function to create a MetricName filter condition.
- * Uses metricNameSql if available (for dynamic SQL), otherwise falls back to metricName.
+ * Uses metricNameSql if available (which handles both old and new metric names via OR),
+ * otherwise falls back to a simple equality check.
  */
 function createMetricNameFilter(
   metricName: string,
   metricNameSql?: string,
 ): string {
-  return SqlString.format(
-    'MetricName = ?',
-    metricNameSql ? SqlString.raw(metricNameSql) : [metricName],
-  );
+  if (metricNameSql) {
+    return metricNameSql;
+  }
+  return SqlString.format('MetricName = ?', [metricName]);
 }
 import {
   AggregateFunction,
