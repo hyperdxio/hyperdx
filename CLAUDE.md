@@ -133,21 +133,25 @@ yarn dev
 # 1. Fix linting issues in modified packages
 cd packages/app && yarn run lint:fix
 cd packages/api && yarn run lint:fix
+cd packages/common-utils && yarn lint:fix
 
 # 2. Check for any remaining linting issues from the main directory
 yarn run lint
 ```
 
+**If linting issues remain after running lint:fix**: Some linting errors cannot
+be automatically fixed and require manual intervention. If `yarn run lint` still
+shows errors:
+
+1. Read the linting error messages carefully to understand the issue
+2. Manually fix the reported issues in the affected files
+3. Re-run `yarn run lint` to verify all issues are resolved
+4. Only commit once all linting errors are fixed
+
 **Why this is necessary**: While the project has pre-commit hooks (`lint-staged`
 with Husky) that automatically fix linting issues on commit, Claude AI agents do
 not trigger these hooks. Therefore, you must manually run the lint:fix commands
 before committing.
-
-**Additional packages** (if modified):
-
-```bash
-cd packages/common-utils && yarn lint:fix
-```
 
 ### Environment Configuration
 
