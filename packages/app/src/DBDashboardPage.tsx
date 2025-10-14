@@ -994,7 +994,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                         notifications.show({
                           color: 'red',
                           title: 'Failed to duplicate dashboard',
-                          message: 'An error occurred while duplicating the dashboard',
+                          message:
+                            'An error occurred while duplicating the dashboard',
                         });
                       },
                     })

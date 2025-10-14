@@ -411,7 +411,10 @@ describe('dashboard router', () => {
       .post('/dashboards')
       .send({
         name: 'Test Dashboard',
-        tiles: [makeTile({ alert: MOCK_ALERT }), makeTile({ alert: MOCK_ALERT })],
+        tiles: [
+          makeTile({ alert: MOCK_ALERT }),
+          makeTile({ alert: MOCK_ALERT }),
+        ],
         tags: [],
       })
       .expect(200);
