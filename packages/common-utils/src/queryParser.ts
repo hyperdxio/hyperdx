@@ -20,11 +20,12 @@ function decodeSpecialTokens(query: string): string {
     .replace('http_COLON_//', 'http://')
     .replace('https_COLON_//', 'https://')
     .replace(/localhost_COLON_(\d{1,5})/, 'localhost:$1')
-    .replace(/HDX_COLON/g, ':');
+    .replace(/HDX_COLON/g, ':')
+    .replace(/\\ /g, ' ');
 }
 
 export function parse(query: string): lucene.AST {
-  return lucene.parse(encodeSpecialTokens(query));
+  return lucene.parse(mergeImplicitTerms(encodeSpecialTokens(query)));
 }
 
 const IMPLICIT_FIELD = '<implicit>';
@@ -801,3 +802,35 @@ export async function genEnglishExplanation(query: string): Promise<string> {
 
   return `Message containing ${query}`;
 }
+
+const isNodeTerm = (node: any): boolean => {
+  if (!node) return false;
+  return typeof (node as any).term === 'string';
+};
+
+// Spaces are recognized without the \ character.
+// Querying a b is equivalent to querying a\ b.
+const mergeImplicitTerms = (node: any): any => {
+  if (!node) return node;
+
+  const left = mergeImplicitTerms(node.left);
+  const right = mergeImplicitTerms(node.right);
+
+  if (
+    node.operator === '<implicit>' &&
+    isNodeTerm(left) &&
+    isNodeTerm(right) &&
+    left.field === right.field &&
+    left.field === IMPLICIT_FIELD &&
+    !left.quoted &&
+    !right.quoted
+  ) {
+    return {
+      ...left,
+      term: `${left.term} ${right.term}`,
+      quoted: false,
+    };
+  }
+
+  return node;
+};
