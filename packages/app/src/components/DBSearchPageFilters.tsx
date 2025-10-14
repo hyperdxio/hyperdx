@@ -34,9 +34,13 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconSearch } from '@tabler/icons-react';
+import {
+  IconFilterCancel,
+  IconFilterX,
+  IconPin,
+  IconPinFilled,
+} from '@tabler/icons-react';
 
-import { useExplainQuery } from '@/hooks/useExplainQuery';
 import {
   useAllFields,
   useGetKeyValues,
@@ -49,6 +53,11 @@ import useResizable from '@/hooks/useResizable';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
+
+import {
+  FilterSettingsFacetPanel,
+  FilterSettingsGeneralSettingsPanel,
+} from './DBSearch/FilterSettingsPopup';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
@@ -109,11 +118,19 @@ export const TextButton = ({
 };
 
 type FilterPercentageProps = {
-  percentage: number;
+  percentage?: number;
   isLoading?: boolean;
 };
 
 const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
+  if (!percentage && isLoading) {
+    return <Loader size={10} color="white" />;
+  }
+
+  if (!percentage) {
+    return null;
+  }
+
   const formattedPercentage =
     percentage < 1
       ? `<1%`
@@ -188,7 +205,7 @@ export const FilterCheckbox = ({
             >
               {label}
             </Text>
-            {percentage != null && (
+            {(isPercentageLoading || percentage != null) && (
               <FilterPercentage
                 percentage={percentage}
                 isLoading={isPercentageLoading}
@@ -339,6 +356,8 @@ export const FilterGroup = ({
   const totalFiltersSize =
     selectedValues.included.size + selectedValues.excluded.size;
 
+  const shouldShowSearch = options.length >= 5;
+
   const augmentedOptions = useMemo(() => {
     const selectedSet = new Set([
       ...selectedValues.included,
@@ -459,6 +478,7 @@ export const FilterGroup = ({
                 chevron: 'm-0',
                 label: 'p-0',
               }}
+              style={{ overflow: 'hidden' }}
               className={displayedOptions.length ? '' : 'opacity-50'}
             >
               <Tooltip
@@ -469,54 +489,12 @@ export const FilterGroup = ({
                 fz="xxs"
                 color="gray"
               >
-                <TextInput
-                  size="xs"
-                  flex="1"
-                  placeholder={name}
-                  value={search}
-                  data-testid={`filter-search-${name}`}
-                  onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                    setSearch(event.currentTarget.value)
-                  }
-                  onClick={e => {
-                    // Prevent accordion from opening when clicking on the input, unless it's closed.
-                    if (isExpanded) {
-                      e.stopPropagation();
-                    }
-                  }}
-                  styles={{ input: { transition: 'padding 0.2s' } }}
-                  rightSectionWidth={isExpanded ? 20 : 2}
-                  rightSection={
-                    <IconSearch
-                      size={15}
-                      stroke={2}
-                      className={`${isExpanded ? 'opacity-100' : 'opacity-0'}`}
-                      style={{ transition: 'opacity 0.4s 0.2s' }}
-                    />
-                  }
-                  classNames={{
-                    input: 'ps-0.5',
-                  }}
-                />
+                <Text size="xs" flex="1" truncate>
+                  {name}
+                </Text>
               </Tooltip>
             </Accordion.Control>
-            <Group gap="xxxs" wrap="nowrap">
-              <ActionIcon
-                size="xs"
-                variant="subtle"
-                color="gray"
-                onClick={toggleShowDistributions}
-                title={
-                  showDistributions ? 'Hide distribution' : 'Show distribution'
-                }
-                data-testid={`toggle-distribution-button-${name}`}
-                aria-checked={showDistributions}
-                role="checkbox"
-              >
-                <i
-                  className={`bi ${isFetchingDistribution ? 'spinner-border spinner-border-sm' : showDistributions ? 'bi-bar-chart-line-fill' : 'bi-bar-chart-line'}`}
-                />
-              </ActionIcon>
+            <Group gap={0} wrap="nowrap">
               {onFieldPinClick && (
                 <ActionIcon
                   size="xs"
@@ -524,22 +502,28 @@ export const FilterGroup = ({
                   color="gray"
                   onClick={onFieldPinClick}
                   title={isFieldPinned ? 'Unpin field' : 'Pin field'}
-                  me={'4px'}
                 >
-                  <i
-                    className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
-                  />
+                  {isFieldPinned ? <IconPinFilled /> : <IconPin />}
                 </ActionIcon>
               )}
               {totalFiltersSize > 0 && (
-                <TextButton
-                  label="Clear"
+                <ActionIcon
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
                   onClick={() => {
                     onClearClick();
                     setSearch('');
                   }}
-                />
+                  title="Clear filters"
+                >
+                  <IconFilterX />
+                </ActionIcon>
               )}
+              <FilterSettingsFacetPanel
+                isDistributionEnabled={showDistributions}
+                setDistributionEnabled={toggleShowDistributions}
+              />
             </Group>
           </Center>
           <Accordion.Panel
@@ -548,6 +532,19 @@ export const FilterGroup = ({
               content: 'p-0 pt-2',
             }}
           >
+            {shouldShowSearch && (
+              <TextInput
+                variant="outline"
+                size="xs"
+                placeholder="Search"
+                mb="xs"
+                value={search}
+                data-testid={`filter-search-${name}`}
+                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                  setSearch(event.currentTarget.value)
+                }
+              />
+            )}
             <Stack gap={0}>
               {displayedOptions.map(option => (
                 <FilterCheckbox
@@ -576,70 +573,70 @@ export const FilterGroup = ({
                   }
                 />
               ))}
-              {optionsLoading ? (
-                <Group m={6} gap="xs">
-                  <Loader size={12} color="gray.6" />
-                  <Text c="dimmed" size="xs">
-                    Loading...
-                  </Text>
-                </Group>
-              ) : displayedOptions.length === 0 ? (
-                <Group m={6} gap="xs">
-                  <Text c="dimmed" size="xs">
-                    No options found
-                  </Text>
-                </Group>
-              ) : null}
-              {showShowMoreButton && (
-                <div className="d-flex m-1">
-                  <TextButton
-                    label={
-                      shouldShowMore ? (
-                        <>
-                          <span className="bi-chevron-up" /> Less
-                        </>
-                      ) : (
-                        <>
-                          <span className="bi-chevron-right" /> Show more
-                        </>
-                      )
+            </Stack>
+            {optionsLoading ? (
+              <Group m={6} gap="xs">
+                <Loader size={12} color="gray.6" />
+                <Text c="dimmed" size="xs">
+                  Loading...
+                </Text>
+              </Group>
+            ) : displayedOptions.length === 0 ? (
+              <Group m={6} gap="xs">
+                <Text c="dimmed" size="xs">
+                  No options found
+                </Text>
+              </Group>
+            ) : null}
+            {showShowMoreButton && (
+              <div className="d-flex m-1">
+                <TextButton
+                  label={
+                    shouldShowMore ? (
+                      <>
+                        <span className="bi-chevron-up" /> Less
+                      </>
+                    ) : (
+                      <>
+                        <span className="bi-chevron-right" /> Show more
+                      </>
+                    )
+                  }
+                  onClick={() => {
+                    // When show more is clicked, immediately show all and also fetch more from server.
+                    setShowMore(!shouldShowMore);
+                    if (!shouldShowMore) {
+                      onLoadMore?.(name);
                     }
-                    onClick={() => {
-                      // When show more is clicked, immediately show all and also fetch more from server.
-                      setShowMore(!shouldShowMore);
-                      if (!shouldShowMore) {
-                        onLoadMore?.(name);
+                  }}
+                />
+              </div>
+            )}
+            {onLoadMore &&
+              !showShowMoreButton &&
+              !shouldShowMore &&
+              !hasLoadedMore && (
+                <div className="d-flex m-1">
+                  {loadMoreLoading ? (
+                    <Group m={6} gap="xs">
+                      <Loader size={12} color="gray.6" />
+                      <Text c="dimmed" size="xs">
+                        Loading more...
+                      </Text>
+                    </Group>
+                  ) : (
+                    <TextButton
+                      display={hasLoadedMore ? 'none' : undefined}
+                      label={
+                        <>
+                          <span className="bi-chevron-right" /> Load more
+                        </>
                       }
-                    }}
-                  />
+                      onClick={() => onLoadMore(name)}
+                    />
+                  )}
                 </div>
               )}
-              {onLoadMore &&
-                !showShowMoreButton &&
-                !shouldShowMore &&
-                !hasLoadedMore && (
-                  <div className="d-flex m-1">
-                    {loadMoreLoading ? (
-                      <Group m={6} gap="xs">
-                        <Loader size={12} color="gray.6" />
-                        <Text c="dimmed" size="xs">
-                          Loading more...
-                        </Text>
-                      </Group>
-                    ) : (
-                      <TextButton
-                        display={hasLoadedMore ? 'none' : undefined}
-                        label={
-                          <>
-                            <span className="bi-chevron-right" /> Load more
-                          </>
-                        }
-                        onClick={() => onLoadMore(name)}
-                      />
-                    )}
-                  </div>
-                )}
-            </Stack>
           </Accordion.Panel>
         </Stack>
       </Accordion.Item>
@@ -894,6 +891,9 @@ const DBSearchPageFiltersComponent = ({
           width: '100%',
           overflow: 'hidden',
         }}
+        classNames={{
+          viewport: classes['mantine-ScrollArea-viewport'],
+        }}
       >
         <Stack gap="sm" p="xs">
           <Text size="xxs" c="dimmed" fw="bold">
@@ -939,14 +939,20 @@ const DBSearchPageFiltersComponent = ({
                 />
               )}
             </Flex>
-            {showClearAllButton && (
-              <TextButton
-                label="Clear all"
-                onClick={() => {
-                  clearAllFilters();
-                }}
-              />
-            )}
+            <div>
+              {showClearAllButton && (
+                <ActionIcon
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  onClick={clearAllFilters}
+                  title="Clear filters"
+                >
+                  <IconFilterX />
+                </ActionIcon>
+              )}
+              <FilterSettingsGeneralSettingsPanel />
+            </div>
           </Flex>
 
           {analysisMode === 'results' && (

@@ -20,26 +20,17 @@
     .mantine-TextInput-wrapper {
       background-color: transparent;
     }
-
-    .mantine-TextInput-input {
-      height: 20px;
-      min-height: 20px;
-      background-color: transparent;
-      border: none !important;
-      color: var(--mantine-color-gray-3);
-      font-size: var(--mantine-font-size-xs);
-
-      &::placeholder {
-        color: var(--mantine-color-gray-6);
-        font-weight: bold;
-      }
-
-      &:focus {
-        border: none;
-        outline: none;
-      }
-    }
   }
+}
+
+// Can remove after we upgrade mantine to v8
+// https://github.com/orgs/mantinedev/discussions/7030#discussioncomment-11555265 
+.mantine-ScrollArea-viewport {
+
+& > div {
+  display: block !important;
+
+}
 }
 
 .textButton {
