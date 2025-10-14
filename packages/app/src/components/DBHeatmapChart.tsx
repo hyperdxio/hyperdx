@@ -3,20 +3,35 @@ import dynamic from 'next/dynamic';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
 import UplotReact from 'uplot-react';
-import { inferTimestampColumn } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  ClickHouseQueryError,
+  inferTimestampColumn,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { Divider, Paper, Text } from '@mantine/core';
-import { useElementSize } from '@mantine/hooks';
+import {
+  Button,
+  Code,
+  Divider,
+  Group,
+  Modal,
+  Paper,
+  Text,
+} from '@mantine/core';
+import { useDisclosure, useElementSize } from '@mantine/hooks';
+import { IconArrowsDiagonal } from '@tabler/icons-react';
 
 import {
   convertDateRangeToGranularityString,
+  isAggregateFunction,
   timeBucketByGranularity,
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { Chart, NumberFormat } from '@/types';
+import { NumberFormat } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatNumber } from '@/utils';
+
+import { SQLPreview } from './ChartSQLPreview';
 
 type Mode2DataArray = [number[], number[], number[]];
 
@@ -255,11 +270,15 @@ const opt: uPlot.Options = {
   ],
 };
 
-// const d = genData();
-
 type HeatmapChartConfig = {
   displayType: DisplayType.Heatmap;
-  select: [{ aggFn: 'heatmap'; valueExpression: string }];
+  select: [
+    {
+      aggFn: 'heatmap';
+      valueExpression: string;
+      countExpression?: string;
+    },
+  ];
   from: ChartConfigWithDateRange['from'];
   where: ChartConfigWithDateRange['where'];
   dateRange: ChartConfigWithDateRange['dateRange'];
@@ -286,53 +305,134 @@ function HeatmapContainer({
   const nBuckets = 80;
 
   const valueExpression = config.select[0].valueExpression;
+  const countExpression = config.select[0].countExpression ?? 'count()';
 
-  const minMaxConfig: ChartConfigWithDateRange = {
-    ...config,
-    orderBy: undefined,
-    granularity: undefined,
-    select: [
-      {
-        aggFn: 'min',
-        valueExpression,
-        // TODO: Select if we can be negative
-        aggCondition: `${valueExpression} >= 0`,
-        aggConditionLanguage: 'sql',
-        alias: 'min',
-      },
-      { aggFn: 'max', valueExpression, aggCondition: '', alias: 'max' },
-    ],
-  };
+  // When valueExpression is an aggregate like count(), we need to use a CTE to calculate the heatmap
+  const isAggregateExpression = isAggregateFunction(valueExpression);
+
+  const minMaxConfig: ChartConfigWithDateRange = isAggregateExpression
+    ? {
+        ...config,
+        where: '',
+        orderBy: undefined,
+        granularity: undefined,
+        select: [
+          {
+            aggFn: 'min',
+            // TODO: Select if we can be negative
+            aggCondition: `value_calc >= 0`,
+            aggConditionLanguage: 'sql',
+            valueExpression: 'value_calc',
+            alias: 'min',
+          },
+          {
+            aggFn: 'max',
+            valueExpression: 'value_calc',
+            alias: 'max',
+          },
+        ],
+        with: [
+          {
+            name: 'min_max_calc',
+            chartConfig: {
+              ...config,
+              select: [{ valueExpression, alias: 'value_calc' }],
+              orderBy: undefined,
+            },
+          },
+        ],
+        timestampValueExpression: '__hdx_time_bucket',
+        from: { databaseName: '', tableName: 'min_max_calc' },
+      }
+    : {
+        ...config,
+        orderBy: undefined,
+        granularity: undefined,
+        select: [
+          {
+            aggFn: 'min',
+            valueExpression,
+            // TODO: Select if we can be negative
+            aggCondition: `${valueExpression} >= 0`,
+            aggConditionLanguage: 'sql',
+            alias: 'min',
+          },
+          { aggFn: 'max', valueExpression, aggCondition: '', alias: 'max' },
+        ],
+      };
+
   const {
     data: minMaxData,
     isLoading: isMinMaxLoading,
-    isError: isMinMaxError,
+    error: minMaxError,
   } = useQueriedChartConfig(minMaxConfig, {
     queryKey: ['heatmap', minMaxConfig],
     enabled: enabled,
   });
 
+  const [errorModal, errorModalControls] = useDisclosure();
+
   // UInt64 are returned as strings
   const min = Number.parseInt(minMaxData?.data?.[0]?.['min'] ?? '0', 10);
   const max = Number.parseInt(minMaxData?.data?.[0]?.['max'] ?? '0', 10);
 
-  const bucketConfig: ChartConfigWithDateRange = {
-    ...config,
-    select: [
-      { aggFn: 'count', valueExpression: '', aggCondition: '', alias: 'count' },
-    ],
-    groupBy: [
-      {
-        // TODO: ChSQL?
-        valueExpression: `widthBucket(${valueExpression}, ${min}, ${max}, ${nBuckets})`,
-        alias: 'bucket',
-      },
-    ],
-    orderBy: [{ valueExpression: 'bucket', ordering: 'ASC' }],
-    granularity,
-  };
+  const bucketConfig: ChartConfigWithDateRange = isAggregateExpression
+    ? {
+        ...config,
+        where: '',
+        select: [
+          {
+            valueExpression: 'sum(value_count)',
+            alias: 'count',
+          },
+        ],
+        groupBy: [
+          {
+            valueExpression: `widthBucket(value_calc, ${min}, ${max}, ${nBuckets})`,
+            alias: 'x_bucket',
+          },
+        ],
+        with: [
+          {
+            name: 'bucket_calc',
+            chartConfig: {
+              ...config,
+              select: [
+                { valueExpression, alias: 'value_calc' },
+                {
+                  valueExpression: countExpression,
+                  alias: 'value_count',
+                },
+              ],
+              granularity,
+              orderBy: undefined,
+            },
+          },
+        ],
+        timestampValueExpression: '__hdx_time_bucket',
+        from: { databaseName: '', tableName: 'bucket_calc' },
+        orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
+        granularity,
+      }
+    : {
+        ...config,
+        select: [
+          {
+            valueExpression: countExpression,
+            alias: 'count',
+          },
+        ],
+        groupBy: [
+          {
+            valueExpression: `widthBucket(${valueExpression}, ${min}, ${max}, ${nBuckets})`,
+            alias: 'x_bucket',
+          },
+        ],
+        orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
+        granularity,
+      };
 
-  const { data, isLoading, isError } = useQueriedChartConfig(bucketConfig, {
+  const { data, isLoading, error } = useQueriedChartConfig(bucketConfig, {
     queryKey: ['heatmap_bucket', bucketConfig],
     enabled: !!minMaxData && bucketConfig != null,
   });
@@ -342,12 +442,12 @@ function HeatmapContainer({
     dateRange[1],
     granularity,
   );
+
   const timestampColumn = inferTimestampColumn(data?.meta ?? []);
 
-  const time: number[] = [];
-  const bucket: number[] = [];
-  const count: number[] = [];
-
+  const time: number[] = []; // x values
+  const bucket: number[] = []; // y value series 1
+  const count: number[] = []; // y value series 2
   if (data != null && timestampColumn != null) {
     let dataIndex = 0;
 
@@ -362,10 +462,10 @@ function HeatmapContainer({
         if (
           row != null &&
           new Date(row[timestampColumn.name]).getTime() == generatedTs &&
-          row['bucket'] == j
+          row['x_bucket'] == j
         ) {
           time.push(new Date(row[timestampColumn.name]).getTime());
-          bucket.push(min + row['bucket'] * ((max - min) / nBuckets));
+          bucket.push(min + row['x_bucket'] * ((max - min) / nBuckets));
           count.push(Number.parseInt(row['count'], 10)); // UInt64 returns as string
 
           dataIndex++;
@@ -387,6 +487,55 @@ function HeatmapContainer({
       </Paper>
     );
   }
+  if (error || minMaxError) {
+    const _error: Error = error || minMaxError!;
+    return (
+      <Paper shadow="xs" p="xl" ta="center" h="100%">
+        <Text size="sm" mt="sm">
+          Error loading chart, please check your query or try again later.
+        </Text>
+        <Button
+          className="mx-auto"
+          variant="subtle"
+          color="red"
+          onClick={() => errorModalControls.open()}
+        >
+          <Group gap="xxs">
+            <IconArrowsDiagonal size={16} />
+            See Error Details
+          </Group>
+        </Button>
+        <Modal
+          opened={errorModal}
+          onClose={() => errorModalControls.close()}
+          title="Error Details"
+        >
+          <Group align="start">
+            <Text size="sm" ta="center">
+              Error Message:
+            </Text>
+            <Code
+              block
+              style={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {_error.message}
+            </Code>
+            {_error instanceof ClickHouseQueryError && (
+              <>
+                <Text my="sm" size="sm" ta="center">
+                  Sent Query:
+                </Text>
+                <SQLPreview data={_error?.query} enableCopy />
+              </>
+            )}
+          </Group>
+        </Modal>
+      </Paper>
+    );
+  }
+
   if (time.length < 2 || generatedTsBuckets?.length < 2) {
     return (
       <Paper shadow="xs" p="xl">
@@ -397,6 +546,7 @@ function HeatmapContainer({
       </Paper>
     );
   }
+
   return (
     <Heatmap
       key={JSON.stringify(config)}
@@ -676,7 +826,7 @@ function Heatmap({
     >
       <UplotReact
         options={options}
-        // @ts-ignore TODO: uPlot types are wrong for mode 2 data
+        // @ts-expect-error TODO: uPlot types are wrong for mode 2 data
         data={[[], data]}
         resetScales={true}
       />
@@ -721,10 +871,10 @@ function Heatmap({
               <FormatTime value={highlightedPoint.xVal} />
             </div>
             <div>
-              <b>Duration:</b> {tickFormatter(highlightedPoint.yVal)}
+              <b>Y Value:</b> {tickFormatter(highlightedPoint.yVal)}
             </div>
             <div>
-              <b>Count:</b>{' '}
+              <b>Count Value:</b>{' '}
               {new Intl.NumberFormat('en-US', {
                 notation: 'standard',
                 compactDisplay: 'short',
