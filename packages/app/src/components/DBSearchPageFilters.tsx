@@ -33,6 +33,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
+import { useLocalStorage } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconFilterCancel,
@@ -668,6 +669,12 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
 } & FilterStateHook) => {
+  const hasSharedFilters = true;
+  const [shown, setShown] = useLocalStorage<boolean>({
+    key: 'dbsearch-shared-filters-shown',
+    defaultValue: true,
+  });
+
   const setFilterValue: typeof _setFilterValue = (
     property: string,
     value: string,
@@ -924,7 +931,7 @@ const DBSearchPageFiltersComponent = ({
             </Tabs.List>
           </Tabs>
 
-          <DBSearchSharedFilters />
+          <DBSearchSharedFilters isEnabled={shown} />
 
           <Flex align="center" justify="space-between">
             <Flex className={isFacetsFetching ? 'effect-pulse' : ''}>
@@ -954,7 +961,10 @@ const DBSearchPageFiltersComponent = ({
                   <IconFilterX />
                 </ActionIcon>
               )}
-              <FilterSettingsGeneralSettingsPanel />
+              <FilterSettingsGeneralSettingsPanel
+                isSharedFiltersEnabled={shown}
+                setSharedFiltersEnabled={setShown}
+              />
             </div>
           </Flex>
 

@@ -24,7 +24,13 @@ function FilterSettingsPopover({
   );
 }
 
-export function FilterSettingsGeneralSettingsPanel() {
+export function FilterSettingsGeneralSettingsPanel({
+  isSharedFiltersEnabled,
+  setSharedFiltersEnabled,
+}: {
+  isSharedFiltersEnabled: boolean;
+  setSharedFiltersEnabled: (enabled: boolean) => void;
+}) {
   return (
     <FilterSettingsPopover
       target={
@@ -52,6 +58,8 @@ export function FilterSettingsGeneralSettingsPanel() {
               width: '100%',
             },
           }}
+          checked={isSharedFiltersEnabled}
+          onChange={e => setSharedFiltersEnabled(e.currentTarget.checked)}
         />
         <Button
           size="xs"

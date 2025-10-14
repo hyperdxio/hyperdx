@@ -1,15 +1,15 @@
-import { DownChevron } from 'react-select/dist/declarations/src/components/indicators';
 import { Button, Collapse, Flex, Text, UnstyledButton } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
+import { IconChevronDown } from '@tabler/icons-react';
 
 interface DBSearchSharedFiltersProps {
-  isEnabled?: boolean;
+  isEnabled: boolean;
 }
 
 export default function DBSearchSharedFilters({
-  isEnabled = true,
+  isEnabled,
 }: DBSearchSharedFiltersProps) {
+  // Is open by default
   const [opened, openState] = useDisclosure(true);
 
   if (!isEnabled) {
