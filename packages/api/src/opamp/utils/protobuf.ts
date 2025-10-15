@@ -21,7 +21,7 @@ try {
   root = protobuf.loadSync(PROTO_PATH);
   logger.debug('OpAMP proto definition loaded successfully');
 } catch (error) {
-  logger.error('Failed to load OpAMP proto definition:', error);
+  logger.error({ err: error }, 'Failed to load OpAMP proto definition');
   throw error;
 }
 
@@ -46,7 +46,7 @@ export function decodeAgentToServer(data: Buffer): protobuf.Message {
   try {
     return AgentToServer.decode(data);
   } catch (error) {
-    logger.error('Failed to decode AgentToServer message:', error);
+    logger.error({ err: error }, 'Failed to decode AgentToServer message');
     throw error;
   }
 }
@@ -68,7 +68,7 @@ export function encodeServerToAgent(message: any): Buffer {
     // Encode the message
     return Buffer.from(ServerToAgent.encode(serverToAgent).finish());
   } catch (error) {
-    logger.error('Failed to encode ServerToAgent message:', error);
+    logger.error({ err: error }, 'Failed to encode ServerToAgent message');
     throw error;
   }
 }
@@ -105,7 +105,7 @@ export function createRemoteConfig(
       configHash: configHash,
     };
   } catch (error) {
-    logger.error('Failed to create remote config message:', error);
+    logger.error({ err: error }, 'Failed to create remote config message');
     throw error;
   }
 }
@@ -130,7 +130,7 @@ function calculateConfigHash(configFiles: Map<string, Buffer>): Buffer {
 
     return hash.digest();
   } catch (error) {
-    logger.error('Failed to calculate config hash:', error);
+    logger.error({ err: error }, 'Failed to calculate config hash');
     throw error;
   }
 }

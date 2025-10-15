@@ -21,7 +21,7 @@ if (config.IS_DEV) {
 const server = new Server();
 
 process.on('uncaughtException', (err: Error) => {
-  logger.error(serializeError(err));
+  logger.error({ err: serializeError(err) }, 'Uncaught exception');
 
   // FIXME: disable server restart until
   // we make sure all expected exceptions are handled properly
@@ -32,7 +32,9 @@ process.on('uncaughtException', (err: Error) => {
 
 process.on('unhandledRejection', (err: any) => {
   // TODO: do we want to throw here ?
-  logger.error(serializeError(err));
+  logger.error({ err: serializeError(err) }, 'Unhandled rejection');
 });
 
-server.start().catch(e => logger.error(serializeError(e)));
+server
+  .start()
+  .catch(e => logger.error({ err: serializeError(e) }, 'Server start failed'));

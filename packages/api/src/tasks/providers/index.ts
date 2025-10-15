@@ -102,11 +102,13 @@ export async function loadProvider(
       try {
         return providerFn();
       } catch (err) {
-        logger.error({
-          message: `error creating instance of ${providerName} provider; using default`,
-          cause: err,
-          providerName,
-        });
+        logger.error(
+          {
+            cause: err,
+            providerName,
+          },
+          `error creating instance of ${providerName} provider; using default`,
+        );
       }
     }
   }
