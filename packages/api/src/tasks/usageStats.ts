@@ -128,37 +128,39 @@ async function getUsageStats() {
       getClickhouseTableSize(),
     ]);
     const clusterId = team[0]?._id.toString();
-    logger.info({
-      message: 'track-hyperdx-oss-usage-stats',
-      clusterId,
-      version: config.CODE_VERSION,
-      userCounts,
-      os: {
-        arch: os.arch(),
-        freemem: os.freemem(),
-        uptime: os.uptime(),
+    logger.info(
+      {
+        clusterId,
+        version: config.CODE_VERSION,
+        userCounts,
+        os: {
+          arch: os.arch(),
+          freemem: os.freemem(),
+          uptime: os.uptime(),
+        },
+        chStats: {
+          tables: chTables.reduce(
+            (acc, curr) => ({
+              ...acc,
+              [curr.table]: {
+                avgDaySize: parseInt(curr.avgDaySize),
+                days: parseInt(curr.days),
+                lastModified: new Date(curr.latestModification).getTime(),
+                maxTime: new Date(curr.max_time).getTime(),
+                minTime: new Date(curr.min_time).getTime(),
+                rows: parseInt(curr.rows),
+                size: parseInt(curr.size),
+              },
+            }),
+            {},
+          ),
+          rows: chTables.reduce((acc, curr) => acc + parseInt(curr.rows), 0),
+          size: chTables.reduce((acc, curr) => acc + parseInt(curr.size), 0),
+        },
+        timestamp: nowInMs,
       },
-      chStats: {
-        tables: chTables.reduce(
-          (acc, curr) => ({
-            ...acc,
-            [curr.table]: {
-              avgDaySize: parseInt(curr.avgDaySize),
-              days: parseInt(curr.days),
-              lastModified: new Date(curr.latestModification).getTime(),
-              maxTime: new Date(curr.max_time).getTime(),
-              minTime: new Date(curr.min_time).getTime(),
-              rows: parseInt(curr.rows),
-              size: parseInt(curr.size),
-            },
-          }),
-          {},
-        ),
-        rows: chTables.reduce((acc, curr) => acc + parseInt(curr.rows), 0),
-        size: chTables.reduce((acc, curr) => acc + parseInt(curr.size), 0),
-      },
-      timestamp: nowInMs,
-    });
+      'track-hyperdx-oss-usage-stats',
+    );
   } catch (err) {
     // ignore
   }

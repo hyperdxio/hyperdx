@@ -188,7 +188,7 @@ router.post(
       const source = await getSource(teamId.toString(), sourceId);
 
       if (source == null) {
-        logger.error({ message: 'invalid source id', sourceId, teamId });
+        logger.error({ sourceId, teamId }, 'invalid source id');
         return res.status(400).json({
           error: 'Invalid source',
         });

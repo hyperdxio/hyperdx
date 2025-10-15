@@ -44,7 +44,7 @@ export function handleAuthError(
   res: Response,
   next: NextFunction,
 ) {
-  logger.debug({ message: 'Auth error', authErr: serializeError(err) });
+  logger.debug({ authErr: serializeError(err) }, 'Auth error');
   if (res.headersSent) {
     return next(err);
   }

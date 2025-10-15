@@ -34,11 +34,13 @@ const main = async (argv: TaskArgs) => {
         `Task [${task.name()}] finished in ${(performance.now() - t0).toFixed(2)} ms`,
       );
     } catch (e: unknown) {
-      logger.error({
-        message: `Task [${task.name()}] failed: ${serializeError(e)}`,
-        cause: e,
-        task,
-      });
+      logger.error(
+        {
+          cause: e,
+          task,
+        },
+        `Task [${task.name()}] failed: ${serializeError(e)}`,
+      );
     } finally {
       await task.asyncDispose();
       span.end();
