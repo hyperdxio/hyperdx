@@ -70,19 +70,19 @@ if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
     })
     .catch(err => {
       console.log(err);
-      logger.error(serializeError(err));
+      logger.error({ err: serializeError(err) }, 'Task execution failed');
       process.exit(1);
     });
 }
 
 process.on('uncaughtException', (err: Error) => {
   console.log(err);
-  logger.error(serializeError(err));
+  logger.error({ err: serializeError(err) }, 'Uncaught exception');
   process.exit(1);
 });
 
 process.on('unhandledRejection', (err: any) => {
   console.log(err);
-  logger.error(serializeError(err));
+  logger.error({ err: serializeError(err) }, 'Unhandled rejection');
   process.exit(1);
 });

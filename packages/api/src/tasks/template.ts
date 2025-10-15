@@ -358,7 +358,7 @@ const getPopulatedChannel = (
       return { type: 'webhook', channel: webhook };
     }
     default: {
-      logger.error(`unsupported alert channel type: ${channelType}`);
+      logger.error({ channelType }, 'Unsupported alert channel type');
       return undefined;
     }
   }
