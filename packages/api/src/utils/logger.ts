@@ -25,7 +25,7 @@ const getTransport = () => {
     targets.push(hyperdxTransport);
   }
 
-  if (config.IS_DEV) {
+  if (config.IS_DEV || config.IS_CI) {
     // In development, use pino-pretty for nice console output
     targets.push({
       target: 'pino-pretty',
@@ -76,8 +76,8 @@ export const expressLogger = pinoHttp({
   customErrorMessage: (req: Request, res: Response, err) => {
     return `HTTP ${req.method} ${req.originalUrl}`;
   },
-  // Only disable req/res serializers in development
-  ...(config.IS_DEV
+  // Only disable req/res serializers in development/CI
+  ...(config.IS_DEV || config.IS_CI
     ? {
         serializers: {
           req: () => undefined,
