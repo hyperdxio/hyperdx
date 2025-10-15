@@ -76,6 +76,16 @@ export const expressLogger = pinoHttp({
   customErrorMessage: (req: Request, res: Response, err) => {
     return `HTTP ${req.method} ${req.originalUrl}`;
   },
+  customProps: (req: Request, res: Response) => {
+    const user = req.user;
+    if (user) {
+      return {
+        userId: user._id?.toString(),
+        userEmail: user.email,
+      };
+    }
+    return {};
+  },
   // Only disable req/res serializers in development/CI
   ...(config.IS_DEV || config.IS_CI
     ? {
