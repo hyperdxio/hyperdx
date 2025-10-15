@@ -34,11 +34,13 @@ const main = async (argv: TaskArgs) => {
         `Task [${task.name()}] finished in ${(performance.now() - t0).toFixed(2)} ms`,
       );
     } catch (e: unknown) {
-      logger.error({
-        message: `Task [${task.name()}] failed: ${serializeError(e)}`,
-        cause: e,
-        task,
-      });
+      logger.error(
+        {
+          cause: e,
+          task,
+        },
+        `Task [${task.name()}] failed: ${serializeError(e)}`,
+      );
     } finally {
       await task.asyncDispose();
       span.end();
@@ -70,19 +72,19 @@ if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
     })
     .catch(err => {
       console.log(err);
-      logger.error(serializeError(err));
+      logger.error({ err: serializeError(err) }, 'Task execution failed');
       process.exit(1);
     });
 }
 
 process.on('uncaughtException', (err: Error) => {
   console.log(err);
-  logger.error(serializeError(err));
+  logger.error({ err: serializeError(err) }, 'Uncaught exception');
   process.exit(1);
 });
 
 process.on('unhandledRejection', (err: any) => {
   console.log(err);
-  logger.error(serializeError(err));
+  logger.error({ err: serializeError(err) }, 'Unhandled rejection');
   process.exit(1);
 });

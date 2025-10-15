@@ -63,10 +63,7 @@ const healthCheck = async () => {
   const client = await getClickhouseClient();
   const result = await client.ping();
   if (!result.success) {
-    logger.error({
-      message: 'ClickHouse health check failed',
-      error: result.error,
-    });
+    logger.error({ error: result.error }, 'ClickHouse health check failed');
     throw result.error;
   }
 };

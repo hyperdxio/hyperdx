@@ -31,7 +31,8 @@ export function redirectToDashboard(req: Request, res: Response) {
     return res.redirect(`${config.FRONTEND_URL}/search`);
   } else {
     logger.error(
-      `Password login for user failed, user or team not found ${req?.user?._id}`,
+      { userId: req?.user?._id },
+      'Password login for user failed, user or team not found',
     );
     res.redirect(`${config.FRONTEND_URL}/login?err=unknown`);
   }
@@ -43,7 +44,7 @@ export function handleAuthError(
   res: Response,
   next: NextFunction,
 ) {
-  logger.debug({ message: 'Auth error', authErr: serializeError(err) });
+  logger.debug({ authErr: serializeError(err) }, 'Auth error');
   if (res.headersSent) {
     return next(err);
   }

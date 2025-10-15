@@ -45,7 +45,7 @@ passport.use(
         }
         return done(null, user, error);
       } catch (err) {
-        logger.error(`Login for "${username}" failed, error: ${err}"`);
+        logger.error({ err, username }, 'Login failed with error');
         return done(err);
       }
     },
