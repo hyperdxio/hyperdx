@@ -1431,7 +1431,7 @@ describe('renderChartConfig', () => {
               aggFn: 'avg',
               metricName: 'k8s.pod.cpu.utilization',
               metricNameSql:
-                "if(greaterOrEquals(ScopeVersion, '0.125.0'), 'k8s.pod.cpu.usage', 'k8s.pod.cpu.utilization')",
+                "MetricName IN ('k8s.pod.cpu.utilization', 'k8s.pod.cpu.usage')",
               metricType: MetricsDataType.Gauge,
               valueExpression: 'Value',
             },
@@ -1452,10 +1452,10 @@ describe('renderChartConfig', () => {
       expect(res.length).toBeGreaterThan(0);
       expect(res).toMatchSnapshot();
 
-      // Verify the SQL contains the dynamic metric name condition
-      expect(query.sql).toContain('if(greaterOrEquals(ScopeVersion');
+      // Verify the SQL contains the IN-based metric name condition
       expect(query.sql).toContain('k8s.pod.cpu.usage');
       expect(query.sql).toContain('k8s.pod.cpu.utilization');
+      expect(query.sql).toMatch(/MetricName IN /);
     });
 
     it('should handle gauge metric with metricNameSql and groupBy', async () => {
@@ -1466,7 +1466,7 @@ describe('renderChartConfig', () => {
               aggFn: 'avg',
               metricName: 'k8s.pod.cpu.utilization',
               metricNameSql:
-                "if(greaterOrEquals(ScopeVersion, '0.125.0'), 'k8s.pod.cpu.usage', 'k8s.pod.cpu.utilization')",
+                "MetricName IN ('k8s.pod.cpu.utilization', 'k8s.pod.cpu.usage')",
               metricType: MetricsDataType.Gauge,
               valueExpression: 'Value',
             },
@@ -1516,9 +1516,9 @@ describe('renderChartConfig', () => {
       // Should only return data from old metric name (k8s.pod.cpu.utilization)
       expect(res).toMatchSnapshot();
 
-      // Verify the SQL uses simple string comparison
+      // Verify the SQL uses simple string comparison (not IN-based)
       expect(query.sql).toContain("MetricName = 'k8s.pod.cpu.utilization'");
-      expect(query.sql).not.toContain('if(greaterOrEquals(ScopeVersion');
+      expect(query.sql).not.toMatch(/MetricName IN /);
     });
   });
 });

@@ -13,7 +13,8 @@ import {
   Field,
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/metadata';
-import { Paper, Text } from '@mantine/core';
+import { Flex, Paper, Text, Tooltip } from '@mantine/core';
+import { IconInfoCircle } from '@tabler/icons-react';
 import CodeMirror, {
   Compartment,
   EditorView,
@@ -113,6 +114,7 @@ type SQLInlineEditorProps = {
   label?: React.ReactNode;
   disableKeywordAutocomplete?: boolean;
   enableHotkey?: boolean;
+  tooltipText?: string;
   additionalSuggestions?: string[];
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
@@ -159,6 +161,7 @@ export default function SQLInlineEditor({
   label,
   disableKeywordAutocomplete,
   enableHotkey,
+  tooltipText,
   additionalSuggestions = [],
   queryHistoryType,
   parentRef,
@@ -320,9 +323,16 @@ export default function SQLInlineEditor({
           mx="4px"
           size="xs"
           fw="bold"
-          style={{ whiteSpace: 'nowrap' }}
+          style={{
+            whiteSpace: 'nowrap',
+          }}
         >
-          {label}
+          <Tooltip label={tooltipText} disabled={!tooltipText}>
+            <Flex align="center" gap={2}>
+              {label}
+              {tooltipText && <IconInfoCircle size={20} />}
+            </Flex>
+          </Tooltip>
         </Text>
       )}
       <div style={{ minWidth: 10, width: '100%' }}>

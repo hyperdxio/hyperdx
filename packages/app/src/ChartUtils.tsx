@@ -385,6 +385,23 @@ export function timeBucketByGranularity(
   return buckets;
 }
 
+export const isAggregateFunction = (value: string) => {
+  const fns = [
+    'count',
+    'countIf',
+    'countDistinct',
+    'sum',
+    'avg',
+    'distinct',
+    'min',
+    'max',
+    'quantile',
+    'any',
+    'none',
+  ];
+  return fns.some(fn => value.includes(fn + '('));
+};
+
 export const INTEGER_NUMBER_FORMAT: NumberFormat = {
   factor: 1,
   output: 'number',

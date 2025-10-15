@@ -334,7 +334,12 @@ export default function DBDeltaChart({
       const { percentageOccurences: inlierValueOccurences } =
         getPropertyStatistics(inlierData?.data ?? []);
 
-      const sortedProperties = Array.from(outlierValueOccurences.keys())
+      // Get all the unique keys from both maps, and process them to get the merged arrays
+      const uniqueKeys = new Set([
+        ...outlierValueOccurences.keys(),
+        ...inlierValueOccurences.keys(),
+      ]);
+      const sortedProperties = Array.from(uniqueKeys)
         .map(key => {
           const inlierCount =
             inlierValueOccurences.get(key) ?? new Map<string, number>();

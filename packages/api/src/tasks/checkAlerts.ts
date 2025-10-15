@@ -9,7 +9,6 @@ import {
   ChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
-import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import * as fns from 'date-fns';
 import { chunk, isString } from 'lodash';
 import { ObjectId } from 'mongoose';
@@ -436,10 +435,11 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     teamWebhooksById: Map<string, IWebhook>,
   ) {
     await tasksTracer.startActiveSpan('processAlertTask', async span => {
-      setTraceAttributes({
-        'hyperdx.alerts.team.id': alertTask.conn.team.toString(),
-        'hyperdx.alerts.connection.id': alertTask.conn.id,
-      });
+      span.setAttribute(
+        'hyperdx.alerts.team.id',
+        alertTask.conn.team.toString(),
+      );
+      span.setAttribute('hyperdx.alerts.connection.id', alertTask.conn.id);
 
       try {
         const { alerts, conn } = alertTask;
@@ -484,10 +484,6 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       message: 'finished provider initialization',
       provider: this.provider.constructor.name,
       args: this.args,
-    });
-
-    setTraceAttributes({
-      'hyperdx.alerts.provider': this.provider.constructor.name,
     });
 
     const alertTasks = await this.provider.getAlertTasks();
