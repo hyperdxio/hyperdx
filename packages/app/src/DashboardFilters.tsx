@@ -54,16 +54,19 @@ const DashboardFilterSelect = ({
     },
   );
 
+  const selectValues = keys?.[0]?.value
+    .map(value => String(value))
+    .sort()
+    .map(value => ({
+      value,
+      label: value,
+    }));
+
   return (
     <Select
       placeholder={filter.name}
       value={value ?? null} // null clears the select, undefined makes the select uncontrolled
-      data={
-        keys?.[0]?.value.map(value => ({
-          value: String(value),
-          label: String(value),
-        })) || []
-      }
+      data={selectValues || []}
       searchable
       clearable
       allowDeselect
