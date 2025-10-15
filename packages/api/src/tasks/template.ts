@@ -106,15 +106,17 @@ function validateWebhookUrl(
     // check that hostname ends in "slack.com"
     if (!isValidSlackUrl(webhook.url)) {
       const message = `Slack Webhook URL ${webhook.url} does not have hostname that ends in 'slack.com'`;
-      logger.warn({
-        webhook: {
-          id: webhook._id.toString(),
-          name: webhook.name,
-          url: webhook.url,
-          body: webhook.body,
+      logger.warn(
+        {
+          webhook: {
+            id: webhook._id.toString(),
+            name: webhook.name,
+            url: webhook.url,
+            body: webhook.body,
+          },
         },
         message,
-      });
+      );
       throw new Error(`SSRF AllowedDomainError: ${message}`);
     }
   } else {
@@ -124,15 +126,17 @@ function validateWebhookUrl(
       const message = `Webhook attempting to query blacklisted route ${blacklistedWebhookHosts.get(
         url.host,
       )}`;
-      logger.warn({
-        webhook: {
-          id: webhook._id.toString(),
-          name: webhook.name,
-          url: webhook.url,
-          body: webhook.body,
+      logger.warn(
+        {
+          webhook: {
+            id: webhook._id.toString(),
+            name: webhook.name,
+            url: webhook.url,
+            body: webhook.body,
+          },
         },
         message,
-      });
+      );
       throw new Error(`SSRF AllowedDomainError: ${message}`);
     }
   }
@@ -200,10 +204,12 @@ export const handleSendGenericWebhook = async (
       title: escapeJsonString(message.title),
     });
   } catch (e) {
-    logger.error({
-      message: 'Failed to compile generic webhook body',
-      error: serializeError(e),
-    });
+    logger.error(
+      {
+        error: serializeError(e),
+      },
+      'Failed to compile generic webhook body',
+    );
     return;
   }
 
@@ -220,10 +226,12 @@ export const handleSendGenericWebhook = async (
       throw new Error(errorText);
     }
   } catch (e) {
-    logger.error({
-      message: 'Failed to send generic webhook message',
-      error: serializeError(e),
-    });
+    logger.error(
+      {
+        error: serializeError(e),
+      },
+      'Failed to send generic webhook message',
+    );
   }
 };
 
@@ -347,15 +355,18 @@ const getPopulatedChannel = (
         findWebhookByName(channelIdOrNamePrefix, teamWebhooksById);
 
       if (!webhook) {
-        logger.error('webhook not found', {
-          webhookId: channelIdOrNamePrefix,
-        });
+        logger.error(
+          {
+            webhookId: channelIdOrNamePrefix,
+          },
+          'webhook not found',
+        );
         return undefined;
       }
       return { type: 'webhook', channel: webhook };
     }
     default: {
-      logger.error(`unsupported alert channel type: ${channelType}`);
+      logger.error({ channelType }, 'Unsupported alert channel type');
       return undefined;
     }
   }
@@ -505,12 +516,14 @@ export const renderAlertTemplate = async ({
         2500,
       );
     } catch (e) {
-      logger.error({
-        message: 'Failed to fetch sample logs',
-        savedSearchId: savedSearch.id,
-        chartConfig,
-        error: serializeError(e),
-      });
+      logger.error(
+        {
+          savedSearchId: savedSearch.id,
+          chartConfig,
+          error: serializeError(e),
+        },
+        'Failed to fetch sample logs',
+      );
     }
 
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
