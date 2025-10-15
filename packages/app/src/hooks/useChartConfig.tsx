@@ -16,7 +16,11 @@ import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
 } from '@hyperdx/common-utils/dist/types';
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import {
+  useQuery,
+  useQueryClient,
+  UseQueryOptions,
+} from '@tanstack/react-query';
 
 import {
   convertDateRangeToGranularityString,
@@ -195,6 +199,7 @@ export function useQueriedChartConfig(
     AdditionalUseQueriedChartConfigOptions,
 ) {
   const clickhouseClient = useClickhouseClient();
+  const queryClient = useQueryClient();
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include disableQueryChunking in the query key to ensure that queries with the
@@ -203,7 +208,7 @@ export function useQueriedChartConfig(
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
-      const query = context.client
+      const query = queryClient
         .getQueryCache()
         .find({ queryKey: context.queryKey, exact: true });
       const isRefetch = !!query && query.state.data !== undefined;
@@ -232,7 +237,7 @@ export function useQueriedChartConfig(
 
         // When refetching, the cache is not updated until all chunks are fetched.
         if (!isRefetch) {
-          context.client.setQueryData<TQueryFnData>(
+          queryClient.setQueryData<TQueryFnData>(
             context.queryKey,
             accumulatedChunks,
           );
@@ -240,13 +245,13 @@ export function useQueriedChartConfig(
       }
 
       if (isRefetch && !context.signal.aborted) {
-        context.client.setQueryData<TQueryFnData>(
+        queryClient.setQueryData<TQueryFnData>(
           context.queryKey,
           accumulatedChunks,
         );
       }
 
-      return context.client.getQueryData(context.queryKey)!;
+      return queryClient.getQueryData(context.queryKey)!;
     },
     retry: 1,
     refetchOnWindowFocus: false,
