@@ -16,11 +16,7 @@ import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  experimental_streamedQuery as streamedQuery,
-  useQuery,
-  UseQueryOptions,
-} from '@tanstack/react-query';
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import {
   convertDateRangeToGranularityString,
@@ -49,6 +45,11 @@ type TimeWindow = {
 };
 
 type TQueryFnData = Pick<ResponseJSON<any>, 'data' | 'meta' | 'rows'> & {
+  isComplete: boolean;
+};
+
+type TChunk = {
+  chunk: ResponseJSON<Record<string, string | number>>;
   isComplete: boolean;
 };
 
@@ -158,6 +159,19 @@ async function* fetchDataInChunks(
   }
 }
 
+/** Append the given chunk to the given accumulated result */
+function appendChunk(
+  accumulated: TQueryFnData,
+  { chunk, isComplete }: TChunk,
+): TQueryFnData {
+  return {
+    data: [...(chunk.data || []), ...(accumulated?.data || [])],
+    meta: chunk.meta,
+    rows: (accumulated?.rows || 0) + (chunk.rows || 0),
+    isComplete,
+  };
+}
+
 /**
  * A hook providing data queried based on the provided chart config.
  *
@@ -186,36 +200,54 @@ export function useQueriedChartConfig(
     // Include disableQueryChunking in the query key to ensure that queries with the
     // same config but different disableQueryChunking values do not share a query
     queryKey: [config, options?.disableQueryChunking ?? false],
-    queryFn: streamedQuery({
-      streamFn: context =>
-        fetchDataInChunks(
-          config,
-          clickhouseClient,
-          context.signal,
-          options?.disableQueryChunking,
-        ),
-      /**
-       * This mode ensures that data remains in the cache until the next full streamed result is available.
-       * By default, the cache would be cleared before new data starts arriving, which results in the query briefly
-       * going back into the loading/pending state when multiple observers are sharing the query result resulting
-       * in flickering or render loops.
-       */
-      refetchMode: 'replace',
-      initialValue: {
+    // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
+    // https://tanstack.com/query/latest/docs/reference/streamedQuery
+    queryFn: async context => {
+      const query = context.client
+        .getQueryCache()
+        .find({ queryKey: context.queryKey, exact: true });
+      const isRefetch = !!query && query.state.data !== undefined;
+
+      const emptyValue: TQueryFnData = {
         data: [],
         meta: [],
         rows: 0,
         isComplete: false,
-      } as TQueryFnData,
-      reducer: (acc, { chunk, isComplete }) => {
-        return {
-          data: [...(chunk.data || []), ...(acc?.data || [])],
-          meta: chunk.meta,
-          rows: (acc?.rows || 0) + (chunk.rows || 0),
-          isComplete,
-        };
-      },
-    }),
+      };
+
+      const chunks = fetchDataInChunks(
+        config,
+        clickhouseClient,
+        context.signal,
+        options?.disableQueryChunking,
+      );
+
+      let accumulatedChunks: TQueryFnData = emptyValue;
+      for await (const chunk of chunks) {
+        if (context.signal.aborted) {
+          break;
+        }
+
+        accumulatedChunks = appendChunk(accumulatedChunks, chunk);
+
+        // When refetching, the cache is not updated until all chunks are fetched.
+        if (!isRefetch) {
+          context.client.setQueryData<TQueryFnData>(
+            context.queryKey,
+            accumulatedChunks,
+          );
+        }
+      }
+
+      if (isRefetch && !context.signal.aborted) {
+        context.client.setQueryData<TQueryFnData>(
+          context.queryKey,
+          accumulatedChunks,
+        );
+      }
+
+      return context.client.getQueryData(context.queryKey)!;
+    },
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
