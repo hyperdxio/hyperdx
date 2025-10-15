@@ -76,11 +76,15 @@ export const expressLogger = pinoHttp({
   customErrorMessage: (req: Request, res: Response, err) => {
     return `HTTP ${req.method} ${req.originalUrl}`;
   },
-  // enable this to debug request and response data
-  serializers: {
-    req: () => undefined,
-    res: () => undefined,
-  },
+  // Only disable req/res serializers in development
+  ...(config.IS_DEV
+    ? {
+        serializers: {
+          req: () => undefined,
+          res: () => undefined,
+        },
+      }
+    : {}),
 });
 
 export default logger;
