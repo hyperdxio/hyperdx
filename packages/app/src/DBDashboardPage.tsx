@@ -1083,7 +1083,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
           <Button
             variant="outline"
-            type="submit"
             color="gray"
             px="xs"
             mr={6}

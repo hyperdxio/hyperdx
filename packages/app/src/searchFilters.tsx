@@ -11,17 +11,22 @@ export type FilterState = {
   };
 };
 
-export const filtersToQuery = (filters: FilterState): Filter[] => {
+export const filtersToQuery = (
+  filters: FilterState,
+  { stringifyKeys = false }: { stringifyKeys?: boolean } = {},
+): Filter[] => {
   return Object.entries(filters)
     .filter(
       ([_, values]) => values.included.size > 0 || values.excluded.size > 0,
     )
     .flatMap(([key, values]) => {
       const conditions = [];
+      const actualKey = stringifyKeys ? `toString(${key})` : key;
+
       if (values.included.size > 0) {
         conditions.push({
           type: 'sql' as const,
-          condition: `${key} IN (${Array.from(values.included)
+          condition: `${actualKey} IN (${Array.from(values.included)
             .map(v => `'${v}'`)
             .join(', ')})`,
         });
@@ -29,7 +34,7 @@ export const filtersToQuery = (filters: FilterState): Filter[] => {
       if (values.excluded.size > 0) {
         conditions.push({
           type: 'sql' as const,
-          condition: `${key} NOT IN (${Array.from(values.excluded)
+          condition: `${actualKey} NOT IN (${Array.from(values.excluded)
             .map(v => `'${v}'`)
             .join(', ')})`,
         });
