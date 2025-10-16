@@ -5,9 +5,11 @@
     "paths": {
       "@/*": ["./*"]
     },
-    "rootDir": ".",
     "outDir": "build",
-    "moduleResolution": "Node16"
+    "skipLibCheck": false,
+    "sourceMap": true,
+    "strict": true,
+    "target": "ES2022"
   },
   "include": ["src", "migrations", "scripts"],
   "exclude": ["node_modules"]
