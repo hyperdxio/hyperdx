@@ -1145,9 +1145,17 @@ function DBSearchPage() {
       dateRange: searchedTimeRange,
       displayType: DisplayType.StackedBar,
       with: aliasWith,
+      // Preserve the original table select string for "View Events" links
+      eventTableSelect: searchedConfig.select || chartConfig.select,
       ...variableConfig,
     };
-  }, [chartConfig, searchedSource, aliasWith, searchedTimeRange]);
+  }, [
+    chartConfig,
+    searchedSource,
+    aliasWith,
+    searchedTimeRange,
+    searchedConfig.select,
+  ]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
