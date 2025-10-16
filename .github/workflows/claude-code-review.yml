@@ -40,16 +40,28 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            Please review this pull request. Use the repository's CLAUDE.md for guidance on style and conventions.
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
+            **IMPORTANT: Keep your review SHORT and ACTIONABLE.**
 
-            If you find any issues, use `gh pr comment --edit-last --create-if-none` with your Bash tool to leave your review as a comment on the PR.
+            Format your review as a concise bulleted list focusing ONLY on:
+            - Critical bugs or security issues (if any)
+            - Important code quality issues or violations of project patterns
+            - Must-fix items before merge
+
+            Skip minor style nitpicks, explanations of obvious issues, and lengthy justifications unless critical.
+            Each item should be: **Issue** → **Fix** (one line each when possible).
+
+            Example format:
+            - ❌ Unvalidated user input in API endpoint → Add input validation
+            - ⚠️ Missing error handling in async function → Wrap in try-catch
+            - 🔒 Hardcoded credentials in config.ts → Move to environment variables
+
+            If there are NO critical issues, simply say "✅ No critical issues found."
+
+            Note: If the team wants a more thorough review, they can comment on the PR requesting one.
+
+            Use `gh pr comment --edit-last --create-if-none` with your Bash tool to leave your review as a comment on the PR.
             This will create a new comment if none exists, or edit the last comment if one exists.
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
