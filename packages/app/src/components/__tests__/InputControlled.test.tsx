@@ -15,7 +15,7 @@ function TestForm({ children }: { children: React.ReactNode }) {
 
   return (
     <form>
-      {React.cloneElement(children as React.ReactElement, { control })}
+      {React.cloneElement(children as React.ReactElement<any>, { control })}
     </form>
   );
 }

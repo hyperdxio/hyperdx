@@ -275,7 +275,7 @@ function TimelineMouseCursor({
   xPerc,
   setXPerc,
 }: {
-  containerRef: RefObject<HTMLDivElement>;
+  containerRef: RefObject<HTMLDivElement | null>;
   maxVal: number;
   labelWidth: number;
   height: number;

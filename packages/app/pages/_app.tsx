@@ -48,7 +48,7 @@ const queryClient = new QueryClient({
 });
 
 export type NextPageWithLayout<P = object, IP = P> = NextPage<P, IP> & {
-  getLayout?: (page: React.ReactElement) => React.ReactNode;
+  getLayout?: (page: React.ReactElement<any>) => React.ReactNode;
 };
 
 type AppPropsWithLayout = AppProps & {
