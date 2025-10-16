@@ -341,7 +341,6 @@ describe('util', () => {
     const now = Date.now();
     const oneMinuteMs = 60 * 1000;
     const oneHourMs = 60 * oneMinuteMs;
-    const oneDayMs = 24 * oneHourMs;
 
     it('should return unchanged dates when range is within limits', () => {
       const startTime = now - 10 * oneMinuteMs; // 10 minutes ago
