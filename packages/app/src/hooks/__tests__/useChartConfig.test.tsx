@@ -286,6 +286,32 @@ describe('useChartConfig', () => {
         },
       ]);
     });
+
+    it('returns a single window matching the input date range if the input date range is empty', () => {
+      expect(
+        getGranularityAlignedTimeWindows(
+          {
+            dateRange: [
+              new Date('2023-01-10 00:00:30'),
+              new Date('2023-01-10 00:00:30'),
+            ],
+            granularity: '1 minute',
+            timestampValueExpression: 'TimestampTime',
+          } as ChartConfigWithDateRange & { granularity: string },
+          [
+            60, // 1m
+            5 * 60, // 5m
+          ],
+        ),
+      ).toEqual([
+        {
+          dateRange: [
+            new Date('2023-01-10 00:00:30'),
+            new Date('2023-01-10 00:00:30'),
+          ],
+        },
+      ]);
+    });
   });
 
   describe('useQueriedChartConfig', () => {
@@ -935,6 +961,37 @@ describe('useChartConfig', () => {
 
       // The original query should still have its chunked data
       expect(result1.current.data?.rows).toBeGreaterThan(1);
+    });
+
+    it('returns an empty result if the given date range is empty', async () => {
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2025-10-01 00:00:00Z'),
+          new Date('2025-10-01 00:00:00Z'),
+        ],
+        granularity: '1 hour',
+      });
+
+      const mockResponse = createMockQueryResponse([]);
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
+
+      const { result } = renderHook(() => useQueriedChartConfig(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(mockClickhouseClient.queryChartConfig).toHaveBeenCalledTimes(1);
+
+      expect(result.current.data).toEqual({
+        data: [],
+        meta: mockResponse.meta,
+        rows: 0,
+        isComplete: true,
+      });
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.isPending).toBe(false);
     });
   });
 });

@@ -18,6 +18,17 @@ export function generateTimeWindowsDescending(
   endDate: Date,
   windowDurationsSeconds: number[] = DEFAULT_TIME_WINDOWS_SECONDS,
 ): TimeWindow[] {
+  if (startDate.getTime() === endDate.getTime()) {
+    return [
+      {
+        startTime: startDate,
+        endTime: endDate,
+        windowIndex: 0,
+        direction: 'DESC',
+      },
+    ];
+  }
+
   const windows: TimeWindow[] = [];
   let currentEnd = new Date(endDate);
   let windowIndex = 0;
@@ -50,7 +61,18 @@ export function generateTimeWindowsAscending(
   startDate: Date,
   endDate: Date,
   windowDurationsSeconds: number[] = DEFAULT_TIME_WINDOWS_SECONDS,
-) {
+): TimeWindow[] {
+  if (startDate.getTime() === endDate.getTime()) {
+    return [
+      {
+        startTime: startDate,
+        endTime: endDate,
+        windowIndex: 0,
+        direction: 'ASC',
+      },
+    ];
+  }
+
   const windows: TimeWindow[] = [];
   let currentStart = new Date(startDate);
   let windowIndex = 0;
