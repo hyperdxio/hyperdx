@@ -129,18 +129,21 @@ export class Metadata {
     cache: MetadataCache;
     connectionId: string;
   }) {
-    return cache.getOrFetch(`${database}.${table}.metadata`, async () => {
-      const sql = chSql`SELECT * FROM system.tables where database = ${{ String: database }} AND name = ${{ String: table }}`;
-      const json = await this.clickhouseClient
-        .query<'JSON'>({
-          connectionId,
-          query: sql.sql,
-          query_params: sql.params,
-          clickhouse_settings: this.getClickHouseSettings(),
-        })
-        .then(res => res.json<TableMetadata>());
-      return json.data[0];
-    });
+    return cache.getOrFetch(
+      `${connectionId}.${database}.${table}.metadata`,
+      async () => {
+        const sql = chSql`SELECT * FROM system.tables where database = ${{ String: database }} AND name = ${{ String: table }}`;
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<TableMetadata>());
+        return json.data[0];
+      },
+    );
   }
 
   async getColumns({
@@ -153,7 +156,7 @@ export class Metadata {
     connectionId: string;
   }) {
     return this.cache.getOrFetch<ColumnMeta[]>(
-      `${databaseName}.${tableName}.columns`,
+      `${connectionId}.${databaseName}.${tableName}.columns`,
       async () => {
         const sql = chSql`DESCRIBE ${tableExpr({ database: databaseName, table: tableName })}`;
         const columns = await this.clickhouseClient
@@ -240,8 +243,8 @@ export class Metadata {
     metricName?: string;
   }) {
     const cacheKey = metricName
-      ? `${databaseName}.${tableName}.${column}.${metricName}.keys`
-      : `${databaseName}.${tableName}.${column}.keys`;
+      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.keys`
+      : `${connectionId}.${databaseName}.${tableName}.${column}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
@@ -351,8 +354,8 @@ export class Metadata {
     // HDX-2480 delete line below to reenable json filters
     return []; // Need to disable JSON keys for the time being.
     const cacheKey = metricName
-      ? `${databaseName}.${tableName}.${column}.${metricName}.keys`
-      : `${databaseName}.${tableName}.${column}.keys`;
+      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.keys`
+      : `${connectionId}.${databaseName}.${tableName}.${column}.keys`;
 
     return this.cache.getOrFetch<{ key: string; chType: string }[]>(
       cacheKey,
@@ -420,9 +423,9 @@ export class Metadata {
     maxValues?: number;
     connectionId: string;
   }) {
-    const cachedValues = this.cache.get<string[]>(
-      `${databaseName}.${tableName}.${column}.${key}.values`,
-    );
+    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${column}.${key}.values`;
+
+    const cachedValues = this.cache.get<string[]>(cacheKey);
 
     if (cachedValues != null) {
       return cachedValues;
@@ -450,28 +453,25 @@ export class Metadata {
       }}
     `;
 
-    return this.cache.getOrFetch<string[]>(
-      `${databaseName}.${tableName}.${column}.${key}.values`,
-      async () => {
-        const values = await this.clickhouseClient
-          .query<'JSON'>({
-            query: sql.sql,
-            query_params: sql.params,
-            connectionId,
-            clickhouse_settings: {
-              max_rows_to_read: String(
-                this.getClickHouseSettings().max_rows_to_read ??
-                  DEFAULT_METADATA_MAX_ROWS_TO_READ,
-              ),
-              read_overflow_mode: 'break',
-              ...this.getClickHouseSettings(),
-            },
-          })
-          .then(res => res.json<Record<string, unknown>>())
-          .then(d => d.data.map(row => row.value as string));
-        return values;
-      },
-    );
+    return this.cache.getOrFetch<string[]>(cacheKey, async () => {
+      const values = await this.clickhouseClient
+        .query<'JSON'>({
+          query: sql.sql,
+          query_params: sql.params,
+          connectionId,
+          clickhouse_settings: {
+            max_rows_to_read: String(
+              this.getClickHouseSettings().max_rows_to_read ??
+                DEFAULT_METADATA_MAX_ROWS_TO_READ,
+            ),
+            read_overflow_mode: 'break',
+            ...this.getClickHouseSettings(),
+          },
+        })
+        .then(res => res.json<Record<string, unknown>>())
+        .then(d => d.data.map(row => row.value as string));
+      return values;
+    });
   }
 
   async getAllFields({
@@ -666,7 +666,7 @@ export class Metadata {
     disableRowLimit?: boolean;
   }) {
     return this.cache.getOrFetch(
-      `${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
+      `${chartConfig.connection}.${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
       async () => {
         const selectClause = keys
           .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)

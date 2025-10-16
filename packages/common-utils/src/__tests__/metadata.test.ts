@@ -198,7 +198,7 @@ describe('Metadata', () => {
 
       // Setup the cache to return the mock data
       mockCache.getOrFetch.mockImplementation((key, queryFn) => {
-        if (key === 'test_db.test_table.metadata') {
+        if (key === 'test_connection.test_db.test_table.metadata') {
           return Promise.resolve(mockTableMetadata);
         }
         return queryFn();
@@ -212,7 +212,7 @@ describe('Metadata', () => {
 
       // Verify the cache was called with the right key
       expect(mockCache.getOrFetch).toHaveBeenCalledWith(
-        'test_db.test_table.metadata',
+        'test_connection.test_db.test_table.metadata',
         expect.any(Function),
       );
 
