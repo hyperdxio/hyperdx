@@ -4,7 +4,6 @@ import { useAtom, useAtomValue } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import get from 'lodash/get';
 import {
-  ActionIcon,
   Box,
   Button,
   Group,
@@ -344,8 +343,17 @@ export function DBRowJsonViewer({
       }
 
       const handleCopyObject = () => {
-        const copiedObj =
-          keyPath.length === 0 ? rowData : get(rowData, keyPath);
+        let copiedObj;
+
+        // When in parsed JSON context (e.g., expanded stringified JSON),
+        // use the value directly since keyPath doesn't match rowData structure
+        if (isInParsedJson && parsedJsonRootPath) {
+          copiedObj = value;
+        } else {
+          // For regular nested objects, use keyPath to navigate rowData
+          copiedObj = keyPath.length === 0 ? rowData : get(rowData, keyPath);
+        }
+
         window.navigator.clipboard.writeText(
           JSON.stringify(copiedObj, null, 2),
         );
