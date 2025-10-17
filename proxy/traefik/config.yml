@@ -1,0 +1,46 @@
+http:
+  routers:
+    # This handles the main app at the basepath
+    app-router:
+      entryPoints:
+        - web
+      rule: 'PathPrefix(`{{ env "HYPERDX_BASE_PATH" }}`)'
+      service: app-service
+
+    # This handles assets and api calls at the root and rewrites them
+    assets-api-router:
+      entryPoints:
+        - web
+      rule:
+        'PathPrefix(`/api`) || PathPrefix(`/_next`) || Path(`/__ENV.js`) ||
+        Path(`/Icon32.png`)'
+      service: app-service
+      middlewares:
+        - add-basepath
+
+    # This redirects from / to the basepath
+    root-redirect:
+      entryPoints:
+        - web
+      rule: 'Path(`/`)'
+      service: app-service # service is required, but redirect will happen first
+      middlewares:
+        - redirect-to-basepath
+
+  middlewares:
+    add-basepath:
+      addPrefix:
+        prefix: '{{ env "HYPERDX_BASE_PATH" }}'
+
+    redirect-to-basepath:
+      redirectRegex:
+        regex: '^/$'
+        replacement: '{{ env "HYPERDX_BASE_PATH" }}'
+        permanent: true
+
+  services:
+    app-service:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: 'http://127.0.0.1:8080'
