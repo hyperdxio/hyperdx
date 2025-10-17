@@ -66,6 +66,7 @@ import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { parseAsStringWithNewLines } from './utils/queryParsers';
 import api from './api';
 import { DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
@@ -557,7 +558,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   ) as [SQLInterval | undefined, (value: SQLInterval | undefined) => void];
   const [where, setWhere] = useQueryState(
     'where',
-    parseAsString.withDefault(''),
+    parseAsStringWithNewLines.withDefault(''),
   );
   const [whereLanguage, setWhereLanguage] = useQueryState(
     'whereLanguage',
@@ -1082,7 +1083,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
           <Button
             variant="outline"
-            type="submit"
             color="gray"
             px="xs"
             mr={6}

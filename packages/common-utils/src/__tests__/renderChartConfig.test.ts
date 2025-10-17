@@ -409,4 +409,225 @@ describe('renderChartConfig', () => {
       );
     });
   });
+
+  describe('k8s semantic convention migrations', () => {
+    it('should generate SQL with metricNameSql for k8s.pod.cpu.utilization gauge metric', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'k8s.pod.cpu.utilization',
+            metricNameSql:
+              "MetricName IN ('k8s.pod.cpu.utilization', 'k8s.pod.cpu.usage')",
+            metricType: MetricsDataType.Gauge,
+          },
+        ],
+        where: '',
+        whereLanguage: 'lucene',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '1 minute',
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      // Verify the SQL contains the IN-based metric name condition
+      expect(actual).toContain('k8s.pod.cpu.utilization');
+      expect(actual).toContain('k8s.pod.cpu.usage');
+      expect(actual).toMatch(/MetricName IN /);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should generate SQL with metricNameSql for k8s.node.cpu.utilization sum metric', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'max',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'k8s.node.cpu.utilization',
+            metricNameSql:
+              "MetricName IN ('k8s.node.cpu.utilization', 'k8s.node.cpu.usage')",
+            metricType: MetricsDataType.Sum,
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '5 minute',
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('k8s.node.cpu.utilization');
+      expect(actual).toContain('k8s.node.cpu.usage');
+      expect(actual).toMatch(/MetricName IN /);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should generate SQL with metricNameSql for container.cpu.utilization histogram metric', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.95,
+            valueExpression: 'Value',
+            metricName: 'container.cpu.utilization',
+            metricNameSql:
+              "MetricName IN ('container.cpu.utilization', 'container.cpu.usage')",
+            metricType: MetricsDataType.Histogram,
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '2 minute',
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('container.cpu.utilization');
+      expect(actual).toContain('container.cpu.usage');
+      expect(actual).toMatch(/MetricName IN /);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should generate SQL with metricNameSql for histogram metric with groupBy', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.99,
+            valueExpression: 'Value',
+            metricName: 'k8s.pod.cpu.utilization',
+            metricNameSql:
+              "MetricName IN ('k8s.pod.cpu.utilization', 'k8s.pod.cpu.usage')",
+            metricType: MetricsDataType.Histogram,
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '1 minute',
+        groupBy: `ResourceAttributes['k8s.pod.name']`,
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('k8s.pod.cpu.utilization');
+      expect(actual).toContain('k8s.pod.cpu.usage');
+      expect(actual).toMatch(/MetricName IN /);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should handle metrics without metricNameSql (backward compatibility)', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'some.regular.metric',
+            // No metricNameSql provided
+            metricType: MetricsDataType.Gauge,
+          },
+        ],
+        where: '',
+        whereLanguage: 'lucene',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '1 minute',
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      // Should use the simple string comparison for regular metrics (not IN-based)
+      expect(actual).toContain("MetricName = 'some.regular.metric'");
+      expect(actual).not.toMatch(/MetricName IN /);
+      expect(actual).toMatchSnapshot();
+    });
+  });
 });

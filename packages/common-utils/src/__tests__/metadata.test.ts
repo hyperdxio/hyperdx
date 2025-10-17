@@ -198,7 +198,7 @@ describe('Metadata', () => {
 
       // Setup the cache to return the mock data
       mockCache.getOrFetch.mockImplementation((key, queryFn) => {
-        if (key === 'test_db.test_table.metadata') {
+        if (key === 'test_connection.test_db.test_table.metadata') {
           return Promise.resolve(mockTableMetadata);
         }
         return queryFn();
@@ -212,7 +212,7 @@ describe('Metadata', () => {
 
       // Verify the cache was called with the right key
       expect(mockCache.getOrFetch).toHaveBeenCalledWith(
-        'test_db.test_table.metadata',
+        'test_connection.test_db.test_table.metadata',
         expect.any(Function),
       );
 
@@ -280,8 +280,9 @@ describe('Metadata', () => {
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
         expect.objectContaining({
           clickhouse_settings: {
-            max_rows_to_read: String(3e6),
-            read_overflow_mode: 'break',
+            max_rows_to_read: '0',
+            timeout_overflow_mode: 'break',
+            max_execution_time: 15,
           },
         }),
       );
@@ -312,8 +313,9 @@ describe('Metadata', () => {
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
         expect.objectContaining({
           clickhouse_settings: {
-            max_rows_to_read: String(3e6),
-            read_overflow_mode: 'break',
+            max_rows_to_read: '0',
+            timeout_overflow_mode: 'break',
+            max_execution_time: 15,
           },
         }),
       );
@@ -418,6 +420,141 @@ describe('Metadata', () => {
         }),
         metadata,
       );
+    });
+  });
+
+  describe('getValuesDistribution', () => {
+    const mockChartConfig: ChartConfigWithDateRange = {
+      from: {
+        databaseName: 'test_db',
+        tableName: 'test_table',
+      },
+      select: '',
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: '',
+      connection: 'test_connection',
+      dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+    };
+
+    beforeEach(() => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                __hdx_value: 'info',
+                __hdx_percentage: '85.9',
+              },
+              {
+                __hdx_value: 'debug',
+                __hdx_percentage: '3.0',
+              },
+              {
+                __hdx_value: 'warn',
+                __hdx_percentage: '6.5',
+              },
+              {
+                __hdx_value: 'error',
+                __hdx_percentage: '4.1',
+              },
+            ],
+          }),
+      });
+    });
+
+    it('should fetch and return values distribution for severity', async () => {
+      const result = await metadata.getValuesDistribution({
+        chartConfig: mockChartConfig,
+        key: 'severity',
+      });
+
+      expect(result).toEqual(
+        new Map([
+          ['info', Number(85.9)],
+          ['debug', Number(3.0)],
+          ['warn', Number(6.5)],
+          ['error', Number(4.1)],
+        ]),
+      );
+    });
+
+    it('should include alias CTEs when provided in the config', async () => {
+      const configWithAliases = {
+        ...mockChartConfig,
+        with: [
+          {
+            name: 'service',
+            sql: {
+              sql: 'ServiceName',
+              params: {},
+            },
+          },
+          {
+            name: 'severity',
+            sql: {
+              sql: 'SeverityText',
+              params: {},
+            },
+          },
+        ],
+        where: "severity = 'info'",
+      };
+
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getValuesDistribution({
+        chartConfig: configWithAliases,
+        key: 'severity',
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      expect(actualConfig.with).toContainEqual({
+        name: 'service',
+        sql: {
+          sql: 'ServiceName',
+          params: {},
+        },
+      });
+      expect(actualConfig.with).toContainEqual({
+        name: 'severity',
+        sql: {
+          sql: 'SeverityText',
+          params: {},
+        },
+      });
+      expect(actualConfig.where).toBe("severity = 'info'");
+    });
+
+    it('should include filters from the config in the query', async () => {
+      const configWithFilters: ChartConfigWithDateRange = {
+        ...mockChartConfig,
+        filters: [
+          {
+            type: 'sql',
+            condition: "ServiceName IN ('clickhouse')",
+          },
+        ],
+      };
+
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getValuesDistribution({
+        chartConfig: configWithFilters,
+        key: 'severity',
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      expect(actualConfig.filters).toContainEqual({
+        type: 'sql',
+        condition: "ServiceName IN ('clickhouse')",
+      });
     });
   });
 });

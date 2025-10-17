@@ -20,6 +20,7 @@ import {
   SegmentedControl,
   Tabs,
   Text,
+  Tooltip,
 } from '@mantine/core';
 import ReactCodeMirror from '@uiw/react-codemirror';
 
@@ -33,6 +34,7 @@ import DBHeatmapChart from './components/DBHeatmapChart';
 import { DBSqlRowTable } from './components/DBRowTable';
 import DBTableChart from './components/DBTableChart';
 import OnboardingModal from './components/OnboardingModal';
+import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useConnections } from './connection';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 
@@ -363,13 +365,31 @@ function InsertsTab({
           </Text>
           <DBTableChart
             config={{
+              dateRange: searchedTimeRange,
               select: [
-                `count() as "Part Count"`,
-                `sum(rows) as Rows`,
-                'database as Database',
-                'table as Table',
-                'partition as Partition',
-              ].join(','),
+                {
+                  aggFn: 'count',
+                  valueExpression: '',
+                  alias: 'Part Count',
+                },
+                {
+                  aggFn: 'sum',
+                  valueExpression: 'rows',
+                  alias: 'Rows',
+                },
+                {
+                  valueExpression: 'database',
+                  alias: 'Database',
+                },
+                {
+                  valueExpression: 'table',
+                  alias: 'Table',
+                },
+                {
+                  valueExpression: 'partition',
+                  alias: 'Partition',
+                },
+              ],
               from: {
                 databaseName: 'system',
                 tableName: 'parts',
@@ -439,6 +459,15 @@ function ClickhousePage() {
     // showRelativeInterval: isLive,
   });
 
+  // For future use if Live button is added
+  const [isLive, setIsLive] = useState(false);
+
+  const { manualRefreshCooloff, refresh } = useDashboardRefresh({
+    searchedTimeRange,
+    onTimeRangeSelect,
+    isLive,
+  });
+
   const filters = useMemo(() => {
     const { latencyMin, latencyMax } = latencyFilter;
     return [
@@ -479,21 +508,35 @@ function ClickhousePage() {
             size="xs"
           />
         </Group>
-        <form
-          onSubmit={e => {
-            e.preventDefault();
-            onSearch(displayedTimeInputValue);
-            return false;
-          }}
-        >
-          <TimePicker
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={range => {
-              onSearch(range);
+        <Group gap="xs">
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              onSearch(displayedTimeInputValue);
+              return false;
             }}
-          />
-        </form>
+          >
+            <TimePicker
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onSearch}
+            />
+          </form>
+          <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+            <Button
+              onClick={refresh}
+              loading={manualRefreshCooloff}
+              disabled={manualRefreshCooloff}
+              color="gray"
+              variant="outline"
+              title="Refresh dashboard"
+              aria-label="Refresh dashboard"
+              px="xs"
+            >
+              <i className="bi bi-arrow-clockwise fs-5"></i>
+            </Button>
+          </Tooltip>
+        </Group>
       </Group>
       <Tabs
         mt="md"
@@ -661,10 +704,22 @@ function ClickhousePage() {
                 <DBTableChart
                   config={{
                     select: [
-                      `count() as "Count"`,
-                      `sum(query_duration_ms) as "Total Duration (ms)"`,
-                      `any(query) as "Query Example"`,
-                    ].join(','),
+                      {
+                        aggFn: 'count',
+                        valueExpression: '',
+                        alias: `Count`,
+                      },
+                      {
+                        aggFn: 'sum',
+                        valueExpression: 'query_duration_ms',
+                        alias: `Total Duration (ms)`,
+                      },
+                      {
+                        aggFn: 'any',
+                        valueExpression: 'query',
+                        alias: `Query Example`,
+                      },
+                    ],
                     dateRange: searchedTimeRange,
                     from,
                     where: `(

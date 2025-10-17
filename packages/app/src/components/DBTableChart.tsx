@@ -1,10 +1,11 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
-  ChartConfigWithOptDateRange,
+  ChartConfigWithOptTimestamp,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
+import { SortingState } from '@tanstack/react-table';
 
 import { Table } from '@/HDXMultiSeriesTableChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -15,17 +16,17 @@ import { SQLPreview } from './ChartSQLPreview';
 // TODO: Support clicking in to view matched events
 export default function DBTableChart({
   config,
-  onSortClick,
   getRowSearchLink,
   enabled = true,
   queryKeyPrefix,
 }: {
-  config: ChartConfigWithOptDateRange;
-  onSortClick?: (seriesIndex: number) => void;
+  config: ChartConfigWithOptTimestamp;
   getRowSearchLink?: (row: any) => string;
   queryKeyPrefix?: string;
   enabled?: boolean;
 }) {
+  const [sort, setSort] = useState<SortingState>([]);
+
   const queriedConfig = (() => {
     const _config = omit(config, ['granularity']);
     if (!_config.limit) {
@@ -33,6 +34,15 @@ export default function DBTableChart({
     }
     if (_config.groupBy && typeof _config.groupBy === 'string') {
       _config.orderBy = _config.groupBy;
+    }
+
+    if (sort.length) {
+      _config.orderBy = sort?.map(o => {
+        return {
+          valueExpression: o.id,
+          ordering: o.desc ? 'DESC' : 'ASC',
+        };
+      });
     }
     return _config;
   })();
@@ -44,6 +54,21 @@ export default function DBTableChart({
     });
   const { observerRef: fetchMoreRef } = useIntersectionObserver(fetchNextPage);
 
+  // Returns an array of aliases, so we can check if something is using an alias
+  const aliasMap = useMemo(() => {
+    // If the config.select is a string, we can't infer this.
+    // One day, we could potentially run this through chSqlToAliasMap but AST parsing
+    //  doesn't work for most DBTableChart queries.
+    if (typeof config.select === 'string') {
+      return [];
+    }
+    return config.select.reduce((acc, select) => {
+      if (select.alias) {
+        acc.push(select.alias);
+      }
+      return acc;
+    }, [] as string[]);
+  }, [config?.select]);
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {
@@ -54,12 +79,15 @@ export default function DBTableChart({
     if (queriedConfig.groupBy && typeof queriedConfig.groupBy === 'string') {
       groupByKeys = queriedConfig.groupBy.split(',').map(v => v.trim());
     }
+
     return Object.keys(rows?.[0]).map(key => ({
+      // If it's an alias, wrap in quotes to support a variety of formats (ex "Time (ms)", "Req/s", etc)
+      id: aliasMap.includes(key) ? `"${key}"` : key,
       dataKey: key,
       displayName: key,
       numberFormat: groupByKeys.includes(key) ? undefined : config.numberFormat,
     }));
-  }, [config.numberFormat, data]);
+  }, [config.numberFormat, aliasMap, queriedConfig.groupBy, data]);
 
   return isLoading && !data ? (
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
@@ -101,6 +129,8 @@ export default function DBTableChart({
       data={data?.data ?? []}
       columns={columns}
       getRowSearchLink={getRowSearchLink}
+      sorting={sort}
+      onSortingChange={setSort}
       tableBottom={
         hasNextPage && (
           <Text ref={fetchMoreRef} ta="center">

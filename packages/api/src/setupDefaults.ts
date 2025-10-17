@@ -36,7 +36,7 @@ export async function setupTeamDefaults(teamId: string) {
   // Get the team object
   const team = await getTeam(teamId);
   if (!team) {
-    logger.warn(`Team not found with ID: ${teamId}`);
+    logger.warn({ teamId }, 'Team not found');
     return;
   }
 
@@ -71,7 +71,7 @@ export async function setupTeamDefaults(teamId: string) {
           `Created default connection: ${connectionConfig.name} (${newConnection._id})`,
         );
       } catch (error) {
-        logger.error(`Failed to create connection: ${error}`);
+        logger.error({ err: error }, 'Failed to create connection');
       }
     }
   } else if (parsedDefaultConnections) {
@@ -136,7 +136,7 @@ export async function setupTeamDefaults(teamId: string) {
             c => c.name === connectionId,
           );
           if (!connection) {
-            logger.warn(`Connection not found with name: ${connectionId}`);
+            logger.warn({ connectionId }, 'Connection not found with name');
             continue;
           }
           connectionId = connection._id.toString();
@@ -166,7 +166,7 @@ export async function setupTeamDefaults(teamId: string) {
         // Store the created source for the second pass
         createdSources[sourceConfig.name] = newSource;
       } catch (error) {
-        logger.error(`Failed to create source: ${error}`);
+        logger.error({ err: error }, 'Failed to create source');
       }
     }
 
@@ -227,7 +227,7 @@ export async function setupTeamDefaults(teamId: string) {
           );
         }
       } catch (error) {
-        logger.error(`Failed to update source references: ${error}`);
+        logger.error({ err: error }, 'Failed to update source references');
       }
     }
   } else if (parsedDefaultSources) {

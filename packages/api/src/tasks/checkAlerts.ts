@@ -9,7 +9,6 @@ import {
   ChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
-import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import * as fns from 'date-fns';
 import { chunk, isString } from 'lodash';
 import { ObjectId } from 'mongoose';
@@ -93,11 +92,13 @@ const fireChannelEvent = async ({
   }
 
   if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
-    logger.info({
-      message: 'Skipped firing alert due to silence',
-      alertId: alert.id,
-      silenced: alert.silenced,
-    });
+    logger.info(
+      {
+        alertId: alert.id,
+        silenced: alert.silenced,
+      },
+      'Skipped firing alert due to silence',
+    );
     return;
   }
 
@@ -158,14 +159,16 @@ export const processAlert = async (
       previous &&
       fns.getTime(previous.createdAt) === fns.getTime(nowInMinsRoundDown)
     ) {
-      logger.info({
-        message: `Skipped to check alert since the time diff is still less than 1 window size`,
-        windowSizeInMins,
-        nowInMinsRoundDown,
-        previous,
-        now,
-        alertId: alert.id,
-      });
+      logger.info(
+        {
+          windowSizeInMins,
+          nowInMinsRoundDown,
+          previous,
+          now,
+          alertId: alert.id,
+        },
+        `Skipped to check alert since the time diff is still less than 1 window size`,
+      );
       return;
     }
     const checkStartTime = previous
@@ -219,20 +222,24 @@ export const processAlert = async (
         };
       }
     } else {
-      logger.error({
-        message: `Unsupported alert source: ${alert.source}`,
-        alertId: alert.id,
-      });
+      logger.error(
+        {
+          alertId: alert.id,
+        },
+        `Unsupported alert source: ${alert.source}`,
+      );
       return;
     }
 
     // Fetch data
     if (chartConfig == null) {
-      logger.error({
-        message: 'Failed to build chart config',
-        chartConfig,
-        alertId: alert.id,
-      });
+      logger.error(
+        {
+          chartConfig,
+          alertId: alert.id,
+        },
+        'Failed to build chart config',
+      );
       return;
     }
 
@@ -242,13 +249,15 @@ export const processAlert = async (
       metadata,
     });
 
-    logger.info({
-      message: `Received alert metric [${alert.source} source]`,
-      alertId: alert.id,
-      checksData,
-      checkStartTime,
-      checkEndTime,
-    });
+    logger.info(
+      {
+        alertId: alert.id,
+        checksData,
+        checkStartTime,
+        checkEndTime,
+      },
+      `Received alert metric [${alert.source} source]`,
+    );
 
     // TODO: support INSUFFICIENT_DATA state
     const history: IAlertHistory = {
@@ -277,19 +286,23 @@ export const processAlert = async (
       );
 
       if (timestampColumnName == null) {
-        logger.error({
-          message: 'Failed to find timestamp column',
-          meta,
-          alertId: alert.id,
-        });
+        logger.error(
+          {
+            meta,
+            alertId: alert.id,
+          },
+          'Failed to find timestamp column',
+        );
         return;
       }
       if (valueColumnNames.size === 0) {
-        logger.error({
-          message: 'Failed to find value column',
-          meta,
-          alertId: alert.id,
-        });
+        logger.error(
+          {
+            meta,
+            alertId: alert.id,
+          },
+          'Failed to find value column',
+        );
         return;
       }
 
@@ -436,10 +449,11 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     teamWebhooksById: Map<string, IWebhook>,
   ) {
     await tasksTracer.startActiveSpan('processAlertTask', async span => {
-      setTraceAttributes({
-        'hyperdx.alerts.team.id': alertTask.conn.team.toString(),
-        'hyperdx.alerts.connection.id': alertTask.conn.id,
-      });
+      span.setAttribute(
+        'hyperdx.alerts.team.id',
+        alertTask.conn.team.toString(),
+      );
+      span.setAttribute('hyperdx.alerts.connection.id', alertTask.conn.id);
 
       try {
         const { alerts, conn } = alertTask;
@@ -448,7 +462,10 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
           alertCount: alerts.length,
         });
 
-        const clickhouseClient = await this.provider.getClickHouseClient(conn);
+        const clickhouseClient = await this.provider.getClickHouseClient(
+          conn,
+          this.args.sourceTimeoutMs,
+        );
 
         for (const alert of alerts) {
           await this.task_queue.add(() =>
@@ -481,10 +498,6 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       message: 'finished provider initialization',
       provider: this.provider.constructor.name,
       args: this.args,
-    });
-
-    setTraceAttributes({
-      'hyperdx.alerts.provider': this.provider.constructor.name,
     });
 
     const alertTasks = await this.provider.getAlertTasks();

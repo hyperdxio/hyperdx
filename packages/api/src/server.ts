@@ -31,7 +31,10 @@ export default class Server {
 
     if (mongoCloseResult.status === 'rejected') {
       hasError = true;
-      logger.error(serializeError(mongoCloseResult.reason));
+      logger.error(
+        { err: serializeError(mongoCloseResult.reason) },
+        'MongoDB client close failed',
+      );
     } else {
       logger.info('MongoDB client closed.');
     }

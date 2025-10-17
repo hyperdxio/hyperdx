@@ -20,6 +20,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { SegmentedControl, Select as MSelect } from '@mantine/core';
 
+import { getMetricNameSql } from './otelSemanticConventions';
 import {
   AggFn,
   ChartSeries,
@@ -384,6 +385,23 @@ export function timeBucketByGranularity(
   return buckets;
 }
 
+export const isAggregateFunction = (value: string) => {
+  const fns = [
+    'count',
+    'countIf',
+    'countDistinct',
+    'sum',
+    'avg',
+    'distinct',
+    'min',
+    'max',
+    'quantile',
+    'any',
+    'none',
+  ];
+  return fns.some(fn => value.includes(fn + '('));
+};
+
 export const INTEGER_NUMBER_FORMAT: NumberFormat = {
   factor: 1,
   output: 'number',
@@ -707,6 +725,10 @@ export const convertV1ChartConfigToV2 = (
         const [metricName, rawMetricDataType] = field
           .split(' - ')
           .map(s => s.trim());
+
+        // Check if this metric name needs version-based SQL transformation
+        const metricNameSql = getMetricNameSql(metricName);
+
         const metricDataType = z
           .nativeEnum(MetricsDataTypeV2)
           .parse(rawMetricDataType?.toLowerCase());
@@ -715,6 +737,7 @@ export const convertV1ChartConfigToV2 = (
           metricType: metricDataType,
           valueExpression: field,
           metricName,
+          metricNameSql,
           aggConditionLanguage: 'lucene',
           aggCondition: s.where,
         };
