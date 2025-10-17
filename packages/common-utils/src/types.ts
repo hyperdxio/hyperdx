@@ -371,8 +371,8 @@ export const _ChartConfigSchema = z.object({
   selectGroupBy: z.boolean().optional(),
   metricTables: MetricTableSchema.optional(),
   seriesReturnType: z.enum(['ratio', 'column']).optional(),
-  // Used to preserve original table select when chart overrides it (e.g., histograms)
-  eventTableSelect: SelectListSchema.optional(),
+  // Used to preserve original table select string when chart overrides it (e.g., histograms)
+  eventTableSelect: z.string().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.

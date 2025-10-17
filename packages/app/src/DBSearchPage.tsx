@@ -1146,7 +1146,7 @@ function DBSearchPage() {
       displayType: DisplayType.StackedBar,
       with: aliasWith,
       // Preserve the original table select string for "View Events" links
-      eventTableSelect: searchedConfig.select || chartConfig.select,
+      eventTableSelect: searchedConfig.select,
       ...variableConfig,
     };
   }, [

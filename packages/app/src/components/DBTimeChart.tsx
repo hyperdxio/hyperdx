@@ -179,10 +179,7 @@ function DBTimeChartComponent({
     // Include the select parameter if provided to preserve custom columns
     // eventTableSelect is used for charts that override select (like histograms with count)
     // to preserve the original table's select expression
-    if (
-      config.eventTableSelect &&
-      typeof config.eventTableSelect === 'string'
-    ) {
+    if (config.eventTableSelect) {
       params.select = config.eventTableSelect;
     }
     return new URLSearchParams(params);
