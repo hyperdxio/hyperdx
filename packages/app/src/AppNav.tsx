@@ -42,7 +42,7 @@ import {
   AppNavLink,
   AppNavUserMenu,
 } from './AppNav.components';
-import { IS_K8S_DASHBOARD_ENABLED, IS_LOCAL_MODE } from './config';
+import { IS_K8S_DASHBOARD_ENABLED, IS_LOCAL_MODE, IS_SELF_HOSTED_MODE } from './config';
 import Icon from './Icon';
 import InstallInstructionModal from './InstallInstructionsModal';
 import Logo from './Logo';
@@ -850,7 +850,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 className="px-3 mb-2 mt-4"
               >
                 <OnboardingChecklist onAddDataClick={openInstallInstructions} />
-                <AppNavCloudBanner />
+                {!IS_SELF_HOSTED_MODE && <AppNavCloudBanner />}
               </div>
             </>
           )}
