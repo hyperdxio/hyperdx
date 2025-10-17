@@ -27,7 +27,11 @@ import {
   getPreviousAlertHistories,
   processAlert,
 } from '@/tasks/checkAlerts';
-import { AlertDetails, AlertTaskType, loadProvider } from '@/tasks/providers';
+import {
+  AlertDetails,
+  AlertTaskType,
+  loadProvider,
+} from '@/tasks/checkAlerts/providers';
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateHdxLink,
@@ -35,7 +39,7 @@ import {
   getDefaultExternalAction,
   renderAlertTemplate,
   translateExternalActionsToInternal,
-} from '@/tasks/template';
+} from '@/tasks/checkAlerts/template';
 import * as slack from '@/utils/slack';
 
 // Create provider instance for tests
