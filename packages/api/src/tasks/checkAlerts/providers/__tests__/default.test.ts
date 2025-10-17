@@ -12,7 +12,7 @@ import {
   AlertProvider,
   AlertTaskType,
   loadProvider,
-} from '@/tasks/providers/index';
+} from '@/tasks/checkAlerts/providers';
 
 const MOCK_SAVED_SEARCH: any = {
   id: 'fake-saved-search-id',

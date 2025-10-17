@@ -28,13 +28,14 @@ import {
   AlertTask,
   AlertTaskType,
   loadProvider,
-} from '@/tasks/providers';
+} from '@/tasks/checkAlerts/providers';
 import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateTitle,
   handleSendGenericWebhook,
   renderAlertTemplate,
-} from '@/tasks/template';
+} from '@/tasks/checkAlerts/template';
+import { tasksTracer } from '@/tasks/tracer';
 import { CheckAlertsTaskArgs, HdxTask } from '@/tasks/types';
 import {
   calcAlertDateRange,
@@ -42,8 +43,6 @@ import {
   unflattenObject,
 } from '@/tasks/util';
 import logger from '@/utils/logger';
-
-import { tasksTracer } from './tracer';
 
 export const doesExceedThreshold = (
   thresholdType: AlertThresholdType,
