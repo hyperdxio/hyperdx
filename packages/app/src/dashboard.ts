@@ -184,3 +184,18 @@ export function useDeleteDashboard() {
     },
   });
 }
+
+export function useDuplicateDashboard() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => {
+      return hdxServer(`dashboards/${id}/duplicate`, {
+        method: 'POST',
+      }).json<Dashboard>();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboards'] });
+    },
+  });
+}
