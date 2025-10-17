@@ -35,12 +35,12 @@ import { generateTimeWindowsDescending } from '@/utils/searchWindows';
 interface AdditionalUseQueriedChartConfigOptions {
   onError?: (error: Error | ClickHouseQueryError) => void;
   /**
-   * By default, queries with large date ranges are split into multiple smaller queries to
+   * Queries with large date ranges can be split into multiple smaller queries to
    * avoid overloading the ClickHouse server and running into timeouts. In some cases, such
    * as when data is being sampled across the entire range, this chunking is not desirable
-   * and can be disabled.
+   * and should be disabled.
    */
-  disableQueryChunking?: boolean;
+  enableQueryChunking?: boolean;
 }
 
 type TimeWindow = {
@@ -121,16 +121,21 @@ export const getGranularityAlignedTimeWindows = (
   return windows;
 };
 
-async function* fetchDataInChunks(
-  config: ChartConfigWithOptDateRange,
-  clickhouseClient: ClickhouseClient,
-  signal: AbortSignal,
-  disableQueryChunking: boolean = false,
-) {
+async function* fetchDataInChunks({
+  config,
+  clickhouseClient,
+  signal,
+  enableQueryChunking = false,
+}: {
+  config: ChartConfigWithOptDateRange;
+  clickhouseClient: ClickhouseClient;
+  signal: AbortSignal;
+  enableQueryChunking?: boolean;
+}) {
   const windows =
-    !disableQueryChunking && shouldUseChunking(config)
+    enableQueryChunking && shouldUseChunking(config)
       ? getGranularityAlignedTimeWindows(config)
-      : ([undefined] as const);
+      : [undefined];
 
   if (IS_MTVIEWS_ENABLED) {
     const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
@@ -181,7 +186,7 @@ function appendChunk(
  *
  * If all of the following are true, the query will be chunked into multiple smaller queries:
  * - The config includes a dateRange, granularity, and timestampValueExpression
- * - `options.disableQueryChunking` is falsy
+ * - `options.enableQueryChunking` is true
  *
  * For chunked queries, note the following:
  * - `config.limit`, if provided, is applied to each chunk, so the total number
@@ -202,9 +207,9 @@ export function useQueriedChartConfig(
   const queryClient = useQueryClient();
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
-    // Include disableQueryChunking in the query key to ensure that queries with the
-    // same config but different disableQueryChunking values do not share a query
-    queryKey: [config, options?.disableQueryChunking ?? false],
+    // Include enableQueryChunking in the query key to ensure that queries with the
+    // same config but different enableQueryChunking values do not share a query
+    queryKey: [config, options?.enableQueryChunking ?? false],
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
@@ -220,12 +225,12 @@ export function useQueriedChartConfig(
         isComplete: false,
       };
 
-      const chunks = fetchDataInChunks(
+      const chunks = fetchDataInChunks({
         config,
         clickhouseClient,
-        context.signal,
-        options?.disableQueryChunking,
-      );
+        signal: context.signal,
+        enableQueryChunking: options?.enableQueryChunking,
+      });
 
       let accumulatedChunks: TQueryFnData = emptyValue;
       for await (const chunk of chunks) {

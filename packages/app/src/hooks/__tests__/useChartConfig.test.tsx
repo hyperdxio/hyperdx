@@ -364,9 +364,12 @@ describe('useChartConfig', () => {
 
       mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
 
-      const { result } = renderHook(() => useQueriedChartConfig(config), {
-        wrapper,
-      });
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
+        {
+          wrapper,
+        },
+      );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       await waitFor(() => expect(result.current.isFetching).toBe(false));
@@ -410,9 +413,12 @@ describe('useChartConfig', () => {
 
       mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
 
-      const { result } = renderHook(() => useQueriedChartConfig(config), {
-        wrapper,
-      });
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
+        {
+          wrapper,
+        },
+      );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       await waitFor(() => expect(result.current.isFetching).toBe(false));
@@ -460,9 +466,12 @@ describe('useChartConfig', () => {
 
       mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
 
-      const { result } = renderHook(() => useQueriedChartConfig(config), {
-        wrapper,
-      });
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
+        {
+          wrapper,
+        },
+      );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       await waitFor(() => expect(result.current.isFetching).toBe(false));
@@ -536,9 +545,12 @@ describe('useChartConfig', () => {
 
       mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
 
-      const { result } = renderHook(() => useQueriedChartConfig(config), {
-        wrapper,
-      });
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
+        {
+          wrapper,
+        },
+      );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       await waitFor(() => expect(result.current.isFetching).toBe(false));
@@ -560,7 +572,7 @@ describe('useChartConfig', () => {
       });
     });
 
-    it('fetches data without chunking when disableQueryChunking is true', async () => {
+    it('fetches data without chunking when enableQueryChunking is false', async () => {
       const config = createMockChartConfig({
         dateRange: [
           new Date('2025-10-01 00:00:00Z'),
@@ -585,11 +597,59 @@ describe('useChartConfig', () => {
       mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
 
       const { result } = renderHook(
-        () => useQueriedChartConfig(config, { disableQueryChunking: true }),
+        () => useQueriedChartConfig(config, { enableQueryChunking: false }),
         {
           wrapper,
         },
       );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // Should only be called once since chunking is explicitly disabled
+      expect(mockClickhouseClient.queryChartConfig).toHaveBeenCalledTimes(1);
+      expect(mockClickhouseClient.queryChartConfig).toHaveBeenCalledWith({
+        config,
+        metadata: expect.any(Object),
+        opts: {
+          abort_signal: expect.any(AbortSignal),
+        },
+      });
+      expect(result.current.data).toEqual({
+        data: mockResponse.data,
+        meta: mockResponse.meta,
+        rows: mockResponse.rows,
+        isComplete: true,
+      });
+    });
+
+    it('fetches data without chunking when enableQueryChunking is not provided', async () => {
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2025-10-01 00:00:00Z'),
+          new Date('2025-10-02 00:00:00Z'),
+        ],
+        granularity: '1 hour',
+      });
+
+      const mockResponse = createMockQueryResponse([
+        {
+          'count()': '71',
+          SeverityText: 'info',
+          __hdx_time_bucket: '2025-10-01T00:00:00Z',
+        },
+        {
+          'count()': '73',
+          SeverityText: 'info',
+          __hdx_time_bucket: '2025-10-02T00:00:00Z',
+        },
+      ]);
+
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
+
+      const { result } = renderHook(() => useQueriedChartConfig(config), {
+        wrapper,
+      });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       await waitFor(() => expect(result.current.isFetching).toBe(false));
@@ -654,9 +714,12 @@ describe('useChartConfig', () => {
         .mockResolvedValueOnce(mockResponse2)
         .mockResolvedValueOnce(mockResponse3);
 
-      const { result } = renderHook(() => useQueriedChartConfig(config), {
-        wrapper,
-      });
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
+        {
+          wrapper,
+        },
+      );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       await waitFor(() => expect(result.current.isFetching).toBe(false));
@@ -746,9 +809,12 @@ describe('useChartConfig', () => {
         .mockResolvedValueOnce(mockResponse2)
         .mockResolvedValueOnce(mockResponse3);
 
-      const { result } = renderHook(() => useQueriedChartConfig(config), {
-        wrapper,
-      });
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
+        {
+          wrapper,
+        },
+      );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       await waitFor(() => expect(result.current.isPending).toBe(false));
@@ -806,9 +872,12 @@ describe('useChartConfig', () => {
         mockResponse1Promise,
       );
 
-      const { result } = renderHook(() => useQueriedChartConfig(config), {
-        wrapper,
-      });
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
+        {
+          wrapper,
+        },
+      );
 
       // Should be in loading state before first chunk
       expect(result.current.isLoading).toBe(true);
@@ -850,7 +919,12 @@ describe('useChartConfig', () => {
       });
 
       const { result } = renderHook(
-        () => useQueriedChartConfig(config, { onError, retry: false }),
+        () =>
+          useQueriedChartConfig(config, {
+            onError,
+            retry: false,
+            enableQueryChunking: true,
+          }),
         {
           wrapper,
         },
@@ -860,6 +934,54 @@ describe('useChartConfig', () => {
 
       expect(onError).toHaveBeenCalledWith(mockError);
       expect(result.current.error).toBe(mockError);
+    });
+
+    it('has an error status with partial data after the second chunk fails to fetch', async () => {
+      const mockError = new Error('Query failed');
+      const mockSuccess = createMockQueryResponse([
+        {
+          'count()': '71',
+          __hdx_time_bucket: '2025-10-01T18:00:00Z',
+        },
+      ]);
+
+      mockClickhouseClient.queryChartConfig
+        .mockResolvedValueOnce(mockSuccess)
+        .mockRejectedValueOnce(mockError);
+
+      const onError = jest.fn();
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2025-10-01 00:00:00Z'),
+          new Date('2025-10-02 00:00:00Z'),
+        ],
+        granularity: '3 hour',
+      });
+
+      const { result } = renderHook(
+        () =>
+          useQueriedChartConfig(config, {
+            onError,
+            retry: false,
+            enableQueryChunking: true,
+          }),
+        {
+          wrapper,
+        },
+      );
+
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      expect(result.current.isFetching).toBe(false);
+      expect(result.current.isSuccess).toBe(false);
+
+      expect(result.current.error).toBe(mockError);
+      expect(onError).toHaveBeenCalledWith(mockError);
+      expect(result.current.data).toEqual({
+        data: mockSuccess.data,
+        meta: mockSuccess.meta,
+        rows: mockSuccess.rows,
+        isComplete: false,
+      });
     });
 
     it('does not make requests if it is disabled', async () => {
@@ -881,7 +1003,11 @@ describe('useChartConfig', () => {
       mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
 
       const { result } = renderHook(
-        () => useQueriedChartConfig(config, { enabled: false }),
+        () =>
+          useQueriedChartConfig(config, {
+            enabled: false,
+            enableQueryChunking: true,
+          }),
         {
           wrapper,
         },
@@ -895,7 +1021,7 @@ describe('useChartConfig', () => {
       expect(result.current.data).toBeUndefined();
     });
 
-    it('uses different query keys for the same config when one sets disableQueryChunking', async () => {
+    it('uses different query keys for the same config when one sets enableQueryChunking', async () => {
       const config = createMockChartConfig({
         dateRange: [
           new Date('2025-10-01 00:00:00Z'),
@@ -923,7 +1049,7 @@ describe('useChartConfig', () => {
       );
 
       const { result: result1 } = renderHook(
-        () => useQueriedChartConfig(config),
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
         {
           wrapper,
         },
@@ -938,13 +1064,13 @@ describe('useChartConfig', () => {
       expect(chunkedCallCount).toBeGreaterThan(1);
       expect(result1.current.data?.rows).toBeGreaterThan(1);
 
-      // Second render with same config but disableQueryChunking=true
+      // Second render with same config but without query chunking enabled
       mockClickhouseClient.queryChartConfig.mockResolvedValue(
         mockResponseNonChunked,
       );
 
       const { result: result2 } = renderHook(
-        () => useQueriedChartConfig(config, { disableQueryChunking: true }),
+        () => useQueriedChartConfig(config),
         {
           wrapper,
         },
@@ -975,9 +1101,12 @@ describe('useChartConfig', () => {
       const mockResponse = createMockQueryResponse([]);
       mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
 
-      const { result } = renderHook(() => useQueriedChartConfig(config), {
-        wrapper,
-      });
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
+        {
+          wrapper,
+        },
+      );
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       await waitFor(() => expect(result.current.isFetching).toBe(false));

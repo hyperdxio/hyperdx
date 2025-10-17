@@ -10,7 +10,7 @@ export function useSearchTotalCount(
   config: ChartConfigWithDateRange,
   queryKeyPrefix: string,
 ) {
-  // copied from DBTimeChart
+  // queriedConfig, queryKey, and enableQueryChunking match DBTimeChart so that react query can de-dupe these queries.
   const { granularity } = useTimeChartSettings(config);
   const queriedConfig = {
     ...config,
@@ -22,10 +22,11 @@ export function useSearchTotalCount(
     isLoading,
     isError,
   } = useQueriedChartConfig(queriedConfig, {
-    queryKey: [queryKeyPrefix, queriedConfig],
+    queryKey: [queryKeyPrefix, queriedConfig, 'chunked'],
     staleTime: 1000 * 60 * 5,
     refetchOnWindowFocus: false,
     placeholderData: keepPreviousData, // no need to flash loading state when in live tail
+    enableQueryChunking: true,
   });
 
   const isTotalCountComplete = !!totalCountData?.isComplete;

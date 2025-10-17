@@ -144,11 +144,7 @@ function usePatterns({
   const { data: sampleRows, isLoading: isSampleLoading } =
     useQueriedChartConfig(
       configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
-      {
-        enabled: configWithPrimaryAndPartitionKey != null && enabled,
-        // Disable chunking to ensure we get the desired sample size
-        disableQueryChunking: true,
-      },
+      { enabled: configWithPrimaryAndPartitionKey != null && enabled },
     );
 
   const { data: pyodide, isLoading: isLoadingPyodide } = usePyodide({
