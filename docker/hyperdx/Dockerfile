@@ -50,6 +50,8 @@ ENV NEXT_OUTPUT_STANDALONE true
 ENV NEXT_PUBLIC_IS_LOCAL_MODE false
 ENV NX_DAEMON=false
 RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api,@hyperdx/app
+RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
+
 
 # prod ############################################################################################
 FROM node:${NODE_VERSION}-alpine AS prod
@@ -66,7 +68,10 @@ USER node
 
 # Set up API and App
 WORKDIR /app
-COPY --chown=node:node --from=builder /app/packages/api/dist ./packages/api
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/packages/api/build ./packages/api/build
+COPY --chown=node:node --from=builder /app/packages/common-utils/dist ./packages/common-utils/dist
+COPY --chown=node:node --from=node_base /app/packages/common-utils/node_modules ./packages/common-utils/node_modules
 COPY --chown=node:node --from=builder /app/packages/app/.next/standalone ./packages/app
 COPY --chown=node:node --from=builder /app/packages/app/.next/static ./packages/app/packages/app/.next/static
 COPY --chown=node:node --from=builder /app/packages/app/public ./packages/app/packages/app/public
