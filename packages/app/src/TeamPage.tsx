@@ -713,27 +713,18 @@ export function CreateWebhookForm({
   const onSubmit: SubmitHandler<WebhookForm> = async values => {
     const { service, name, url, description, body, headers } = values;
     try {
-      // Parse and validate headers if provided
+      // Parse headers JSON if provided (API will validate the content)
       let parsedHeaders: Record<string, string> | undefined;
       if (headers && headers.trim()) {
         try {
           parsedHeaders = JSON.parse(headers);
-          // Validate that it's an object with string values
-          if (
-            typeof parsedHeaders !== 'object' ||
-            Array.isArray(parsedHeaders)
-          ) {
-            throw new Error('Headers must be a JSON object');
-          }
-          // Validate all values are strings
-          for (const [key, value] of Object.entries(parsedHeaders)) {
-            if (typeof value !== 'string') {
-              throw new Error(`Header "${key}" must have a string value`);
-            }
-          }
         } catch (parseError) {
+          const errorMessage =
+            parseError instanceof Error
+              ? parseError.message
+              : 'Invalid JSON format';
           notifications.show({
-            message: `Invalid JSON in headers: ${parseError.message}`,
+            message: `Invalid JSON in headers: ${errorMessage}`,
             color: 'red',
             autoClose: 5000,
           });
@@ -760,9 +751,37 @@ export function CreateWebhookForm({
       onClose();
     } catch (e) {
       console.error(e);
-      const message =
-        (e instanceof HTTPError ? (await e.response.json())?.message : null) ||
-        'Something went wrong. Please contact HyperDX team.';
+      let message = 'Something went wrong. Please contact HyperDX team.';
+
+      if (e instanceof HTTPError) {
+        try {
+          const errorData = await e.response.json();
+          // Handle Zod validation errors from zod-express-middleware
+          // The library returns errors in format: { error: { issues: [...] } }
+          if (
+            errorData.error?.issues &&
+            Array.isArray(errorData.error.issues)
+          ) {
+            // Format Zod validation errors
+            const validationErrors = errorData.error.issues
+              .map((issue: any) => {
+                const path = issue.path.join('.');
+                return `${path}: ${issue.message}`;
+              })
+              .join(', ');
+            message = `Validation error: ${validationErrors}`;
+          } else if (errorData.message) {
+            message = errorData.message;
+          } else {
+            // Fallback: show the entire error object as JSON
+            message = JSON.stringify(errorData);
+          }
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError);
+          // If parsing fails, use default message
+        }
+      }
+
       notifications.show({
         message,
         color: 'red',

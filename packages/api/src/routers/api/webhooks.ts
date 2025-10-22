@@ -43,7 +43,16 @@ router.post(
     body: z.object({
       body: z.string().optional(),
       description: z.string().optional(),
-      headers: z.record(z.string()).optional(),
+      headers: z
+        .record(
+          z.string().refine(val => !/[\r\n]/.test(val), {
+            message: 'Header names cannot contain line breaks',
+          }),
+          z.string().refine(val => !/[\r\n]/.test(val), {
+            message: 'Header values cannot contain line breaks',
+          }),
+        )
+        .optional(),
       name: z.string(),
       queryParams: z.record(z.string()).optional(),
       service: z.nativeEnum(WebhookService),
