@@ -37,6 +37,23 @@ router.get(
   },
 );
 
+const httpHeaderNameValidator = z
+  .string()
+  .min(1, 'Header name cannot be empty')
+  .regex(
+    /^[!#$%&'*+\-.0-9A-Z^_`a-z|~]+$/,
+    "Invalid header name. Only alphanumeric characters and !#$%&'*+-.^_`|~ are allowed",
+  )
+  .refine(name => !name.match(/^\d/), 'Header name cannot start with a number');
+
+// Validation for header values: no control characters allowed
+const httpHeaderValueValidator = z
+  .string()
+  // eslint-disable-next-line no-control-regex
+  .refine(val => !/[\r\n\t\x00-\x1F\x7F]/.test(val), {
+    message: 'Header values cannot contain control characters',
+  });
+
 router.post(
   '/',
   validateRequest({
@@ -44,14 +61,7 @@ router.post(
       body: z.string().optional(),
       description: z.string().optional(),
       headers: z
-        .record(
-          z.string().refine(val => !/[\r\n]/.test(val), {
-            message: 'Header names cannot contain line breaks',
-          }),
-          z.string().refine(val => !/[\r\n]/.test(val), {
-            message: 'Header values cannot contain line breaks',
-          }),
-        )
+        .record(httpHeaderNameValidator, httpHeaderValueValidator)
         .optional(),
       name: z.string(),
       queryParams: z.record(z.string()).optional(),
