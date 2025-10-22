@@ -692,6 +692,7 @@ type WebhookForm = {
   service: string;
   description?: string;
   body?: string;
+  headers?: string;
 };
 
 export function CreateWebhookForm({
@@ -710,8 +711,36 @@ export function CreateWebhookForm({
   });
 
   const onSubmit: SubmitHandler<WebhookForm> = async values => {
-    const { service, name, url, description, body } = values;
+    const { service, name, url, description, body, headers } = values;
     try {
+      // Parse and validate headers if provided
+      let parsedHeaders: Record<string, string> | undefined;
+      if (headers && headers.trim()) {
+        try {
+          parsedHeaders = JSON.parse(headers);
+          // Validate that it's an object with string values
+          if (
+            typeof parsedHeaders !== 'object' ||
+            Array.isArray(parsedHeaders)
+          ) {
+            throw new Error('Headers must be a JSON object');
+          }
+          // Validate all values are strings
+          for (const [key, value] of Object.entries(parsedHeaders)) {
+            if (typeof value !== 'string') {
+              throw new Error(`Header "${key}" must have a string value`);
+            }
+          }
+        } catch (parseError) {
+          notifications.show({
+            message: `Invalid JSON in headers: ${parseError.message}`,
+            color: 'red',
+            autoClose: 5000,
+          });
+          return;
+        }
+      }
+
       const response = await saveWebhook.mutateAsync({
         service,
         name,
@@ -721,6 +750,7 @@ export function CreateWebhookForm({
           service === WebhookService.Generic && !body
             ? `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`
             : body,
+        headers: parsedHeaders,
       });
       notifications.show({
         color: 'green',
@@ -796,9 +826,26 @@ export function CreateWebhookForm({
         />
         {service === WebhookService.Generic && [
           <label className=".mantine-TextInput-label" key="1">
-            Webhook Body (optional)
+            Webhook Headers (optional)
           </label>,
           <div className="mb-2" key="2">
+            <CodeMirror
+              height="100px"
+              extensions={[
+                json(),
+                linter(jsonLinterWithEmptyCheck()),
+                placeholder(
+                  `{\n\t"Authorization": "Bearer token",\n\t"X-Custom-Header": "value"\n}`,
+                ),
+              ]}
+              theme="dark"
+              onChange={value => form.setValue('headers', value)}
+            />
+          </div>,
+          <label className=".mantine-TextInput-label" key="3">
+            Webhook Body (optional)
+          </label>,
+          <div className="mb-2" key="4">
             <CodeMirror
               height="100px"
               extensions={[
@@ -814,7 +861,7 @@ export function CreateWebhookForm({
           </div>,
           <Alert
             icon={<i className="bi bi-info-circle-fill text-slate-400" />}
-            key="3"
+            key="5"
             className="mb-4"
             color="gray"
           >
