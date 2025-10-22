@@ -4,6 +4,7 @@ import { HTTPError } from 'ky';
 import { Button as BSButton, Modal as BSModal } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm } from 'react-hook-form';
+import type { ZodIssue } from 'zod';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
@@ -764,7 +765,7 @@ export function CreateWebhookForm({
           ) {
             // Format Zod validation errors
             const validationErrors = errorData.error.issues
-              .map((issue: any) => {
+              .map((issue: ZodIssue) => {
                 const path = issue.path.join('.');
                 return `${path}: ${issue.message}`;
               })
