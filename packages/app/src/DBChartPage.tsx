@@ -3,8 +3,9 @@ import dynamic from 'next/dynamic';
 import { parseAsJson, parseAsStringEnum, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
+import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
+  Alert,
   Box,
   Button,
   Collapse,
@@ -16,6 +17,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import api from '@/api';
 import { DEFAULT_CHART_CONFIG, Granularity } from '@/ChartUtils';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { InputControlled } from '@/components/InputControlled';
@@ -24,6 +26,7 @@ import { useChartAssistant } from '@/hooks/ai';
 import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { useLocalStorage } from '@/utils';
 
 // Autocomplete can focus on column/map keys
 
@@ -36,12 +39,18 @@ function AIAssistant({
   setConfig,
   onTimeRangeSelect,
   submitRef,
+  aiAssistantEnabled,
 }: {
   setConfig: (config: SavedChartConfig) => void;
   onTimeRangeSelect: (start: Date, end: Date) => void;
   submitRef: React.RefObject<(() => void) | undefined>;
+  aiAssistantEnabled: boolean;
 }) {
   const [opened, setOpened] = useState(false);
+  const [alertDismissed, setAlertDismissed] = useLocalStorage(
+    'ai-assistant-alert-dismissed',
+    false,
+  );
   const { control, watch, setValue, handleSubmit } = useForm<{
     text: string;
     source: string;
@@ -105,6 +114,30 @@ function AIAssistant({
     },
   );
 
+  if (!aiAssistantEnabled && !alertDismissed) {
+    return (
+      <Box mb="sm">
+        <Alert
+          color="dark.3"
+          icon={<i className="bi bi-info-circle" />}
+          variant="outline"
+          withCloseButton
+          onClose={() => setAlertDismissed(true)}
+          p="xxs"
+        >
+          <Text size="xs" c="dark.2" pt="2px">
+            New AI Assistant available, enable with configuring the{' '}
+            <code>ANTHROPIC_API_KEY</code> environment variable on the HyperDX
+            server.
+          </Text>
+        </Alert>
+        <Divider mt="sm" />
+      </Box>
+    );
+  } else if (!aiAssistantEnabled) {
+    return null;
+  }
+
   return (
     <Box mb="sm">
       <Group gap="md" align="center" mb="sm">
@@ -123,7 +156,7 @@ function AIAssistant({
             <Text size="xxs">AI Assistant [A]</Text>
           </Group>
         </Button>
-        <Pill size="xs">Super Experimental</Pill>
+        <Pill size="xs">Experimental</Pill>
       </Group>
       <Collapse in={opened}>
         {opened && (
@@ -135,6 +168,7 @@ function AIAssistant({
                 control={control}
                 name="source"
                 data-testid="source-selector"
+                allowedSourceKinds={[SourceKind.Log, SourceKind.Trace]}
               />
               <Box style={{ flexGrow: 1, minWidth: 100 }}>
                 <InputControlled
@@ -177,6 +211,7 @@ function DBChartExplorerPage() {
 
   const submitRef = useRef<() => void>();
   const { data: sources } = useSources();
+  const { data: me } = api.useMe();
 
   const [chartConfig, setChartConfig] = useQueryState(
     'config',
@@ -192,6 +227,7 @@ function DBChartExplorerPage() {
         setConfig={setChartConfig}
         onTimeRangeSelect={onTimeRangeSelect}
         submitRef={submitRef}
+        aiAssistantEnabled={me?.aiAssistantEnabled ?? false}
       />
       <EditTimeChartForm
         data-testid="chart-explorer-form"
