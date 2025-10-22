@@ -763,6 +763,7 @@ export function CreateWebhookForm({
             errorData.error?.issues &&
             Array.isArray(errorData.error.issues)
           ) {
+            // TODO: use a library to format Zod validation errors
             // Format Zod validation errors
             const validationErrors = errorData.error.issues
               .map((issue: ZodIssue) => {
