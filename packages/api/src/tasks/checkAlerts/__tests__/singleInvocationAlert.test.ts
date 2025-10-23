@@ -15,7 +15,11 @@ import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook from '@/models/webhook';
 import { processAlert } from '@/tasks/checkAlerts';
-import { AlertDetails, AlertTaskType, loadProvider } from '@/tasks/providers';
+import {
+  AlertDetails,
+  AlertTaskType,
+  loadProvider,
+} from '@/tasks/checkAlerts/providers';
 import * as slack from '@/utils/slack';
 
 describe('Single Invocation Alert Test', () => {

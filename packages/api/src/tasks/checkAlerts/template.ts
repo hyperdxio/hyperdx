@@ -24,7 +24,10 @@ import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
 import { doesExceedThreshold } from '@/tasks/checkAlerts';
-import { AlertProvider, PopulatedAlertChannel } from '@/tasks/providers';
+import {
+  AlertProvider,
+  PopulatedAlertChannel,
+} from '@/tasks/checkAlerts/providers';
 import { escapeJsonString, unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
 import logger from '@/utils/logger';

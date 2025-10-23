@@ -10,11 +10,10 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
-import DefaultAlertProvider from '@/tasks/providers/default';
+import DefaultAlertProvider from '@/tasks/checkAlerts/providers/default';
 import logger from '@/utils/logger';
 
-import { AggregatedAlertHistory } from '../checkAlerts';
-import { CheckAlertsTaskArgs } from '../types';
+import { AggregatedAlertHistory } from '..';
 
 export enum AlertTaskType {
   SAVED_SEARCH,
