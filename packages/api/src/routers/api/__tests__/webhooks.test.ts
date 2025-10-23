@@ -220,7 +220,9 @@ describe('webhooks router', () => {
         })
         .expect(400);
 
-      expect(response.body.error).toBeDefined();
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
     });
 
     it('POST / - rejects empty header names', async () => {
@@ -237,7 +239,9 @@ describe('webhooks router', () => {
         })
         .expect(400);
 
-      expect(response.body.error).toBeDefined();
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
     });
 
     it('POST / - rejects header names with invalid characters', async () => {
@@ -262,7 +266,9 @@ describe('webhooks router', () => {
           })
           .expect(400);
 
-        expect(response.body.error).toBeDefined();
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body[0].type).toBe('Body');
+        expect(response.body[0].errors).toBeDefined();
       }
     });
 
@@ -303,7 +309,9 @@ describe('webhooks router', () => {
         })
         .expect(400);
 
-      expect(response.body.error).toBeDefined();
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
     });
 
     it('POST / - rejects header values with tab characters', async () => {
@@ -320,7 +328,9 @@ describe('webhooks router', () => {
         })
         .expect(400);
 
-      expect(response.body.error).toBeDefined();
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
     });
 
     it('POST / - rejects header values with control characters', async () => {
@@ -348,7 +358,9 @@ describe('webhooks router', () => {
           })
           .expect(400);
 
-        expect(response.body.error).toBeDefined();
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body[0].type).toBe('Body');
+        expect(response.body[0].errors).toBeDefined();
       }
     });
 
@@ -366,7 +378,9 @@ describe('webhooks router', () => {
         })
         .expect(400);
 
-      expect(response.body.error).toBeDefined();
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
     });
 
     it('POST / - rejects header values with carriage return characters', async () => {
@@ -383,7 +397,9 @@ describe('webhooks router', () => {
         })
         .expect(400);
 
-      expect(response.body.error).toBeDefined();
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
     });
   });
 });
