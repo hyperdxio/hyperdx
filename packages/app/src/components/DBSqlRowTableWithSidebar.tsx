@@ -74,14 +74,17 @@ export default function DBSqlRowTableWithSideBar({
     setRowId(null);
     setRowSource(null);
   }, [setRowId, setRowSource]);
-  const renderRowDetails = useCallback((r: { [key: string]: unknown }) => {
-    if (!sourceData) {
-      return <div className="p-3 text-muted">Loading...</div>;
-    }
-    return (
-      <RowOverviewPanelWrapper source={sourceData} rowId={r.id as string} />
-    );
-  }, []);
+  const renderRowDetails = useCallback(
+    (r: { [key: string]: unknown }) => {
+      if (!sourceData) {
+        return <div className="p-3 text-muted">Loading...</div>;
+      }
+      return (
+        <RowOverviewPanelWrapper source={sourceData} rowId={r.id as string} />
+      );
+    },
+    [sourceData],
+  );
 
   return (
     <RowSidePanelContext.Provider value={context ?? {}}>
