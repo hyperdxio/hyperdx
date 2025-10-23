@@ -503,7 +503,6 @@ export default function DBRowSidePanelErrorBoundary({
 
   return (
     <Drawer
-      data-testid="row-side-panel"
       opened={rowId != null}
       withCloseButton={false}
       withinPortal={!isNestedPanel}
@@ -523,7 +522,11 @@ export default function DBRowSidePanelErrorBoundary({
       zIndex={drawerZIndex}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel} ref={drawerRef}>
+        <div
+          className={styles.panel}
+          ref={drawerRef}
+          data-testid="row-side-panel"
+        >
           <Box className={styles.panelDragBar} onMouseDown={startResize} />
           <ErrorBoundary
             fallbackRender={error => (
