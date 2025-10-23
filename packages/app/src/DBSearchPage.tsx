@@ -1180,9 +1180,12 @@ function DBSearchPage() {
   );
   // Parse the orderBy string into a SortingState. We need the string
   // version in other places so we keep this parser separate.
-  const orderByConfig = parseAsSortingStateString.parse(
-    searchedConfig.orderBy ?? '',
-  );
+  const initialSortBy = useMemo(() => {
+    const orderBy = parseAsSortingStateString.parse(
+      searchedConfig.orderBy ?? '',
+    );
+    return orderBy ? [orderBy] : [];
+  }, [searchedConfig.orderBy]);
 
   const handleTimeRangeSelect = useCallback(
     (d1: Date, d2: Date) => {
@@ -1796,7 +1799,7 @@ function DBSearchPage() {
                           denoiseResults={denoiseResults}
                           collapseAllRows={collapseAllRows}
                           onSortingChange={onSortingChange}
-                          initialSortBy={orderByConfig ? [orderByConfig] : []}
+                          initialSortBy={initialSortBy}
                         />
                       )}
                   </>

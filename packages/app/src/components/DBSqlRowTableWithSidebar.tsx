@@ -74,6 +74,14 @@ export default function DBSqlRowTableWithSideBar({
     setRowId(null);
     setRowSource(null);
   }, [setRowId, setRowSource]);
+  const renderRowDetails = useCallback((r: { [key: string]: unknown }) => {
+    if (!sourceData) {
+      return <div className="p-3 text-muted">Loading...</div>;
+    }
+    return (
+      <RowOverviewPanelWrapper source={sourceData} rowId={r.id as string} />
+    );
+  }, []);
 
   return (
     <RowSidePanelContext.Provider value={context ?? {}}>
@@ -97,17 +105,7 @@ export default function DBSqlRowTableWithSideBar({
         onSortingChange={onSortingChange}
         denoiseResults={denoiseResults}
         initialSortBy={initialSortBy}
-        renderRowDetails={r => {
-          if (!sourceData) {
-            return <div className="p-3 text-muted">Loading...</div>;
-          }
-          return (
-            <RowOverviewPanelWrapper
-              source={sourceData}
-              rowId={r.id as string}
-            />
-          );
-        }}
+        renderRowDetails={renderRowDetails}
         onScroll={onScroll}
         onError={onError}
         onExpandedRowsChange={onExpandedRowsChange}
