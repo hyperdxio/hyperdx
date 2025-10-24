@@ -824,19 +824,36 @@ function DBSearchPage() {
   ]);
 
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
-  const handleSetFilters = useCallback(
-    (filters: Filter[]) => {
-      setValue('filters', filters);
-      debouncedSubmit();
-    },
-    [debouncedSubmit, setValue],
-  );
 
   // Track the filter-generated query to preserve manual text
   const lastFilterQueryRef = useRef<string>('');
 
+  const handleSetFilters = useCallback(
+    (filters: Filter[]) => {
+      const whereLanguage = getValues('whereLanguage');
+
+      // In Lucene mode, we sync filters to search bar, so don't update filters field
+      // The where field will be updated by handleSearchBarUpdate
+      if (whereLanguage === 'lucene') {
+        return;
+      }
+
+      // In SQL mode, use the structured filters approach
+      setValue('filters', filters);
+      debouncedSubmit();
+    },
+    [debouncedSubmit, setValue, getValues],
+  );
+
   const handleSearchBarUpdate = useCallback(
     (luceneQuery: string) => {
+      const whereLanguage = getValues('whereLanguage');
+
+      // Only sync filters to search bar when in Lucene mode
+      if (whereLanguage !== 'lucene') {
+        return;
+      }
+
       const currentQuery = getValues('where') || '';
       const lastFilterQuery = lastFilterQueryRef.current;
 
@@ -857,8 +874,16 @@ function DBSearchPage() {
       lastFilterQueryRef.current = luceneQuery;
 
       setValue('where', combinedQuery, { shouldDirty: true });
+
+      // IMPORTANT: Clear the filters field to prevent duplicate WHERE conditions
+      // Since we're syncing filters to the search bar in Lucene mode, we only want
+      // the backend to process the 'where' field, not both 'where' and 'filters'
+      setValue('filters', [], { shouldDirty: true });
+
+      // Trigger the search with the updated where clause
+      debouncedSubmit();
     },
-    [setValue, getValues],
+    [setValue, getValues, debouncedSubmit],
   );
 
   const searchFilters = useSearchPageFilterState({
