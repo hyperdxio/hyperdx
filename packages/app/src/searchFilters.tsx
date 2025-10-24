@@ -404,11 +404,16 @@ export const useSearchPageFilterState = ({
         ? parseSqlToFilters(whereQuery)
         : parseLuceneToFilters(whereQuery);
 
-    // Only update if the parsed filters are different
-    if (!areFiltersEqual(filters, parsedFilters)) {
-      setFilters(parsedFilters);
-    }
-  }, [whereQuery, whereLanguage, filters]);
+    // Only update if the parsed filters are different from current state
+    // Use a callback to get the latest filters state
+    setFilters(currentFilters => {
+      if (!areFiltersEqual(currentFilters, parsedFilters)) {
+        return parsedFilters;
+      }
+      return currentFilters;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [whereQuery, whereLanguage]);
 
   const updateFilterQuery = React.useCallback(
     (newFilters: FilterState) => {

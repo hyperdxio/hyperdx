@@ -848,7 +848,24 @@ function DBSearchPage() {
       let manualText = currentQuery;
       if (lastFilterQuery) {
         // Remove the filter query from the current query to get manual text
-        manualText = currentQuery.replace(lastFilterQuery, '').trim();
+        // Handle both SQL (with AND) and Lucene (with space) separators
+        const whereLanguage = getValues('whereLanguage');
+        const separator = whereLanguage === 'sql' ? ' AND ' : ' ';
+
+        // Try to remove with separator first, then without
+        if (currentQuery.includes(separator + lastFilterQuery)) {
+          manualText = currentQuery
+            .replace(separator + lastFilterQuery, '')
+            .trim();
+        } else if (currentQuery.includes(lastFilterQuery + separator)) {
+          manualText = currentQuery
+            .replace(lastFilterQuery + separator, '')
+            .trim();
+        } else if (currentQuery === lastFilterQuery) {
+          manualText = '';
+        } else {
+          manualText = currentQuery.replace(lastFilterQuery, '').trim();
+        }
       }
 
       // Combine manual text with new filter query
