@@ -12,9 +12,43 @@ import '@mantine/spotlight/styles.css';
 
 export const useSpotlightActions = () => {
   const router = useRouter();
+  const { pathname, query } = router;
 
   const { data: logViewsData } = useSavedSearches();
   const { data: dashboardsData } = api.useDashboards();
+
+  // Helper to build URL with search context
+  const buildUrlWithContext = React.useCallback(
+    (basePath: string) => {
+      const params = new URLSearchParams();
+
+      // Carry over time range
+      if (query.from) {
+        params.set('from', query.from as string);
+      }
+      if (query.to) {
+        params.set('to', query.to as string);
+      }
+      if (query.tq) {
+        params.set('tq', query.tq as string);
+      }
+
+      // Carry over search context
+      if (query.source) {
+        params.set('source', query.source as string);
+      }
+      if (query.where) {
+        params.set('where', query.where as string);
+      }
+      if (query.whereLanguage) {
+        params.set('whereLanguage', query.whereLanguage as string);
+      }
+
+      const paramsStr = params.toString();
+      return paramsStr ? `${basePath}?${paramsStr}` : basePath;
+    },
+    [query],
+  );
 
   const actions = React.useMemo<SpotlightActionData[]>(() => {
     const logViews = logViewsData ?? [];
@@ -60,7 +94,10 @@ export const useSpotlightActions = () => {
         description: 'Start a new search',
         keywords: ['log', 'events', 'logs'],
         onClick: () => {
-          router.push('/search');
+          const url = pathname?.includes('/chart')
+            ? buildUrlWithContext('/search')
+            : '/search';
+          router.push(url);
         },
       },
       {
@@ -71,7 +108,10 @@ export const useSpotlightActions = () => {
         description: 'Explore your data',
         keywords: ['graph', 'metrics'],
         onClick: () => {
-          router.push('/chart');
+          const url = pathname?.includes('/search')
+            ? buildUrlWithContext('/chart')
+            : '/chart';
+          router.push(url);
         },
       },
       {
@@ -152,7 +192,14 @@ export const useSpotlightActions = () => {
     );
 
     return logViewActions;
-  }, [logViewsData, dashboardsData, router]);
+  }, [
+    logViewsData,
+    dashboardsData,
+    router,
+    pathname,
+    query,
+    buildUrlWithContext,
+  ]);
 
   return { actions };
 };

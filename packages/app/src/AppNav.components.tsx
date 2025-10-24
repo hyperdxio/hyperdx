@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
+import { ContextAwareLink } from '@/components/ContextAwareLink';
 import { Icon } from '@/components/Icon';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import { useSources } from '@/source';
@@ -313,7 +314,7 @@ export const AppNavLink = ({
 
   return (
     <Group justify="space-between" px="md" py="6px">
-      <Link
+      <ContextAwareLink
         data-testid={testId}
         href={href}
         className={cx(
@@ -326,7 +327,7 @@ export const AppNavLink = ({
           <i className={`bi ${iconName} pe-2 text-slate-300`} />{' '}
           {!isCollapsed && <span>{label}</span>}
         </span>
-      </Link>
+      </ContextAwareLink>
       {!isCollapsed && onToggle && (
         <ActionIcon
           data-testid={`${testId}-toggle`}

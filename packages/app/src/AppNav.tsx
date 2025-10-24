@@ -34,6 +34,7 @@ import { useUserPreferences } from '@/useUserPreferences';
 
 import packageJson from '../package.json';
 
+import { ContextAwareLink } from './components/ContextAwareLink';
 import api from './api';
 import {
   AppNavCloudBanner,
@@ -587,7 +588,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       >
         <div style={{ width: navWidth }}>
           <div className="p-3 d-flex flex-wrap justify-content-between align-items-center">
-            <Link href="/search" className="text-decoration-none">
+            <ContextAwareLink href="/search" className="text-decoration-none">
               {isCollapsed ? (
                 <div style={{ marginLeft: '-0.15rem' }}>
                   <Icon size={22} />
@@ -609,7 +610,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   )}
                 </Group>
               )}
-            </Link>
+            </ContextAwareLink>
             <Button
               variant="subtle"
               color="gray.4"

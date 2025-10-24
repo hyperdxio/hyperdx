@@ -1,6 +1,12 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { parseAsJson, parseAsStringEnum, useQueryState } from 'nuqs';
+import {
+  parseAsJson,
+  parseAsString,
+  parseAsStringEnum,
+  useQueryState,
+  useQueryStates,
+} from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -27,6 +33,7 @@ import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
+import { parseAsStringWithNewLines } from '@/utils/queryParsers';
 
 // Autocomplete can focus on column/map keys
 
@@ -213,6 +220,16 @@ function DBChartExplorerPage() {
   const { data: sources } = useSources();
   const { data: me } = api.useMe();
 
+  // Read search context from URL (for navigation from search page)
+  const [searchContext] = useQueryStates({
+    source: parseAsString.withDefault(null),
+    where: parseAsStringWithNewLines.withDefault(null),
+    whereLanguage: parseAsStringEnum<'sql' | 'lucene'>([
+      'sql',
+      'lucene',
+    ]).withDefault(null),
+  });
+
   const [chartConfig, setChartConfig] = useQueryState(
     'config',
     parseAsJson<SavedChartConfig>().withDefault({
@@ -220,6 +237,33 @@ function DBChartExplorerPage() {
       source: sources?.[0]?.id ?? '',
     }),
   );
+
+  // Initialize chart config from search context if present
+  // Only do this once when the page first loads with search context
+  const hasInitialized = useRef(false);
+  useEffect(() => {
+    if (
+      !hasInitialized.current &&
+      searchContext.source &&
+      chartConfig.where === DEFAULT_CHART_CONFIG.where &&
+      chartConfig.source === (sources?.[0]?.id ?? '')
+    ) {
+      hasInitialized.current = true;
+      setChartConfig({
+        ...chartConfig,
+        source: searchContext.source,
+        where: searchContext.where ?? '',
+        whereLanguage: searchContext.whereLanguage ?? 'lucene',
+      });
+    }
+  }, [
+    searchContext.source,
+    searchContext.where,
+    searchContext.whereLanguage,
+    chartConfig,
+    setChartConfig,
+    sources,
+  ]);
 
   return (
     <Box data-testid="chart-explorer-page" p="sm" className="bg-hdx-dark">
