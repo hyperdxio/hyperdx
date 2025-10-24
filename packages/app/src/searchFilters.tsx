@@ -43,6 +43,44 @@ export const filtersToQuery = (
     });
 };
 
+/**
+ * Convert FilterState to Lucene query text
+ * Format: key:"value1" OR key:"value2" for included values
+ *         -key:value1 -key:value2 for excluded values
+ */
+export const filtersToLuceneQuery = (filters: FilterState): string => {
+  const parts: string[] = [];
+
+  Object.entries(filters)
+    .filter(
+      ([_, values]) => values.included.size > 0 || values.excluded.size > 0,
+    )
+    .forEach(([key, values]) => {
+      // Handle included values
+      if (values.included.size > 0) {
+        const includedArray = Array.from(values.included);
+        if (includedArray.length === 1) {
+          // Single value: key:"value"
+          parts.push(`${key}:"${includedArray[0]}"`);
+        } else {
+          // Multiple values: (key:"value1" OR key:"value2")
+          const orClause = includedArray.map(v => `${key}:"${v}"`).join(' OR ');
+          parts.push(`(${orClause})`);
+        }
+      }
+
+      // Handle excluded values
+      if (values.excluded.size > 0) {
+        const excludedArray = Array.from(values.excluded);
+        excludedArray.forEach(v => {
+          parts.push(`-${key}:${v}`);
+        });
+      }
+    });
+
+  return parts.join(' ');
+};
+
 export const areFiltersEqual = (a: FilterState, b: FilterState) => {
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);
@@ -111,9 +149,11 @@ export const parseQuery = (
 export const useSearchPageFilterState = ({
   searchQuery = [],
   onFilterChange,
+  onSearchBarUpdate,
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
+  onSearchBarUpdate?: (luceneQuery: string) => void;
 }) => {
   const parsedQuery = React.useMemo(() => {
     try {
@@ -140,8 +180,12 @@ export const useSearchPageFilterState = ({
   const updateFilterQuery = React.useCallback(
     (newFilters: FilterState) => {
       onFilterChange(filtersToQuery(newFilters));
+      // Update search bar with Lucene query text if callback provided
+      if (onSearchBarUpdate) {
+        onSearchBarUpdate(filtersToLuceneQuery(newFilters));
+      }
     },
-    [onFilterChange],
+    [onFilterChange, onSearchBarUpdate],
   );
 
   const setFilterValue = React.useCallback(

@@ -832,9 +832,39 @@ function DBSearchPage() {
     [debouncedSubmit, setValue],
   );
 
+  // Track the filter-generated query to preserve manual text
+  const lastFilterQueryRef = useRef<string>('');
+
+  const handleSearchBarUpdate = useCallback(
+    (luceneQuery: string) => {
+      const currentQuery = getValues('where') || '';
+      const lastFilterQuery = lastFilterQueryRef.current;
+
+      // Extract manual text by removing the last filter query
+      let manualText = currentQuery;
+      if (lastFilterQuery) {
+        // Remove the filter query from the current query to get manual text
+        manualText = currentQuery.replace(lastFilterQuery, '').trim();
+      }
+
+      // Combine manual text with new filter query
+      const combinedQuery = [manualText, luceneQuery]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
+      // Update the ref to track the new filter query
+      lastFilterQueryRef.current = luceneQuery;
+
+      setValue('where', combinedQuery, { shouldDirty: true });
+    },
+    [setValue, getValues],
+  );
+
   const searchFilters = useSearchPageFilterState({
     searchQuery: watch('filters') ?? undefined,
     onFilterChange: handleSetFilters,
+    onSearchBarUpdate: handleSearchBarUpdate,
   });
 
   useEffect(() => {

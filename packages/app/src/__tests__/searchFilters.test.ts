@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 
 import {
   areFiltersEqual,
+  filtersToLuceneQuery,
   filtersToQuery,
   parseQuery,
   useSearchPageFilterState,
@@ -120,6 +121,104 @@ describe('searchFilters', () => {
     });
   });
 
+  describe('filtersToLuceneQuery', () => {
+    it('should return empty string when no filters', () => {
+      const filters = {};
+      expect(filtersToLuceneQuery(filters)).toEqual('');
+    });
+
+    it('should return query for single included value', () => {
+      const filters = {
+        service: {
+          included: new Set<string>(['app']),
+          excluded: new Set<string>(),
+        },
+      };
+      expect(filtersToLuceneQuery(filters)).toEqual('service:"app"');
+    });
+
+    it('should return OR query for multiple included values', () => {
+      const filters = {
+        level: {
+          included: new Set<string>(['info', 'error']),
+          excluded: new Set<string>(),
+        },
+      };
+      expect(filtersToLuceneQuery(filters)).toEqual(
+        '(level:"info" OR level:"error")',
+      );
+    });
+
+    it('should return negation for excluded values', () => {
+      const filters = {
+        service: {
+          included: new Set<string>(),
+          excluded: new Set<string>(['test']),
+        },
+      };
+      expect(filtersToLuceneQuery(filters)).toEqual('-service:test');
+    });
+
+    it('should handle multiple excluded values', () => {
+      const filters = {
+        service: {
+          included: new Set<string>(),
+          excluded: new Set<string>(['test', 'dev']),
+        },
+      };
+      const result = filtersToLuceneQuery(filters);
+      // Order might vary, so check both values are present
+      expect(result).toContain('-service:test');
+      expect(result).toContain('-service:dev');
+    });
+
+    it('should handle both included and excluded values', () => {
+      const filters = {
+        level: {
+          included: new Set<string>(['info']),
+          excluded: new Set<string>(['debug']),
+        },
+      };
+      expect(filtersToLuceneQuery(filters)).toEqual(
+        'level:"info" -level:debug',
+      );
+    });
+
+    it('should handle multiple properties', () => {
+      const filters = {
+        service: {
+          included: new Set<string>(['app']),
+          excluded: new Set<string>(),
+        },
+        level: {
+          included: new Set<string>(['error']),
+          excluded: new Set<string>(),
+        },
+      };
+      const result = filtersToLuceneQuery(filters);
+      // Order might vary, so check both are present
+      expect(result).toContain('service:"app"');
+      expect(result).toContain('level:"error"');
+    });
+
+    it('should handle complex mixed scenario', () => {
+      const filters = {
+        service: {
+          included: new Set<string>(['app', 'api']),
+          excluded: new Set<string>(['test']),
+        },
+        level: {
+          included: new Set<string>(['error']),
+          excluded: new Set<string>(),
+        },
+      };
+      const result = filtersToLuceneQuery(filters);
+      expect(result).toContain('(service:"app" OR service:"api")');
+      expect(result).toContain('-service:test');
+      expect(result).toContain('level:"error"');
+    });
+  });
+
   describe('areFiltersEqual', () => {
     it('should return true for equal filters', () => {
       const a = {
@@ -170,6 +269,7 @@ describe('searchFilters', () => {
 
   describe('useSearchPageFilterState', () => {
     const onFilterChange = jest.fn();
+    const onSearchBarUpdate = jest.fn();
 
     it('adding filter to empty query', () => {
       const { result } = renderHook(() =>
@@ -286,6 +386,106 @@ describe('searchFilters', () => {
         { type: 'sql', condition: `service IN ('app')` },
         { type: 'sql', condition: `level IN ('info')` }, // Should only have the included value, no excluded values
       ]);
+    });
+
+    it('should call onSearchBarUpdate with Lucene query when filters change', () => {
+      const onFilterChange = jest.fn();
+      const onSearchBarUpdate = jest.fn();
+
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [],
+          onFilterChange,
+          onSearchBarUpdate,
+        }),
+      );
+
+      act(() => {
+        result.current.setFilterValue('service', 'app');
+      });
+
+      expect(onSearchBarUpdate).toHaveBeenCalledWith('service:"app"');
+    });
+
+    it('should update search bar with multiple filters in Lucene format', () => {
+      const onFilterChange = jest.fn();
+      const onSearchBarUpdate = jest.fn();
+
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [],
+          onFilterChange,
+          onSearchBarUpdate,
+        }),
+      );
+
+      act(() => {
+        result.current.setFilterValue('service', 'app');
+        result.current.setFilterValue('level', 'error');
+      });
+
+      const lastCall =
+        onSearchBarUpdate.mock.calls[
+          onSearchBarUpdate.mock.calls.length - 1
+        ][0];
+      expect(lastCall).toContain('service:"app"');
+      expect(lastCall).toContain('level:"error"');
+    });
+
+    it('should not call onSearchBarUpdate if not provided', () => {
+      const onFilterChange = jest.fn();
+
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [],
+          onFilterChange,
+        }),
+      );
+
+      act(() => {
+        result.current.setFilterValue('service', 'app');
+      });
+
+      // Should not throw error when onSearchBarUpdate is undefined
+      expect(onFilterChange).toHaveBeenCalled();
+    });
+
+    it('should handle clearing all filters in search bar update', () => {
+      const onFilterChange = jest.fn();
+      const onSearchBarUpdate = jest.fn();
+
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [{ type: 'sql', condition: `service IN ('app')` }],
+          onFilterChange,
+          onSearchBarUpdate,
+        }),
+      );
+
+      act(() => {
+        result.current.clearAllFilters();
+      });
+
+      expect(onSearchBarUpdate).toHaveBeenCalledWith('');
+    });
+
+    it('should handle exclude action in search bar update', () => {
+      const onFilterChange = jest.fn();
+      const onSearchBarUpdate = jest.fn();
+
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [],
+          onFilterChange,
+          onSearchBarUpdate,
+        }),
+      );
+
+      act(() => {
+        result.current.setFilterValue('service', 'test', 'exclude');
+      });
+
+      expect(onSearchBarUpdate).toHaveBeenCalledWith('-service:test');
     });
   });
 });
