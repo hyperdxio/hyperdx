@@ -828,32 +828,15 @@ function DBSearchPage() {
   // Track the filter-generated query to preserve manual text
   const lastFilterQueryRef = useRef<string>('');
 
-  const handleSetFilters = useCallback(
-    (filters: Filter[]) => {
-      const whereLanguage = getValues('whereLanguage');
-
-      // In Lucene mode, we sync filters to search bar, so don't update filters field
-      // The where field will be updated by handleSearchBarUpdate
-      if (whereLanguage === 'lucene') {
-        return;
-      }
-
-      // In SQL mode, use the structured filters approach
-      setValue('filters', filters);
-      debouncedSubmit();
-    },
-    [debouncedSubmit, setValue, getValues],
-  );
+  const handleSetFilters = useCallback((filters: Filter[]) => {
+    // Always sync filters to search bar now (both SQL and Lucene modes)
+    // The handleSearchBarUpdate callback will handle the update
+    // This callback is essentially a no-op since syncing happens via onSearchBarUpdate
+    return;
+  }, []);
 
   const handleSearchBarUpdate = useCallback(
-    (luceneQuery: string) => {
-      const whereLanguage = getValues('whereLanguage');
-
-      // Only sync filters to search bar when in Lucene mode
-      if (whereLanguage !== 'lucene') {
-        return;
-      }
-
+    (filterQuery: string) => {
       const currentQuery = getValues('where') || '';
       const lastFilterQuery = lastFilterQueryRef.current;
 
@@ -865,18 +848,21 @@ function DBSearchPage() {
       }
 
       // Combine manual text with new filter query
-      const combinedQuery = [manualText, luceneQuery]
+      // For SQL: use AND separator, for Lucene: use space (implicit AND)
+      const whereLanguage = getValues('whereLanguage');
+      const separator = whereLanguage === 'sql' ? ' AND ' : ' ';
+      const combinedQuery = [manualText, filterQuery]
         .filter(Boolean)
-        .join(' ')
+        .join(separator)
         .trim();
 
       // Update the ref to track the new filter query
-      lastFilterQueryRef.current = luceneQuery;
+      lastFilterQueryRef.current = filterQuery;
 
       setValue('where', combinedQuery, { shouldDirty: true });
 
       // IMPORTANT: Clear the filters field to prevent duplicate WHERE conditions
-      // Since we're syncing filters to the search bar in Lucene mode, we only want
+      // Since we're syncing filters to the search bar, we only want
       // the backend to process the 'where' field, not both 'where' and 'filters'
       setValue('filters', [], { shouldDirty: true });
 
@@ -890,6 +876,7 @@ function DBSearchPage() {
     searchQuery: watch('filters') ?? undefined,
     onFilterChange: handleSetFilters,
     onSearchBarUpdate: handleSearchBarUpdate,
+    whereLanguage: watch('whereLanguage') ?? 'lucene',
   });
 
   useEffect(() => {

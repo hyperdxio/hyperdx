@@ -5,6 +5,7 @@ import {
   areFiltersEqual,
   filtersToLuceneQuery,
   filtersToQuery,
+  filtersToSqlQuery,
   parseQuery,
   useSearchPageFilterState,
 } from '../searchFilters';
@@ -216,6 +217,97 @@ describe('searchFilters', () => {
       expect(result).toContain('(service:"app" OR service:"api")');
       expect(result).toContain('-service:test');
       expect(result).toContain('level:"error"');
+    });
+  });
+
+  describe('filtersToSqlQuery', () => {
+    it('should return empty string when no filters', () => {
+      const filters = {};
+      expect(filtersToSqlQuery(filters)).toEqual('');
+    });
+
+    it('should return query for single included value', () => {
+      const filters = {
+        service: {
+          included: new Set<string>(['app']),
+          excluded: new Set<string>(),
+        },
+      };
+      expect(filtersToSqlQuery(filters)).toEqual("service = 'app'");
+    });
+
+    it('should return IN clause for multiple included values', () => {
+      const filters = {
+        level: {
+          included: new Set<string>(['info', 'error']),
+          excluded: new Set<string>(),
+        },
+      };
+      const result = filtersToSqlQuery(filters);
+      expect(result).toContain('level IN (');
+      expect(result).toContain("'info'");
+      expect(result).toContain("'error'");
+    });
+
+    it('should return != for single excluded value', () => {
+      const filters = {
+        service: {
+          included: new Set<string>(),
+          excluded: new Set<string>(['test']),
+        },
+      };
+      expect(filtersToSqlQuery(filters)).toEqual("service != 'test'");
+    });
+
+    it('should return NOT IN for multiple excluded values', () => {
+      const filters = {
+        service: {
+          included: new Set<string>(),
+          excluded: new Set<string>(['test', 'dev']),
+        },
+      };
+      const result = filtersToSqlQuery(filters);
+      expect(result).toContain('service NOT IN (');
+      expect(result).toContain("'test'");
+      expect(result).toContain("'dev'");
+    });
+
+    it('should handle both included and excluded values', () => {
+      const filters = {
+        level: {
+          included: new Set<string>(['info']),
+          excluded: new Set<string>(['debug']),
+        },
+      };
+      expect(filtersToSqlQuery(filters)).toEqual(
+        "level = 'info' AND level != 'debug'",
+      );
+    });
+
+    it('should combine multiple properties with AND', () => {
+      const filters = {
+        service: {
+          included: new Set<string>(['app']),
+          excluded: new Set<string>(),
+        },
+        level: {
+          included: new Set<string>(['error']),
+          excluded: new Set<string>(),
+        },
+      };
+      expect(filtersToSqlQuery(filters)).toEqual(
+        "service = 'app' AND level = 'error'",
+      );
+    });
+
+    it('should escape single quotes in values', () => {
+      const filters = {
+        name: {
+          included: new Set<string>(["O'Brien"]),
+          excluded: new Set<string>(),
+        },
+      };
+      expect(filtersToSqlQuery(filters)).toEqual("name = 'O''Brien'");
     });
   });
 
@@ -486,6 +578,52 @@ describe('searchFilters', () => {
       });
 
       expect(onSearchBarUpdate).toHaveBeenCalledWith('-service:test');
+    });
+
+    it('should call onSearchBarUpdate with SQL query when in SQL mode', () => {
+      const onFilterChange = jest.fn();
+      const onSearchBarUpdate = jest.fn();
+
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [],
+          onFilterChange,
+          onSearchBarUpdate,
+          whereLanguage: 'sql',
+        }),
+      );
+
+      act(() => {
+        result.current.setFilterValue('service', 'app');
+      });
+
+      expect(onSearchBarUpdate).toHaveBeenCalledWith("service = 'app'");
+    });
+
+    it('should update search bar with multiple filters in SQL format', () => {
+      const onFilterChange = jest.fn();
+      const onSearchBarUpdate = jest.fn();
+
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [],
+          onFilterChange,
+          onSearchBarUpdate,
+          whereLanguage: 'sql',
+        }),
+      );
+
+      act(() => {
+        result.current.setFilterValue('service', 'app');
+      });
+
+      act(() => {
+        result.current.setFilterValue('level', 'error');
+      });
+
+      expect(onSearchBarUpdate).toHaveBeenLastCalledWith(
+        "service = 'app' AND level = 'error'",
+      );
     });
   });
 });

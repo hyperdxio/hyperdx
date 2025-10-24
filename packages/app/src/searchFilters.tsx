@@ -81,6 +81,55 @@ export const filtersToLuceneQuery = (filters: FilterState): string => {
   return parts.join(' ');
 };
 
+/**
+ * Convert FilterState to SQL WHERE clause text
+ * Format: key IN ('value1', 'value2') for included values
+ *         key NOT IN ('value1', 'value2') for excluded values
+ */
+export const filtersToSqlQuery = (filters: FilterState): string => {
+  const parts: string[] = [];
+
+  Object.entries(filters)
+    .filter(
+      ([_, values]) => values.included.size > 0 || values.excluded.size > 0,
+    )
+    .forEach(([key, values]) => {
+      // Handle included values
+      if (values.included.size > 0) {
+        const includedArray = Array.from(values.included);
+        if (includedArray.length === 1) {
+          // Single value: key = 'value'
+          const escapedValue = includedArray[0].replace(/'/g, "''");
+          parts.push(`${key} = '${escapedValue}'`);
+        } else {
+          // Multiple values: key IN ('value1', 'value2')
+          const valueList = includedArray
+            .map(v => `'${v.replace(/'/g, "''")}'`)
+            .join(', ');
+          parts.push(`${key} IN (${valueList})`);
+        }
+      }
+
+      // Handle excluded values
+      if (values.excluded.size > 0) {
+        const excludedArray = Array.from(values.excluded);
+        if (excludedArray.length === 1) {
+          // Single value: key != 'value'
+          const escapedValue = excludedArray[0].replace(/'/g, "''");
+          parts.push(`${key} != '${escapedValue}'`);
+        } else {
+          // Multiple values: key NOT IN ('value1', 'value2')
+          const valueList = excludedArray
+            .map(v => `'${v.replace(/'/g, "''")}'`)
+            .join(', ');
+          parts.push(`${key} NOT IN (${valueList})`);
+        }
+      }
+    });
+
+  return parts.join(' AND ');
+};
+
 export const areFiltersEqual = (a: FilterState, b: FilterState) => {
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);
@@ -150,10 +199,12 @@ export const useSearchPageFilterState = ({
   searchQuery = [],
   onFilterChange,
   onSearchBarUpdate,
+  whereLanguage = 'lucene',
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
-  onSearchBarUpdate?: (luceneQuery: string) => void;
+  onSearchBarUpdate?: (query: string) => void;
+  whereLanguage?: 'sql' | 'lucene';
 }) => {
   const parsedQuery = React.useMemo(() => {
     try {
@@ -180,12 +231,16 @@ export const useSearchPageFilterState = ({
   const updateFilterQuery = React.useCallback(
     (newFilters: FilterState) => {
       onFilterChange(filtersToQuery(newFilters));
-      // Update search bar with Lucene query text if callback provided
+      // Update search bar with query text if callback provided
       if (onSearchBarUpdate) {
-        onSearchBarUpdate(filtersToLuceneQuery(newFilters));
+        const queryText =
+          whereLanguage === 'sql'
+            ? filtersToSqlQuery(newFilters)
+            : filtersToLuceneQuery(newFilters);
+        onSearchBarUpdate(queryText);
       }
     },
-    [onFilterChange, onSearchBarUpdate],
+    [onFilterChange, onSearchBarUpdate, whereLanguage],
   );
 
   const setFilterValue = React.useCallback(
