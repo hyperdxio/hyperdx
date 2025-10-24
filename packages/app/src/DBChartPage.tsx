@@ -242,27 +242,61 @@ function DBChartExplorerPage() {
   // Only do this once when the page first loads with search context
   const hasInitialized = useRef(false);
   useEffect(() => {
+    // Only initialize if we have search context and haven't initialized yet
     if (
       !hasInitialized.current &&
-      searchContext.source &&
-      chartConfig.where === DEFAULT_CHART_CONFIG.where &&
-      chartConfig.source === (sources?.[0]?.id ?? '')
+      (searchContext.source || searchContext.where)
     ) {
       hasInitialized.current = true;
-      setChartConfig({
-        ...chartConfig,
-        source: searchContext.source,
-        where: searchContext.where ?? '',
-        whereLanguage: searchContext.whereLanguage ?? 'lucene',
+
+      setChartConfig(prevConfig => {
+        const updates: Partial<SavedChartConfig> = {};
+
+        // Update source if provided
+        if (searchContext.source) {
+          updates.source = searchContext.source;
+        }
+
+        // Update where clause at both levels:
+        // 1. Top-level where (for Search display mode)
+        if (searchContext.where) {
+          updates.where = searchContext.where;
+        }
+        if (searchContext.whereLanguage) {
+          updates.whereLanguage = searchContext.whereLanguage;
+        }
+
+        // 2. Series-level aggCondition (for Line/Bar/Table/Number modes)
+        if (
+          searchContext.where &&
+          Array.isArray(prevConfig.select) &&
+          prevConfig.select.length > 0
+        ) {
+          updates.select = prevConfig.select.map((series, index) => ({
+            ...series,
+            // Only update first series' condition
+            aggCondition:
+              index === 0
+                ? (searchContext.where ?? '')
+                : (series.aggCondition ?? ''),
+            aggConditionLanguage:
+              index === 0
+                ? (searchContext.whereLanguage ?? 'lucene')
+                : (series.aggConditionLanguage ?? 'lucene'),
+          }));
+        }
+
+        return {
+          ...prevConfig,
+          ...updates,
+        };
       });
     }
   }, [
     searchContext.source,
     searchContext.where,
     searchContext.whereLanguage,
-    chartConfig,
     setChartConfig,
-    sources,
   ]);
 
   return (
