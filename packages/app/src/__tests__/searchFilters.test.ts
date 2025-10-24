@@ -358,6 +358,24 @@ describe('searchFilters', () => {
     it('should return empty object for empty string', () => {
       expect(parseSqlToFilters('')).toEqual({});
     });
+
+    it('should handle complex field names with brackets', () => {
+      const result = parseSqlToFilters(
+        "ResourceAttribute['node.version'] = 'v1.2.3'",
+      );
+      expect(result["ResourceAttribute['node.version']"]?.included).toEqual(
+        new Set(['v1.2.3']),
+      );
+    });
+
+    it('should handle complex field names in IN clause', () => {
+      const result = parseSqlToFilters(
+        "ResourceAttribute['service.name'] IN ('api', 'web')",
+      );
+      expect(result["ResourceAttribute['service.name']"]?.included).toEqual(
+        new Set(['api', 'web']),
+      );
+    });
   });
 
   describe('parseLuceneToFilters', () => {
@@ -404,6 +422,24 @@ describe('searchFilters', () => {
 
     it('should return empty object for empty string', () => {
       expect(parseLuceneToFilters('')).toEqual({});
+    });
+
+    it('should handle complex field names with brackets', () => {
+      const result = parseLuceneToFilters(
+        'ResourceAttribute[\'node.version\']:"v1.2.3"',
+      );
+      expect(result["ResourceAttribute['node.version']"]?.included).toEqual(
+        new Set(['v1.2.3']),
+      );
+    });
+
+    it('should handle complex field names in OR groups', () => {
+      const result = parseLuceneToFilters(
+        '(ResourceAttribute[\'service.name\']:"api" OR ResourceAttribute[\'service.name\']:"web")',
+      );
+      expect(result["ResourceAttribute['service.name']"]?.included).toEqual(
+        new Set(['api', 'web']),
+      );
     });
   });
 

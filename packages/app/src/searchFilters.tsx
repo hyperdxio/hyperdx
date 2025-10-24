@@ -133,6 +133,7 @@ export const filtersToSqlQuery = (filters: FilterState): string => {
 /**
  * Parse SQL WHERE clause back into FilterState
  * Extracts simple conditions like field = 'value', field IN (...), field != 'value', field NOT IN (...)
+ * Supports complex field names like ResourceAttribute['node.version']
  */
 export const parseSqlToFilters = (sql: string): FilterState => {
   const filters: FilterState = {};
@@ -143,8 +144,14 @@ export const parseSqlToFilters = (sql: string): FilterState => {
   try {
     const text = sql.trim();
 
+    // Field name pattern: matches both simple names (word chars) and complex names with brackets
+    // Examples: service, ResourceAttribute['node.version']
+    const fieldPattern = `(?:\\w+(?:\\[[^\\]]+\\])*)`;
+
     // Match field IN ('val1', 'val2', ...)
-    const inMatches = text.matchAll(/(\w+)\s+IN\s*\(([^)]+)\)/gi);
+    const inMatches = text.matchAll(
+      new RegExp(`(${fieldPattern})\\s+IN\\s*\\(([^)]+)\\)`, 'gi'),
+    );
     for (const match of inMatches) {
       const field = match[1];
       const values = match[2]
@@ -159,7 +166,9 @@ export const parseSqlToFilters = (sql: string): FilterState => {
     }
 
     // Match field NOT IN ('val1', 'val2', ...)
-    const notInMatches = text.matchAll(/(\w+)\s+NOT\s+IN\s*\(([^)]+)\)/gi);
+    const notInMatches = text.matchAll(
+      new RegExp(`(${fieldPattern})\\s+NOT\\s+IN\\s*\\(([^)]+)\\)`, 'gi'),
+    );
     for (const match of notInMatches) {
       const field = match[1];
       const values = match[2]
@@ -174,7 +183,9 @@ export const parseSqlToFilters = (sql: string): FilterState => {
     }
 
     // Match field = 'value' (handle escaped quotes as '')
-    const eqMatches = text.matchAll(/(\w+)\s*=\s*'((?:[^']|'')*)'/g);
+    const eqMatches = text.matchAll(
+      new RegExp(`(${fieldPattern})\\s*=\\s*'((?:[^']|'')*)'`, 'g'),
+    );
     for (const match of eqMatches) {
       const field = match[1];
       const value = match[2].replace(/''/g, "'");
@@ -186,7 +197,9 @@ export const parseSqlToFilters = (sql: string): FilterState => {
     }
 
     // Match field != 'value' (handle escaped quotes as '')
-    const neqMatches = text.matchAll(/(\w+)\s*!=\s*'((?:[^']|'')*)'/g);
+    const neqMatches = text.matchAll(
+      new RegExp(`(${fieldPattern})\\s*!=\\s*'((?:[^']|'')*)'`, 'g'),
+    );
     for (const match of neqMatches) {
       const field = match[1];
       const value = match[2].replace(/''/g, "'");
@@ -207,6 +220,7 @@ export const parseSqlToFilters = (sql: string): FilterState => {
 /**
  * Parse Lucene query back into FilterState
  * Extracts simple conditions like field:"value", (field:"val1" OR field:"val2"), -field:value
+ * Supports complex field names like ResourceAttribute['node.version']
  */
 export const parseLuceneToFilters = (lucene: string): FilterState => {
   const filters: FilterState = {};
@@ -217,12 +231,17 @@ export const parseLuceneToFilters = (lucene: string): FilterState => {
   try {
     const text = lucene.trim();
 
+    // Field name pattern: matches both simple names and complex names with brackets
+    const fieldPattern = `(?:\\w+(?:\\[[^\\]]+\\])*)`;
+
     // Match grouped OR conditions: (field:"val1" OR field:"val2" OR ...)
     const orGroupMatches = text.matchAll(/\(([^)]+)\)/g);
     for (const match of orGroupMatches) {
       const group = match[1];
       // Check if this is an OR group with same field
-      const fieldMatches = group.matchAll(/(\w+):"([^"]*)"/g);
+      const fieldMatches = group.matchAll(
+        new RegExp(`(${fieldPattern}):"([^"]*)"`, 'g'),
+      );
       const conditions: { field: string; value: string }[] = [];
 
       for (const fieldMatch of fieldMatches) {
@@ -242,7 +261,9 @@ export const parseLuceneToFilters = (lucene: string): FilterState => {
     }
 
     // Match negated fields: -field:"value" or -field:value
-    const negatedQuotedMatches = text.matchAll(/-(\w+):"([^"]*)"/g);
+    const negatedQuotedMatches = text.matchAll(
+      new RegExp(`-(${fieldPattern}):"([^"]*)"`, 'g'),
+    );
     for (const match of negatedQuotedMatches) {
       const field = match[1];
       const value = match[2];
@@ -253,7 +274,9 @@ export const parseLuceneToFilters = (lucene: string): FilterState => {
       filters[field].excluded.add(value);
     }
 
-    const negatedUnquotedMatches = text.matchAll(/-(\w+):([^\s:"()]+)/g);
+    const negatedUnquotedMatches = text.matchAll(
+      new RegExp(`-(${fieldPattern}):([^\\s:"()]+)`, 'g'),
+    );
     for (const match of negatedUnquotedMatches) {
       const field = match[1];
       const value = match[2];
@@ -265,8 +288,10 @@ export const parseLuceneToFilters = (lucene: string): FilterState => {
     }
 
     // Match single field:"value" (not already captured in OR groups or negations)
-    // Use negative lookbehind to exclude negated fields
-    const singleQuotedMatches = text.matchAll(/(?<![-(\w])(\w+):"([^"]*)"/g);
+    // Use negative lookbehind to exclude negated fields and OR groups
+    const singleQuotedMatches = text.matchAll(
+      new RegExp(`(?<![-(\\.\\w])(${fieldPattern}):"([^"]*)"`, 'g'),
+    );
     for (const match of singleQuotedMatches) {
       const field = match[1];
       const value = match[2];
