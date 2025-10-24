@@ -17,32 +17,24 @@ export const useSpotlightActions = () => {
   const { data: logViewsData } = useSavedSearches();
   const { data: dashboardsData } = api.useDashboards();
 
-  // Helper to build URL with search context
   const buildUrlWithContext = React.useCallback(
     (basePath: string) => {
+      const contextParams = [
+        'from',
+        'to',
+        'tq',
+        'source',
+        'where',
+        'whereLanguage',
+      ];
       const params = new URLSearchParams();
 
-      // Carry over time range
-      if (query.from) {
-        params.set('from', query.from as string);
-      }
-      if (query.to) {
-        params.set('to', query.to as string);
-      }
-      if (query.tq) {
-        params.set('tq', query.tq as string);
-      }
-
-      // Carry over search context
-      if (query.source) {
-        params.set('source', query.source as string);
-      }
-      if (query.where) {
-        params.set('where', query.where as string);
-      }
-      if (query.whereLanguage) {
-        params.set('whereLanguage', query.whereLanguage as string);
-      }
+      contextParams.forEach(param => {
+        const value = query[param];
+        if (value) {
+          params.set(param, value as string);
+        }
+      });
 
       const paramsStr = params.toString();
       return paramsStr ? `${basePath}?${paramsStr}` : basePath;

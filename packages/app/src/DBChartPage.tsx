@@ -220,7 +220,6 @@ function DBChartExplorerPage() {
   const { data: sources } = useSources();
   const { data: me } = api.useMe();
 
-  // Read search context from URL (for navigation from search page)
   const [searchContext] = useQueryStates({
     source: parseAsString.withDefault(null),
     where: parseAsStringWithNewLines.withDefault(null),
@@ -238,60 +237,52 @@ function DBChartExplorerPage() {
     }),
   );
 
-  // Initialize chart config from search context if present
-  // Only do this once when the page first loads with search context
   const hasInitialized = useRef(false);
   useEffect(() => {
-    // Only initialize if we have search context and haven't initialized yet
     if (
-      !hasInitialized.current &&
-      (searchContext.source || searchContext.where)
+      hasInitialized.current ||
+      (!searchContext.source && !searchContext.where)
     ) {
-      hasInitialized.current = true;
-
-      setChartConfig(prevConfig => {
-        const updates: Partial<SavedChartConfig> = {};
-
-        // Update source if provided
-        if (searchContext.source) {
-          updates.source = searchContext.source;
-        }
-
-        // Update where clause at both levels:
-        // 1. Top-level where (for Search display mode)
-        if (searchContext.where) {
-          updates.where = searchContext.where;
-        }
-        if (searchContext.whereLanguage) {
-          updates.whereLanguage = searchContext.whereLanguage;
-        }
-
-        // 2. Series-level aggCondition (for Line/Bar/Table/Number modes)
-        if (
-          searchContext.where &&
-          Array.isArray(prevConfig.select) &&
-          prevConfig.select.length > 0
-        ) {
-          updates.select = prevConfig.select.map((series, index) => ({
-            ...series,
-            // Only update first series' condition
-            aggCondition:
-              index === 0
-                ? (searchContext.where ?? '')
-                : (series.aggCondition ?? ''),
-            aggConditionLanguage:
-              index === 0
-                ? (searchContext.whereLanguage ?? 'lucene')
-                : (series.aggConditionLanguage ?? 'lucene'),
-          }));
-        }
-
-        return {
-          ...prevConfig,
-          ...updates,
-        };
-      });
+      return;
     }
+
+    hasInitialized.current = true;
+
+    setChartConfig(prevConfig => {
+      const updates: Partial<SavedChartConfig> = {};
+
+      if (searchContext.source) {
+        updates.source = searchContext.source;
+      }
+
+      if (searchContext.where) {
+        updates.where = searchContext.where;
+      }
+
+      if (searchContext.whereLanguage) {
+        updates.whereLanguage = searchContext.whereLanguage;
+      }
+
+      if (
+        searchContext.where &&
+        Array.isArray(prevConfig.select) &&
+        prevConfig.select.length > 0
+      ) {
+        updates.select = prevConfig.select.map((series, index) => ({
+          ...series,
+          aggCondition:
+            index === 0
+              ? (searchContext.where ?? '')
+              : (series.aggCondition ?? ''),
+          aggConditionLanguage:
+            index === 0
+              ? (searchContext.whereLanguage ?? 'lucene')
+              : (series.aggConditionLanguage ?? 'lucene'),
+        }));
+      }
+
+      return { ...prevConfig, ...updates };
+    });
   }, [
     searchContext.source,
     searchContext.where,
