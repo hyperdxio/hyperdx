@@ -84,7 +84,11 @@ import {
   useSavedSearch,
   useUpdateSavedSearch,
 } from '@/savedSearch';
-import { useSearchPageFilterState } from '@/searchFilters';
+import {
+  filtersToLuceneQuery,
+  filtersToSqlQuery,
+  useSearchPageFilterState,
+} from '@/searchFilters';
 import SearchInputV2 from '@/SearchInputV2';
 import {
   getFirstTimestampValueExpression,
@@ -880,6 +884,26 @@ function DBSearchPage() {
     whereQuery: watch('where') ?? '',
   });
 
+  // When language changes, regenerate the search bar text from the current filter state
+  const handleLanguageChange = useCallback(
+    (newLanguage: 'sql' | 'lucene') => {
+      setValue('whereLanguage', newLanguage, { shouldDirty: true });
+
+      // Regenerate the search bar text from the current filters
+      // This is more reliable than trying to translate between query syntaxes
+      const currentFilters = searchFilters.filters;
+      const newQuery =
+        newLanguage === 'sql'
+          ? filtersToSqlQuery(currentFilters)
+          : filtersToLuceneQuery(currentFilters);
+
+      if (newQuery) {
+        setValue('where', newQuery, { shouldDirty: true });
+      }
+    },
+    [setValue, searchFilters.filters],
+  );
+
   useEffect(() => {
     const { unsubscribe } = watch((data, { name, type }) => {
       // If the user changes the source dropdown, reset the select and orderby fields
@@ -1482,11 +1506,7 @@ function DBSearchPage() {
                   control={control}
                   name="where"
                   placeholder="SQL WHERE clause (ex. column = 'foo')"
-                  onLanguageChange={lang =>
-                    setValue('whereLanguage', lang, {
-                      shouldDirty: true,
-                    })
-                  }
+                  onLanguageChange={handleLanguageChange}
                   language="sql"
                   onSubmit={onSubmit}
                   label="WHERE"
@@ -1501,11 +1521,7 @@ function DBSearchPage() {
                 tableConnection={tcFromSource(inputSourceObj)}
                 control={control}
                 name="where"
-                onLanguageChange={lang =>
-                  setValue('whereLanguage', lang, {
-                    shouldDirty: true,
-                  })
-                }
+                onLanguageChange={handleLanguageChange}
                 onSubmit={onSubmit}
                 language="lucene"
                 placeholder="Search your events w/ Lucene ex. column:foo"
