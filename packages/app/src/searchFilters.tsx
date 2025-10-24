@@ -130,6 +130,163 @@ export const filtersToSqlQuery = (filters: FilterState): string => {
   return parts.join(' AND ');
 };
 
+/**
+ * Parse SQL WHERE clause back into FilterState
+ * Extracts simple conditions like field = 'value', field IN (...), field != 'value', field NOT IN (...)
+ */
+export const parseSqlToFilters = (sql: string): FilterState => {
+  const filters: FilterState = {};
+  if (!sql || !sql.trim()) {
+    return filters;
+  }
+
+  try {
+    const text = sql.trim();
+
+    // Match field IN ('val1', 'val2', ...)
+    const inMatches = text.matchAll(/(\w+)\s+IN\s*\(([^)]+)\)/gi);
+    for (const match of inMatches) {
+      const field = match[1];
+      const values = match[2]
+        .split(',')
+        .map(v => v.trim().replace(/^'|'$/g, '').replace(/''/g, "'"))
+        .filter(v => v);
+
+      if (!filters[field]) {
+        filters[field] = { included: new Set(), excluded: new Set() };
+      }
+      values.forEach(v => filters[field].included.add(v));
+    }
+
+    // Match field NOT IN ('val1', 'val2', ...)
+    const notInMatches = text.matchAll(/(\w+)\s+NOT\s+IN\s*\(([^)]+)\)/gi);
+    for (const match of notInMatches) {
+      const field = match[1];
+      const values = match[2]
+        .split(',')
+        .map(v => v.trim().replace(/^'|'$/g, '').replace(/''/g, "'"))
+        .filter(v => v);
+
+      if (!filters[field]) {
+        filters[field] = { included: new Set(), excluded: new Set() };
+      }
+      values.forEach(v => filters[field].excluded.add(v));
+    }
+
+    // Match field = 'value' (handle escaped quotes as '')
+    const eqMatches = text.matchAll(/(\w+)\s*=\s*'((?:[^']|'')*)'/g);
+    for (const match of eqMatches) {
+      const field = match[1];
+      const value = match[2].replace(/''/g, "'");
+
+      if (!filters[field]) {
+        filters[field] = { included: new Set(), excluded: new Set() };
+      }
+      filters[field].included.add(value);
+    }
+
+    // Match field != 'value' (handle escaped quotes as '')
+    const neqMatches = text.matchAll(/(\w+)\s*!=\s*'((?:[^']|'')*)'/g);
+    for (const match of neqMatches) {
+      const field = match[1];
+      const value = match[2].replace(/''/g, "'");
+
+      if (!filters[field]) {
+        filters[field] = { included: new Set(), excluded: new Set() };
+      }
+      filters[field].excluded.add(value);
+    }
+
+    return filters;
+  } catch (error) {
+    console.warn('Failed to parse SQL to filters:', error);
+    return {};
+  }
+};
+
+/**
+ * Parse Lucene query back into FilterState
+ * Extracts simple conditions like field:"value", (field:"val1" OR field:"val2"), -field:value
+ */
+export const parseLuceneToFilters = (lucene: string): FilterState => {
+  const filters: FilterState = {};
+  if (!lucene || !lucene.trim()) {
+    return filters;
+  }
+
+  try {
+    const text = lucene.trim();
+
+    // Match grouped OR conditions: (field:"val1" OR field:"val2" OR ...)
+    const orGroupMatches = text.matchAll(/\(([^)]+)\)/g);
+    for (const match of orGroupMatches) {
+      const group = match[1];
+      // Check if this is an OR group with same field
+      const fieldMatches = group.matchAll(/(\w+):"([^"]*)"/g);
+      const conditions: { field: string; value: string }[] = [];
+
+      for (const fieldMatch of fieldMatches) {
+        conditions.push({ field: fieldMatch[1], value: fieldMatch[2] });
+      }
+
+      // If all conditions are for the same field, treat as included values
+      if (conditions.length > 0) {
+        const field = conditions[0].field;
+        if (conditions.every(c => c.field === field)) {
+          if (!filters[field]) {
+            filters[field] = { included: new Set(), excluded: new Set() };
+          }
+          conditions.forEach(c => filters[field].included.add(c.value));
+        }
+      }
+    }
+
+    // Match negated fields: -field:"value" or -field:value
+    const negatedQuotedMatches = text.matchAll(/-(\w+):"([^"]*)"/g);
+    for (const match of negatedQuotedMatches) {
+      const field = match[1];
+      const value = match[2];
+
+      if (!filters[field]) {
+        filters[field] = { included: new Set(), excluded: new Set() };
+      }
+      filters[field].excluded.add(value);
+    }
+
+    const negatedUnquotedMatches = text.matchAll(/-(\w+):([^\s:"()]+)/g);
+    for (const match of negatedUnquotedMatches) {
+      const field = match[1];
+      const value = match[2];
+
+      if (!filters[field]) {
+        filters[field] = { included: new Set(), excluded: new Set() };
+      }
+      filters[field].excluded.add(value);
+    }
+
+    // Match single field:"value" (not already captured in OR groups or negations)
+    // Use negative lookbehind to exclude negated fields
+    const singleQuotedMatches = text.matchAll(/(?<![-(\w])(\w+):"([^"]*)"/g);
+    for (const match of singleQuotedMatches) {
+      const field = match[1];
+      const value = match[2];
+
+      // Skip if already added from OR group
+      if (!filters[field] || filters[field].included.size === 0) {
+        if (!filters[field]) {
+          filters[field] = { included: new Set(), excluded: new Set() };
+        }
+        filters[field].included.add(value);
+      }
+    }
+
+    return filters;
+  } catch (error) {
+    console.warn('Failed to parse Lucene to filters:', error);
+    return {};
+  }
+};
+
 export const areFiltersEqual = (a: FilterState, b: FilterState) => {
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);
@@ -200,11 +357,13 @@ export const useSearchPageFilterState = ({
   onFilterChange,
   onSearchBarUpdate,
   whereLanguage = 'lucene',
+  whereQuery = '',
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
   onSearchBarUpdate?: (query: string) => void;
   whereLanguage?: 'sql' | 'lucene';
+  whereQuery?: string;
 }) => {
   const parsedQuery = React.useMemo(() => {
     try {
@@ -217,6 +376,9 @@ export const useSearchPageFilterState = ({
 
   const [filters, setFilters] = React.useState<FilterState>({});
 
+  // Track the last search bar query to detect manual changes
+  const lastWhereQueryRef = React.useRef<string>(whereQuery);
+
   React.useEffect(() => {
     if (
       !areFiltersEqual(filters, parsedQuery.filters) &&
@@ -227,6 +389,26 @@ export const useSearchPageFilterState = ({
     // only react to changes in parsed query
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsedQuery.filters]);
+
+  // Sync filters from search bar when user manually edits it
+  React.useEffect(() => {
+    // Only update if the search bar query actually changed
+    if (whereQuery === lastWhereQueryRef.current) {
+      return;
+    }
+    lastWhereQueryRef.current = whereQuery;
+
+    // Parse the search bar text back into filters
+    const parsedFilters =
+      whereLanguage === 'sql'
+        ? parseSqlToFilters(whereQuery)
+        : parseLuceneToFilters(whereQuery);
+
+    // Only update if the parsed filters are different
+    if (!areFiltersEqual(filters, parsedFilters)) {
+      setFilters(parsedFilters);
+    }
+  }, [whereQuery, whereLanguage, filters]);
 
   const updateFilterQuery = React.useCallback(
     (newFilters: FilterState) => {

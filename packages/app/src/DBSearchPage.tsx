@@ -877,6 +877,7 @@ function DBSearchPage() {
     onFilterChange: handleSetFilters,
     onSearchBarUpdate: handleSearchBarUpdate,
     whereLanguage: watch('whereLanguage') ?? 'lucene',
+    whereQuery: watch('where') ?? '',
   });
 
   useEffect(() => {

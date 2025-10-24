@@ -6,7 +6,9 @@ import {
   filtersToLuceneQuery,
   filtersToQuery,
   filtersToSqlQuery,
+  parseLuceneToFilters,
   parseQuery,
+  parseSqlToFilters,
   useSearchPageFilterState,
 } from '../searchFilters';
 
@@ -308,6 +310,100 @@ describe('searchFilters', () => {
         },
       };
       expect(filtersToSqlQuery(filters)).toEqual("name = 'O''Brien'");
+    });
+  });
+
+  describe('parseSqlToFilters', () => {
+    it('should parse single equality', () => {
+      const result = parseSqlToFilters("service = 'app'");
+      expect(result).toEqual({
+        service: {
+          included: new Set(['app']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('should parse IN clause', () => {
+      const result = parseSqlToFilters("level IN ('info', 'error')");
+      expect(result.level?.included).toEqual(new Set(['info', 'error']));
+    });
+
+    it('should parse NOT IN clause', () => {
+      const result = parseSqlToFilters("service NOT IN ('test', 'dev')");
+      expect(result.service?.excluded).toEqual(new Set(['test', 'dev']));
+    });
+
+    it('should parse != operator', () => {
+      const result = parseSqlToFilters("service != 'test'");
+      expect(result).toEqual({
+        service: {
+          included: new Set(),
+          excluded: new Set(['test']),
+        },
+      });
+    });
+
+    it('should parse multiple conditions with AND', () => {
+      const result = parseSqlToFilters("service = 'app' AND level = 'error'");
+      expect(result.service?.included).toEqual(new Set(['app']));
+      expect(result.level?.included).toEqual(new Set(['error']));
+    });
+
+    it('should handle escaped quotes', () => {
+      const result = parseSqlToFilters("name = 'O''Brien'");
+      expect(result.name?.included).toEqual(new Set(["O'Brien"]));
+    });
+
+    it('should return empty object for empty string', () => {
+      expect(parseSqlToFilters('')).toEqual({});
+    });
+  });
+
+  describe('parseLuceneToFilters', () => {
+    it('should parse single field with quoted value', () => {
+      const result = parseLuceneToFilters('service:"app"');
+      expect(result).toEqual({
+        service: {
+          included: new Set(['app']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('should parse OR group', () => {
+      const result = parseLuceneToFilters('(service:"app" OR service:"api")');
+      expect(result.service?.included).toEqual(new Set(['app', 'api']));
+    });
+
+    it('should parse negated field with quotes', () => {
+      const result = parseLuceneToFilters('-service:"test"');
+      expect(result).toEqual({
+        service: {
+          included: new Set(),
+          excluded: new Set(['test']),
+        },
+      });
+    });
+
+    it('should parse negated field without quotes', () => {
+      const result = parseLuceneToFilters('-service:test');
+      expect(result).toEqual({
+        service: {
+          included: new Set(),
+          excluded: new Set(['test']),
+        },
+      });
+    });
+
+    it('should parse multiple conditions', () => {
+      const result = parseLuceneToFilters('service:"app" level:"error"');
+      expect(result.service?.included).toEqual(new Set(['app']));
+      expect(result.level?.included).toEqual(new Set(['error']));
+    });
+
+    it('should return empty object for empty string', () => {
+      expect(parseLuceneToFilters('')).toEqual({});
     });
   });
 
