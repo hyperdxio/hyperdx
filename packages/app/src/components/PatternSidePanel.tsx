@@ -1,8 +1,7 @@
 import * as React from 'react';
-import Drawer from 'react-modern-drawer';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { TSource } from '@hyperdx/common-utils/dist/types';
-import { Card, Stack, Text } from '@mantine/core';
+import { Card, Drawer, Stack, Text } from '@mantine/core';
 
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RawLogTable } from '@/components/DBRowTable';
@@ -96,14 +95,17 @@ export default function PatternSidePanel({
 
   return (
     <Drawer
-      open={isOpen}
+      opened={isOpen}
       onClose={selectedRowWhere ? handleCloseRowSidePanel : onClose}
-      direction="right"
+      position="right"
       size="70vw"
+      withCloseButton={false}
       zIndex={drawerZIndex}
-      enableOverlay={selectedRowWhere == null}
-      overlayOpacity={0.1}
-      duration={0}
+      styles={{
+        body: {
+          padding: 0,
+        },
+      }}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel}>

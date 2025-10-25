@@ -51,8 +51,6 @@ import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
 
-import 'react-modern-drawer/dist/index.css';
-
 const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
 const getKubePhaseNumber = (phase: string) => {

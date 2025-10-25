@@ -1,6 +1,5 @@
 import * as React from 'react';
 import Link from 'next/link';
-import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
 import { TSource } from '@hyperdx/common-utils/dist/types';
@@ -9,6 +8,7 @@ import {
   Badge,
   Box,
   Card,
+  Drawer,
   Flex,
   Grid,
   ScrollArea,
@@ -334,14 +334,17 @@ export default function NamespaceDetailsSidePanel({
 
   return (
     <Drawer
-      enableOverlay
-      overlayOpacity={0.1}
-      duration={0}
-      open={!!namespaceName}
+      opened={!!namespaceName}
       onClose={handleClose}
-      direction="right"
-      size={'80vw'}
+      position="right"
+      size="80vw"
+      withCloseButton={false}
       zIndex={drawerZIndex}
+      styles={{
+        body: {
+          padding: 0,
+        },
+      }}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel}>

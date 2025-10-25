@@ -2,21 +2,19 @@ import { useState } from 'react';
 import { Button } from 'react-bootstrap';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { useHotkeys } from 'react-hotkeys-hook';
-import Drawer from 'react-modern-drawer';
 import {
   DateRange,
   SearchCondition,
   SearchConditionLanguage,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { Drawer } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import { Session } from './sessions';
 import SessionSubpanel from './SessionSubpanel';
 import { formatDistanceToNowStrictShort } from './utils';
 import { ZIndexContext } from './zIndex';
-
-import 'react-modern-drawer/dist/index.css';
 
 export default function SessionSidePanel({
   traceSource,
@@ -74,20 +72,24 @@ export default function SessionSidePanel({
 
   return (
     <Drawer
-      customIdSuffix={`session-side-panel-${sessionId}`}
-      duration={0}
-      overlayOpacity={0.5}
-      open={sessionId != null}
+      opened={sessionId != null}
       onClose={() => {
         if (!subDrawerOpen) {
           onClose();
         }
       }}
-      direction="right"
-      size={'82vw'}
-      style={{ background: '#0F1216' }}
-      className="border-start border-dark"
+      position="right"
+      size="82vw"
+      withCloseButton={false}
       zIndex={zIndex}
+      styles={{
+        body: {
+          padding: 0,
+          background: '#0F1216',
+          height: '100vh',
+        },
+      }}
+      className="border-start border-dark"
     >
       <ZIndexContext.Provider value={zIndex}>
         <div className="d-flex flex-column h-100">
