@@ -17,82 +17,157 @@ describe('useDefaultOrderBy', () => {
 
   describe('optimizeOrderBy function', () => {
     describe('should handle', () => {
-      const mockSource = {
-        timestampValueExpression: 'Timestamp',
-      };
-
       const testCases = [
         {
-          input: undefined,
+          sortingKey: undefined,
           expected: 'Timestamp DESC',
         },
         {
-          input: '',
+          sortingKey: '',
           expected: 'Timestamp DESC',
         },
         {
           // Traces Table
-          input: 'ServiceName, SpanName, toDateTime(Timestamp)',
+          sortingKey: 'ServiceName, SpanName, toDateTime(Timestamp)',
           expected: 'Timestamp DESC',
         },
         {
           // Optimized Traces Table
-          input:
+          sortingKey:
             'toStartOfHour(Timestamp), ServiceName, SpanName, toDateTime(Timestamp)',
           expected: '(toStartOfHour(Timestamp), toDateTime(Timestamp)) DESC',
         },
         {
           // Unsupported for now as it's not a great sort key, want to just
           // use default behavior for this
-          input: 'toDateTime(Timestamp), ServiceName, SpanName, Timestamp',
+          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName, Timestamp',
           expected: 'Timestamp DESC',
         },
         {
           // Unsupported prefix sort key
-          input: 'toDateTime(Timestamp), ServiceName, SpanName',
+          sortingKey: 'toDateTime(Timestamp), ServiceName, SpanName',
           expected: 'Timestamp DESC',
         },
         {
           // Inverted sort key order, we should not try to optimize this
-          input:
+          sortingKey:
             'ServiceName, toDateTime(Timestamp), SeverityText, toStartOfHour(Timestamp)',
           expected: 'Timestamp DESC',
         },
         {
-          input: 'toStartOfHour(Timestamp), other_column, Timestamp',
+          sortingKey: 'toStartOfHour(Timestamp), other_column, Timestamp',
           expected: '(toStartOfHour(Timestamp), Timestamp) DESC',
         },
         {
-          input: 'Timestamp, other_column',
+          sortingKey: 'Timestamp, other_column',
           expected: 'Timestamp DESC',
         },
         {
-          input: 'user_id, toStartOfHour(Timestamp), status, Timestamp',
+          sortingKey: 'user_id, toStartOfHour(Timestamp), status, Timestamp',
           expected: '(toStartOfHour(Timestamp), Timestamp) DESC',
         },
         {
-          input:
+          sortingKey:
             'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp(Timestamp)',
           expected:
             '(toStartOfMinute(Timestamp), toUnixTimestamp(Timestamp)) DESC',
         },
         {
           // test variation of toUnixTimestamp
-          input:
+          sortingKey:
             'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp64Nano(Timestamp)',
           expected:
             '(toStartOfMinute(Timestamp), toUnixTimestamp64Nano(Timestamp)) DESC',
         },
         {
-          input:
+          sortingKey:
             'toUnixTimestamp(toStartOfMinute(Timestamp)), user_id, status, Timestamp',
           expected:
             '(toUnixTimestamp(toStartOfMinute(Timestamp)), Timestamp) DESC',
         },
+        {
+          sortingKey: 'toStartOfMinute(Timestamp), user_id, status, Timestamp',
+          timestampValueExpression: 'Timestamp, toStartOfMinute(Timestamp)',
+          expected: '(toStartOfMinute(Timestamp), Timestamp) DESC',
+        },
+        {
+          sortingKey: 'Timestamp',
+          displayedTimestampValueExpression: 'Timestamp64',
+          expected: '(Timestamp, Timestamp64) DESC',
+        },
+        {
+          sortingKey: 'Timestamp',
+          displayedTimestampValueExpression: 'Timestamp64 ',
+          expected: '(Timestamp, Timestamp64) DESC',
+        },
+        {
+          sortingKey: 'Timestamp',
+          displayedTimestampValueExpression: 'Timestamp',
+          expected: 'Timestamp DESC',
+        },
+        {
+          sortingKey: 'Timestamp',
+          displayedTimestampValueExpression: '',
+          expected: 'Timestamp DESC',
+        },
+        {
+          sortingKey: 'Timestamp, ServiceName, Timestamp64',
+          displayedTimestampValueExpression: 'Timestamp64',
+          expected: '(Timestamp, Timestamp64) DESC',
+        },
+        {
+          sortingKey:
+            'toStartOfMinute(Timestamp), Timestamp, ServiceName, Timestamp64',
+          displayedTimestampValueExpression: 'Timestamp64',
+          expected: '(toStartOfMinute(Timestamp), Timestamp, Timestamp64) DESC',
+        },
+        {
+          sortingKey:
+            'toStartOfMinute(Timestamp), Timestamp64, ServiceName, Timestamp',
+          displayedTimestampValueExpression: 'Timestamp64',
+          expected: '(toStartOfMinute(Timestamp), Timestamp64, Timestamp) DESC',
+        },
+        {
+          sortingKey: 'SomeOtherTimeColumn',
+          displayedTimestampValueExpression: 'Timestamp64',
+          expected: '(Timestamp, Timestamp64) DESC',
+        },
+        {
+          sortingKey: '',
+          displayedTimestampValueExpression: 'Timestamp64',
+          expected: '(Timestamp, Timestamp64) DESC',
+        },
+        {
+          sortingKey: 'ServiceName, TimestampTime, Timestamp',
+          timestampValueExpression: 'TimestampTime, Timestamp',
+          displayedTimestampValueExpression: 'Timestamp',
+          expected: '(TimestampTime, Timestamp) DESC',
+        },
+        {
+          sortingKey: 'ServiceName, TimestampTime, Timestamp',
+          timestampValueExpression: 'Timestamp, TimestampTime',
+          displayedTimestampValueExpression: 'Timestamp',
+          expected: 'Timestamp DESC',
+        },
+        {
+          sortingKey: '',
+          timestampValueExpression: 'Timestamp, TimestampTime',
+          displayedTimestampValueExpression: '',
+          expected: 'Timestamp DESC',
+        },
       ];
       for (const testCase of testCases) {
-        it(`${testCase.input}`, () => {
-          const mockTableMetadata = { sorting_key: testCase.input };
+        it(`${testCase.sortingKey}`, () => {
+          const mockSource = {
+            timestampValueExpression:
+              testCase.timestampValueExpression || 'Timestamp',
+            displayedTimestampValueExpression:
+              testCase.displayedTimestampValueExpression,
+          };
+
+          const mockTableMetadata = {
+            sorting_key: testCase.sortingKey,
+          };
 
           jest.spyOn(sourceModule, 'useSource').mockReturnValue({
             data: mockSource,
