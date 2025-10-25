@@ -750,7 +750,7 @@ export function CreateWebhookForm({
   "title": "{{title}}",
   "description": "{{body}}",
   "deduplication_key": "{{eventId}}",
-  "status": "{{state}}",
+  "status": "{{#if (eq state "ALERT")}}firing{{else}}resolved{{/if}}",
   "source_url": "{{link}}"
 }`;
         }
