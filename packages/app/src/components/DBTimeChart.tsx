@@ -170,14 +170,21 @@ function DBTimeChartComponent({
       where = config.select[0].aggCondition ?? '';
       whereLanguage = config.select[0].aggConditionLanguage ?? 'lucene';
     }
-    return new URLSearchParams({
+    const params: Record<string, string> = {
       source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
       where: where,
       whereLanguage: whereLanguage,
       filters: JSON.stringify(config.filters),
       from: from.toString(),
       to: to.toString(),
-    });
+    };
+    // Include the select parameter if provided to preserve custom columns
+    // eventTableSelect is used for charts that override select (like histograms with count)
+    // to preserve the original table's select expression
+    if (config.eventTableSelect) {
+      params.select = config.eventTableSelect;
+    }
+    return new URLSearchParams(params);
   }, [clickedActiveLabelDate, config, granularity, source]);
 
   return isLoading && !data ? (
@@ -271,6 +278,7 @@ function DBTimeChartComponent({
             }}
           >
             <Link
+              data-testid="chart-view-events-link"
               href={`/search?${qparams?.toString()}`}
               className="text-white-hover text-decoration-none"
               onClick={() => setActiveClickPayload(undefined)}
