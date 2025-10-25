@@ -1,5 +1,11 @@
 # @hyperdx/api
 
+## 2.7.1
+
+### Patch Changes
+
+- 24b5477d: feat: allow specifying webhook request headers
+
 ## 2.7.0
 
 ### Minor Changes

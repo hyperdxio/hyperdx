@@ -1,5 +1,12 @@
 # @hyperdx/app
 
+## 2.7.1
+
+### Patch Changes
+
+- 24b5477d: feat: allow specifying webhook request headers
+- ab7af41f: avoid hydration errors when app loads if nav is collapsed
+
 ## 2.7.0
 
 ### Minor Changes
