@@ -36,7 +36,11 @@ import {
   renderAlertTemplate,
 } from '@/tasks/template';
 import { CheckAlertsTaskArgs, HdxTask } from '@/tasks/types';
-import { roundDownToXMinutes, unflattenObject } from '@/tasks/util';
+import {
+  calcAlertDateRange,
+  roundDownToXMinutes,
+  unflattenObject,
+} from '@/tasks/util';
 import logger from '@/utils/logger';
 
 import { tasksTracer } from './tracer';
@@ -171,10 +175,14 @@ export const processAlert = async (
       );
       return;
     }
-    const checkStartTime = previous
-      ? previous.createdAt
-      : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins);
-    const checkEndTime = nowInMinsRoundDown;
+    const dateRange = calcAlertDateRange(
+      (previous
+        ? previous.createdAt
+        : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins)
+      ).getTime(),
+      nowInMinsRoundDown.getTime(),
+      windowSizeInMins,
+    );
 
     let chartConfig: ChartConfigWithOptDateRange | undefined;
     if (details.taskType === AlertTaskType.SAVED_SEARCH) {
@@ -182,7 +190,7 @@ export const processAlert = async (
       chartConfig = {
         connection: connectionId,
         displayType: DisplayType.Line,
-        dateRange: [checkStartTime, checkEndTime],
+        dateRange,
         dateRangeStartInclusive: true,
         dateRangeEndInclusive: false,
         from: source.from,
@@ -206,7 +214,7 @@ export const processAlert = async (
       if (tile.config.displayType === DisplayType.Line) {
         chartConfig = {
           connection: connectionId,
-          dateRange: [checkStartTime, checkEndTime],
+          dateRange,
           dateRangeStartInclusive: true,
           dateRangeEndInclusive: false,
           displayType: tile.config.displayType,
@@ -252,9 +260,10 @@ export const processAlert = async (
     logger.info(
       {
         alertId: alert.id,
+        chartConfig,
         checksData,
-        checkStartTime,
-        checkEndTime,
+        checkStartTime: dateRange[0],
+        checkEndTime: dateRange[1],
       },
       `Received alert metric [${alert.source} source]`,
     );
