@@ -113,6 +113,7 @@ const fireChannelEvent = async ({
   const attributesNested = unflattenObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
     alert: {
+      id: alert.id,
       channel: alert.channel,
       dashboardId: dashboard?.id,
       groupBy: alert.groupBy,
