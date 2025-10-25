@@ -4,8 +4,10 @@ import { serializeError } from 'serialize-error';
 
 import app from '@/api-app';
 import * as config from '@/config';
+import { LOCAL_APP_TEAM } from '@/controllers/team';
 import { connectDB, mongooseConnection } from '@/models';
 import opampApp from '@/opamp/app';
+import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
 
 export default class Server {
@@ -84,5 +86,24 @@ export default class Server {
     }
 
     await connectDB();
+
+    // Initialize default connections and sources for local app mode
+    if (config.IS_LOCAL_APP_MODE) {
+      try {
+        logger.info(
+          'Local app mode detected, setting up default connections and sources...',
+        );
+        await setupTeamDefaults(LOCAL_APP_TEAM._id.toString());
+        logger.info(
+          'Default connections and sources setup completed for local app mode',
+        );
+      } catch (error) {
+        logger.error(
+          { err: serializeError(error) },
+          'Failed to setup team defaults for local app mode',
+        );
+        // Don't throw - allow server to start even if defaults setup fails
+      }
+    }
   }
 }
