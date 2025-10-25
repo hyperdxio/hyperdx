@@ -161,6 +161,7 @@ const transformStateForService = (
   service: WebhookService,
 ): string => {
   if (service === WebhookService.IncidentIO) {
+    // Map AlertState to incident.io status
     return state === 'ALERT' ? 'firing' : 'resolved';
   }
   return state;

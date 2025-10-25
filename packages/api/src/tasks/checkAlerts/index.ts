@@ -163,6 +163,14 @@ export const processAlert = async (
 ) => {
   const { alert, source, previous } = details;
   try {
+    // Fetch full previous alert history to check state
+    let previousAlertHistory: IAlertHistory | null = null;
+    if (previous) {
+      previousAlertHistory = await AlertHistory.findOne({
+        alert: new mongoose.Types.ObjectId(alert.id),
+        createdAt: previous.createdAt,
+      });
+    }
     const windowSizeInMins = ms(alert.interval) / 60000;
     const nowInMinsRoundDown = roundDownToXMinutes(windowSizeInMins)(now);
     if (
@@ -381,6 +389,47 @@ export const processAlert = async (
           history.counts += 1;
         }
         history.lastValues.push({ count: _value, startTime: bucketStart });
+      }
+    }
+
+    // Check if alert transitioned from ALERT to OK (resolved)
+    if (
+      previousAlertHistory?.state === AlertState.ALERT &&
+      history.state === AlertState.OK
+    ) {
+      logger.info({
+        message: `Alert resolved, triggering ${alert.channel.type} notification`,
+        alertId: alert.id,
+      });
+
+      try {
+        const lastValue = history.lastValues[history.lastValues.length - 1];
+        await fireChannelEvent({
+          alert,
+          alertProvider,
+          attributes: {}, // FIXME: support attributes (logs + resources ?)
+          clickhouseClient,
+          dashboard: (details as any).dashboard,
+          endTime: fns.addMinutes(
+            lastValue?.startTime || nowInMinsRoundDown,
+            windowSizeInMins,
+          ),
+          group: '',
+          metadata,
+          savedSearch: (details as any).savedSearch,
+          source,
+          startTime: lastValue?.startTime || nowInMinsRoundDown,
+          state: AlertState.OK,
+          totalCount: lastValue?.count || 0,
+          windowSizeInMins,
+          teamWebhooksById,
+        });
+      } catch (e) {
+        logger.error({
+          message: 'Failed to fire resolved channel event',
+          alertId: alert.id,
+          error: serializeError(e),
+        });
       }
     }
 
