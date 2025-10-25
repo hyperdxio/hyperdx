@@ -485,8 +485,6 @@ export const renderAlertTemplate = async ({
         const endTime = view.endTime.getTime();
         const eventId = objectHash({
           alertId: alert.id,
-          startTime,
-          endTime,
         });
 
         await notifyChannel({
