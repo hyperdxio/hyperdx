@@ -65,8 +65,9 @@ function DBTimeChartComponent({
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
     useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, queriedConfig],
+      queryKey: [queryKeyPrefix, queriedConfig, 'chunked'],
       enabled,
+      enableQueryChunking: true,
     });
 
   useEffect(() => {
@@ -75,7 +76,8 @@ function DBTimeChartComponent({
     }
   }, [isError, isErrorExpanded, errorExpansion]);
 
-  const isLoadingOrPlaceholder = isLoading || isPlaceholderData;
+  const isLoadingOrPlaceholder =
+    isLoading || !data?.isComplete || isPlaceholderData;
   const { data: source } = useSource({ id: sourceId });
 
   const { graphResults, timestampColumn, groupKeys, lineNames, lineColors } =
