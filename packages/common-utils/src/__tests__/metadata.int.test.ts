@@ -75,6 +75,8 @@ describe('Metadata Integration Tests', () => {
       await client.command({
         query: 'DROP TABLE IF EXISTS default.test_table',
       });
+
+      await client.close();
     });
 
     describe.each([true, false])('with disableRowLimit=%s', disableRowLimit => {
