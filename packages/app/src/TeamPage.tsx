@@ -54,7 +54,12 @@ import { useSources } from './source';
 import { useConfirm } from './useConfirm';
 import { capitalizeFirstLetter } from './utils';
 
-const DEFAULT_GENERIC_WEBHOOK_BODY = ['{{title}}', '{{body}}', '{{link}}'];
+const DEFAULT_GENERIC_WEBHOOK_BODY = [
+  '{{title}}',
+  '{{body}}',
+  '{{link}}',
+  '{{state}}',
+];
 const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
   DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
 
