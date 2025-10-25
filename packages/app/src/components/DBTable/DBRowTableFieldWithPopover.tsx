@@ -15,12 +15,14 @@ export interface DBRowTableFieldWithPopoverProps {
   cellValue: unknown;
   wrapLinesEnabled: boolean;
   columnName?: string;
+  tableContainerRef?: React.RefObject<HTMLDivElement>;
   isChart?: boolean;
 }
 
 export const DBRowTableFieldWithPopover = ({
   children,
   cellValue,
+  tableContainerRef,
   wrapLinesEnabled,
   columnName,
   isChart = false,
@@ -151,6 +153,7 @@ export const DBRowTableFieldWithPopover = ({
         position="top-start"
         offset={5}
         opened={opened}
+        portalProps={{ target: tableContainerRef?.current ?? undefined }}
       >
         <Popover.Target>
           <span
