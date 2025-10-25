@@ -59,6 +59,9 @@ const DEFAULT_GENERIC_WEBHOOK_BODY = [
   '{{body}}',
   '{{link}}',
   '{{state}}',
+  '{{startTime}}',
+  '{{endTime}}',
+  '{{eventId}}',
 ];
 const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
   DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
