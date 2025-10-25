@@ -84,7 +84,10 @@ export const notifyChannel = async ({
       const webhook = channel.channel;
       if (webhook.service === WebhookService.Slack) {
         await handleSendSlackWebhook(webhook, message);
-      } else if (webhook.service === 'generic') {
+      } else if (
+        webhook.service === WebhookService.Generic ||
+        webhook.service === WebhookService.IncidentIO
+      ) {
         await handleSendGenericWebhook(webhook, message);
       }
       break;
@@ -153,6 +156,16 @@ function validateWebhookUrl(
   }
 }
 
+const transformStateForService = (
+  state: string,
+  service: WebhookService,
+): string => {
+  if (service === WebhookService.IncidentIO) {
+    return state === 'ALERT' ? 'firing' : 'resolved';
+  }
+  return state;
+};
+
 export const handleSendSlackWebhook = async (
   webhook: IWebhook,
   message: Message,
@@ -215,7 +228,7 @@ export const handleSendGenericWebhook = async (
       eventId: message.eventId,
       link: escapeJsonString(message.hdxLink),
       startTime: message.startTime,
-      state: message.state,
+      state: transformStateForService(message.state, webhook.service),
       title: escapeJsonString(message.title),
     });
   } catch (e) {

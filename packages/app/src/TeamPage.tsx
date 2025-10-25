@@ -741,15 +741,27 @@ export function CreateWebhookForm({
         }
       }
 
+      let defaultBody = body;
+      if (!body) {
+        if (service === WebhookService.Generic) {
+          defaultBody = `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`;
+        } else if (service === WebhookService.IncidentIO) {
+          defaultBody = `{
+  "title": "{{title}}",
+  "description": "{{body}}",
+  "deduplication_key": "{{eventId}}",
+  "status": "{{state}}",
+  "source_url": "{{link}}"
+}`;
+        }
+      }
+
       const response = await saveWebhook.mutateAsync({
         service,
         name,
         url,
         description: description || '',
-        body:
-          service === WebhookService.Generic && !body
-            ? `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`
-            : body,
+        body: defaultBody,
         headers: parsedHeaders,
       });
       notifications.show({
@@ -821,6 +833,11 @@ export function CreateWebhookForm({
             <Radio
               value={WebhookService.Generic}
               label="Generic"
+              {...form.register('service', { required: true })}
+            />
+            <Radio
+              value={WebhookService.IncidentIO}
+              label="Incident.io"
               {...form.register('service', { required: true })}
             />
           </Group>
@@ -984,6 +1001,7 @@ function IntegrationsSection() {
   const { data: webhookData, refetch: refetchWebhooks } = api.useWebhooks([
     WebhookService.Slack,
     WebhookService.Generic,
+    WebhookService.IncidentIO,
   ]);
 
   const allWebhooks = useMemo(() => {
