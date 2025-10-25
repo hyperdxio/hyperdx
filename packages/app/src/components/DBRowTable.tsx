@@ -860,7 +860,6 @@ export const RawLogTable = memo(
                           [styles.isTruncated]: !wrapLinesEnabled,
                         })}
                         onClick={e => {
-                          e.stopPropagation();
                           _onRowExpandClick(row.original);
                         }}
                         aria-label="View details for log entry"
