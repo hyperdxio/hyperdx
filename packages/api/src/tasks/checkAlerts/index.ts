@@ -163,14 +163,6 @@ export const processAlert = async (
 ) => {
   const { alert, source, previous } = details;
   try {
-    // Fetch full previous alert history to check state
-    let previousAlertHistory: IAlertHistory | null = null;
-    if (previous) {
-      previousAlertHistory = await AlertHistory.findOne({
-        alert: new mongoose.Types.ObjectId(alert.id),
-        createdAt: previous.createdAt,
-      });
-    }
     const windowSizeInMins = ms(alert.interval) / 60000;
     const nowInMinsRoundDown = roundDownToXMinutes(windowSizeInMins)(now);
     if (
@@ -394,7 +386,7 @@ export const processAlert = async (
 
     // Check if alert transitioned from ALERT to OK (resolved)
     if (
-      previousAlertHistory?.state === AlertState.ALERT &&
+      previous?.state === AlertState.ALERT &&
       history.state === AlertState.OK
     ) {
       logger.info({
@@ -451,6 +443,7 @@ export { handleSendGenericWebhook };
 export interface AggregatedAlertHistory {
   _id: ObjectId;
   createdAt: Date;
+  state: AlertState;
 }
 
 /**
@@ -481,11 +474,16 @@ export const getPreviousAlertHistories = async (
             createdAt: { $lte: now },
           },
         },
-        // Group by alert ID, taking the latest createdAt value for each group
+        // Sort by createdAt descending to get the latest first
+        {
+          $sort: { createdAt: -1 },
+        },
+        // Group by alert ID, taking the first (latest) values for each group
         {
           $group: {
             _id: '$alert',
-            createdAt: { $max: '$createdAt' },
+            createdAt: { $first: '$createdAt' },
+            state: { $first: '$state' },
           },
         },
       ]),
