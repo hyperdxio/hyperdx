@@ -680,8 +680,10 @@ export class Metadata {
                 .join(', '),
             }
           : await (async () => {
-              // Build select expression that includes all columns by name
-              // This ensures materialized columns are included
+              // Build select expression that includes each of the given keys.
+              // This avoids selecting entire JSON columns, which is significantly slower
+              // than selecting just the JSON paths corresponding to the given keys.
+              // paramN aliases are used to avoid issues with special characters or complex expressions in keys.
               const selectExpr =
                 keys.map((k, i) => `${k} as param${i}`).join(', ') || '*';
 
