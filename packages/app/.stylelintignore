@@ -2,3 +2,4 @@
 .storybook
 node_modules
 coverage
+playwright-report

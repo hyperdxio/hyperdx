@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { add, Duration, format, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
@@ -15,6 +15,7 @@ import {
   Select,
   Space,
   Stack,
+  Switch,
   Text,
   TextInput,
 } from '@mantine/core';
@@ -31,6 +32,8 @@ import {
   dateParser,
   DURATION_OPTIONS,
   DURATIONS,
+  LIVE_TAIL_DURATION_MS,
+  LIVE_TAIL_TIME_QUERY,
   parseTimeRangeInput,
   RELATIVE_TIME_OPTIONS,
 } from './utils';
@@ -42,7 +45,6 @@ const modeAtom = atomWithStorage<TimePickerMode>(
 
 const DATE_INPUT_PLACEHOLDER = 'YYY-MM-DD HH:mm:ss';
 const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
-const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 
 const DateInputCmp = (props: DateInputProps) => (
   <DateInput
@@ -71,14 +73,18 @@ export const TimePicker = ({
   inputValue: value,
   setInputValue: onChange,
   onSearch,
+  onRelativeSearch,
   onSubmit,
   showLive = false,
+  isLiveMode = false,
 }: {
   inputValue: string;
   setInputValue: (str: string) => any;
-  onSearch: (rangeStr: string) => void;
+  onRelativeSearch?: (rangeMs: number) => void;
+  onSearch: (range: string) => void;
   onSubmit?: (rangeStr: string) => void;
   showLive?: boolean;
+  isLiveMode?: boolean;
 }) => {
   const {
     userPreferences: { timeFormat },
@@ -92,7 +98,9 @@ export const TimePicker = ({
 
   const relativeTimeOptions = React.useMemo(() => {
     return [
-      ...(showLive ? [['Live Tail', LIVE_TAIL_TIME_QUERY], 'divider'] : []),
+      ...((showLive
+        ? [[LIVE_TAIL_TIME_QUERY, LIVE_TAIL_DURATION_MS], 'divider' as const]
+        : []) satisfies typeof RELATIVE_TIME_OPTIONS),
       ...RELATIVE_TIME_OPTIONS,
     ];
   }, [showLive]);
@@ -124,6 +132,15 @@ export const TimePicker = ({
     // only run when dateRange changes or opened state changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange, opened, mode]);
+
+  const handleRelativeSearch = React.useCallback(
+    (label: string, value: number) => {
+      onChange(label);
+      onRelativeSearch?.(value);
+      close();
+    },
+    [close, onChange, onRelativeSearch],
+  );
 
   const handleSearch = React.useCallback(
     (value: string | [Date | null, Date | null]) => {
@@ -180,7 +197,7 @@ export const TimePicker = ({
     [form.values, handleSearch],
   );
 
-  const isLiveMode = value === LIVE_TAIL_TIME_QUERY;
+  const [isRelative, setIsRelative] = useState(isLiveMode ?? false);
 
   return (
     <Popover
@@ -260,6 +277,20 @@ export const TimePicker = ({
             </Button>
           </Group>
           <Group gap={4}>
+            {typeof onRelativeSearch === 'function' && (
+              <Switch
+                size="xs"
+                checked={isRelative}
+                onChange={e => setIsRelative(e.currentTarget.checked)}
+                label="Relative Time"
+                labelPosition="right"
+                styles={{
+                  label: {
+                    paddingLeft: '5px',
+                  },
+                }}
+              />
+            )}
             <CloseButton data-testid="time-picker-close" onClick={close} />
           </Group>
         </Group>
@@ -273,7 +304,18 @@ export const TimePicker = ({
                   ) : (
                     <Button
                       key={item[1]}
-                      onClick={() => handleSearch(item[0])}
+                      disabled={
+                        isRelative &&
+                        !item[2] &&
+                        item[0] !== LIVE_TAIL_TIME_QUERY
+                      }
+                      onClick={() => {
+                        if (isRelative || item[0] === LIVE_TAIL_TIME_QUERY) {
+                          handleRelativeSearch?.(item[0], item[1]);
+                        } else {
+                          handleSearch(item[0]);
+                        }
+                      }}
                       w="100%"
                       size="compact-xs"
                       color="gray"
