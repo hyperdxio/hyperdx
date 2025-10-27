@@ -307,9 +307,9 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
           await clickRelativeTimeSwitch(page);
         }
 
-        const last15MinButton = page.locator('text=Last 15 minutes');
-        await last15MinButton.click();
-        await page.waitForURL('**/search**liveInterval=900000**');
+        const last30MinButton = page.locator('text=Last 30 minutes');
+        await last30MinButton.click();
+        await page.waitForURL('**/search**liveInterval=1800000**');
       });
 
       await test.step('Reload page', async () => {

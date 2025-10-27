@@ -197,7 +197,7 @@ export const TimePicker = ({
     [form.values, handleSearch],
   );
 
-  const [isRelative, setIsRelative] = useState(isLiveMode ?? false);
+  const [isRelative, setIsRelative] = useState(false);
 
   return (
     <Popover
