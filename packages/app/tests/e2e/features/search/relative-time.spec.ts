@@ -321,7 +321,8 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
 
         const switchInput = getRelativeTimeSwitch(page);
         const isChecked = await switchInput.isChecked();
-        expect(isChecked).toBe(true);
+        // Reloads should not persist this state (For now)
+        expect(isChecked).toBe(false);
       });
     });
   });
