@@ -54,8 +54,8 @@ test.describe('Advanced Search Workflow - Traces', { tag: '@traces' }, () => {
       await firstRow.click();
       await page.waitForTimeout(1000);
 
-      // Use the main side panel container (nav element with EZDrawer__container class)
-      const sidePanel = page.locator('nav[class*="EZDrawer__container"]');
+      // Use the main side panel container to verify it is visible
+      const sidePanel = page.locator('[data-testid="row-side-panel"]');
       await expect(sidePanel).toBeVisible();
     });
 
