@@ -180,4 +180,226 @@ describe('webhooks router', () => {
 
     await agent.delete('/webhooks/invalid-id').expect(400);
   });
+
+  describe('Header validation', () => {
+    it('POST / - accepts valid header names', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const validHeaders = {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token',
+        'X-Custom-Header': 'value',
+        'User-Agent': 'test',
+        'x-api-key': 'secret',
+        'custom!header#test': 'value',
+      };
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://example.com/valid-headers',
+          headers: validHeaders,
+        })
+        .expect(200);
+
+      expect(response.body.data.headers).toMatchObject(validHeaders);
+    });
+
+    it('POST / - rejects header names starting with numbers', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://example.com/invalid-header-name',
+          headers: {
+            '123Invalid': 'value',
+          },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+
+    it('POST / - rejects empty header names', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://example.com/empty-header-name',
+          headers: {
+            '': 'value',
+          },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+
+    it('POST / - rejects header names with invalid characters', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const invalidHeaderNames = [
+        { 'Header Name': 'value' }, // space
+        { 'Header\nName': 'value' }, // newline
+        { 'Header\rName': 'value' }, // carriage return
+        { 'Header\tName': 'value' }, // tab
+        { 'Header@Name': 'value' }, // @ not allowed
+        { 'Header[Name]': 'value' }, // brackets not allowed
+      ];
+
+      for (const headers of invalidHeaderNames) {
+        const response = await agent
+          .post('/webhooks')
+          .send({
+            ...MOCK_WEBHOOK,
+            url: `https://example.com/invalid-header-${Math.random()}`,
+            headers,
+          })
+          .expect(400);
+
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body[0].type).toBe('Body');
+        expect(response.body[0].errors).toBeDefined();
+      }
+    });
+
+    it('POST / - accepts valid header values', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const validHeaders = {
+        Authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+        'Content-Type': 'application/json; charset=utf-8',
+        'X-Api-Key': 'abc123-def456-ghi789',
+        'User-Agent': 'Mozilla/5.0 (compatible; TestBot/1.0)',
+        'Custom-Header': 'value with spaces and special chars: !@#$%^&*()',
+      };
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://example.com/valid-header-values',
+          headers: validHeaders,
+        })
+        .expect(200);
+
+      expect(response.body.data.headers).toMatchObject(validHeaders);
+    });
+
+    it('POST / - rejects header values with CRLF injection', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://example.com/crlf-injection',
+          headers: {
+            'X-Custom-Header': 'value\r\nX-Injected-Header: malicious',
+          },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+
+    it('POST / - rejects header values with tab characters', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://example.com/tab-injection',
+          headers: {
+            'X-Custom-Header': 'value\twith\ttabs',
+          },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+
+    it('POST / - rejects header values with control characters', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      // Test various control characters
+      const controlCharTests = [
+        '\x00', // null
+        '\x01', // start of heading
+        '\x0B', // vertical tab
+        '\x0C', // form feed
+        '\x1F', // unit separator
+        '\x7F', // delete
+      ];
+
+      for (const controlChar of controlCharTests) {
+        const response = await agent
+          .post('/webhooks')
+          .send({
+            ...MOCK_WEBHOOK,
+            url: `https://example.com/control-char-${Math.random()}`,
+            headers: {
+              'X-Custom-Header': `value${controlChar}test`,
+            },
+          })
+          .expect(400);
+
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body[0].type).toBe('Body');
+        expect(response.body[0].errors).toBeDefined();
+      }
+    });
+
+    it('POST / - rejects header values with newline characters', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://example.com/newline-injection',
+          headers: {
+            'X-Custom-Header': 'value\nwith\nnewlines',
+          },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+
+    it('POST / - rejects header values with carriage return characters', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://example.com/carriage-return-injection',
+          headers: {
+            'X-Custom-Header': 'value\rwith\rcarriage\rreturns',
+          },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+  });
 });

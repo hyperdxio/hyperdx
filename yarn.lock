@@ -4480,7 +4480,6 @@ __metadata:
     react-hotkeys-hook: "npm:^4.3.7"
     react-json-tree: "npm:^0.17.0"
     react-markdown: "npm:^8.0.4"
-    react-modern-drawer: "npm:^1.2.0"
     react-papaparse: "npm:^4.4.0"
     react-query: "npm:^3.39.3"
     react-select: "npm:^5.7.0"
@@ -24665,15 +24664,6 @@ __metadata:
     "@types/react": ">=16"
     react: ">=16"
   checksum: 10c0/ac071cefe5c0cd6b302af2e39144685e51e4a59c083ef930a33fd34233ba47a40fde4ffdb32c3db5a9628a57fdeaa08ea0d533dd6060e902665348b05a4f29e0
-  languageName: node
-  linkType: hard
-
-"react-modern-drawer@npm:^1.2.0":
-  version: 1.2.0
-  resolution: "react-modern-drawer@npm:1.2.0"
-  peerDependencies:
-    react: ">16.0.0"
-  checksum: 10c0/41301a6da8daa899c1f36d0cb3b0258bd89b5109d7052912cd0027dfb626e4b38109b3c1c5d68aa1872f62feac791efe56737e7a220cad894186d3017b7acd76
   languageName: node
   linkType: hard
 

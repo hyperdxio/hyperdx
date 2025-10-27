@@ -141,10 +141,11 @@ function usePatterns({
     limit: { limit: samples },
   });
 
-  const { data: sampleRows } = useQueriedChartConfig(
-    configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
-    { enabled: configWithPrimaryAndPartitionKey != null && enabled },
-  );
+  const { data: sampleRows, isLoading: isSampleLoading } =
+    useQueriedChartConfig(
+      configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
+      { enabled: configWithPrimaryAndPartitionKey != null && enabled },
+    );
 
   const { data: pyodide, isLoading: isLoadingPyodide } = usePyodide({
     enabled,
@@ -191,7 +192,7 @@ function usePatterns({
 
   return {
     ...query,
-    isLoading: query.isLoading || isLoadingPyodide,
+    isLoading: query.isLoading || isSampleLoading || isLoadingPyodide,
     patternQueryConfig: configWithPrimaryAndPartitionKey,
   };
 }
