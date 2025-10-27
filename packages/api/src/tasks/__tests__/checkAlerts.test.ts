@@ -1149,7 +1149,11 @@ describe('checkAlerts', () => {
         body: JSON.stringify({
           text: '{{link}} | {{title}}',
         }),
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Custom-Header': 'custom-value',
+          Authorization: 'Bearer test-token',
+        },
       }).save();
       const webhooks = await Webhook.find({});
       const teamWebhooksById = new Map<string, typeof webhook>(
@@ -1330,7 +1334,7 @@ describe('checkAlerts', () => {
       expect(history2.counts).toBe(0);
       expect(history2.createdAt).toEqual(new Date('2023-11-16T22:15:00.000Z'));
 
-      // check if generic webhook was triggered, injected, and parsed, and sent correctly
+      // check if generic webhook was triggered, injected, and parsed, and sent correctly with custom headers
       expect(fetchMock).toHaveBeenCalledWith('https://webhook.site/123', {
         method: 'POST',
         body: JSON.stringify({
@@ -1338,6 +1342,8 @@ describe('checkAlerts', () => {
         }),
         headers: {
           'Content-Type': 'application/json',
+          'X-Custom-Header': 'custom-value',
+          Authorization: 'Bearer test-token',
         },
       });
     });
