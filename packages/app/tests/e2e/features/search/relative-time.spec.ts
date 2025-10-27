@@ -15,7 +15,7 @@ const openTimePickerModal = async (page: Page) => {
   await page.waitForSelector('[data-testid="time-picker-popover"]', {
     state: 'visible',
   });
-}
+};
 
 test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
   test.beforeEach(async ({ page }) => {
@@ -176,18 +176,14 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
       await page.goto('/search');
       await page.waitForLoadState('networkidle');
 
-        const timePickerInput = page.locator(
-          '[data-testid="time-picker-input"]',
-        );
-        const inputValue = await timePickerInput.inputValue();
-        expect(inputValue).toBe('Live Tail');
+      const timePickerInput = page.locator('[data-testid="time-picker-input"]');
+      const inputValue = await timePickerInput.inputValue();
+      expect(inputValue).toBe('Live Tail');
     });
 
     test('should exit live mode when selecting absolute time range', async ({
       page,
     }) => {
-
-
       await test.step('Open time picker and turn off relative mode', async () => {
         const switchInput = getRelativeTimeSwitch(page);
         const isChecked = await switchInput.isChecked();
