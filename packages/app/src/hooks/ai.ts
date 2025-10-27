@@ -8,6 +8,11 @@ type AssistantInput = {
   text: string;
 };
 
+type SearchAssistantResponse = {
+  where: string;
+  explanation?: string;
+};
+
 export function useChartAssistant() {
   return useMutation<SavedChartConfig, Error, AssistantInput>({
     mutationFn: async ({ sourceId, text }: AssistantInput) =>
@@ -15,5 +20,15 @@ export function useChartAssistant() {
         method: 'POST',
         json: { sourceId, text },
       }).json<SavedChartConfig>(),
+  });
+}
+
+export function useSearchAssistant() {
+  return useMutation<SearchAssistantResponse, Error, AssistantInput>({
+    mutationFn: async ({ sourceId, text }: AssistantInput) =>
+      hdxServer('ai/search-assistant', {
+        method: 'POST',
+        json: { sourceId, text },
+      }).json<SearchAssistantResponse>(),
   });
 }

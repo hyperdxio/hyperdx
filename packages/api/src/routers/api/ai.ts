@@ -398,4 +398,189 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
   },
 );
 
+router.post(
+  '/search-assistant',
+  validateRequest({
+    body: z.object({
+      text: z.string().min(1).max(10000),
+      sourceId: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      if (!config.ANTHROPIC_API_KEY) {
+        logger.error('No ANTHROPIC_API_KEY defined');
+        return res.status(500).json({});
+      }
+
+      const { teamId } = getNonNullUserWithTeam(req);
+
+      const { text, sourceId } = req.body;
+
+      const source = await getSource(teamId.toString(), sourceId);
+
+      if (source == null) {
+        logger.error({ sourceId, teamId }, 'invalid source id');
+        return res.status(400).json({
+          error: 'Invalid source',
+        });
+      }
+
+      const connectionId = source.connection.toString();
+
+      const connection = await getConnectionById(
+        teamId.toString(),
+        connectionId,
+      );
+
+      if (connection == null) {
+        logger.error({
+          message: 'invalid connection id',
+          connectionId,
+          teamId,
+        });
+        return res.status(400).json({
+          error: 'Invalid connection',
+        });
+      }
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+      const metadata = getMetadata(clickhouseClient);
+
+      const databaseName = source.from.databaseName;
+      const tableName = source.from.tableName;
+
+      const tableMetadata = await metadata.getTableMetadata({
+        databaseName,
+        tableName,
+        connectionId,
+      });
+
+      const allFields = await metadata.getAllFields({
+        databaseName,
+        tableName,
+        connectionId,
+      });
+
+      // TODO: Dedup with DBSearchPageFilters.tsx logic
+      allFields.sort((a, b) => {
+        // Prioritize primary keys
+        // TODO: Support JSON
+        const aPath = mergePath(a.path, []);
+        const bPath = mergePath(b.path, []);
+        if (isFieldPrimary(tableMetadata, aPath)) {
+          return -1; // TODO: Check sort order
+        } else if (isFieldPrimary(tableMetadata, bPath)) {
+          return 1;
+        }
+
+        //First show low cardinality fields
+        const isLowCardinality = (type: string) =>
+          type.includes('LowCardinality');
+        return isLowCardinality(a.type) && !isLowCardinality(b.type) ? -1 : 1;
+      });
+
+      const allFieldsWithKeys = allFields.map(f => {
+        return {
+          ...f,
+          key: mergePath(f.path),
+        };
+      });
+      const keysToFetch = allFieldsWithKeys.slice(0, 30);
+      const cc: ChartConfigWithDateRange = {
+        select: '',
+        from: {
+          databaseName,
+          tableName,
+        },
+        connection: connectionId,
+        where: '',
+        groupBy: '',
+        timestampValueExpression: source.timestampValueExpression,
+        dateRange: [new Date(Date.now() - ms('60m')), new Date()],
+      };
+      const keyValues = await metadata.getKeyValues({
+        chartConfig: cc,
+        keys: keysToFetch.map(f => f.key),
+      });
+
+      const anthropic = createAnthropic({
+        apiKey: config.ANTHROPIC_API_KEY,
+      });
+
+      const model = anthropic('claude-sonnet-4-5-20250929');
+
+      const prompt = `You are an AI assistant that helps users convert natural language into ClickHouse SQL WHERE clauses for an observability platform called HyperDX.
+
+The user wants to filter their search results based on the following description:
+${text}
+
+Generate a SQL WHERE clause that matches their request. The query should filter logs, metrics, or traces from a ClickHouse database.
+
+Here are some guidelines:
+- Generate ONLY the WHERE clause condition (do not include the word "WHERE")
+- Use proper ClickHouse SQL syntax
+- Use the exact field names as they appear in the schema
+- For string comparisons, use single quotes
+- Use appropriate operators: =, !=, <, >, <=, >=, IN, NOT IN, LIKE, etc.
+- Combine multiple conditions with AND/OR as needed
+- If the user mentions severity levels like "errors" or "warnings", use the severity field
+- If the user mentions service names, use the service name field
+
+The user is looking to filter data from their source named: ${source.name} of type ${source.kind}.
+
+The ${source.kind === SourceKind.Log ? 'log level' : 'span status code'} is stored in ${source.severityTextExpression}.
+You can identify services via ${source.serviceNameExpression}
+${
+  source.kind === SourceKind.Trace
+    ? `Duration of spans can be queried via ${source.durationExpression} which is expressed in 10^-${source.durationPrecision} seconds of precision.
+Span names under ${source.spanNameExpression} and span kinds under ${source.spanKindExpression}`
+    : `The log body can be queried via ${source.bodyExpression}`
+}
+Various log/span-specific attributes as a Map can be found under ${source.eventAttributesExpression} while resource attributes that follow the OpenTelemetry semantic convention can be found under ${source.resourceAttributesExpression}
+You must use the full field name ex. "column['key']" or "column.key" as it appears.
+
+The following is a list of properties and example values that exist in the source:
+${JSON.stringify(keyValues)}
+
+There may be additional properties that you can use as well:
+${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type: f.type })))}
+`;
+
+      logger.info(prompt);
+
+      const result = await generateObject({
+        model,
+        schema: z.object({
+          whereClause: z
+            .string()
+            .describe(
+              'The SQL WHERE clause condition without the WHERE keyword',
+            ),
+          explanation: z
+            .string()
+            .optional()
+            .describe(
+              'Brief explanation of what the WHERE clause does in plain English',
+            ),
+        }),
+        prompt,
+      });
+
+      const resObject = result.object;
+
+      return res.json({
+        where: resObject.whereClause,
+        explanation: resObject.explanation,
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
 export default router;

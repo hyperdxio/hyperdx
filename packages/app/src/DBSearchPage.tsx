@@ -60,6 +60,7 @@ import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import { AISearchAssistant } from '@/components/AISearchAssistant';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -1428,6 +1429,20 @@ function DBSearchPage() {
             }}
           />
         </Modal>
+        <Box px="sm" mt="sm">
+          <AISearchAssistant
+            setWhere={where => {
+              setValue('where', where, { shouldDirty: true });
+              setValue('whereLanguage', 'sql', { shouldDirty: true });
+              // Submit immediately to execute the search
+              setTimeout(() => {
+                onSubmit();
+              }, 100);
+            }}
+            sourceId={inputSource}
+            aiAssistantEnabled={me?.aiAssistantEnabled ?? false}
+          />
+        </Box>
         <Flex gap="sm" mt="sm" px="sm">
           <WhereLanguageControlled
             name="whereLanguage"
