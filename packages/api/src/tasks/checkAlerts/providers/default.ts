@@ -19,15 +19,12 @@ import {
   type AlertProvider,
   type AlertTask,
   AlertTaskType,
-} from '@/tasks/providers';
+} from '@/tasks/checkAlerts/providers';
+import { MappedOmit } from '@/tasks/types';
 import { convertMsToGranularityString } from '@/utils/common';
 import logger from '@/utils/logger';
 
-import {
-  AggregatedAlertHistory,
-  getPreviousAlertHistories,
-} from '../checkAlerts';
-import { MappedOmit } from '../types';
+import { AggregatedAlertHistory, getPreviousAlertHistories } from '..';
 
 type PartialAlertDetails = MappedOmit<AlertDetails, 'previous'>;
 
