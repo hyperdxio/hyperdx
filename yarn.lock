@@ -4535,6 +4535,7 @@ __metadata:
     "@types/uuid": "npm:^8.3.4"
     date-fns: "npm:^2.28.0"
     date-fns-tz: "npm:^2.0.0"
+    dotenv: "npm:^17.2.3"
     jest: "npm:^28.1.1"
     lodash: "npm:^4.17.21"
     node-sql-parser: "npm:^5.3.5"
@@ -14687,6 +14688,13 @@ __metadata:
   version: 16.4.7
   resolution: "dotenv@npm:16.4.7"
   checksum: 10c0/be9f597e36a8daf834452daa1f4cc30e5375a5968f98f46d89b16b983c567398a330580c88395069a77473943c06b877d1ca25b4afafcdd6d4adb549e8293462
+  languageName: node
+  linkType: hard
+
+"dotenv@npm:^17.2.3":
+  version: 17.2.3
+  resolution: "dotenv@npm:17.2.3"
+  checksum: 10c0/c884403209f713214a1b64d4d1defa4934c2aa5b0002f5a670ae298a51e3c3ad3ba79dfee2f8df49f01ae74290fcd9acdb1ab1d09c7bfb42b539036108bb2ba0
   languageName: node
   linkType: hard
 

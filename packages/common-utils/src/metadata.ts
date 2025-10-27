@@ -668,29 +668,24 @@ export class Metadata {
     return this.cache.getOrFetch(
       `${chartConfig.connection}.${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
       async () => {
-        const selectClause = keys
-          .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
-          .join(', ');
+        if (keys.length === 0) return [];
 
         // When disableRowLimit is true, query directly without CTE
         // Otherwise, use CTE with row limits for sampling
         const sqlConfig = disableRowLimit
           ? {
               ...chartConfig,
-              select: selectClause,
+              select: keys
+                .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
+                .join(', '),
             }
           : await (async () => {
-              // Get all columns including materialized ones
-              const columns = await this.getColumns({
-                databaseName: chartConfig.from.databaseName,
-                tableName: chartConfig.from.tableName,
-                connectionId: chartConfig.connection,
-              });
-
-              // Build select expression that includes all columns by name
-              // This ensures materialized columns are included
+              // Build select expression that includes each of the given keys.
+              // This avoids selecting entire JSON columns, which is significantly slower
+              // than selecting just the JSON paths corresponding to the given keys.
+              // paramN aliases are used to avoid issues with special characters or complex expressions in keys.
               const selectExpr =
-                columns.map(col => `\`${col.name}\``).join(', ') || '*';
+                keys.map((k, i) => `${k} as param${i}`).join(', ') || '*';
 
               return {
                 with: [
@@ -710,7 +705,12 @@ export class Metadata {
                     isSubquery: true,
                   },
                 ],
-                select: selectClause,
+                select: keys
+                  .map(
+                    (_, i) =>
+                      `groupUniqArray(${limit})(param${i}) AS param${i}`,
+                  )
+                  .join(', '),
                 connection: chartConfig.connection,
                 from: { databaseName: '', tableName: 'sampledData' },
                 where: '',
