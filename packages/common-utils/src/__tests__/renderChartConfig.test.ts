@@ -1,4 +1,4 @@
-import { chSql, parameterizedQueryToSql } from '@/clickhouse';
+import { chSql, ColumnMeta, parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/metadata';
 import {
   ChartConfigWithOptDateRange,
@@ -6,10 +6,10 @@ import {
   MetricsDataType,
 } from '@/types';
 
-import { renderChartConfig } from '../renderChartConfig';
+import { renderChartConfig, timeFilterExpr } from '../renderChartConfig';
 
 describe('renderChartConfig', () => {
-  let mockMetadata: Metadata;
+  let mockMetadata: jest.Mocked<Metadata>;
 
   beforeEach(() => {
     mockMetadata = {
@@ -19,7 +19,10 @@ describe('renderChartConfig', () => {
       ]),
       getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
       getColumn: jest.fn().mockResolvedValue({ type: 'DateTime' }),
-    } as unknown as Metadata;
+      getTableMetadata: jest
+        .fn()
+        .mockResolvedValue({ primary_key: 'timestamp' }),
+    } as unknown as jest.Mocked<Metadata>;
   });
 
   const gaugeConfiguration: ChartConfigWithOptDateRange = {
@@ -629,5 +632,217 @@ describe('renderChartConfig', () => {
       expect(actual).not.toMatch(/MetricName IN /);
       expect(actual).toMatchSnapshot();
     });
+  });
+
+  describe('timeFilterExpr', () => {
+    type TimeFilterExprTestCase = {
+      timestampValueExpression: string;
+      dateRangeStartInclusive?: boolean;
+      dateRangeEndInclusive?: boolean;
+      dateRange: [Date, Date];
+      includedDataInterval?: string;
+      expected: string;
+      description: string;
+      tableName?: string;
+      databaseName?: string;
+      primaryKey?: string;
+    };
+
+    const testCases: TimeFilterExprTestCase[] = [
+      {
+        description: 'with basic timestampValueExpression',
+        timestampValueExpression: 'timestamp',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(timestamp >= fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}) AND timestamp <= fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}))`,
+      },
+      {
+        description: 'with dateRangeEndInclusive=false',
+        timestampValueExpression: 'timestamp',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        dateRangeEndInclusive: false,
+        expected: `(timestamp >= fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}))`,
+      },
+      {
+        description: 'with dateRangeStartInclusive=false',
+        timestampValueExpression: 'timestamp',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        dateRangeStartInclusive: false,
+        expected: `(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}) AND timestamp <= fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}))`,
+      },
+      {
+        description: 'with includedDataInterval',
+        timestampValueExpression: 'timestamp',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        includedDataInterval: '1 WEEK',
+        expected: `(timestamp >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}), INTERVAL 1 WEEK) - INTERVAL 1 WEEK AND timestamp <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}), INTERVAL 1 WEEK) + INTERVAL 1 WEEK)`,
+      },
+      {
+        description: 'with date type timestampValueExpression',
+        timestampValueExpression: 'date',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(date >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()})))`,
+      },
+      {
+        description: 'with multiple timestampValueExpression parts',
+        timestampValueExpression: 'timestamp, date',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(timestamp >= fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}) AND timestamp <= fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}))AND(date >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()})))`,
+      },
+      {
+        description: 'with toStartOfDay() in timestampExpr',
+        timestampValueExpression: 'toStartOfDay(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfDay(timestamp) >= toStartOfDay(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()})) AND toStartOfDay(timestamp) <= toStartOfDay(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()})))`,
+      },
+      {
+        description: 'with toStartOfDay  () in timestampExpr',
+        timestampValueExpression: 'toStartOfDay  (timestamp)',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfDay  (timestamp) >= toStartOfDay(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()})) AND toStartOfDay  (timestamp) <= toStartOfDay(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()})))`,
+      },
+      {
+        description: 'with toStartOfInterval() in timestampExpr',
+        timestampValueExpression:
+          'toStartOfInterval(timestamp, INTERVAL 12  MINUTE)',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfInterval(timestamp, INTERVAL 12  MINUTE) >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}), INTERVAL 12  MINUTE) AND toStartOfInterval(timestamp, INTERVAL 12  MINUTE) <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}), INTERVAL 12  MINUTE))`,
+      },
+      {
+        description:
+          'with toStartOfInterval() with lowercase interval in timestampExpr',
+        timestampValueExpression:
+          'toStartOfInterval(timestamp, interval 1 minute)',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfInterval(timestamp, interval 1 minute) >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}), interval 1 minute) AND toStartOfInterval(timestamp, interval 1 minute) <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}), interval 1 minute))`,
+      },
+      {
+        description: 'with toStartOfInterval() with timezone and offset',
+        timestampValueExpression: `toStartOfInterval(timestamp, INTERVAL 1 MINUTE, toDateTime('2023-01-01 14:35:30'), 'America/New_York')`,
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfInterval(timestamp, INTERVAL 1 MINUTE, toDateTime('2023-01-01 14:35:30'), 'America/New_York') >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}), INTERVAL 1 MINUTE, toDateTime('2023-01-01 14:35:30'), 'America/New_York') AND toStartOfInterval(timestamp, INTERVAL 1 MINUTE, toDateTime('2023-01-01 14:35:30'), 'America/New_York') <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}), INTERVAL 1 MINUTE, toDateTime('2023-01-01 14:35:30'), 'America/New_York'))`,
+      },
+      {
+        description: 'with nonstandard spacing',
+        timestampValueExpression: ` toStartOfInterval ( timestamp ,  INTERVAL  1 MINUTE , toDateTime ( '2023-01-01 14:35:30' ),  'America/New_York' ) `,
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfInterval ( timestamp ,  INTERVAL  1 MINUTE , toDateTime ( '2023-01-01 14:35:30' ),  'America/New_York' ) >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}), INTERVAL  1 MINUTE, toDateTime ( '2023-01-01 14:35:30' ), 'America/New_York') AND toStartOfInterval ( timestamp ,  INTERVAL  1 MINUTE , toDateTime ( '2023-01-01 14:35:30' ),  'America/New_York' ) <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}), INTERVAL  1 MINUTE, toDateTime ( '2023-01-01 14:35:30' ), 'America/New_York'))`,
+      },
+      {
+        description: 'with optimizable timestampValueExpression',
+        timestampValueExpression: `timestamp`,
+        primaryKey:
+          "toStartOfMinute(timestamp), ServiceName, ResourceAttributes['timestamp'], timestamp",
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(timestamp >= fromUnixTimestamp64Milli(1739319154000) AND timestamp <= fromUnixTimestamp64Milli(1739491954000))AND(toStartOfMinute(timestamp) >= toStartOfMinute(fromUnixTimestamp64Milli(1739319154000)) AND toStartOfMinute(timestamp) <= toStartOfMinute(fromUnixTimestamp64Milli(1739491954000)))`,
+      },
+      {
+        description: 'with synthetic timestamp value expression for CTE',
+        timestampValueExpression: `__hdx_time_bucket`,
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        databaseName: '',
+        tableName: 'Bucketed',
+        primaryKey:
+          "toStartOfMinute(timestamp), ServiceName, ResourceAttributes['timestamp'], timestamp",
+        expected: `(__hdx_time_bucket >= fromUnixTimestamp64Milli(1739319154000) AND __hdx_time_bucket <= fromUnixTimestamp64Milli(1739491954000))`,
+      },
+
+      {
+        description: 'with toStartOfMinute in timestampValueExpression',
+        timestampValueExpression: `toStartOfMinute(timestamp)`,
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        primaryKey:
+          "toStartOfMinute(timestamp), ServiceName, ResourceAttributes['timestamp'], timestamp",
+        expected: `(toStartOfMinute(timestamp) >= toStartOfMinute(fromUnixTimestamp64Milli(1739319154000)) AND toStartOfMinute(timestamp) <= toStartOfMinute(fromUnixTimestamp64Milli(1739491954000)))`,
+      },
+    ];
+
+    beforeEach(() => {
+      mockMetadata.getColumn.mockImplementation(async ({ column }) =>
+        column === 'date'
+          ? ({ type: 'Date' } as ColumnMeta)
+          : ({ type: 'DateTime' } as ColumnMeta),
+      );
+    });
+
+    it.each(testCases)(
+      'should generate a time filter expression $description',
+      async ({
+        timestampValueExpression,
+        dateRangeEndInclusive = true,
+        dateRangeStartInclusive = true,
+        dateRange,
+        expected,
+        includedDataInterval,
+        tableName = 'target_table',
+        databaseName = 'default',
+        primaryKey,
+      }) => {
+        if (primaryKey) {
+          mockMetadata.getTableMetadata.mockResolvedValue({
+            primary_key: primaryKey,
+          } as any);
+        }
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression,
+          dateRangeEndInclusive,
+          dateRangeStartInclusive,
+          dateRange,
+          connectionId: 'test-connection',
+          databaseName,
+          tableName,
+          metadata: mockMetadata,
+          includedDataInterval,
+        });
+
+        const actualSql = parameterizedQueryToSql(actual);
+        expect(actualSql).toBe(expected);
+      },
+    );
   });
 });

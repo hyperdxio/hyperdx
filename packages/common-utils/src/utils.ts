@@ -581,3 +581,82 @@ export const isFirstOrderByAscending = (
 
   return !isDescending;
 };
+
+/**
+ * Parses a single expression of the form
+ * `toStartOf<Interval>(column[, timezone])` or `toStartOfInterval(column[, interval[, origin[, timezone]]])`.
+ * Returns undefined if the expression is not of this form.
+ */
+export function parseToStartOfFunction(
+  expr: string,
+):
+  | { function: string; columnArgument: string; formattedRemainingArgs: string }
+  | undefined {
+  const parts = splitAndTrimWithBracket(expr);
+  if (parts.length !== 1) return undefined;
+
+  const toStartOfMatches = expr.match(/(toStartOf\w+)\s*\(/);
+
+  if (toStartOfMatches) {
+    const [toStartOfSubstring, toStartOfFunction] = toStartOfMatches;
+
+    const argsStartIndex =
+      expr.indexOf(toStartOfSubstring) + toStartOfSubstring.length;
+    const argsEndIndex = expr.lastIndexOf(')');
+    const args = splitAndTrimWithBracket(
+      expr.substring(argsStartIndex, argsEndIndex),
+    );
+
+    const columnArgument = args[0];
+    if (columnArgument == null) {
+      console.error(`Failed to parse column argument from ${expr}`);
+      return undefined;
+    }
+
+    const formattedRemainingArgs =
+      args.length > 1 ? `, ${args.slice(1).join(', ')}` : '';
+
+    return {
+      function: toStartOfFunction.trim(),
+      columnArgument,
+      formattedRemainingArgs,
+    };
+  }
+}
+
+/**
+ * Returns an optimized timestamp value expression for a table based on its timestampValueExpression and primary key.
+ *
+ * When a table has a sort key like `toStartOfMinute(timestamp), ..., timestamp`, it is more performant
+ * to filter by toStartOfMinute(timestamp) and timestamp, instead of just timestamp.
+ */
+export function optimizeTimestampValueExpression(
+  timestampValueExpression: string,
+  primaryKey: string | undefined,
+) {
+  if (!primaryKey || !timestampValueExpression) return timestampValueExpression;
+
+  const timestampValueExprs = [timestampValueExpression];
+  const primaryKeyExprs = splitAndTrimWithBracket(primaryKey);
+  for (const primaryKeyExpr of primaryKeyExprs) {
+    const toStartOf = parseToStartOfFunction(primaryKeyExpr);
+
+    if (
+      primaryKeyExpr === timestampValueExpression.trim() ||
+      (primaryKeyExpr.startsWith('toUnixTimestamp') &&
+        primaryKeyExpr.includes(timestampValueExpression)) ||
+      (primaryKeyExpr.startsWith('toDateTime') &&
+        primaryKeyExpr.includes(timestampValueExpression))
+    ) {
+      // We only want to add expressions that come before the timestampExpr in the primary key
+      break;
+    } else if (
+      toStartOf &&
+      toStartOf.columnArgument === timestampValueExpression.trim()
+    ) {
+      timestampValueExprs.push(primaryKeyExpr);
+    }
+  }
+
+  return timestampValueExprs.join(', ');
+}

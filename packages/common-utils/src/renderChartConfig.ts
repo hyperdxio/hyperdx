@@ -42,6 +42,8 @@ import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
   getFirstTimestampValueExpression,
+  optimizeTimestampValueExpression,
+  parseToStartOfFunction,
   splitAndTrimWithBracket,
 } from '@/utils';
 
@@ -482,7 +484,7 @@ function timeBucketExpr({
   }}\``;
 }
 
-async function timeFilterExpr({
+export async function timeFilterExpr({
   connectionId,
   databaseName,
   dateRange,
@@ -505,27 +507,54 @@ async function timeFilterExpr({
   timestampValueExpression: string;
   with?: ChartConfigWithDateRange['with'];
 }) {
-  const valueExpressions = splitAndTrimWithBracket(timestampValueExpression);
   const startTime = dateRange[0].getTime();
   const endTime = dateRange[1].getTime();
+
+  let optimizedTimestampValueExpression = timestampValueExpression;
+  try {
+    // Not all of these will be available when selecting from a CTE
+    if (databaseName && tableName && connectionId) {
+      const { primary_key } = await metadata.getTableMetadata({
+        databaseName,
+        tableName,
+        connectionId,
+      });
+      optimizedTimestampValueExpression = optimizeTimestampValueExpression(
+        timestampValueExpression,
+        primary_key,
+      );
+    }
+  } catch (e) {
+    console.warn('Failed to optimize timestampValueExpression', e);
+  }
+
+  const valueExpressions = splitAndTrimWithBracket(
+    optimizedTimestampValueExpression,
+  );
 
   const whereExprs = await Promise.all(
     valueExpressions.map(async expr => {
       const col = expr.trim();
-      const columnMeta = withClauses?.length
-        ? null
-        : await metadata.getColumn({
-            databaseName,
-            tableName,
-            column: col,
-            connectionId,
-          });
+
+      // If the expression includes a toStartOf...(...) function, the RHS of the
+      // timestamp comparison must also have the same function
+      const toStartOf = parseToStartOfFunction(col);
+
+      const columnMeta =
+        withClauses?.length || toStartOf
+          ? null
+          : await metadata.getColumn({
+              databaseName,
+              tableName,
+              column: col,
+              connectionId,
+            });
 
       const unsafeTimestampValueExpression = {
         UNSAFE_RAW_SQL: col,
       };
 
-      if (columnMeta == null && !withClauses?.length) {
+      if (columnMeta == null && !withClauses?.length && !toStartOf) {
         console.warn(
           `Column ${col} not found in ${databaseName}.${tableName} while inferring type for time filter`,
         );
@@ -533,11 +562,15 @@ async function timeFilterExpr({
 
       const startTimeCond = includedDataInterval
         ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
-        : chSql`fromUnixTimestamp64Milli(${{ Int64: startTime }})`;
+        : toStartOf
+          ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: startTime }})${toStartOf.formattedRemainingArgs})`
+          : chSql`fromUnixTimestamp64Milli(${{ Int64: startTime }})`;
 
       const endTimeCond = includedDataInterval
         ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: endTime }}), INTERVAL ${includedDataInterval}) + INTERVAL ${includedDataInterval}`
-        : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
+        : toStartOf
+          ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: endTime }})${toStartOf.formattedRemainingArgs})`
+          : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
 
       // If it's a date type
       if (columnMeta?.type === 'Date') {
