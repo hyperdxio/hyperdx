@@ -251,7 +251,7 @@ export const TimePicker = ({
           }}
         />
       </Popover.Target>
-      <Popover.Dropdown p={0}>
+      <Popover.Dropdown p={0} data-testid="time-picker-popover">
         <Group justify="space-between" gap={4} px="xs" py={4}>
           <Group gap={4}>
             <Button
@@ -278,6 +278,7 @@ export const TimePicker = ({
           <Group gap={4}>
             {typeof onRelativeSearch === 'function' && (
               <Switch
+                data-testid="time-picker-relative-switch"
                 size="xs"
                 checked={isRelative}
                 onChange={e => setIsRelative(e.currentTarget.checked)}

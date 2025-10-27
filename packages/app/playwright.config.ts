@@ -24,7 +24,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:8080',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:8081',
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
     /* Take screenshot on failure */
@@ -49,8 +49,8 @@ export default defineConfig({
   /* Run your local dev server before starting the tests */
   webServer: {
     command:
-      'NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_TELEMETRY_DISABLED=1 yarn run dev',
-    port: 8080,
+      'NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_TELEMETRY_DISABLED=1 PORT=8081 yarn run dev',
+    port: 8081,
     reuseExistingServer: !process.env.CI,
     timeout: 180 * 1000,
     stdout: 'pipe',
