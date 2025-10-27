@@ -896,6 +896,7 @@ export const RawLogTable = memo(
                                   <DBRowTableFieldWithPopover
                                     cellValue={cellValue}
                                     wrapLinesEnabled={wrapLinesEnabled}
+                                    tableContainerRef={tableContainerRef}
                                     columnName={
                                       (cell.column.columnDef.meta as any)
                                         ?.column

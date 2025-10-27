@@ -150,7 +150,7 @@ test.describe('Search', { tag: '@search' }, () => {
         );
         await page.waitForTimeout(1000);
 
-        const sidePanel = page.locator('nav[class*="EZDrawer__container"]');
+        const sidePanel = page.locator('[data-testid="row-side-panel"]');
         await expect(sidePanel).toBeVisible();
       });
 
