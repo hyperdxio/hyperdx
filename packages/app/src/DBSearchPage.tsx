@@ -540,14 +540,26 @@ function useSearchedConfigToChartConfig({
 
 function optimizeDefaultOrderBy(
   timestampExpr: string,
+  displayedTimestampExpr: string | undefined,
   sortingKey: string | undefined,
 ) {
   const defaultModifier = 'DESC';
-  const fallbackOrderByItems = [
-    getFirstTimestampValueExpression(timestampExpr ?? ''),
-    defaultModifier,
-  ];
-  const fallbackOrderBy = fallbackOrderByItems.join(' ');
+  const firstTimestampValueExpression =
+    getFirstTimestampValueExpression(timestampExpr ?? '') ?? '';
+  const defaultOrderByItems = [firstTimestampValueExpression];
+  const trimmedDisplayedTimestampExpr = displayedTimestampExpr?.trim();
+
+  if (
+    trimmedDisplayedTimestampExpr &&
+    trimmedDisplayedTimestampExpr !== firstTimestampValueExpression
+  ) {
+    defaultOrderByItems.push(trimmedDisplayedTimestampExpr);
+  }
+
+  const fallbackOrderBy =
+    defaultOrderByItems.length > 1
+      ? `(${defaultOrderByItems.join(', ')}) ${defaultModifier}`
+      : `${defaultOrderByItems[0]} ${defaultModifier}`;
 
   if (!sortingKey) return fallbackOrderBy;
 
@@ -555,13 +567,17 @@ function optimizeDefaultOrderBy(
   const sortKeys = splitAndTrimWithBracket(sortingKey);
   for (let i = 0; i < sortKeys.length; i++) {
     const sortKey = sortKeys[i];
-    if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
+    if (
+      sortKey.includes('toStartOf') &&
+      sortKey.includes(firstTimestampValueExpression)
+    ) {
       orderByArr.push(sortKey);
     } else if (
-      sortKey === timestampExpr ||
+      sortKey === firstTimestampValueExpression ||
       (sortKey.startsWith('toUnixTimestamp') &&
-        sortKey.includes(timestampExpr)) ||
-      (sortKey.startsWith('toDateTime') && sortKey.includes(timestampExpr))
+        sortKey.includes(firstTimestampValueExpression)) ||
+      (sortKey.startsWith('toDateTime') &&
+        sortKey.includes(firstTimestampValueExpression))
     ) {
       if (orderByArr.length === 0) {
         // fallback if the first sort key is the timestamp sort key
@@ -570,6 +586,8 @@ function optimizeDefaultOrderBy(
         orderByArr.push(sortKey);
         break;
       }
+    } else if (sortKey === trimmedDisplayedTimestampExpr) {
+      orderByArr.push(sortKey);
     }
   }
 
@@ -578,7 +596,16 @@ function optimizeDefaultOrderBy(
     return fallbackOrderBy;
   }
 
-  return `(${orderByArr.join(', ')}) ${defaultModifier}`;
+  if (
+    trimmedDisplayedTimestampExpr &&
+    !orderByArr.includes(trimmedDisplayedTimestampExpr)
+  ) {
+    orderByArr.push(trimmedDisplayedTimestampExpr);
+  }
+
+  return orderByArr.length > 1
+    ? `(${orderByArr.join(', ')}) ${defaultModifier}`
+    : `${orderByArr[0]} ${defaultModifier}`;
 }
 
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
@@ -590,6 +617,7 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
     () =>
       optimizeDefaultOrderBy(
         source?.timestampValueExpression ?? '',
+        source?.displayedTimestampValueExpression,
         tableMetadata?.sorting_key,
       ),
     [source, tableMetadata],
@@ -1202,9 +1230,12 @@ function DBSearchPage() {
   );
   // Parse the orderBy string into a SortingState. We need the string
   // version in other places so we keep this parser separate.
-  const orderByConfig = parseAsSortingStateString.parse(
-    searchedConfig.orderBy ?? '',
-  );
+  const initialSortBy = useMemo(() => {
+    const orderBy = parseAsSortingStateString.parse(
+      searchedConfig.orderBy ?? '',
+    );
+    return orderBy ? [orderBy] : [];
+  }, [searchedConfig.orderBy]);
 
   const handleTimeRangeSelect = useCallback(
     (d1: Date, d2: Date) => {
@@ -1821,7 +1852,7 @@ function DBSearchPage() {
                           denoiseResults={denoiseResults}
                           collapseAllRows={collapseAllRows}
                           onSortingChange={onSortingChange}
-                          initialSortBy={orderByConfig ? [orderByConfig] : []}
+                          initialSortBy={initialSortBy}
                         />
                       )}
                   </>

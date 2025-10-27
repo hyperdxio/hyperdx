@@ -202,7 +202,6 @@ export const TimePicker = ({
   return (
     <Popover
       position="bottom-start"
-      closeOnClickOutside={false}
       closeOnEscape
       opened={opened}
       onClose={close}
