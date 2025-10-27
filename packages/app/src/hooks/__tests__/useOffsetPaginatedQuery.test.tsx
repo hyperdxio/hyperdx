@@ -309,6 +309,40 @@ describe('useOffsetPaginatedQuery', () => {
       // Should have more pages available due to large time range
       expect(result.current.hasNextPage).toBe(true);
     });
+
+    it('should handle a time range with the same start and end date by generating one window', async () => {
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2024-01-01T00:00:00Z'),
+          new Date('2024-01-01T00:00:00Z'), // same start and end date
+        ] as [Date, Date],
+      });
+
+      // Mock the reader to return data for first window
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['timestamp', 'message'] },
+            { json: () => ['DateTime', 'String'] },
+            { json: () => ['2024-01-01T01:00:00Z', 'test log 1'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      // Should have data from the first window
+      expect(result.current.data).toBeDefined();
+      expect(result.current.data?.window.windowIndex).toBe(0);
+
+      // Should have more pages available due to large time range
+      expect(result.current.hasNextPage).toBe(true);
+    });
   });
 
   describe('Pagination Within Time Windows', () => {
