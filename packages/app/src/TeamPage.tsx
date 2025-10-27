@@ -851,7 +851,13 @@ export function CreateWebhookForm({
         />
         <TextInput
           label="Webhook URL"
-          placeholder="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+          placeholder={
+            service === WebhookService.Slack
+              ? 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
+              : service === WebhookService.IncidentIO
+                ? 'https://api.incident.io/v2/alert_events/http/ZZZZZZZZ?token=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+                : 'https://example.com/webhook'
+          }
           type="url"
           required
           error={form.formState.errors.url?.message}

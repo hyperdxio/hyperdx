@@ -41,6 +41,17 @@ const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
+/**
+ * Creates a Handlebars instance with common helpers registered.
+ * Use this to ensure consistent helper availability across all template rendering.
+ */
+const createHandlebarsWithHelpers = () => {
+  const hb = Handlebars.create();
+  // Register eq helper for conditional checks (e.g., {{#if (eq state "ALERT")}})
+  hb.registerHelper('eq', (a, b) => a === b);
+  return hb;
+};
+
 const zNotifyFnParams = z.object({
   hash: z.object({
     channel: zAlertChannelType,
@@ -82,6 +93,7 @@ export const notifyChannel = async ({
   switch (channel.type) {
     case 'webhook': {
       const webhook = channel.channel;
+      // TODO: migrate to use handleSendGenericWebhook so templates can be used
       if (webhook.service === WebhookService.Slack) {
         await handleSendSlackWebhook(webhook, message);
       } else if (
@@ -209,9 +221,7 @@ export const handleSendGenericWebhook = async (
   // BODY
   let body = '';
   try {
-    const handlebars = Handlebars.create();
-    // Register eq helper for conditional checks
-    handlebars.registerHelper('eq', (a, b) => a === b);
+    const handlebars = createHandlebarsWithHelpers();
 
     body = handlebars.compile(webhook.body, {
       noEscape: true,
@@ -299,7 +309,7 @@ export const buildAlertMessageTemplateTitle = ({
   view: AlertMessageTemplateDefaultView;
 }) => {
   const { alert, dashboard, savedSearch, value } = view;
-  const handlebars = Handlebars.create();
+  const handlebars = createHandlebarsWithHelpers();
   if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
       throw new Error(`Source is ${alert.source}  but savedSearch is null`);
@@ -447,7 +457,7 @@ export const renderAlertTemplate = async ({
       }
     };
   };
-  const _hb = Handlebars.create();
+  const _hb = createHandlebarsWithHelpers();
   _hb.registerHelper(NOTIFY_FN_NAME, () => null);
   _hb.registerHelper(IS_MATCH_FN_NAME, isMatchFn(true));
   const hb = PromisedHandlebars(Handlebars);
@@ -476,12 +486,16 @@ export const renderAlertTemplate = async ({
       if (channel) {
         const startTime = view.startTime.getTime();
         const endTime = view.endTime.getTime();
+        // Normalize group to undefined if empty string to ensure consistent eventId
+        const normalizedGroup =
+          group && group.trim() !== '' ? group : undefined;
         const eventId = objectHash({
           alertId: alert.id,
           channel: {
             type: channel.type,
             id: channel.channel._id.toString(),
           },
+          ...(normalizedGroup ? { groupId: normalizedGroup } : {}),
         });
 
         await notifyChannel({

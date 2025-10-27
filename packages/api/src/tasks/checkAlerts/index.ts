@@ -19,7 +19,7 @@ import mongoose from 'mongoose';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
-import { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
+import Alert, { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
@@ -161,7 +161,7 @@ export const processAlert = async (
   alertProvider: AlertProvider,
   teamWebhooksById: Map<string, IWebhook>,
 ) => {
-  const { alert, source, previous } = details;
+  const { alert, source, previous, previousMap } = details;
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const nowInMinsRoundDown = roundDownToXMinutes(windowSizeInMins)(now);
@@ -275,12 +275,23 @@ export const processAlert = async (
     );
 
     // TODO: support INSUFFICIENT_DATA state
-    const history: IAlertHistory = {
-      alert: new mongoose.Types.ObjectId(alert.id),
-      createdAt: nowInMinsRoundDown,
-      state: AlertState.OK,
-      counts: 0,
-      lastValues: [],
+    // Track state per group (or one history if no groupBy)
+    const histories = new Map<string, IAlertHistory>();
+    const hasGroupBy = alert.groupBy && alert.groupBy.length > 0;
+
+    // Helper to get or create history for a group
+    const getOrCreateHistory = (groupKey: string): IAlertHistory => {
+      if (!histories.has(groupKey)) {
+        histories.set(groupKey, {
+          alert: new mongoose.Types.ObjectId(alert.id),
+          createdAt: nowInMinsRoundDown,
+          state: AlertState.OK,
+          counts: 0,
+          lastValues: [],
+          group: groupKey || undefined,
+        });
+      }
+      return histories.get(groupKey)!;
     };
 
     if (checksData?.data && checksData?.data.length > 0) {
@@ -338,12 +349,18 @@ export const processAlert = async (
         if (_value == null) {
           continue;
         }
+
+        // Group key is the joined extraFields for group-by alerts, or empty string for non-grouped
+        const groupKey = hasGroupBy ? extraFields.join(', ') : '';
+        const history = getOrCreateHistory(groupKey);
+
         const bucketStart = new Date(checkData[timestampColumnName]);
         if (doesExceedThreshold(alert.thresholdType, alert.threshold, _value)) {
           history.state = AlertState.ALERT;
           logger.info({
             message: `Triggering ${alert.channel.type} alarm!`,
             alertId: alert.id,
+            group: groupKey,
             totalCount: _value,
             checkData,
           });
@@ -360,7 +377,7 @@ export const processAlert = async (
               clickhouseClient,
               dashboard: (details as any).dashboard,
               endTime: fns.addMinutes(bucketStart, windowSizeInMins),
-              group: extraFields.join(', '),
+              group: groupKey,
               metadata,
               savedSearch: (details as any).savedSearch,
               source,
@@ -374,6 +391,7 @@ export const processAlert = async (
             logger.error({
               message: 'Failed to fire channel event',
               alertId: alert.id,
+              group: groupKey,
               error: serializeError(e),
             });
           }
@@ -384,49 +402,87 @@ export const processAlert = async (
       }
     }
 
-    // FIXME: handle the case when a specific sub alert is resolved (ex: group-by)
-    // Check if alert transitioned from ALERT to OK (resolved)
-    if (
-      previous?.state === AlertState.ALERT &&
-      history.state === AlertState.OK
-    ) {
-      logger.info({
-        message: `Alert resolved, triggering ${alert.channel.type} notification`,
-        alertId: alert.id,
+    // Handle missing groups: If current check found no data, check if any previously alerting groups need to be resolved
+    // TODO: Should we 'treat missing data as breaching'?
+    if (histories.size === 0) {
+      histories.set('', {
+        alert: new mongoose.Types.ObjectId(alert.id),
+        createdAt: nowInMinsRoundDown,
+        state: AlertState.OK,
+        counts: 0,
+        lastValues: [],
+        group: undefined,
       });
+    }
 
-      try {
-        const lastValue = history.lastValues[history.lastValues.length - 1];
-        await fireChannelEvent({
-          alert,
-          alertProvider,
-          attributes: {}, // FIXME: support attributes (logs + resources ?)
-          clickhouseClient,
-          dashboard: (details as any).dashboard,
-          endTime: fns.addMinutes(
-            lastValue?.startTime || nowInMinsRoundDown,
-            windowSizeInMins,
-          ),
-          group: '',
-          metadata,
-          savedSearch: (details as any).savedSearch,
-          source,
-          startTime: lastValue?.startTime || nowInMinsRoundDown,
-          state: AlertState.OK,
-          totalCount: lastValue?.count || 0,
-          windowSizeInMins,
-          teamWebhooksById,
-        });
-      } catch (e) {
-        logger.error({
-          message: 'Failed to fire resolved channel event',
+    // Check for auto-resolve: for each group, check if it transitioned from ALERT to OK
+    for (const [groupKey, history] of histories.entries()) {
+      const previousKey = groupKey ? `${alert.id}:${groupKey}` : alert.id;
+      const groupPrevious = previousMap?.get(previousKey) || previous; // Use previousMap first, fallback to previous for backwards compatibility
+
+      if (
+        groupPrevious?.state === AlertState.ALERT &&
+        history.state === AlertState.OK
+      ) {
+        logger.info({
+          message: `Alert resolved for group "${groupKey}", triggering ${alert.channel.type} notification`,
           alertId: alert.id,
-          error: serializeError(e),
+          group: groupKey,
         });
+
+        try {
+          const lastValue = history.lastValues[history.lastValues.length - 1];
+          await fireChannelEvent({
+            alert,
+            alertProvider,
+            attributes: {}, // FIXME: support attributes (logs + resources ?)
+            clickhouseClient,
+            dashboard: (details as any).dashboard,
+            endTime: fns.addMinutes(
+              lastValue?.startTime || nowInMinsRoundDown,
+              windowSizeInMins,
+            ),
+            group: groupKey,
+            metadata,
+            savedSearch: (details as any).savedSearch,
+            source,
+            startTime: lastValue?.startTime || nowInMinsRoundDown,
+            state: AlertState.OK,
+            totalCount: lastValue?.count || 0,
+            windowSizeInMins,
+            teamWebhooksById,
+          });
+        } catch (e) {
+          logger.error({
+            message: 'Failed to fire resolved channel event',
+            alertId: alert.id,
+            group: groupKey,
+            error: serializeError(e),
+          });
+        }
       }
     }
 
-    await alertProvider.updateAlertState(history);
+    // Save all history records and update alert state
+    // The overall alert state is ALERT if ANY group is in ALERT state, otherwise OK
+    const overallState = Array.from(histories.values()).some(
+      h => h.state === AlertState.ALERT,
+    )
+      ? AlertState.ALERT
+      : AlertState.OK;
+
+    // Save history records first (in parallel), then update alert state only if all succeed
+    // This prevents inconsistent state where alert state is updated but history records fail
+    const historyRecords = Array.from(histories.values());
+    await Promise.all(
+      historyRecords.map(history => AlertHistory.create(history)),
+    );
+
+    // Only update alert state after all history records are successfully saved
+    await Alert.updateOne(
+      { _id: new mongoose.Types.ObjectId(alert.id) },
+      { $set: { state: overallState } },
+    );
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
@@ -445,15 +501,18 @@ export interface AggregatedAlertHistory {
   _id: ObjectId;
   createdAt: Date;
   state: AlertState;
+  group?: string;
 }
 
 /**
  * Fetch the most recent AlertHistory value for each of the given alert IDs.
+ * For group-by alerts, returns the latest history for each group within each alert.
  *
  * @param alertIds The list of alert IDs to query the latest history for.
  * @param now The current date and time. AlertHistory documents that have a createdBy > now are ignored.
- * @returns A map from Alert IDs to their most recent AlertHistory. If there are no
- *  AlertHistory documents for an Alert ID, that ID will not be a key in the map.
+ * @returns A map from Alert IDs (or Alert ID + group) to their most recent AlertHistory.
+ *  For non-grouped alerts, the key is just the alert ID.
+ *  For grouped alerts, the key is "alertId:group" to track per-group state.
  */
 export const getPreviousAlertHistories = async (
   alertIds: string[],
@@ -479,20 +538,39 @@ export const getPreviousAlertHistories = async (
         {
           $sort: { createdAt: -1 },
         },
-        // Group by alert ID, taking the first (latest) values for each group
+        // Group by alert ID AND group (if present), taking the first (latest) values for each combination
         {
           $group: {
-            _id: '$alert',
+            _id: {
+              alert: '$alert',
+              group: '$group',
+            },
             createdAt: { $first: '$createdAt' },
             state: { $first: '$state' },
+            group: { $first: '$group' },
+          },
+        },
+        // Reshape the _id to be just the alert ObjectId for easier consumption
+        {
+          $project: {
+            _id: '$_id.alert',
+            createdAt: 1,
+            state: 1,
+            group: 1,
           },
         },
       ]),
     ),
   );
 
+  // Create a map with composite keys for grouped alerts (alertId:group) or simple keys for non-grouped alerts
   return new Map<string, AggregatedAlertHistory>(
-    resultChunks.flat().map(history => [history._id.toString(), history]),
+    resultChunks.flat().map(history => {
+      const key = history.group
+        ? `${history._id.toString()}:${history.group}`
+        : history._id.toString();
+      return [key, history];
+    }),
   );
 };
 

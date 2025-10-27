@@ -728,6 +728,7 @@ describe('checkAlerts', () => {
         taskType: AlertTaskType.SAVED_SEARCH,
         savedSearch,
         previous: undefined,
+        previousMap: new Map(),
       } satisfies AlertDetails;
 
       const clickhouseClient = new ClickhouseClient({
@@ -773,7 +774,11 @@ describe('checkAlerts', () => {
       );
       await processAlert(
         later,
-        { ...details, previous: previousAlertsLater.get(enhancedAlert.id) },
+        {
+          ...details,
+          previous: previousAlertsLater.get(enhancedAlert.id),
+          previousMap: previousAlertsLater,
+        },
         clickhouseClient,
         connection.id,
         alertProvider,
@@ -993,6 +998,7 @@ describe('checkAlerts', () => {
         tile,
         dashboard,
         previous: undefined,
+        previousMap: new Map(),
       } satisfies AlertDetails;
 
       const clickhouseClient = new ClickhouseClient({
@@ -1248,6 +1254,7 @@ describe('checkAlerts', () => {
         tile,
         dashboard,
         previous: undefined,
+        previousMap: new Map(),
       } satisfies AlertDetails;
 
       const clickhouseClient = new ClickhouseClient({
@@ -1479,6 +1486,7 @@ describe('checkAlerts', () => {
         tile,
         dashboard,
         previous: undefined,
+        previousMap: new Map(),
       } satisfies AlertDetails;
 
       const clickhouseClient = new ClickhouseClient({
@@ -1525,7 +1533,11 @@ describe('checkAlerts', () => {
       );
       await processAlert(
         later,
-        { ...details, previous: previousAlertsLater.get(enhancedAlert.id) },
+        {
+          ...details,
+          previous: previousAlertsLater.get(enhancedAlert.id),
+          previousMap: previousAlertsLater,
+        },
         clickhouseClient,
         connection.id,
         alertProvider,

@@ -11,6 +11,7 @@ export interface IAlertHistory {
   createdAt: Date;
   state: AlertState;
   lastValues: { startTime: Date; count: number }[];
+  group?: string; // For group-by alerts, stores the group identifier
 }
 
 const AlertHistorySchema = new Schema<IAlertHistory>({
@@ -40,6 +41,10 @@ const AlertHistorySchema = new Schema<IAlertHistory>({
       },
     },
   ],
+  group: {
+    type: String,
+    required: false,
+  },
 });
 
 AlertHistorySchema.index(
@@ -48,6 +53,7 @@ AlertHistorySchema.index(
 );
 
 AlertHistorySchema.index({ alert: 1, createdAt: -1 });
+AlertHistorySchema.index({ alert: 1, group: 1, createdAt: -1 });
 
 export default mongoose.model<IAlertHistory>(
   'AlertHistory',

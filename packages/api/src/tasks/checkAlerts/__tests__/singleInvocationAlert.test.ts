@@ -403,6 +403,7 @@ describe('Single Invocation Alert Test', () => {
       tile,
       dashboard,
       previous: undefined,
+      previousMap: new Map(),
     } satisfies AlertDetails;
 
     const clickhouseClient = new ClickhouseClient({

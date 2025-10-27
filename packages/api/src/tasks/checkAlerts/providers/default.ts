@@ -26,7 +26,7 @@ import logger from '@/utils/logger';
 
 import { AggregatedAlertHistory, getPreviousAlertHistories } from '..';
 
-type PartialAlertDetails = MappedOmit<AlertDetails, 'previous'>;
+type PartialAlertDetails = MappedOmit<AlertDetails, 'previous' | 'previousMap'>;
 
 async function getSavedSearchDetails(
   alert: IAlert,
@@ -189,6 +189,7 @@ async function loadAlert(
     throw new Error('failed to fetch alert connection');
   }
 
+  // Get previous state for non-grouped alerts (backwards compatibility)
   const previous = previousAlerts.get(alert.id);
 
   if (!groupedTasks.has(conn.id)) {
@@ -198,7 +199,7 @@ async function loadAlert(
   if (!v) {
     throw new Error(`provider did not set key ${conn.id} before appending`);
   }
-  v.alerts.push({ ...details, previous });
+  v.alerts.push({ ...details, previous, previousMap: previousAlerts });
 }
 
 export default class DefaultAlertProvider implements AlertProvider {
