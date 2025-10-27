@@ -384,6 +384,7 @@ export const processAlert = async (
       }
     }
 
+    // FIXME: handle the case when a specific sub alert is resolved (ex: group-by)
     // Check if alert transitioned from ALERT to OK (resolved)
     if (
       previous?.state === AlertState.ALERT &&
