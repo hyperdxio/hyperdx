@@ -285,7 +285,7 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
         </FormRow>
         <FormRow
           label={'Displayed Timestamp Column'}
-          helpText="This DateTime column is used to display search results."
+          helpText="This DateTime column is used to display and order search results."
         >
           <SQLInlineEditorControlled
             tableConnection={{
@@ -629,6 +629,21 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
           control={control}
           name="implicitColumnExpression"
           placeholder="SpanName"
+        />
+      </FormRow>
+      <FormRow
+        label={'Displayed Timestamp Column'}
+        helpText="This DateTime column is used to display and order search results."
+      >
+        <SQLInlineEditorControlled
+          tableConnection={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
+          control={control}
+          name="displayedTimestampValueExpression"
+          disableKeywordAutocomplete
         />
       </FormRow>
     </Stack>
