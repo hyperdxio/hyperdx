@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "module": "Node16",
-    "moduleResolution": "node",
+    "moduleResolution": "Node16",
     "lib": ["ES2022", "dom"],
     "allowSyntheticDefaultImports": true,
     "downlevelIteration": true,
@@ -17,6 +17,7 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "target": "ES2022"
+    "target": "ES2022",
+    "resolveJsonModule": true
   }
 }

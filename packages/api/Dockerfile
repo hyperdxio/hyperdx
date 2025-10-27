@@ -49,6 +49,8 @@ USER node
 
 WORKDIR /app
 
-COPY --chown=node:node --from=builder /app/packages/api/dist ./
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/packages/api/build ./packages/api/build
+COPY --chown=node:node --from=builder /app/packages/common-utils/dist ./packages/common-utils/dist
 
-ENTRYPOINT ["node", "-r", "./tracing", "./index"]
+ENTRYPOINT ["node", "-r", "@hyperdx/node-opentelemetry/build/src/tracing", "./packages/api/build/index.js"]

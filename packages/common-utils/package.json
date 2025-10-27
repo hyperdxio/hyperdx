@@ -1,7 +1,7 @@
 {
   "name": "@hyperdx/common-utils",
   "description": "Common utilities for HyperDX application",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "license": "MIT",
   "private": true,
   "files": [
@@ -36,6 +36,7 @@
     "@types/sqlstring": "^2.3.0",
     "@types/supertest": "^2.0.12",
     "@types/uuid": "^8.3.4",
+    "dotenv": "^17.2.3",
     "jest": "^28.1.1",
     "nodemon": "^2.0.20",
     "rimraf": "^4.4.1",
@@ -56,6 +57,8 @@
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:unit": "jest --runInBand --ci --forceExit --coverage",
-    "dev:unit": "jest --watchAll --runInBand --detectOpenHandles"
+    "dev:unit": "jest --watchAll --runInBand --detectOpenHandles",
+    "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --runInBand --ci --forceExit --coverage",
+    "dev:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --watchAll --runInBand --detectOpenHandles"
   }
 }

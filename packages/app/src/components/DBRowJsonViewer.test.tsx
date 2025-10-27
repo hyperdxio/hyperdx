@@ -52,15 +52,6 @@ describe('DBRowJsonViewer', () => {
     jest.clearAllMocks();
   });
 
-  // Helper function to simulate clicking a button in a line
-  const clickLineButton = (fieldText: string, buttonText: string) => {
-    const line = screen.getByText(fieldText).closest('.line')! as HTMLElement;
-    fireEvent.mouseEnter(line);
-    const lineMenu = line.querySelector('.lineMenu')! as HTMLElement;
-    const button = within(lineMenu).getByText(buttonText);
-    fireEvent.click(button);
-  };
-
   // Helper to render component
   const renderComponent = (data: any) => {
     return renderWithMantine(
@@ -68,6 +59,33 @@ describe('DBRowJsonViewer', () => {
         <DBRowJsonViewer data={data} />
       </RowSidePanelContext.Provider>,
     );
+  };
+
+  // Helper to click a button on a line
+  const clickLineButton = (fieldText: string, buttonText: string) => {
+    const line = screen.getByText(fieldText).closest('.line')! as HTMLElement;
+    fireEvent.mouseEnter(line);
+    const button = within(line).getByText(buttonText);
+    fireEvent.click(button);
+  };
+
+  // Helper to expand a field and click a button on a nested field
+  const expandAndClickButton = (
+    parentField: string,
+    childField: string,
+    buttonText: string,
+  ) => {
+    const parentLine = screen
+      .getByText(parentField)
+      .closest('.line')! as HTMLElement;
+    fireEvent.click(parentLine);
+
+    const childLine = screen
+      .getByText(childField)
+      .closest('.line')! as HTMLElement;
+    fireEvent.mouseEnter(childLine);
+    const button = within(childLine).getByText(buttonText);
+    fireEvent.click(button);
   };
 
   it('formats log attributes correctly', () => {
@@ -135,5 +153,46 @@ describe('DBRowJsonViewer', () => {
         });
       },
     );
+  });
+
+  describe('copy functionality', () => {
+    const mockClipboard = jest.fn();
+
+    beforeEach(() => {
+      Object.assign(navigator, {
+        clipboard: { writeText: mockClipboard },
+      });
+    });
+
+    it('copies array elements from expanded stringified JSON', () => {
+      const arrayObject = { status: 'True', type: 'PodReady' };
+      const data = { conditions: JSON.stringify([arrayObject]) };
+
+      renderComponent(data);
+      expandAndClickButton('conditions', '0', 'Copy Object');
+
+      expect(mockClipboard).toHaveBeenCalledWith(
+        JSON.stringify(arrayObject, null, 2),
+      );
+    });
+
+    it('copies entire stringified value when not expanded', () => {
+      const arrayData = [{ type: 'Ready' }, { type: 'Init' }];
+      const data = { conditions: JSON.stringify(arrayData) };
+
+      renderComponent(data);
+      clickLineButton('conditions', 'Copy Value');
+
+      expect(mockClipboard).toHaveBeenCalledWith(JSON.stringify(arrayData));
+    });
+
+    it('copies regular nested objects', () => {
+      renderComponent(logData);
+      clickLineButton('nested', 'Copy Object');
+
+      expect(mockClipboard).toHaveBeenCalledWith(
+        JSON.stringify({ field3: 'nested value' }, null, 2),
+      );
+    });
   });
 });

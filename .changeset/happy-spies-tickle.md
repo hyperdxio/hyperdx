@@ -2,4 +2,4 @@
 "@hyperdx/app": patch
 ---
 
-Fixes scrolling in TimePicker
+improve drawer a11y
