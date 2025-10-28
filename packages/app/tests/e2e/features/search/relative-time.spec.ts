@@ -375,6 +375,11 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
         { label: 'Last 15 minutes', ms: 900000 },
         { label: 'Last 1 hour', ms: 3600000 },
       ];
+      const switchInput = getRelativeTimeSwitch(page);
+      const isChecked = await switchInput.isChecked();
+      if (!isChecked) {
+        await clickRelativeTimeSwitch(page);
+      }
 
       for (const interval of intervals) {
         await test.step(`Search with ${interval.label}`, async () => {
@@ -383,20 +388,10 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
             state: 'visible',
           });
 
-          const switchInput = getRelativeTimeSwitch(page);
-          const isChecked = await switchInput.isChecked();
-          if (!isChecked) {
-            await clickRelativeTimeSwitch(page);
-          }
-
           const intervalButton = page.locator(`text=${interval.label}`);
           await intervalButton.click();
           await page.waitForURL(`**/search**liveInterval=${interval.ms}**`);
 
-          const searchSubmitButton = page.locator(
-            '[data-testid="search-submit-button"]',
-          );
-          await searchSubmitButton.click();
           await page.waitForLoadState('networkidle');
 
           const url = page.url();
