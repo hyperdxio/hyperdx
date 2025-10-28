@@ -13,6 +13,7 @@ import {
   TIMESTAMP_COLUMN_ALIAS,
 } from '@/hooks/usePatterns';
 import useRowWhere from '@/hooks/useRowWhere';
+import { getFirstTimestampValueExpression } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import styles from '../../styles/LogSidePanel.module.scss';
@@ -74,7 +75,7 @@ export default function PatternSidePanel({
     ],
     aliasMap: {
       body: bodyValueExpression,
-      ts: source.timestampValueExpression,
+      ts: getFirstTimestampValueExpression(source.timestampValueExpression),
     },
   });
 
