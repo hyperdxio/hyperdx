@@ -16,6 +16,8 @@ import {
   isFirstOrderByAscending,
   isJsonExpression,
   isTimestampExpressionInFirstOrderBy,
+  optimizeTimestampValueExpression,
+  parseToStartOfFunction,
   replaceJsonExpressions,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
@@ -1114,5 +1116,203 @@ describe('utils', () => {
       };
       expect(actual).toEqual(expected);
     });
+  });
+
+  describe('parseToStartOfFunction', () => {
+    it.each([
+      {
+        expr: 'toStartOfDay(a.date)',
+        expected: {
+          function: 'toStartOfDay',
+          columnArgument: 'a.date',
+          formattedRemainingArgs: '',
+        },
+      },
+      {
+        expr: "toStartOfMinute(toDate(ResourceAttributes['timestamp']))",
+        expected: {
+          function: 'toStartOfMinute',
+          columnArgument: "toDate(ResourceAttributes['timestamp'])",
+          formattedRemainingArgs: '',
+        },
+      },
+      {
+        expr: "toStartOfMonth(timestamp, 'America/Los_Angeles')",
+        expected: {
+          function: 'toStartOfMonth',
+          columnArgument: 'timestamp',
+          formattedRemainingArgs: ", 'America/Los_Angeles'",
+        },
+      },
+      {
+        expr: 'toStartOfMonth(`time stamp`)',
+        expected: {
+          function: 'toStartOfMonth',
+          columnArgument: '`time stamp`',
+          formattedRemainingArgs: '',
+        },
+      },
+      {
+        expr: 'toStartOfInterval(timestamp, INTERVAL 1 DAY)',
+        expected: {
+          function: 'toStartOfInterval',
+          columnArgument: 'timestamp',
+          formattedRemainingArgs: ', INTERVAL 1 DAY',
+        },
+      },
+      {
+        expr: "toStartOfInterval(timestamp, INTERVAL 1 DAY, toDateTime('2025-01-01'), 'America/Los_Angeles')",
+        expected: {
+          function: 'toStartOfInterval',
+          columnArgument: 'timestamp',
+          formattedRemainingArgs:
+            ", INTERVAL 1 DAY, toDateTime('2025-01-01'), 'America/Los_Angeles'",
+        },
+      },
+      {
+        expr: "    toStartOfInterval ( timestamp,   INTERVAL  10 DAY,   toDateTime('2025-01-01' ),  'America/Los_Angeles' )   ",
+        expected: {
+          function: 'toStartOfInterval',
+          columnArgument: 'timestamp',
+          formattedRemainingArgs:
+            ", INTERVAL  10 DAY, toDateTime('2025-01-01' ), 'America/Los_Angeles'",
+        },
+      },
+      {
+        expr: 'timestamp',
+        expected: undefined,
+      },
+      {
+        expr: 'toDate(timestamp)',
+        expected: undefined,
+      },
+      {
+        expr: 'toDate(toStartOfDay(timestamp))',
+        expected: undefined,
+      },
+      {
+        expr: 'toStartOfDay(timestamp), toDate(timestamp)',
+        expected: undefined,
+      },
+      {
+        expr: 'toDate(timestamp), toStartOfDay(timestamp)',
+        expected: undefined,
+      },
+      {
+        expr: '',
+        expected: undefined,
+      },
+      {
+        expr: '(toStartOfDay(timestamp))',
+        expected: undefined,
+      },
+      {
+        expr: 'toStartOfDay(',
+        expected: undefined,
+      },
+    ])('Should parse $expr', ({ expr, expected }) => {
+      expect(parseToStartOfFunction(expr)).toEqual(expected);
+    });
+  });
+
+  describe('optimizeTimestampValueExpression', () => {
+    const testCases = [
+      {
+        timestampValueExpression: 'Timestamp',
+        primaryKey: 'Timestamp',
+        expected: 'Timestamp',
+      },
+      {
+        timestampValueExpression: 'Timestamp',
+        primaryKey: undefined,
+        expected: 'Timestamp',
+      },
+      {
+        timestampValueExpression: 'Timestamp',
+        primaryKey: '',
+        expected: 'Timestamp',
+      },
+      {
+        // Traces Table
+        timestampValueExpression: 'Timestamp',
+        primaryKey: 'ServiceName, SpanName, toDateTime(Timestamp)',
+        expected: 'Timestamp',
+      },
+      {
+        // Optimized Traces Table
+        timestampValueExpression: 'Timestamp',
+        primaryKey:
+          'toStartOfHour(Timestamp), ServiceName, SpanName, toDateTime(Timestamp)',
+        expected: 'Timestamp, toStartOfHour(Timestamp)',
+      },
+      {
+        // Unsupported for now as it's not a great primary key, want to just
+        // use default behavior for this
+        timestampValueExpression: 'Timestamp',
+        primaryKey: 'toDateTime(Timestamp), ServiceName, SpanName, Timestamp',
+        expected: 'Timestamp',
+      },
+      {
+        // Inverted primary key order, we should not try to optimize this
+        timestampValueExpression: 'Timestamp',
+        primaryKey:
+          'ServiceName, toDateTime(Timestamp), SeverityText, toStartOfHour(Timestamp)',
+        expected: 'Timestamp',
+      },
+      {
+        timestampValueExpression: 'Timestamp',
+        primaryKey: 'toStartOfHour(Timestamp), other_column, Timestamp',
+        expected: 'Timestamp, toStartOfHour(Timestamp)',
+      },
+      {
+        // When the user has already manually configured an optimized timestamp value expression
+        timestampValueExpression: ' toStartOfHour(Timestamp), Timestamp',
+        primaryKey: 'toStartOfHour(Timestamp), other_column, Timestamp',
+        expected: ' toStartOfHour(Timestamp), Timestamp',
+      },
+      {
+        timestampValueExpression: 'Timestamp',
+        primaryKey:
+          'toStartOfInterval(Timestamp, INTERVAL 1 HOUR), other_column, Timestamp',
+        expected: 'Timestamp, toStartOfInterval(Timestamp, INTERVAL 1 HOUR)',
+      },
+      {
+        // test variation of toUnixTimestamp
+        timestampValueExpression: 'Timestamp',
+        primaryKey:
+          'toStartOfMinute(Timestamp), user_id, status, toUnixTimestamp64Nano(Timestamp)',
+        expected: 'Timestamp, toStartOfMinute(Timestamp)',
+      },
+      {
+        // TimestampTime is not matched since it is not in the timestampValueExpression
+        timestampValueExpression: 'Timestamp',
+        primaryKey:
+          'toStartOfMinute(TimestampTime), user_id, status, Timestamp',
+        expected: 'Timestamp',
+      },
+      {
+        timestampValueExpression: 'Timestamp',
+        primaryKey:
+          '909]`23`9082eh[928e1p92e81hp92, d81p92d817h1p-93287dh129d7812hgpd91832h, toStartOfMinute(Timestamp), other_column, Timestamp',
+        expected: 'Timestamp, toStartOfMinute(Timestamp)',
+      },
+      {
+        timestampValueExpression: '`Time stamp`',
+        primaryKey: 'toStartOfMinute(`Time stamp`), other_column, `Time stamp`',
+        expected: '`Time stamp`, toStartOfMinute(`Time stamp`)',
+      },
+    ] as const;
+
+    it.each(testCases)(
+      'should return optimized expression $expected for original expression $timestampValueExpression and primary key $primaryKey',
+      ({ timestampValueExpression, primaryKey, expected }) => {
+        const actual = optimizeTimestampValueExpression(
+          timestampValueExpression,
+          primaryKey,
+        );
+
+        expect(actual).toBe(expected);
+      },
+    );
   });
 });
