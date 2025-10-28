@@ -34,7 +34,7 @@ export type AlertDetails = {
   alert: IAlert;
   source: ISource;
   previous: AggregatedAlertHistory | undefined;
-  previousMap: Map<string, AggregatedAlertHistory>; // Map of alertId:group -> history for group-by alerts
+  previousMap: Map<string, AggregatedAlertHistory>; // Map of alertId||group -> history for group-by alerts
 } & (
   | {
       taskType: AlertTaskType.SAVED_SEARCH;

@@ -451,28 +451,14 @@ export const processAlert = async (
             },
             `Group "${groupKey}" is missing from current data but was previously alerting - creating OK history`,
           );
-          histories.set(groupKey, {
-            alert: new mongoose.Types.ObjectId(alert.id),
-            createdAt: nowInMinsRoundDown,
-            state: AlertState.OK,
-            counts: 0,
-            lastValues: [],
-            group: groupKey || undefined,
-          });
+          getOrCreateHistory(groupKey);
         }
       }
     }
 
     // If no histories exist at all (no current data and no previous alerting groups), create a default OK history
     if (histories.size === 0) {
-      histories.set('', {
-        alert: new mongoose.Types.ObjectId(alert.id),
-        createdAt: nowInMinsRoundDown,
-        state: AlertState.OK,
-        counts: 0,
-        lastValues: [],
-        group: undefined,
-      });
+      getOrCreateHistory('');
     }
 
     // Check for auto-resolve: for each group, check if it transitioned from ALERT to OK
@@ -529,14 +515,6 @@ export const processAlert = async (
       }
     }
 
-    // Save all history records and update alert state
-    // The overall alert state is ALERT if ANY group is in ALERT state, otherwise OK
-    const overallState = Array.from(histories.values()).some(
-      h => h.state === AlertState.ALERT,
-    )
-      ? AlertState.ALERT
-      : AlertState.OK;
-
     // Save history records first (in parallel), then update alert state
     // Use Promise.allSettled to handle partial failures gracefully
     const historyRecords = Array.from(histories.values());
@@ -558,20 +536,22 @@ export const processAlert = async (
       });
     }
 
-    // Recalculate overall state based on successfully saved histories only
-    // This ensures we don't set state based on histories that failed to persist
+    // Determine final alert state: use successfully saved histories if any, otherwise fallback to computed state
+    // The alert state is ALERT if ANY history (successful or computed) is in ALERT state, otherwise OK
     const successfulHistories = historyResults
       .map((result, index) =>
         result.status === 'fulfilled' ? historyRecords[index] : null,
       )
       .filter((h): h is IAlertHistory => h !== null);
 
-    const finalState =
+    const historiesToCheck =
       successfulHistories.length > 0
-        ? successfulHistories.some(h => h.state === AlertState.ALERT)
-          ? AlertState.ALERT
-          : AlertState.OK
-        : overallState; // Fallback to computed state if all failed
+        ? successfulHistories
+        : Array.from(histories.values());
+
+    const finalState = historiesToCheck.some(h => h.state === AlertState.ALERT)
+      ? AlertState.ALERT
+      : AlertState.OK;
 
     // Update alert state based on successfully saved histories
     await Alert.updateOne(
@@ -609,7 +589,7 @@ export interface AggregatedAlertHistory {
  * @param now The current date and time. AlertHistory documents that have a createdBy > now are ignored.
  * @returns A map from Alert IDs (or Alert ID + group) to their most recent AlertHistory.
  *  For non-grouped alerts, the key is just the alert ID.
- *  For grouped alerts, the key is "alertId:group" to track per-group state.
+ *  For grouped alerts, the key is "alertId||group" to track per-group state.
  */
 export const getPreviousAlertHistories = async (
   alertIds: string[],
@@ -625,7 +605,7 @@ export const getPreviousAlertHistories = async (
     chunkedIds.map(async ids =>
       AlertHistory.aggregate<AggregatedAlertHistory>([
         // Filter for the given alerts, and only entries created before "now"
-        // This uses the compound index { alert: 1, createdAt: -1 } or { alert: 1, group: 1, createdAt: -1 }
+        // This uses the compound index { alert: 1, createdAt: -1 }
         {
           $match: {
             alert: { $in: ids },
@@ -637,24 +617,21 @@ export const getPreviousAlertHistories = async (
         {
           $sort: { alert: 1, createdAt: -1 },
         },
-        // Group by alert ID AND group (if present), taking the first (latest) values for each combination
-        // Using $max instead of $first ensures we get the latest createdAt even if sort order isn't perfect
+        // Group by alert ID AND group (if present), taking the first (latest) document for each combination
         {
           $group: {
             _id: {
               alert: '$alert',
               group: '$group',
             },
-            createdAt: { $max: '$createdAt' },
-            // Find the document with max createdAt for state
             latestDoc: { $first: '$$ROOT' },
           },
         },
-        // Reshape and extract state from the latest document
+        // Reshape and extract fields from the latest document
         {
           $project: {
             _id: '$_id.alert',
-            createdAt: '$createdAt',
+            createdAt: '$latestDoc.createdAt',
             state: '$latestDoc.state',
             group: '$_id.group',
           },

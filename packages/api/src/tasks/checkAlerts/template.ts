@@ -22,7 +22,7 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import { AlertInput } from '@/controllers/alerts';
-import { AlertSource, AlertThresholdType } from '@/models/alert';
+import { AlertSource, AlertState, AlertThresholdType } from '@/models/alert';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
@@ -77,7 +77,7 @@ interface Message {
   hdxLink: string;
   title: string;
   body: string;
-  state: string;
+  state: AlertState;
   startTime: number;
   endTime: number;
   eventId: string;
@@ -417,7 +417,7 @@ export const renderAlertTemplate = async ({
   alertProvider: AlertProvider;
   clickhouseClient: ClickhouseClient;
   metadata: Metadata;
-  state: string;
+  state: AlertState;
   template?: string | null;
   title: string;
   view: AlertMessageTemplateDefaultView;
