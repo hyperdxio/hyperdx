@@ -17,6 +17,7 @@ import SearchInputV2 from '@/SearchInputV2';
 import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
 
+import { ROW_DATA_ALIASES } from './DBRowDataPanel';
 import DBRowSidePanel, { RowSidePanelContext } from './DBRowSidePanel';
 import {
   BreadcrumbNavigationCallback,
@@ -76,7 +77,7 @@ export default function ContextSubpanel({
   onBreadcrumbClick,
 }: ContextSubpanelProps) {
   const QUERY_KEY_PREFIX = 'context';
-  const { Timestamp: origTimestamp } = rowData;
+  const origTimestamp = rowData[ROW_DATA_ALIASES.TIMESTAMP];
   const { whereLanguage: originalLanguage = 'lucene' } =
     dbSqlRowTableConfig ?? {};
   const [range, setRange] = useState<number>(ms('30s'));

@@ -13,6 +13,7 @@ import {
   useConfigWithPrimaryAndPartitionKey,
 } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { getFirstTimestampValueExpression } from '@/source';
 
 // We don't want to load pyodide over and over again, use react query to cache the async instance
 function usePyodide(options: { enabled: boolean }) {
@@ -131,7 +132,7 @@ function usePatterns({
     // TODO: User-configurable pattern columns and non-pattern/group by columns
     select: [
       `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
-      `${config.timestampValueExpression} as ${TIMESTAMP_COLUMN_ALIAS}`,
+      `${getFirstTimestampValueExpression(config.timestampValueExpression)} as ${TIMESTAMP_COLUMN_ALIAS}`,
       ...(severityTextExpression
         ? [`${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`]
         : []),
