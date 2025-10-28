@@ -7,6 +7,7 @@ import * as config from '@/config';
 import { findUserByAccessKey } from '@/controllers/user';
 import type { UserDocument } from '@/models/user';
 import logger from '@/utils/logger';
+import { authProxyMiddleware } from './authProxy';
 
 declare global {
   namespace Express {
@@ -106,6 +107,12 @@ export function isUserAuthenticated(
     return next();
   }
 
+  // If auth proxy is enabled, try that first
+  if (config.AUTH_PROXY_ENABLED) {
+    return authProxyMiddleware(req, res, next);
+  }
+
+  // Fall back to regular session-based auth
   if (req.isAuthenticated()) {
     // set user id as trace attribute
     setTraceAttributes({

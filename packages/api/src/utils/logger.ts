@@ -8,7 +8,7 @@ import pinoHttp from 'pino-http';
 
 import * as config from '@/config';
 
-const MAX_LEVEL = config.HYPERDX_LOG_LEVEL ?? 'debug';
+const MAX_LEVEL = config.HYPERDX_LOG_LEVEL || 'debug';
 
 const hyperdxTransport = config.HYPERDX_API_KEY
   ? getPinoTransport(MAX_LEVEL, {
