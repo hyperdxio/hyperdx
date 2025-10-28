@@ -9,7 +9,11 @@ import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertState,
+  SourceKind,
+  WebhookService,
+} from '@hyperdx/common-utils/dist/types';
 import {
   isValidSlackUrl,
   isValidUrl,
@@ -750,7 +754,7 @@ export function CreateWebhookForm({
   "title": "{{title}}",
   "description": "{{body}}",
   "deduplication_key": "{{eventId}}",
-  "status": "{{#if (eq state "ALERT")}}firing{{else}}resolved{{/if}}",
+  "status": "{{#if (eq state "${AlertState.ALERT}")}}firing{{else}}resolved{{/if}}",
   "source_url": "{{link}}"
 }`;
         }
@@ -1223,7 +1227,7 @@ function ClickhouseSettingForm({
               ? 'Disabled'
               : 'Enabled'
             : 'Enabled'
-          : (currentValue ?? defaultValue ?? ''),
+          : currentValue ?? defaultValue ?? '',
     },
   });
 

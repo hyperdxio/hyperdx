@@ -1364,6 +1364,486 @@ describe('checkAlerts', () => {
       });
     });
 
+    it('Group-by alerts that resolve (missing data case)', async () => {
+      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+      const team = await createTeam({ name: 'My Team' });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+      const eventNextMs = new Date('2023-11-16T22:10:00.000Z');
+
+      // Insert logs with different ServiceName values (group-by field)
+      await bulkInsertLogs([
+        // First window: 22:05 - 22:10 (both service-a and service-b breach threshold)
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        // Second window: 22:10 - 22:15 (only service-a breaches, service-b has no data)
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventNextMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventNextMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        // service-b has NO data in this window
+      ]);
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'My Search',
+        select: 'Body',
+        where: 'SeverityText: "error"',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName', // Group by ServiceName
+        },
+        mockUserId,
+      );
+
+      const enhancedAlert: any = await Alert.findById(alert.id).populate([
+        'team',
+        'savedSearch',
+      ]);
+
+      const details = {
+        alert: enhancedAlert,
+        source,
+        taskType: AlertTaskType.SAVED_SEARCH,
+        savedSearch,
+        previous: undefined,
+        previousMap: new Map(),
+      } satisfies AlertDetails;
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const mockMetadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          const columnMap = {
+            Body: { name: 'Body', type: 'String' },
+            Timestamp: { name: 'Timestamp', type: 'DateTime' },
+            SeverityText: { name: 'SeverityText', type: 'String' },
+            ServiceName: { name: 'ServiceName', type: 'String' },
+          };
+          return Promise.resolve(columnMap[column]);
+        }),
+      };
+
+      // Mock the getMetadata function
+      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+        getMetadata: jest.fn().mockReturnValue(mockMetadata),
+      }));
+
+      // First run: should trigger alerts for both service-a and service-b
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Overall alert should be in ALERT state (because at least one group is alerting)
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+
+      // Check that we have 2 alert histories (one for each group)
+      let alertHistories = await AlertHistory.find({
+        alert: alert.id,
+      }).sort({ createdAt: 1, group: 1 });
+      expect(alertHistories.length).toBe(2);
+
+      // Groups can include multiple fields, check that both groups exist
+      const groups = alertHistories.map(h => h.group);
+      expect(groups.some(g => g?.includes('service-a'))).toBe(true);
+      expect(groups.some(g => g?.includes('service-b'))).toBe(true);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[1].state).toBe('ALERT');
+
+      // Second run: service-a still breaches, service-b has no data (should auto-resolve)
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      const previousAlertsNextWindow = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        nextWindow,
+      );
+      await processAlert(
+        nextWindow,
+        {
+          ...details,
+          previous: previousAlertsNextWindow.get(enhancedAlert.id),
+          previousMap: previousAlertsNextWindow,
+        },
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Overall alert should still be in ALERT state (service-a is still alerting)
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+
+      // Check alert histories
+      alertHistories = await AlertHistory.find({
+        alert: alert.id,
+      }).sort({ createdAt: 1, group: 1 });
+      expect(alertHistories.length).toBe(4); // 2 from first run + 2 from second run
+
+      // Find the latest histories for each group (groups include multiple fields)
+      const serviceAHistories = alertHistories.filter(h =>
+        h.group?.includes('service-a'),
+      );
+      const serviceBHistories = alertHistories.filter(h =>
+        h.group?.includes('service-b'),
+      );
+
+      // service-a should have 2 histories (both ALERT)
+      expect(serviceAHistories.length).toBe(2);
+      expect(serviceAHistories[0].state).toBe('ALERT'); // First run
+      expect(serviceAHistories[1].state).toBe('ALERT'); // Second run - still alerting
+      expect(serviceAHistories[1].createdAt).toEqual(
+        new Date('2023-11-16T22:15:00.000Z'),
+      );
+
+      // service-b should have 2 histories (ALERT -> OK transition due to missing data)
+      expect(serviceBHistories.length).toBe(2);
+      expect(serviceBHistories[0].state).toBe('ALERT'); // First run
+      expect(serviceBHistories[1].state).toBe('OK'); // Second run - auto-resolved due to missing data
+      expect(serviceBHistories[1].createdAt).toEqual(
+        new Date('2023-11-16T22:15:00.000Z'),
+      );
+
+      // Check webhook calls:
+      // 1-2: First run alerts for service-a and service-b
+      // 3: Second run alert for service-a
+      // 4: Second run resolution notification for service-b
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(4);
+
+      // Verify the resolution notification was sent for service-b
+      const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
+      const resolutionCall = calls.find(call =>
+        call[1].text.includes('My Search'),
+      );
+      expect(resolutionCall).toBeDefined();
+    });
+
+    it('Group-by alerts with mixed transitions (one stays ALERT, one resolves to OK)', async () => {
+      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+      const team = await createTeam({ name: 'My Team' });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+      const eventNextMs = new Date('2023-11-16T22:10:00.000Z');
+
+      // Insert logs with different ServiceName values (group-by field)
+      await bulkInsertLogs([
+        // First window: 22:05 - 22:10 (both service-a and service-b breach threshold)
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        // Second window: 22:10 - 22:15 (service-a still breaches, service-b drops below threshold)
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventNextMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-a',
+          Timestamp: eventNextMs,
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        // service-b has data but below threshold (no errors, just info logs)
+        {
+          ServiceName: 'service-b',
+          Timestamp: eventNextMs,
+          SeverityText: 'info',
+          Body: 'Info from service-b',
+        },
+      ]);
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'My Search',
+        select: 'Body',
+        where: 'SeverityText: "error"',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName', // Group by ServiceName
+        },
+        mockUserId,
+      );
+
+      const enhancedAlert: any = await Alert.findById(alert.id).populate([
+        'team',
+        'savedSearch',
+      ]);
+
+      const details = {
+        alert: enhancedAlert,
+        source,
+        taskType: AlertTaskType.SAVED_SEARCH,
+        savedSearch,
+        previous: undefined,
+        previousMap: new Map(),
+      } satisfies AlertDetails;
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const mockMetadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          const columnMap = {
+            Body: { name: 'Body', type: 'String' },
+            Timestamp: { name: 'Timestamp', type: 'DateTime' },
+            SeverityText: { name: 'SeverityText', type: 'String' },
+            ServiceName: { name: 'ServiceName', type: 'String' },
+          };
+          return Promise.resolve(columnMap[column]);
+        }),
+      };
+
+      // Mock the getMetadata function
+      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+        getMetadata: jest.fn().mockReturnValue(mockMetadata),
+      }));
+
+      // First run: should trigger alerts for both service-a and service-b
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Overall alert should be in ALERT state (because at least one group is alerting)
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+
+      // Check that we have 2 alert histories (one for each group)
+      let alertHistories = await AlertHistory.find({
+        alert: alert.id,
+      }).sort({ createdAt: 1, group: 1 });
+      expect(alertHistories.length).toBe(2);
+
+      // Groups can include multiple fields, check that both groups exist
+      const groups = alertHistories.map(h => h.group);
+      expect(groups.some(g => g?.includes('service-a'))).toBe(true);
+      expect(groups.some(g => g?.includes('service-b'))).toBe(true);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[1].state).toBe('ALERT');
+
+      // Second run: service-a still breaches, service-b has data but below threshold (should resolve)
+      const nextWindow = new Date('2023-11-16T22:16:00.000Z');
+      const previousAlertsNextWindow = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        nextWindow,
+      );
+      await processAlert(
+        nextWindow,
+        {
+          ...details,
+          previous: previousAlertsNextWindow.get(enhancedAlert.id),
+          previousMap: previousAlertsNextWindow,
+        },
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Overall alert should still be in ALERT state (service-a is still alerting)
+      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+
+      // Check alert histories
+      alertHistories = await AlertHistory.find({
+        alert: alert.id,
+      }).sort({ createdAt: 1, group: 1 });
+      expect(alertHistories.length).toBe(4); // 2 from first run + 2 from second run
+
+      // Find the latest histories for each group (groups include multiple fields)
+      const serviceAHistories = alertHistories.filter(h =>
+        h.group?.includes('service-a'),
+      );
+      const serviceBHistories = alertHistories.filter(h =>
+        h.group?.includes('service-b'),
+      );
+
+      // service-a should have 2 histories (both ALERT - continues alerting)
+      expect(serviceAHistories.length).toBe(2);
+      expect(serviceAHistories[0].state).toBe('ALERT'); // First run
+      expect(serviceAHistories[1].state).toBe('ALERT'); // Second run - still alerting
+      expect(serviceAHistories[1].createdAt).toEqual(
+        new Date('2023-11-16T22:15:00.000Z'),
+      );
+
+      // service-b should have 2 histories (ALERT -> OK transition with data present)
+      expect(serviceBHistories.length).toBe(2);
+      expect(serviceBHistories[0].state).toBe('ALERT'); // First run
+      expect(serviceBHistories[1].state).toBe('OK'); // Second run - resolved (data present but below threshold)
+      expect(serviceBHistories[1].createdAt).toEqual(
+        new Date('2023-11-16T22:15:00.000Z'),
+      );
+
+      // Check webhook calls:
+      // 1-2: First run alerts for service-a and service-b
+      // 3: Second run alert for service-a (continues alerting)
+      // 4: Second run resolution notification for service-b
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(4);
+
+      // Verify the resolution notification was sent for service-b
+      const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
+      const resolutionCall = calls.find(call =>
+        call[1].text.includes('My Search'),
+      );
+      expect(resolutionCall).toBeDefined();
+    });
+
     it('TILE alert (metrics) - slack webhook', async () => {
       jest
         .spyOn(slack, 'postMessageToWebhook')

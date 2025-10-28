@@ -153,21 +153,28 @@ const fireChannelEvent = async ({
   });
 };
 
+// Use a delimiter that's unlikely to appear in alert IDs or group names
+// MongoDB ObjectIds are hex strings (0-9, a-f), so pipes are safe
+const ALERT_GROUP_DELIMITER = '||';
+
 /**
  * Compute a composite map key for tracking alert history per group.
  * For non-grouped alerts, returns just the alert ID.
- * For grouped alerts, returns "alertId:groupKey" to track per-group state.
+ * For grouped alerts, returns "alertId||groupKey" to track per-group state.
+ * Uses || as delimiter since it's unlikely to appear in alert IDs (MongoDB ObjectIds)
+ * or in typical group key values.
  */
 const computeHistoryMapKey = (alertId: string, groupKey: string): string => {
-  return groupKey ? `${alertId}:${groupKey}` : alertId;
+  return groupKey ? `${alertId}${ALERT_GROUP_DELIMITER}${groupKey}` : alertId;
 };
 
 /**
  * Extract the group key from a composite history map key.
- * Handles group names that may contain colons by removing the alertId prefix.
+ * Safely handles group names that may contain colons or other special characters
+ * by using the alert ID prefix with the delimiter to identify the split point.
  */
 const extractGroupKeyFromMapKey = (mapKey: string, alertId: string): string => {
-  const alertIdPrefix = `${alertId}:`;
+  const alertIdPrefix = `${alertId}${ALERT_GROUP_DELIMITER}`;
   return mapKey.startsWith(alertIdPrefix)
     ? mapKey.substring(alertIdPrefix.length)
     : '';
@@ -377,13 +384,15 @@ export const processAlert = async (
         const bucketStart = new Date(checkData[timestampColumnName]);
         if (doesExceedThreshold(alert.thresholdType, alert.threshold, _value)) {
           history.state = AlertState.ALERT;
-          logger.info({
-            message: `Triggering ${alert.channel.type} alarm!`,
-            alertId: alert.id,
-            group: groupKey,
-            totalCount: _value,
-            checkData,
-          });
+          logger.info(
+            {
+              alertId: alert.id,
+              group: groupKey,
+              totalCount: _value,
+              checkData,
+            },
+            `Triggering ${alert.channel.type} alarm!`,
+          );
 
           try {
             // Casts to any here because this is where I stopped unraveling the
@@ -408,12 +417,14 @@ export const processAlert = async (
               teamWebhooksById,
             });
           } catch (e) {
-            logger.error({
-              message: 'Failed to fire channel event',
-              alertId: alert.id,
-              group: groupKey,
-              error: serializeError(e),
-            });
+            logger.error(
+              {
+                alertId: alert.id,
+                group: groupKey,
+                error: serializeError(e),
+              },
+              'Failed to fire channel event',
+            );
           }
 
           history.counts += 1;
@@ -433,11 +444,13 @@ export const processAlert = async (
           previousHistory.state === AlertState.ALERT &&
           !histories.has(groupKey)
         ) {
-          logger.info({
-            message: `Group "${groupKey}" is missing from current data but was previously alerting - creating OK history`,
-            alertId: alert.id,
-            group: groupKey,
-          });
+          logger.info(
+            {
+              alertId: alert.id,
+              group: groupKey,
+            },
+            `Group "${groupKey}" is missing from current data but was previously alerting - creating OK history`,
+          );
           histories.set(groupKey, {
             alert: new mongoose.Types.ObjectId(alert.id),
             createdAt: nowInMinsRoundDown,
@@ -465,17 +478,21 @@ export const processAlert = async (
     // Check for auto-resolve: for each group, check if it transitioned from ALERT to OK
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
-      const groupPrevious = previousMap?.get(previousKey) || previous; // Use previousMap first, fallback to previous for backwards compatibility
+      // Use nullish coalescing to properly handle falsy values in the map
+      // Only fallback to 'previous' if the key is not in the map (undefined)
+      const groupPrevious = previousMap?.get(previousKey) ?? previous; // Use previousMap first, fallback to previous for backwards compatibility
 
       if (
         groupPrevious?.state === AlertState.ALERT &&
         history.state === AlertState.OK
       ) {
-        logger.info({
-          message: `Alert resolved for group "${groupKey}", triggering ${alert.channel.type} notification`,
-          alertId: alert.id,
-          group: groupKey,
-        });
+        logger.info(
+          {
+            alertId: alert.id,
+            group: groupKey,
+          },
+          `Alert resolved for group "${groupKey}", triggering ${alert.channel.type} notification`,
+        );
 
         try {
           const lastValue = history.lastValues[history.lastValues.length - 1];
@@ -500,12 +517,14 @@ export const processAlert = async (
             teamWebhooksById,
           });
         } catch (e) {
-          logger.error({
-            message: 'Failed to fire resolved channel event',
-            alertId: alert.id,
-            group: groupKey,
-            error: serializeError(e),
-          });
+          logger.error(
+            {
+              alertId: alert.id,
+              group: groupKey,
+              error: serializeError(e),
+            },
+            'Failed to fire resolved channel event',
+          );
         }
       }
     }
@@ -533,11 +552,13 @@ export const processAlert = async (
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
-    logger.error({
-      message: 'Failed to process alert',
-      alertId: alert.id,
-      error: serializeError(e),
-    });
+    logger.error(
+      {
+        alertId: alert.id,
+        error: serializeError(e),
+      },
+      'Failed to process alert',
+    );
   }
 };
 
@@ -610,12 +631,13 @@ export const getPreviousAlertHistories = async (
     ),
   );
 
-  // Create a map with composite keys for grouped alerts (alertId:group) or simple keys for non-grouped alerts
+  // Create a map with composite keys for grouped alerts (alertId||group) or simple keys for non-grouped alerts
   return new Map<string, AggregatedAlertHistory>(
     resultChunks.flat().map(history => {
-      const key = history.group
-        ? `${history._id.toString()}:${history.group}`
-        : history._id.toString();
+      const key = computeHistoryMapKey(
+        history._id.toString(),
+        history.group || '',
+      );
       return [key, history];
     }),
   );
@@ -646,10 +668,12 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
 
       try {
         const { alerts, conn } = alertTask;
-        logger.info({
-          message: 'Processing alerts in batch',
-          alertCount: alerts.length,
-        });
+        logger.info(
+          {
+            alertCount: alerts.length,
+          },
+          'Processing alerts in batch',
+        );
 
         const clickhouseClient = await this.provider.getClickHouseClient(
           conn,
@@ -683,19 +707,23 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
 
     this.provider = await loadProvider(this.args.provider);
     await this.provider.init();
-    logger.debug({
-      message: 'finished provider initialization',
-      provider: this.provider.constructor.name,
-      args: this.args,
-    });
+    logger.debug(
+      {
+        provider: this.provider.constructor.name,
+        args: this.args,
+      },
+      'finished provider initialization',
+    );
 
     const alertTasks = await this.provider.getAlertTasks();
     const taskCount = alertTasks.length;
-    logger.debug({
-      message: `Fetched ${taskCount} alert tasks to process`,
-      taskCount,
-      args: this.args,
-    });
+    logger.debug(
+      {
+        taskCount,
+        args: this.args,
+      },
+      `Fetched ${taskCount} alert tasks to process`,
+    );
 
     const teams = new Set(alertTasks.map(t => t.conn.team.toString()));
     const teamToWebhooks = new Map<string, Map<string, IWebhook>>();
@@ -703,12 +731,14 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       const teamWebhooksById = await this.provider.getWebhooks(teamId);
       teamToWebhooks.set(teamId, teamWebhooksById);
     }
-    logger.debug({
-      message: `Obtained teams and webhooks for all alertTasks`,
-      args: this.args,
-      teamCount: teams.size,
-      teamWebhookCount: teamToWebhooks.size,
-    });
+    logger.debug(
+      {
+        args: this.args,
+        teamCount: teams.size,
+        teamWebhookCount: teamToWebhooks.size,
+      },
+      `Obtained teams and webhooks for all alertTasks`,
+    );
 
     for (const task of alertTasks) {
       const teamWebhooksById =
@@ -717,16 +747,20 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
         this.processAlertTask(task, teamWebhooksById),
       );
     }
-    logger.debug({
-      message: 'finished scheduling alert tasks on the task_queue',
-      args: this.args,
-    });
+    logger.debug(
+      {
+        args: this.args,
+      },
+      'finished scheduling alert tasks on the task_queue',
+    );
 
     await this.task_queue.onIdle();
-    logger.info({
-      message: 'finished processing all tasks on task_queue',
-      args: this.args,
-    });
+    logger.info(
+      {
+        args: this.args,
+      },
+      'finished processing all tasks on task_queue',
+    );
   }
 
   name(): string {
