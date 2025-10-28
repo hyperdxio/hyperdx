@@ -353,5 +353,6 @@ export function usePinnedFilters(sourceId: string | null) {
     isFilterPinned,
     isFieldPinned,
     getPinnedFields,
+    pinnedFilters,
   };
 }

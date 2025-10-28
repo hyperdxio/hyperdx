@@ -677,8 +677,13 @@ const DBSearchPageFiltersComponent = ({
   ) => {
     return _setFilterValue(property, value, action);
   };
-  const { toggleFilterPin, toggleFieldPin, isFilterPinned, isFieldPinned } =
-    usePinnedFilters(sourceId ?? null);
+  const {
+    toggleFilterPin,
+    toggleFieldPin,
+    isFilterPinned,
+    isFieldPinned,
+    pinnedFilters,
+  } = usePinnedFilters(sourceId ?? null);
   const { width, startResize } = useResizable(16, 'left');
 
   const { data: jsonColumns } = useJsonColumns({
@@ -740,7 +745,7 @@ const DBSearchPageFiltersComponent = ({
           !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
       );
     return strings;
-  }, [data, jsonColumns, filterState, showMoreFields]);
+  }, [data, jsonColumns, filterState, showMoreFields, isFieldPinned]);
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -766,6 +771,26 @@ const DBSearchPageFiltersComponent = ({
     limit: keyLimit,
     keys: keysToFetch,
   });
+
+  // Merge pinned filter values into the queried facets, so that pinned values are always available
+  const facetsWithPinnedValues = useMemo(() => {
+    const facetsMap = new Map((facets ?? []).map(f => [f.key, f.value]));
+    const mergedKeys = new Set<string>([
+      ...facetsMap.keys(),
+      ...Object.keys(pinnedFilters),
+    ]);
+
+    return Array.from(mergedKeys).map(key => {
+      const queriedValues = facetsMap.get(key);
+      const pinnedValues = pinnedFilters[key];
+      const mergedValues = new Set<string>([
+        ...(queriedValues ?? []),
+        ...(pinnedValues ?? []),
+      ]);
+
+      return { key, value: Array.from(mergedValues) };
+    });
+  }, [facets, pinnedFilters]);
 
   const metadata = useMetadataWithSettings();
   const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
@@ -807,7 +832,7 @@ const DBSearchPageFiltersComponent = ({
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];
-    for (const _facet of facets ?? []) {
+    for (const _facet of facetsWithPinnedValues ?? []) {
       const facet = structuredClone(_facet);
       if (jsonColumns?.some(col => facet.key.startsWith(col))) {
         facet.key = `toString(${facet.key})`;
@@ -866,7 +891,7 @@ const DBSearchPageFiltersComponent = ({
 
     return _facets;
   }, [
-    facets,
+    facetsWithPinnedValues,
     filterState,
     tableMetadata,
     extraFacets,
@@ -982,6 +1007,7 @@ const DBSearchPageFiltersComponent = ({
               </Text>
             )
           )}
+          {/* Show facets even when loading to ensure pinned filters are visible while loading */}
           {shownFacets.map(facet => (
             <FilterGroup
               key={facet.key}
