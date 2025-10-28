@@ -153,6 +153,26 @@ const fireChannelEvent = async ({
   });
 };
 
+/**
+ * Compute a composite map key for tracking alert history per group.
+ * For non-grouped alerts, returns just the alert ID.
+ * For grouped alerts, returns "alertId:groupKey" to track per-group state.
+ */
+const computeHistoryMapKey = (alertId: string, groupKey: string): string => {
+  return groupKey ? `${alertId}:${groupKey}` : alertId;
+};
+
+/**
+ * Extract the group key from a composite history map key.
+ * Handles group names that may contain colons by removing the alertId prefix.
+ */
+const extractGroupKeyFromMapKey = (mapKey: string, alertId: string): string => {
+  const alertIdPrefix = `${alertId}:`;
+  return mapKey.startsWith(alertIdPrefix)
+    ? mapKey.substring(alertIdPrefix.length)
+    : '';
+};
+
 export const processAlert = async (
   now: Date,
   details: AlertDetails,
@@ -403,7 +423,34 @@ export const processAlert = async (
     }
 
     // Handle missing groups: If current check found no data, check if any previously alerting groups need to be resolved
-    // TODO: Should we 'treat missing data as breaching'?
+    // For group-by alerts, check if any previously alerting groups are missing from current data
+    if (hasGroupBy && previousMap && previousMap.size > 0) {
+      for (const [previousKey, previousHistory] of previousMap.entries()) {
+        const groupKey = extractGroupKeyFromMapKey(previousKey, alert.id);
+
+        // If this group was previously ALERT but is missing from current data, create an OK history
+        if (
+          previousHistory.state === AlertState.ALERT &&
+          !histories.has(groupKey)
+        ) {
+          logger.info({
+            message: `Group "${groupKey}" is missing from current data but was previously alerting - creating OK history`,
+            alertId: alert.id,
+            group: groupKey,
+          });
+          histories.set(groupKey, {
+            alert: new mongoose.Types.ObjectId(alert.id),
+            createdAt: nowInMinsRoundDown,
+            state: AlertState.OK,
+            counts: 0,
+            lastValues: [],
+            group: groupKey || undefined,
+          });
+        }
+      }
+    }
+
+    // If no histories exist at all (no current data and no previous alerting groups), create a default OK history
     if (histories.size === 0) {
       histories.set('', {
         alert: new mongoose.Types.ObjectId(alert.id),
@@ -417,7 +464,7 @@ export const processAlert = async (
 
     // Check for auto-resolve: for each group, check if it transitioned from ALERT to OK
     for (const [groupKey, history] of histories.entries()) {
-      const previousKey = groupKey ? `${alert.id}:${groupKey}` : alert.id;
+      const previousKey = computeHistoryMapKey(alert.id, groupKey);
       const groupPrevious = previousMap?.get(previousKey) || previous; // Use previousMap first, fallback to previous for backwards compatibility
 
       if (
