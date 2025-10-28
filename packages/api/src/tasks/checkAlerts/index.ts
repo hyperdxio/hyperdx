@@ -19,7 +19,7 @@ import mongoose from 'mongoose';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
-import Alert, { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
+import { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
@@ -188,10 +188,14 @@ export const processAlert = async (
   alertProvider: AlertProvider,
   teamWebhooksById: Map<string, IWebhook>,
 ) => {
-  const { alert, source, previous, previousMap } = details;
+  const { alert, source, previousMap } = details;
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const nowInMinsRoundDown = roundDownToXMinutes(windowSizeInMins)(now);
+
+    // Get the most recent history for this alert (for non-grouped alerts, use alert.id as key)
+    const previous = previousMap?.get(alert.id);
+
     if (
       previous &&
       fns.getTime(previous.createdAt) === fns.getTime(nowInMinsRoundDown)
@@ -464,9 +468,7 @@ export const processAlert = async (
     // Check for auto-resolve: for each group, check if it transitioned from ALERT to OK
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
-      // Use nullish coalescing to properly handle falsy values in the map
-      // Only fallback to 'previous' if the key is not in the map (undefined)
-      const groupPrevious = previousMap?.get(previousKey) ?? previous; // Use previousMap first, fallback to previous for backwards compatibility
+      const groupPrevious = previousMap?.get(previousKey);
 
       if (
         groupPrevious?.state === AlertState.ALERT &&
@@ -515,48 +517,10 @@ export const processAlert = async (
       }
     }
 
-    // Save history records first (in parallel), then update alert state
-    // Use Promise.allSettled to handle partial failures gracefully
-    const historyRecords = Array.from(histories.values());
-    const historyResults = await Promise.allSettled(
-      historyRecords.map(history => AlertHistory.create(history)),
-    );
-
-    // Log any failed history saves but continue with alert state update
-    const failedHistories = historyResults.filter(
-      (result): result is PromiseRejectedResult => result.status === 'rejected',
-    );
-    if (failedHistories.length > 0) {
-      logger.error({
-        message: 'Some alert history records failed to save',
-        alertId: alert.id,
-        failedCount: failedHistories.length,
-        totalCount: historyRecords.length,
-        errors: failedHistories.map(f => serializeError(f.reason)),
-      });
-    }
-
-    // Determine final alert state: use successfully saved histories if any, otherwise fallback to computed state
-    // The alert state is ALERT if ANY history (successful or computed) is in ALERT state, otherwise OK
-    const successfulHistories = historyResults
-      .map((result, index) =>
-        result.status === 'fulfilled' ? historyRecords[index] : null,
-      )
-      .filter((h): h is IAlertHistory => h !== null);
-
-    const historiesToCheck =
-      successfulHistories.length > 0
-        ? successfulHistories
-        : Array.from(histories.values());
-
-    const finalState = historiesToCheck.some(h => h.state === AlertState.ALERT)
-      ? AlertState.ALERT
-      : AlertState.OK;
-
-    // Update alert state based on successfully saved histories
-    await Alert.updateOne(
-      { _id: new mongoose.Types.ObjectId(alert.id) },
-      { $set: { state: finalState } },
+    // Save all history records and update alert state
+    await alertProvider.updateAlertState(
+      alert.id,
+      Array.from(histories.values()),
     );
   } catch (e) {
     // Uncomment this for better error messages locally

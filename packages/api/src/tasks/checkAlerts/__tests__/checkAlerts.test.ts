@@ -316,7 +316,7 @@ describe('checkAlerts', () => {
         alertProvider,
         clickhouseClient: {} as any,
         metadata: {} as any,
-        state: 'ALERT',
+        state: AlertState.ALERT,
         template: 'Custom body @webhook-My_Web', // partial name should work
         view: {
           ...defaultSearchView,
@@ -355,7 +355,7 @@ describe('checkAlerts', () => {
         alertProvider,
         clickhouseClient: {} as any,
         metadata: {} as any,
-        state: 'ALERT',
+        state: AlertState.ALERT,
         template: 'Custom body @webhook-My_Web', // partial name should work
         view: {
           ...defaultSearchView,
@@ -416,7 +416,7 @@ describe('checkAlerts', () => {
         alertProvider,
         clickhouseClient: {} as any,
         metadata: {} as any,
-        state: 'ALERT',
+        state: AlertState.ALERT,
         template: 'Custom body @webhook-{{attributes.webhookName}}', // partial name should work
         view: {
           ...defaultSearchView,
@@ -488,7 +488,7 @@ describe('checkAlerts', () => {
         alertProvider,
         clickhouseClient: {} as any,
         metadata: {} as any,
-        state: 'ALERT',
+        state: AlertState.ALERT,
         template: `
 {{#is_match "attributes.k8s.pod.name" "otel-collector-123"}}
   Runbook URL: {{attributes.runbook.url}}
@@ -526,7 +526,7 @@ describe('checkAlerts', () => {
         alertProvider,
         clickhouseClient: {} as any,
         metadata: {} as any,
-        state: 'ALERT',
+        state: AlertState.ALERT,
         template:
           '{{#is_match "attributes.host" "web"}} @webhook-My_Web {{/is_match}}', // partial name should work
         view: {
@@ -727,7 +727,6 @@ describe('checkAlerts', () => {
         source,
         taskType: AlertTaskType.SAVED_SEARCH,
         savedSearch,
-        previous: undefined,
         previousMap: new Map(),
       } satisfies AlertDetails;
 
@@ -776,7 +775,6 @@ describe('checkAlerts', () => {
         later,
         {
           ...details,
-          previous: previousAlertsLater.get(enhancedAlert.id),
           previousMap: previousAlertsLater,
         },
         clickhouseClient,
@@ -796,7 +794,7 @@ describe('checkAlerts', () => {
         nextWindow,
         {
           ...details,
-          previous: previousAlertsNextWindow.get(enhancedAlert.id),
+          previousMap: previousAlertsNextWindow,
         },
         clickhouseClient,
         connection.id,
@@ -815,7 +813,7 @@ describe('checkAlerts', () => {
         nextNextWindow,
         {
           ...details,
-          previous: previousAlertsNextNextWindow.get(enhancedAlert.id),
+          previousMap: previousAlertsNextNextWindow,
         },
         clickhouseClient,
         connection.id,
@@ -997,7 +995,6 @@ describe('checkAlerts', () => {
         taskType: AlertTaskType.TILE,
         tile,
         dashboard,
-        previous: undefined,
         previousMap: new Map(),
       } satisfies AlertDetails;
 
@@ -1046,7 +1043,7 @@ describe('checkAlerts', () => {
         later,
         {
           ...details,
-          previous: previousAlertsLater.get(enhancedAlert.id),
+          previousMap: previousAlertsLater,
         },
         clickhouseClient,
         connection.id,
@@ -1065,7 +1062,7 @@ describe('checkAlerts', () => {
         nextWindow,
         {
           ...details,
-          previous: previousAlertsNextWindow.get(enhancedAlert.id),
+          previousMap: previousAlertsNextWindow,
         },
         clickhouseClient,
         connection.id,
@@ -1253,7 +1250,6 @@ describe('checkAlerts', () => {
         taskType: AlertTaskType.TILE,
         tile,
         dashboard,
-        previous: undefined,
         previousMap: new Map(),
       } satisfies AlertDetails;
 
@@ -1302,7 +1298,7 @@ describe('checkAlerts', () => {
         later,
         {
           ...details,
-          previous: previousAlertsLater.get(enhancedAlert.id),
+          previousMap: previousAlertsLater,
         },
         clickhouseClient,
         connection.id,
@@ -1321,7 +1317,7 @@ describe('checkAlerts', () => {
         nextWindow,
         {
           ...details,
-          previous: previousAlertsNextWindow.get(enhancedAlert.id),
+          previousMap: previousAlertsNextWindow,
         },
         clickhouseClient,
         connection.id,
@@ -1481,7 +1477,6 @@ describe('checkAlerts', () => {
         source,
         taskType: AlertTaskType.SAVED_SEARCH,
         savedSearch,
-        previous: undefined,
         previousMap: new Map(),
       } satisfies AlertDetails;
 
@@ -1545,7 +1540,6 @@ describe('checkAlerts', () => {
         nextWindow,
         {
           ...details,
-          previous: previousAlertsNextWindow.get(enhancedAlert.id),
           previousMap: previousAlertsNextWindow,
         },
         clickhouseClient,
@@ -1724,7 +1718,6 @@ describe('checkAlerts', () => {
         source,
         taskType: AlertTaskType.SAVED_SEARCH,
         savedSearch,
-        previous: undefined,
         previousMap: new Map(),
       } satisfies AlertDetails;
 
@@ -1788,7 +1781,6 @@ describe('checkAlerts', () => {
         nextWindow,
         {
           ...details,
-          previous: previousAlertsNextWindow.get(enhancedAlert.id),
           previousMap: previousAlertsNextWindow,
         },
         clickhouseClient,
@@ -1965,7 +1957,6 @@ describe('checkAlerts', () => {
         taskType: AlertTaskType.TILE,
         tile,
         dashboard,
-        previous: undefined,
         previousMap: new Map(),
       } satisfies AlertDetails;
 
@@ -2015,7 +2006,6 @@ describe('checkAlerts', () => {
         later,
         {
           ...details,
-          previous: previousAlertsLater.get(enhancedAlert.id),
           previousMap: previousAlertsLater,
         },
         clickhouseClient,
@@ -2035,7 +2025,7 @@ describe('checkAlerts', () => {
         nextWindow,
         {
           ...details,
-          previous: previousAlertsNextWindow.get(enhancedAlert.id),
+          previousMap: previousAlertsNextWindow,
         },
         clickhouseClient,
         connection.id,

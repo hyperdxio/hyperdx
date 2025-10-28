@@ -33,7 +33,6 @@ export type PopulatedAlertChannel = { type: 'webhook' } & { channel: IWebhook };
 export type AlertDetails = {
   alert: IAlert;
   source: ISource;
-  previous: AggregatedAlertHistory | undefined;
   previousMap: Map<string, AggregatedAlertHistory>; // Map of alertId||group -> history for group-by alerts
 } & (
   | {
@@ -75,8 +74,12 @@ export interface AlertProvider {
     startTime: Date;
   }): string;
 
-  /** Save the given AlertHistory and update the associated alert's state */
-  updateAlertState(alertHistory: IAlertHistory): Promise<void>;
+  /**
+   * Save the given AlertHistory records and update the associated alert's state.
+   * Uses Promise.allSettled to handle partial failures gracefully.
+   * The alert state is determined from successfully saved histories, or falls back to all histories if all saves fail.
+   */
+  updateAlertState(alertId: string, histories: IAlertHistory[]): Promise<void>;
 
   /** Fetch all webhooks for the given team, returning a map of webhook ID to webhook */
   getWebhooks(teamId: string | ObjectId): Promise<Map<string, IWebhook>>;

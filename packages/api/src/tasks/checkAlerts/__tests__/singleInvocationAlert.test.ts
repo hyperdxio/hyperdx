@@ -402,7 +402,6 @@ describe('Single Invocation Alert Test', () => {
       taskType: AlertTaskType.TILE,
       tile,
       dashboard,
-      previous: undefined,
       previousMap: new Map(),
     } satisfies AlertDetails;
 
