@@ -537,17 +537,46 @@ export const processAlert = async (
       ? AlertState.ALERT
       : AlertState.OK;
 
-    // Save history records first (in parallel), then update alert state only if all succeed
-    // This prevents inconsistent state where alert state is updated but history records fail
+    // Save history records first (in parallel), then update alert state
+    // Use Promise.allSettled to handle partial failures gracefully
     const historyRecords = Array.from(histories.values());
-    await Promise.all(
+    const historyResults = await Promise.allSettled(
       historyRecords.map(history => AlertHistory.create(history)),
     );
 
-    // Only update alert state after all history records are successfully saved
+    // Log any failed history saves but continue with alert state update
+    const failedHistories = historyResults.filter(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failedHistories.length > 0) {
+      logger.error({
+        message: 'Some alert history records failed to save',
+        alertId: alert.id,
+        failedCount: failedHistories.length,
+        totalCount: historyRecords.length,
+        errors: failedHistories.map(f => serializeError(f.reason)),
+      });
+    }
+
+    // Recalculate overall state based on successfully saved histories only
+    // This ensures we don't set state based on histories that failed to persist
+    const successfulHistories = historyResults
+      .map((result, index) =>
+        result.status === 'fulfilled' ? historyRecords[index] : null,
+      )
+      .filter((h): h is IAlertHistory => h !== null);
+
+    const finalState =
+      successfulHistories.length > 0
+        ? successfulHistories.some(h => h.state === AlertState.ALERT)
+          ? AlertState.ALERT
+          : AlertState.OK
+        : overallState; // Fallback to computed state if all failed
+
+    // Update alert state based on successfully saved histories
     await Alert.updateOne(
       { _id: new mongoose.Types.ObjectId(alert.id) },
-      { $set: { state: overallState } },
+      { $set: { state: finalState } },
     );
   } catch (e) {
     // Uncomment this for better error messages locally
@@ -596,35 +625,38 @@ export const getPreviousAlertHistories = async (
     chunkedIds.map(async ids =>
       AlertHistory.aggregate<AggregatedAlertHistory>([
         // Filter for the given alerts, and only entries created before "now"
+        // This uses the compound index { alert: 1, createdAt: -1 } or { alert: 1, group: 1, createdAt: -1 }
         {
           $match: {
             alert: { $in: ids },
             createdAt: { $lte: now },
           },
         },
-        // Sort by createdAt descending to get the latest first
+        // Sort by alert and createdAt to leverage the index
+        // This ensures we can use the compound index efficiently
         {
-          $sort: { createdAt: -1 },
+          $sort: { alert: 1, createdAt: -1 },
         },
         // Group by alert ID AND group (if present), taking the first (latest) values for each combination
+        // Using $max instead of $first ensures we get the latest createdAt even if sort order isn't perfect
         {
           $group: {
             _id: {
               alert: '$alert',
               group: '$group',
             },
-            createdAt: { $first: '$createdAt' },
-            state: { $first: '$state' },
-            group: { $first: '$group' },
+            createdAt: { $max: '$createdAt' },
+            // Find the document with max createdAt for state
+            latestDoc: { $first: '$$ROOT' },
           },
         },
-        // Reshape the _id to be just the alert ObjectId for easier consumption
+        // Reshape and extract state from the latest document
         {
           $project: {
             _id: '$_id.alert',
-            createdAt: 1,
-            state: 1,
-            group: 1,
+            createdAt: '$createdAt',
+            state: '$latestDoc.state',
+            group: '$_id.group',
           },
         },
       ]),

@@ -486,16 +486,22 @@ export const renderAlertTemplate = async ({
       if (channel) {
         const startTime = view.startTime.getTime();
         const endTime = view.endTime.getTime();
-        // Normalize group to undefined if empty string to ensure consistent eventId
-        const normalizedGroup =
-          group && group.trim() !== '' ? group : undefined;
+
+        // Generate eventId with explicit distinction between grouped and non-grouped alerts
+        // to prevent collisions between empty group names and non-grouped alerts
+        const isGroupedAlert = Boolean(
+          alert.groupBy && alert.groupBy.trim() !== '',
+        );
         const eventId = objectHash({
           alertId: alert.id,
           channel: {
             type: channel.type,
             id: channel.channel._id.toString(),
           },
-          ...(normalizedGroup ? { groupId: normalizedGroup } : {}),
+          // Explicitly track if this is a grouped alert
+          isGrouped: isGroupedAlert,
+          // Only include groupId if this is actually a grouped alert with a non-empty group value
+          ...(isGroupedAlert && group ? { groupId: group } : {}),
         });
 
         await notifyChannel({

@@ -52,8 +52,10 @@ AlertHistorySchema.index(
   { expireAfterSeconds: ms('30d') / 1000 },
 );
 
+// Compound index for querying alert histories by alert and time
+// Used by getPreviousAlertHistories and alerts router
+// Supports queries like: { alert: id, createdAt: { $lte: date } } with sort { createdAt: -1 }
 AlertHistorySchema.index({ alert: 1, createdAt: -1 });
-AlertHistorySchema.index({ alert: 1, group: 1, createdAt: -1 });
 
 export default mongoose.model<IAlertHistory>(
   'AlertHistory',
