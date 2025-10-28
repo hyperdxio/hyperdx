@@ -18,6 +18,7 @@ import {
   Switch,
   Text,
   TextInput,
+  Tooltip,
 } from '@mantine/core';
 import { DateInput, DateInputProps } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
@@ -77,6 +78,7 @@ export const TimePicker = ({
   onSubmit,
   showLive = false,
   isLiveMode = false,
+  defaultRelativeTimeMode = false,
 }: {
   inputValue: string;
   setInputValue: (str: string) => any;
@@ -85,6 +87,7 @@ export const TimePicker = ({
   onSubmit?: (rangeStr: string) => void;
   showLive?: boolean;
   isLiveMode?: boolean;
+  defaultRelativeTimeMode?: boolean;
 }) => {
   const {
     userPreferences: { timeFormat },
@@ -197,7 +200,7 @@ export const TimePicker = ({
     [form.values, handleSearch],
   );
 
-  const [isRelative, setIsRelative] = useState(false);
+  const [isRelative, setIsRelative] = useState(defaultRelativeTimeMode);
 
   return (
     <Popover
@@ -254,13 +257,35 @@ export const TimePicker = ({
       <Popover.Dropdown p={0} data-testid="time-picker-popover">
         <Group justify="space-between" gap={4} px="xs" py={4}>
           <Group gap={4}>
+            {typeof onRelativeSearch === 'function' && (
+              <Tooltip
+                label="Set how far back Live Tail begins streaming logs."
+                refProp="rootRef"
+              >
+                <Switch
+                  data-testid="time-picker-relative-switch"
+                  size="xs"
+                  checked={isRelative}
+                  onChange={e => setIsRelative(e.currentTarget.checked)}
+                  label="Relative Time"
+                  labelPosition="right"
+                  styles={{
+                    label: {
+                      paddingLeft: '5px',
+                    },
+                  }}
+                />
+              </Tooltip>
+            )}
+          </Group>
+          <Group gap={4}>
             <Button
               data-testid="time-picker-1h-back"
               size="compact-xs"
               color="gray"
               variant="light"
               onClick={handleMove.bind(null, { hours: -1 })}
-              disabled={isLiveMode}
+              disabled={isLiveMode || isRelative}
             >
               1h back
             </Button>
@@ -270,27 +295,10 @@ export const TimePicker = ({
               color="gray"
               variant="light"
               onClick={handleMove.bind(null, { hours: 1 })}
-              disabled={isLiveMode}
+              disabled={isLiveMode || isRelative}
             >
               1h forward
             </Button>
-          </Group>
-          <Group gap={4}>
-            {typeof onRelativeSearch === 'function' && (
-              <Switch
-                data-testid="time-picker-relative-switch"
-                size="xs"
-                checked={isRelative}
-                onChange={e => setIsRelative(e.currentTarget.checked)}
-                label="Relative Time"
-                labelPosition="right"
-                styles={{
-                  label: {
-                    paddingLeft: '5px',
-                  },
-                }}
-              />
-            )}
             <CloseButton data-testid="time-picker-close" onClick={close} />
           </Group>
         </Group>
@@ -303,7 +311,7 @@ export const TimePicker = ({
                     <Divider key={index} my={4} color="gray.9" />
                   ) : (
                     <Button
-                      key={item[1]}
+                      key={item[0]}
                       disabled={
                         isRelative &&
                         !item[2] &&
@@ -339,6 +347,7 @@ export const TimePicker = ({
                 mb="xs"
                 data={[TimePickerMode.Range, TimePickerMode.Around]}
                 value={mode}
+                disabled={isRelative}
                 onChange={newMode => {
                   const value = newMode as TimePickerMode;
                   setMode(value);
@@ -383,6 +392,7 @@ export const TimePicker = ({
                 <>
                   <H>Start time</H>
                   <DateInputCmp
+                    disabled={isRelative}
                     maxDate={today}
                     mb="xs"
                     {...form.getInputProps('startDate')}
@@ -391,6 +401,7 @@ export const TimePicker = ({
                   <DateInputCmp
                     maxDate={today}
                     minDate={form.values.startDate ?? undefined}
+                    disabled={isRelative}
                     {...form.getInputProps('endDate')}
                   />
                 </>
@@ -398,6 +409,7 @@ export const TimePicker = ({
                 <>
                   <H>Time</H>
                   <DateInputCmp
+                    disabled={isRelative}
                     maxDate={today}
                     mb="xs"
                     {...form.getInputProps('startDate')}
@@ -408,6 +420,7 @@ export const TimePicker = ({
                     data={DURATION_OPTIONS}
                     searchable
                     size="xs"
+                    disabled={isRelative}
                     variant="filled"
                     {...form.getInputProps('duration')}
                   />
@@ -429,7 +442,7 @@ export const TimePicker = ({
                 data-testid="time-picker-apply"
                 size="compact-sm"
                 variant="light"
-                disabled={!form.isValid()}
+                disabled={!form.isValid() || isRelative}
                 onClick={handleApply}
               >
                 Apply

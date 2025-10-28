@@ -105,7 +105,7 @@ import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import {
   getRelativeTimeOptionLabel,
-  LIVE_TAIL_TIME_QUERY,
+  LIVE_TAIL_DURATION_MS,
 } from './components/TimePicker/utils';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
@@ -1014,27 +1014,23 @@ function DBSearchPage() {
 
   const [interval, setInterval] = useQueryState(
     'liveInterval',
-    parseAsInteger.withDefault(1000 * 60 * 15),
+    parseAsInteger.withDefault(LIVE_TAIL_DURATION_MS),
   );
 
-  const updateRelativeTimeInputValue = useCallback(() => {
-    if (isLive === true && interval != null) {
-      const label = getRelativeTimeOptionLabel(interval);
-      if (label) {
-        setDisplayedTimeInputValue(label);
-      }
+  const updateRelativeTimeInputValue = useCallback((interval: number) => {
+    const label = getRelativeTimeOptionLabel(interval);
+    if (label) {
+      setDisplayedTimeInputValue(label);
     }
-  }, [interval, isLive]);
+  }, []);
 
-  // Only sync the time input value on first load (otherwise its controlled)
-  // or when manually requested (like resume live tail)
-  const shouldSetTimeValue = useRef(false);
   useEffect(() => {
-    if (!shouldSetTimeValue.current && isReady) {
-      shouldSetTimeValue.current = true;
-      updateRelativeTimeInputValue();
+    if (isReady && isLive) {
+      updateRelativeTimeInputValue(interval);
     }
-  }, [isLive, updateRelativeTimeInputValue, isReady]);
+    // we only want this to run on initial mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updateRelativeTimeInputValue, isReady]);
 
   useLiveUpdate({
     isLive,
@@ -1065,13 +1061,12 @@ function DBSearchPage() {
 
   const handleResumeLiveTail = useCallback(() => {
     setIsLive(true);
-    updateRelativeTimeInputValue();
+    updateRelativeTimeInputValue(interval);
     // Trigger collapsing all expanded rows
     setCollapseAllRows(true);
     // Reset the collapse trigger after a short delay
     setTimeout(() => setCollapseAllRows(false), 100);
-    onSearch('Live Tail');
-  }, [onSearch, updateRelativeTimeInputValue, setIsLive]);
+  }, [interval, updateRelativeTimeInputValue, setIsLive]);
 
   const dbSqlRowTableConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -1541,6 +1536,10 @@ function DBSearchPage() {
             }}
             showLive={analysisMode === 'results'}
             isLiveMode={isLive}
+            // Default to relative time mode if the user has made changes to interval and reloaded.
+            defaultRelativeTimeMode={
+              isLive && interval !== LIVE_TAIL_DURATION_MS
+            }
           />
           <Button
             data-testid="search-submit-button"
