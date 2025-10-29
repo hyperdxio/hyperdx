@@ -6,20 +6,19 @@ import { ObjectId } from '@/models';
 import { AlertSource, AlertThresholdType, IAlert } from '@/models/alert';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
-import CheckAlertTask from '@/tasks/checkAlerts';
 import * as checkAlerts from '@/tasks/checkAlerts';
+import CheckAlertTask from '@/tasks/checkAlerts';
 import {
   AlertDetails,
   AlertProvider,
   AlertTaskType,
   loadProvider,
-} from '@/tasks/providers';
+} from '@/tasks/checkAlerts/providers';
+import { CheckAlertsTaskArgs } from '@/tasks/types';
 
-import { CheckAlertsTaskArgs } from '../types';
-
-jest.mock('@/tasks/providers', () => {
+jest.mock('@/tasks/checkAlerts/providers', () => {
   return {
-    ...jest.requireActual('@/tasks/providers'),
+    ...jest.requireActual('@/tasks/checkAlerts/providers'),
     loadProvider: jest.fn(),
   };
 });
