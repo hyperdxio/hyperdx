@@ -1,12 +1,12 @@
+import { splitAndTrimCSV } from '@hyperdx/common-utils/dist/utils';
 import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
+import { createTeam, getTeam } from '@/controllers/team';
 import { findUserByEmail } from '@/controllers/user';
-import Team from '@/models/team';
 import User from '@/models/user';
-import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
 
 /**
@@ -14,13 +14,18 @@ import logger from '@/utils/logger';
  */
 function isAllowedProxyIP(req: Request): boolean {
   if (!config.AUTH_PROXY_WHITELIST) {
-    return true; // No whitelist = allow all (not recommended for production)
+    return false; // No whitelist = reject (security by default)
   }
 
-  const allowedIPs = config.AUTH_PROXY_WHITELIST.split(',').map(ip =>
-    ip.trim(),
-  );
-  const clientIP = req.ip || req.socket.remoteAddress || '';
+  const allowedIPs = splitAndTrimCSV(config.AUTH_PROXY_WHITELIST);
+
+  // Extract client IP from x-forwarded-for header or fallback to req.ip
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const clientIP = forwardedFor
+    ? Array.isArray(forwardedFor)
+      ? forwardedFor[0]
+      : forwardedFor.split(',')[0].trim()
+    : req.ip || req.socket.remoteAddress || '';
 
   return allowedIPs.some(
     allowedIP => clientIP === allowedIP || clientIP.startsWith(allowedIP),
@@ -31,8 +36,7 @@ function isAllowedProxyIP(req: Request): boolean {
  * Extracts user identifier from the configured header
  */
 function getUserIdentifierFromHeader(req: Request): string | null {
-  const headerValue =
-    req.headers[config.AUTH_PROXY_HEADER_NAME.toLowerCase()];
+  const headerValue = req.headers[config.AUTH_PROXY_HEADER_NAME.toLowerCase()];
 
   if (!headerValue) {
     return null;
@@ -80,28 +84,22 @@ export async function authProxyMiddleware(
     if (!user && config.AUTH_PROXY_AUTO_SIGN_UP) {
       logger.info({ email: userEmail }, 'Auto-creating user via auth proxy');
 
-      // Use a constant team name for all auth proxy users
-      const AUTH_PROXY_TEAM_NAME = 'Auth Proxy Team';
-      
-      // Find or create the shared team
-      let team = await Team.findOne({ name: AUTH_PROXY_TEAM_NAME });
-      
+      // Get or create the single team (app only supports one team)
+      let team = await getTeam();
+
       if (!team) {
-        logger.info('Creating shared auth proxy team');
-        team = new Team({
-          name: AUTH_PROXY_TEAM_NAME,
-          collectorAuthenticationEnforced: true,
-        });
-        await team.save();
-        
-        // Set up default connections and sources for the new team
         try {
-          await setupTeamDefaults(team._id.toString());
-        } catch (error) {
-          logger.error(
-            { err: serializeError(error) },
-            'Failed to setup team defaults for auth proxy team',
-          );
+          team = await createTeam({
+            name: `${userEmail}'s Team`,
+            collectorAuthenticationEnforced: true,
+          });
+        } catch {
+          // If team creation fails (e.g., race condition), try to get it again
+          team = await getTeam();
+          if (!team) {
+            logger.error('Failed to get or create team for auto-provisioning');
+            return res.status(500).json({ error: 'Team configuration error' });
+          }
         }
       }
 
@@ -133,10 +131,7 @@ export async function authProxyMiddleware(
     // Establish session (important for subsequent requests)
     req.login(user, err => {
       if (err) {
-        logger.error(
-          { err, email: userEmail },
-          'Failed to establish session',
-        );
+        logger.error({ err, email: userEmail }, 'Failed to establish session');
         return next(err);
       }
       logger.debug(
@@ -153,4 +148,3 @@ export async function authProxyMiddleware(
     return res.status(500).json({ error: 'Authentication failed' });
   }
 }
-

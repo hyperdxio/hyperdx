@@ -55,4 +55,4 @@ export const AUTH_PROXY_ENABLED = env.AUTH_PROXY_ENABLED === 'true';
 export const AUTH_PROXY_HEADER_NAME =
   env.AUTH_PROXY_HEADER_NAME || 'X-Forwarded-User';
 export const AUTH_PROXY_AUTO_SIGN_UP = env.AUTH_PROXY_AUTO_SIGN_UP !== 'false';
-export const AUTH_PROXY_WHITELIST = env.AUTH_PROXY_WHITELIST || '';
+export const AUTH_PROXY_WHITELIST = env.AUTH_PROXY_WHITELIST || ''; 
