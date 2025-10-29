@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { add, Duration, format, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
@@ -201,6 +201,16 @@ export const TimePicker = ({
   );
 
   const [isRelative, setIsRelative] = useState(defaultRelativeTimeMode);
+  // Must be state to ensure rerenders occur when ref changes
+  const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);
+  const dateComponentPopoverProps = useMemo(
+    () => ({
+      portalProps: {
+        target: containerRef ?? undefined,
+      },
+    }),
+    [containerRef],
+  );
 
   return (
     <Popover
@@ -254,7 +264,11 @@ export const TimePicker = ({
           }}
         />
       </Popover.Target>
-      <Popover.Dropdown p={0} data-testid="time-picker-popover">
+      <Popover.Dropdown
+        p={0}
+        data-testid="time-picker-popover"
+        ref={setContainerRef}
+      >
         <Group justify="space-between" gap={4} px="xs" py={4}>
           <Group gap={4}>
             {typeof onRelativeSearch === 'function' && (
@@ -393,12 +407,14 @@ export const TimePicker = ({
                   <H>Start time</H>
                   <DateInputCmp
                     disabled={isRelative}
+                    popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     mb="xs"
                     {...form.getInputProps('startDate')}
                   />
                   <H>End time</H>
                   <DateInputCmp
+                    popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     minDate={form.values.startDate ?? undefined}
                     disabled={isRelative}
@@ -410,6 +426,7 @@ export const TimePicker = ({
                   <H>Time</H>
                   <DateInputCmp
                     disabled={isRelative}
+                    popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     mb="xs"
                     {...form.getInputProps('startDate')}
@@ -418,6 +435,7 @@ export const TimePicker = ({
                   <Select
                     placeholder="Pick value"
                     data={DURATION_OPTIONS}
+                    comboboxProps={dateComponentPopoverProps}
                     searchable
                     size="xs"
                     disabled={isRelative}
