@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { add, Duration, format, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
@@ -180,6 +180,17 @@ export const TimePicker = ({
     [form.values, handleSearch],
   );
 
+  // Must be state to ensure rerenders occur when ref changes
+  const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);
+  const dateComponentPopoverProps = useMemo(
+    () => ({
+      portalProps: {
+        target: containerRef ?? undefined,
+      },
+    }),
+    [containerRef],
+  );
+
   const isLiveMode = value === LIVE_TAIL_TIME_QUERY;
 
   return (
@@ -234,7 +245,7 @@ export const TimePicker = ({
           }}
         />
       </Popover.Target>
-      <Popover.Dropdown p={0}>
+      <Popover.Dropdown p={0} ref={setContainerRef}>
         <Group justify="space-between" gap={4} px="xs" py={4}>
           <Group gap={4}>
             <Button
@@ -340,12 +351,14 @@ export const TimePicker = ({
                 <>
                   <H>Start time</H>
                   <DateInputCmp
+                    popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     mb="xs"
                     {...form.getInputProps('startDate')}
                   />
                   <H>End time</H>
                   <DateInputCmp
+                    popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     minDate={form.values.startDate ?? undefined}
                     {...form.getInputProps('endDate')}
@@ -355,6 +368,7 @@ export const TimePicker = ({
                 <>
                   <H>Time</H>
                   <DateInputCmp
+                    popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     mb="xs"
                     {...form.getInputProps('startDate')}
@@ -363,6 +377,7 @@ export const TimePicker = ({
                   <Select
                     placeholder="Pick value"
                     data={DURATION_OPTIONS}
+                    comboboxProps={dateComponentPopoverProps}
                     searchable
                     size="xs"
                     variant="filled"
