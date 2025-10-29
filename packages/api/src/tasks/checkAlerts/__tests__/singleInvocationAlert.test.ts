@@ -187,6 +187,7 @@ describe('Single Invocation Alert Test', () => {
       conn: connection,
       taskType: AlertTaskType.SAVED_SEARCH,
       savedSearch,
+      previousMap: new Map(),
     };
     const clickhouseClient = new ClickhouseClient({
       host: connection.host,

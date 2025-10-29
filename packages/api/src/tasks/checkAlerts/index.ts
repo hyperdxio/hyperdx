@@ -159,7 +159,7 @@ const ALERT_GROUP_DELIMITER = '||';
 
 /**
  * Compute a composite map key for tracking alert history per group.
- * For non-grouped alerts, returns just the alert ID.
+ * For non-grouped alerts, returns just the alertId.
  * For grouped alerts, returns "alertId||groupKey" to track per-group state.
  * Uses || as delimiter since it's unlikely to appear in alert IDs (MongoDB ObjectIds)
  * or in typical group key values.
@@ -193,30 +193,63 @@ export const processAlert = async (
     const windowSizeInMins = ms(alert.interval) / 60000;
     const nowInMinsRoundDown = roundDownToXMinutes(windowSizeInMins)(now);
 
-    // Get the most recent history for this alert (for non-grouped alerts, use alert.id as key)
-    const previous = previousMap?.get(alert.id);
+    // Check if we should skip this alert run
+    // Skip if ANY previous history for this alert was created in the current window
+    const hasGroupBy = alert.groupBy && alert.groupBy.length > 0;
+    const alertKeyPrefix = `${alert.id}${ALERT_GROUP_DELIMITER}`;
 
-    if (
-      previous &&
-      fns.getTime(previous.createdAt) === fns.getTime(nowInMinsRoundDown)
-    ) {
+    const shouldSkip = Array.from(previousMap.entries()).some(
+      ([key, history]) => {
+        // For grouped alerts, check any key that starts with alertId prefix
+        // For non-grouped alerts, check exact match with alertId
+        const isMatchingKey = hasGroupBy
+          ? key.startsWith(alertKeyPrefix)
+          : key === alert.id;
+
+        return (
+          isMatchingKey &&
+          fns.getTime(history.createdAt) === fns.getTime(nowInMinsRoundDown)
+        );
+      },
+    );
+
+    if (shouldSkip) {
       logger.info(
         {
           windowSizeInMins,
           nowInMinsRoundDown,
-          previous,
           now,
           alertId: alert.id,
+          hasGroupBy,
         },
         `Skipped to check alert since the time diff is still less than 1 window size`,
       );
       return;
     }
+
+    // Calculate date range for the query
+    // Find the earliest createdAt among all histories for this alert
+    let previousCreatedAt: Date | undefined;
+    if (hasGroupBy) {
+      // For grouped alerts, find the earliest createdAt among all groups
+      const alertKeyPrefix = `${alert.id}${ALERT_GROUP_DELIMITER}`;
+      for (const [key, history] of previousMap.entries()) {
+        if (key.startsWith(alertKeyPrefix)) {
+          if (!previousCreatedAt || history.createdAt < previousCreatedAt) {
+            previousCreatedAt = history.createdAt;
+          }
+        }
+      }
+    } else {
+      // For non-grouped alerts, get the single history
+      const previous = previousMap.get(alert.id);
+      previousCreatedAt = previous?.createdAt;
+    }
+
     const dateRange = calcAlertDateRange(
-      (previous
-        ? previous.createdAt
-        : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins)
-      ).getTime(),
+      previousCreatedAt
+        ? previousCreatedAt.getTime()
+        : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins).getTime(),
       nowInMinsRoundDown.getTime(),
       windowSizeInMins,
     );
@@ -308,7 +341,6 @@ export const processAlert = async (
     // TODO: support INSUFFICIENT_DATA state
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
-    const hasGroupBy = alert.groupBy && alert.groupBy.length > 0;
 
     // Helper to get or create history for a group
     const getOrCreateHistory = (groupKey: string): IAlertHistory => {
@@ -468,7 +500,7 @@ export const processAlert = async (
     // Check for auto-resolve: for each group, check if it transitioned from ALERT to OK
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
-      const groupPrevious = previousMap?.get(previousKey);
+      const groupPrevious = previousMap.get(previousKey);
 
       if (
         groupPrevious?.state === AlertState.ALERT &&
@@ -518,10 +550,8 @@ export const processAlert = async (
     }
 
     // Save all history records and update alert state
-    await alertProvider.updateAlertState(
-      alert.id,
-      Array.from(histories.values()),
-    );
+    const historyRecords = Array.from(histories.values());
+    await alertProvider.updateAlertState(alert.id, historyRecords);
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
