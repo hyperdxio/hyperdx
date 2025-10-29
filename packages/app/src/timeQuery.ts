@@ -9,14 +9,13 @@ import {
 } from 'react';
 import { useRouter } from 'next/router';
 import {
-  format,
   formatDuration,
   intervalToDuration,
   isValid,
   startOfSecond,
   sub,
+  subMilliseconds,
 } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
 import { parseAsFloat, useQueryStates } from 'nuqs';
 import {
   NumberParam,
@@ -51,17 +50,15 @@ function isInputTimeQueryLive(inputTimeQuery: string) {
   return inputTimeQuery === '' || inputTimeQuery.includes(LIVE_TAIL_TIME_QUERY);
 }
 
+export function parseRelativeTimeQuery(interval: number) {
+  const end = startOfSecond(new Date());
+  return [subMilliseconds(end, interval), end];
+}
+
 export function parseTimeQuery(
   timeQuery: string,
   isUTC: boolean,
 ): [Date | null, Date | null] {
-  // If it's a live tail, return the last 15 minutes from now
-  // Round to the nearest second as when we stop live tail, we'll query up to the nearest second
-  // Without rounding, we'll end up needing to do a refetch for the ms differences
-  if (timeQuery.includes(LIVE_TAIL_TIME_QUERY)) {
-    const end = startOfSecond(new Date());
-    return [sub(end, { minutes: 15 }), end];
-  }
   return parseTimeRangeInput(timeQuery, isUTC);
 }
 
@@ -349,11 +346,6 @@ export function useTimeQuery({
     searchedTimeRange,
     onSearch: useCallback(
       (timeQuery: string) => {
-        if (timeQuery.includes(LIVE_TAIL_TIME_QUERY)) {
-          setIsLive(true);
-          return;
-        }
-
         const [start, end] = parseTimeQuery(timeQuery, isUTC);
         // TODO: Add validation UI
         if (start != null && end != null) {
@@ -367,13 +359,7 @@ export function useTimeQuery({
           }
         }
       },
-      [
-        isUTC,
-        setTimeRangeQuery,
-        setDisplayedTimeInputValue,
-        setIsLive,
-        setInputTimeQuery,
-      ],
+      [isUTC, setTimeRangeQuery, setDisplayedTimeInputValue, setInputTimeQuery],
     ),
     onTimeRangeSelect: useCallback(
       (start: Date, end: Date) => {
@@ -411,7 +397,7 @@ export type UseTimeQueryReturnType = {
   onTimeRangeSelect: (
     start: Date,
     end: Date,
-    displayedTimeInputValue?: string,
+    displayedTimeInputValue?: string | null,
   ) => void;
   from: number | null;
   to: number | null;
@@ -517,12 +503,13 @@ export function useNewTimeQuery({
     searchedTimeRange,
     onSearch,
     onTimeRangeSelect: useCallback(
-      (start: Date, end: Date, displayedTimeInputValue?: string) => {
+      (start: Date, end: Date, displayedTimeInputValue?: string | null) => {
         setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
         setSearchedTimeRange([start, end]);
         const dateRangeStr = dateRangeToString([start, end], isUTC);
-
-        _setDisplayedTimeInputValue(displayedTimeInputValue ?? dateRangeStr);
+        if (displayedTimeInputValue !== null) {
+          _setDisplayedTimeInputValue(displayedTimeInputValue ?? dateRangeStr);
+        }
       },
       [setTimeRangeQuery, isUTC, _setDisplayedTimeInputValue],
     ),
