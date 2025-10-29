@@ -12,6 +12,7 @@ import Link from 'next/link';
 import router from 'next/router';
 import {
   parseAsBoolean,
+  parseAsInteger,
   parseAsJson,
   parseAsString,
   parseAsStringEnum,
@@ -43,7 +44,6 @@ import {
   Flex,
   Grid,
   Group,
-  Input,
   Menu,
   Modal,
   Paper,
@@ -91,7 +91,11 @@ import {
   useSource,
   useSources,
 } from '@/source';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import {
+  parseRelativeTimeQuery,
+  parseTimeQuery,
+  useNewTimeQuery,
+} from '@/timeQuery';
 import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
@@ -99,6 +103,10 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
+import {
+  getRelativeTimeOptionLabel,
+  LIVE_TAIL_DURATION_MS,
+} from './components/TimePicker/utils';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import {
@@ -417,7 +425,7 @@ function useLiveUpdate({
   onTimeRangeSelect: (
     start: Date,
     end: Date,
-    displayedTimeInputValue?: string | undefined,
+    displayedTimeInputValue?: string | null,
   ) => void;
   pause: boolean;
 }) {
@@ -426,7 +434,7 @@ function useLiveUpdate({
   const [refreshOnVisible, setRefreshOnVisible] = useState(false);
 
   const refresh = useCallback(() => {
-    onTimeRangeSelect(new Date(Date.now() - interval), new Date(), 'Live Tail');
+    onTimeRangeSelect(new Date(Date.now() - interval), new Date(), null);
   }, [onTimeRangeSelect, interval]);
 
   // When the user comes back to the app after switching tabs, we immediately refresh the list.
@@ -664,8 +672,10 @@ function DBSearchPage() {
     parseAsString,
   );
 
-  const [_isLive, setIsLive] = useQueryState('isLive', parseAsBoolean);
-  const isLive = _isLive ?? true;
+  const [isLive, setIsLive] = useQueryState(
+    'isLive',
+    parseAsBoolean.withDefault(true),
+  );
 
   useEffect(() => {
     if (analysisMode === 'delta' || analysisMode === 'pattern') {
@@ -727,7 +737,7 @@ function DBSearchPage() {
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Live Tail');
 
-  const { from, to, isReady, searchedTimeRange, onSearch, onTimeRangeSelect } =
+  const { isReady, searchedTimeRange, onSearch, onTimeRangeSelect } =
     useNewTimeQuery({
       initialDisplayValue: 'Live Tail',
       initialTimeRange: defaultTimeRange,
@@ -735,18 +745,6 @@ function DBSearchPage() {
       setDisplayedTimeInputValue,
       updateInput: !isLive,
     });
-
-  // If live tail is null, but time range exists, don't live tail
-  // If live tail is null, and time range is null, let's live tail
-  useEffect(() => {
-    if (_isLive == null && isReady) {
-      if (from == null && to == null) {
-        setIsLive(true);
-      } else {
-        setIsLive(false);
-      }
-    }
-  }, [_isLive, setIsLive, from, to, isReady]);
 
   // Sync url state back with form state
   // (ex. for history navigation)
@@ -1014,9 +1012,29 @@ function DBSearchPage() {
   // State for collapsing all expanded rows when resuming live tail
   const [collapseAllRows, setCollapseAllRows] = useState(false);
 
+  const [interval, setInterval] = useQueryState(
+    'liveInterval',
+    parseAsInteger.withDefault(LIVE_TAIL_DURATION_MS),
+  );
+
+  const updateRelativeTimeInputValue = useCallback((interval: number) => {
+    const label = getRelativeTimeOptionLabel(interval);
+    if (label) {
+      setDisplayedTimeInputValue(label);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isReady && isLive) {
+      updateRelativeTimeInputValue(interval);
+    }
+    // we only want this to run on initial mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updateRelativeTimeInputValue, isReady]);
+
   useLiveUpdate({
     isLive,
-    interval: 1000 * 60 * 15,
+    interval,
     refreshFrequency: 4000,
     onTimeRangeSelect,
     pause: isAnyQueryFetching || !queryReady || !isTabVisible,
@@ -1043,13 +1061,12 @@ function DBSearchPage() {
 
   const handleResumeLiveTail = useCallback(() => {
     setIsLive(true);
-    setDisplayedTimeInputValue('Live Tail');
+    updateRelativeTimeInputValue(interval);
     // Trigger collapsing all expanded rows
     setCollapseAllRows(true);
     // Reset the collapse trigger after a short delay
     setTimeout(() => setCollapseAllRows(false), 100);
-    onSearch('Live Tail');
-  }, [onSearch, setIsLive]);
+  }, [interval, updateRelativeTimeInputValue, setIsLive]);
 
   const dbSqlRowTableConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -1508,14 +1525,21 @@ function DBSearchPage() {
             inputValue={displayedTimeInputValue}
             setInputValue={setDisplayedTimeInputValue}
             onSearch={range => {
-              if (range === 'Live Tail') {
-                setIsLive(true);
-              } else {
-                setIsLive(false);
-              }
+              setIsLive(false);
               onSearch(range);
             }}
+            onRelativeSearch={rangeMs => {
+              const _range = parseRelativeTimeQuery(rangeMs);
+              setIsLive(true);
+              setInterval(rangeMs);
+              onTimeRangeSelect(_range[0], _range[1], null);
+            }}
             showLive={analysisMode === 'results'}
+            isLiveMode={isLive}
+            // Default to relative time mode if the user has made changes to interval and reloaded.
+            defaultRelativeTimeMode={
+              isLive && interval !== LIVE_TAIL_DURATION_MS
+            }
           />
           <Button
             data-testid="search-submit-button"
