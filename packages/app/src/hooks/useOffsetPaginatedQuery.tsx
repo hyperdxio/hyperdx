@@ -6,12 +6,12 @@ import {
   ClickHouseQueryError,
   ColumnMetaType,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
-import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
-} from '@hyperdx/common-utils/dist/utils';
+} from '@hyperdx/common-utils/dist/core/utils';
+import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import {
   QueryClient,
   QueryFunction,

@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Field, TableConnection } from '@hyperdx/common-utils/dist/metadata';
+import {
+  Field,
+  TableConnection,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
 import {

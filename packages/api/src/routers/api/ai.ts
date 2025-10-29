@@ -3,7 +3,7 @@ import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   getMetadata,
   TableMetadata,
-} from '@hyperdx/common-utils/dist/metadata';
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   AggregateFunctionSchema,
   ChartConfigWithDateRange,

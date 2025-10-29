@@ -1,6 +1,6 @@
 import { ClickhouseClient } from '../clickhouse/node';
-import { Metadata, MetadataCache } from '../metadata';
-import * as renderChartConfigModule from '../renderChartConfig';
+import { Metadata, MetadataCache } from '../core/metadata';
+import * as renderChartConfigModule from '../core/renderChartConfig';
 import { ChartConfigWithDateRange } from '../types';
 
 // Mock ClickhouseClient

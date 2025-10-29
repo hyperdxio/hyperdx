@@ -24,8 +24,8 @@ import {
   useQueryParams,
   withDefault,
 } from 'use-query-params';
+import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import { DateRange } from '@hyperdx/common-utils/dist/types';
-import { formatDate } from '@hyperdx/common-utils/dist/utils';
 
 import { parseTimeRangeInput } from './components/TimePicker/utils';
 import { useUserPreferences } from './useUserPreferences';

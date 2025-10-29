@@ -3,7 +3,7 @@ import * as SQLParser from 'node-sql-parser';
 import SqlString from 'sqlstring';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
-import { Metadata } from '@/metadata';
+import { Metadata } from '@/core/metadata';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 
 /**
@@ -20,6 +20,14 @@ function createMetricNameFilter(
   }
   return SqlString.format('MetricName = ?', [metricName]);
 }
+import {
+  convertDateRangeToGranularityString,
+  convertGranularityToSeconds,
+  getFirstTimestampValueExpression,
+  optimizeTimestampValueExpression,
+  parseToStartOfFunction,
+  splitAndTrimWithBracket,
+} from '@/core/utils';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
@@ -38,14 +46,6 @@ import {
   SqlAstFilter,
   SQLInterval,
 } from '@/types';
-import {
-  convertDateRangeToGranularityString,
-  convertGranularityToSeconds,
-  getFirstTimestampValueExpression,
-  optimizeTimestampValueExpression,
-  parseToStartOfFunction,
-  splitAndTrimWithBracket,
-} from '@/utils';
 
 /** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
 export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
