@@ -40,6 +40,7 @@ import {
   renderAlertTemplate,
   translateExternalActionsToInternal,
 } from '@/tasks/checkAlerts/template';
+import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
 
 // Create provider instance for tests
@@ -2737,6 +2738,284 @@ describe('checkAlerts', () => {
       expect(result.get(alert2Id.toString())!.createdAt).toEqual(
         new Date('2025-01-01T00:15:00Z'),
       );
+    });
+  });
+
+  describe('check alerts with multiple time buckets in a single run', () => {
+    const server = getServer();
+
+    beforeAll(async () => {
+      await server.start();
+    });
+
+    afterEach(async () => {
+      await server.clearDBs();
+      jest.clearAllMocks();
+    });
+
+    afterAll(async () => {
+      await server.stop();
+    });
+
+    // TODO: revisit this once the auto-resolve feature is implemented
+    it('should check 3 time buckets [1 error, 3 errors, 1 error] with threshold 2 and maintain ALERT state with 3 lastValues entries', async () => {
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValueOnce(null as any);
+
+      const team = await createTeam({ name: 'My Team' });
+
+      const now = new Date('2023-11-16T22:18:00.000Z');
+
+      // Insert logs in 3 time buckets:
+      // Bucket 1 (22:00-22:05): 1 error (OK - below threshold of 2)
+      // Bucket 2 (22:05-22:10): 3 errors (ALERT - exceeds threshold of 2)
+      // Bucket 3 (22:10-22:15): 1 error (OK - below threshold of 2)
+      await bulkInsertLogs([
+        // Bucket 1: 22:00-22:05 (1 error - below threshold)
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:00:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error in bucket 1',
+        },
+        // Bucket 2: 22:05-22:10 (3 errors - exceeds threshold)
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error 1 in bucket 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:06:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error 2 in bucket 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:07:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error 3 in bucket 2',
+        },
+        // Bucket 3: 22:10-22:15 (1 error - below threshold)
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:10:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error in bucket 3',
+        },
+      ]);
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'My Error Search',
+        select: 'Body',
+        where: 'SeverityText: "error"',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+          // No groupBy - this is a non-group-by alert
+        },
+        mockUserId,
+      );
+
+      const enhancedAlert: any = await Alert.findById(alert.id).populate([
+        'team',
+        'savedSearch',
+      ]);
+
+      // Create a previous alert history at 22:00 so the alert job will check data from 22:00 onwards
+      // This simulates that the alert was last checked at 22:00
+      const previousHistory = await new AlertHistory({
+        alert: alert.id,
+        createdAt: new Date('2023-11-16T22:00:00.000Z'),
+        state: 'OK',
+        counts: 0,
+        lastValues: [],
+      }).save();
+
+      // Load previous alert history for this alert
+      const previousMap = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        now,
+      );
+
+      const details = {
+        alert: enhancedAlert,
+        source,
+        taskType: AlertTaskType.SAVED_SEARCH,
+        savedSearch,
+        previousMap,
+      } satisfies AlertDetails;
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const mockMetadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          const columnMap = {
+            Body: { name: 'Body', type: 'String' },
+            Timestamp: { name: 'Timestamp', type: 'DateTime' },
+            SeverityText: { name: 'SeverityText', type: 'String' },
+            ServiceName: { name: 'ServiceName', type: 'String' },
+          };
+          return Promise.resolve(columnMap[column]);
+        }),
+      };
+
+      // Mock the getMetadata function
+      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+        getMetadata: jest.fn().mockReturnValue(mockMetadata),
+      }));
+
+      // First run: process alert at 22:18 with timeBucketsToCheckBeforeResolution=3
+      // With previous history at 22:00, this should check buckets: 22:00-22:05 (1 error), 22:05-22:10 (3 errors), 22:10-22:15 (1 error)
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in ALERT state because one of the buckets exceeded threshold
+      const updatedAlert = await Alert.findById(enhancedAlert.id);
+      expect(updatedAlert!.state).toBe('ALERT');
+
+      // Check alert history
+      const alertHistories = await AlertHistory.find({
+        alert: alert.id,
+      }).sort({ createdAt: 1 });
+
+      // Should have 2 alert history entries (1 previous + 1 new)
+      expect(alertHistories.length).toBe(2);
+
+      // Get the new alert history (not the previous one we created)
+      const history = alertHistories[1];
+      expect(history.state).toBe('ALERT');
+
+      // Should have 3 entries in lastValues (one for each time bucket checked)
+      // Even though ClickHouse only returns rows with data, the system should populate all 3 buckets
+      expect(history.lastValues.length).toBe(3);
+
+      // Verify the lastValues are in chronological order and have correct data
+      // The system checks 3 time buckets going back from 'now'
+      const buckets = history.lastValues.sort(
+        (a, b) => a.startTime.getTime() - b.startTime.getTime(),
+      );
+
+      // Bucket 1 (22:00-22:05): 1 error (below threshold)
+      expect(buckets[0].startTime).toEqual(
+        new Date('2023-11-16T22:00:00.000Z'),
+      );
+      expect(buckets[0].count).toBe(1);
+
+      // Bucket 2 (22:05-22:10): 3 errors (exceeds threshold)
+      expect(buckets[1].startTime).toEqual(
+        new Date('2023-11-16T22:05:00.000Z'),
+      );
+      expect(buckets[1].count).toBe(3);
+
+      // Bucket 3 (22:10-22:15): 1 error (below threshold)
+      expect(buckets[2].startTime).toEqual(
+        new Date('2023-11-16T22:10:00.000Z'),
+      );
+      expect(buckets[2].count).toBe(1);
+
+      // Verify webhook was called for the alert
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+
+      // Second run: process alert at 22:22:00
+      // Previous history was created at 22:15:00 (from first run)
+      // So this should check just ONE new bucket: 22:15-22:20 (0 errors)
+      // Since we need to check 3 buckets and only 1 new bucket exists, it will look back at previous buckets:
+      // - 22:10-22:15 (1 error - from previous check)
+      // - 22:15-22:20 (0 errors - new bucket)
+      // With timeBucketsToCheckBeforeResolution=3, the alert should auto-resolve
+      const nextRun = new Date('2023-11-16T22:22:00.000Z');
+      const previousMapNextRun = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        nextRun,
+      );
+
+      await processAlert(
+        nextRun,
+        {
+          ...details,
+          previousMap: previousMapNextRun,
+        },
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be auto-resolved to OK state
+      const resolvedAlert = await Alert.findById(enhancedAlert.id);
+      expect(resolvedAlert!.state).toBe('OK');
+
+      // Check alert histories
+      const allHistories = await AlertHistory.find({
+        alert: alert.id,
+      }).sort({ createdAt: -1 });
+
+      // Should have 3 alert history entries total (1 previous + 1 ALERT + 1 OK)
+      expect(allHistories.length).toBe(3);
+
+      // Verify the resolution history (most recent)
+      const resolutionHistory = allHistories[0];
+      expect(resolutionHistory.state).toBe('OK');
+
+      // Verify webhook was called twice total (1 for alert + 1 for resolution)
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
     });
   });
 });
