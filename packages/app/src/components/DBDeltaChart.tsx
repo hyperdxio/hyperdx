@@ -10,11 +10,22 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box, Flex, Group, Pagination, Text } from '@mantine/core';
+import {
+  Box,
+  Code,
+  Container,
+  Flex,
+  Group,
+  Pagination,
+  Text,
+} from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { truncateMiddle } from '@/utils';
+
+import { SQLPreview } from './ChartSQLPreview';
 
 import styles from '../../styles/HDXLineChart.module.scss';
 
@@ -253,7 +264,7 @@ export default function DBDeltaChart({
   config: ChartConfigWithOptDateRange;
   outlierSqlCondition: string;
 }) {
-  const { data: outlierData } = useQueriedChartConfig({
+  const { data: outlierData, error } = useQueriedChartConfig({
     ...config,
     with: [
       {
@@ -373,6 +384,41 @@ export default function DBDeltaChart({
   const [activePage, setPage] = useState(1);
 
   const PAGE_SIZE = 12;
+
+  if (error) {
+    return (
+      <Container style={{ overflow: 'auto' }}>
+        <Box mt="lg">
+          <Text my="sm" size="sm">
+            Error Message:
+          </Text>
+          <Code
+            block
+            style={{
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {error.message}
+          </Code>
+        </Box>
+        {error instanceof ClickHouseQueryError && (
+          <Box mt="lg">
+            <Text my="sm" size="sm">
+              Original Query:
+            </Text>
+            <Code
+              block
+              style={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              <SQLPreview data={error.query} formatData />
+            </Code>
+          </Box>
+        )}
+      </Container>
+    );
+  }
 
   return (
     <Box style={{ overflow: 'auto' }}>
