@@ -1,5 +1,12 @@
 # @hyperdx/common-utils
 
+## 0.7.2
+
+### Patch Changes
+
+- 2162a690: feat: Optimize and fix filtering on toStartOfX primary key expressions
+- 8190ee8f: perf: Improve getKeyValues query performance for JSON keys
+
 ## 0.7.1
 
 ### Patch Changes
