@@ -49,50 +49,46 @@ const CLICK_HOUSE_JSON_NUMBER_TYPES = [
 interface SerializerContext {
   /** The current implicit column expression, indicating which SQL expression to use when comparing a term to the '<implicit>' field */
   implicitColumnExpression?: string;
-
-  /**
-   * Indicates whether the implicit column expression has been overridden by a field.
-   * If false, then the implicit column expression is the one set in the Source configuration.
-   *
-   * Ex: `'foo:(bar baz)'` results in the default implicit column expression being overridden with `'foo'`.
-   **/
-  isImplicitColumnOverridden?: boolean;
 }
 
 interface Serializer {
-  context: SerializerContext;
-
-  operator(op: lucene.Operator): string;
-  eq(field: string, term: string, isNegatedField: boolean): Promise<string>;
-  isNotNull(field: string, isNegatedField: boolean): Promise<string>;
-  gte(field: string, term: string): Promise<string>;
-  lte(field: string, term: string): Promise<string>;
-  lt(field: string, term: string): Promise<string>;
-  gt(field: string, term: string): Promise<string>;
+  operator(op: lucene.Operator, context: SerializerContext): string;
+  eq(
+    field: string,
+    term: string,
+    isNegatedField: boolean,
+    context: SerializerContext,
+  ): Promise<string>;
+  isNotNull(
+    field: string,
+    isNegatedField: boolean,
+    context: SerializerContext,
+  ): Promise<string>;
+  gte(field: string, term: string, context: SerializerContext): Promise<string>;
+  lte(field: string, term: string, context: SerializerContext): Promise<string>;
+  lt(field: string, term: string, context: SerializerContext): Promise<string>;
+  gt(field: string, term: string, context: SerializerContext): Promise<string>;
   fieldSearch(
     field: string,
     term: string,
     isNegatedField: boolean,
     prefixWildcard: boolean,
     suffixWildcard: boolean,
+    context: SerializerContext,
   ): Promise<string>;
   range(
     field: string,
     start: string,
     end: string,
     isNegatedField: boolean,
+    context: SerializerContext,
   ): Promise<string>;
 }
 
 class EnglishSerializer implements Serializer {
-  context: SerializerContext = {
-    implicitColumnExpression: 'event',
-    isImplicitColumnOverridden: false,
-  };
-
-  private translateField(field: string) {
+  private translateField(field: string, context: SerializerContext) {
     if (field === IMPLICIT_FIELD) {
-      return this.context.implicitColumnExpression;
+      return context.implicitColumnExpression ?? 'event';
     }
 
     return `'${field}'`;
@@ -119,39 +115,42 @@ class EnglishSerializer implements Serializer {
     }
   }
 
-  async eq(field: string, term: string, isNegatedField: boolean) {
-    return `${this.translateField(field)} ${
+  async eq(
+    field: string,
+    term: string,
+    isNegatedField: boolean,
+    context: SerializerContext,
+  ) {
+    return `${this.translateField(field, context)} ${
       isNegatedField ? 'is not' : 'is'
     } ${term}`;
   }
 
-  async isNotNull(field: string, isNegatedField: boolean) {
-    return `${this.translateField(field)} ${
+  async isNotNull(
+    field: string,
+    isNegatedField: boolean,
+    context: SerializerContext,
+  ) {
+    return `${this.translateField(field, context)} ${
       isNegatedField ? 'is null' : 'is not null'
     }`;
   }
 
-  async gte(field: string, term: string) {
-    return `${this.translateField(field)} is greater than or equal to ${term}`;
+  async gte(field: string, term: string, context: SerializerContext) {
+    return `${this.translateField(field, context)} is greater than or equal to ${term}`;
   }
 
-  async lte(field: string, term: string) {
-    return `${this.translateField(field)} is less than or equal to ${term}`;
+  async lte(field: string, term: string, context: SerializerContext) {
+    return `${this.translateField(field, context)} is less than or equal to ${term}`;
   }
 
-  async lt(field: string, term: string) {
-    return `${this.translateField(field)} is less than ${term}`;
+  async lt(field: string, term: string, context: SerializerContext) {
+    return `${this.translateField(field, context)} is less than ${term}`;
   }
 
-  async gt(field: string, term: string) {
-    return `${this.translateField(field)} is greater than ${term}`;
+  async gt(field: string, term: string, context: SerializerContext) {
+    return `${this.translateField(field, context)} is greater than ${term}`;
   }
-
-  // async fieldSearch(field: string, term: string, isNegatedField: boolean) {
-  //   return `${this.translateField(field)} ${
-  //     isNegatedField ? 'does not contain' : 'contains'
-  //   } ${term}`;
-  // }
 
   async fieldSearch(
     field: string,
@@ -159,12 +158,13 @@ class EnglishSerializer implements Serializer {
     isNegatedField: boolean,
     prefixWildcard: boolean,
     suffixWildcard: boolean,
+    context: SerializerContext,
   ) {
     const formattedTerm = term.trim().match(/\s/) ? `"${term}"` : term;
 
     if (field === IMPLICIT_FIELD) {
-      const isUsingTokenSearch = !this.context.isImplicitColumnOverridden;
-      return `${this.translateField(field)} ${
+      const isUsingTokenSearch = !context.implicitColumnExpression; // Source's implicit column has not been overridden
+      return `${this.translateField(field, context)} ${
         prefixWildcard && suffixWildcard
           ? isNegatedField
             ? 'does not contain'
@@ -186,7 +186,7 @@ class EnglishSerializer implements Serializer {
                   : 'contains'
       } ${formattedTerm}`;
     } else {
-      return `${this.translateField(field)} ${
+      return `${this.translateField(field, context)} ${
         isNegatedField ? 'does not contain' : 'contains'
       } ${formattedTerm}`;
     }
@@ -207,9 +207,10 @@ class EnglishSerializer implements Serializer {
 export abstract class SQLSerializer implements Serializer {
   private NOT_FOUND_QUERY = '(1 = 0)';
 
-  context: SerializerContext = {};
-
-  abstract getColumnForField(field: string): Promise<{
+  abstract getColumnForField(
+    field: string,
+    context: SerializerContext,
+  ): Promise<{
     column?: string;
     columnJSON?: { string: string; number: string };
     propertyType?: JSDataType;
@@ -238,9 +239,14 @@ export abstract class SQLSerializer implements Serializer {
   }
 
   // Only for exact string matches
-  async eq(field: string, term: string, isNegatedField: boolean) {
+  async eq(
+    field: string,
+    term: string,
+    isNegatedField: boolean,
+    context: SerializerContext,
+  ) {
     const { column, columnJSON, found, propertyType } =
-      await this.getColumnForField(field);
+      await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -267,9 +273,13 @@ export abstract class SQLSerializer implements Serializer {
     ]);
   }
 
-  async isNotNull(field: string, isNegatedField: boolean) {
+  async isNotNull(
+    field: string,
+    isNegatedField: boolean,
+    context: SerializerContext,
+  ) {
     const { column, columnJSON, found, propertyType } =
-      await this.getColumnForField(field);
+      await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -279,9 +289,9 @@ export abstract class SQLSerializer implements Serializer {
     return `notEmpty(${column}) ${isNegatedField ? '!' : ''}= 1`;
   }
 
-  async gte(field: string, term: string) {
+  async gte(field: string, term: string, context: SerializerContext) {
     const { column, columnJSON, found, propertyType } =
-      await this.getColumnForField(field);
+      await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -291,9 +301,9 @@ export abstract class SQLSerializer implements Serializer {
     return SqlString.format(`(${column} >= ?)`, [term]);
   }
 
-  async lte(field: string, term: string) {
+  async lte(field: string, term: string, context: SerializerContext) {
     const { column, columnJSON, found, propertyType } =
-      await this.getColumnForField(field);
+      await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -303,9 +313,9 @@ export abstract class SQLSerializer implements Serializer {
     return SqlString.format(`(${column} <= ?)`, [term]);
   }
 
-  async lt(field: string, term: string) {
+  async lt(field: string, term: string, context: SerializerContext) {
     const { column, columnJSON, found, propertyType } =
-      await this.getColumnForField(field);
+      await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -315,9 +325,9 @@ export abstract class SQLSerializer implements Serializer {
     return SqlString.format(`(${column} < ?)`, [term]);
   }
 
-  async gt(field: string, term: string) {
+  async gt(field: string, term: string, context: SerializerContext) {
     const { column, columnJSON, found, propertyType } =
-      await this.getColumnForField(field);
+      await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -352,10 +362,11 @@ export abstract class SQLSerializer implements Serializer {
     isNegatedField: boolean,
     prefixWildcard: boolean,
     suffixWildcard: boolean,
+    context: SerializerContext,
   ) {
     const isImplicitField = field === IMPLICIT_FIELD;
     const { column, columnJSON, found, propertyType } =
-      await this.getColumnForField(field);
+      await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -390,7 +401,7 @@ export abstract class SQLSerializer implements Serializer {
       // For implicit fields that come directly from the Source, we assume there is a bloom filter that can be used to
       // optimize searches with hasToken. Overridden implicit columns (eg. "foo" in "foo:("bar baz")") are assumed
       // to not have bloom filters.
-      const shouldUseTokenBf = !this.context.isImplicitColumnOverridden;
+      const shouldUseTokenBf = !context.implicitColumnExpression;
 
       // For the _source column, we'll try to do whole word searches by default
       // to utilize the token bloom filter unless a prefix/suffix wildcard is specified
@@ -446,8 +457,9 @@ export abstract class SQLSerializer implements Serializer {
     start: string,
     end: string,
     isNegatedField: boolean,
+    context: SerializerContext,
   ) {
-    const { column, found } = await this.getColumnForField(field);
+    const { column, found } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -469,6 +481,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private metadata: Metadata;
   private tableName: string;
   private databaseName: string;
+  private implicitColumnExpression?: string;
   private connectionId: string;
 
   constructor({
@@ -482,10 +495,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     this.metadata = metadata;
     this.databaseName = databaseName;
     this.tableName = tableName;
-    this.context = {
-      implicitColumnExpression,
-      isImplicitColumnOverridden: false,
-    };
+    this.implicitColumnExpression = implicitColumnExpression;
     this.connectionId = connectionId;
   }
 
@@ -583,17 +593,22 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     // throw new Error(`Column not found: ${field}`);
   }
 
-  async getColumnForField(field: string) {
-    if (field === IMPLICIT_FIELD && !this.context.implicitColumnExpression) {
+  async getColumnForField(field: string, context: SerializerContext) {
+    const implicitColumnExpression =
+      context.implicitColumnExpression ?? this.implicitColumnExpression;
+    if (field === IMPLICIT_FIELD && !implicitColumnExpression) {
       throw new Error(
         'Can not search bare text without an implicit column set.',
       );
     }
 
     const fieldFinal =
-      field === IMPLICIT_FIELD ? this.context.implicitColumnExpression! : field;
+      field === IMPLICIT_FIELD ? implicitColumnExpression! : field;
 
-    if (field === IMPLICIT_FIELD && !this.context.isImplicitColumnOverridden) {
+    if (
+      field === IMPLICIT_FIELD &&
+      implicitColumnExpression === this.implicitColumnExpression // Source's implicit column has not been overridden
+    ) {
       // Sources can specify multi-column implicit columns, eg. Body and Message, in
       // which case we search the combined string `concatWithSeparator(';', Body, Message)`.
       const expressions = splitAndTrimWithBracket(fieldFinal);
@@ -624,6 +639,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 async function nodeTerm(
   node: lucene.Node,
   serializer: Serializer,
+  context: SerializerContext,
 ): Promise<string> {
   const field = node.field[0] === '-' ? node.field.slice(1) : node.field;
   let isNegatedField = node.field[0] === '-';
@@ -648,36 +664,36 @@ async function nodeTerm(
     // If the term is quoted, we should search for the exact term in a property (ex. foo:"bar")
     // Implicit field searches should still use substring matching (ex. "foo bar")
     if (nodeTerm.quoted && !isImplicitField) {
-      return serializer.eq(field, term, isNegatedField);
+      return serializer.eq(field, term, isNegatedField, context);
     }
 
     if (!nodeTerm.quoted && term === '*') {
-      return serializer.isNotNull(field, isNegatedField);
+      return serializer.isNotNull(field, isNegatedField, context);
     }
 
     if (!nodeTerm.quoted && term.substring(0, 2) === '>=') {
       if (isNegatedField) {
-        return serializer.lt(field, term.slice(2));
+        return serializer.lt(field, term.slice(2), context);
       }
-      return serializer.gte(field, term.slice(2));
+      return serializer.gte(field, term.slice(2), context);
     }
     if (!nodeTerm.quoted && term.substring(0, 2) === '<=') {
       if (isNegatedField) {
-        return serializer.gt(field, term.slice(2));
+        return serializer.gt(field, term.slice(2), context);
       }
-      return serializer.lte(field, term.slice(2));
+      return serializer.lte(field, term.slice(2), context);
     }
     if (!nodeTerm.quoted && term[0] === '>') {
       if (isNegatedField) {
-        return serializer.lte(field, term.slice(1));
+        return serializer.lte(field, term.slice(1), context);
       }
-      return serializer.gt(field, term.slice(1));
+      return serializer.gt(field, term.slice(1), context);
     }
     if (!nodeTerm.quoted && term[0] === '<') {
       if (isNegatedField) {
-        return serializer.gte(field, term.slice(1));
+        return serializer.gte(field, term.slice(1), context);
       }
-      return serializer.lt(field, term.slice(1));
+      return serializer.lt(field, term.slice(1), context);
     }
 
     let prefixWildcard = false;
@@ -697,6 +713,7 @@ async function nodeTerm(
       isNegatedField,
       prefixWildcard,
       suffixWildcard,
+      context,
     );
 
     // TODO: Handle regex, similarity, boost, prefix
@@ -709,48 +726,45 @@ async function nodeTerm(
       rangedTerm.term_min,
       rangedTerm.term_max,
       isNegatedField,
+      context,
     );
   }
 
   throw new Error(`Unexpected Node type. ${node}`);
 }
 
-function updateSerializerContext(
-  serializer: Serializer,
+function createSerializerContext(
+  currentContext: SerializerContext,
   ast: lucene.BinaryAST | lucene.LeftOnlyAST,
 ) {
-  const currentContext = serializer.context;
-
-  const fieldWithoutNegation = ast.field?.startsWith('-')
-    ? ast.field.slice(1)
-    : ast.field;
-
   // For syntax like `foo:(bar baz)` or `foo:("bar baz")`, the implicit field for the inner expression must be `foo`
-  if (
-    fieldWithoutNegation &&
-    ast.parenthesized &&
-    fieldWithoutNegation !== IMPLICIT_FIELD
-  ) {
-    serializer.context = {
+  if (ast.field && ast.parenthesized && ast.field !== IMPLICIT_FIELD) {
+    const fieldWithoutNegation = ast.field?.startsWith('-')
+      ? ast.field.slice(1)
+      : ast.field;
+
+    return {
       ...currentContext,
       implicitColumnExpression: fieldWithoutNegation,
-      isImplicitColumnOverridden: true,
     };
+  } else {
+    return currentContext;
   }
 }
 
 async function serialize(
   ast: lucene.AST | lucene.Node,
   serializer: Serializer,
+  context: SerializerContext,
 ): Promise<string> {
   // Node Scenarios:
   // 1. NodeTerm: Single term ex. "foo:bar"
   // 2. NodeRangedTerm: Two terms ex. "foo:[bar TO qux]"
   if ((ast as lucene.NodeTerm).term != null) {
-    return await nodeTerm(ast as lucene.NodeTerm, serializer);
+    return await nodeTerm(ast as lucene.NodeTerm, serializer, context);
   }
   if ((ast as lucene.NodeRangedTerm).inclusive != null) {
-    return await nodeTerm(ast as lucene.NodeTerm, serializer);
+    return await nodeTerm(ast as lucene.NodeTerm, serializer, context);
   }
 
   // AST Scenarios:
@@ -758,27 +772,22 @@ async function serialize(
   // 2. LeftOnlyAST: Single term ex. "foo:bar"
   if ((ast as lucene.BinaryAST).right != null) {
     const binaryAST = ast as lucene.BinaryAST;
-    const operator = serializer.operator(binaryAST.operator);
+    const operator = serializer.operator(binaryAST.operator, context);
     const parenthesized = binaryAST.parenthesized;
 
     // Handle cases like "-foo:(bar baz)"
     const isNegatedAndParenthesizedField =
       parenthesized && binaryAST.field?.startsWith('-');
 
-    const currentContext = serializer.context;
-    try {
-      updateSerializerContext(serializer, binaryAST);
-
-      const serialized = `${isNegatedAndParenthesizedField ? 'NOT ' : ''}${parenthesized ? '(' : ''}${await serialize(
-        binaryAST.left,
-        serializer,
-      )} ${operator} ${await serialize(binaryAST.right, serializer)}${
-        parenthesized ? ')' : ''
-      }`;
-      return serialized;
-    } finally {
-      serializer.context = currentContext; // restore context
-    }
+    const newContext = createSerializerContext(context, binaryAST);
+    const serialized = `${isNegatedAndParenthesizedField ? 'NOT ' : ''}${parenthesized ? '(' : ''}${await serialize(
+      binaryAST.left,
+      serializer,
+      newContext,
+    )} ${operator} ${await serialize(binaryAST.right, serializer, newContext)}${
+      parenthesized ? ')' : ''
+    }`;
+    return serialized;
   }
 
   if ((ast as lucene.LeftOnlyAST).left != null) {
@@ -789,22 +798,16 @@ async function serialize(
     const isNegatedAndParenthesizedField =
       parenthesized && leftOnlyAST.field?.startsWith('-');
 
-    const currentContext = serializer.context;
+    const newContext = createSerializerContext(context, leftOnlyAST);
 
-    try {
-      updateSerializerContext(serializer, leftOnlyAST);
+    // start is used when ex. "NOT foo:bar"
+    const serialized = `${isNegatedAndParenthesizedField ? 'NOT ' : ''}${parenthesized ? '(' : ''}${
+      leftOnlyAST.start != undefined ? `${leftOnlyAST.start} ` : ''
+    }${await serialize(leftOnlyAST.left, serializer, newContext)}${
+      parenthesized ? ')' : ''
+    }`;
 
-      // start is used when ex. "NOT foo:bar"
-      const serialized = `${isNegatedAndParenthesizedField ? 'NOT ' : ''}${parenthesized ? '(' : ''}${
-        leftOnlyAST.start != undefined ? `${leftOnlyAST.start} ` : ''
-      }${await serialize(leftOnlyAST.left, serializer)}${
-        parenthesized ? ')' : ''
-      }`;
-
-      return serialized;
-    } finally {
-      serializer.context = currentContext; // restore context
-    }
+    return serialized;
   }
 
   // Blank AST, means no text was parsed
@@ -816,7 +819,7 @@ export async function genWhereSQL(
   ast: lucene.AST,
   serializer: Serializer,
 ): Promise<string> {
-  return await serialize(ast, serializer);
+  return await serialize(ast, serializer, {});
 }
 
 export class SearchQueryBuilder {
@@ -888,7 +891,7 @@ export async function genEnglishExplanation(query: string): Promise<string> {
 
     if (parsedQ) {
       const serializer = new EnglishSerializer();
-      return await serialize(parsedQ, serializer);
+      return await serialize(parsedQ, serializer, {});
     }
   } catch (e) {
     console.warn('Parse failure', query, e);

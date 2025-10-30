@@ -38,7 +38,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
 
   it('getColumnForField', async () => {
     const field1 = 'ResourceAttributesJSON.test';
-    const res1 = await serializer.getColumnForField(field1);
+    const res1 = await serializer.getColumnForField(field1, {});
     expect(res1).toEqual({
       column: '',
       columnJSON: {
@@ -50,7 +50,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       propertyType: 'json',
     });
     const field2 = 'ResourceAttributesJSON.test.nest';
-    const res2 = await serializer.getColumnForField(field2);
+    const res2 = await serializer.getColumnForField(field2, {});
     expect(res2).toEqual({
       column: '',
       columnJSON: {
@@ -66,11 +66,11 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
   it('compare - eq, isNotNull, gte, lte, lt, gt', async () => {
     const eqField = 'ResourceAttributesJSON.eq.test';
     const eqTerm = 'testTerm';
-    const eq1 = await serializer.eq(eqField, eqTerm, false);
+    const eq1 = await serializer.eq(eqField, eqTerm, false, {});
     expect(eq1).toBe(
       "(toString(`ResourceAttributesJSON`.`eq`.`test`) = 'testTerm')",
     );
-    const eq2 = await serializer.eq(eqField, eqTerm, true);
+    const eq2 = await serializer.eq(eqField, eqTerm, true, {});
     expect(eq2).toBe(
       "(toString(`ResourceAttributesJSON`.`eq`.`test`) != 'testTerm')",
     );
@@ -78,11 +78,11 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
 
   it('compare - isNotNull', async () => {
     const isNotNullField = 'ResourceAttributesJSON.isNotNull.test';
-    const isNotNull1 = await serializer.isNotNull(isNotNullField, false);
+    const isNotNull1 = await serializer.isNotNull(isNotNullField, false, {});
     expect(isNotNull1).toBe(
       'notEmpty(toString(`ResourceAttributesJSON`.`isNotNull`.`test`)) = 1',
     );
-    const isNotNull2 = await serializer.isNotNull(isNotNullField, true);
+    const isNotNull2 = await serializer.isNotNull(isNotNullField, true, {});
     expect(isNotNull2).toBe(
       'notEmpty(toString(`ResourceAttributesJSON`.`isNotNull`.`test`)) != 1',
     );
@@ -91,7 +91,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
   it('compare - gte', async () => {
     const gteField = 'ResourceAttributesJSON.gte.test';
     const gteTerm = '30';
-    const gte = await serializer.gte(gteField, gteTerm);
+    const gte = await serializer.gte(gteField, gteTerm, {});
     expect(gte).toBe(
       "(dynamicType(`ResourceAttributesJSON`.`gte`.`test`) in ('Int8', 'Int16', 'Int32', 'Int64', 'Int128', 'Int256', 'UInt8', 'UInt16', 'UInt32', 'UInt64', 'UInt128', 'UInt256', 'Float32', 'Float64') and `ResourceAttributesJSON`.`gte`.`test` >= '30')",
     );
@@ -100,7 +100,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
   it('compare - lte', async () => {
     const lteField = 'ResourceAttributesJSON.lte.test';
     const lteTerm = '40';
-    const lte = await serializer.lte(lteField, lteTerm);
+    const lte = await serializer.lte(lteField, lteTerm, {});
     expect(lte).toBe(
       "(dynamicType(`ResourceAttributesJSON`.`lte`.`test`) in ('Int8', 'Int16', 'Int32', 'Int64', 'Int128', 'Int256', 'UInt8', 'UInt16', 'UInt32', 'UInt64', 'UInt128', 'UInt256', 'Float32', 'Float64') and `ResourceAttributesJSON`.`lte`.`test` <= '40')",
     );
@@ -109,7 +109,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
   it('compare - gt', async () => {
     const gtField = 'ResourceAttributesJSON.gt.test';
     const gtTerm = '70';
-    const gt = await serializer.gt(gtField, gtTerm);
+    const gt = await serializer.gt(gtField, gtTerm, {});
     expect(gt).toBe(
       "(dynamicType(`ResourceAttributesJSON`.`gt`.`test`) in ('Int8', 'Int16', 'Int32', 'Int64', 'Int128', 'Int256', 'UInt8', 'UInt16', 'UInt32', 'UInt64', 'UInt128', 'UInt256', 'Float32', 'Float64') and `ResourceAttributesJSON`.`gt`.`test` > '70')",
     );
@@ -118,7 +118,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
   it('compare - lt', async () => {
     const ltField = 'ResourceAttributesJSON.lt.test';
     const ltTerm = '2';
-    const lt = await serializer.lt(ltField, ltTerm);
+    const lt = await serializer.lt(ltField, ltTerm, {});
     expect(lt).toBe(
       "(dynamicType(`ResourceAttributesJSON`.`lt`.`test`) in ('Int8', 'Int16', 'Int32', 'Int64', 'Int128', 'Int256', 'UInt8', 'UInt16', 'UInt32', 'UInt64', 'UInt128', 'UInt256', 'Float32', 'Float64') and `ResourceAttributesJSON`.`lt`.`test` < '2')",
     );
@@ -259,6 +259,11 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       english: "'foo' contains bar",
     },
     {
+      lucene: 'foo:*bar*',
+      sql: "((foo ILIKE '%bar%'))",
+      english: "'foo' contains bar",
+    },
+    {
       lucene: 'foo:(*bar)',
       sql: "(((lower(foo) LIKE lower('%bar'))))",
       english: '(foo ends with bar)',
@@ -267,6 +272,21 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       lucene: 'foo:(bar*)',
       sql: "(((lower(foo) LIKE lower('bar%'))))",
       english: '(foo starts with bar)',
+    },
+    {
+      lucene: 'foo:(*bar*)',
+      sql: "(((lower(foo) LIKE lower('%bar%'))))",
+      english: '(foo contains bar)',
+    },
+    {
+      lucene: 'foo:[1 TO 5]',
+      sql: '((foo BETWEEN 1 AND 5))',
+      english: 'foo is between 1 and 5',
+    },
+    {
+      lucene: 'foo:(bar:(baz) qux)',
+      sql: "((((bar ILIKE '%baz%')) AND (foo ILIKE '%qux%')))",
+      english: '((bar contains baz) AND foo contains qux)',
     },
   ];
 
