@@ -12,7 +12,7 @@ import { sql, SQLDialect } from '@codemirror/lang-sql';
 import {
   Field,
   TableConnectionChoice,
-} from '@hyperdx/common-utils/dist/metadata';
+} from '@hyperdx/common-utils/dist/core/metadata';
 import { Flex, Paper, Text, Tooltip } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 import CodeMirror, {

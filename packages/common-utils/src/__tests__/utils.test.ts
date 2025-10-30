@@ -21,7 +21,7 @@ import {
   replaceJsonExpressions,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
-} from '../utils';
+} from '../core/utils';
 
 describe('utils', () => {
   describe('formatDate', () => {

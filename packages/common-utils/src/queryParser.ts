@@ -2,8 +2,8 @@ import lucene from '@hyperdx/lucene';
 import SqlString from 'sqlstring';
 
 import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
-import { Metadata } from '@/metadata';
-import { splitAndTrimWithBracket } from '@/utils';
+import { Metadata } from '@/core/metadata';
+import { splitAndTrimWithBracket } from '@/core/utils';
 
 function encodeSpecialTokens(query: string): string {
   return query

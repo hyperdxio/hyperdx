@@ -19,7 +19,7 @@ import {
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,

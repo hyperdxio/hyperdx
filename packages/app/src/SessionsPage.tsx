@@ -15,7 +15,7 @@ import {
   useQueryParams,
   withDefault,
 } from 'use-query-params';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   DateRange,
   SearchCondition,

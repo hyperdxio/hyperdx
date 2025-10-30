@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   Button,

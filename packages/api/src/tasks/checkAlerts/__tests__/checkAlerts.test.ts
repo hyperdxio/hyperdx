@@ -744,8 +744,8 @@ describe('checkAlerts', () => {
       };
 
       // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
         getMetadata: jest.fn().mockReturnValue(mockMetadata),
       }));
 
@@ -1009,8 +1009,8 @@ describe('checkAlerts', () => {
       };
 
       // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
         getMetadata: jest.fn().mockReturnValue(mockMetadata),
       }));
 
@@ -1264,8 +1264,8 @@ describe('checkAlerts', () => {
       };
 
       // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
         getMetadata: jest.fn().mockReturnValue(mockMetadata),
       }));
 
@@ -1496,8 +1496,8 @@ describe('checkAlerts', () => {
       };
 
       // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
         getMetadata: jest.fn().mockReturnValue(mockMetadata),
       }));
 

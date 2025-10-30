@@ -8,7 +8,7 @@ import type { ZodIssue } from 'zod';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
-import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/metadata';
+import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   isValidSlackUrl,

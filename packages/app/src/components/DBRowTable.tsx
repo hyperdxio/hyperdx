@@ -29,12 +29,12 @@ import {
   isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   SelectList,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
   Box,
   Button,

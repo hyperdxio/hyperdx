@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Controller, FieldError, useForm } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
+import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   DashboardFilter,
   MetricsDataType,

@@ -1,5 +1,5 @@
 import { ClickhouseClient } from '@/clickhouse/node';
-import { getMetadata } from '@/metadata';
+import { getMetadata } from '@/core/metadata';
 import { CustomSchemaSQLSerializerV2 } from '@/queryParser';
 
 describe('CustomSchemaSQLSerializerV2 - json', () => {
