@@ -346,10 +346,12 @@ export default function DBDeltaChart({
         getPropertyStatistics(inlierData?.data ?? []);
 
       // Get all the unique keys from both maps, and process them to get the merged arrays
-      const uniqueKeys = new Set([
-        ...outlierValueOccurences.keys(),
-        ...inlierValueOccurences.keys(),
-      ]);
+      let uniqueKeys = new Set([...outlierValueOccurences.keys()]);
+
+      // If there's no outliers, use inliers as the unique keys
+      if (uniqueKeys.size === 0) {
+        uniqueKeys = new Set([...inlierValueOccurences.keys()]);
+      }
       const sortedProperties = Array.from(uniqueKeys)
         .map(key => {
           const inlierCount =
