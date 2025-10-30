@@ -88,14 +88,43 @@ export function DBSearchHeatmapChart({
           }}
           enabled={isReady}
           onFilter={(xMin, xMax, yMin, yMax) => {
-            setFields({
-              outlierSqlCondition: [
-                `${source.durationExpression} >= ${yMin} * 1e${(source.durationPrecision ?? 9) - 3}`,
-                `${source.durationExpression} <= ${yMax} * 1e${(source.durationPrecision ?? 9) - 3}`,
-                `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} >= ${xMin}`,
-                `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} <= ${xMax}`,
-              ].join(' AND '),
-            });
+            // Check if the value expression contains aggregate functions
+            const isAggregate = isAggregateFunction(fields.value);
+
+            const timestampExpr = getFirstTimestampValueExpression(
+              chartConfig.timestampValueExpression,
+            );
+
+            if (isAggregate) {
+              // For aggregate expressions, we use a subquery approach:
+              // The subquery calculates the aggregate per time bucket with HAVING clause,
+              // then we filter to only include timestamps from qualifying buckets
+              const baseWhereConditions = [
+                `${timestampExpr} >= ${xMin}`,
+                `${timestampExpr} <= ${xMax}`,
+              ];
+
+              // Include existing where conditions if present
+              if (chartConfig.where && chartConfig.where.trim()) {
+                baseWhereConditions.push(`(${chartConfig.where})`);
+              }
+
+              const subquery = `${timestampExpr} IN (SELECT ${timestampExpr} FROM ${chartConfig.from.databaseName}.${chartConfig.from.tableName} WHERE ${baseWhereConditions.join(' AND ')} GROUP BY ${timestampExpr} HAVING (${fields.value}) >= ${yMin} AND (${fields.value}) <= ${yMax})`;
+
+              setFields({
+                outlierSqlCondition: subquery,
+              });
+            } else {
+              // For non-aggregate expressions, we can filter directly on the value
+              setFields({
+                outlierSqlCondition: [
+                  `(${fields.value}) >= ${yMin}`,
+                  `(${fields.value}) <= ${yMax}`,
+                  `${timestampExpr} >= ${xMin}`,
+                  `${timestampExpr} <= ${xMax}`,
+                ].join(' AND '),
+              });
+            }
           }}
         />
       </div>
