@@ -296,6 +296,7 @@ export default function SQLInlineEditor({
           return {
             ...box,
             right: box.right ?? 0,
+            left: parentBox.left ?? box.left,
             top: parentBox.top ?? box.top,
             bottom: parentBox.bottom ?? box.bottom,
           };

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { parseAsString, useQueryStates } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -16,9 +17,9 @@ import { ActionIcon } from '@mantine/core';
 import { Paper } from '@mantine/core';
 import { Center } from '@mantine/core';
 import { Text } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { IconPlayerPlay, IconSettings } from '@tabler/icons-react';
+import { IconPlayerPlay } from '@tabler/icons-react';
 
+import { isAggregateFunction } from '@/ChartUtils';
 import {
   getDurationMsExpression,
   getFirstTimestampValueExpression,
@@ -47,9 +48,15 @@ export function DBSearchHeatmapChart({
     count: parseAsString.withDefault('count()'),
     outlierSqlCondition: parseAsString,
   });
+  const [container, setContainer] = useState<HTMLElement | null>(null);
 
   return (
-    <Flex direction="column" w="100%" style={{ overflow: 'hidden' }}>
+    <Flex
+      direction="column"
+      w="100%"
+      style={{ overflow: 'hidden' }}
+      ref={setContainer}
+    >
       <Box mx="lg" mt="xs" mb={0}>
         <DBSearchHeatmapForm
           connection={tcFromSource(source)}
@@ -57,6 +64,7 @@ export function DBSearchHeatmapChart({
             value: fields.value,
             count: fields.count,
           }}
+          parentRef={container}
           onSubmit={data => {
             setFields({
               value: data.value,
@@ -153,9 +161,11 @@ export function DBSearchHeatmapChart({
 function DBSearchHeatmapForm({
   connection,
   defaultValues,
+  parentRef,
   onSubmit,
 }: {
   connection: TableConnection;
+  parentRef?: HTMLElement | null;
   defaultValues: z.infer<typeof Schema>;
   onSubmit: (v: z.infer<typeof Schema>) => void;
 }) {
@@ -165,10 +175,14 @@ function DBSearchHeatmapForm({
   });
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)}>
+    <form
+      onSubmit={form.handleSubmit(onSubmit)}
+      style={{ position: 'relative' }}
+    >
       <Flex m="0" mb="xs" align="stretch" gap="xs">
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <SQLInlineEditorControlled
+            parentRef={parentRef}
             tableConnection={connection}
             control={form.control}
             name="value"
@@ -184,6 +198,7 @@ function DBSearchHeatmapForm({
         </div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <SQLInlineEditorControlled
+            parentRef={parentRef}
             tableConnection={connection}
             control={form.control}
             name="count"
