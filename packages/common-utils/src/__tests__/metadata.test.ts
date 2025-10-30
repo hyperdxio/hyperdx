@@ -14,7 +14,7 @@ const mockCache = {
   set: jest.fn(),
 } as any;
 
-jest.mock('../renderChartConfig', () => ({
+jest.mock('../core/renderChartConfig', () => ({
   renderChartConfig: jest
     .fn()
     .mockResolvedValue({ sql: 'SELECT 1', params: {} }),
