@@ -1,5 +1,16 @@
 # @hyperdx/api
 
+## 2.7.1
+
+### Patch Changes
+
+- 24b5477d: feat: allow specifying webhook request headers
+- c6ad250f: Enable auto-provisioning for no-auth mode
+- 778092d3: fix: set a max size for alert timeranges
+- Updated dependencies [2162a690]
+- Updated dependencies [8190ee8f]
+  - @hyperdx/common-utils@0.7.2
+
 ## 2.7.0
 
 ### Minor Changes

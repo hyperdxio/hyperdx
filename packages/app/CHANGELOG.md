@@ -1,5 +1,27 @@
 # @hyperdx/app
 
+## 2.7.1
+
+### Patch Changes
+
+- 93edb6f8: fix: memoize inputs to fix text input performance
+- d5a38c3e: fix: Fix pattern sample query for sources with multi-column timestamp expressions
+- 7b6ed70c: fix: Support custom Timestamp Columns in Surrounding Context panel
+- 2162a690: feat: Optimize and fix filtering on toStartOfX primary key expressions
+- 15331acb: feat: Auto-select correlated sources on k8s dashboard
+- bb3539dd: improve drawer a11y
+- 24b5477d: feat: allow specifying webhook request headers
+- 3ee93ae9: feat: Show pinned filter values while filters are loading
+- de0b4fc7: Adds "Relative Time" switch to TimePicker component (if relative time is supported by parent). When enabled, searches will work similar to Live Tail but be relative to the option selected.
+- 757196f2: close modals when bluring (dates and search hints)
+- ff86d400: feat: Implement query chunking for charts
+- 21614b94: feat: Include displayed timestamp in default order by
+- 808413f5: Ensure popovers inside the TimePicker component can be accessed
+- ab7af41f: avoid hydration errors when app loads if nav is collapsed
+- Updated dependencies [2162a690]
+- Updated dependencies [8190ee8f]
+  - @hyperdx/common-utils@0.7.2
+
 ## 2.7.0
 
 ### Minor Changes
