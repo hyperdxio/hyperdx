@@ -464,6 +464,8 @@ export const processAlert = async (
           }
 
           history.counts += 1;
+        } else {
+          // TODO: if the alert was previously alerting (differnt bucket), should we set state to OK (plus auto-resolve)?
         }
         history.lastValues.push({ count: _value, startTime: bucketStart });
       }
