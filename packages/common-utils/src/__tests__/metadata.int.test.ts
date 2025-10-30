@@ -2,7 +2,7 @@ import { createClient } from '@clickhouse/client';
 import { ClickHouseClient } from '@clickhouse/client-common';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
-import { Metadata, MetadataCache } from '@/metadata';
+import { Metadata, MetadataCache } from '@/core/metadata';
 import { ChartConfigWithDateRange } from '@/types';
 
 describe('Metadata Integration Tests', () => {

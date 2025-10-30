@@ -1,7 +1,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   SearchConditionLanguage,
   TSource,

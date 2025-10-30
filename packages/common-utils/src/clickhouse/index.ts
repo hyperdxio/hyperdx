@@ -11,18 +11,18 @@ import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client
 import * as SQLParser from 'node-sql-parser';
 import objectHash from 'object-hash';
 
-import { Metadata } from '@/metadata';
+import { Metadata } from '@/core/metadata';
 import {
   renderChartConfig,
   setChartSelectsAlias,
   splitChartConfigs,
-} from '@/renderChartConfig';
-import { ChartConfigWithOptDateRange } from '@/types';
+} from '@/core/renderChartConfig';
 import {
   hashCode,
   replaceJsonExpressions,
   splitAndTrimWithBracket,
-} from '@/utils';
+} from '@/core/utils';
+import { ChartConfigWithOptDateRange } from '@/types';
 
 // export @clickhouse/client-common types
 export type {

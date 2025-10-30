@@ -3,7 +3,7 @@ import { sq } from 'date-fns/locale';
 import ms from 'ms';
 import { parseAsString, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithDateRange,
   TSource,

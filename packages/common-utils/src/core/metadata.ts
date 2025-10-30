@@ -11,7 +11,7 @@ import {
   JSDataType,
   tableExpr,
 } from '@/clickhouse';
-import { renderChartConfig } from '@/renderChartConfig';
+import { renderChartConfig } from '@/core/renderChartConfig';
 import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 // If filters initially are taking too long to load, decrease this number.

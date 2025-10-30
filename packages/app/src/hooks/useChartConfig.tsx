@@ -10,7 +10,7 @@ import {
   isMetricChartConfig,
   isUsingGranularity,
   renderChartConfig,
-} from '@hyperdx/common-utils/dist/renderChartConfig';
+} from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import {
   ChartConfigWithDateRange,

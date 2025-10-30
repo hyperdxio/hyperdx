@@ -28,13 +28,13 @@ jest.mock('@hyperdx/app/src/metadata', () => ({
 }));
 
 // Mock the renderChartConfig function
-jest.mock('@hyperdx/common-utils/dist/renderChartConfig', () => ({
+jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
   renderChartConfig: jest.fn(),
 }));
 
 // Import mocked modules after jest.mock calls
 import { getClickhouseClient } from '@hyperdx/app/src/clickhouse';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 
 // Create a mock ChartConfig based on the Zod schema
 const createMockChartConfig = (

@@ -1,6 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { Metadata } from '@hyperdx/common-utils/dist/metadata';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { _useTry, formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertChannelType,
   ChartConfigWithOptDateRange,
@@ -8,7 +9,6 @@ import {
   WebhookService,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
-import { _useTry, formatDate } from '@hyperdx/common-utils/dist/utils';
 import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';

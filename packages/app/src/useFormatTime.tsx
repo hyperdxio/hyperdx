@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDate } from '@hyperdx/common-utils/dist/utils';
+import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 
 import { useUserPreferences } from './useUserPreferences';
 

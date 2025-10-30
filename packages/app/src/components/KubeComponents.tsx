@@ -2,7 +2,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { sub } from 'date-fns';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   ChartConfigWithDateRange,
   DateRange,

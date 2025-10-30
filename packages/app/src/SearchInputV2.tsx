@@ -4,7 +4,7 @@ import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Field,
   TableConnectionChoice,
-} from '@hyperdx/common-utils/dist/metadata';
+} from '@hyperdx/common-utils/dist/core/metadata';
 import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 
 import AutocompleteInput from '@/AutocompleteInput';

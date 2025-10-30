@@ -14,7 +14,8 @@ import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/metadata';
+import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertState,
   DashboardFilter,
@@ -28,7 +29,6 @@ import {
   SearchConditionLanguage,
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
-import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/utils';
 import {
   Box,
   Button,

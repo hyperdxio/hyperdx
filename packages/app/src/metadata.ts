@@ -1,4 +1,4 @@
-import { getMetadata as _getMetadata } from '@hyperdx/common-utils/dist/metadata';
+import { getMetadata as _getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 
 import { getClickhouseClient } from '@/clickhouse';
 

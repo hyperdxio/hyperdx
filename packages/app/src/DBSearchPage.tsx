@@ -23,17 +23,17 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  isBrowser,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  isBrowser,
-  splitAndTrimWithBracket,
-} from '@hyperdx/common-utils/dist/utils';
 import {
   ActionIcon,
   Box,

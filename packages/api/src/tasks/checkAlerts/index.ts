@@ -4,7 +4,10 @@
 import PQueue from '@esm2cjs/p-queue';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { getMetadata, Metadata } from '@hyperdx/common-utils/dist/metadata';
+import {
+  getMetadata,
+  Metadata,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,

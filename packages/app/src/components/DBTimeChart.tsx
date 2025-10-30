@@ -3,7 +3,7 @@ import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { isMetricChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   ChartConfigWithDateRange,
   DisplayType,

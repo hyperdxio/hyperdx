@@ -9,7 +9,7 @@ import {
   isNonEmptyWhereExpr,
   isUsingGroupBy,
   renderChartConfig,
-} from '@hyperdx/common-utils/dist/renderChartConfig';
+} from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   AggregateFunction,
   ChartConfigWithOptDateRange,

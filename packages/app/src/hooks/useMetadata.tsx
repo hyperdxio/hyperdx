@@ -9,7 +9,7 @@ import {
   Field,
   TableConnection,
   TableMetadata,
-} from '@hyperdx/common-utils/dist/metadata';
+} from '@hyperdx/common-utils/dist/core/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,

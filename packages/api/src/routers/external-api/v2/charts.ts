@@ -1,11 +1,11 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { getMetadata } from '@hyperdx/common-utils/dist/metadata';
+import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { Granularity } from '@hyperdx/common-utils/dist/utils';
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import _ from 'lodash';
