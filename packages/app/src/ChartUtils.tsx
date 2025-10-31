@@ -387,18 +387,111 @@ export function timeBucketByGranularity(
 
 export const isAggregateFunction = (value: string) => {
   const fns = [
+    // Basic aggregates
     'count',
     'countIf',
     'countDistinct',
     'sum',
+    'sumIf',
     'avg',
-    'distinct',
+    'avgIf',
     'min',
     'max',
-    'quantile',
     'any',
-    'none',
+    'anyLast',
+    'groupArray',
+    'groupArrayInsertAt',
+    'groupArrayMovingAvg',
+    'groupArraySample',
+    'groupUniqArray',
+    'groupUniqArrayIf',
+    'groupBitAnd',
+    'groupBitOr',
+    'groupBitXor',
+    'groupArrayIntersect',
+    'groupArrayIntersectIf',
+    'groupArrayReduce',
+    'groupBitmap',
+    'groupBitmapIf',
+    'groupBitmapOr',
+    'groupBitmapXor',
+
+    // Quantiles
+    'quantile',
+    'quantileIf',
+    'quantileExact',
+    'quantileExactWeighted',
+    'quantileTiming',
+    'quantileTimingWeighted',
+    'quantileTDigest',
+    'quantileTDigestWeighted',
+    'quantileBFloat16',
+    'quantileBFloat16Weighted',
+    'quantiles',
+    'median',
+    'medianExact',
+    'medianTDigest',
+    'medianBFloat16',
+
+    // Statistical functions
+    'stddevPop',
+    'stddevPopIf',
+    'stddevSamp',
+    'stddevSampIf',
+    'varPop',
+    'varPopIf',
+    'varSamp',
+    'varSampIf',
+    'covarPop',
+    'covarSamp',
+    'corr',
+
+    // Combinators
+    'uniq',
+    'uniqExact',
+    'uniqCombined',
+    'uniqCombined64',
+    'uniqHLL12',
+    'uniqTheta',
+
+    // Bit operations
+    'groupBitAnd',
+    'groupBitOr',
+    'groupBitXor',
+
+    // Map and tuple
+    'groupArrayMap',
+    'groupArrayTuple',
+    'groupArraySorted',
+    'topK',
+    'topKIf',
+    'topKWeighted',
+
+    // Aggregate combinators
+    'argMin',
+    'argMax',
+    'minMap',
+    'maxMap',
+
+    // Specialized aggregates
+    'runningDifference',
+    'retention',
+    'sequenceCount',
+    'sequenceMatch',
+    'histogram',
+    'simpleLinearRegression',
+    'stochasticLinearRegression',
+    'categoricalInformationValue',
+    'sumMap',
+    'sumMapFiltered',
+    'sumWithOverflow',
+    'entropy',
+    'skewPop',
+    'skewSamp',
+    'kurtPop',
+    'kurtSamp',
   ];
+
   return fns.some(fn => value.includes(fn + '('));
 };
 

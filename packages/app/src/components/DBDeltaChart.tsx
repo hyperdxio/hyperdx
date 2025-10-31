@@ -345,13 +345,13 @@ export default function DBDeltaChart({
       const { percentageOccurences: inlierValueOccurences } =
         getPropertyStatistics(inlierData?.data ?? []);
 
-      // Get all the unique keys from both maps, and process them to get the merged arrays
+      // Get all the unique keys from the outliers
       let uniqueKeys = new Set([...outlierValueOccurences.keys()]);
-
       // If there's no outliers, use inliers as the unique keys
       if (uniqueKeys.size === 0) {
         uniqueKeys = new Set([...inlierValueOccurences.keys()]);
       }
+      // Now process the keys to find the ones with the highest delta between outlier and inlier percentages
       const sortedProperties = Array.from(uniqueKeys)
         .map(key => {
           const inlierCount =
