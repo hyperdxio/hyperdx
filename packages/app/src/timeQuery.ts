@@ -479,7 +479,11 @@ export function useNewTimeQuery({
       setSearchedTimeRange(initialTimeRange);
       const dateRangeStr = dateRangeToString(initialTimeRange, isUTC);
       if (updateInput !== false) {
-        _setDisplayedTimeInputValue(initialDisplayValue ?? dateRangeStr);
+        if (!showRelativeInterval) {
+          _setDisplayedTimeInputValue(dateRangeStr);
+        } else {
+          _setDisplayedTimeInputValue(initialDisplayValue ?? dateRangeStr);
+        }
       }
     }
   }, [
