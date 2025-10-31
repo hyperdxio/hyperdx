@@ -108,6 +108,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   return (
     <React.Fragment>
       <Head>
+        <title>HyperDX</title>
         <link rel="icon" type="image/png" sizes="32x32" href="/Icon32.png" />
         <meta
           name="viewport"

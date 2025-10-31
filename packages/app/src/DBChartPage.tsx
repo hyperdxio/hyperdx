@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Head from 'next/head';
 import { parseAsJson, parseAsStringEnum, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -223,6 +224,9 @@ function DBChartExplorerPage() {
 
   return (
     <Box data-testid="chart-explorer-page" p="sm" className="bg-hdx-dark">
+      <Head>
+        <title>Chart Explorer - HyperDX</title>
+      </Head>
       <AIAssistant
         setConfig={setChartConfig}
         onTimeRangeSelect={onTimeRangeSelect}
