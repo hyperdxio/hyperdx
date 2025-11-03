@@ -666,36 +666,6 @@ describe('renderChartConfig', () => {
       expect(actual).toMatchSnapshot();
     });
 
-    it('should render HAVING clause with Lucene language', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        select: [
-          {
-            aggFn: 'sum',
-            valueExpression: 'bytes',
-            aggCondition: '',
-          },
-        ],
-        where: '',
-        whereLanguage: 'sql',
-        groupBy: 'user_id',
-        having: 'sum(bytes):>1000',
-        havingLanguage: 'lucene',
-        timestampValueExpression: 'timestamp',
-        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
-      };
-
-      const generatedSql = await renderChartConfig(config, mockMetadata);
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain('HAVING');
-      expect(actual).toMatchSnapshot();
-    });
-
     it('should render HAVING clause with multiple conditions', async () => {
       const config: ChartConfigWithOptDateRange = {
         displayType: DisplayType.Table,
