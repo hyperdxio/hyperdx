@@ -257,33 +257,94 @@ function PropertyComparisonChart({
   );
 }
 
+export type AggregateFilterParams = {
+  timestampExpr: string;
+  valueExpr: string;
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+};
+
 export default function DBDeltaChart({
   config,
   outlierSqlCondition,
+  aggregateFilterParams,
 }: {
   config: ChartConfigWithOptDateRange;
   outlierSqlCondition: string;
+  aggregateFilterParams?: AggregateFilterParams | null;
 }) {
+  // When aggregateFilterParams is present, we need to add a CTE that computes
+  // the aggregate per timestamp, filters with HAVING, then SEMI JOINs to get matching rows
+  const withClauses: NonNullable<ChartConfigWithOptDateRange['with']> =
+    aggregateFilterParams
+      ? [
+          {
+            name: 'AggregatedTimestamps',
+            chartConfig: {
+              ...config,
+              select: aggregateFilterParams.timestampExpr,
+              whereLanguage: 'sql',
+              where: [
+                `${aggregateFilterParams.timestampExpr} >= ${aggregateFilterParams.xMin}`,
+                `${aggregateFilterParams.timestampExpr} <= ${aggregateFilterParams.xMax}`,
+              ]
+                .filter(Boolean)
+                .join(' AND '),
+              groupBy: aggregateFilterParams.timestampExpr,
+              having: `(${aggregateFilterParams.valueExpr}) >= ${aggregateFilterParams.yMin} AND (${aggregateFilterParams.valueExpr}) <= ${aggregateFilterParams.yMax}`,
+              // Clear filters from base config since we only want the where conditions
+              filters: undefined,
+            },
+          },
+          {
+            name: 'PartIds',
+            chartConfig: {
+              ...config,
+              select: 'tuple(_part, _part_offset)',
+              filters: [
+                ...(config.filters ?? []),
+                {
+                  type: 'sql',
+                  condition: `${outlierSqlCondition}`,
+                },
+                ...(aggregateFilterParams
+                  ? [
+                      {
+                        type: 'sql',
+                        condition: `${aggregateFilterParams.timestampExpr} IN (SELECT ${aggregateFilterParams.timestampExpr} FROM AggregatedTimestamps)`,
+                      } as { type: 'sql'; condition: string },
+                    ]
+                  : []),
+              ],
+              orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+              limit: { limit: 1000 },
+            },
+          },
+        ]
+      : [
+          {
+            name: 'PartIds',
+            chartConfig: {
+              ...config,
+              select: 'tuple(_part, _part_offset)',
+              filters: [
+                ...(config.filters ?? []),
+                {
+                  type: 'sql',
+                  condition: `${outlierSqlCondition}`,
+                },
+              ],
+              orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+              limit: { limit: 1000 },
+            },
+          },
+        ];
+
   const { data: outlierData, error } = useQueriedChartConfig({
     ...config,
-    with: [
-      {
-        name: 'PartIds',
-        chartConfig: {
-          ...config,
-          select: 'tuple(_part, _part_offset)',
-          filters: [
-            ...(config.filters ?? []),
-            {
-              type: 'sql',
-              condition: `${outlierSqlCondition}`,
-            },
-          ],
-          orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-          limit: { limit: 1000 },
-        },
-      },
-    ],
+    with: withClauses,
     select: '*',
     filters: [
       ...(config.filters ?? []),
@@ -291,6 +352,14 @@ export default function DBDeltaChart({
         type: 'sql',
         condition: `${outlierSqlCondition}`,
       },
+      ...(aggregateFilterParams
+        ? [
+            {
+              type: 'sql',
+              condition: `${aggregateFilterParams.timestampExpr} IN (SELECT ${aggregateFilterParams.timestampExpr} FROM AggregatedTimestamps)`,
+            } as { type: 'sql'; condition: string },
+          ]
+        : []),
       {
         type: 'sql',
         condition: `indexHint((_part, _part_offset) IN PartIds)`,
@@ -300,26 +369,74 @@ export default function DBDeltaChart({
     limit: { limit: 1000 },
   });
 
+  // For inliers, we need to exclude rows that match the aggregate filter
+  const inlierWithClauses: NonNullable<ChartConfigWithOptDateRange['with']> =
+    aggregateFilterParams
+      ? [
+          {
+            name: 'AggregatedTimestamps',
+            chartConfig: {
+              ...config,
+              select: aggregateFilterParams.timestampExpr,
+              where: [
+                `${aggregateFilterParams.timestampExpr} >= ${aggregateFilterParams.xMin}`,
+                `${aggregateFilterParams.timestampExpr} <= ${aggregateFilterParams.xMax}`,
+              ]
+                .filter(Boolean)
+                .join(' AND '),
+              groupBy: aggregateFilterParams.timestampExpr,
+              having: `(${aggregateFilterParams.valueExpr}) >= ${aggregateFilterParams.yMin} AND (${aggregateFilterParams.valueExpr}) <= ${aggregateFilterParams.yMax}`,
+              // Clear filters from base config since we only want the where conditions
+              filters: undefined,
+            },
+          },
+          {
+            name: 'PartIds',
+            chartConfig: {
+              ...config,
+              select: '_part, _part_offset',
+              filters: [
+                ...(config.filters ?? []),
+                {
+                  type: 'sql',
+                  condition: `NOT (${outlierSqlCondition})`,
+                },
+                ...(aggregateFilterParams
+                  ? [
+                      {
+                        type: 'sql',
+                        condition: `${aggregateFilterParams.timestampExpr} NOT IN (SELECT ${aggregateFilterParams.timestampExpr} FROM AggregatedTimestamps)`,
+                      } as { type: 'sql'; condition: string },
+                    ]
+                  : []),
+              ],
+              orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+              limit: { limit: 1000 },
+            },
+          },
+        ]
+      : [
+          {
+            name: 'PartIds',
+            chartConfig: {
+              ...config,
+              select: '_part, _part_offset',
+              filters: [
+                ...(config.filters ?? []),
+                {
+                  type: 'sql',
+                  condition: `NOT (${outlierSqlCondition})`,
+                },
+              ],
+              orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+              limit: { limit: 1000 },
+            },
+          },
+        ];
+
   const { data: inlierData } = useQueriedChartConfig({
     ...config,
-    with: [
-      {
-        name: 'PartIds',
-        chartConfig: {
-          ...config,
-          select: '_part, _part_offset',
-          filters: [
-            ...(config.filters ?? []),
-            {
-              type: 'sql',
-              condition: `NOT (${outlierSqlCondition})`,
-            },
-          ],
-          orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-          limit: { limit: 1000 },
-        },
-      },
-    ],
+    with: inlierWithClauses,
     select: '*',
     filters: [
       ...(config.filters ?? []),
@@ -327,6 +444,14 @@ export default function DBDeltaChart({
         type: 'sql',
         condition: `NOT (${outlierSqlCondition})`,
       },
+      ...(aggregateFilterParams
+        ? [
+            {
+              type: 'sql',
+              condition: `${aggregateFilterParams.timestampExpr} NOT IN (SELECT ${aggregateFilterParams.timestampExpr} FROM AggregatedTimestamps)`,
+            } as { type: 'sql'; condition: string },
+          ]
+        : []),
       {
         type: 'sql',
         condition: `indexHint((_part, _part_offset) IN PartIds)`,

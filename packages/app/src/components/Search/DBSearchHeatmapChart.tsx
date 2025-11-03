@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { parseAsString, useQueryStates } from 'nuqs';
+import { parseAsJson, parseAsString, useQueryStates } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -12,7 +12,7 @@ import {
   DisplayType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Collapse, Flex } from '@mantine/core';
+import { Box, Flex } from '@mantine/core';
 import { ActionIcon } from '@mantine/core';
 import { Paper } from '@mantine/core';
 import { Center } from '@mantine/core';
@@ -25,7 +25,7 @@ import {
   getFirstTimestampValueExpression,
 } from '@/source';
 
-import DBDeltaChart from '../DBDeltaChart';
+import DBDeltaChart, { AggregateFilterParams } from '../DBDeltaChart';
 import DBHeatmapChart from '../DBHeatmapChart';
 import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
@@ -47,6 +47,7 @@ export function DBSearchHeatmapChart({
     value: parseAsString.withDefault(getDurationMsExpression(source)),
     count: parseAsString.withDefault('count()'),
     outlierSqlCondition: parseAsString,
+    aggregateFilterParams: parseAsJson<AggregateFilterParams>(),
   });
   const [container, setContainer] = useState<HTMLElement | null>(null);
 
@@ -104,27 +105,26 @@ export function DBSearchHeatmapChart({
             );
 
             if (isAggregate) {
-              // For aggregate expressions, we use a subquery approach:
-              // The subquery calculates the aggregate per time bucket with HAVING clause,
-              // then we filter to only include timestamps from qualifying buckets
-              const baseWhereConditions = [
-                `${timestampExpr} >= ${xMin}`,
-                `${timestampExpr} <= ${xMax}`,
-              ];
-
-              // Include existing where conditions if present
-              if (chartConfig.where && chartConfig.where.trim()) {
-                baseWhereConditions.push(`(${chartConfig.where})`);
-              }
-
-              const subquery = `${timestampExpr} IN (SELECT ${timestampExpr} FROM ${chartConfig.from.databaseName}.${chartConfig.from.tableName} WHERE ${baseWhereConditions.join(' AND ')} GROUP BY ${timestampExpr} HAVING (${fields.value}) >= ${yMin} AND (${fields.value}) <= ${yMax})`;
-
+              // For aggregate expressions, we pass the filter parameters to DBDeltaChart
+              // This ensures the aggregate is computed on the correct dataset before filtering
               setFields({
-                outlierSqlCondition: subquery,
+                aggregateFilterParams: {
+                  timestampExpr,
+                  valueExpr: fields.value,
+                  xMin,
+                  xMax,
+                  yMin,
+                  yMax,
+                },
+                outlierSqlCondition: [
+                  `${timestampExpr} >= ${xMin}`,
+                  `${timestampExpr} <= ${xMax}`,
+                ].join(' AND '),
               });
             } else {
               // For non-aggregate expressions, we can filter directly on the value
               setFields({
+                aggregateFilterParams: null,
                 outlierSqlCondition: [
                   `(${fields.value}) >= ${yMin}`,
                   `(${fields.value}) <= ${yMax}`,
@@ -143,6 +143,7 @@ export function DBSearchHeatmapChart({
             with: undefined,
           }}
           outlierSqlCondition={fields.outlierSqlCondition}
+          aggregateFilterParams={fields.aggregateFilterParams}
         />
       ) : (
         <Paper shadow="xs" p="xl" h="100%">
