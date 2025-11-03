@@ -1,15 +1,15 @@
-import { Fragment, useCallback, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { HTTPError } from 'ky';
 import { Button as BSButton, Modal as BSModal } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { SubmitHandler, useForm } from 'react-hook-form';
+import { Controller, SubmitHandler, useForm } from 'react-hook-form';
 import type { ZodIssue } from 'zod';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   isValidSlackUrl,
   isValidUrl,
@@ -37,6 +37,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import { IconPencil } from '@tabler/icons-react';
 import { UseQueryResult } from '@tanstack/react-query';
 import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
@@ -51,6 +52,8 @@ import { useConnections } from './connection';
 import { DEFAULT_QUERY_TIMEOUT, DEFAULT_SEARCH_ROW_LIMIT } from './defaults';
 import { withAppNav } from './layout';
 import { useSources } from './source';
+import type { Webhook } from './types';
+import { WebhookService } from './types';
 import { useConfirm } from './useConfirm';
 import { capitalizeFirstLetter } from './utils';
 
@@ -696,23 +699,51 @@ type WebhookForm = {
   headers?: string;
 };
 
-export function CreateWebhookForm({
+export function WebhookForm({
+  webhook,
   onClose,
   onSuccess,
 }: {
+  webhook?: Webhook;
   onClose: VoidFunction;
   onSuccess: (webhookId?: string) => void;
 }) {
   const saveWebhook = api.useSaveWebhook();
+  const updateWebhook = api.useUpdateWebhook();
+  const isEditing = webhook != null;
 
   const form = useForm<WebhookForm>({
     defaultValues: {
-      service: WebhookService.Slack,
+      service: webhook?.service || WebhookService.Slack,
+      name: webhook?.name || '',
+      url: webhook?.url || '',
+      description: webhook?.description || '',
+      body: webhook?.body || '',
+      headers: webhook?.headers ? JSON.stringify(webhook.headers, null, 2) : '',
     },
   });
 
+  useEffect(() => {
+    if (webhook) {
+      form.reset(
+        {
+          service: webhook.service,
+          name: webhook.name,
+          url: webhook.url,
+          description: webhook.description,
+          body: webhook.body,
+          headers: webhook.headers
+            ? JSON.stringify(webhook.headers, null, 2)
+            : '',
+        },
+        {},
+      );
+    }
+  }, [webhook, form]);
+
   const onSubmit: SubmitHandler<WebhookForm> = async values => {
     const { service, name, url, description, body, headers } = values;
+
     try {
       // Parse headers JSON if provided (API will validate the content)
       let parsedHeaders: Record<string, string> | undefined;
@@ -733,7 +764,7 @@ export function CreateWebhookForm({
         }
       }
 
-      const response = await saveWebhook.mutateAsync({
+      const webhookData = {
         service,
         name,
         url,
@@ -743,10 +774,18 @@ export function CreateWebhookForm({
             ? `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`
             : body,
         headers: parsedHeaders,
-      });
+      };
+
+      const response = isEditing
+        ? await updateWebhook.mutateAsync({
+            id: webhook._id,
+            ...webhookData,
+          })
+        : await saveWebhook.mutateAsync(webhookData);
+
       notifications.show({
         color: 'green',
-        message: `Webhook created successfully`,
+        message: `Webhook ${isEditing ? 'updated' : 'created'} successfully`,
       });
       onSuccess(response.data?._id);
       onClose();
@@ -797,23 +836,25 @@ export function CreateWebhookForm({
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>
       <Stack mt="sm">
-        <Text>Create Webhook</Text>
+        <Text>{isEditing ? 'Edit Webhook' : 'Create Webhook'}</Text>
         <Radio.Group
           label="Service Type"
           required
           value={service}
-          onChange={value => form.setValue('service', value)}
+          onChange={value => {
+            form.setValue('service', value);
+          }}
         >
           <Group mt="xs">
             <Radio
               value={WebhookService.Slack}
               label="Slack"
-              {...form.register('service', { required: true })}
+              disabled={isEditing}
             />
             <Radio
               value={WebhookService.Generic}
               label="Generic"
-              {...form.register('service', { required: true })}
+              disabled={isEditing}
             />
           </Group>
         </Radio.Group>
@@ -850,34 +891,48 @@ export function CreateWebhookForm({
             Webhook Headers (optional)
           </label>,
           <div className="mb-2" key="2">
-            <CodeMirror
-              height="100px"
-              extensions={[
-                json(),
-                linter(jsonLinterWithEmptyCheck()),
-                placeholder(
-                  `{\n\t"Authorization": "Bearer token",\n\t"X-Custom-Header": "value"\n}`,
-                ),
-              ]}
-              theme="dark"
-              onChange={value => form.setValue('headers', value)}
+            <Controller
+              name="headers"
+              control={form.control}
+              render={({ field }) => (
+                <CodeMirror
+                  height="100px"
+                  extensions={[
+                    json(),
+                    linter(jsonLinterWithEmptyCheck()),
+                    placeholder(
+                      `{\n\t"Authorization": "Bearer token",\n\t"X-Custom-Header": "value"\n}`,
+                    ),
+                  ]}
+                  theme="dark"
+                  value={field.value}
+                  onChange={value => field.onChange(value)}
+                />
+              )}
             />
           </div>,
           <label className=".mantine-TextInput-label" key="3">
             Webhook Body (optional)
           </label>,
           <div className="mb-2" key="4">
-            <CodeMirror
-              height="100px"
-              extensions={[
-                json(),
-                linter(jsonLinterWithEmptyCheck()),
-                placeholder(
-                  `{\n\t"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"\n}`,
-                ),
-              ]}
-              theme="dark"
-              onChange={value => form.setValue('body', value)}
+            <Controller
+              name="body"
+              control={form.control}
+              render={({ field }) => (
+                <CodeMirror
+                  height="100px"
+                  extensions={[
+                    json(),
+                    linter(jsonLinterWithEmptyCheck()),
+                    placeholder(
+                      `{\n\t"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"\n}`,
+                    ),
+                  ]}
+                  theme="dark"
+                  value={field.value}
+                  onChange={value => field.onChange(value)}
+                />
+              )}
             />
           </div>,
           <Alert
@@ -905,9 +960,9 @@ export function CreateWebhookForm({
           <Button
             variant="outline"
             type="submit"
-            loading={saveWebhook.isPending}
+            loading={saveWebhook.isPending || updateWebhook.isPending}
           >
-            Add Webhook
+            {isEditing ? 'Update Webhook' : 'Add Webhook'}
           </Button>
           <Button variant="outline" color="gray" onClick={onClose} type="reset">
             Cancel
@@ -978,10 +1033,11 @@ function IntegrationsSection() {
     WebhookService.Generic,
   ]);
 
-  const allWebhooks = useMemo(() => {
-    return Array.isArray(webhookData?.data) ? webhookData?.data : [];
+  const allWebhooks = useMemo<Webhook[]>(() => {
+    return Array.isArray(webhookData?.data) ? webhookData.data : [];
   }, [webhookData]);
 
+  const [editedWebhookId, setEditedWebhookId] = useState<string | null>(null);
   const [
     isAddWebhookModalOpen,
     { open: openWebhookModal, close: closeWebhookModal },
@@ -997,9 +1053,9 @@ function IntegrationsSection() {
         <Text mb="xs">Webhooks</Text>
 
         <Stack>
-          {allWebhooks.map((webhook: any) => (
+          {allWebhooks.map(webhook => (
             <Fragment key={webhook._id}>
-              <Group justify="space-between">
+              <Group justify="space-between" align="flex-start">
                 <Stack gap={0}>
                   <Text size="sm">
                     {webhook.name} ({webhook.service})
@@ -1013,12 +1069,47 @@ function IntegrationsSection() {
                     </Text>
                   )}
                 </Stack>
-                <DeleteWebhookButton
-                  webhookId={webhook._id}
-                  webhookName={webhook.name}
-                  onSuccess={refetchWebhooks}
-                />
+                <Group gap="xs">
+                  {editedWebhookId !== webhook._id && (
+                    <>
+                      <Button
+                        variant="subtle"
+                        color="gray.4"
+                        onClick={() => setEditedWebhookId(webhook._id)}
+                        size="compact-xs"
+                        leftSection={<IconPencil size={14} />}
+                      >
+                        Edit
+                      </Button>
+                      <DeleteWebhookButton
+                        webhookId={webhook._id}
+                        webhookName={webhook.name}
+                        onSuccess={refetchWebhooks}
+                      />
+                    </>
+                  )}
+                  {editedWebhookId === webhook._id && (
+                    <Button
+                      variant="subtle"
+                      color="gray.4"
+                      onClick={() => setEditedWebhookId(null)}
+                      size="compact-xs"
+                    >
+                      <i className="bi bi-x-lg me-2" /> Cancel
+                    </Button>
+                  )}
+                </Group>
               </Group>
+              {editedWebhookId === webhook._id && (
+                <WebhookForm
+                  webhook={webhook}
+                  onClose={() => setEditedWebhookId(null)}
+                  onSuccess={() => {
+                    setEditedWebhookId(null);
+                    refetchWebhooks();
+                  }}
+                />
+              )}
               <Divider />
             </Fragment>
           ))}
@@ -1029,7 +1120,7 @@ function IntegrationsSection() {
             Add Webhook
           </Button>
         ) : (
-          <CreateWebhookForm
+          <WebhookForm
             onClose={closeWebhookModal}
             onSuccess={() => {
               refetchWebhooks();

@@ -330,6 +330,54 @@ const api = {
         }).json(),
     });
   },
+  useUpdateWebhook() {
+    return useMutation<
+      any,
+      Error | HTTPError,
+      {
+        id: string;
+        service: string;
+        url: string;
+        name: string;
+        description: string;
+        queryParams?: Record<string, string>;
+        headers?: Record<string, string>;
+        body?: string;
+      }
+    >({
+      mutationFn: async ({
+        id,
+        service,
+        url,
+        name,
+        description,
+        queryParams,
+        headers,
+        body,
+      }: {
+        id: string;
+        service: string;
+        url: string;
+        name: string;
+        description: string;
+        queryParams?: Record<string, string>;
+        headers?: Record<string, string>;
+        body?: string;
+      }) =>
+        hdxServer(`webhooks/${id}`, {
+          method: 'PUT',
+          json: {
+            name,
+            service,
+            url,
+            description,
+            queryParams: queryParams || {},
+            headers: headers || {},
+            body,
+          },
+        }).json(),
+    });
+  },
   useWebhooks(services: string[]) {
     return useQuery<any, Error>({
       queryKey: [...services],

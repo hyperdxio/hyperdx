@@ -102,6 +102,84 @@ router.post(
   },
 );
 
+router.put(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: z.string().refine(val => {
+        return mongoose.Types.ObjectId.isValid(val);
+      }),
+    }),
+    body: z.object({
+      body: z.string().optional(),
+      description: z.string().optional(),
+      headers: z
+        .record(httpHeaderNameValidator, httpHeaderValueValidator)
+        .optional(),
+      name: z.string(),
+      queryParams: z.record(z.string()).optional(),
+      service: z.nativeEnum(WebhookService),
+      url: z.string().url(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+      const { name, service, url, description, queryParams, headers, body } =
+        req.body;
+      const { id } = req.params;
+
+      // Check if webhook exists and belongs to team
+      const existingWebhook = await Webhook.findOne({
+        _id: id,
+        team: teamId,
+      });
+      if (!existingWebhook) {
+        return res.status(404).json({
+          message: 'Webhook not found',
+        });
+      }
+
+      // Check if another webhook with same service and url already exists (excluding current webhook)
+      const duplicateWebhook = await Webhook.findOne({
+        team: teamId,
+        service,
+        url,
+        _id: { $ne: id },
+      });
+      if (duplicateWebhook) {
+        return res.status(400).json({
+          message: 'A webhook with this service and URL already exists',
+        });
+      }
+
+      // Update webhook
+      const updatedWebhook = await Webhook.findOneAndUpdate(
+        { _id: id, team: teamId },
+        {
+          name,
+          service,
+          url,
+          description,
+          queryParams,
+          headers,
+          body,
+        },
+        { new: true, select: { __v: 0, team: 0 } },
+      );
+
+      res.json({
+        data: updatedWebhook,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 router.delete(
   '/:id',
   validateRequest({
