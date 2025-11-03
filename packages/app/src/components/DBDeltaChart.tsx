@@ -3,15 +3,16 @@ import { withErrorBoundary } from 'react-error-boundary';
 import {
   Bar,
   BarChart,
-  CartesianGrid,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Code,
@@ -22,7 +23,9 @@ import {
   Text,
 } from '@mantine/core';
 
+import { isAggregateFunction } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { getFirstTimestampValueExpression } from '@/source';
 import { truncateMiddle } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
@@ -257,206 +260,177 @@ function PropertyComparisonChart({
   );
 }
 
-export type AggregateFilterParams = {
-  timestampExpr: string;
+export default function DBDeltaChart({
+  config,
+  valueExpr,
+  xMin,
+  xMax,
+  yMin,
+  yMax,
+}: {
+  config: ChartConfigWithDateRange;
   valueExpr: string;
   xMin: number;
   xMax: number;
   yMin: number;
   yMax: number;
-};
-
-export default function DBDeltaChart({
-  config,
-  outlierSqlCondition,
-  aggregateFilterParams,
-}: {
-  config: ChartConfigWithOptDateRange;
-  outlierSqlCondition: string;
-  aggregateFilterParams?: AggregateFilterParams | null;
 }) {
-  // When aggregateFilterParams is present, we need to add a CTE that computes
-  // the aggregate per timestamp, filters with HAVING, then SEMI JOINs to get matching rows
-  const withClauses: NonNullable<ChartConfigWithOptDateRange['with']> =
-    aggregateFilterParams
-      ? [
-          {
-            name: 'AggregatedTimestamps',
-            chartConfig: {
-              ...config,
-              select: aggregateFilterParams.timestampExpr,
-              whereLanguage: 'sql',
-              where: [
-                `${aggregateFilterParams.timestampExpr} >= ${aggregateFilterParams.xMin}`,
-                `${aggregateFilterParams.timestampExpr} <= ${aggregateFilterParams.xMax}`,
-              ]
-                .filter(Boolean)
-                .join(' AND '),
-              groupBy: aggregateFilterParams.timestampExpr,
-              having: `(${aggregateFilterParams.valueExpr}) >= ${aggregateFilterParams.yMin} AND (${aggregateFilterParams.valueExpr}) <= ${aggregateFilterParams.yMax}`,
-              // Clear filters from base config since we only want the where conditions
-              filters: undefined,
-            },
-          },
-          {
-            name: 'PartIds',
-            chartConfig: {
-              ...config,
-              select: 'tuple(_part, _part_offset)',
-              filters: [
-                ...(config.filters ?? []),
-                {
-                  type: 'sql',
-                  condition: `${outlierSqlCondition}`,
-                },
-                ...(aggregateFilterParams
-                  ? [
-                      {
-                        type: 'sql',
-                        condition: `${aggregateFilterParams.timestampExpr} IN (SELECT ${aggregateFilterParams.timestampExpr} FROM AggregatedTimestamps)`,
-                      } as { type: 'sql'; condition: string },
-                    ]
-                  : []),
-              ],
-              orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-              limit: { limit: 1000 },
-            },
-          },
-        ]
-      : [
-          {
-            name: 'PartIds',
-            chartConfig: {
-              ...config,
-              select: 'tuple(_part, _part_offset)',
-              filters: [
-                ...(config.filters ?? []),
-                {
-                  type: 'sql',
-                  condition: `${outlierSqlCondition}`,
-                },
-              ],
-              orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-              limit: { limit: 1000 },
-            },
-          },
-        ];
+  // Determine if the value expression uses aggregate functions
+  const isAggregate = isAggregateFunction(valueExpr);
 
-  const { data: outlierData, error } = useQueriedChartConfig({
-    ...config,
-    with: withClauses,
-    select: '*',
-    filters: [
+  // Get the timestamp expression from config
+  const timestampExpr = getFirstTimestampValueExpression(
+    config.timestampValueExpression,
+  );
+
+  // Helper to build the shared AggregatedTimestamps CTE (used by both outlier and inlier queries)
+  const buildAggregatedTimestampsCTE = () =>
+    isAggregate
+      ? {
+          name: 'AggregatedTimestamps',
+          chartConfig: {
+            ...config,
+            from: config.from,
+            select: timestampExpr,
+            filters: [
+              ...(config.filters ?? []),
+              {
+                type: 'sql',
+                condition: `${timestampExpr} >= ${xMin}`,
+              } as { type: 'sql'; condition: string },
+              {
+                type: 'sql',
+                condition: `${timestampExpr} <= ${xMax}`,
+              } as { type: 'sql'; condition: string },
+              ...(config.where
+                ? [
+                    {
+                      type: 'sql',
+                      condition: config.where,
+                    } as { type: 'sql'; condition: string },
+                  ]
+                : []),
+            ],
+            groupBy: timestampExpr,
+            having: `(${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax}`,
+          },
+        }
+      : null;
+
+  // Helper to build WITH clauses for a query (outlier or inlier)
+  const buildWithClauses = (
+    isOutlier: boolean,
+  ): NonNullable<ChartConfigWithOptDateRange['with']> => {
+    const aggregatedTimestampsCTE = buildAggregatedTimestampsCTE();
+
+    // Build the SQL condition for filtering
+    const buildSqlCondition = () => {
+      if (isAggregate) {
+        // For aggregates, we filter by timestamp range (the HAVING clause in CTE handles value filtering)
+        return isOutlier
+          ? `${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax}`
+          : `NOT (${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax})`;
+      } else {
+        // For non-aggregates, we filter directly on both timestamp and value
+        return isOutlier
+          ? `(${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax} AND ${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax}`
+          : `NOT ((${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax} AND ${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax})`;
+      }
+    };
+
+    const sqlCondition = buildSqlCondition();
+    const aggregateTimestampCondition = isOutlier
+      ? `${timestampExpr} IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`
+      : `${timestampExpr} NOT IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`;
+
+    return [
+      ...(aggregatedTimestampsCTE ? [aggregatedTimestampsCTE] : []),
+      {
+        name: 'PartIds',
+        chartConfig: {
+          ...config,
+          select: isOutlier
+            ? 'tuple(_part, _part_offset)'
+            : '_part, _part_offset',
+          filters: [
+            ...(config.filters ?? []),
+            {
+              type: 'sql',
+              condition: sqlCondition,
+            } as { type: 'sql'; condition: string },
+            ...(isAggregate
+              ? [
+                  {
+                    type: 'sql',
+                    condition: aggregateTimestampCondition,
+                  } as { type: 'sql'; condition: string },
+                ]
+              : []),
+          ],
+          orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+          limit: { limit: 1000 },
+        },
+      },
+    ];
+  };
+
+  // Helper to build filters for the main query
+  const buildFilters = (isOutlier: boolean) => {
+    // Build the SQL condition for filtering
+    const buildSqlCondition = () => {
+      if (isAggregate) {
+        // For aggregates, we filter by timestamp range
+        return isOutlier
+          ? `${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax}`
+          : `NOT (${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax})`;
+      } else {
+        // For non-aggregates, we filter directly on both timestamp and value
+        return isOutlier
+          ? `(${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax} AND ${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax}`
+          : `NOT ((${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax} AND ${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax})`;
+      }
+    };
+
+    const sqlCondition = buildSqlCondition();
+    const aggregateTimestampCondition = isOutlier
+      ? `${timestampExpr} IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`
+      : `${timestampExpr} NOT IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`;
+
+    return [
       ...(config.filters ?? []),
       {
         type: 'sql',
-        condition: `${outlierSqlCondition}`,
-      },
-      ...(aggregateFilterParams
+        condition: sqlCondition,
+      } as { type: 'sql'; condition: string },
+      ...(isAggregate
         ? [
             {
               type: 'sql',
-              condition: `${aggregateFilterParams.timestampExpr} IN (SELECT ${aggregateFilterParams.timestampExpr} FROM AggregatedTimestamps)`,
+              condition: aggregateTimestampCondition,
             } as { type: 'sql'; condition: string },
           ]
         : []),
       {
         type: 'sql',
         condition: `indexHint((_part, _part_offset) IN PartIds)`,
-      },
-    ],
+      } as { type: 'sql'; condition: string },
+    ];
+  };
+
+  const { data: outlierData, error } = useQueriedChartConfig({
+    ...config,
+    with: buildWithClauses(true),
+    select: '*',
+    filters: buildFilters(true),
     orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
     limit: { limit: 1000 },
   });
 
-  // For inliers, we need to exclude rows that match the aggregate filter
-  const inlierWithClauses: NonNullable<ChartConfigWithOptDateRange['with']> =
-    aggregateFilterParams
-      ? [
-          {
-            name: 'AggregatedTimestamps',
-            chartConfig: {
-              ...config,
-              select: aggregateFilterParams.timestampExpr,
-              where: [
-                `${aggregateFilterParams.timestampExpr} >= ${aggregateFilterParams.xMin}`,
-                `${aggregateFilterParams.timestampExpr} <= ${aggregateFilterParams.xMax}`,
-              ]
-                .filter(Boolean)
-                .join(' AND '),
-              groupBy: aggregateFilterParams.timestampExpr,
-              having: `(${aggregateFilterParams.valueExpr}) >= ${aggregateFilterParams.yMin} AND (${aggregateFilterParams.valueExpr}) <= ${aggregateFilterParams.yMax}`,
-              // Clear filters from base config since we only want the where conditions
-              filters: undefined,
-            },
-          },
-          {
-            name: 'PartIds',
-            chartConfig: {
-              ...config,
-              select: '_part, _part_offset',
-              filters: [
-                ...(config.filters ?? []),
-                {
-                  type: 'sql',
-                  condition: `NOT (${outlierSqlCondition})`,
-                },
-                ...(aggregateFilterParams
-                  ? [
-                      {
-                        type: 'sql',
-                        condition: `${aggregateFilterParams.timestampExpr} NOT IN (SELECT ${aggregateFilterParams.timestampExpr} FROM AggregatedTimestamps)`,
-                      } as { type: 'sql'; condition: string },
-                    ]
-                  : []),
-              ],
-              orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-              limit: { limit: 1000 },
-            },
-          },
-        ]
-      : [
-          {
-            name: 'PartIds',
-            chartConfig: {
-              ...config,
-              select: '_part, _part_offset',
-              filters: [
-                ...(config.filters ?? []),
-                {
-                  type: 'sql',
-                  condition: `NOT (${outlierSqlCondition})`,
-                },
-              ],
-              orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-              limit: { limit: 1000 },
-            },
-          },
-        ];
-
   const { data: inlierData } = useQueriedChartConfig({
     ...config,
-    with: inlierWithClauses,
+    with: buildWithClauses(false),
     select: '*',
-    filters: [
-      ...(config.filters ?? []),
-      {
-        type: 'sql',
-        condition: `NOT (${outlierSqlCondition})`,
-      },
-      ...(aggregateFilterParams
-        ? [
-            {
-              type: 'sql',
-              condition: `${aggregateFilterParams.timestampExpr} NOT IN (SELECT ${aggregateFilterParams.timestampExpr} FROM AggregatedTimestamps)`,
-            } as { type: 'sql'; condition: string },
-          ]
-        : []),
-      {
-        type: 'sql',
-        condition: `indexHint((_part, _part_offset) IN PartIds)`,
-      },
-    ],
+    filters: buildFilters(false),
     orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
     limit: { limit: 1000 },
   });

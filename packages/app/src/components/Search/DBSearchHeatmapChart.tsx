@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { parseAsJson, parseAsString, useQueryStates } from 'nuqs';
+import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,13 +19,9 @@ import { Center } from '@mantine/core';
 import { Text } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
-import { isAggregateFunction } from '@/ChartUtils';
-import {
-  getDurationMsExpression,
-  getFirstTimestampValueExpression,
-} from '@/source';
+import { getDurationMsExpression } from '@/source';
 
-import DBDeltaChart, { AggregateFilterParams } from '../DBDeltaChart';
+import DBDeltaChart from '../DBDeltaChart';
 import DBHeatmapChart from '../DBHeatmapChart';
 import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
@@ -46,8 +42,11 @@ export function DBSearchHeatmapChart({
   const [fields, setFields] = useQueryStates({
     value: parseAsString.withDefault(getDurationMsExpression(source)),
     count: parseAsString.withDefault('count()'),
-    outlierSqlCondition: parseAsString,
-    aggregateFilterParams: parseAsJson<AggregateFilterParams>(),
+    // Heatmap selection coordinates
+    xMin: parseAsFloat,
+    xMax: parseAsFloat,
+    yMin: parseAsFloat,
+    yMax: parseAsFloat,
   });
   const [container, setContainer] = useState<HTMLElement | null>(null);
 
@@ -97,53 +96,30 @@ export function DBSearchHeatmapChart({
           }}
           enabled={isReady}
           onFilter={(xMin, xMax, yMin, yMax) => {
-            // Check if the value expression contains aggregate functions
-            const isAggregate = isAggregateFunction(fields.value);
-
-            const timestampExpr = getFirstTimestampValueExpression(
-              chartConfig.timestampValueExpression,
-            );
-
-            if (isAggregate) {
-              // For aggregate expressions, we pass the filter parameters to DBDeltaChart
-              // This ensures the aggregate is computed on the correct dataset before filtering
-              setFields({
-                aggregateFilterParams: {
-                  timestampExpr,
-                  valueExpr: fields.value,
-                  xMin,
-                  xMax,
-                  yMin,
-                  yMax,
-                },
-                outlierSqlCondition: [
-                  `${timestampExpr} >= ${xMin}`,
-                  `${timestampExpr} <= ${xMax}`,
-                ].join(' AND '),
-              });
-            } else {
-              // For non-aggregate expressions, we can filter directly on the value
-              setFields({
-                aggregateFilterParams: null,
-                outlierSqlCondition: [
-                  `(${fields.value}) >= ${yMin}`,
-                  `(${fields.value}) <= ${yMax}`,
-                  `${timestampExpr} >= ${xMin}`,
-                  `${timestampExpr} <= ${xMax}`,
-                ].join(' AND '),
-              });
-            }
+            // Simply store the coordinates - DBDeltaChart will handle the logic
+            setFields({
+              xMin,
+              xMax,
+              yMin,
+              yMax,
+            });
           }}
         />
       </div>
-      {fields.outlierSqlCondition ? (
+      {fields.xMin != null &&
+      fields.xMax != null &&
+      fields.yMin != null &&
+      fields.yMax != null ? (
         <DBDeltaChart
           config={{
             ...chartConfig,
             with: undefined,
           }}
-          outlierSqlCondition={fields.outlierSqlCondition}
-          aggregateFilterParams={fields.aggregateFilterParams}
+          valueExpr={fields.value}
+          xMin={fields.xMin}
+          xMax={fields.xMax}
+          yMin={fields.yMin}
+          yMax={fields.yMax}
         />
       ) : (
         <Paper shadow="xs" p="xl" h="100%">
