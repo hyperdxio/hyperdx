@@ -634,6 +634,196 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('HAVING clause', () => {
+    it('should render HAVING clause with SQL language', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        groupBy: 'severity',
+        having: 'count(*) > 100',
+        havingLanguage: 'sql',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('HAVING');
+      expect(actual).toContain('count(*) > 100');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should render HAVING clause with Lucene language', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'sum',
+            valueExpression: 'bytes',
+            aggCondition: '',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        groupBy: 'user_id',
+        having: 'sum(bytes):>1000',
+        havingLanguage: 'lucene',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('HAVING');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should render HAVING clause with multiple conditions', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics',
+        },
+        select: [
+          {
+            aggFn: 'avg',
+            valueExpression: 'response_time',
+            aggCondition: '',
+          },
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        groupBy: 'endpoint',
+        having: 'avg(response_time) > 500 AND count(*) > 10',
+        havingLanguage: 'sql',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('HAVING');
+      expect(actual).toContain('avg(response_time) > 500 AND count(*) > 10');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should not render HAVING clause when not provided', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        groupBy: 'severity',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).not.toContain('HAVING');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should render HAVING clause with granularity and groupBy', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'events',
+        },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        groupBy: 'event_type',
+        having: 'count(*) > 50',
+        havingLanguage: 'sql',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+        granularity: '5 minute',
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('HAVING');
+      expect(actual).toContain('count(*) > 50');
+      expect(actual).toContain('GROUP BY');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should not render HAVING clause when having is empty string', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        groupBy: 'severity',
+        having: '',
+        havingLanguage: 'sql',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).not.toContain('HAVING');
+      expect(actual).toMatchSnapshot();
+    });
+  });
+
   describe('timeFilterExpr', () => {
     type TimeFilterExprTestCase = {
       timestampValueExpression: string;
