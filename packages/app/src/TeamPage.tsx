@@ -1,21 +1,12 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { HTTPError } from 'ky';
 import { Button as BSButton, Modal as BSModal } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { Controller, SubmitHandler, useForm } from 'react-hook-form';
-import type { ZodIssue } from 'zod';
-import { json, jsonParseLinter } from '@codemirror/lang-json';
-import { linter } from '@codemirror/lint';
-import { EditorView } from '@codemirror/view';
+import { SubmitHandler, useForm } from 'react-hook-form';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
-  isValidSlackUrl,
-  isValidUrl,
-} from '@hyperdx/common-utils/dist/validation';
-import {
-  Alert,
   Badge,
   Box,
   Button,
@@ -28,7 +19,6 @@ import {
   InputLabel,
   Loader,
   Modal as MModal,
-  Radio,
   Stack,
   Table,
   Text,
@@ -38,8 +28,6 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconPencil } from '@tabler/icons-react';
-import { UseQueryResult } from '@tanstack/react-query';
-import CodeMirror, { placeholder } from '@uiw/react-codemirror';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
 import SelectControlled from '@/components/SelectControlled';
@@ -47,6 +35,7 @@ import { TableSourceForm } from '@/components/SourceForm';
 import { IS_LOCAL_MODE } from '@/config';
 
 import { PageHeader } from './components/PageHeader';
+import { WebhookForm } from './components/TeamSettings/WebhookForm';
 import api from './api';
 import { useConnections } from './connection';
 import { DEFAULT_QUERY_TIMEOUT, DEFAULT_SEARCH_ROW_LIMIT } from './defaults';
@@ -56,16 +45,6 @@ import type { Webhook } from './types';
 import { WebhookService } from './types';
 import { useConfirm } from './useConfirm';
 import { capitalizeFirstLetter } from './utils';
-
-const DEFAULT_GENERIC_WEBHOOK_BODY = ['{{title}}', '{{body}}', '{{link}}'];
-const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
-  DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
-
-const jsonLinterWithEmptyCheck = () => (editorView: EditorView) => {
-  const text = editorView.state.doc.toString().trim();
-  if (text === '') return [];
-  return jsonParseLinter()(editorView);
-};
 
 function InviteTeamMemberForm({
   isSubmitting,
@@ -687,289 +666,6 @@ function TeamMembersSection() {
         </BSModal.Body>
       </BSModal>
     </Box>
-  );
-}
-
-type WebhookForm = {
-  name: string;
-  url: string;
-  service: string;
-  description?: string;
-  body?: string;
-  headers?: string;
-};
-
-export function WebhookForm({
-  webhook,
-  onClose,
-  onSuccess,
-}: {
-  webhook?: Webhook;
-  onClose: VoidFunction;
-  onSuccess: (webhookId?: string) => void;
-}) {
-  const saveWebhook = api.useSaveWebhook();
-  const updateWebhook = api.useUpdateWebhook();
-  const isEditing = webhook != null;
-
-  const form = useForm<WebhookForm>({
-    defaultValues: {
-      service: webhook?.service || WebhookService.Slack,
-      name: webhook?.name || '',
-      url: webhook?.url || '',
-      description: webhook?.description || '',
-      body: webhook?.body || '',
-      headers: webhook?.headers ? JSON.stringify(webhook.headers, null, 2) : '',
-    },
-  });
-
-  useEffect(() => {
-    if (webhook) {
-      form.reset(
-        {
-          service: webhook.service,
-          name: webhook.name,
-          url: webhook.url,
-          description: webhook.description,
-          body: webhook.body,
-          headers: webhook.headers
-            ? JSON.stringify(webhook.headers, null, 2)
-            : '',
-        },
-        {},
-      );
-    }
-  }, [webhook, form]);
-
-  const onSubmit: SubmitHandler<WebhookForm> = async values => {
-    const { service, name, url, description, body, headers } = values;
-
-    try {
-      // Parse headers JSON if provided (API will validate the content)
-      let parsedHeaders: Record<string, string> | undefined;
-      if (headers && headers.trim()) {
-        try {
-          parsedHeaders = JSON.parse(headers);
-        } catch (parseError) {
-          const errorMessage =
-            parseError instanceof Error
-              ? parseError.message
-              : 'Invalid JSON format';
-          notifications.show({
-            message: `Invalid JSON in headers: ${errorMessage}`,
-            color: 'red',
-            autoClose: 5000,
-          });
-          return;
-        }
-      }
-
-      const webhookData = {
-        service,
-        name,
-        url,
-        description: description || '',
-        body:
-          service === WebhookService.Generic && !body
-            ? `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`
-            : body,
-        headers: parsedHeaders,
-      };
-
-      const response = isEditing
-        ? await updateWebhook.mutateAsync({
-            id: webhook._id,
-            ...webhookData,
-          })
-        : await saveWebhook.mutateAsync(webhookData);
-
-      notifications.show({
-        color: 'green',
-        message: `Webhook ${isEditing ? 'updated' : 'created'} successfully`,
-      });
-      onSuccess(response.data?._id);
-      onClose();
-    } catch (e) {
-      console.error(e);
-      let message = 'Something went wrong. Please contact HyperDX team.';
-
-      if (e instanceof HTTPError) {
-        try {
-          const errorData = await e.response.json();
-          // Handle Zod validation errors from zod-express-middleware
-          // The library returns errors in format: { error: { issues: [...] } }
-          if (
-            errorData.error?.issues &&
-            Array.isArray(errorData.error.issues)
-          ) {
-            // TODO: use a library to format Zod validation errors
-            // Format Zod validation errors
-            const validationErrors = errorData.error.issues
-              .map((issue: ZodIssue) => {
-                const path = issue.path.join('.');
-                return `${path}: ${issue.message}`;
-              })
-              .join(', ');
-            message = `Validation error: ${validationErrors}`;
-          } else if (errorData.message) {
-            message = errorData.message;
-          } else {
-            // Fallback: show the entire error object as JSON
-            message = JSON.stringify(errorData);
-          }
-        } catch (parseError) {
-          console.error('Failed to parse error response:', parseError);
-          // If parsing fails, use default message
-        }
-      }
-
-      notifications.show({
-        message,
-        color: 'red',
-        autoClose: 5000,
-      });
-    }
-  };
-
-  const service = form.watch('service');
-
-  return (
-    <form onSubmit={form.handleSubmit(onSubmit)}>
-      <Stack mt="sm">
-        <Text>{isEditing ? 'Edit Webhook' : 'Create Webhook'}</Text>
-        <Radio.Group
-          label="Service Type"
-          required
-          value={service}
-          onChange={value => {
-            form.setValue('service', value);
-          }}
-        >
-          <Group mt="xs">
-            <Radio
-              value={WebhookService.Slack}
-              label="Slack"
-              disabled={isEditing}
-            />
-            <Radio
-              value={WebhookService.Generic}
-              label="Generic"
-              disabled={isEditing}
-            />
-          </Group>
-        </Radio.Group>
-        <TextInput
-          label="Webhook Name"
-          placeholder="Post to #dev-alerts"
-          required
-          error={form.formState.errors.name?.message}
-          {...form.register('name', { required: true })}
-        />
-        <TextInput
-          label="Webhook URL"
-          placeholder="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
-          type="url"
-          required
-          error={form.formState.errors.url?.message}
-          {...form.register('url', {
-            required: true,
-            validate: (value, formValues) =>
-              formValues.service === WebhookService.Slack
-                ? isValidSlackUrl(value) ||
-                  'URL must be valid and have a slack.com domain'
-                : isValidUrl(value) || 'URL must be valid',
-          })}
-        />
-        <TextInput
-          label="Webhook Description (optional)"
-          placeholder="To be used for dev alerts"
-          error={form.formState.errors.description?.message}
-          {...form.register('description')}
-        />
-        {service === WebhookService.Generic && [
-          <label className=".mantine-TextInput-label" key="1">
-            Webhook Headers (optional)
-          </label>,
-          <div className="mb-2" key="2">
-            <Controller
-              name="headers"
-              control={form.control}
-              render={({ field }) => (
-                <CodeMirror
-                  height="100px"
-                  extensions={[
-                    json(),
-                    linter(jsonLinterWithEmptyCheck()),
-                    placeholder(
-                      `{\n\t"Authorization": "Bearer token",\n\t"X-Custom-Header": "value"\n}`,
-                    ),
-                  ]}
-                  theme="dark"
-                  value={field.value}
-                  onChange={value => field.onChange(value)}
-                />
-              )}
-            />
-          </div>,
-          <label className=".mantine-TextInput-label" key="3">
-            Webhook Body (optional)
-          </label>,
-          <div className="mb-2" key="4">
-            <Controller
-              name="body"
-              control={form.control}
-              render={({ field }) => (
-                <CodeMirror
-                  height="100px"
-                  extensions={[
-                    json(),
-                    linter(jsonLinterWithEmptyCheck()),
-                    placeholder(
-                      `{\n\t"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"\n}`,
-                    ),
-                  ]}
-                  theme="dark"
-                  value={field.value}
-                  onChange={value => field.onChange(value)}
-                />
-              )}
-            />
-          </div>,
-          <Alert
-            icon={<i className="bi bi-info-circle-fill text-slate-400" />}
-            key="5"
-            className="mb-4"
-            color="gray"
-          >
-            <span>
-              Currently the body supports the following message template
-              variables:
-            </span>
-            <br />
-            <span>
-              {DEFAULT_GENERIC_WEBHOOK_BODY.map((body, index) => (
-                <span key={index}>
-                  <code>{body}</code>
-                  {index < DEFAULT_GENERIC_WEBHOOK_BODY.length - 1 && ', '}
-                </span>
-              ))}
-            </span>
-          </Alert>,
-        ]}
-        <Group justify="space-between">
-          <Button
-            variant="outline"
-            type="submit"
-            loading={saveWebhook.isPending || updateWebhook.isPending}
-          >
-            {isEditing ? 'Update Webhook' : 'Add Webhook'}
-          </Button>
-          <Button variant="outline" color="gray" onClick={onClose} type="reset">
-            Cancel
-          </Button>
-        </Group>
-      </Stack>
-    </form>
   );
 }
 
