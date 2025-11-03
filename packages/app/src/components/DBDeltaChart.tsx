@@ -423,7 +423,7 @@ export default function DBDeltaChart({
   }
 
   return (
-    <Box style={{ overflow: 'auto' }}>
+    <Box style={{ overflow: 'auto', height: '100%' }}>
       <Flex justify="flex-end" mx="md" mb="md">
         <Pagination
           size="xs"
