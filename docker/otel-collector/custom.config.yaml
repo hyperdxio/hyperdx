@@ -15,11 +15,45 @@ receivers:
 #     timeout: 10s
 #   memory_limiter:
 #     limit_mib: 2000
+exporters:
+  # fork data to otel-collector-json service (DEV ONLY)
+  otlphttp/json:
+    endpoint: http://otel-collector-json:4318
+    headers:
+      authorization: "super-secure-ingestion-api-key"
+    compression: gzip
 service:
   pipelines:
     metrics/hostmetrics:
-      receivers: [hostmetrics]
-      # attach existing processors
-      processors: [memory_limiter, batch]
-      # attach existing exporters
-      exporters: [clickhouse]
+      exporters:
+        - clickhouse
+      processors:
+        - memory_limiter
+        - batch
+      receivers:
+        - hostmetrics
+    traces/json:
+      exporters:
+        - otlphttp/json
+      processors:
+        - memory_limiter
+        - batch
+      receivers:
+        - otlp/hyperdx
+    # Metrics hasn't used JSON attributes yet
+    # metrics/json:
+    #   exporters:
+    #     - otlphttp/json
+    #   processors:
+    #     - memory_limiter
+    #     - batch
+    #   receivers:
+    #     - otlp/hyperdx
+    logs/json:
+      exporters:
+        - otlphttp/json
+      processors:
+        - memory_limiter
+        - batch
+      receivers:
+        - otlp/hyperdx

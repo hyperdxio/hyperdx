@@ -1,0 +1,11 @@
+service:
+  pipelines:
+    # ignore rrweb events
+    logs/out-rrweb:
+      exporters:
+        - nop
+      processors:
+        - memory_limiter
+        - batch
+      receivers:
+        - routing/logs

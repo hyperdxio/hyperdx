@@ -67,6 +67,7 @@ type CollectorConfig = {
     };
   };
   exporters?: {
+    nop?: null;
     debug?: {
       verbosity: string;
       sampling_initial: number;
@@ -184,6 +185,7 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
       },
     },
     exporters: {
+      nop: null,
       debug: {
         verbosity: 'detailed',
         sampling_initial: 5,
