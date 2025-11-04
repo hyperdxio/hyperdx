@@ -12,6 +12,7 @@ import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  Filter,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -297,17 +298,17 @@ export default function DBDeltaChart({
               {
                 type: 'sql',
                 condition: `${timestampExpr} >= ${xMin}`,
-              } as { type: 'sql'; condition: string },
+              } satisfies Filter,
               {
                 type: 'sql',
                 condition: `${timestampExpr} <= ${xMax}`,
-              } as { type: 'sql'; condition: string },
+              } satisfies Filter,
               ...(config.where
                 ? [
                     {
-                      type: 'sql',
+                      type: config.whereLanguage,
                       condition: config.where,
-                    } as { type: 'sql'; condition: string },
+                    } as Filter,
                   ]
                 : []),
             ],
@@ -325,17 +326,13 @@ export default function DBDeltaChart({
 
     // Build the SQL condition for filtering
     const buildSqlCondition = () => {
-      if (isAggregate) {
-        // For aggregates, we filter by timestamp range (the HAVING clause in CTE handles value filtering)
-        return isOutlier
-          ? `${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax}`
-          : `NOT (${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax})`;
-      } else {
+      const timestampExpression = `${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax}`;
+      let query = timestampExpression;
+      if (!isAggregate) {
         // For non-aggregates, we filter directly on both timestamp and value
-        return isOutlier
-          ? `(${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax} AND ${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax}`
-          : `NOT ((${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax} AND ${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax})`;
+        query += ` AND (${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax}`;
       }
+      return isOutlier ? query : `NOT (${query})`;
     };
 
     const sqlCondition = buildSqlCondition();
@@ -349,21 +346,19 @@ export default function DBDeltaChart({
         name: 'PartIds',
         chartConfig: {
           ...config,
-          select: isOutlier
-            ? 'tuple(_part, _part_offset)'
-            : '_part, _part_offset',
+          select: 'tuple(_part, _part_offset)',
           filters: [
             ...(config.filters ?? []),
             {
               type: 'sql',
               condition: sqlCondition,
-            } as { type: 'sql'; condition: string },
+            } satisfies Filter,
             ...(isAggregate
               ? [
                   {
                     type: 'sql',
                     condition: aggregateTimestampCondition,
-                  } as { type: 'sql'; condition: string },
+                  } satisfies Filter,
                 ]
               : []),
           ],
