@@ -3,7 +3,7 @@ import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   getMetadata,
   TableMetadata,
-} from '@hyperdx/common-utils/dist/metadata';
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   AggregateFunctionSchema,
   ChartConfigWithDateRange,
@@ -188,7 +188,7 @@ router.post(
       const source = await getSource(teamId.toString(), sourceId);
 
       if (source == null) {
-        logger.error({ message: 'invalid source id', sourceId, teamId });
+        logger.error({ sourceId, teamId }, 'invalid source id');
         return res.status(400).json({
           error: 'Invalid source',
         });

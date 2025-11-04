@@ -1,5 +1,78 @@
 # @hyperdx/app
 
+## 2.7.1
+
+### Patch Changes
+
+- 93edb6f8: fix: memoize inputs to fix text input performance
+- d5a38c3e: fix: Fix pattern sample query for sources with multi-column timestamp expressions
+- 7b6ed70c: fix: Support custom Timestamp Columns in Surrounding Context panel
+- 2162a690: feat: Optimize and fix filtering on toStartOfX primary key expressions
+- 15331acb: feat: Auto-select correlated sources on k8s dashboard
+- bb3539dd: improve drawer a11y
+- 24b5477d: feat: allow specifying webhook request headers
+- 3ee93ae9: feat: Show pinned filter values while filters are loading
+- de0b4fc7: Adds "Relative Time" switch to TimePicker component (if relative time is supported by parent). When enabled, searches will work similar to Live Tail but be relative to the option selected.
+- 757196f2: close modals when bluring (dates and search hints)
+- ff86d400: feat: Implement query chunking for charts
+- 21614b94: feat: Include displayed timestamp in default order by
+- 808413f5: Ensure popovers inside the TimePicker component can be accessed
+- ab7af41f: avoid hydration errors when app loads if nav is collapsed
+- Updated dependencies [2162a690]
+- Updated dependencies [8190ee8f]
+  - @hyperdx/common-utils@0.7.2
+
+## 2.7.0
+
+### Minor Changes
+
+- b806116d: feat: Add subpath configuration support
+
+  This change allows the HyperDX frontend to be served from a subpath (e.g.,
+  `/hyperdx`). It includes updated Next.js, NGINX, and Traefik configurations,
+  along with documentation for the new setup.
+
+- 730325a5: Improve SourceSchemaPreview button integration in SourceSelect and DBTableSelect components.
+- dbf16827: feat: add refresh to existing preset dashboards
+- eaff4929: Add toggle filters button, copy field, and per-row copy-to-clipboard for JSON data and modal URLs in RawLogTable
+- 348a4044: migration: migrate to Pino for standardized and faster logging
+
+### Patch Changes
+
+- 13b191c8: feat: Allow selection of log and metric source on K8s dashboard
+- 1ed32e43: fix issue where new lines are not persisted to url params correctly
+- 35c42222: fix: Improve table key parsing
+- b68a4c9b: Tweak getMapKeys to leverage one row limiting implementation
+- 2d27fe27: fix: Support JSON keys in dashboard filters
+- 1cda1485: Fixes scrolling in TimePicker
+- 2dc0079b: feat: Sort dashboard filter options
+- 5efa2ffa: feat: handle k8s metrics semantic convention updates
+- 43e32aaf: fix: handle metrics semantic convention upgrade (feature gate)
+- bd940f30: style: Improve dashboard filter modal UX
+- 3332d5ea: Add ability to customize event deltas heat map y, count, and grouping attributes
+- 6262ced8: fix: Fix crash when navigating away from chart explorer search page
+- ec2ea566: Improve Support for Dynamic and JSON(<parameters>) Types
+- 65872831: fix: Preserve original select from time chart event selection
+- b46ae2f2: fix: Fix sidebar when selecting JSON property
+- 62eddcf2: fix: Fix infinite querying on non-windowed searches
+- 065cabdb: fix: Update "Copy Object" in line viewer to work with nested objects and arrays
+- 05ca6ceb: Attempt to make claude code reviews less chirpy
+- daffcf35: feat: Add percentages to filter values
+- 5210bb86: refactor: clean up table connections
+- 0cf179fa: Fixes typo in type definition
+- b3448041: Add Sorting Feature to all search tables
+- Updated dependencies [35c42222]
+- Updated dependencies [b68a4c9b]
+- Updated dependencies [5efa2ffa]
+- Updated dependencies [43e32aaf]
+- Updated dependencies [3c8f3b54]
+- Updated dependencies [65872831]
+- Updated dependencies [b46ae2f2]
+- Updated dependencies [2f49f9be]
+- Updated dependencies [daffcf35]
+- Updated dependencies [5210bb86]
+  - @hyperdx/common-utils@0.7.1
+
 ## 2.6.0
 
 ### Minor Changes

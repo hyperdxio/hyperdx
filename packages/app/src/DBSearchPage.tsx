@@ -12,6 +12,7 @@ import Link from 'next/link';
 import router from 'next/router';
 import {
   parseAsBoolean,
+  parseAsInteger,
   parseAsJson,
   parseAsString,
   parseAsStringEnum,
@@ -22,17 +23,17 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  isBrowser,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  isBrowser,
-  splitAndTrimWithBracket,
-} from '@hyperdx/common-utils/dist/utils';
 import {
   ActionIcon,
   Box,
@@ -55,13 +56,11 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { useIsFetching } from '@tanstack/react-query';
+import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
-import DBDeltaChart from '@/components/DBDeltaChart';
-import DBHeatmapChart from '@/components/DBHeatmapChart';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -88,18 +87,26 @@ import {
 import { useSearchPageFilterState } from '@/searchFilters';
 import SearchInputV2 from '@/SearchInputV2';
 import {
-  getDurationMsExpression,
   getFirstTimestampValueExpression,
   useSource,
   useSources,
 } from '@/source';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import {
+  parseRelativeTimeQuery,
+  parseTimeQuery,
+  useNewTimeQuery,
+} from '@/timeQuery';
 import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
+import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
+import {
+  getRelativeTimeOptionLabel,
+  LIVE_TAIL_DURATION_MS,
+} from './components/TimePicker/utils';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import {
@@ -418,7 +425,7 @@ function useLiveUpdate({
   onTimeRangeSelect: (
     start: Date,
     end: Date,
-    displayedTimeInputValue?: string | undefined,
+    displayedTimeInputValue?: string | null,
   ) => void;
   pause: boolean;
 }) {
@@ -427,7 +434,7 @@ function useLiveUpdate({
   const [refreshOnVisible, setRefreshOnVisible] = useState(false);
 
   const refresh = useCallback(() => {
-    onTimeRangeSelect(new Date(Date.now() - interval), new Date(), 'Live Tail');
+    onTimeRangeSelect(new Date(Date.now() - interval), new Date(), null);
   }, [onTimeRangeSelect, interval]);
 
   // When the user comes back to the app after switching tabs, we immediately refresh the list.
@@ -533,14 +540,26 @@ function useSearchedConfigToChartConfig({
 
 function optimizeDefaultOrderBy(
   timestampExpr: string,
+  displayedTimestampExpr: string | undefined,
   sortingKey: string | undefined,
 ) {
   const defaultModifier = 'DESC';
-  const fallbackOrderByItems = [
-    getFirstTimestampValueExpression(timestampExpr ?? ''),
-    defaultModifier,
-  ];
-  const fallbackOrderBy = fallbackOrderByItems.join(' ');
+  const firstTimestampValueExpression =
+    getFirstTimestampValueExpression(timestampExpr ?? '') ?? '';
+  const defaultOrderByItems = [firstTimestampValueExpression];
+  const trimmedDisplayedTimestampExpr = displayedTimestampExpr?.trim();
+
+  if (
+    trimmedDisplayedTimestampExpr &&
+    trimmedDisplayedTimestampExpr !== firstTimestampValueExpression
+  ) {
+    defaultOrderByItems.push(trimmedDisplayedTimestampExpr);
+  }
+
+  const fallbackOrderBy =
+    defaultOrderByItems.length > 1
+      ? `(${defaultOrderByItems.join(', ')}) ${defaultModifier}`
+      : `${defaultOrderByItems[0]} ${defaultModifier}`;
 
   if (!sortingKey) return fallbackOrderBy;
 
@@ -548,13 +567,17 @@ function optimizeDefaultOrderBy(
   const sortKeys = splitAndTrimWithBracket(sortingKey);
   for (let i = 0; i < sortKeys.length; i++) {
     const sortKey = sortKeys[i];
-    if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
+    if (
+      sortKey.includes('toStartOf') &&
+      sortKey.includes(firstTimestampValueExpression)
+    ) {
       orderByArr.push(sortKey);
     } else if (
-      sortKey === timestampExpr ||
+      sortKey === firstTimestampValueExpression ||
       (sortKey.startsWith('toUnixTimestamp') &&
-        sortKey.includes(timestampExpr)) ||
-      (sortKey.startsWith('toDateTime') && sortKey.includes(timestampExpr))
+        sortKey.includes(firstTimestampValueExpression)) ||
+      (sortKey.startsWith('toDateTime') &&
+        sortKey.includes(firstTimestampValueExpression))
     ) {
       if (orderByArr.length === 0) {
         // fallback if the first sort key is the timestamp sort key
@@ -563,6 +586,8 @@ function optimizeDefaultOrderBy(
         orderByArr.push(sortKey);
         break;
       }
+    } else if (sortKey === trimmedDisplayedTimestampExpr) {
+      orderByArr.push(sortKey);
     }
   }
 
@@ -571,7 +596,16 @@ function optimizeDefaultOrderBy(
     return fallbackOrderBy;
   }
 
-  return `(${orderByArr.join(', ')}) ${defaultModifier}`;
+  if (
+    trimmedDisplayedTimestampExpr &&
+    !orderByArr.includes(trimmedDisplayedTimestampExpr)
+  ) {
+    orderByArr.push(trimmedDisplayedTimestampExpr);
+  }
+
+  return orderByArr.length > 1
+    ? `(${orderByArr.join(', ')}) ${defaultModifier}`
+    : `${orderByArr[0]} ${defaultModifier}`;
 }
 
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
@@ -583,6 +617,7 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
     () =>
       optimizeDefaultOrderBy(
         source?.timestampValueExpression ?? '',
+        source?.displayedTimestampValueExpression,
         tableMetadata?.sorting_key,
       ),
     [source, tableMetadata],
@@ -637,8 +672,10 @@ function DBSearchPage() {
     parseAsString,
   );
 
-  const [_isLive, setIsLive] = useQueryState('isLive', parseAsBoolean);
-  const isLive = _isLive ?? true;
+  const [isLive, setIsLive] = useQueryState(
+    'isLive',
+    parseAsBoolean.withDefault(true),
+  );
 
   useEffect(() => {
     if (analysisMode === 'delta' || analysisMode === 'pattern') {
@@ -700,7 +737,7 @@ function DBSearchPage() {
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Live Tail');
 
-  const { from, to, isReady, searchedTimeRange, onSearch, onTimeRangeSelect } =
+  const { isReady, searchedTimeRange, onSearch, onTimeRangeSelect } =
     useNewTimeQuery({
       initialDisplayValue: 'Live Tail',
       initialTimeRange: defaultTimeRange,
@@ -708,18 +745,6 @@ function DBSearchPage() {
       setDisplayedTimeInputValue,
       updateInput: !isLive,
     });
-
-  // If live tail is null, but time range exists, don't live tail
-  // If live tail is null, and time range is null, let's live tail
-  useEffect(() => {
-    if (_isLive == null && isReady) {
-      if (from == null && to == null) {
-        setIsLive(true);
-      } else {
-        setIsLive(false);
-      }
-    }
-  }, [_isLive, setIsLive, from, to, isReady]);
 
   // Sync url state back with form state
   // (ex. for history navigation)
@@ -1012,9 +1037,29 @@ function DBSearchPage() {
   // State for collapsing all expanded rows when resuming live tail
   const [collapseAllRows, setCollapseAllRows] = useState(false);
 
+  const [interval, setInterval] = useQueryState(
+    'liveInterval',
+    parseAsInteger.withDefault(LIVE_TAIL_DURATION_MS),
+  );
+
+  const updateRelativeTimeInputValue = useCallback((interval: number) => {
+    const label = getRelativeTimeOptionLabel(interval);
+    if (label) {
+      setDisplayedTimeInputValue(label);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isReady && isLive) {
+      updateRelativeTimeInputValue(interval);
+    }
+    // we only want this to run on initial mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updateRelativeTimeInputValue, isReady]);
+
   useLiveUpdate({
     isLive,
-    interval: 1000 * 60 * 15,
+    interval,
     refreshFrequency: 4000,
     onTimeRangeSelect,
     pause: isAnyQueryFetching || !queryReady || !isTabVisible,
@@ -1041,13 +1086,12 @@ function DBSearchPage() {
 
   const handleResumeLiveTail = useCallback(() => {
     setIsLive(true);
-    setDisplayedTimeInputValue('Live Tail');
+    updateRelativeTimeInputValue(interval);
     // Trigger collapsing all expanded rows
     setCollapseAllRows(true);
     // Reset the collapse trigger after a short delay
     setTimeout(() => setCollapseAllRows(false), 100);
-    onSearch('Live Tail');
-  }, [onSearch, setIsLive]);
+  }, [interval, updateRelativeTimeInputValue, setIsLive]);
 
   const dbSqlRowTableConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -1124,7 +1168,10 @@ function DBSearchPage() {
     }
   }, [isReady, queryReady, isChartConfigLoading, onSearch]);
 
-  const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
+  const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig, {
+    placeholderData: keepPreviousData,
+    queryKey: ['aliasMap', dbSqlRowTableConfig, 'withPlaceholder'],
+  });
 
   const aliasWith = useMemo(
     () =>
@@ -1168,9 +1215,17 @@ function DBSearchPage() {
       dateRange: searchedTimeRange,
       displayType: DisplayType.StackedBar,
       with: aliasWith,
+      // Preserve the original table select string for "View Events" links
+      eventTableSelect: searchedConfig.select,
       ...variableConfig,
     };
-  }, [chartConfig, searchedSource, aliasWith, searchedTimeRange]);
+  }, [
+    chartConfig,
+    searchedSource,
+    aliasWith,
+    searchedTimeRange,
+    searchedConfig.select,
+  ]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
@@ -1195,9 +1250,12 @@ function DBSearchPage() {
   );
   // Parse the orderBy string into a SortingState. We need the string
   // version in other places so we keep this parser separate.
-  const orderByConfig = parseAsSortingStateString.parse(
-    searchedConfig.orderBy ?? '',
-  );
+  const initialSortBy = useMemo(() => {
+    const orderBy = parseAsSortingStateString.parse(
+      searchedConfig.orderBy ?? '',
+    );
+    return orderBy ? [orderBy] : [];
+  }, [searchedConfig.orderBy]);
 
   const handleTimeRangeSelect = useCallback(
     (d1: Date, d2: Date) => {
@@ -1248,7 +1306,11 @@ function DBSearchPage() {
         />
       )}
       <OnboardingModal />
-      <form data-testid="search-form" onSubmit={onFormSubmit}>
+      <form
+        data-testid="search-form"
+        onSubmit={onFormSubmit}
+        className={searchPageStyles.searchForm}
+      >
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
           <Group gap="4px" wrap="nowrap">
@@ -1488,14 +1550,21 @@ function DBSearchPage() {
             inputValue={displayedTimeInputValue}
             setInputValue={setDisplayedTimeInputValue}
             onSearch={range => {
-              if (range === 'Live Tail') {
-                setIsLive(true);
-              } else {
-                setIsLive(false);
-              }
+              setIsLive(false);
               onSearch(range);
             }}
+            onRelativeSearch={rangeMs => {
+              const _range = parseRelativeTimeQuery(rangeMs);
+              setIsLive(true);
+              setInterval(rangeMs);
+              onTimeRangeSelect(_range[0], _range[1], null);
+            }}
             showLive={analysisMode === 'results'}
+            isLiveMode={isLive}
+            // Default to relative time mode if the user has made changes to interval and reloaded.
+            defaultRelativeTimeMode={
+              isLive && interval !== LIVE_TAIL_DURATION_MS
+            }
           />
           <Button
             data-testid="search-submit-button"
@@ -1519,7 +1588,6 @@ function DBSearchPage() {
       )}
       <Flex
         direction="column"
-        mt="sm"
         style={{ overflow: 'hidden', height: '100%' }}
         className="bg-hdx-dark"
       >
@@ -1557,12 +1625,8 @@ function DBSearchPage() {
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
                   <Flex direction="column" w="100%" gap="0px">
-                    <Box style={{ height: 20, minHeight: 20 }} p="xs" pb="md">
-                      <Group
-                        justify="space-between"
-                        mb={4}
-                        style={{ width: '100%' }}
-                      >
+                    <Box className={searchPageStyles.searchStatsContainer}>
+                      <Group justify="space-between" style={{ width: '100%' }}>
                         <SearchTotalCountChart
                           config={histogramTimeChartConfig}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
@@ -1577,12 +1641,7 @@ function DBSearchPage() {
                       </Group>
                     </Box>
                     {!hasQueryError && (
-                      <Box
-                        style={{ height: 120, minHeight: 120 }}
-                        p="xs"
-                        pb="md"
-                        mb="md"
-                      >
+                      <Box className={searchPageStyles.timeChartContainer}>
                         <DBTimeChart
                           sourceId={searchedConfig.source ?? undefined}
                           showLegend={false}
@@ -1613,89 +1672,55 @@ function DBSearchPage() {
                   </Flex>
                 )}
               {analysisMode === 'delta' && searchedSource != null && (
-                <Flex direction="column" w="100%">
-                  <div
-                    style={{ minHeight: 210, maxHeight: 210, width: '100%' }}
-                  >
-                    <DBHeatmapChart
-                      config={{
-                        ...chartConfig,
-                        select: [
-                          {
-                            aggFn: 'heatmap',
-                            valueExpression:
-                              getDurationMsExpression(searchedSource),
-                          },
-                        ],
-                        dateRange: searchedTimeRange,
-                        displayType: DisplayType.Heatmap,
-                        granularity: 'auto',
-                        with: aliasWith,
-                      }}
-                      enabled={isReady}
-                      onFilter={(xMin, xMax, yMin, yMax) => {
-                        setOutlierSqlCondition(
-                          [
-                            `${searchedSource.durationExpression} >= ${yMin} * 1e${(searchedSource.durationPrecision ?? 9) - 3}`,
-                            `${searchedSource.durationExpression} <= ${yMax} * 1e${(searchedSource.durationPrecision ?? 9) - 3}`,
-                            `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} >= ${xMin}`,
-                            `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} <= ${xMax}`,
-                          ].join(' AND '),
-                        );
-                      }}
-                    />
-                  </div>
-                  {outlierSqlCondition ? (
-                    <DBDeltaChart
-                      config={{
-                        ...chartConfig,
-                        dateRange: searchedTimeRange,
-                      }}
-                      outlierSqlCondition={outlierSqlCondition ?? ''}
-                    />
-                  ) : (
-                    <Paper shadow="xs" p="xl" h="100%">
-                      <Center mih={100} h="100%">
-                        <Text size="sm" c="gray.4">
-                          Please highlight an outlier range in the heatmap to
-                          view the delta chart.
-                        </Text>
-                      </Center>
-                    </Paper>
-                  )}
-                </Flex>
+                <DBSearchHeatmapChart
+                  chartConfig={{
+                    ...chartConfig,
+                    dateRange: searchedTimeRange,
+                    with: aliasWith,
+                  }}
+                  isReady={isReady}
+                  source={searchedSource}
+                />
               )}
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {analysisMode === 'results' &&
                   chartConfig &&
                   histogramTimeChartConfig && (
                     <>
-                      <Box style={{ height: 20, minHeight: 20 }} p="xs" pb="md">
+                      <Box className={searchPageStyles.searchStatsContainer}>
                         <Group
                           justify="space-between"
-                          mb={4}
                           style={{ width: '100%' }}
                         >
                           <SearchTotalCountChart
                             config={histogramTimeChartConfig}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                           />
-                          <SearchNumRows
-                            config={{
-                              ...chartConfig,
-                              dateRange: searchedTimeRange,
-                            }}
-                            enabled={isReady}
-                          />
+                          <Group gap="sm" align="center">
+                            {shouldShowLiveModeHint &&
+                              analysisMode === 'results' &&
+                              denoiseResults != true && (
+                                <Button
+                                  size="compact-xs"
+                                  variant="outline"
+                                  onClick={handleResumeLiveTail}
+                                >
+                                  <i className="bi text-success bi-lightning-charge-fill me-2" />
+                                  Resume Live Tail
+                                </Button>
+                              )}
+                            <SearchNumRows
+                              config={{
+                                ...chartConfig,
+                                dateRange: searchedTimeRange,
+                              }}
+                              enabled={isReady}
+                            />
+                          </Group>
                         </Group>
                       </Box>
                       {!hasQueryError && (
-                        <Box
-                          style={{ height: 120, minHeight: 120 }}
-                          p="xs"
-                          pb="md"
-                          mb="md"
-                        >
+                        <Box className={searchPageStyles.timeChartContainer}>
                           <DBTimeChart
                             sourceId={searchedConfig.source ?? undefined}
                             showLegend={false}
@@ -1829,31 +1854,6 @@ function DBSearchPage() {
                   </>
                 ) : (
                   <>
-                    {shouldShowLiveModeHint &&
-                      analysisMode === 'results' &&
-                      denoiseResults != true && (
-                        <div
-                          className="d-flex justify-content-center"
-                          style={{ height: 0 }}
-                        >
-                          <div
-                            style={{
-                              position: 'relative',
-                              top: -20,
-                              zIndex: 2,
-                            }}
-                          >
-                            <Button
-                              size="compact-xs"
-                              variant="outline"
-                              onClick={handleResumeLiveTail}
-                            >
-                              <i className="bi text-success bi-lightning-charge-fill me-2" />
-                              Resume Live Tail
-                            </Button>
-                          </div>
-                        </div>
-                      )}
                     {chartConfig &&
                       searchedConfig.source &&
                       dbSqlRowTableConfig &&
@@ -1880,7 +1880,7 @@ function DBSearchPage() {
                           denoiseResults={denoiseResults}
                           collapseAllRows={collapseAllRows}
                           onSortingChange={onSortingChange}
-                          initialSortBy={orderByConfig ? [orderByConfig] : []}
+                          initialSortBy={initialSortBy}
                         />
                       )}
                   </>

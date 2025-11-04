@@ -4,7 +4,7 @@ import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import ReactDOM from 'react-dom';
 import { useForm } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   DateRange,

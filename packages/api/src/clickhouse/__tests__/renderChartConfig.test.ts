@@ -2,8 +2,8 @@
 
 import { ChSql } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { getMetadata } from '@hyperdx/common-utils/dist/metadata';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   AggregateFunctionSchema,
   DerivedColumn,
@@ -1378,6 +1378,147 @@ describe('renderChartConfig', () => {
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
+    });
+  });
+
+  describe('K8s Semantic Convention Migrations with metricNameSql', () => {
+    beforeEach(async () => {
+      // Insert gauge metrics with old semantic convention (ScopeVersion < 0.125.0)
+      const oldVersionGaugePoints = [
+        { value: 45, timestamp: now, ScopeVersion: '0.124.0' },
+        { value: 50, timestamp: now + ms('1m'), ScopeVersion: '0.124.0' },
+        { value: 55, timestamp: now + ms('2m'), ScopeVersion: '0.124.0' },
+      ].map(point => ({
+        MetricName: 'k8s.pod.cpu.utilization',
+        ServiceName: 'k8s-monitor',
+        ResourceAttributes: {
+          'k8s.pod.name': 'test-pod',
+          'k8s.namespace.name': 'default',
+        },
+        Value: point.value,
+        TimeUnix: new Date(point.timestamp),
+        ScopeVersion: point.ScopeVersion,
+      }));
+
+      // Insert gauge metrics with new semantic convention (ScopeVersion >= 0.125.0)
+      const newVersionGaugePoints = [
+        { value: 60, timestamp: now + ms('3m'), ScopeVersion: '0.125.0' },
+        { value: 65, timestamp: now + ms('4m'), ScopeVersion: '0.125.0' },
+        { value: 70, timestamp: now + ms('5m'), ScopeVersion: '0.126.0' },
+      ].map(point => ({
+        MetricName: 'k8s.pod.cpu.usage',
+        ServiceName: 'k8s-monitor',
+        ResourceAttributes: {
+          'k8s.pod.name': 'test-pod',
+          'k8s.namespace.name': 'default',
+        },
+        Value: point.value,
+        TimeUnix: new Date(point.timestamp),
+        ScopeVersion: point.ScopeVersion,
+      }));
+
+      await bulkInsertMetricsGauge([
+        ...oldVersionGaugePoints,
+        ...newVersionGaugePoints,
+      ]);
+    });
+
+    it('should query k8s.pod.cpu.utilization gauge metric using metricNameSql to handle both old and new conventions', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'k8s.pod.cpu.utilization',
+              metricNameSql:
+                "MetricName IN ('k8s.pod.cpu.utilization', 'k8s.pod.cpu.usage')",
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+
+      const res = await queryData(query);
+      // Should return data from both old (k8s.pod.cpu.utilization) and new (k8s.pod.cpu.usage) metric names
+      expect(res.length).toBeGreaterThan(0);
+      expect(res).toMatchSnapshot();
+
+      // Verify the SQL contains the IN-based metric name condition
+      expect(query.sql).toContain('k8s.pod.cpu.usage');
+      expect(query.sql).toContain('k8s.pod.cpu.utilization');
+      expect(query.sql).toMatch(/MetricName IN /);
+    });
+
+    it('should handle gauge metric with metricNameSql and groupBy', async () => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'k8s.pod.cpu.utilization',
+              metricNameSql:
+                "MetricName IN ('k8s.pod.cpu.utilization', 'k8s.pod.cpu.usage')",
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '1 minute',
+          groupBy: `ResourceAttributes['k8s.pod.name']`,
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+
+      const res = await queryData(query);
+      expect(res.length).toBeGreaterThan(0);
+      expect(res).toMatchSnapshot();
+    });
+
+    it('should handle metrics without metricNameSql (backward compatibility)', async () => {
+      // Test querying the old metric name directly without migration SQL
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'avg',
+              metricName: 'k8s.pod.cpu.utilization',
+              // No metricNameSql provided - should query old name only
+              metricType: MetricsDataType.Gauge,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('10m'))],
+          granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+      );
+
+      const res = await queryData(query);
+      // Should only return data from old metric name (k8s.pod.cpu.utilization)
+      expect(res).toMatchSnapshot();
+
+      // Verify the SQL uses simple string comparison (not IN-based)
+      expect(query.sql).toContain("MetricName = 'k8s.pod.cpu.utilization'");
+      expect(query.sql).not.toMatch(/MetricName IN /);
     });
   });
 });

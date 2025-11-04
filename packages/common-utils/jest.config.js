@@ -5,6 +5,7 @@ module.exports = {
   verbose: true,
   rootDir: './src',
   testMatch: ['**/__tests__/*.test.ts?(x)'],
+  testPathIgnorePatterns: ['.*\\.int\\.test\\.ts$'],
   testTimeout: 30000,
   moduleNameMapper: {
     '@/(.*)$': '<rootDir>/$1',

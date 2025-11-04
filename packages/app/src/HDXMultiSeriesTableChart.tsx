@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { Flex, Text, UnstyledButton } from '@mantine/core';
+import { IconGripVertical } from '@tabler/icons-react';
 import {
   flexRender,
   getCoreRowModel,

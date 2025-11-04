@@ -125,25 +125,33 @@ yarn dev
 - `yarn dev:int`: Run integration tests in watch mode
 - `yarn dev:unit`: Run unit tests in watch mode (per package)
 
-### Lint Fix Commands
+### ⚠️ BEFORE COMMITTING - Run Linting Commands
 
-To automatically fix linting issues:
+**Claude AI agents must run these commands before any commit:**
 
 ```bash
-# Fix linting issues in specific packages
-cd packages/api && yarn lint:fix
-cd packages/app && yarn lint:fix
+# 1. Fix linting issues in modified packages
+cd packages/app && yarn run lint:fix
+cd packages/api && yarn run lint:fix
 cd packages/common-utils && yarn lint:fix
 
-# Or use NX to run lint:fix across packages
-npx nx run-many -t lint:fix
+# 2. Check for any remaining linting issues from the main directory
+yarn run lint
 ```
 
-**Auto-fix on commit**: The project uses `lint-staged` with Husky to
-automatically fix linting issues on commit:
+**If linting issues remain after running lint:fix**: Some linting errors cannot
+be automatically fixed and require manual intervention. If `yarn run lint` still
+shows errors:
 
-- Prettier formatting for all files
-- ESLint auto-fix for TypeScript files
+1. Read the linting error messages carefully to understand the issue
+2. Manually fix the reported issues in the affected files
+3. Re-run `yarn run lint` to verify all issues are resolved
+4. Only commit once all linting errors are fixed
+
+**Why this is necessary**: While the project has pre-commit hooks (`lint-staged`
+with Husky) that automatically fix linting issues on commit, Claude AI agents do
+not trigger these hooks. Therefore, you must manually run the lint:fix commands
+before committing.
 
 ### Environment Configuration
 

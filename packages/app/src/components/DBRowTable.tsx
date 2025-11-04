@@ -29,12 +29,12 @@ import {
   isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   SelectList,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
   Box,
   Button,
@@ -47,9 +47,11 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import {
-  IconChevronDown,
-  IconChevronUp,
-  IconDotsVertical,
+  IconCode,
+  IconDownload,
+  IconRotateClockwise,
+  IconSettings,
+  IconTextWrap,
 } from '@tabler/icons-react';
 import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
@@ -84,9 +86,10 @@ import {
   logLevelColor,
   useLocalStorage,
   usePrevious,
-  useWindowSize,
 } from '@/utils';
 
+import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
+import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import TableHeader from './DBTable/TableHeader';
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
@@ -156,7 +159,7 @@ function inferLogLevelColumn(rows: Record<string, any>[]) {
   return undefined;
 }
 
-const PatternTrendChartTooltip = (props: any) => {
+const PatternTrendChartTooltip = () => {
   return null;
 };
 
@@ -208,7 +211,7 @@ export const PatternTrendChart = ({
               // tickFormatter={tick =>
               //   format(new Date(tick * 1000), 'MMM d HH:mm')
               // }
-              tickFormatter={tick => ''}
+              tickFormatter={() => ''}
               minTickGap={50}
               tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
             />
@@ -317,6 +320,7 @@ export const RawLogTable = memo(
     onSortingChange,
     sortOrder,
     showExpandButton = true,
+    getRowWhere,
   }: {
     wrapLines?: boolean;
     displayedColumns: string[];
@@ -356,6 +360,7 @@ export const RawLogTable = memo(
     enableSorting?: boolean;
     sortOrder?: SortingState;
     onSortingChange?: (v: SortingState | null) => void;
+    getRowWhere?: (row: Record<string, any>) => string;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -379,14 +384,12 @@ export const RawLogTable = memo(
     }, [rows, dedupRows, generateRowMatcher]);
 
     const _onRowExpandClick = useCallback(
-      ({ __hyperdx_id, ...row }: Record<string, any>) => {
+      (row: Record<string, any>) => {
         onRowDetailsClick?.(row);
       },
       [onRowDetailsClick],
     );
 
-    const { width } = useWindowSize();
-    const isSmallScreen = (width ?? 1000) < 900;
     const {
       userPreferences: { isUTC },
     } = useUserPreferences();
@@ -749,32 +752,35 @@ export const RawLogTable = memo(
                       header={header}
                       isLast={isLast}
                       lastItemButtons={
-                        <>
+                        <Group gap={8} mr={8}>
                           {tableId &&
                             Object.keys(columnSizeStorage).length > 0 && (
-                              <div
-                                className="fs-8 text-muted-hover disabled"
-                                role="button"
+                              <UnstyledButton
                                 onClick={() => setColumnSizeStorage({})}
                                 title="Reset Column Widths"
                               >
-                                <i className="bi bi-arrow-clockwise" />
-                              </div>
+                                <MantineTooltip label="Reset Column Widths">
+                                  <IconRotateClockwise size={16} />
+                                </MantineTooltip>
+                              </UnstyledButton>
                             )}
                           {config && (
                             <UnstyledButton
                               onClick={() => handleSqlModalOpen(true)}
+                              title="Show generated SQL"
+                              tabIndex={0}
                             >
                               <MantineTooltip label="Show generated SQL">
-                                <i className="bi bi-code-square" />
+                                <IconCode size={16} />
                               </MantineTooltip>
                             </UnstyledButton>
                           )}
                           <UnstyledButton
                             onClick={() => setWrapLinesEnabled(prev => !prev)}
+                            title="Wrap lines"
                           >
                             <MantineTooltip label="Wrap lines">
-                              <i className="bi bi-text-wrap" />
+                              <IconTextWrap size={16} />
                             </MantineTooltip>
                           </UnstyledButton>
 
@@ -786,19 +792,20 @@ export const RawLogTable = memo(
                             <MantineTooltip
                               label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
                             >
-                              <i className="bi bi-download" />
+                              <IconDownload size={16} />
                             </MantineTooltip>
                           </CsvExportButton>
                           {onSettingsClick != null && (
-                            <div
-                              className="fs-8 text-muted-hover"
-                              role="button"
+                            <UnstyledButton
                               onClick={() => onSettingsClick()}
+                              title="Settings"
                             >
-                              <i className="bi bi-gear-fill" />
-                            </div>
+                              <MantineTooltip label="Settings">
+                                <IconSettings size={16} />
+                              </MantineTooltip>
+                            </UnstyledButton>
                           )}
-                        </>
+                        </Group>
                       }
                     />
                   );
@@ -841,41 +848,37 @@ export const RawLogTable = memo(
                       </td>
                     )}
 
-                    {/* Content columns grouped as one button */}
+                    {/* Content columns grouped back to preserve row hover/click */}
                     <td
                       className="align-top overflow-hidden p-0"
                       colSpan={columns.length - (showExpandButton ? 1 : 0)}
                     >
                       <button
                         type="button"
-                        className={styles.rowContentButton}
+                        className={cx(styles.rowContentButton, {
+                          [styles.isWrapped]: wrapLinesEnabled,
+                          [styles.isTruncated]: !wrapLinesEnabled,
+                        })}
                         onClick={e => {
-                          e.stopPropagation();
                           _onRowExpandClick(row.original);
                         }}
                         aria-label="View details for log entry"
                       >
                         {row
                           .getVisibleCells()
-                          .slice(showExpandButton ? 1 : 0) // Skip expand column
-                          .map((cell, cellIndex) => {
+                          .slice(showExpandButton ? 1 : 0) // Skip expand
+                          .map(cell => {
                             const columnCustomClassName = (
                               cell.column.columnDef.meta as any
                             )?.className;
                             const columnSize = cell.column.getSize();
-                            const totalContentCells =
-                              row.getVisibleCells().length -
-                              (showExpandButton ? 1 : 0);
+                            const cellValue = cell.getValue<any>();
 
                             return (
                               <div
                                 key={cell.id}
                                 className={cx(
-                                  'flex-shrink-0 overflow-hidden',
-                                  {
-                                    'text-break': wrapLinesEnabled,
-                                    'text-truncate': !wrapLinesEnabled,
-                                  },
+                                  'flex-shrink-0 overflow-hidden position-relative',
                                   columnCustomClassName,
                                 )}
                                 style={{
@@ -889,13 +892,37 @@ export const RawLogTable = memo(
                                       : 'none',
                                 }}
                               >
-                                {flexRender(
-                                  cell.column.columnDef.cell,
-                                  cell.getContext(),
-                                )}
+                                <div className={styles.fieldTextContainer}>
+                                  <DBRowTableFieldWithPopover
+                                    cellValue={cellValue}
+                                    wrapLinesEnabled={wrapLinesEnabled}
+                                    tableContainerRef={tableContainerRef}
+                                    columnName={
+                                      (cell.column.columnDef.meta as any)
+                                        ?.column
+                                    }
+                                    isChart={
+                                      (cell.column.columnDef.meta as any)
+                                        ?.column === '__hdx_pattern_trend'
+                                    }
+                                  >
+                                    {flexRender(
+                                      cell.column.columnDef.cell,
+                                      cell.getContext(),
+                                    )}
+                                  </DBRowTableFieldWithPopover>
+                                </div>
                               </div>
                             );
                           })}
+                        {/* Row-level copy buttons */}
+                        {getRowWhere && (
+                          <DBRowTableRowButtons
+                            row={row.original}
+                            getRowWhere={getRowWhere}
+                            sourceId={source?.id}
+                          />
+                        )}
                       </button>
                     </td>
                   </tr>
@@ -1402,6 +1429,7 @@ function DBSqlRowTableComponent({
         enableSorting={true}
         onSortingChange={_onSortingChange}
         sortOrder={orderByArray}
+        getRowWhere={getRowWhere}
       />
     </>
   );

@@ -13,6 +13,7 @@ import {
   useConfigWithPrimaryAndPartitionKey,
 } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { getFirstTimestampValueExpression } from '@/source';
 
 // We don't want to load pyodide over and over again, use react query to cache the async instance
 function usePyodide(options: { enabled: boolean }) {
@@ -131,7 +132,7 @@ function usePatterns({
     // TODO: User-configurable pattern columns and non-pattern/group by columns
     select: [
       `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
-      `${config.timestampValueExpression} as ${TIMESTAMP_COLUMN_ALIAS}`,
+      `${getFirstTimestampValueExpression(config.timestampValueExpression)} as ${TIMESTAMP_COLUMN_ALIAS}`,
       ...(severityTextExpression
         ? [`${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`]
         : []),
@@ -141,10 +142,11 @@ function usePatterns({
     limit: { limit: samples },
   });
 
-  const { data: sampleRows } = useQueriedChartConfig(
-    configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
-    { enabled: configWithPrimaryAndPartitionKey != null && enabled },
-  );
+  const { data: sampleRows, isLoading: isSampleLoading } =
+    useQueriedChartConfig(
+      configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
+      { enabled: configWithPrimaryAndPartitionKey != null && enabled },
+    );
 
   const { data: pyodide, isLoading: isLoadingPyodide } = usePyodide({
     enabled,
@@ -191,7 +193,7 @@ function usePatterns({
 
   return {
     ...query,
-    isLoading: query.isLoading || isLoadingPyodide,
+    isLoading: query.isLoading || isSampleLoading || isLoadingPyodide,
     patternQueryConfig: configWithPrimaryAndPartitionKey,
   };
 }

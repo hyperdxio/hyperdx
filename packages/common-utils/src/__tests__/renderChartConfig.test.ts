@@ -1,15 +1,15 @@
-import { chSql, parameterizedQueryToSql } from '@/clickhouse';
-import { Metadata } from '@/metadata';
+import { chSql, ColumnMeta, parameterizedQueryToSql } from '@/clickhouse';
+import { Metadata } from '@/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
   MetricsDataType,
 } from '@/types';
 
-import { renderChartConfig } from '../renderChartConfig';
+import { renderChartConfig, timeFilterExpr } from '../core/renderChartConfig';
 
 describe('renderChartConfig', () => {
-  let mockMetadata: Metadata;
+  let mockMetadata: jest.Mocked<Metadata>;
 
   beforeEach(() => {
     mockMetadata = {
@@ -19,7 +19,10 @@ describe('renderChartConfig', () => {
       ]),
       getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
       getColumn: jest.fn().mockResolvedValue({ type: 'DateTime' }),
-    } as unknown as Metadata;
+      getTableMetadata: jest
+        .fn()
+        .mockResolvedValue({ primary_key: 'timestamp' }),
+    } as unknown as jest.Mocked<Metadata>;
   });
 
   const gaugeConfiguration: ChartConfigWithOptDateRange = {
@@ -408,5 +411,438 @@ describe('renderChartConfig', () => {
         'non-conforming chartConfig object in CTE',
       );
     });
+  });
+
+  describe('k8s semantic convention migrations', () => {
+    it('should generate SQL with metricNameSql for k8s.pod.cpu.utilization gauge metric', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'k8s.pod.cpu.utilization',
+            metricNameSql:
+              "MetricName IN ('k8s.pod.cpu.utilization', 'k8s.pod.cpu.usage')",
+            metricType: MetricsDataType.Gauge,
+          },
+        ],
+        where: '',
+        whereLanguage: 'lucene',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '1 minute',
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      // Verify the SQL contains the IN-based metric name condition
+      expect(actual).toContain('k8s.pod.cpu.utilization');
+      expect(actual).toContain('k8s.pod.cpu.usage');
+      expect(actual).toMatch(/MetricName IN /);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should generate SQL with metricNameSql for k8s.node.cpu.utilization sum metric', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'max',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'k8s.node.cpu.utilization',
+            metricNameSql:
+              "MetricName IN ('k8s.node.cpu.utilization', 'k8s.node.cpu.usage')",
+            metricType: MetricsDataType.Sum,
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '5 minute',
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('k8s.node.cpu.utilization');
+      expect(actual).toContain('k8s.node.cpu.usage');
+      expect(actual).toMatch(/MetricName IN /);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should generate SQL with metricNameSql for container.cpu.utilization histogram metric', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.95,
+            valueExpression: 'Value',
+            metricName: 'container.cpu.utilization',
+            metricNameSql:
+              "MetricName IN ('container.cpu.utilization', 'container.cpu.usage')",
+            metricType: MetricsDataType.Histogram,
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '2 minute',
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('container.cpu.utilization');
+      expect(actual).toContain('container.cpu.usage');
+      expect(actual).toMatch(/MetricName IN /);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should generate SQL with metricNameSql for histogram metric with groupBy', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.99,
+            valueExpression: 'Value',
+            metricName: 'k8s.pod.cpu.utilization',
+            metricNameSql:
+              "MetricName IN ('k8s.pod.cpu.utilization', 'k8s.pod.cpu.usage')",
+            metricType: MetricsDataType.Histogram,
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '1 minute',
+        groupBy: `ResourceAttributes['k8s.pod.name']`,
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('k8s.pod.cpu.utilization');
+      expect(actual).toContain('k8s.pod.cpu.usage');
+      expect(actual).toMatch(/MetricName IN /);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should handle metrics without metricNameSql (backward compatibility)', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
+        },
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'some.regular.metric',
+            // No metricNameSql provided
+            metricType: MetricsDataType.Gauge,
+          },
+        ],
+        where: '',
+        whereLanguage: 'lucene',
+        timestampValueExpression: 'TimeUnix',
+        dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+        granularity: '1 minute',
+        limit: { limit: 10 },
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      // Should use the simple string comparison for regular metrics (not IN-based)
+      expect(actual).toContain("MetricName = 'some.regular.metric'");
+      expect(actual).not.toMatch(/MetricName IN /);
+      expect(actual).toMatchSnapshot();
+    });
+  });
+
+  describe('timeFilterExpr', () => {
+    type TimeFilterExprTestCase = {
+      timestampValueExpression: string;
+      dateRangeStartInclusive?: boolean;
+      dateRangeEndInclusive?: boolean;
+      dateRange: [Date, Date];
+      includedDataInterval?: string;
+      expected: string;
+      description: string;
+      tableName?: string;
+      databaseName?: string;
+      primaryKey?: string;
+    };
+
+    const testCases: TimeFilterExprTestCase[] = [
+      {
+        description: 'with basic timestampValueExpression',
+        timestampValueExpression: 'timestamp',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(timestamp >= fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}) AND timestamp <= fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}))`,
+      },
+      {
+        description: 'with dateRangeEndInclusive=false',
+        timestampValueExpression: 'timestamp',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        dateRangeEndInclusive: false,
+        expected: `(timestamp >= fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}))`,
+      },
+      {
+        description: 'with dateRangeStartInclusive=false',
+        timestampValueExpression: 'timestamp',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        dateRangeStartInclusive: false,
+        expected: `(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}) AND timestamp <= fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}))`,
+      },
+      {
+        description: 'with includedDataInterval',
+        timestampValueExpression: 'timestamp',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        includedDataInterval: '1 WEEK',
+        expected: `(timestamp >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}), INTERVAL 1 WEEK) - INTERVAL 1 WEEK AND timestamp <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}), INTERVAL 1 WEEK) + INTERVAL 1 WEEK)`,
+      },
+      {
+        description: 'with date type timestampValueExpression',
+        timestampValueExpression: 'date',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(date >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()})))`,
+      },
+      {
+        description: 'with multiple timestampValueExpression parts',
+        timestampValueExpression: 'timestamp, date',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(timestamp >= fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}) AND timestamp <= fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}))AND(date >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()})))`,
+      },
+      {
+        description: 'with toStartOfDay() in timestampExpr',
+        timestampValueExpression: 'toStartOfDay(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfDay(timestamp) >= toStartOfDay(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()})) AND toStartOfDay(timestamp) <= toStartOfDay(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()})))`,
+      },
+      {
+        description: 'with toStartOfDay  () in timestampExpr',
+        timestampValueExpression: 'toStartOfDay  (timestamp)',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfDay  (timestamp) >= toStartOfDay(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()})) AND toStartOfDay  (timestamp) <= toStartOfDay(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()})))`,
+      },
+      {
+        description: 'with toStartOfInterval() in timestampExpr',
+        timestampValueExpression:
+          'toStartOfInterval(timestamp, INTERVAL 12  MINUTE)',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfInterval(timestamp, INTERVAL 12  MINUTE) >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}), INTERVAL 12  MINUTE) AND toStartOfInterval(timestamp, INTERVAL 12  MINUTE) <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}), INTERVAL 12  MINUTE))`,
+      },
+      {
+        description:
+          'with toStartOfInterval() with lowercase interval in timestampExpr',
+        timestampValueExpression:
+          'toStartOfInterval(timestamp, interval 1 minute)',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfInterval(timestamp, interval 1 minute) >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}), interval 1 minute) AND toStartOfInterval(timestamp, interval 1 minute) <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}), interval 1 minute))`,
+      },
+      {
+        description: 'with toStartOfInterval() with timezone and offset',
+        timestampValueExpression: `toStartOfInterval(timestamp, INTERVAL 1 MINUTE, toDateTime('2023-01-01 14:35:30'), 'America/New_York')`,
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfInterval(timestamp, INTERVAL 1 MINUTE, toDateTime('2023-01-01 14:35:30'), 'America/New_York') >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}), INTERVAL 1 MINUTE, toDateTime('2023-01-01 14:35:30'), 'America/New_York') AND toStartOfInterval(timestamp, INTERVAL 1 MINUTE, toDateTime('2023-01-01 14:35:30'), 'America/New_York') <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}), INTERVAL 1 MINUTE, toDateTime('2023-01-01 14:35:30'), 'America/New_York'))`,
+      },
+      {
+        description: 'with nonstandard spacing',
+        timestampValueExpression: ` toStartOfInterval ( timestamp ,  INTERVAL  1 MINUTE , toDateTime ( '2023-01-01 14:35:30' ),  'America/New_York' ) `,
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(toStartOfInterval ( timestamp ,  INTERVAL  1 MINUTE , toDateTime ( '2023-01-01 14:35:30' ),  'America/New_York' ) >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()}), INTERVAL  1 MINUTE, toDateTime ( '2023-01-01 14:35:30' ), 'America/New_York') AND toStartOfInterval ( timestamp ,  INTERVAL  1 MINUTE , toDateTime ( '2023-01-01 14:35:30' ),  'America/New_York' ) <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()}), INTERVAL  1 MINUTE, toDateTime ( '2023-01-01 14:35:30' ), 'America/New_York'))`,
+      },
+      {
+        description: 'with optimizable timestampValueExpression',
+        timestampValueExpression: `timestamp`,
+        primaryKey:
+          "toStartOfMinute(timestamp), ServiceName, ResourceAttributes['timestamp'], timestamp",
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(timestamp >= fromUnixTimestamp64Milli(1739319154000) AND timestamp <= fromUnixTimestamp64Milli(1739491954000))AND(toStartOfMinute(timestamp) >= toStartOfMinute(fromUnixTimestamp64Milli(1739319154000)) AND toStartOfMinute(timestamp) <= toStartOfMinute(fromUnixTimestamp64Milli(1739491954000)))`,
+      },
+      {
+        description: 'with synthetic timestamp value expression for CTE',
+        timestampValueExpression: `__hdx_time_bucket`,
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        databaseName: '',
+        tableName: 'Bucketed',
+        primaryKey:
+          "toStartOfMinute(timestamp), ServiceName, ResourceAttributes['timestamp'], timestamp",
+        expected: `(__hdx_time_bucket >= fromUnixTimestamp64Milli(1739319154000) AND __hdx_time_bucket <= fromUnixTimestamp64Milli(1739491954000))`,
+      },
+
+      {
+        description: 'with toStartOfMinute in timestampValueExpression',
+        timestampValueExpression: `toStartOfMinute(timestamp)`,
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        primaryKey:
+          "toStartOfMinute(timestamp), ServiceName, ResourceAttributes['timestamp'], timestamp",
+        expected: `(toStartOfMinute(timestamp) >= toStartOfMinute(fromUnixTimestamp64Milli(1739319154000)) AND toStartOfMinute(timestamp) <= toStartOfMinute(fromUnixTimestamp64Milli(1739491954000)))`,
+      },
+    ];
+
+    beforeEach(() => {
+      mockMetadata.getColumn.mockImplementation(async ({ column }) =>
+        column === 'date'
+          ? ({ type: 'Date' } as ColumnMeta)
+          : ({ type: 'DateTime' } as ColumnMeta),
+      );
+    });
+
+    it.each(testCases)(
+      'should generate a time filter expression $description',
+      async ({
+        timestampValueExpression,
+        dateRangeEndInclusive = true,
+        dateRangeStartInclusive = true,
+        dateRange,
+        expected,
+        includedDataInterval,
+        tableName = 'target_table',
+        databaseName = 'default',
+        primaryKey,
+      }) => {
+        if (primaryKey) {
+          mockMetadata.getTableMetadata.mockResolvedValue({
+            primary_key: primaryKey,
+          } as any);
+        }
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression,
+          dateRangeEndInclusive,
+          dateRangeStartInclusive,
+          dateRange,
+          connectionId: 'test-connection',
+          databaseName,
+          tableName,
+          metadata: mockMetadata,
+          includedDataInterval,
+        });
+
+        const actualSql = parameterizedQueryToSql(actual);
+        expect(actualSql).toBe(expected);
+      },
+    );
   });
 });

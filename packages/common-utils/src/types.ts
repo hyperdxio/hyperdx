@@ -105,6 +105,7 @@ export const DerivedColumnSchema = z.intersection(
     alias: z.string().optional(),
     metricType: z.nativeEnum(MetricsDataType).optional(),
     metricName: z.string().optional(),
+    metricNameSql: z.string().optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());
@@ -370,6 +371,8 @@ export const _ChartConfigSchema = z.object({
   selectGroupBy: z.boolean().optional(),
   metricTables: MetricTableSchema.optional(),
   seriesReturnType: z.enum(['ratio', 'column']).optional(),
+  // Used to preserve original table select string when chart overrides it (e.g., histograms)
+  eventTableSelect: z.string().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.
@@ -422,7 +425,7 @@ export type DateRange = {
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
 
-export type ChatConfigWithOptTimestamp = Omit<
+export type ChartConfigWithOptTimestamp = Omit<
   ChartConfigWithDateRange,
   'timestampValueExpression'
 > & {
