@@ -33,10 +33,7 @@ services:
       OPAMP_SERVER_URL: 'http://host.docker.internal:${HYPERDX_OPAMP_PORT}'
       CUSTOM_OTELCOL_CONFIG_FILE: '/etc/otelcol-contrib/custom.config.yaml'
       # Uncomment to enable stdout logging for the OTel collector
-      # OTEL_SUPERVISOR_LOGS: 'true'
-      # Uncomment to enable JSON schema in ClickHouse
-      # Be sure to also set BETA_CH_OTEL_JSON_SCHEMA_ENABLED to 'true' in ch-server
-      # OTEL_AGENT_FEATURE_GATE_ARG: '--feature-gates=clickhouse.json'
+      OTEL_SUPERVISOR_LOGS: 'true'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
       - ./docker/otel-collector/supervisor_docker.yaml.tmpl:/etc/otel/supervisor.yaml.tmpl
@@ -48,6 +45,37 @@ services:
       - '4317:4317' # OTLP gRPC receiver
       - '4318:4318' # OTLP http receiver
       - '8888:8888' # metrics extension
+    restart: always
+    networks:
+      - internal
+    depends_on:
+      ch-server:
+        condition: service_healthy
+  otel-collector-json:
+    # image: otel/opentelemetry-collector-contrib:0.120.0
+    build:
+      context: ./docker/otel-collector
+      target: dev
+    environment:
+      CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
+      CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT: 'ch-server:9363'
+      HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: 'otel_json'
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+      OPAMP_SERVER_URL: 'http://host.docker.internal:${HYPERDX_OPAMP_PORT}'
+      CUSTOM_OTELCOL_CONFIG_FILE: '/etc/otelcol-contrib/custom.config.yaml'
+      # Uncomment to enable stdout logging for the OTel collector
+      OTEL_SUPERVISOR_LOGS: 'true'
+      # Uncomment to enable JSON schema in ClickHouse
+      # Be sure to also set BETA_CH_OTEL_JSON_SCHEMA_ENABLED to 'true' in ch-server
+      OTEL_AGENT_FEATURE_GATE_ARG: '--feature-gates=clickhouse.json'
+    volumes:
+      - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
+      - ./docker/otel-collector/supervisor_docker.yaml.tmpl:/etc/otel/supervisor.yaml.tmpl
+      # Add a custom config file
+      - ./docker/otel-collector/dev.json.config.yaml:/etc/otelcol-contrib/custom.config.yaml
+    ports:
+      - '14318:4318' # OTLP http receiver
     restart: always
     networks:
       - internal
