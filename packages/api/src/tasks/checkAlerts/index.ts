@@ -158,6 +158,14 @@ const fireChannelEvent = async ({
 const ALERT_GROUP_DELIMITER = '||';
 
 /**
+ * Get the alert key prefix for filtering grouped alert histories.
+ * Returns "alertId||" which is used to match all group keys for this alert.
+ */
+const getAlertKeyPrefix = (alertId: string): string => {
+  return `${alertId}${ALERT_GROUP_DELIMITER}`;
+};
+
+/**
  * Compute a composite map key for tracking alert history per group.
  * For non-grouped alerts, returns just the alertId.
  * For grouped alerts, returns "alertId||groupKey" to track per-group state.
@@ -165,7 +173,7 @@ const ALERT_GROUP_DELIMITER = '||';
  * or in typical group key values.
  */
 const computeHistoryMapKey = (alertId: string, groupKey: string): string => {
-  return groupKey ? `${alertId}${ALERT_GROUP_DELIMITER}${groupKey}` : alertId;
+  return groupKey ? `${getAlertKeyPrefix(alertId)}${groupKey}` : alertId;
 };
 
 /**
@@ -174,7 +182,7 @@ const computeHistoryMapKey = (alertId: string, groupKey: string): string => {
  * by using the alert ID prefix with the delimiter to identify the split point.
  */
 const extractGroupKeyFromMapKey = (mapKey: string, alertId: string): string => {
-  const alertIdPrefix = `${alertId}${ALERT_GROUP_DELIMITER}`;
+  const alertIdPrefix = getAlertKeyPrefix(alertId);
   return mapKey.startsWith(alertIdPrefix)
     ? mapKey.substring(alertIdPrefix.length)
     : '';
@@ -196,7 +204,7 @@ export const processAlert = async (
     // Check if we should skip this alert run
     // Skip if ANY previous history for this alert was created in the current window
     const hasGroupBy = alert.groupBy && alert.groupBy.length > 0;
-    const alertKeyPrefix = `${alert.id}${ALERT_GROUP_DELIMITER}`;
+    const alertKeyPrefix = getAlertKeyPrefix(alert.id);
 
     const shouldSkip = Array.from(previousMap.entries()).some(
       ([key, history]) => {
@@ -228,14 +236,15 @@ export const processAlert = async (
     }
 
     // Calculate date range for the query
-    // Find the earliest createdAt among all histories for this alert
+    // Find the latest createdAt among all histories for this alert
     let previousCreatedAt: Date | undefined;
     if (hasGroupBy) {
-      // For grouped alerts, find the earliest createdAt among all groups
-      const alertKeyPrefix = `${alert.id}${ALERT_GROUP_DELIMITER}`;
+      // For grouped alerts, find the latest createdAt among all groups
+      // Use the latest to avoid checking from old groups that might no longer exist
+      const alertKeyPrefix = getAlertKeyPrefix(alert.id);
       for (const [key, history] of previousMap.entries()) {
         if (key.startsWith(alertKeyPrefix)) {
-          if (!previousCreatedAt || history.createdAt < previousCreatedAt) {
+          if (!previousCreatedAt || history.createdAt > previousCreatedAt) {
             previousCreatedAt = history.createdAt;
           }
         }

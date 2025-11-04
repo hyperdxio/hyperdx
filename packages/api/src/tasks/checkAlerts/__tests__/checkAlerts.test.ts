@@ -1500,8 +1500,8 @@ describe('checkAlerts', () => {
       };
 
       // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
         getMetadata: jest.fn().mockReturnValue(mockMetadata),
       }));
 
@@ -1718,8 +1718,8 @@ describe('checkAlerts', () => {
         }),
       };
 
-      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
         getMetadata: jest.fn().mockReturnValue(mockMetadata),
       }));
 
@@ -1909,8 +1909,8 @@ describe('checkAlerts', () => {
         }),
       };
 
-      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
         getMetadata: jest.fn().mockReturnValue(mockMetadata),
       }));
 
@@ -2048,8 +2048,8 @@ describe('checkAlerts', () => {
         }),
       };
 
-      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
         getMetadata: jest.fn().mockReturnValue(mockMetadata),
       }));
 
@@ -2261,8 +2261,8 @@ describe('checkAlerts', () => {
       };
 
       // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
         getMetadata: jest.fn().mockReturnValue(mockMetadata),
       }));
 
@@ -2910,8 +2910,8 @@ describe('checkAlerts', () => {
       };
 
       // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/metadata'),
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
         getMetadata: jest.fn().mockReturnValue(mockMetadata),
       }));
 
@@ -3016,6 +3016,316 @@ describe('checkAlerts', () => {
 
       // Verify webhook was called twice total (1 for alert + 1 for resolution)
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('group-by alert with disappearing group', () => {
+    const server = getServer();
+
+    beforeAll(async () => {
+      await server.start();
+    });
+
+    afterEach(async () => {
+      await server.clearDBs();
+      jest.clearAllMocks();
+    });
+
+    afterAll(async () => {
+      await server.stop();
+    });
+
+    it('should use latest createdAt from any group and not rescan old timeframe when one group disappears', async () => {
+      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+      const team = await createTeam({ name: 'My Team' });
+
+      const now = new Date('2023-11-16T22:18:00.000Z');
+
+      // Insert logs in first time bucket (22:00-22:05):
+      // - service-a: 3 errors (ALERT - exceeds threshold of 2)
+      // - service-b: 3 errors (ALERT - exceeds threshold of 2)
+      await bulkInsertLogs([
+        {
+          ServiceName: 'service-a',
+          Timestamp: new Date('2023-11-16T22:00:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-a',
+          Timestamp: new Date('2023-11-16T22:01:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-a',
+          Timestamp: new Date('2023-11-16T22:02:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:00:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:01:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:02:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        // Second time bucket (22:05-22:10):
+        // - service-a: 1 error (OK - below threshold)
+        // - service-b: 3 errors (ALERT - exceeds threshold)
+        {
+          ServiceName: 'service-a',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:06:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:07:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        // Third time bucket (22:10-22:15):
+        // - service-a: 1 error (OK - below threshold)
+        // - service-b: DISAPPEARS (no logs)
+        {
+          ServiceName: 'service-a',
+          Timestamp: new Date('2023-11-16T22:10:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+      ]);
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'My Error Search',
+        select: 'Body',
+        where: 'SeverityText: "error"',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName', // Group by ServiceName
+        },
+        mockUserId,
+      );
+
+      const enhancedAlert: any = await Alert.findById(alert.id).populate([
+        'team',
+        'savedSearch',
+      ]);
+
+      // Create previous alert histories at 22:00 for initial baseline (one per service)
+      await AlertHistory.create([
+        {
+          alert: alert.id,
+          createdAt: new Date('2023-11-16T22:00:00.000Z'),
+          state: 'OK',
+          counts: 0,
+          lastValues: [],
+          group: 'ServiceName:service-a',
+        },
+        {
+          alert: alert.id,
+          createdAt: new Date('2023-11-16T22:00:00.000Z'),
+          state: 'OK',
+          counts: 0,
+          lastValues: [],
+          group: 'ServiceName:service-b',
+        },
+      ]);
+
+      const previousMap = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        now,
+      );
+
+      const details = {
+        alert: enhancedAlert,
+        source,
+        taskType: AlertTaskType.SAVED_SEARCH,
+        savedSearch,
+        previousMap,
+      } satisfies AlertDetails;
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const mockMetadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          const columnMap = {
+            Body: { name: 'Body', type: 'String' },
+            Timestamp: { name: 'Timestamp', type: 'DateTime' },
+            SeverityText: { name: 'SeverityText', type: 'String' },
+            ServiceName: { name: 'ServiceName', type: 'String' },
+          };
+          return Promise.resolve(columnMap[column]);
+        }),
+      };
+
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
+        getMetadata: jest.fn().mockReturnValue(mockMetadata),
+      }));
+
+      // First run: process alert at 22:18
+      // Should check buckets: 22:00-22:05, 22:05-22:10, 22:10-22:15
+      await processAlert(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in ALERT state (service-b still alerting)
+      const updatedAlert = await Alert.findById(enhancedAlert.id);
+      expect(updatedAlert!.state).toBe('ALERT');
+
+      // Check alert histories after first run
+      const firstRunHistories = await AlertHistory.find({
+        alert: alert.id,
+      }).sort({ createdAt: 1 });
+
+      // Should have histories: 1 previous + 2 groups (service-a, service-b)
+      // service-a should resolve, service-b should alert
+      expect(firstRunHistories.length).toBeGreaterThan(1);
+
+      // Find the latest createdAt from all group histories (should be from 22:15)
+      const latestCreatedAt = firstRunHistories
+        .slice(1) // Skip the initial previous history
+        .reduce(
+          (latest, history) => {
+            return !latest || history.createdAt > latest
+              ? history.createdAt
+              : latest;
+          },
+          null as Date | null,
+        );
+
+      expect(latestCreatedAt).toEqual(new Date('2023-11-16T22:15:00.000Z'));
+
+      // Second run: process alert at 22:23:00
+      // The check was already done at 22:15 (latest createdAt from any group)
+      // Even though service-b doesn't exist in that bucket, we shouldn't recheck old buckets
+      // Should use the LATEST createdAt (22:15) from any group, not the earliest
+      // This means it should only check NEW bucket: 22:15-22:20
+      // Should NOT rescan 22:00-22:05 where service-b had data but was already checked
+      const nextRun = new Date('2023-11-16T22:23:00.000Z');
+      const previousMapNextRun = await getPreviousAlertHistories(
+        [enhancedAlert.id],
+        nextRun,
+      );
+
+      // Verify that previousMapNextRun has the latest createdAt from any group
+      const previousDates = Array.from(previousMapNextRun.values()).map(
+        h => h.createdAt,
+      );
+      const maxPreviousDate = previousDates.reduce(
+        (max, date) => (date > max ? date : max),
+        new Date(0),
+      );
+      expect(maxPreviousDate).toEqual(new Date('2023-11-16T22:15:00.000Z'));
+
+      await processAlert(
+        nextRun,
+        {
+          ...details,
+          previousMap: previousMapNextRun,
+        },
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Check all alert histories after second run
+      const allHistories = await AlertHistory.find({
+        alert: alert.id,
+      }).sort({ createdAt: 1 });
+
+      // Verify no histories were created for old timeframes (22:00-22:05)
+      // All new histories should have createdAt >= 22:15
+      const firstRunEndTime = new Date('2023-11-16T22:15:00.000Z').getTime();
+      const newHistories = allHistories.filter(
+        h => h.createdAt.getTime() > firstRunEndTime, // Exclude first run histories (which have createdAt <= 22:15)
+      );
+
+      // New histories should be for the new bucket (22:20) only
+      newHistories.forEach(history => {
+        expect(history.createdAt.getTime()).toBeGreaterThanOrEqual(
+          new Date('2023-11-16T22:20:00.000Z').getTime(),
+        );
+      });
     });
   });
 });

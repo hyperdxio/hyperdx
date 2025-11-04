@@ -1227,7 +1227,7 @@ function ClickhouseSettingForm({
               ? 'Disabled'
               : 'Enabled'
             : 'Enabled'
-          : currentValue ?? defaultValue ?? '',
+          : (currentValue ?? defaultValue ?? ''),
     },
   });
 
