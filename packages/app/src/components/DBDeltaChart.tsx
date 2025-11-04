@@ -3,18 +3,33 @@ import { withErrorBoundary } from 'react-error-boundary';
 import {
   Bar,
   BarChart,
-  CartesianGrid,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
-import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box, Flex, Group, Pagination, Text } from '@mantine/core';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  ChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
+  Filter,
+} from '@hyperdx/common-utils/dist/types';
+import {
+  Box,
+  Code,
+  Container,
+  Flex,
+  Group,
+  Pagination,
+  Text,
+} from '@mantine/core';
 
+import { isAggregateFunction } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { getFirstTimestampValueExpression } from '@/source';
 import { truncateMiddle } from '@/utils';
+
+import { SQLPreview } from './ChartSQLPreview';
 
 import styles from '../../styles/HDXLineChart.module.scss';
 
@@ -248,14 +263,85 @@ function PropertyComparisonChart({
 
 export default function DBDeltaChart({
   config,
-  outlierSqlCondition,
+  valueExpr,
+  xMin,
+  xMax,
+  yMin,
+  yMax,
 }: {
-  config: ChartConfigWithOptDateRange;
-  outlierSqlCondition: string;
+  config: ChartConfigWithDateRange;
+  valueExpr: string;
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
 }) {
-  const { data: outlierData } = useQueriedChartConfig({
-    ...config,
-    with: [
+  // Determine if the value expression uses aggregate functions
+  const isAggregate = isAggregateFunction(valueExpr);
+
+  // Get the timestamp expression from config
+  const timestampExpr = getFirstTimestampValueExpression(
+    config.timestampValueExpression,
+  );
+
+  // Helper to build the shared AggregatedTimestamps CTE (used by both outlier and inlier queries)
+  const buildAggregatedTimestampsCTE = () =>
+    isAggregate
+      ? {
+          name: 'AggregatedTimestamps',
+          chartConfig: {
+            ...config,
+            from: config.from,
+            select: timestampExpr,
+            filters: [
+              ...(config.filters ?? []),
+              {
+                type: 'sql',
+                condition: `${timestampExpr} >= ${xMin}`,
+              } satisfies Filter,
+              {
+                type: 'sql',
+                condition: `${timestampExpr} <= ${xMax}`,
+              } satisfies Filter,
+              ...(config.where
+                ? [
+                    {
+                      type: config.whereLanguage,
+                      condition: config.where,
+                    } as Filter,
+                  ]
+                : []),
+            ],
+            groupBy: timestampExpr,
+            having: `(${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax}`,
+          },
+        }
+      : null;
+
+  // Helper to build WITH clauses for a query (outlier or inlier)
+  const buildWithClauses = (
+    isOutlier: boolean,
+  ): NonNullable<ChartConfigWithOptDateRange['with']> => {
+    const aggregatedTimestampsCTE = buildAggregatedTimestampsCTE();
+
+    // Build the SQL condition for filtering
+    const buildSqlCondition = () => {
+      const timestampExpression = `${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax}`;
+      let query = timestampExpression;
+      if (!isAggregate) {
+        // For non-aggregates, we filter directly on both timestamp and value
+        query += ` AND (${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax}`;
+      }
+      return isOutlier ? query : `NOT (${query})`;
+    };
+
+    const sqlCondition = buildSqlCondition();
+    const aggregateTimestampCondition = isOutlier
+      ? `${timestampExpr} IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`
+      : `${timestampExpr} NOT IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`;
+
+    return [
+      ...(aggregatedTimestampsCTE ? [aggregatedTimestampsCTE] : []),
       {
         name: 'PartIds',
         chartConfig: {
@@ -265,62 +351,81 @@ export default function DBDeltaChart({
             ...(config.filters ?? []),
             {
               type: 'sql',
-              condition: `${outlierSqlCondition}`,
-            },
+              condition: sqlCondition,
+            } satisfies Filter,
+            ...(isAggregate
+              ? [
+                  {
+                    type: 'sql',
+                    condition: aggregateTimestampCondition,
+                  } satisfies Filter,
+                ]
+              : []),
           ],
           orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
           limit: { limit: 1000 },
         },
       },
-    ],
-    select: '*',
-    filters: [
+    ];
+  };
+
+  // Helper to build filters for the main query
+  const buildFilters = (isOutlier: boolean) => {
+    // Build the SQL condition for filtering
+    const buildSqlCondition = () => {
+      if (isAggregate) {
+        // For aggregates, we filter by timestamp range
+        return isOutlier
+          ? `${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax}`
+          : `NOT (${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax})`;
+      } else {
+        // For non-aggregates, we filter directly on both timestamp and value
+        return isOutlier
+          ? `(${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax} AND ${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax}`
+          : `NOT ((${valueExpr}) >= ${yMin} AND (${valueExpr}) <= ${yMax} AND ${timestampExpr} >= ${xMin} AND ${timestampExpr} <= ${xMax})`;
+      }
+    };
+
+    const sqlCondition = buildSqlCondition();
+    const aggregateTimestampCondition = isOutlier
+      ? `${timestampExpr} IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`
+      : `${timestampExpr} NOT IN (SELECT ${timestampExpr} FROM AggregatedTimestamps)`;
+
+    return [
       ...(config.filters ?? []),
       {
         type: 'sql',
-        condition: `${outlierSqlCondition}`,
-      },
+        condition: sqlCondition,
+      } as { type: 'sql'; condition: string },
+      ...(isAggregate
+        ? [
+            {
+              type: 'sql',
+              condition: aggregateTimestampCondition,
+            } as { type: 'sql'; condition: string },
+          ]
+        : []),
       {
         type: 'sql',
         condition: `indexHint((_part, _part_offset) IN PartIds)`,
-      },
-    ],
+      } as { type: 'sql'; condition: string },
+    ];
+  };
+
+  const { data: outlierData, error } = useQueriedChartConfig({
+    ...config,
+    with: buildWithClauses(true),
+    select: '*',
+    filters: buildFilters(true),
     orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
     limit: { limit: 1000 },
   });
 
   const { data: inlierData } = useQueriedChartConfig({
     ...config,
-    with: [
-      {
-        name: 'PartIds',
-        chartConfig: {
-          ...config,
-          select: '_part, _part_offset',
-          filters: [
-            ...(config.filters ?? []),
-            {
-              type: 'sql',
-              condition: `NOT (${outlierSqlCondition})`,
-            },
-          ],
-          orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-          limit: { limit: 1000 },
-        },
-      },
-    ],
+    with: buildWithClauses(false),
     select: '*',
-    filters: [
-      ...(config.filters ?? []),
-      {
-        type: 'sql',
-        condition: `NOT (${outlierSqlCondition})`,
-      },
-      {
-        type: 'sql',
-        condition: `indexHint((_part, _part_offset) IN PartIds)`,
-      },
-    ],
+    filters: buildFilters(false),
     orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
     limit: { limit: 1000 },
   });
@@ -334,11 +439,13 @@ export default function DBDeltaChart({
       const { percentageOccurences: inlierValueOccurences } =
         getPropertyStatistics(inlierData?.data ?? []);
 
-      // Get all the unique keys from both maps, and process them to get the merged arrays
-      const uniqueKeys = new Set([
-        ...outlierValueOccurences.keys(),
-        ...inlierValueOccurences.keys(),
-      ]);
+      // Get all the unique keys from the outliers
+      let uniqueKeys = new Set([...outlierValueOccurences.keys()]);
+      // If there's no outliers, use inliers as the unique keys
+      if (uniqueKeys.size === 0) {
+        uniqueKeys = new Set([...inlierValueOccurences.keys()]);
+      }
+      // Now process the keys to find the ones with the highest delta between outlier and inlier percentages
       const sortedProperties = Array.from(uniqueKeys)
         .map(key => {
           const inlierCount =
@@ -374,8 +481,43 @@ export default function DBDeltaChart({
 
   const PAGE_SIZE = 12;
 
+  if (error) {
+    return (
+      <Container style={{ overflow: 'auto' }}>
+        <Box mt="lg">
+          <Text my="sm" size="sm">
+            Error Message:
+          </Text>
+          <Code
+            block
+            style={{
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {error.message}
+          </Code>
+        </Box>
+        {error instanceof ClickHouseQueryError && (
+          <Box mt="lg">
+            <Text my="sm" size="sm">
+              Original Query:
+            </Text>
+            <Code
+              block
+              style={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              <SQLPreview data={error.query} formatData />
+            </Code>
+          </Box>
+        )}
+      </Container>
+    );
+  }
+
   return (
-    <Box style={{ overflow: 'auto' }}>
+    <Box style={{ overflow: 'auto', height: '100%' }}>
       <Flex justify="flex-end" mx="md" mb="md">
         <Pagination
           size="xs"

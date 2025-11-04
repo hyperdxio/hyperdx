@@ -1,5 +1,19 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
+exports[`renderChartConfig HAVING clause should not render HAVING clause when having is empty string 1`] = `"SELECT count(),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY severity"`;
+
+exports[`renderChartConfig HAVING clause should not render HAVING clause when not provided 1`] = `"SELECT count(),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY severity"`;
+
+exports[`renderChartConfig HAVING clause should render HAVING clause with SQL language 1`] = `"SELECT count(),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY severity HAVING count(*) > 100"`;
+
+exports[`renderChartConfig HAVING clause should render HAVING clause with granularity and groupBy 1`] = `"SELECT count(),event_type,toStartOfInterval(toDateTime(timestamp), INTERVAL 5 minute) AS \`__hdx_time_bucket\` FROM default.events WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY event_type,toStartOfInterval(toDateTime(timestamp), INTERVAL 5 minute) AS \`__hdx_time_bucket\` HAVING count(*) > 50 ORDER BY toStartOfInterval(toDateTime(timestamp), INTERVAL 5 minute) AS \`__hdx_time_bucket\`"`;
+
+exports[`renderChartConfig HAVING clause should render HAVING clause with multiple conditions 1`] = `
+"SELECT avg(
+      toFloat64OrDefault(toString(response_time))
+    ),count(),endpoint FROM default.metrics WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY endpoint HAVING avg(response_time) > 500 AND count(*) > 10"
+`;
+
 exports[`renderChartConfig containing CTE clauses should render a ChSql CTE configuration correctly 1`] = `"WITH TestCte AS (SELECT TimeUnix, Line FROM otel_logs) SELECT Line FROM TestCte"`;
 
 exports[`renderChartConfig containing CTE clauses should render a chart config CTE configuration correctly 1`] = `"WITH Parts AS (SELECT _part, _part_offset FROM default.some_table WHERE ((FieldA = 'test')) ORDER BY rand() DESC LIMIT 1000) SELECT * FROM Parts WHERE ((FieldA = 'test') AND (indexHint((_part, _part_offset) IN (SELECT tuple(_part, _part_offset) FROM Parts)))) ORDER BY rand() DESC LIMIT 1000"`;

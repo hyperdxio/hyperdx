@@ -816,6 +816,25 @@ async function renderGroupBy(
   );
 }
 
+async function renderHaving(
+  chartConfig: ChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+): Promise<ChSql | undefined> {
+  if (!isNonEmptyWhereExpr(chartConfig.having)) {
+    return undefined;
+  }
+
+  return await renderWhereExpression({
+    condition: chartConfig.having,
+    from: chartConfig.from,
+    language: chartConfig.havingLanguage ?? 'sql',
+    implicitColumnExpression: chartConfig.implicitColumnExpression,
+    metadata,
+    connectionId: chartConfig.connection,
+    with: chartConfig.with,
+  });
+}
+
 function renderOrderBy(
   chartConfig: ChartConfigWithOptDateRange,
 ): ChSql | undefined {
@@ -1388,6 +1407,7 @@ export async function renderChartConfig(
   const from = renderFrom(chartConfig);
   const where = await renderWhere(chartConfig, metadata);
   const groupBy = await renderGroupBy(chartConfig, metadata);
+  const having = await renderHaving(chartConfig, metadata);
   const orderBy = renderOrderBy(chartConfig);
   //const fill = renderFill(chartConfig); //TODO: Fill breaks heatmaps and some charts
   const limit = renderLimit(chartConfig);
@@ -1398,6 +1418,7 @@ export async function renderChartConfig(
     chSql`FROM ${from}`,
     chSql`${where.sql ? chSql`WHERE ${where}` : ''}`,
     chSql`${groupBy?.sql ? chSql`GROUP BY ${groupBy}` : ''}`,
+    chSql`${having?.sql ? chSql`HAVING ${having}` : ''}`,
     chSql`${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''}`,
     //chSql`${fill?.sql ? chSql`WITH FILL ${fill}` : ''}`,
     chSql`${limit?.sql ? chSql`LIMIT ${limit}` : ''}`,

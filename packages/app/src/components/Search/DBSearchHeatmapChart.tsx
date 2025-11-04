@@ -1,4 +1,5 @@
-import { parseAsString, useQueryStates } from 'nuqs';
+import { useState } from 'react';
+import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -11,18 +12,14 @@ import {
   DisplayType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Collapse, Flex } from '@mantine/core';
+import { Box, Flex } from '@mantine/core';
 import { ActionIcon } from '@mantine/core';
 import { Paper } from '@mantine/core';
 import { Center } from '@mantine/core';
 import { Text } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { IconPlayerPlay, IconSettings } from '@tabler/icons-react';
+import { IconPlayerPlay } from '@tabler/icons-react';
 
-import {
-  getDurationMsExpression,
-  getFirstTimestampValueExpression,
-} from '@/source';
+import { getDurationMsExpression } from '@/source';
 
 import DBDeltaChart from '../DBDeltaChart';
 import DBHeatmapChart from '../DBHeatmapChart';
@@ -45,11 +42,21 @@ export function DBSearchHeatmapChart({
   const [fields, setFields] = useQueryStates({
     value: parseAsString.withDefault(getDurationMsExpression(source)),
     count: parseAsString.withDefault('count()'),
-    outlierSqlCondition: parseAsString,
+    // Heatmap selection coordinates
+    xMin: parseAsFloat,
+    xMax: parseAsFloat,
+    yMin: parseAsFloat,
+    yMax: parseAsFloat,
   });
+  const [container, setContainer] = useState<HTMLElement | null>(null);
 
   return (
-    <Flex direction="column" w="100%" style={{ overflow: 'hidden' }}>
+    <Flex
+      direction="column"
+      w="100%"
+      style={{ overflow: 'hidden' }}
+      ref={setContainer}
+    >
       <Box mx="lg" mt="xs" mb={0}>
         <DBSearchHeatmapForm
           connection={tcFromSource(source)}
@@ -57,6 +64,7 @@ export function DBSearchHeatmapChart({
             value: fields.value,
             count: fields.count,
           }}
+          parentRef={container}
           onSubmit={data => {
             setFields({
               value: data.value,
@@ -88,24 +96,30 @@ export function DBSearchHeatmapChart({
           }}
           enabled={isReady}
           onFilter={(xMin, xMax, yMin, yMax) => {
+            // Simply store the coordinates - DBDeltaChart will handle the logic
             setFields({
-              outlierSqlCondition: [
-                `${source.durationExpression} >= ${yMin} * 1e${(source.durationPrecision ?? 9) - 3}`,
-                `${source.durationExpression} <= ${yMax} * 1e${(source.durationPrecision ?? 9) - 3}`,
-                `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} >= ${xMin}`,
-                `${getFirstTimestampValueExpression(chartConfig.timestampValueExpression)} <= ${xMax}`,
-              ].join(' AND '),
+              xMin,
+              xMax,
+              yMin,
+              yMax,
             });
           }}
         />
       </div>
-      {fields.outlierSqlCondition ? (
+      {fields.xMin != null &&
+      fields.xMax != null &&
+      fields.yMin != null &&
+      fields.yMax != null ? (
         <DBDeltaChart
           config={{
             ...chartConfig,
             with: undefined,
           }}
-          outlierSqlCondition={fields.outlierSqlCondition}
+          valueExpr={fields.value}
+          xMin={fields.xMin}
+          xMax={fields.xMax}
+          yMin={fields.yMin}
+          yMax={fields.yMax}
         />
       ) : (
         <Paper shadow="xs" p="xl" h="100%">
@@ -124,9 +138,11 @@ export function DBSearchHeatmapChart({
 function DBSearchHeatmapForm({
   connection,
   defaultValues,
+  parentRef,
   onSubmit,
 }: {
   connection: TableConnection;
+  parentRef?: HTMLElement | null;
   defaultValues: z.infer<typeof Schema>;
   onSubmit: (v: z.infer<typeof Schema>) => void;
 }) {
@@ -136,10 +152,14 @@ function DBSearchHeatmapForm({
   });
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)}>
+    <form
+      onSubmit={form.handleSubmit(onSubmit)}
+      style={{ position: 'relative' }}
+    >
       <Flex m="0" mb="xs" align="stretch" gap="xs">
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <SQLInlineEditorControlled
+            parentRef={parentRef}
             tableConnection={connection}
             control={form.control}
             name="value"
@@ -155,6 +175,7 @@ function DBSearchHeatmapForm({
         </div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <SQLInlineEditorControlled
+            parentRef={parentRef}
             tableConnection={connection}
             control={form.control}
             name="count"
