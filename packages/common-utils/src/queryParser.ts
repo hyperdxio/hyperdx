@@ -438,18 +438,13 @@ export abstract class SQLSerializer implements Serializer {
             [SqlString.raw(column ?? ''), term],
           );
         }
-      } else {
-        return SqlString.format(
-          `(${column} ${isNegatedField ? 'NOT ' : ''}? ?)`,
-          [SqlString.raw('ILIKE'), `%${term}%`],
-        );
       }
-    } else {
-      return SqlString.format(
-        `(${column} ${isNegatedField ? 'NOT ' : ''}? ?)`,
-        [SqlString.raw('ILIKE'), `%${term}%`],
-      );
     }
+
+    return SqlString.format(`(${column} ${isNegatedField ? 'NOT ' : ''}? ?)`, [
+      SqlString.raw('ILIKE'),
+      `%${term}%`,
+    ]);
   }
 
   async range(
@@ -752,6 +747,11 @@ function createSerializerContext(
   }
 }
 
+/** Returns true if the AST is of the form `-[field]:([terms...])` */
+function isNegatedAndParenthesized(ast: lucene.BinaryAST | lucene.LeftOnlyAST) {
+  return ast.parenthesized && ast.field?.startsWith('-');
+}
+
 async function serialize(
   ast: lucene.AST | lucene.Node,
   serializer: Serializer,
@@ -775,12 +775,8 @@ async function serialize(
     const operator = serializer.operator(binaryAST.operator, context);
     const parenthesized = binaryAST.parenthesized;
 
-    // Handle cases like "-foo:(bar baz)"
-    const isNegatedAndParenthesizedField =
-      parenthesized && binaryAST.field?.startsWith('-');
-
     const newContext = createSerializerContext(context, binaryAST);
-    const serialized = `${isNegatedAndParenthesizedField ? 'NOT ' : ''}${parenthesized ? '(' : ''}${await serialize(
+    const serialized = `${isNegatedAndParenthesized(binaryAST) ? 'NOT ' : ''}${parenthesized ? '(' : ''}${await serialize(
       binaryAST.left,
       serializer,
       newContext,
@@ -794,14 +790,10 @@ async function serialize(
     const leftOnlyAST = ast as lucene.LeftOnlyAST;
     const parenthesized = leftOnlyAST.parenthesized;
 
-    // Handle cases like "-foo:(bar)"
-    const isNegatedAndParenthesizedField =
-      parenthesized && leftOnlyAST.field?.startsWith('-');
-
     const newContext = createSerializerContext(context, leftOnlyAST);
 
     // start is used when ex. "NOT foo:bar"
-    const serialized = `${isNegatedAndParenthesizedField ? 'NOT ' : ''}${parenthesized ? '(' : ''}${
+    const serialized = `${isNegatedAndParenthesized(leftOnlyAST) ? 'NOT ' : ''}${parenthesized ? '(' : ''}${
       leftOnlyAST.start != undefined ? `${leftOnlyAST.start} ` : ''
     }${await serialize(leftOnlyAST.left, serializer, newContext)}${
       parenthesized ? ')' : ''
