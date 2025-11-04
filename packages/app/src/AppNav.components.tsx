@@ -4,6 +4,7 @@ import cx from 'classnames';
 import {
   ActionIcon,
   Avatar,
+  Badge,
   Button,
   Group,
   Menu,
@@ -298,6 +299,7 @@ export const AppNavLink = ({
   href,
   isExpanded,
   onToggle,
+  isBeta,
 }: {
   className?: string;
   label: React.ReactNode;
@@ -305,6 +307,7 @@ export const AppNavLink = ({
   href: string;
   isExpanded?: boolean;
   onToggle?: () => void;
+  isBeta?: boolean;
 }) => {
   const { pathname, isCollapsed } = React.useContext(AppNavContext);
 
@@ -324,7 +327,23 @@ export const AppNavLink = ({
       >
         <span>
           <i className={`bi ${iconName} pe-2 text-slate-300`} />{' '}
-          {!isCollapsed && <span>{label}</span>}
+          {!isCollapsed && (
+            <span>
+              {label}
+              {isBeta && (
+                <Badge
+                  size="xs"
+                  ms="xs"
+                  color="gray.4"
+                  autoContrast
+                  radius="sm"
+                  className="align-text-bottom"
+                >
+                  Beta
+                </Badge>
+              )}
+            </span>
+          )}
         </span>
       </Link>
       {!isCollapsed && onToggle && (
