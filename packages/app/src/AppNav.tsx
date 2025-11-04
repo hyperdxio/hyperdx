@@ -731,6 +731,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               />
 
               <AppNavLink
+                label="Service Map"
+                href="/service-map"
+                iconName="bi-diagram-2-fill"
+                isBeta
+              />
+
+              <AppNavLink
                 label="Dashboards"
                 href="/dashboards"
                 iconName="bi-grid-1x2"
