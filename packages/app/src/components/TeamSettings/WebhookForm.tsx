@@ -54,6 +54,7 @@ export function WebhookForm({
 }) {
   const saveWebhook = api.useSaveWebhook();
   const updateWebhook = api.useUpdateWebhook();
+  const testWebhook = api.useTestWebhook();
   const isEditing = webhook != null;
 
   const form = useForm<WebhookForm>({
@@ -84,6 +85,65 @@ export function WebhookForm({
       );
     }
   }, [webhook, form]);
+
+  const handleTestWebhook = async () => {
+    // Get current form values
+    const values = form.getValues();
+    const { service, url, body, headers } = values;
+
+    // Parse headers if provided
+    let parsedHeaders: Record<string, string> | undefined;
+    if (headers && headers.trim()) {
+      try {
+        parsedHeaders = JSON.parse(headers);
+      } catch (parseError) {
+        const errorMessage =
+          parseError instanceof Error
+            ? parseError.message
+            : 'Invalid JSON format';
+        notifications.show({
+          message: `Invalid JSON in headers: ${errorMessage}`,
+          color: 'red',
+          autoClose: 5000,
+        });
+        return;
+      }
+    }
+
+    try {
+      await testWebhook.mutateAsync({
+        service,
+        url,
+        body,
+        headers: parsedHeaders,
+      });
+      notifications.show({
+        color: 'green',
+        message: 'Test webhook sent successfully',
+      });
+    } catch (e) {
+      console.error(e);
+      let message =
+        'Failed to send test webhook. Please check your webhook configuration.';
+
+      if (e instanceof HTTPError) {
+        try {
+          const errorData = await e.response.json();
+          if (errorData.message) {
+            message = errorData.message;
+          }
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError);
+        }
+      }
+
+      notifications.show({
+        message,
+        color: 'red',
+        autoClose: 5000,
+      });
+    }
+  };
 
   const onSubmit: SubmitHandler<WebhookForm> = async values => {
     const { service, name, url, description, body, headers } = values;
@@ -301,13 +361,24 @@ export function WebhookForm({
           </Alert>,
         ]}
         <Group justify="space-between">
-          <Button
-            variant="outline"
-            type="submit"
-            loading={saveWebhook.isPending || updateWebhook.isPending}
-          >
-            {isEditing ? 'Update Webhook' : 'Add Webhook'}
-          </Button>
+          <Group>
+            <Button
+              variant="outline"
+              type="submit"
+              loading={saveWebhook.isPending || updateWebhook.isPending}
+            >
+              {isEditing ? 'Update Webhook' : 'Add Webhook'}
+            </Button>
+            <Button
+              variant="outline"
+              color="blue"
+              onClick={handleTestWebhook}
+              loading={testWebhook.isPending}
+              type="button"
+            >
+              Test Webhook
+            </Button>
+          </Group>
           <Button variant="outline" color="gray" onClick={onClose} type="reset">
             Cancel
           </Button>

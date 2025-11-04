@@ -8,7 +8,7 @@ import { useDisclosure } from '@mantine/hooks';
 
 import api from '@/api';
 
-import { CreateWebhookForm } from '../TeamPage';
+import { WebhookForm } from '../components/TeamSettings/WebhookForm';
 
 type Webhook = {
   _id: string;
@@ -88,7 +88,7 @@ const WebhookChannelForm = <T extends object>(
         zIndex={9999}
         size="lg"
       >
-        <CreateWebhookForm onClose={close} onSuccess={handleWebhookCreated} />
+        <WebhookForm onClose={close} onSuccess={handleWebhookCreated} />
       </Modal>
     </div>
   );

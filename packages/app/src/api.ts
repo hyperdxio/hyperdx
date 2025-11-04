@@ -396,6 +396,43 @@ const api = {
         }).json(),
     });
   },
+  useTestWebhook() {
+    return useMutation<
+      any,
+      Error | HTTPError,
+      {
+        service: string;
+        url: string;
+        queryParams?: Record<string, string>;
+        headers?: Record<string, string>;
+        body?: string;
+      }
+    >({
+      mutationFn: async ({
+        service,
+        url,
+        queryParams,
+        headers,
+        body,
+      }: {
+        service: string;
+        url: string;
+        queryParams?: Record<string, string>;
+        headers?: Record<string, string>;
+        body?: string;
+      }) =>
+        hdxServer(`webhooks/test`, {
+          method: 'POST',
+          json: {
+            service,
+            url,
+            queryParams: queryParams || {},
+            headers: headers || {},
+            body,
+          },
+        }).json(),
+    });
+  },
   useRegisterPassword() {
     return useMutation({
       // @ts-ignore

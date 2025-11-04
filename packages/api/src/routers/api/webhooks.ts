@@ -1,9 +1,14 @@
 import express from 'express';
+import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import Webhook, { WebhookService } from '@/models/webhook';
+import {
+  handleSendGenericWebhook,
+  handleSendSlackWebhook,
+} from '@/tasks/checkAlerts/template';
 
 const router = express.Router();
 
@@ -197,6 +202,64 @@ router.delete(
       }
       await Webhook.findOneAndDelete({ _id: req.params.id, team: teamId });
       res.json({});
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.post(
+  '/test',
+  validateRequest({
+    body: z.object({
+      body: z.string().optional(),
+      headers: z
+        .record(httpHeaderNameValidator, httpHeaderValueValidator)
+        .optional(),
+      queryParams: z.record(z.string()).optional(),
+      service: z.nativeEnum(WebhookService),
+      url: z.string().url(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const { service, url, queryParams, headers, body } = req.body;
+
+      // Create a temporary webhook object for testing
+      const testWebhook = new Webhook({
+        team: new ObjectId(teamId),
+        service,
+        url,
+        queryParams: queryParams,
+        headers: headers,
+        body,
+      });
+
+      // Send test message
+      const testMessage = {
+        hdxLink: 'https://hyperdx.io',
+        title: 'Test Webhook from HyperDX',
+        body: 'This is a test message to verify your webhook configuration is working correctly.',
+      };
+
+      if (service === WebhookService.Slack) {
+        await handleSendSlackWebhook(testWebhook, testMessage);
+      } else if (service === WebhookService.Generic) {
+        await handleSendGenericWebhook(testWebhook, testMessage);
+      } else {
+        return res.status(400).json({
+          message: 'Unsupported webhook service type',
+        });
+      }
+
+      res.json({
+        message: 'Test webhook sent successfully',
+      });
     } catch (err) {
       next(err);
     }
