@@ -9,7 +9,11 @@ import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertState,
+  SourceKind,
+  WebhookService,
+} from '@hyperdx/common-utils/dist/types';
 import {
   isValidSlackUrl,
   isValidUrl,
@@ -54,7 +58,15 @@ import { useSources } from './source';
 import { useConfirm } from './useConfirm';
 import { capitalizeFirstLetter } from './utils';
 
-const DEFAULT_GENERIC_WEBHOOK_BODY = ['{{title}}', '{{body}}', '{{link}}'];
+const DEFAULT_GENERIC_WEBHOOK_BODY = [
+  '{{title}}',
+  '{{body}}',
+  '{{link}}',
+  '{{state}}',
+  '{{startTime}}',
+  '{{endTime}}',
+  '{{eventId}}',
+];
 const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
   DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
 
@@ -733,15 +745,27 @@ export function CreateWebhookForm({
         }
       }
 
+      let defaultBody = body;
+      if (!body) {
+        if (service === WebhookService.Generic) {
+          defaultBody = `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`;
+        } else if (service === WebhookService.IncidentIO) {
+          defaultBody = `{
+  "title": "{{title}}",
+  "description": "{{body}}",
+  "deduplication_key": "{{eventId}}",
+  "status": "{{#if (eq state "${AlertState.ALERT}")}}firing{{else}}resolved{{/if}}",
+  "source_url": "{{link}}"
+}`;
+        }
+      }
+
       const response = await saveWebhook.mutateAsync({
         service,
         name,
         url,
         description: description || '',
-        body:
-          service === WebhookService.Generic && !body
-            ? `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`
-            : body,
+        body: defaultBody,
         headers: parsedHeaders,
       });
       notifications.show({
@@ -815,6 +839,11 @@ export function CreateWebhookForm({
               label="Generic"
               {...form.register('service', { required: true })}
             />
+            <Radio
+              value={WebhookService.IncidentIO}
+              label="Incident.io"
+              {...form.register('service', { required: true })}
+            />
           </Group>
         </Radio.Group>
         <TextInput
@@ -826,7 +855,13 @@ export function CreateWebhookForm({
         />
         <TextInput
           label="Webhook URL"
-          placeholder="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+          placeholder={
+            service === WebhookService.Slack
+              ? 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
+              : service === WebhookService.IncidentIO
+                ? 'https://api.incident.io/v2/alert_events/http/ZZZZZZZZ?token=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+                : 'https://example.com/webhook'
+          }
           type="url"
           required
           error={form.formState.errors.url?.message}
@@ -976,6 +1011,7 @@ function IntegrationsSection() {
   const { data: webhookData, refetch: refetchWebhooks } = api.useWebhooks([
     WebhookService.Slack,
     WebhookService.Generic,
+    WebhookService.IncidentIO,
   ]);
 
   const allWebhooks = useMemo(() => {

@@ -3,6 +3,8 @@ import { add as fnsAdd, format as fnsFormat } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { z } from 'zod';
 
+export { default as objectHash } from 'object-hash';
+
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,

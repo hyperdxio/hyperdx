@@ -213,6 +213,7 @@ export type StacktraceBreadcrumb = {
 export enum WebhookService {
   Slack = 'slack',
   Generic = 'generic',
+  IncidentIO = 'incidentio',
 }
 
 // -------------------------

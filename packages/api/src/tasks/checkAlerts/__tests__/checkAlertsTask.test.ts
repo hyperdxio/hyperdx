@@ -124,7 +124,7 @@ describe('CheckAlertTask', () => {
             alert: mockAlert,
             source: mockSource,
             taskType: AlertTaskType.SAVED_SEARCH,
-            previous: undefined,
+            previousMap: new Map(),
           } as AlertDetails,
         ],
         conn: {
@@ -210,7 +210,7 @@ describe('CheckAlertTask', () => {
             alert: mockAlert1,
             source: mockSource,
             taskType: AlertTaskType.SAVED_SEARCH,
-            previous: undefined,
+            previousMap: new Map(),
           } as AlertDetails,
         ],
         conn: {
@@ -231,7 +231,7 @@ describe('CheckAlertTask', () => {
             alert: mockAlert2,
             source: mockSource,
             taskType: AlertTaskType.SAVED_SEARCH,
-            previous: undefined,
+            previousMap: new Map(),
           } as AlertDetails,
         ],
         conn: {
