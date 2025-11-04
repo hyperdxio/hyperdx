@@ -273,6 +273,7 @@ export default function useServiceMap({
           abort_signal: signal,
           clickhouse_settings: {
             max_execution_time: 60,
+            join_algorithm: 'auto',
           },
         })
         .then(res => res.json<Record<string, string>>())

@@ -1,3 +1,4 @@
+import SqlString from 'sqlstring';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { UnstyledButton } from '@mantine/core';
 
@@ -25,7 +26,11 @@ export default function ServiceMapTooltip({
           navigateToTraceSearch({
             dateRange,
             source,
-            where: `${source.serviceNameExpression} = '${serviceName}' AND ${source.spanKindExpression} IN ('Server', 'Consumer')`,
+            where: SqlString.format("? = ? AND ? IN ('Server', 'Consumer')", [
+              SqlString.raw(source.serviceNameExpression ?? 'ServiceName'),
+              serviceName,
+              SqlString.raw(source.spanKindExpression ?? 'SpanKind'),
+            ]),
           })
         }
         className={styles.linkButton}
@@ -41,7 +46,17 @@ export default function ServiceMapTooltip({
               navigateToTraceSearch({
                 dateRange,
                 source,
-                where: `${source.serviceNameExpression} = '${serviceName}' AND ${source.spanKindExpression} IN ('Server', 'Consumer') AND ${source.statusCodeExpression} = 'Error'`,
+                where: SqlString.format(
+                  "? = ? AND ? IN ('Server', 'Consumer') AND ? = 'Error'",
+                  [
+                    SqlString.raw(
+                      source.serviceNameExpression ?? 'ServiceName',
+                    ),
+                    serviceName,
+                    SqlString.raw(source.spanKindExpression ?? 'SpanKind'),
+                    SqlString.raw(source.statusCodeExpression ?? 'StatusCode'),
+                  ],
+                ),
               })
             }
             className={styles.linkButton}
