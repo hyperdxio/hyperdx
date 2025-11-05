@@ -1108,11 +1108,14 @@ function DBSearchPage() {
         to: searchedTimeRange[1].getTime().toString(),
         select: searchedConfig.select || '',
         source: searchedSource?.id || '',
-        filters: JSON.stringify(searchedConfig.filters),
+        filters: JSON.stringify(searchedConfig.filters ?? []),
+        isLive: 'false',
+        liveInterval: interval.toString(),
       });
       return `/search?${qParams.toString()}`;
     },
     [
+      interval,
       searchedConfig.filters,
       searchedConfig.select,
       searchedConfig.where,

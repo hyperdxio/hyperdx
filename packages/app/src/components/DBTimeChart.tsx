@@ -174,7 +174,8 @@ function DBTimeChartComponent({
       source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
       where: where,
       whereLanguage: whereLanguage,
-      filters: JSON.stringify(config.filters),
+      filters: JSON.stringify(config.filters ?? []),
+      isLive: 'false',
       from: from.toString(),
       to: to.toString(),
     };
