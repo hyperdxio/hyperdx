@@ -3,7 +3,7 @@ import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { isMetricChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -65,8 +65,9 @@ function DBTimeChartComponent({
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
     useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, queriedConfig],
+      queryKey: [queryKeyPrefix, queriedConfig, 'chunked'],
       enabled,
+      enableQueryChunking: true,
     });
 
   useEffect(() => {
@@ -75,7 +76,8 @@ function DBTimeChartComponent({
     }
   }, [isError, isErrorExpanded, errorExpansion]);
 
-  const isLoadingOrPlaceholder = isLoading || isPlaceholderData;
+  const isLoadingOrPlaceholder =
+    isLoading || !data?.isComplete || isPlaceholderData;
   const { data: source } = useSource({ id: sourceId });
 
   const { graphResults, timestampColumn, groupKeys, lineNames, lineColors } =
@@ -168,14 +170,22 @@ function DBTimeChartComponent({
       where = config.select[0].aggCondition ?? '';
       whereLanguage = config.select[0].aggConditionLanguage ?? 'lucene';
     }
-    return new URLSearchParams({
+    const params: Record<string, string> = {
       source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
       where: where,
       whereLanguage: whereLanguage,
-      filters: JSON.stringify(config.filters),
+      filters: JSON.stringify(config.filters ?? []),
+      isLive: 'false',
       from: from.toString(),
       to: to.toString(),
-    });
+    };
+    // Include the select parameter if provided to preserve custom columns
+    // eventTableSelect is used for charts that override select (like histograms with count)
+    // to preserve the original table's select expression
+    if (config.eventTableSelect) {
+      params.select = config.eventTableSelect;
+    }
+    return new URLSearchParams(params);
   }, [clickedActiveLabelDate, config, granularity, source]);
 
   return isLoading && !data ? (
@@ -269,6 +279,7 @@ function DBTimeChartComponent({
             }}
           >
             <Link
+              data-testid="chart-view-events-link"
               href={`/search?${qparams?.toString()}`}
               className="text-white-hover text-decoration-none"
               onClick={() => setActiveClickPayload(undefined)}

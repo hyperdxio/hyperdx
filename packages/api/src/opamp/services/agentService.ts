@@ -63,7 +63,7 @@ export class AgentService {
 
       return agent;
     } catch (error) {
-      logger.error('Error processing agent status:', error);
+      logger.error({ err: error }, 'Error processing agent status');
       throw error;
     }
   }

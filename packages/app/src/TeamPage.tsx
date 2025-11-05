@@ -4,11 +4,16 @@ import { HTTPError } from 'ky';
 import { Button as BSButton, Modal as BSModal } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm } from 'react-hook-form';
+import type { ZodIssue } from 'zod';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
 import { EditorView } from '@codemirror/view';
-import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/metadata';
-import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
+import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  AlertState,
+  SourceKind,
+  WebhookService,
+} from '@hyperdx/common-utils/dist/types';
 import {
   isValidSlackUrl,
   isValidUrl,
@@ -53,7 +58,15 @@ import { useSources } from './source';
 import { useConfirm } from './useConfirm';
 import { capitalizeFirstLetter } from './utils';
 
-const DEFAULT_GENERIC_WEBHOOK_BODY = ['{{title}}', '{{body}}', '{{link}}'];
+const DEFAULT_GENERIC_WEBHOOK_BODY = [
+  '{{title}}',
+  '{{body}}',
+  '{{link}}',
+  '{{state}}',
+  '{{startTime}}',
+  '{{endTime}}',
+  '{{eventId}}',
+];
 const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
   DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
 
@@ -692,6 +705,7 @@ type WebhookForm = {
   service: string;
   description?: string;
   body?: string;
+  headers?: string;
 };
 
 export function CreateWebhookForm({
@@ -710,17 +724,49 @@ export function CreateWebhookForm({
   });
 
   const onSubmit: SubmitHandler<WebhookForm> = async values => {
-    const { service, name, url, description, body } = values;
+    const { service, name, url, description, body, headers } = values;
     try {
+      // Parse headers JSON if provided (API will validate the content)
+      let parsedHeaders: Record<string, string> | undefined;
+      if (headers && headers.trim()) {
+        try {
+          parsedHeaders = JSON.parse(headers);
+        } catch (parseError) {
+          const errorMessage =
+            parseError instanceof Error
+              ? parseError.message
+              : 'Invalid JSON format';
+          notifications.show({
+            message: `Invalid JSON in headers: ${errorMessage}`,
+            color: 'red',
+            autoClose: 5000,
+          });
+          return;
+        }
+      }
+
+      let defaultBody = body;
+      if (!body) {
+        if (service === WebhookService.Generic) {
+          defaultBody = `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`;
+        } else if (service === WebhookService.IncidentIO) {
+          defaultBody = `{
+  "title": "{{title}}",
+  "description": "{{body}}",
+  "deduplication_key": "{{eventId}}",
+  "status": "{{#if (eq state "${AlertState.ALERT}")}}firing{{else}}resolved{{/if}}",
+  "source_url": "{{link}}"
+}`;
+        }
+      }
+
       const response = await saveWebhook.mutateAsync({
         service,
         name,
         url,
         description: description || '',
-        body:
-          service === WebhookService.Generic && !body
-            ? `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`
-            : body,
+        body: defaultBody,
+        headers: parsedHeaders,
       });
       notifications.show({
         color: 'green',
@@ -730,9 +776,38 @@ export function CreateWebhookForm({
       onClose();
     } catch (e) {
       console.error(e);
-      const message =
-        (e instanceof HTTPError ? (await e.response.json())?.message : null) ||
-        'Something went wrong. Please contact HyperDX team.';
+      let message = 'Something went wrong. Please contact HyperDX team.';
+
+      if (e instanceof HTTPError) {
+        try {
+          const errorData = await e.response.json();
+          // Handle Zod validation errors from zod-express-middleware
+          // The library returns errors in format: { error: { issues: [...] } }
+          if (
+            errorData.error?.issues &&
+            Array.isArray(errorData.error.issues)
+          ) {
+            // TODO: use a library to format Zod validation errors
+            // Format Zod validation errors
+            const validationErrors = errorData.error.issues
+              .map((issue: ZodIssue) => {
+                const path = issue.path.join('.');
+                return `${path}: ${issue.message}`;
+              })
+              .join(', ');
+            message = `Validation error: ${validationErrors}`;
+          } else if (errorData.message) {
+            message = errorData.message;
+          } else {
+            // Fallback: show the entire error object as JSON
+            message = JSON.stringify(errorData);
+          }
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError);
+          // If parsing fails, use default message
+        }
+      }
+
       notifications.show({
         message,
         color: 'red',
@@ -764,6 +839,11 @@ export function CreateWebhookForm({
               label="Generic"
               {...form.register('service', { required: true })}
             />
+            <Radio
+              value={WebhookService.IncidentIO}
+              label="Incident.io"
+              {...form.register('service', { required: true })}
+            />
           </Group>
         </Radio.Group>
         <TextInput
@@ -775,7 +855,13 @@ export function CreateWebhookForm({
         />
         <TextInput
           label="Webhook URL"
-          placeholder="https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+          placeholder={
+            service === WebhookService.Slack
+              ? 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
+              : service === WebhookService.IncidentIO
+                ? 'https://api.incident.io/v2/alert_events/http/ZZZZZZZZ?token=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+                : 'https://example.com/webhook'
+          }
           type="url"
           required
           error={form.formState.errors.url?.message}
@@ -796,9 +882,26 @@ export function CreateWebhookForm({
         />
         {service === WebhookService.Generic && [
           <label className=".mantine-TextInput-label" key="1">
-            Webhook Body (optional)
+            Webhook Headers (optional)
           </label>,
           <div className="mb-2" key="2">
+            <CodeMirror
+              height="100px"
+              extensions={[
+                json(),
+                linter(jsonLinterWithEmptyCheck()),
+                placeholder(
+                  `{\n\t"Authorization": "Bearer token",\n\t"X-Custom-Header": "value"\n}`,
+                ),
+              ]}
+              theme="dark"
+              onChange={value => form.setValue('headers', value)}
+            />
+          </div>,
+          <label className=".mantine-TextInput-label" key="3">
+            Webhook Body (optional)
+          </label>,
+          <div className="mb-2" key="4">
             <CodeMirror
               height="100px"
               extensions={[
@@ -814,7 +917,7 @@ export function CreateWebhookForm({
           </div>,
           <Alert
             icon={<i className="bi bi-info-circle-fill text-slate-400" />}
-            key="3"
+            key="5"
             className="mb-4"
             color="gray"
           >
@@ -908,6 +1011,7 @@ function IntegrationsSection() {
   const { data: webhookData, refetch: refetchWebhooks } = api.useWebhooks([
     WebhookService.Slack,
     WebhookService.Generic,
+    WebhookService.IncidentIO,
   ]);
 
   const allWebhooks = useMemo(() => {

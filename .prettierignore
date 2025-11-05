@@ -1,5 +1,4 @@
 # Ignore artifacts:
 dist
 coverage
-tests
 .volumes

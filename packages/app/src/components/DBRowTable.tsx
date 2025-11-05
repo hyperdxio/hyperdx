@@ -29,12 +29,12 @@ import {
   isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   SelectList,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/utils';
 import {
   Box,
   Button,
@@ -860,7 +860,6 @@ export const RawLogTable = memo(
                           [styles.isTruncated]: !wrapLinesEnabled,
                         })}
                         onClick={e => {
-                          e.stopPropagation();
                           _onRowExpandClick(row.original);
                         }}
                         aria-label="View details for log entry"
@@ -897,6 +896,7 @@ export const RawLogTable = memo(
                                   <DBRowTableFieldWithPopover
                                     cellValue={cellValue}
                                     wrapLinesEnabled={wrapLinesEnabled}
+                                    tableContainerRef={tableContainerRef}
                                     columnName={
                                       (cell.column.columnDef.meta as any)
                                         ?.column

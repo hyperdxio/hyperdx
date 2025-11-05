@@ -8,10 +8,12 @@ import {
   useState,
 } from 'react';
 import dynamic from 'next/dynamic';
+import Head from 'next/head';
 import Link from 'next/link';
 import router from 'next/router';
 import {
   parseAsBoolean,
+  parseAsInteger,
   parseAsJson,
   parseAsString,
   parseAsStringEnum,
@@ -22,17 +24,17 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  isBrowser,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  isBrowser,
-  splitAndTrimWithBracket,
-} from '@hyperdx/common-utils/dist/utils';
 import {
   ActionIcon,
   Box,
@@ -43,7 +45,6 @@ import {
   Flex,
   Grid,
   Group,
-  Input,
   Menu,
   Modal,
   Paper,
@@ -91,7 +92,11 @@ import {
   useSource,
   useSources,
 } from '@/source';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import {
+  parseRelativeTimeQuery,
+  parseTimeQuery,
+  useNewTimeQuery,
+} from '@/timeQuery';
 import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
@@ -99,6 +104,10 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
+import {
+  getRelativeTimeOptionLabel,
+  LIVE_TAIL_DURATION_MS,
+} from './components/TimePicker/utils';
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import {
@@ -417,7 +426,7 @@ function useLiveUpdate({
   onTimeRangeSelect: (
     start: Date,
     end: Date,
-    displayedTimeInputValue?: string | undefined,
+    displayedTimeInputValue?: string | null,
   ) => void;
   pause: boolean;
 }) {
@@ -426,7 +435,7 @@ function useLiveUpdate({
   const [refreshOnVisible, setRefreshOnVisible] = useState(false);
 
   const refresh = useCallback(() => {
-    onTimeRangeSelect(new Date(Date.now() - interval), new Date(), 'Live Tail');
+    onTimeRangeSelect(new Date(Date.now() - interval), new Date(), null);
   }, [onTimeRangeSelect, interval]);
 
   // When the user comes back to the app after switching tabs, we immediately refresh the list.
@@ -532,14 +541,26 @@ function useSearchedConfigToChartConfig({
 
 function optimizeDefaultOrderBy(
   timestampExpr: string,
+  displayedTimestampExpr: string | undefined,
   sortingKey: string | undefined,
 ) {
   const defaultModifier = 'DESC';
-  const fallbackOrderByItems = [
-    getFirstTimestampValueExpression(timestampExpr ?? ''),
-    defaultModifier,
-  ];
-  const fallbackOrderBy = fallbackOrderByItems.join(' ');
+  const firstTimestampValueExpression =
+    getFirstTimestampValueExpression(timestampExpr ?? '') ?? '';
+  const defaultOrderByItems = [firstTimestampValueExpression];
+  const trimmedDisplayedTimestampExpr = displayedTimestampExpr?.trim();
+
+  if (
+    trimmedDisplayedTimestampExpr &&
+    trimmedDisplayedTimestampExpr !== firstTimestampValueExpression
+  ) {
+    defaultOrderByItems.push(trimmedDisplayedTimestampExpr);
+  }
+
+  const fallbackOrderBy =
+    defaultOrderByItems.length > 1
+      ? `(${defaultOrderByItems.join(', ')}) ${defaultModifier}`
+      : `${defaultOrderByItems[0]} ${defaultModifier}`;
 
   if (!sortingKey) return fallbackOrderBy;
 
@@ -547,13 +568,17 @@ function optimizeDefaultOrderBy(
   const sortKeys = splitAndTrimWithBracket(sortingKey);
   for (let i = 0; i < sortKeys.length; i++) {
     const sortKey = sortKeys[i];
-    if (sortKey.includes('toStartOf') && sortKey.includes(timestampExpr)) {
+    if (
+      sortKey.includes('toStartOf') &&
+      sortKey.includes(firstTimestampValueExpression)
+    ) {
       orderByArr.push(sortKey);
     } else if (
-      sortKey === timestampExpr ||
+      sortKey === firstTimestampValueExpression ||
       (sortKey.startsWith('toUnixTimestamp') &&
-        sortKey.includes(timestampExpr)) ||
-      (sortKey.startsWith('toDateTime') && sortKey.includes(timestampExpr))
+        sortKey.includes(firstTimestampValueExpression)) ||
+      (sortKey.startsWith('toDateTime') &&
+        sortKey.includes(firstTimestampValueExpression))
     ) {
       if (orderByArr.length === 0) {
         // fallback if the first sort key is the timestamp sort key
@@ -562,6 +587,8 @@ function optimizeDefaultOrderBy(
         orderByArr.push(sortKey);
         break;
       }
+    } else if (sortKey === trimmedDisplayedTimestampExpr) {
+      orderByArr.push(sortKey);
     }
   }
 
@@ -570,7 +597,16 @@ function optimizeDefaultOrderBy(
     return fallbackOrderBy;
   }
 
-  return `(${orderByArr.join(', ')}) ${defaultModifier}`;
+  if (
+    trimmedDisplayedTimestampExpr &&
+    !orderByArr.includes(trimmedDisplayedTimestampExpr)
+  ) {
+    orderByArr.push(trimmedDisplayedTimestampExpr);
+  }
+
+  return orderByArr.length > 1
+    ? `(${orderByArr.join(', ')}) ${defaultModifier}`
+    : `${orderByArr[0]} ${defaultModifier}`;
 }
 
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
@@ -582,6 +618,7 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
     () =>
       optimizeDefaultOrderBy(
         source?.timestampValueExpression ?? '',
+        source?.displayedTimestampValueExpression,
         tableMetadata?.sorting_key,
       ),
     [source, tableMetadata],
@@ -636,8 +673,10 @@ function DBSearchPage() {
     parseAsString,
   );
 
-  const [_isLive, setIsLive] = useQueryState('isLive', parseAsBoolean);
-  const isLive = _isLive ?? true;
+  const [isLive, setIsLive] = useQueryState(
+    'isLive',
+    parseAsBoolean.withDefault(true),
+  );
 
   useEffect(() => {
     if (analysisMode === 'delta' || analysisMode === 'pattern') {
@@ -699,7 +738,7 @@ function DBSearchPage() {
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Live Tail');
 
-  const { from, to, isReady, searchedTimeRange, onSearch, onTimeRangeSelect } =
+  const { isReady, searchedTimeRange, onSearch, onTimeRangeSelect } =
     useNewTimeQuery({
       initialDisplayValue: 'Live Tail',
       initialTimeRange: defaultTimeRange,
@@ -707,18 +746,6 @@ function DBSearchPage() {
       setDisplayedTimeInputValue,
       updateInput: !isLive,
     });
-
-  // If live tail is null, but time range exists, don't live tail
-  // If live tail is null, and time range is null, let's live tail
-  useEffect(() => {
-    if (_isLive == null && isReady) {
-      if (from == null && to == null) {
-        setIsLive(true);
-      } else {
-        setIsLive(false);
-      }
-    }
-  }, [_isLive, setIsLive, from, to, isReady]);
 
   // Sync url state back with form state
   // (ex. for history navigation)
@@ -986,9 +1013,29 @@ function DBSearchPage() {
   // State for collapsing all expanded rows when resuming live tail
   const [collapseAllRows, setCollapseAllRows] = useState(false);
 
+  const [interval, setInterval] = useQueryState(
+    'liveInterval',
+    parseAsInteger.withDefault(LIVE_TAIL_DURATION_MS),
+  );
+
+  const updateRelativeTimeInputValue = useCallback((interval: number) => {
+    const label = getRelativeTimeOptionLabel(interval);
+    if (label) {
+      setDisplayedTimeInputValue(label);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isReady && isLive) {
+      updateRelativeTimeInputValue(interval);
+    }
+    // we only want this to run on initial mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updateRelativeTimeInputValue, searchedConfig.source, isReady]);
+
   useLiveUpdate({
     isLive,
-    interval: 1000 * 60 * 15,
+    interval,
     refreshFrequency: 4000,
     onTimeRangeSelect,
     pause: isAnyQueryFetching || !queryReady || !isTabVisible,
@@ -1015,13 +1062,12 @@ function DBSearchPage() {
 
   const handleResumeLiveTail = useCallback(() => {
     setIsLive(true);
-    setDisplayedTimeInputValue('Live Tail');
+    updateRelativeTimeInputValue(interval);
     // Trigger collapsing all expanded rows
     setCollapseAllRows(true);
     // Reset the collapse trigger after a short delay
     setTimeout(() => setCollapseAllRows(false), 100);
-    onSearch('Live Tail');
-  }, [onSearch, setIsLive]);
+  }, [interval, updateRelativeTimeInputValue, setIsLive]);
 
   const dbSqlRowTableConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -1063,11 +1109,14 @@ function DBSearchPage() {
         to: searchedTimeRange[1].getTime().toString(),
         select: searchedConfig.select || '',
         source: searchedSource?.id || '',
-        filters: JSON.stringify(searchedConfig.filters),
+        filters: JSON.stringify(searchedConfig.filters ?? []),
+        isLive: 'false',
+        liveInterval: interval.toString(),
       });
       return `/search?${qParams.toString()}`;
     },
     [
+      interval,
       searchedConfig.filters,
       searchedConfig.select,
       searchedConfig.where,
@@ -1145,9 +1194,17 @@ function DBSearchPage() {
       dateRange: searchedTimeRange,
       displayType: DisplayType.StackedBar,
       with: aliasWith,
+      // Preserve the original table select string for "View Events" links
+      eventTableSelect: searchedConfig.select,
       ...variableConfig,
     };
-  }, [chartConfig, searchedSource, aliasWith, searchedTimeRange]);
+  }, [
+    chartConfig,
+    searchedSource,
+    aliasWith,
+    searchedTimeRange,
+    searchedConfig.select,
+  ]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
@@ -1172,9 +1229,12 @@ function DBSearchPage() {
   );
   // Parse the orderBy string into a SortingState. We need the string
   // version in other places so we keep this parser separate.
-  const orderByConfig = parseAsSortingStateString.parse(
-    searchedConfig.orderBy ?? '',
-  );
+  const initialSortBy = useMemo(() => {
+    const orderBy = parseAsSortingStateString.parse(
+      searchedConfig.orderBy ?? '',
+    );
+    return orderBy ? [orderBy] : [];
+  }, [searchedConfig.orderBy]);
 
   const handleTimeRangeSelect = useCallback(
     (d1: Date, d2: Date) => {
@@ -1216,6 +1276,11 @@ function DBSearchPage() {
 
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
+      <Head>
+        <title>
+          {savedSearch ? `${savedSearch.name} Search` : 'Search'} - HyperDX
+        </title>
+      </Head>
       {!IS_LOCAL_MODE && isAlertModalOpen && (
         <DBSearchPageAlertModal
           id={savedSearch?.id}
@@ -1469,14 +1534,21 @@ function DBSearchPage() {
             inputValue={displayedTimeInputValue}
             setInputValue={setDisplayedTimeInputValue}
             onSearch={range => {
-              if (range === 'Live Tail') {
-                setIsLive(true);
-              } else {
-                setIsLive(false);
-              }
+              setIsLive(false);
               onSearch(range);
             }}
+            onRelativeSearch={rangeMs => {
+              const _range = parseRelativeTimeQuery(rangeMs);
+              setIsLive(true);
+              setInterval(rangeMs);
+              onTimeRangeSelect(_range[0], _range[1], null);
+            }}
             showLive={analysisMode === 'results'}
+            isLiveMode={isLive}
+            // Default to relative time mode if the user has made changes to interval and reloaded.
+            defaultRelativeTimeMode={
+              isLive && interval !== LIVE_TAIL_DURATION_MS
+            }
           />
           <Button
             data-testid="search-submit-button"
@@ -1788,7 +1860,7 @@ function DBSearchPage() {
                           denoiseResults={denoiseResults}
                           collapseAllRows={collapseAllRows}
                           onSortingChange={onSortingChange}
-                          initialSortBy={orderByConfig ? [orderByConfig] : []}
+                          initialSortBy={initialSortBy}
                         />
                       )}
                   </>

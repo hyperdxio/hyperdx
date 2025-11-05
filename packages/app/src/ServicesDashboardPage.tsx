@@ -7,7 +7,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   DisplayType,
   Filter,

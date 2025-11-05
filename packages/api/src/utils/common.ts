@@ -1,4 +1,4 @@
-import { Granularity } from '@hyperdx/common-utils/dist/utils';
+import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 
 export type JSONBlob = Record<string, Json>;
 

@@ -8,6 +8,19 @@ import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
 
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 
+export enum ROW_DATA_ALIASES {
+  TIMESTAMP = '__hdx_timestamp',
+  BODY = '__hdx_body',
+  TRACE_ID = '__hdx_trace_id',
+  SPAN_ID = '__hdx_span_id',
+  SEVERITY_TEXT = '__hdx_severity_text',
+  SERVICE_NAME = '__hdx_service_name',
+  RESOURCE_ATTRIBUTES = '__hdx_resource_attributes',
+  EVENT_ATTRIBUTES = '__hdx_event_attributes',
+  EVENTS_EXCEPTION_ATTRIBUTES = '__hdx_events_exception_attributes',
+  SPAN_EVENTS = '__hdx_span_events',
+}
+
 export function useRowData({
   source,
   rowId,
@@ -32,13 +45,13 @@ export function useRowData({
         },
         {
           valueExpression: getDisplayedTimestampValueExpression(source),
-          alias: '__hdx_timestamp',
+          alias: ROW_DATA_ALIASES.TIMESTAMP,
         },
         ...(eventBodyExpr
           ? [
               {
                 valueExpression: eventBodyExpr,
-                alias: '__hdx_body',
+                alias: ROW_DATA_ALIASES.BODY,
               },
             ]
           : []),
@@ -46,7 +59,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: searchedTraceIdExpr,
-                alias: '__hdx_trace_id',
+                alias: ROW_DATA_ALIASES.TRACE_ID,
               },
             ]
           : []),
@@ -54,7 +67,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: searchedSpanIdExpr,
-                alias: '__hdx_span_id',
+                alias: ROW_DATA_ALIASES.SPAN_ID,
               },
             ]
           : []),
@@ -62,7 +75,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: severityTextExpr,
-                alias: '__hdx_severity_text',
+                alias: ROW_DATA_ALIASES.SEVERITY_TEXT,
               },
             ]
           : []),
@@ -70,7 +83,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: source.serviceNameExpression,
-                alias: '__hdx_service_name',
+                alias: ROW_DATA_ALIASES.SERVICE_NAME,
               },
             ]
           : []),
@@ -78,7 +91,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: source.resourceAttributesExpression,
-                alias: '__hdx_resource_attributes',
+                alias: ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES,
               },
             ]
           : []),
@@ -86,7 +99,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: source.eventAttributesExpression,
-                alias: '__hdx_event_attributes',
+                alias: ROW_DATA_ALIASES.EVENT_ATTRIBUTES,
               },
             ]
           : []),
@@ -94,11 +107,11 @@ export function useRowData({
           ? [
               {
                 valueExpression: `${source.spanEventsValueExpression}.Attributes[indexOf(${source.spanEventsValueExpression}.Name, 'exception')]`,
-                alias: '__hdx_events_exception_attributes',
+                alias: ROW_DATA_ALIASES.EVENTS_EXCEPTION_ATTRIBUTES,
               },
               {
                 valueExpression: source.spanEventsValueExpression,
-                alias: '__hdx_span_events',
+                alias: ROW_DATA_ALIASES.SPAN_EVENTS,
               },
             ]
           : []),

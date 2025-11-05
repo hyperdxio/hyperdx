@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
+  Badge,
   Button,
   Center,
   Divider,
@@ -18,6 +19,7 @@ import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallCha
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
 
+import ServiceMap from './ServiceMap/ServiceMap';
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { SourceSelectControlled } from './SourceSelect';
@@ -207,6 +209,28 @@ export default function DBTracePanel({
       )}
       {traceSourceData != null && eventRowWhere != null && (
         <>
+          <Divider my="md" />
+          <Group>
+            <Text size="sm" c="dark.2" my="sm">
+              Service Map
+            </Text>
+            <Badge
+              size="xs"
+              color="gray.4"
+              autoContrast
+              radius="sm"
+              className="align-text-bottom"
+            >
+              Beta
+            </Badge>
+          </Group>
+          <div style={{ height: '300px', width: '100%', display: 'flex' }}>
+            <ServiceMap
+              traceId={traceId}
+              traceTableSource={traceSourceData}
+              dateRange={dateRange}
+            />
+          </div>
           <Divider my="md" />
           <Text size="sm" c="dark.2" my="sm">
             Event Details

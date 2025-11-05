@@ -23,7 +23,7 @@ import {
   Loader,
   ScrollArea,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 
 import {
   useCreateDashboard,
@@ -50,7 +50,7 @@ import OnboardingChecklist from './OnboardingChecklist';
 import { useSavedSearches, useUpdateSavedSearch } from './savedSearch';
 import type { SavedSearch, ServerDashboard } from './types';
 import { UserPreferencesModal } from './UserPreferencesModal';
-import { useLocalStorage, useWindowSize } from './utils';
+import { useWindowSize } from './utils';
 
 import styles from '../styles/AppNav.module.scss';
 
@@ -212,7 +212,10 @@ const AppNavLinkGroups = <T extends AppNavLinkItem>({
 }) => {
   const [collapsedGroups, setCollapsedGroups] = useLocalStorage<
     Record<string, boolean>
-  >(`collapsedGroups-${name}`, {});
+  >({
+    key: `collapsedGroups-${name}`,
+    defaultValue: {},
+  });
 
   const handleToggleGroup = useCallback(
     (groupName: string) => {
@@ -375,20 +378,21 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   const { data: meData } = api.useMe();
 
-  const [isSearchExpanded, setIsSearchExpanded] = useLocalStorage(
-    'isSearchExpanded',
-    true,
-  );
-  const [isDashboardsExpanded, setIsDashboardExpanded] = useLocalStorage(
-    'isDashboardsExpanded',
-    true,
-  );
+  const [isSearchExpanded, setIsSearchExpanded] = useLocalStorage<boolean>({
+    key: 'isSearchExpanded',
+    defaultValue: true,
+  });
+  const [isDashboardsExpanded, setIsDashboardExpanded] =
+    useLocalStorage<boolean>({
+      key: 'isDashboardsExpanded',
+      defaultValue: true,
+    });
   const { width } = useWindowSize();
 
-  const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<boolean>(
-    'isNavCollapsed',
-    false,
-  );
+  const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<boolean>({
+    key: 'isNavCollapsed',
+    defaultValue: false,
+  });
 
   const isSmallScreen = (width ?? 1000) < 900;
   const isCollapsed = isSmallScreen || isPreferCollapsed;
@@ -434,7 +438,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   });
 
   const [isDashboardsPresetsCollapsed, setDashboardsPresetsCollapsed] =
-    useLocalStorage('isDashboardsPresetsCollapsed', false);
+    useLocalStorage<boolean>({
+      key: 'isDashboardsPresetsCollapsed',
+      defaultValue: false,
+    });
 
   const savedSearchesResultsRef = useRef<HTMLDivElement>(null);
   const dashboardsResultsRef = useRef<HTMLDivElement>(null);
@@ -721,6 +728,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 label="Client Sessions"
                 href="/sessions"
                 iconName="bi-laptop"
+              />
+
+              <AppNavLink
+                label="Service Map"
+                href="/service-map"
+                iconName="bi-diagram-2-fill"
+                isBeta
               />
 
               <AppNavLink

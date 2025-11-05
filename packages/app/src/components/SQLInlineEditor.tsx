@@ -12,7 +12,7 @@ import { sql, SQLDialect } from '@codemirror/lang-sql';
 import {
   Field,
   TableConnectionChoice,
-} from '@hyperdx/common-utils/dist/metadata';
+} from '@hyperdx/common-utils/dist/core/metadata';
 import { Flex, Paper, Text, Tooltip } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 import CodeMirror, {
@@ -296,6 +296,7 @@ export default function SQLInlineEditor({
           return {
             ...box,
             right: box.right ?? 0,
+            left: parentBox.left ?? box.left,
             top: parentBox.top ?? box.top,
             bottom: parentBox.bottom ?? box.bottom,
           };
