@@ -11,6 +11,7 @@ import { Text } from '@mantine/core';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import useResizable from '@/hooks/useResizable';
 import useRowWhere from '@/hooks/useRowWhere';
 import {
   getDisplayedTimestampValueExpression,
@@ -20,6 +21,7 @@ import {
 import TimelineChart from '@/TimelineChart';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
+import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
 export type SpanRow = {
   Body: string;
@@ -263,6 +265,8 @@ export function DBTraceWaterfallChartContainer({
     body: string;
   };
 }) {
+  const { size, startResize } = useResizable(30, 'bottom');
+
   const { rows: traceRowsData, isFetching: traceIsFetching } =
     useEventsAroundFocus({
       tableSource: traceTableSource,
@@ -551,8 +555,16 @@ export function DBTraceWaterfallChartContainer({
     return v.id === highlightedRowWhere;
   });
 
+  const heightPx = (size / 100) * window.innerHeight;
+
   return (
-    <>
+    <div
+      style={{
+        position: 'relative',
+        overflow: 'hidden',
+        maxHeight: `${heightPx}px`,
+      }}
+    >
       {isFetching ? (
         <div className="my-3">Loading Traces...</div>
       ) : rows == null ? (
@@ -563,7 +575,7 @@ export function DBTraceWaterfallChartContainer({
         <TimelineChart
           style={{
             overflowY: 'auto',
-            maxHeight: 400,
+            maxHeight: `${heightPx}px`,
           }}
           scale={1}
           setScale={() => {}}
@@ -580,6 +592,7 @@ export function DBTraceWaterfallChartContainer({
           initialScrollRowIndex={initialScrollRowIndex}
         />
       )}
-    </>
+      <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
+    </div>
   );
 }

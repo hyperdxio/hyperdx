@@ -19,3 +19,26 @@
     margin-right: -1px;
   }
 }
+
+
+.resizeYHandle {
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: row-resize;
+  transition: all 150ms ease;
+  z-index: 10;
+
+  &:hover,
+  &:active {
+    background-color: var(--mantine-color-dark-3);
+  }
+
+  &:active {
+    background-color: var(--mantine-color-dark-4);
+    height: 8px;
+    margin-bottom: -1px;
+  }
+}
