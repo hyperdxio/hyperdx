@@ -1,10 +1,8 @@
+import { WebhookService } from '@hyperdx/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 import mongoose, { Schema } from 'mongoose';
 
-export enum WebhookService {
-  Slack = 'slack',
-  Generic = 'generic',
-}
+export { WebhookService };
 
 interface MongooseMap extends Map<string, string> {
   // https://mongoosejs.com/docs/api/map.html#MongooseMap.prototype.toJSON()

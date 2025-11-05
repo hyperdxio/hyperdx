@@ -30,6 +30,7 @@ import '@mantine/dropzone/styles.css';
 import '@styles/globals.css';
 import '@styles/app.scss';
 import 'uplot/dist/uPlot.min.css';
+import '@xyflow/react/dist/style.css';
 
 // Polyfill crypto.randomUUID for non-HTTPS environments
 if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
