@@ -39,12 +39,19 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   const { data, isLoading } = useGetKeyValues({
     chartConfig,
     keys: [`${metricSource.resourceAttributesExpression}['${fieldName}']`],
+    disableRowLimit: true,
+    limit: 1000000,
   });
+
+  const options =
+    data?.[0]?.value
+      .map(value => ({ value, label: value }))
+      .sort((a, b) => a.value.localeCompare(b.value)) || []; // Sort alphabetically for better search results
 
   return (
     <Select
       placeholder={placeholder + (isLoading ? ' (loading...)' : '')}
-      data={data?.[0]?.value.map(value => ({ value, label: value })) || []}
+      data={options}
       value={value}
       onChange={onChange}
       searchable
@@ -55,7 +62,7 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
       disabled={isLoading}
       variant="filled"
       w={200}
-      limit={20}
+      limit={100} // Show up to 100 search results
       data-testid={dataTestId}
     />
   );
