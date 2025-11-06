@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import { AlertState } from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
 import {
   handleSendGenericWebhook,
@@ -245,11 +246,18 @@ router.post(
         hdxLink: 'https://hyperdx.io',
         title: 'Test Webhook from HyperDX',
         body: 'This is a test message to verify your webhook configuration is working correctly.',
+        startTime: Date.now(),
+        endTime: Date.now(),
+        state: AlertState.INSUFFICIENT_DATA,
+        eventId: 'test-event-id',
       };
 
       if (service === WebhookService.Slack) {
         await handleSendSlackWebhook(testWebhook, testMessage);
-      } else if (service === WebhookService.Generic) {
+      } else if (
+        service === WebhookService.Generic ||
+        service === WebhookService.IncidentIO
+      ) {
         await handleSendGenericWebhook(testWebhook, testMessage);
       } else {
         return res.status(400).json({
