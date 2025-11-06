@@ -7,6 +7,7 @@ import {
   Filter,
   NumberFormat as _NumberFormat,
   SavedSearchSchema,
+  WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 
 export type NumberFormat = _NumberFormat;
@@ -247,11 +248,6 @@ export enum KubePhase {
   Succeeded = 3,
   Failed = 4,
   Unknown = 5,
-}
-
-export enum WebhookService {
-  Slack = 'slack',
-  Generic = 'generic',
 }
 
 export type Webhook = {

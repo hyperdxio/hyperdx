@@ -7,7 +7,7 @@ import { URLSearchParams } from 'url';
 import * as config from '@/config';
 import { LOCAL_APP_TEAM } from '@/controllers/team';
 import { connectDB, mongooseConnection, ObjectId } from '@/models';
-import Alert, { AlertSource, type IAlert } from '@/models/alert';
+import Alert, { AlertSource, AlertState, type IAlert } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import Connection, { IConnection } from '@/models/connection';
 import Dashboard from '@/models/dashboard';
@@ -26,7 +26,7 @@ import logger from '@/utils/logger';
 
 import { AggregatedAlertHistory, getPreviousAlertHistories } from '..';
 
-type PartialAlertDetails = MappedOmit<AlertDetails, 'previous'>;
+type PartialAlertDetails = MappedOmit<AlertDetails, 'previousMap'>;
 
 async function getSavedSearchDetails(
   alert: IAlert,
@@ -189,8 +189,6 @@ async function loadAlert(
     throw new Error('failed to fetch alert connection');
   }
 
-  const previous = previousAlerts.get(alert.id);
-
   if (!groupedTasks.has(conn.id)) {
     groupedTasks.set(conn.id, { alerts: [], conn, now });
   }
@@ -198,7 +196,7 @@ async function loadAlert(
   if (!v) {
     throw new Error(`provider did not set key ${conn.id} before appending`);
   }
-  v.alerts.push({ ...details, previous });
+  v.alerts.push({ ...details, previousMap: previousAlerts });
 }
 
 export default class DefaultAlertProvider implements AlertProvider {
@@ -279,12 +277,47 @@ export default class DefaultAlertProvider implements AlertProvider {
     return url.toString();
   }
 
-  async updateAlertState(alertHistory: IAlertHistory) {
-    const { alert: alertId, state } = alertHistory;
-    await Promise.all([
-      Alert.updateOne({ _id: alertId }, { $set: { state } }),
-      AlertHistory.create(alertHistory),
-    ]);
+  async updateAlertState(alertId: string, histories: IAlertHistory[]) {
+    // Save history records first (in parallel), then update alert state
+    // Use Promise.allSettled to handle partial failures gracefully
+    const historyResults = await Promise.allSettled(
+      histories.map(history => AlertHistory.create(history)),
+    );
+
+    // Log any failed history saves but continue with alert state update
+    const failedHistories = historyResults.filter(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failedHistories.length > 0) {
+      logger.error({
+        message: 'Some alert history records failed to save',
+        alertId,
+        failedCount: failedHistories.length,
+        totalCount: histories.length,
+        errors: failedHistories.map(f => f.reason),
+      });
+    }
+
+    // Determine final alert state: use successfully saved histories if any, otherwise fallback to computed state
+    // The alert state is ALERT if ANY history (successful or computed) is in ALERT state, otherwise OK
+    const successfulHistories = historyResults
+      .map((result, index) =>
+        result.status === 'fulfilled' ? histories[index] : null,
+      )
+      .filter((h): h is IAlertHistory => h !== null);
+
+    const historiesToCheck =
+      successfulHistories.length > 0 ? successfulHistories : histories;
+
+    const finalState = historiesToCheck.some(h => h.state === AlertState.ALERT)
+      ? AlertState.ALERT
+      : AlertState.OK;
+
+    // Update alert state based on successfully saved histories
+    await Alert.updateOne(
+      { _id: new mongoose.Types.ObjectId(alertId) },
+      { $set: { state: finalState } },
+    );
   }
 
   async getWebhooks(teamId: string | ObjectId) {

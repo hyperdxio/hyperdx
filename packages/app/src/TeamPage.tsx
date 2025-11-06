@@ -5,7 +5,7 @@ import { Button as BSButton, Modal as BSModal } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   Badge,
   Box,
@@ -42,7 +42,6 @@ import { DEFAULT_QUERY_TIMEOUT, DEFAULT_SEARCH_ROW_LIMIT } from './defaults';
 import { withAppNav } from './layout';
 import { useSources } from './source';
 import type { Webhook } from './types';
-import { WebhookService } from './types';
 import { useConfirm } from './useConfirm';
 import { capitalizeFirstLetter } from './utils';
 
@@ -727,6 +726,7 @@ function IntegrationsSection() {
   const { data: webhookData, refetch: refetchWebhooks } = api.useWebhooks([
     WebhookService.Slack,
     WebhookService.Generic,
+    WebhookService.IncidentIO,
   ]);
 
   const allWebhooks = useMemo<Webhook[]>(() => {

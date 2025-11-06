@@ -30,6 +30,7 @@ import '@mantine/dropzone/styles.css';
 import '@styles/globals.css';
 import '@styles/app.scss';
 import 'uplot/dist/uPlot.min.css';
+import '@xyflow/react/dist/style.css';
 
 // Polyfill crypto.randomUUID for non-HTTPS environments
 if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
@@ -108,6 +109,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   return (
     <React.Fragment>
       <Head>
+        <title>HyperDX</title>
         <link rel="icon" type="image/png" sizes="32x32" href="/Icon32.png" />
         <meta
           name="viewport"
