@@ -595,18 +595,36 @@ export function formatResponseForTimeChart({
   const isSingleValueColumn = valueColumns.length === 1;
   const hasGroupColumns = groupColumns.length > 0;
 
+  // Pre-compute group column names for efficiency
+  const groupColumnNames = groupColumns.map(g => g.name);
+
   for (const row of data) {
     const date = new Date(row[timestampColumn.name]);
     const ts = date.getTime() / 1000;
 
-    for (const valueColumn of valueColumns) {
-      const tsBucket = tsBucketMap.get(ts) ?? {};
+    // Get or create timestamp bucket - avoid object spread in hot path
+    let tsBucket = tsBucketMap.get(ts);
+    if (tsBucket == null) {
+      tsBucket = { [timestampColumn.name]: ts };
+      tsBucketMap.set(ts, tsBucket);
+    }
 
-      const keyName = [
-        // Simplify the display name if there's only one series and a group by
-        ...(isSingleValueColumn && hasGroupColumns ? [] : [valueColumn.name]),
-        ...groupColumns.map(g => row[g.name]),
-      ].join(' · ');
+    for (const valueColumn of valueColumns) {
+      // Compute keyName efficiently
+      let keyName: string;
+      if (isSingleValueColumn && hasGroupColumns) {
+        // Only group columns
+        keyName = groupColumnNames.map(name => row[name]).join(' · ');
+      } else if (hasGroupColumns) {
+        // Value column + group columns
+        keyName = [
+          valueColumn.name,
+          ...groupColumnNames.map(name => row[name]),
+        ].join(' · ');
+      } else {
+        // Just value column
+        keyName = valueColumn.name;
+      }
 
       // UInt64 are returned as strings, we'll convert to number
       // and accept a bit of floating point error
@@ -614,37 +632,36 @@ export function formatResponseForTimeChart({
       const value =
         typeof rawValue === 'number' ? rawValue : Number.parseFloat(rawValue);
 
-      tsBucketMap.set(ts, {
-        ...tsBucket,
-        [timestampColumn.name]: ts,
-        [keyName]: value,
-      });
+      // Direct assignment - avoid spread operator
+      tsBucket[keyName] = value;
 
-      let color: string | undefined = undefined;
-      if (
-        source &&
-        groupColumns.length === 1 &&
-        groupColumns[0].name ===
-          (source.kind === SourceKind.Log
-            ? source.severityTextExpression
-            : source.statusCodeExpression)
-      ) {
-        color = logLevelColor(row[groupColumns[0].name]);
+      // Update line data map - check if we already have this key to avoid recreation
+      const existingLineData = lineDataMap[keyName];
+      if (existingLineData == null) {
+        let color: string | undefined = undefined;
+        if (
+          source &&
+          groupColumns.length === 1 &&
+          groupColumns[0].name ===
+            (source.kind === SourceKind.Log
+              ? source.severityTextExpression
+              : source.statusCodeExpression)
+        ) {
+          color = logLevelColor(row[groupColumns[0].name]);
+        }
+
+        lineDataMap[keyName] = {
+          dataKey: keyName,
+          displayName: keyName,
+          color,
+          maxValue: value,
+          minValue: value,
+        };
+      } else {
+        // Update existing - avoid object recreation
+        existingLineData.maxValue = Math.max(existingLineData.maxValue, value);
+        existingLineData.minValue = Math.min(existingLineData.minValue, value);
       }
-      // TODO: Set name and color correctly
-      lineDataMap[keyName] = {
-        dataKey: keyName,
-        displayName: keyName,
-        color,
-        maxValue: Math.max(
-          lineDataMap[keyName]?.maxValue ?? Number.NEGATIVE_INFINITY,
-          value,
-        ),
-        minValue: Math.min(
-          lineDataMap[keyName]?.minValue ?? Number.POSITIVE_INFINITY,
-          value,
-        ),
-      };
     }
   }
 
