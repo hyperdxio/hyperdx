@@ -333,7 +333,7 @@ export const InfraPodsStatusTable = ({
       </Card.Section>
       {isAtFetchLimit && !isLoading && !isError && podsList.length > 0 && (
         <Card.Section px="md" py="xs">
-          <Alert variant="light" color="blue" size="xs">
+          <Alert variant="light" color="blue">
             Showing first {TABLE_FETCH_LIMIT.toLocaleString()} pods. Use the
             filters above to narrow your search.
           </Alert>
