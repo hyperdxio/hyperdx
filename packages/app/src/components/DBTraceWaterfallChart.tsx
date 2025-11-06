@@ -7,7 +7,7 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Text } from '@mantine/core';
+import { Divider, Text } from '@mantine/core';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -558,41 +558,48 @@ export function DBTraceWaterfallChartContainer({
   const heightPx = (size / 100) * window.innerHeight;
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        overflow: 'hidden',
-        maxHeight: `${heightPx}px`,
-      }}
-    >
-      {isFetching ? (
-        <div className="my-3">Loading Traces...</div>
-      ) : rows == null ? (
-        <div>
-          An unknown error occurred. <ContactSupportText />
-        </div>
-      ) : (
-        <TimelineChart
-          style={{
-            overflowY: 'auto',
-            maxHeight: `${heightPx}px`,
-          }}
-          scale={1}
-          setScale={() => {}}
-          rowHeight={22}
-          labelWidth={300}
-          onClick={ts => {
-            // onTimeClick(ts + startedAt);
-          }}
-          onEventClick={event => {
-            onClick?.({ id: event.id, type: event.type ?? '' });
-          }}
-          cursors={[]}
-          rows={timelineRows}
-          initialScrollRowIndex={initialScrollRowIndex}
-        />
-      )}
-      <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
-    </div>
+    <>
+      <div
+        style={{
+          position: 'relative',
+          overflow: 'hidden',
+          maxHeight: `${heightPx}px`,
+        }}
+      >
+        {isFetching ? (
+          <div className="my-3">Loading Traces...</div>
+        ) : rows == null ? (
+          <div>
+            An unknown error occurred. <ContactSupportText />
+          </div>
+        ) : (
+          <TimelineChart
+            style={{
+              overflowY: 'auto',
+              maxHeight: `${heightPx}px`,
+            }}
+            scale={1}
+            setScale={() => {}}
+            rowHeight={22}
+            labelWidth={300}
+            onClick={ts => {
+              // onTimeClick(ts + startedAt);
+            }}
+            onEventClick={event => {
+              onClick?.({ id: event.id, type: event.type ?? '' });
+            }}
+            cursors={[]}
+            rows={timelineRows}
+            initialScrollRowIndex={initialScrollRowIndex}
+          />
+        )}
+      </div>
+      <Divider
+        mt="md"
+        className={resizeStyles.resizeYHandle}
+        onMouseDown={startResize}
+        style={{ position: 'relative', bottom: 0 }}
+      />
+    </>
   );
 }
