@@ -8,6 +8,7 @@ import { useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
+  Alert,
   Badge,
   Box,
   Button,
@@ -266,6 +267,9 @@ export const InfraPodsStatusTable = ({
     }));
   }, [data, phaseFilter]);
 
+  // Check if we're hitting the fetch limit (indicating there might be more data)
+  const isAtFetchLimit = data?.data && data.data.length >= TABLE_FETCH_LIMIT;
+
   const getLink = React.useCallback((podName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
     searchParams.set('podName', `${podName}`);
@@ -327,6 +331,14 @@ export const InfraPodsStatusTable = ({
           />
         </Group>
       </Card.Section>
+      {isAtFetchLimit && !isLoading && !isError && podsList.length > 0 && (
+        <Card.Section px="md" py="xs">
+          <Alert variant="light" color="blue" size="xs">
+            Showing first {TABLE_FETCH_LIMIT.toLocaleString()} pods. Use the
+            filters above to narrow your search.
+          </Alert>
+        </Card.Section>
+      )}
       <Card.Section>
         <div
           ref={tableContainerRef}
