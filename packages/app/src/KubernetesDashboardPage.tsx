@@ -16,7 +16,6 @@ import {
   Flex,
   Grid,
   Group,
-  ScrollArea,
   SegmentedControl,
   Skeleton,
   Table,
@@ -28,6 +27,7 @@ import { notifications } from '@mantine/notifications';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { TimePicker } from '@/components/TimePicker';
+import { useVirtualList } from '@/hooks/useVirtualList';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { DBTimeChart } from './components/DBTimeChart';
@@ -572,15 +572,25 @@ const NodesTable = ({
     });
   }, [data]);
 
+  const {
+    containerRef: nodesContainerRef,
+    rowVirtualizer: nodesRowVirtualizer,
+    virtualItems: nodeVirtualItems,
+    paddingTop: nodesPaddingTop,
+    paddingBottom: nodesPaddingBottom,
+  } = useVirtualList(nodesList.length, 40, 10);
+
   return (
     <Card p="md" data-testid="k8s-nodes-table">
       <Card.Section p="md" py="xs" withBorder>
         Nodes
       </Card.Section>
       <Card.Section>
-        <ScrollArea
-          viewportProps={{
-            style: { maxHeight: 300 },
+        <div
+          ref={nodesContainerRef}
+          style={{
+            height: '300px',
+            overflow: 'auto',
           }}
         >
           {isLoading ? (
@@ -604,58 +614,80 @@ const NodesTable = ({
                   <Table.Th style={{ width: 130 }}>Uptime</Table.Th>
                 </Table.Tr>
               </Table.Thead>
-
               <Table.Tbody>
-                {nodesList.map(node => (
-                  <Link
-                    key={node.name}
-                    href={getLink(node.name)}
-                    legacyBehavior
-                  >
-                    <Table.Tr className="cursor-pointer">
-                      <Table.Td>{node.name || 'N/A'}</Table.Td>
-                      <Table.Td>
-                        {node.ready === 1 ? (
-                          <Badge
-                            variant="light"
-                            color="green"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Ready
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="light"
-                            color="red"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Not Ready
-                          </Badge>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(
-                          node.cpuAvg,
-                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
-                      </Table.Td>
-                      <Table.Td>
-                        {node.uptime ? formatUptime(node.uptime) : '–'}
-                      </Table.Td>
-                    </Table.Tr>
-                  </Link>
-                ))}
+                {nodesPaddingTop > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={5}
+                      style={{ height: `${nodesPaddingTop}px` }}
+                    />
+                  </Table.Tr>
+                )}
+                {nodeVirtualItems.map(virtualRow => {
+                  const node = nodesList[virtualRow.index];
+                  return (
+                    <Link
+                      key={node.name}
+                      href={getLink(node.name)}
+                      legacyBehavior
+                    >
+                      <Table.Tr
+                        className="cursor-pointer"
+                        ref={nodesRowVirtualizer.measureElement}
+                        data-index={virtualRow.index}
+                      >
+                        <Table.Td>{node.name || 'N/A'}</Table.Td>
+                        <Table.Td>
+                          {node.ready === 1 ? (
+                            <Badge
+                              variant="light"
+                              color="green"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Ready
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="light"
+                              color="red"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Not Ready
+                            </Badge>
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(
+                            node.cpuAvg,
+                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
+                        </Table.Td>
+                        <Table.Td>
+                          {node.uptime ? formatUptime(node.uptime) : '–'}
+                        </Table.Td>
+                      </Table.Tr>
+                    </Link>
+                  );
+                })}
+                {nodesPaddingBottom > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={5}
+                      style={{ height: `${nodesPaddingBottom}px` }}
+                    />
+                  </Table.Tr>
+                )}
               </Table.Tbody>
             </Table>
           )}
-        </ScrollArea>
+        </div>
       </Card.Section>
     </Card>
   );
@@ -731,6 +763,14 @@ const NamespacesTable = ({
     });
   }, [data]);
 
+  const {
+    containerRef: namespacesContainerRef,
+    rowVirtualizer: namespacesRowVirtualizer,
+    virtualItems: namespaceVirtualItems,
+    paddingTop: namespacesPaddingTop,
+    paddingBottom: namespacesPaddingBottom,
+  } = useVirtualList(namespacesList.length, 40, 10);
+
   const getLink = React.useCallback((namespaceName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
     searchParams.set('namespaceName', `${namespaceName}`);
@@ -743,9 +783,11 @@ const NamespacesTable = ({
         Namespaces
       </Card.Section>
       <Card.Section>
-        <ScrollArea
-          viewportProps={{
-            style: { maxHeight: 300 },
+        <div
+          ref={namespacesContainerRef}
+          style={{
+            height: '300px',
+            overflow: 'auto',
           }}
         >
           {isLoading ? (
@@ -769,53 +811,79 @@ const NamespacesTable = ({
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {namespacesList.map(namespace => (
-                  <Link
-                    key={namespace.name}
-                    href={getLink(namespace.name)}
-                    legacyBehavior
-                  >
-                    <Table.Tr className="cursor-pointer">
-                      <Table.Td>{namespace.name || 'N/A'}</Table.Td>
-                      <Table.Td>
-                        {namespace.phase === 1 ? (
-                          <Badge
-                            variant="light"
-                            color="green"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Ready
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="light"
-                            color="red"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Terminating
-                          </Badge>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(
-                          namespace.cpuAvg,
-                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(namespace.memAvg, K8S_MEM_NUMBER_FORMAT)}
-                      </Table.Td>
-                    </Table.Tr>
-                  </Link>
-                ))}
+                {namespacesPaddingTop > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={4}
+                      style={{ height: `${namespacesPaddingTop}px` }}
+                    />
+                  </Table.Tr>
+                )}
+                {namespaceVirtualItems.map(virtualRow => {
+                  const namespace = namespacesList[virtualRow.index];
+                  return (
+                    <Link
+                      key={namespace.name}
+                      href={getLink(namespace.name)}
+                      legacyBehavior
+                    >
+                      <Table.Tr
+                        className="cursor-pointer"
+                        ref={namespacesRowVirtualizer.measureElement}
+                        data-index={virtualRow.index}
+                      >
+                        <Table.Td>{namespace.name || 'N/A'}</Table.Td>
+                        <Table.Td>
+                          {namespace.phase === 1 ? (
+                            <Badge
+                              variant="light"
+                              color="green"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Ready
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="light"
+                              color="red"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Terminating
+                            </Badge>
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(
+                            namespace.cpuAvg,
+                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(
+                            namespace.memAvg,
+                            K8S_MEM_NUMBER_FORMAT,
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    </Link>
+                  );
+                })}
+                {namespacesPaddingBottom > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={4}
+                      style={{ height: `${namespacesPaddingBottom}px` }}
+                    />
+                  </Table.Tr>
+                )}
               </Table.Tbody>
             </Table>
           )}
-        </ScrollArea>
+        </div>
       </Card.Section>
     </Card>
   );
