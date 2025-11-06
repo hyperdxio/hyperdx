@@ -95,9 +95,7 @@ export function WebhookForm({
     }
   }, [webhook, form]);
 
-  const handleTestWebhook = async () => {
-    // Get current form values
-    const values = form.getValues();
+  const handleTestWebhook = async (values: WebhookForm) => {
     const { service, url, body, headers } = values;
 
     // Parse headers if provided
@@ -286,21 +284,9 @@ export function WebhookForm({
           }}
         >
           <Group mt="xs">
-            <Radio
-              value={WebhookService.Slack}
-              label="Slack"
-              disabled={isEditing}
-            />
-            <Radio
-              value={WebhookService.Generic}
-              label="Generic"
-              disabled={isEditing}
-            />
-            <Radio
-              value={WebhookService.IncidentIO}
-              label="Incident.io"
-              {...form.register('service', { required: true })}
-            />
+            <Radio value={WebhookService.Slack} label="Slack" />
+            <Radio value={WebhookService.Generic} label="Generic" />
+            <Radio value={WebhookService.IncidentIO} label="Incident.io" />
           </Group>
         </Radio.Group>
         <TextInput
@@ -419,7 +405,7 @@ export function WebhookForm({
             <Button
               variant="outline"
               color="blue"
-              onClick={handleTestWebhook}
+              onClick={form.handleSubmit(handleTestWebhook)}
               loading={testWebhook.isPending}
               type="button"
             >
