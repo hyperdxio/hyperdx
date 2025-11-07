@@ -1,5 +1,9 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { AlertState } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertState,
+  Tile,
+  WebhookService,
+} from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import ms from 'ms';
 
@@ -16,11 +20,12 @@ import {
 } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
-import Connection from '@/models/connection';
-import Dashboard from '@/models/dashboard';
-import { SavedSearch } from '@/models/savedSearch';
-import { Source } from '@/models/source';
-import Webhook from '@/models/webhook';
+import Connection, { IConnection } from '@/models/connection';
+import Dashboard, { IDashboard } from '@/models/dashboard';
+import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
+import { ISource, Source } from '@/models/source';
+import { ITeam } from '@/models/team';
+import Webhook, { IWebhook } from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
 import {
   doesExceedThreshold,
@@ -29,6 +34,7 @@ import {
 } from '@/tasks/checkAlerts';
 import {
   AlertDetails,
+  AlertProvider,
   AlertTaskType,
   loadProvider,
 } from '@/tasks/checkAlerts/providers';
@@ -40,7 +46,6 @@ import {
   renderAlertTemplate,
   translateExternalActionsToInternal,
 } from '@/tasks/checkAlerts/template';
-import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
 
 // Create provider instance for tests
@@ -191,6 +196,12 @@ describe('checkAlerts', () => {
       await server.start();
     });
 
+    beforeEach(async () => {
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValueOnce(null as any);
+    });
+
     afterEach(async () => {
       await server.clearDBs();
       jest.clearAllMocks();
@@ -303,8 +314,6 @@ describe('checkAlerts', () => {
     });
 
     it('renderAlertTemplate - with existing channel', async () => {
-      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
-
       const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
         team: team._id,
@@ -340,10 +349,6 @@ describe('checkAlerts', () => {
     });
 
     it('renderAlertTemplate - custom body with single action', async () => {
-      jest
-        .spyOn(slack, 'postMessageToWebhook')
-        .mockResolvedValueOnce(null as any);
-
       const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
         team: team._id,
@@ -401,10 +406,6 @@ describe('checkAlerts', () => {
     });
 
     it('renderAlertTemplate - single action with custom action id', async () => {
-      jest
-        .spyOn(slack, 'postMessageToWebhook')
-        .mockResolvedValueOnce(null as any);
-
       const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
         team: team._id,
@@ -465,8 +466,6 @@ describe('checkAlerts', () => {
     });
 
     it('renderAlertTemplate - #is_match with single action', async () => {
-      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
-
       const team = await createTeam({ name: 'My Team' });
       const myWebhook = await new Webhook({
         team: team._id,
@@ -615,6 +614,32 @@ describe('checkAlerts', () => {
       await server.start();
     });
 
+    beforeEach(async () => {
+      const mockMetadata = {
+        getColumn: jest.fn().mockImplementation(({ column }) => {
+          const columnMap = {
+            Body: { name: 'Body', type: 'String' },
+            Timestamp: { name: 'Timestamp', type: 'DateTime' },
+            SeverityText: { name: 'SeverityText', type: 'String' },
+            ServiceName: { name: 'ServiceName', type: 'String' },
+          };
+          return Promise.resolve(columnMap[column]);
+        }),
+      };
+
+      // Mock the getMetadata function
+      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
+        getMetadata: jest.fn().mockReturnValue(mockMetadata),
+      }));
+
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValueOnce(null as any);
+
+      jest.spyOn(checkAlert, 'handleSendGenericWebhook');
+    });
+
     afterEach(async () => {
       await server.clearDBs();
       jest.clearAllMocks();
@@ -624,12 +649,161 @@ describe('checkAlerts', () => {
       await server.stop();
     });
 
-    it('SAVED_SEARCH alert - slack webhook', async () => {
-      jest
-        .spyOn(slack, 'postMessageToWebhook')
-        .mockResolvedValueOnce(null as any);
-
+    const setupSavedSearchAlertTest = async ({
+      webhookSettings,
+    }: Partial<{
+      webhookSettings: IWebhook;
+    }> = {}) => {
       const team = await createTeam({ name: 'My Team' });
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+        ...webhookSettings,
+      }).save();
+
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'My Search',
+        select: 'Body',
+        where: 'SeverityText: "error"',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      return {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      };
+    };
+
+    const createAlertDetails = async (
+      team: ITeam,
+      source: ISource,
+      alertConfig: Parameters<typeof createAlert>[1],
+      additionalDetails:
+        | {
+            taskType: AlertTaskType.SAVED_SEARCH;
+            savedSearch: Omit<ISavedSearch, 'source'>;
+          }
+        | {
+            taskType: AlertTaskType.TILE;
+            tile: Tile;
+            dashboard: IDashboard;
+          },
+    ) => {
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(team._id, alertConfig, mockUserId);
+
+      const enhancedAlert: any = await Alert.findById(alert.id).populate([
+        'team',
+        'savedSearch',
+      ]);
+
+      const details = {
+        alert: enhancedAlert,
+        source,
+        previousMap: new Map(),
+        ...additionalDetails,
+      } satisfies AlertDetails;
+
+      return details;
+    };
+
+    const processAlertAtTime = async (
+      now: Date,
+      details: AlertDetails,
+      clickhouseClient: ClickhouseClient,
+      connection: IConnection,
+      alertProvider: AlertProvider,
+      teamWebhooksById: Map<string, IWebhook>,
+    ) => {
+      const previousMap = await getPreviousAlertHistories(
+        [details.alert.id],
+        now,
+      );
+      await processAlert(
+        now,
+        {
+          ...details,
+          previousMap,
+        },
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+    };
+
+    it('SAVED_SEARCH alert - slack webhook', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
 
       const now = new Date('2023-11-16T22:12:00.000Z');
       const eventMs = new Date('2023-11-16T22:05:00.000Z');
@@ -664,99 +838,8 @@ describe('checkAlerts', () => {
         },
       ]);
 
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'slack',
-        url: 'https://hooks.slack.com/services/123',
-        name: 'My Webhook',
-      }).save();
-      const teamWebhooksById = new Map<string, typeof webhook>([
-        [webhook._id.toString(), webhook],
-      ]);
-      const connection = await Connection.create({
-        team: team._id,
-        name: 'Default',
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
-      const source = await Source.create({
-        kind: 'log',
-        team: team._id,
-        from: {
-          databaseName: 'default',
-          tableName: 'otel_logs',
-        },
-        timestampValueExpression: 'Timestamp',
-        connection: connection.id,
-        name: 'Logs',
-      });
-      const savedSearch = await new SavedSearch({
-        team: team._id,
-        name: 'My Search',
-        select: 'Body',
-        where: 'SeverityText: "error"',
-        whereLanguage: 'lucene',
-        orderBy: 'Timestamp',
-        source: source.id,
-        tags: ['test'],
-      }).save();
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
-        {
-          source: AlertSource.SAVED_SEARCH,
-          channel: {
-            type: 'webhook',
-            webhookId: webhook._id.toString(),
-          },
-          interval: '5m',
-          thresholdType: AlertThresholdType.ABOVE,
-          threshold: 1,
-          savedSearchId: savedSearch.id,
-        },
-        mockUserId,
-      );
-
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'savedSearch',
-      ]);
-
-      const details = {
-        alert: enhancedAlert,
-        source,
-        taskType: AlertTaskType.SAVED_SEARCH,
-        savedSearch,
-        previousMap: new Map(),
-      } satisfies AlertDetails;
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-      });
-
-      const mockMetadata = {
-        getColumn: jest.fn().mockImplementation(({ column }) => {
-          const columnMap = {
-            Body: { name: 'Body', type: 'String' },
-            Timestamp: { name: 'Timestamp', type: 'DateTime' },
-            SeverityText: { name: 'SeverityText', type: 'String' },
-            ServiceName: { name: 'ServiceName', type: 'String' },
-          };
-          return Promise.resolve(columnMap[column]);
-        }),
-      };
-
-      // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-        getMetadata: jest.fn().mockReturnValue(mockMetadata),
-      }));
-
       // should fetch 5m of logs
-      await processAlert(
+      await processAlertAtTime(
         now,
         details,
         clickhouseClient,
@@ -764,69 +847,48 @@ describe('checkAlerts', () => {
         alertProvider,
         teamWebhooksById,
       );
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      const previousAlertsLater = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         later,
-      );
-      await processAlert(
-        later,
-        {
-          ...details,
-          previousMap: previousAlertsLater,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
         teamWebhooksById,
       );
       // alert should still be in alert state
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      const previousAlertsNextWindow = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         nextWindow,
-      );
-      await processAlert(
-        nextWindow,
-        {
-          ...details,
-          previousMap: previousAlertsNextWindow,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
         teamWebhooksById,
       );
       // alert should be in ok state
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       const nextNextWindow = new Date('2023-11-16T22:20:00.000Z');
-      const previousAlertsNextNextWindow = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         nextNextWindow,
-      );
-      await processAlert(
-        nextNextWindow,
-        {
-          ...details,
-          previousMap: previousAlertsNextNextWindow,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
         teamWebhooksById,
       );
       // alert should be in ok state
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       }).sort({
         createdAt: 1,
       });
@@ -878,11 +940,14 @@ describe('checkAlerts', () => {
     });
 
     it('TILE alert (events) - slack webhook', async () => {
-      jest
-        .spyOn(slack, 'postMessageToWebhook')
-        .mockResolvedValueOnce(null as any);
-
-      const team = await createTeam({ name: 'My Team' });
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
 
       const now = new Date('2023-11-16T22:12:00.000Z');
       // Send events in the last alert window 22:05 - 22:10
@@ -909,33 +974,6 @@ describe('checkAlerts', () => {
         },
       ]);
 
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'slack',
-        url: 'https://hooks.slack.com/services/123',
-        name: 'My Webhook',
-      }).save();
-      const teamWebhooksById = new Map<string, typeof webhook>([
-        [webhook._id.toString(), webhook],
-      ]);
-      const connection = await Connection.create({
-        team: team._id,
-        name: 'Default',
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
-      const source = await Source.create({
-        kind: 'log',
-        team: team._id,
-        from: {
-          databaseName: 'default',
-          tableName: 'otel_logs',
-        },
-        timestampValueExpression: 'Timestamp',
-        connection: connection.id,
-        name: 'Logs',
-      });
       const dashboard = await new Dashboard({
         name: 'My Dashboard',
         team: team._id,
@@ -965,9 +1003,13 @@ describe('checkAlerts', () => {
           },
         ],
       }).save();
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile) throw new Error('tile not found for dashboard test case');
+
+      const details = await createAlertDetails(
+        team,
+        source,
         {
           source: AlertSource.TILE,
           channel: {
@@ -980,51 +1022,15 @@ describe('checkAlerts', () => {
           dashboardId: dashboard.id,
           tileId: '17quud',
         },
-        mockUserId,
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
       );
 
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'dashboard',
-      ]);
-
-      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
-      if (!tile) throw new Error('tile not found for dashboard test case');
-      const details = {
-        alert: enhancedAlert,
-        source,
-        taskType: AlertTaskType.TILE,
-        tile,
-        dashboard,
-        previousMap: new Map(),
-      } satisfies AlertDetails;
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-      });
-
-      const mockMetadata = {
-        getColumn: jest.fn().mockImplementation(({ column }) => {
-          const columnMap = {
-            ServiceName: { name: 'ServiceName', type: 'String' },
-            Timestamp: { name: 'Timestamp', type: 'DateTime' },
-            SeverityText: { name: 'SeverityText', type: 'String' },
-            Body: { name: 'Body', type: 'String' },
-          };
-          return Promise.resolve(columnMap[column]);
-        }),
-      };
-
-      // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-        getMetadata: jest.fn().mockReturnValue(mockMetadata),
-      }));
-
       // should fetch 5m of logs
-      await processAlert(
+      await processAlertAtTime(
         now,
         details,
         clickhouseClient,
@@ -1032,50 +1038,36 @@ describe('checkAlerts', () => {
         alertProvider,
         teamWebhooksById,
       );
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      const previousAlertsLater = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         later,
-      );
-      await processAlert(
-        later,
-        {
-          ...details,
-          previousMap: previousAlertsLater,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
         teamWebhooksById,
       );
       // alert should still be in alert state
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      const previousAlertsNextWindow = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         nextWindow,
-      );
-      await processAlert(
-        nextWindow,
-        {
-          ...details,
-          previousMap: previousAlertsNextWindow,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
         teamWebhooksById,
       );
       // alert should be in ok state
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       }).sort({
         createdAt: 1,
       });
@@ -1118,15 +1110,36 @@ describe('checkAlerts', () => {
     });
 
     it('TILE alert (events) - generic webhook', async () => {
-      jest.spyOn(checkAlert, 'handleSendGenericWebhook');
-
       const fetchMock = jest.fn().mockResolvedValue({
         ok: true,
         text: jest.fn().mockResolvedValue(''),
       });
       global.fetch = fetchMock;
 
-      const team = await createTeam({ name: 'My Team' });
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest({
+        webhookSettings: {
+          service: WebhookService.Generic,
+          url: 'https://webhook.site/123',
+          name: 'Generic Webhook',
+          description: 'generic webhook description',
+          body: JSON.stringify({
+            text: '{{link}} | {{title}}',
+          }),
+          headers: {
+            // @ts-expect-error type mismatch due to mongoose typing
+            'Content-Type': 'application/json',
+            'X-Custom-Header': 'custom-value',
+            Authorization: 'Bearer test-token',
+          },
+        },
+      });
 
       const now = new Date('2023-11-16T22:12:00.000Z');
       // Send events in the last alert window 22:05 - 22:10
@@ -1153,43 +1166,6 @@ describe('checkAlerts', () => {
         },
       ]);
 
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'generic',
-        url: 'https://webhook.site/123',
-        name: 'Generic Webhook',
-        description: 'generic webhook description',
-        body: JSON.stringify({
-          text: '{{link}} | {{title}}',
-        }),
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Custom-Header': 'custom-value',
-          Authorization: 'Bearer test-token',
-        },
-      }).save();
-      const webhooks = await Webhook.find({});
-      const teamWebhooksById = new Map<string, typeof webhook>(
-        webhooks.map(w => [w._id.toString(), w]),
-      );
-      const connection = await Connection.create({
-        team: team._id,
-        name: 'Default',
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
-      const source = await Source.create({
-        kind: 'log',
-        team: team._id,
-        from: {
-          databaseName: 'default',
-          tableName: 'otel_logs',
-        },
-        timestampValueExpression: 'Timestamp',
-        connection: connection.id,
-        name: 'Logs',
-      });
       const dashboard = await new Dashboard({
         name: 'My Dashboard',
         team: team._id,
@@ -1219,9 +1195,14 @@ describe('checkAlerts', () => {
           },
         ],
       }).save();
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile)
+        throw new Error('tile not found for dashboard generic webhook');
+
+      const details = await createAlertDetails(
+        team,
+        source,
         {
           source: AlertSource.TILE,
           channel: {
@@ -1234,52 +1215,15 @@ describe('checkAlerts', () => {
           dashboardId: dashboard.id,
           tileId: '17quud',
         },
-        mockUserId,
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
       );
 
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'dashboard',
-      ]);
-
-      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
-      if (!tile)
-        throw new Error('tile not found for dashboard generic webhook');
-      const details = {
-        alert: enhancedAlert,
-        source,
-        taskType: AlertTaskType.TILE,
-        tile,
-        dashboard,
-        previousMap: new Map(),
-      } satisfies AlertDetails;
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-      });
-
-      const mockMetadata = {
-        getColumn: jest.fn().mockImplementation(({ column }) => {
-          const columnMap = {
-            ServiceName: { name: 'ServiceName', type: 'String' },
-            Timestamp: { name: 'Timestamp', type: 'DateTime' },
-            SeverityText: { name: 'SeverityText', type: 'String' },
-            Body: { name: 'Body', type: 'String' },
-          };
-          return Promise.resolve(columnMap[column]);
-        }),
-      };
-
-      // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-        getMetadata: jest.fn().mockReturnValue(mockMetadata),
-      }));
-
       // should fetch 5m of logs
-      await processAlert(
+      await processAlertAtTime(
         now,
         details,
         clickhouseClient,
@@ -1287,50 +1231,36 @@ describe('checkAlerts', () => {
         alertProvider,
         teamWebhooksById,
       );
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      const previousAlertsLater = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         later,
-      );
-      await processAlert(
-        later,
-        {
-          ...details,
-          previousMap: previousAlertsLater,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
         teamWebhooksById,
       );
       // alert should still be in alert state
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      const previousAlertsNextWindow = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         nextWindow,
-      );
-      await processAlert(
-        nextWindow,
-        {
-          ...details,
-          previousMap: previousAlertsNextWindow,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
         teamWebhooksById,
       );
       // alert should be in ok state
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       }).sort({
         createdAt: 1,
       });
@@ -1362,9 +1292,15 @@ describe('checkAlerts', () => {
     });
 
     it('Group-by alerts that resolve (missing data case)', async () => {
-      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
-
-      const team = await createTeam({ name: 'My Team' });
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
 
       const now = new Date('2023-11-16T22:12:00.000Z');
       const eventMs = new Date('2023-11-16T22:05:00.000Z');
@@ -1413,46 +1349,9 @@ describe('checkAlerts', () => {
         // service-b has NO data in this window
       ]);
 
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'slack',
-        url: 'https://hooks.slack.com/services/123',
-        name: 'My Webhook',
-      }).save();
-      const teamWebhooksById = new Map<string, typeof webhook>([
-        [webhook._id.toString(), webhook],
-      ]);
-      const connection = await Connection.create({
-        team: team._id,
-        name: 'Default',
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
-      const source = await Source.create({
-        kind: 'log',
-        team: team._id,
-        from: {
-          databaseName: 'default',
-          tableName: 'otel_logs',
-        },
-        timestampValueExpression: 'Timestamp',
-        connection: connection.id,
-        name: 'Logs',
-      });
-      const savedSearch = await new SavedSearch({
-        team: team._id,
-        name: 'My Search',
-        select: 'Body',
-        where: 'SeverityText: "error"',
-        whereLanguage: 'lucene',
-        orderBy: 'Timestamp',
-        source: source.id,
-        tags: ['test'],
-      }).save();
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
+      const details = await createAlertDetails(
+        team,
+        source,
         {
           source: AlertSource.SAVED_SEARCH,
           channel: {
@@ -1465,48 +1364,14 @@ describe('checkAlerts', () => {
           savedSearchId: savedSearch.id,
           groupBy: 'ServiceName', // Group by ServiceName
         },
-        mockUserId,
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
       );
 
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'savedSearch',
-      ]);
-
-      const details = {
-        alert: enhancedAlert,
-        source,
-        taskType: AlertTaskType.SAVED_SEARCH,
-        savedSearch,
-        previousMap: new Map(),
-      } satisfies AlertDetails;
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-      });
-
-      const mockMetadata = {
-        getColumn: jest.fn().mockImplementation(({ column }) => {
-          const columnMap = {
-            Body: { name: 'Body', type: 'String' },
-            Timestamp: { name: 'Timestamp', type: 'DateTime' },
-            SeverityText: { name: 'SeverityText', type: 'String' },
-            ServiceName: { name: 'ServiceName', type: 'String' },
-          };
-          return Promise.resolve(columnMap[column]);
-        }),
-      };
-
-      // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-        getMetadata: jest.fn().mockReturnValue(mockMetadata),
-      }));
-
       // First run: should trigger alerts for both service-a and service-b
-      await processAlert(
+      await processAlertAtTime(
         now,
         details,
         clickhouseClient,
@@ -1516,11 +1381,11 @@ describe('checkAlerts', () => {
       );
 
       // Overall alert should be in ALERT state (because at least one group is alerting)
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       // Check that we have 2 alert histories (one for each group)
       let alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       }).sort({ createdAt: 1, group: 1 });
       expect(alertHistories.length).toBe(2);
 
@@ -1533,16 +1398,9 @@ describe('checkAlerts', () => {
 
       // Second run: service-a still breaches, service-b has no data (should auto-resolve)
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      const previousAlertsNextWindow = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         nextWindow,
-      );
-      await processAlert(
-        nextWindow,
-        {
-          ...details,
-          previousMap: previousAlertsNextWindow,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
@@ -1550,11 +1408,11 @@ describe('checkAlerts', () => {
       );
 
       // Overall alert should still be in ALERT state (service-a is still alerting)
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       // Check alert histories
       alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       }).sort({ createdAt: 1, group: 1 });
       expect(alertHistories.length).toBe(4); // 2 from first run + 2 from second run
 
@@ -1597,9 +1455,15 @@ describe('checkAlerts', () => {
     });
 
     it('Group-by alerts skip logic - should skip when any group history exists in current window', async () => {
-      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
-
-      const team = await createTeam({ name: 'My Team' });
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
 
       // First run at 22:10 (creates history for both service-a and service-b)
       const firstRun = new Date('2023-11-16T22:10:00.000Z');
@@ -1632,46 +1496,9 @@ describe('checkAlerts', () => {
         },
       ]);
 
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'slack',
-        url: 'https://hooks.slack.com/services/123',
-        name: 'My Webhook',
-      }).save();
-      const teamWebhooksById = new Map<string, typeof webhook>([
-        [webhook._id.toString(), webhook],
-      ]);
-      const connection = await Connection.create({
-        team: team._id,
-        name: 'Default',
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
-      const source = await Source.create({
-        kind: 'log',
-        team: team._id,
-        from: {
-          databaseName: 'default',
-          tableName: 'otel_logs',
-        },
-        timestampValueExpression: 'Timestamp',
-        connection: connection.id,
-        name: 'Logs',
-      });
-      const savedSearch = await new SavedSearch({
-        team: team._id,
-        name: 'My Search',
-        select: 'Body',
-        where: 'SeverityText: "error"',
-        whereLanguage: 'lucene',
-        orderBy: 'Timestamp',
-        source: source.id,
-        tags: ['test'],
-      }).save();
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
+      const details = await createAlertDetails(
+        team,
+        source,
         {
           source: AlertSource.SAVED_SEARCH,
           channel: {
@@ -1684,47 +1511,14 @@ describe('checkAlerts', () => {
           savedSearchId: savedSearch.id,
           groupBy: 'ServiceName',
         },
-        mockUserId,
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
       );
 
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'savedSearch',
-      ]);
-
-      const details = {
-        alert: enhancedAlert,
-        source,
-        taskType: AlertTaskType.SAVED_SEARCH,
-        savedSearch,
-        previousMap: new Map(),
-      } satisfies AlertDetails;
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-      });
-
-      const mockMetadata = {
-        getColumn: jest.fn().mockImplementation(({ column }) => {
-          const columnMap = {
-            Body: { name: 'Body', type: 'String' },
-            Timestamp: { name: 'Timestamp', type: 'DateTime' },
-            SeverityText: { name: 'SeverityText', type: 'String' },
-            ServiceName: { name: 'ServiceName', type: 'String' },
-          };
-          return Promise.resolve(columnMap[column]);
-        }),
-      };
-
-      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-        getMetadata: jest.fn().mockReturnValue(mockMetadata),
-      }));
-
       // First run - should process and create histories for both groups
-      await processAlert(
+      await processAlertAtTime(
         firstRun,
         details,
         clickhouseClient,
@@ -1735,7 +1529,7 @@ describe('checkAlerts', () => {
 
       // Verify histories were created for both groups
       let alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       }).sort({ createdAt: 1, group: 1 });
       expect(alertHistories.length).toBe(2);
       expect(alertHistories[0].state).toBe('ALERT');
@@ -1746,16 +1540,9 @@ describe('checkAlerts', () => {
       // Second run at 22:12 (WITHIN same 5-minute window as first run at 22:10)
       // Should SKIP because history already exists in this window (22:10-22:15)
       const secondRun = new Date('2023-11-16T22:12:00.000Z');
-      const previousAlertsSecondRun = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         secondRun,
-      );
-      await processAlert(
-        secondRun,
-        {
-          ...details,
-          previousMap: previousAlertsSecondRun,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
@@ -1764,7 +1551,7 @@ describe('checkAlerts', () => {
 
       // Verify NO new histories were created (still only 2 from first run)
       alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       }).sort({ createdAt: 1, group: 1 });
       expect(alertHistories.length).toBe(2); // Still only 2 histories
 
@@ -1774,16 +1561,9 @@ describe('checkAlerts', () => {
       // Third run at 22:16 (NEW window: 22:15-22:20)
       // Should process because we're in a new window
       const thirdRun = new Date('2023-11-16T22:16:00.000Z');
-      const previousAlertsThirdRun = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         thirdRun,
-      );
-      await processAlert(
-        thirdRun,
-        {
-          ...details,
-          previousMap: previousAlertsThirdRun,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
@@ -1792,7 +1572,7 @@ describe('checkAlerts', () => {
 
       // Verify new histories were created (should have 4 now)
       alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       }).sort({ createdAt: 1, group: 1 });
       expect(alertHistories.length).toBe(4); // 2 from first run + 2 from third run
 
@@ -1801,9 +1581,36 @@ describe('checkAlerts', () => {
     });
 
     it('Group-by alerts skip logic - should process when no group history exists in current window', async () => {
-      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
 
-      const team = await createTeam({ name: 'My Team' });
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
 
       const now = new Date('2023-11-16T22:16:00.000Z'); // Starting in new window
       const eventMs = new Date('2023-11-16T22:10:00.000Z');
@@ -1823,99 +1630,8 @@ describe('checkAlerts', () => {
         },
       ]);
 
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'slack',
-        url: 'https://hooks.slack.com/services/123',
-        name: 'My Webhook',
-      }).save();
-      const teamWebhooksById = new Map<string, typeof webhook>([
-        [webhook._id.toString(), webhook],
-      ]);
-      const connection = await Connection.create({
-        team: team._id,
-        name: 'Default',
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
-      const source = await Source.create({
-        kind: 'log',
-        team: team._id,
-        from: {
-          databaseName: 'default',
-          tableName: 'otel_logs',
-        },
-        timestampValueExpression: 'Timestamp',
-        connection: connection.id,
-        name: 'Logs',
-      });
-      const savedSearch = await new SavedSearch({
-        team: team._id,
-        name: 'My Search',
-        select: 'Body',
-        where: 'SeverityText: "error"',
-        whereLanguage: 'lucene',
-        orderBy: 'Timestamp',
-        source: source.id,
-        tags: ['test'],
-      }).save();
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
-        {
-          source: AlertSource.SAVED_SEARCH,
-          channel: {
-            type: 'webhook',
-            webhookId: webhook._id.toString(),
-          },
-          interval: '5m',
-          thresholdType: AlertThresholdType.ABOVE,
-          threshold: 1,
-          savedSearchId: savedSearch.id,
-          groupBy: 'ServiceName',
-        },
-        mockUserId,
-      );
-
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'savedSearch',
-      ]);
-
-      const details = {
-        alert: enhancedAlert,
-        source,
-        taskType: AlertTaskType.SAVED_SEARCH,
-        savedSearch,
-        previousMap: new Map(), // No previous history
-      } satisfies AlertDetails;
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-      });
-
-      const mockMetadata = {
-        getColumn: jest.fn().mockImplementation(({ column }) => {
-          const columnMap = {
-            Body: { name: 'Body', type: 'String' },
-            Timestamp: { name: 'Timestamp', type: 'DateTime' },
-            SeverityText: { name: 'SeverityText', type: 'String' },
-            ServiceName: { name: 'ServiceName', type: 'String' },
-          };
-          return Promise.resolve(columnMap[column]);
-        }),
-      };
-
-      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-        getMetadata: jest.fn().mockReturnValue(mockMetadata),
-      }));
-
       // Should process because no previous history exists in this window
-      await processAlert(
+      await processAlertAtTime(
         now,
         details,
         clickhouseClient,
@@ -1926,7 +1642,7 @@ describe('checkAlerts', () => {
 
       // Verify history was created
       const alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       });
       expect(alertHistories.length).toBe(1);
       expect(alertHistories[0].state).toBe('ALERT');
@@ -1939,9 +1655,36 @@ describe('checkAlerts', () => {
     });
 
     it('Group-by alerts skip logic - should skip if ONE group has history in current window (even if other groups do not)', async () => {
-      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
 
-      const team = await createTeam({ name: 'My Team' });
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
 
       // First run at 22:10 - only service-a triggers alert
       const firstRun = new Date('2023-11-16T22:10:00.000Z');
@@ -1962,99 +1705,8 @@ describe('checkAlerts', () => {
         },
       ]);
 
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'slack',
-        url: 'https://hooks.slack.com/services/123',
-        name: 'My Webhook',
-      }).save();
-      const teamWebhooksById = new Map<string, typeof webhook>([
-        [webhook._id.toString(), webhook],
-      ]);
-      const connection = await Connection.create({
-        team: team._id,
-        name: 'Default',
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
-      const source = await Source.create({
-        kind: 'log',
-        team: team._id,
-        from: {
-          databaseName: 'default',
-          tableName: 'otel_logs',
-        },
-        timestampValueExpression: 'Timestamp',
-        connection: connection.id,
-        name: 'Logs',
-      });
-      const savedSearch = await new SavedSearch({
-        team: team._id,
-        name: 'My Search',
-        select: 'Body',
-        where: 'SeverityText: "error"',
-        whereLanguage: 'lucene',
-        orderBy: 'Timestamp',
-        source: source.id,
-        tags: ['test'],
-      }).save();
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
-        {
-          source: AlertSource.SAVED_SEARCH,
-          channel: {
-            type: 'webhook',
-            webhookId: webhook._id.toString(),
-          },
-          interval: '5m',
-          thresholdType: AlertThresholdType.ABOVE,
-          threshold: 1,
-          savedSearchId: savedSearch.id,
-          groupBy: 'ServiceName',
-        },
-        mockUserId,
-      );
-
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'savedSearch',
-      ]);
-
-      const details = {
-        alert: enhancedAlert,
-        source,
-        taskType: AlertTaskType.SAVED_SEARCH,
-        savedSearch,
-        previousMap: new Map(),
-      } satisfies AlertDetails;
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-      });
-
-      const mockMetadata = {
-        getColumn: jest.fn().mockImplementation(({ column }) => {
-          const columnMap = {
-            Body: { name: 'Body', type: 'String' },
-            Timestamp: { name: 'Timestamp', type: 'DateTime' },
-            SeverityText: { name: 'SeverityText', type: 'String' },
-            ServiceName: { name: 'ServiceName', type: 'String' },
-          };
-          return Promise.resolve(columnMap[column]);
-        }),
-      };
-
-      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-        getMetadata: jest.fn().mockReturnValue(mockMetadata),
-      }));
-
       // First run - creates history for service-a only
-      await processAlert(
+      await processAlertAtTime(
         firstRun,
         details,
         clickhouseClient,
@@ -2064,7 +1716,7 @@ describe('checkAlerts', () => {
       );
 
       let alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       });
       expect(alertHistories.length).toBe(1);
       expect(alertHistories[0].state).toBe('ALERT');
@@ -2090,16 +1742,9 @@ describe('checkAlerts', () => {
       // Should SKIP even though service-b has NEW data that would trigger alert
       // because service-a already has history in this window
       const secondRun = new Date('2023-11-16T22:12:00.000Z');
-      const previousAlertsSecondRun = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         secondRun,
-      );
-      await processAlert(
-        secondRun,
-        {
-          ...details,
-          previousMap: previousAlertsSecondRun,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
@@ -2108,7 +1753,7 @@ describe('checkAlerts', () => {
 
       // Verify NO new histories were created
       alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       });
       expect(alertHistories.length).toBe(1); // Still only 1 history from first run
 
@@ -2117,9 +1762,36 @@ describe('checkAlerts', () => {
     });
 
     it('Group-by alerts with mixed transitions (one stays ALERT, one resolves to OK)', async () => {
-      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
 
-      const team = await createTeam({ name: 'My Team' });
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName', // Group by ServiceName
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
 
       const now = new Date('2023-11-16T22:12:00.000Z');
       const eventMs = new Date('2023-11-16T22:05:00.000Z');
@@ -2174,100 +1846,8 @@ describe('checkAlerts', () => {
         },
       ]);
 
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'slack',
-        url: 'https://hooks.slack.com/services/123',
-        name: 'My Webhook',
-      }).save();
-      const teamWebhooksById = new Map<string, typeof webhook>([
-        [webhook._id.toString(), webhook],
-      ]);
-      const connection = await Connection.create({
-        team: team._id,
-        name: 'Default',
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
-      const source = await Source.create({
-        kind: 'log',
-        team: team._id,
-        from: {
-          databaseName: 'default',
-          tableName: 'otel_logs',
-        },
-        timestampValueExpression: 'Timestamp',
-        connection: connection.id,
-        name: 'Logs',
-      });
-      const savedSearch = await new SavedSearch({
-        team: team._id,
-        name: 'My Search',
-        select: 'Body',
-        where: 'SeverityText: "error"',
-        whereLanguage: 'lucene',
-        orderBy: 'Timestamp',
-        source: source.id,
-        tags: ['test'],
-      }).save();
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
-        {
-          source: AlertSource.SAVED_SEARCH,
-          channel: {
-            type: 'webhook',
-            webhookId: webhook._id.toString(),
-          },
-          interval: '5m',
-          thresholdType: AlertThresholdType.ABOVE,
-          threshold: 1,
-          savedSearchId: savedSearch.id,
-          groupBy: 'ServiceName', // Group by ServiceName
-        },
-        mockUserId,
-      );
-
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'savedSearch',
-      ]);
-
-      const details = {
-        alert: enhancedAlert,
-        source,
-        taskType: AlertTaskType.SAVED_SEARCH,
-        savedSearch,
-        previousMap: new Map(),
-      } satisfies AlertDetails;
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-      });
-
-      const mockMetadata = {
-        getColumn: jest.fn().mockImplementation(({ column }) => {
-          const columnMap = {
-            Body: { name: 'Body', type: 'String' },
-            Timestamp: { name: 'Timestamp', type: 'DateTime' },
-            SeverityText: { name: 'SeverityText', type: 'String' },
-            ServiceName: { name: 'ServiceName', type: 'String' },
-          };
-          return Promise.resolve(columnMap[column]);
-        }),
-      };
-
-      // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-        getMetadata: jest.fn().mockReturnValue(mockMetadata),
-      }));
-
       // First run: should trigger alerts for both service-a and service-b
-      await processAlert(
+      await processAlertAtTime(
         now,
         details,
         clickhouseClient,
@@ -2277,11 +1857,11 @@ describe('checkAlerts', () => {
       );
 
       // Overall alert should be in ALERT state (because at least one group is alerting)
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       // Check that we have 2 alert histories (one for each group)
       let alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       }).sort({ createdAt: 1, group: 1 });
       expect(alertHistories.length).toBe(2);
 
@@ -2294,16 +1874,9 @@ describe('checkAlerts', () => {
 
       // Second run: service-a still breaches, service-b has data but below threshold (should resolve)
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      const previousAlertsNextWindow = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         nextWindow,
-      );
-      await processAlert(
-        nextWindow,
-        {
-          ...details,
-          previousMap: previousAlertsNextWindow,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
@@ -2311,11 +1884,11 @@ describe('checkAlerts', () => {
       );
 
       // Overall alert should still be in ALERT state (service-a is still alerting)
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       // Check alert histories
       alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       }).sort({ createdAt: 1, group: 1 });
       expect(alertHistories.length).toBe(4); // 2 from first run + 2 from second run
 
@@ -2358,11 +1931,8 @@ describe('checkAlerts', () => {
     });
 
     it('TILE alert (metrics) - slack webhook', async () => {
-      jest
-        .spyOn(slack, 'postMessageToWebhook')
-        .mockResolvedValueOnce(null as any);
-
-      const team = await createTeam({ name: 'My Team' });
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
 
       const now = new Date('2023-11-16T22:12:00.000Z');
       // Send events in the last alert window 22:05 - 22:10
@@ -2386,22 +1956,6 @@ describe('checkAlerts', () => {
 
       await bulkInsertMetricsGauge(gaugePointsA);
 
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'slack',
-        url: 'https://hooks.slack.com/services/123',
-        name: 'My Webhook',
-      }).save();
-      const teamWebhooksById = new Map<string, typeof webhook>([
-        [webhook._id.toString(), webhook],
-      ]);
-      const connection = await Connection.create({
-        team: team._id,
-        name: 'Default',
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
       const source = await Source.create({
         kind: 'metric',
         team: team._id,
@@ -2446,9 +2000,14 @@ describe('checkAlerts', () => {
           },
         ],
       }).save();
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile)
+        throw new Error('tile not found for dashboard metrics webhook');
+
+      const details = await createAlertDetails(
+        team,
+        source,
         {
           source: AlertSource.TILE,
           channel: {
@@ -2461,53 +2020,15 @@ describe('checkAlerts', () => {
           dashboardId: dashboard.id,
           tileId: '17quud',
         },
-        mockUserId,
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
       );
 
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'dashboard',
-      ]);
-
-      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
-      if (!tile)
-        throw new Error('tile not found for dashboard metrics webhook');
-      const details = {
-        alert: enhancedAlert,
-        source,
-        taskType: AlertTaskType.TILE,
-        tile,
-        dashboard,
-        previousMap: new Map(),
-      } satisfies AlertDetails;
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-      });
-
-      const mockMetadata = {
-        getColumn: jest.fn().mockImplementation(({ column }) => {
-          const columnMap = {
-            ServiceName: { name: 'ServiceName', type: 'String' },
-            Timestamp: { name: 'Timestamp', type: 'DateTime' },
-            Value: { name: 'Value', type: 'Double' },
-            MetricName: { name: 'MetricName', type: 'String' },
-            TimeUnix: { name: 'TimeUnix', type: 'DateTime' },
-          };
-          return Promise.resolve(columnMap[column]);
-        }),
-      };
-
-      // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-        getMetadata: jest.fn().mockReturnValue(mockMetadata),
-      }));
-
       // should fetch 5m of logs
-      await processAlert(
+      await processAlertAtTime(
         now,
         details,
         clickhouseClient,
@@ -2515,50 +2036,36 @@ describe('checkAlerts', () => {
         alertProvider,
         teamWebhooksById,
       );
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       // skip since time diff is less than 1 window size
       const later = new Date('2023-11-16T22:14:00.000Z');
-      const previousAlertsLater = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         later,
-      );
-      await processAlert(
-        later,
-        {
-          ...details,
-          previousMap: previousAlertsLater,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
         teamWebhooksById,
       );
       // alert should still be in alert state
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
 
       const nextWindow = new Date('2023-11-16T22:16:00.000Z');
-      const previousAlertsNextWindow = await getPreviousAlertHistories(
-        [enhancedAlert.id],
+      await processAlertAtTime(
         nextWindow,
-      );
-      await processAlert(
-        nextWindow,
-        {
-          ...details,
-          previousMap: previousAlertsNextWindow,
-        },
+        details,
         clickhouseClient,
         connection.id,
         alertProvider,
         teamWebhooksById,
       );
       // alert should be in ok state
-      expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
 
       // check alert history
       const alertHistories = await AlertHistory.find({
-        alert: alert.id,
+        alert: details.alert.id,
       }).sort({
         createdAt: 1,
       });
@@ -2598,6 +2105,407 @@ describe('checkAlerts', () => {
           ],
         },
       );
+    });
+
+    // TODO: revisit this once the auto-resolve feature is implemented
+    it('should check 3 time buckets [1 error, 3 errors, 1 error] with threshold 2 and maintain ALERT state with 3 lastValues entries', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+          // No groupBy - this is a non-group-by alert
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const now = new Date('2023-11-16T22:18:00.000Z');
+
+      // Insert logs in 3 time buckets:
+      // Bucket 1 (22:00-22:05): 1 error (OK - below threshold of 2)
+      // Bucket 2 (22:05-22:10): 3 errors (ALERT - exceeds threshold of 2)
+      // Bucket 3 (22:10-22:15): 1 error (OK - below threshold of 2)
+      await bulkInsertLogs([
+        // Bucket 1: 22:00-22:05 (1 error - below threshold)
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:00:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error in bucket 1',
+        },
+        // Bucket 2: 22:05-22:10 (3 errors - exceeds threshold)
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error 1 in bucket 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:06:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error 2 in bucket 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:07:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error 3 in bucket 2',
+        },
+        // Bucket 3: 22:10-22:15 (1 error - below threshold)
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:10:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error in bucket 3',
+        },
+      ]);
+
+      // Create a previous alert history at 22:00 so the alert job will check data from 22:00 onwards
+      // This simulates that the alert was last checked at 22:00
+      await new AlertHistory({
+        alert: details.alert.id,
+        createdAt: new Date('2023-11-16T22:00:00.000Z'),
+        state: 'OK',
+        counts: 0,
+        lastValues: [],
+      }).save();
+
+      // First run: process alert at 22:18 with timeBucketsToCheckBeforeResolution=3
+      // With previous history at 22:00, this should check buckets: 22:00-22:05 (1 error), 22:05-22:10 (3 errors), 22:10-22:15 (1 error)
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in ALERT state because one of the buckets exceeded threshold
+      const updatedAlert = await Alert.findById(details.alert.id);
+      expect(updatedAlert!.state).toBe('ALERT');
+
+      // Check alert history
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+
+      // Should have 2 alert history entries (1 previous + 1 new)
+      expect(alertHistories.length).toBe(2);
+
+      // Get the new alert history (not the previous one we created)
+      const history = alertHistories[1];
+      expect(history.state).toBe('ALERT');
+
+      // Should have 3 entries in lastValues (one for each time bucket checked)
+      // Even though ClickHouse only returns rows with data, the system should populate all 3 buckets
+      expect(history.lastValues.length).toBe(3);
+
+      // Verify the lastValues are in chronological order and have correct data
+      // The system checks 3 time buckets going back from 'now'
+      const buckets = history.lastValues.sort(
+        (a, b) => a.startTime.getTime() - b.startTime.getTime(),
+      );
+
+      // Bucket 1 (22:00-22:05): 1 error (below threshold)
+      expect(buckets[0].startTime).toEqual(
+        new Date('2023-11-16T22:00:00.000Z'),
+      );
+      expect(buckets[0].count).toBe(1);
+
+      // Bucket 2 (22:05-22:10): 3 errors (exceeds threshold)
+      expect(buckets[1].startTime).toEqual(
+        new Date('2023-11-16T22:05:00.000Z'),
+      );
+      expect(buckets[1].count).toBe(3);
+
+      // Bucket 3 (22:10-22:15): 1 error (below threshold)
+      expect(buckets[2].startTime).toEqual(
+        new Date('2023-11-16T22:10:00.000Z'),
+      );
+      expect(buckets[2].count).toBe(1);
+
+      // Verify webhook was called for the alert
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+
+      // Second run: process alert at 22:22:00
+      // Previous history was created at 22:15:00 (from first run)
+      // So this should check just ONE new bucket: 22:15-22:20 (0 errors)
+      // Since we need to check 3 buckets and only 1 new bucket exists, it will look back at previous buckets:
+      // - 22:10-22:15 (1 error - from previous check)
+      // - 22:15-22:20 (0 errors - new bucket)
+      // With timeBucketsToCheckBeforeResolution=3, the alert should auto-resolve
+      const nextRun = new Date('2023-11-16T22:22:00.000Z');
+      await processAlertAtTime(
+        nextRun,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be auto-resolved to OK state
+      const resolvedAlert = await Alert.findById(details.alert.id);
+      expect(resolvedAlert!.state).toBe('OK');
+
+      // Check alert histories
+      const allHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: -1 });
+
+      // Should have 3 alert history entries total (1 previous + 1 ALERT + 1 OK)
+      expect(allHistories.length).toBe(3);
+
+      // Verify the resolution history (most recent)
+      const resolutionHistory = allHistories[0];
+      expect(resolutionHistory.state).toBe('OK');
+
+      // Verify webhook was called twice total (1 for alert + 1 for resolution)
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+    });
+
+    it('should use latest createdAt from any group and not rescan old timeframe when one group disappears', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName', // Group by ServiceName
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const now = new Date('2023-11-16T22:18:00.000Z');
+
+      // Insert logs in first time bucket (22:00-22:05):
+      // - service-a: 3 errors (ALERT - exceeds threshold of 2)
+      // - service-b: 3 errors (ALERT - exceeds threshold of 2)
+      await bulkInsertLogs([
+        {
+          ServiceName: 'service-a',
+          Timestamp: new Date('2023-11-16T22:00:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-a',
+          Timestamp: new Date('2023-11-16T22:01:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-a',
+          Timestamp: new Date('2023-11-16T22:02:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:00:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:01:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:02:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        // Second time bucket (22:05-22:10):
+        // - service-a: 1 error (OK - below threshold)
+        // - service-b: 3 errors (ALERT - exceeds threshold)
+        {
+          ServiceName: 'service-a',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:06:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        {
+          ServiceName: 'service-b',
+          Timestamp: new Date('2023-11-16T22:07:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-b',
+        },
+        // Third time bucket (22:10-22:15):
+        // - service-a: 1 error (OK - below threshold)
+        // - service-b: DISAPPEARS (no logs)
+        {
+          ServiceName: 'service-a',
+          Timestamp: new Date('2023-11-16T22:10:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Error from service-a',
+        },
+      ]);
+
+      // Create previous alert histories at 22:00 for initial baseline (one per service)
+      await AlertHistory.create([
+        {
+          alert: details.alert.id,
+          createdAt: new Date('2023-11-16T22:00:00.000Z'),
+          state: 'OK',
+          counts: 0,
+          lastValues: [],
+          group: 'ServiceName:service-a',
+        },
+        {
+          alert: details.alert.id,
+          createdAt: new Date('2023-11-16T22:00:00.000Z'),
+          state: 'OK',
+          counts: 0,
+          lastValues: [],
+          group: 'ServiceName:service-b',
+        },
+      ]);
+
+      // First run: process alert at 22:18
+      // Should check buckets: 22:00-22:05, 22:05-22:10, 22:10-22:15
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in ALERT state (service-b still alerting)
+      const updatedAlert = await Alert.findById(details.alert.id);
+      expect(updatedAlert!.state).toBe('ALERT');
+
+      // Check alert histories after first run
+      const firstRunHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+
+      // Should have histories: 1 previous + 2 groups (service-a, service-b)
+      // service-a should resolve, service-b should alert
+      expect(firstRunHistories.length).toBeGreaterThan(1);
+
+      // Find the latest createdAt from all group histories (should be from 22:15)
+      const latestCreatedAt = firstRunHistories
+        .slice(1) // Skip the initial previous history
+        .reduce(
+          (latest, history) => {
+            return !latest || history.createdAt > latest
+              ? history.createdAt
+              : latest;
+          },
+          null as Date | null,
+        );
+
+      expect(latestCreatedAt).toEqual(new Date('2023-11-16T22:15:00.000Z'));
+
+      // Second run: process alert at 22:23:00
+      // The check was already done at 22:15 (latest createdAt from any group)
+      // Even though service-b doesn't exist in that bucket, we shouldn't recheck old buckets
+      // Should use the LATEST createdAt (22:15) from any group, not the earliest
+      // This means it should only check NEW bucket: 22:15-22:20
+      // Should NOT rescan 22:00-22:05 where service-b had data but was already checked
+      const nextRun = new Date('2023-11-16T22:23:00.000Z');
+      const previousMapNextRun = await getPreviousAlertHistories(
+        [details.alert.id],
+        nextRun,
+      );
+
+      // Verify that previousMapNextRun has the latest createdAt from any group
+      const previousDates = Array.from(previousMapNextRun.values()).map(
+        h => h.createdAt,
+      );
+      const maxPreviousDate = previousDates.reduce(
+        (max, date) => (date > max ? date : max),
+        new Date(0),
+      );
+      expect(maxPreviousDate).toEqual(new Date('2023-11-16T22:15:00.000Z'));
+
+      await processAlertAtTime(
+        nextRun,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Check all alert histories after second run
+      const allHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+
+      // Verify no histories were created for old timeframes (22:00-22:05)
+      // All new histories should have createdAt >= 22:15
+      const firstRunEndTime = new Date('2023-11-16T22:15:00.000Z').getTime();
+      const newHistories = allHistories.filter(
+        h => h.createdAt.getTime() > firstRunEndTime, // Exclude first run histories (which have createdAt <= 22:15)
+      );
+
+      // New histories should be for the new bucket (22:20) only
+      newHistories.forEach(history => {
+        expect(history.createdAt.getTime()).toBeGreaterThanOrEqual(
+          new Date('2023-11-16T22:20:00.000Z').getTime(),
+        );
+      });
     });
   });
 
@@ -2738,594 +2646,6 @@ describe('checkAlerts', () => {
       expect(result.get(alert2Id.toString())!.createdAt).toEqual(
         new Date('2025-01-01T00:15:00Z'),
       );
-    });
-  });
-
-  describe('check alerts with multiple time buckets in a single run', () => {
-    const server = getServer();
-
-    beforeAll(async () => {
-      await server.start();
-    });
-
-    afterEach(async () => {
-      await server.clearDBs();
-      jest.clearAllMocks();
-    });
-
-    afterAll(async () => {
-      await server.stop();
-    });
-
-    // TODO: revisit this once the auto-resolve feature is implemented
-    it('should check 3 time buckets [1 error, 3 errors, 1 error] with threshold 2 and maintain ALERT state with 3 lastValues entries', async () => {
-      jest
-        .spyOn(slack, 'postMessageToWebhook')
-        .mockResolvedValueOnce(null as any);
-
-      const team = await createTeam({ name: 'My Team' });
-
-      const now = new Date('2023-11-16T22:18:00.000Z');
-
-      // Insert logs in 3 time buckets:
-      // Bucket 1 (22:00-22:05): 1 error (OK - below threshold of 2)
-      // Bucket 2 (22:05-22:10): 3 errors (ALERT - exceeds threshold of 2)
-      // Bucket 3 (22:10-22:15): 1 error (OK - below threshold of 2)
-      await bulkInsertLogs([
-        // Bucket 1: 22:00-22:05 (1 error - below threshold)
-        {
-          ServiceName: 'api',
-          Timestamp: new Date('2023-11-16T22:00:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error in bucket 1',
-        },
-        // Bucket 2: 22:05-22:10 (3 errors - exceeds threshold)
-        {
-          ServiceName: 'api',
-          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error 1 in bucket 2',
-        },
-        {
-          ServiceName: 'api',
-          Timestamp: new Date('2023-11-16T22:06:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error 2 in bucket 2',
-        },
-        {
-          ServiceName: 'api',
-          Timestamp: new Date('2023-11-16T22:07:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error 3 in bucket 2',
-        },
-        // Bucket 3: 22:10-22:15 (1 error - below threshold)
-        {
-          ServiceName: 'api',
-          Timestamp: new Date('2023-11-16T22:10:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error in bucket 3',
-        },
-      ]);
-
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'slack',
-        url: 'https://hooks.slack.com/services/123',
-        name: 'My Webhook',
-      }).save();
-      const teamWebhooksById = new Map<string, typeof webhook>([
-        [webhook._id.toString(), webhook],
-      ]);
-      const connection = await Connection.create({
-        team: team._id,
-        name: 'Default',
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
-      const source = await Source.create({
-        kind: 'log',
-        team: team._id,
-        from: {
-          databaseName: 'default',
-          tableName: 'otel_logs',
-        },
-        timestampValueExpression: 'Timestamp',
-        connection: connection.id,
-        name: 'Logs',
-      });
-      const savedSearch = await new SavedSearch({
-        team: team._id,
-        name: 'My Error Search',
-        select: 'Body',
-        where: 'SeverityText: "error"',
-        whereLanguage: 'lucene',
-        orderBy: 'Timestamp',
-        source: source.id,
-        tags: ['test'],
-      }).save();
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
-        {
-          source: AlertSource.SAVED_SEARCH,
-          channel: {
-            type: 'webhook',
-            webhookId: webhook._id.toString(),
-          },
-          interval: '5m',
-          thresholdType: AlertThresholdType.ABOVE,
-          threshold: 2,
-          savedSearchId: savedSearch.id,
-          // No groupBy - this is a non-group-by alert
-        },
-        mockUserId,
-      );
-
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'savedSearch',
-      ]);
-
-      // Create a previous alert history at 22:00 so the alert job will check data from 22:00 onwards
-      // This simulates that the alert was last checked at 22:00
-      const previousHistory = await new AlertHistory({
-        alert: alert.id,
-        createdAt: new Date('2023-11-16T22:00:00.000Z'),
-        state: 'OK',
-        counts: 0,
-        lastValues: [],
-      }).save();
-
-      // Load previous alert history for this alert
-      const previousMap = await getPreviousAlertHistories(
-        [enhancedAlert.id],
-        now,
-      );
-
-      const details = {
-        alert: enhancedAlert,
-        source,
-        taskType: AlertTaskType.SAVED_SEARCH,
-        savedSearch,
-        previousMap,
-      } satisfies AlertDetails;
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-      });
-
-      const mockMetadata = {
-        getColumn: jest.fn().mockImplementation(({ column }) => {
-          const columnMap = {
-            Body: { name: 'Body', type: 'String' },
-            Timestamp: { name: 'Timestamp', type: 'DateTime' },
-            SeverityText: { name: 'SeverityText', type: 'String' },
-            ServiceName: { name: 'ServiceName', type: 'String' },
-          };
-          return Promise.resolve(columnMap[column]);
-        }),
-      };
-
-      // Mock the getMetadata function
-      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-        getMetadata: jest.fn().mockReturnValue(mockMetadata),
-      }));
-
-      // First run: process alert at 22:18 with timeBucketsToCheckBeforeResolution=3
-      // With previous history at 22:00, this should check buckets: 22:00-22:05 (1 error), 22:05-22:10 (3 errors), 22:10-22:15 (1 error)
-      await processAlert(
-        now,
-        details,
-        clickhouseClient,
-        connection.id,
-        alertProvider,
-        teamWebhooksById,
-      );
-
-      // Alert should be in ALERT state because one of the buckets exceeded threshold
-      const updatedAlert = await Alert.findById(enhancedAlert.id);
-      expect(updatedAlert!.state).toBe('ALERT');
-
-      // Check alert history
-      const alertHistories = await AlertHistory.find({
-        alert: alert.id,
-      }).sort({ createdAt: 1 });
-
-      // Should have 2 alert history entries (1 previous + 1 new)
-      expect(alertHistories.length).toBe(2);
-
-      // Get the new alert history (not the previous one we created)
-      const history = alertHistories[1];
-      expect(history.state).toBe('ALERT');
-
-      // Should have 3 entries in lastValues (one for each time bucket checked)
-      // Even though ClickHouse only returns rows with data, the system should populate all 3 buckets
-      expect(history.lastValues.length).toBe(3);
-
-      // Verify the lastValues are in chronological order and have correct data
-      // The system checks 3 time buckets going back from 'now'
-      const buckets = history.lastValues.sort(
-        (a, b) => a.startTime.getTime() - b.startTime.getTime(),
-      );
-
-      // Bucket 1 (22:00-22:05): 1 error (below threshold)
-      expect(buckets[0].startTime).toEqual(
-        new Date('2023-11-16T22:00:00.000Z'),
-      );
-      expect(buckets[0].count).toBe(1);
-
-      // Bucket 2 (22:05-22:10): 3 errors (exceeds threshold)
-      expect(buckets[1].startTime).toEqual(
-        new Date('2023-11-16T22:05:00.000Z'),
-      );
-      expect(buckets[1].count).toBe(3);
-
-      // Bucket 3 (22:10-22:15): 1 error (below threshold)
-      expect(buckets[2].startTime).toEqual(
-        new Date('2023-11-16T22:10:00.000Z'),
-      );
-      expect(buckets[2].count).toBe(1);
-
-      // Verify webhook was called for the alert
-      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
-
-      // Second run: process alert at 22:22:00
-      // Previous history was created at 22:15:00 (from first run)
-      // So this should check just ONE new bucket: 22:15-22:20 (0 errors)
-      // Since we need to check 3 buckets and only 1 new bucket exists, it will look back at previous buckets:
-      // - 22:10-22:15 (1 error - from previous check)
-      // - 22:15-22:20 (0 errors - new bucket)
-      // With timeBucketsToCheckBeforeResolution=3, the alert should auto-resolve
-      const nextRun = new Date('2023-11-16T22:22:00.000Z');
-      const previousMapNextRun = await getPreviousAlertHistories(
-        [enhancedAlert.id],
-        nextRun,
-      );
-
-      await processAlert(
-        nextRun,
-        {
-          ...details,
-          previousMap: previousMapNextRun,
-        },
-        clickhouseClient,
-        connection.id,
-        alertProvider,
-        teamWebhooksById,
-      );
-
-      // Alert should be auto-resolved to OK state
-      const resolvedAlert = await Alert.findById(enhancedAlert.id);
-      expect(resolvedAlert!.state).toBe('OK');
-
-      // Check alert histories
-      const allHistories = await AlertHistory.find({
-        alert: alert.id,
-      }).sort({ createdAt: -1 });
-
-      // Should have 3 alert history entries total (1 previous + 1 ALERT + 1 OK)
-      expect(allHistories.length).toBe(3);
-
-      // Verify the resolution history (most recent)
-      const resolutionHistory = allHistories[0];
-      expect(resolutionHistory.state).toBe('OK');
-
-      // Verify webhook was called twice total (1 for alert + 1 for resolution)
-      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe('group-by alert with disappearing group', () => {
-    const server = getServer();
-
-    beforeAll(async () => {
-      await server.start();
-    });
-
-    afterEach(async () => {
-      await server.clearDBs();
-      jest.clearAllMocks();
-    });
-
-    afterAll(async () => {
-      await server.stop();
-    });
-
-    it('should use latest createdAt from any group and not rescan old timeframe when one group disappears', async () => {
-      jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
-
-      const team = await createTeam({ name: 'My Team' });
-
-      const now = new Date('2023-11-16T22:18:00.000Z');
-
-      // Insert logs in first time bucket (22:00-22:05):
-      // - service-a: 3 errors (ALERT - exceeds threshold of 2)
-      // - service-b: 3 errors (ALERT - exceeds threshold of 2)
-      await bulkInsertLogs([
-        {
-          ServiceName: 'service-a',
-          Timestamp: new Date('2023-11-16T22:00:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error from service-a',
-        },
-        {
-          ServiceName: 'service-a',
-          Timestamp: new Date('2023-11-16T22:01:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error from service-a',
-        },
-        {
-          ServiceName: 'service-a',
-          Timestamp: new Date('2023-11-16T22:02:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error from service-a',
-        },
-        {
-          ServiceName: 'service-b',
-          Timestamp: new Date('2023-11-16T22:00:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error from service-b',
-        },
-        {
-          ServiceName: 'service-b',
-          Timestamp: new Date('2023-11-16T22:01:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error from service-b',
-        },
-        {
-          ServiceName: 'service-b',
-          Timestamp: new Date('2023-11-16T22:02:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error from service-b',
-        },
-        // Second time bucket (22:05-22:10):
-        // - service-a: 1 error (OK - below threshold)
-        // - service-b: 3 errors (ALERT - exceeds threshold)
-        {
-          ServiceName: 'service-a',
-          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error from service-a',
-        },
-        {
-          ServiceName: 'service-b',
-          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error from service-b',
-        },
-        {
-          ServiceName: 'service-b',
-          Timestamp: new Date('2023-11-16T22:06:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error from service-b',
-        },
-        {
-          ServiceName: 'service-b',
-          Timestamp: new Date('2023-11-16T22:07:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error from service-b',
-        },
-        // Third time bucket (22:10-22:15):
-        // - service-a: 1 error (OK - below threshold)
-        // - service-b: DISAPPEARS (no logs)
-        {
-          ServiceName: 'service-a',
-          Timestamp: new Date('2023-11-16T22:10:00.000Z'),
-          SeverityText: 'error',
-          Body: 'Error from service-a',
-        },
-      ]);
-
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'slack',
-        url: 'https://hooks.slack.com/services/123',
-        name: 'My Webhook',
-      }).save();
-      const teamWebhooksById = new Map<string, typeof webhook>([
-        [webhook._id.toString(), webhook],
-      ]);
-      const connection = await Connection.create({
-        team: team._id,
-        name: 'Default',
-        host: config.CLICKHOUSE_HOST,
-        username: config.CLICKHOUSE_USER,
-        password: config.CLICKHOUSE_PASSWORD,
-      });
-      const source = await Source.create({
-        kind: 'log',
-        team: team._id,
-        from: {
-          databaseName: 'default',
-          tableName: 'otel_logs',
-        },
-        timestampValueExpression: 'Timestamp',
-        connection: connection.id,
-        name: 'Logs',
-      });
-      const savedSearch = await new SavedSearch({
-        team: team._id,
-        name: 'My Error Search',
-        select: 'Body',
-        where: 'SeverityText: "error"',
-        whereLanguage: 'lucene',
-        orderBy: 'Timestamp',
-        source: source.id,
-        tags: ['test'],
-      }).save();
-      const mockUserId = new mongoose.Types.ObjectId();
-      const alert = await createAlert(
-        team._id,
-        {
-          source: AlertSource.SAVED_SEARCH,
-          channel: {
-            type: 'webhook',
-            webhookId: webhook._id.toString(),
-          },
-          interval: '5m',
-          thresholdType: AlertThresholdType.ABOVE,
-          threshold: 2,
-          savedSearchId: savedSearch.id,
-          groupBy: 'ServiceName', // Group by ServiceName
-        },
-        mockUserId,
-      );
-
-      const enhancedAlert: any = await Alert.findById(alert.id).populate([
-        'team',
-        'savedSearch',
-      ]);
-
-      // Create previous alert histories at 22:00 for initial baseline (one per service)
-      await AlertHistory.create([
-        {
-          alert: alert.id,
-          createdAt: new Date('2023-11-16T22:00:00.000Z'),
-          state: 'OK',
-          counts: 0,
-          lastValues: [],
-          group: 'ServiceName:service-a',
-        },
-        {
-          alert: alert.id,
-          createdAt: new Date('2023-11-16T22:00:00.000Z'),
-          state: 'OK',
-          counts: 0,
-          lastValues: [],
-          group: 'ServiceName:service-b',
-        },
-      ]);
-
-      const previousMap = await getPreviousAlertHistories(
-        [enhancedAlert.id],
-        now,
-      );
-
-      const details = {
-        alert: enhancedAlert,
-        source,
-        taskType: AlertTaskType.SAVED_SEARCH,
-        savedSearch,
-        previousMap,
-      } satisfies AlertDetails;
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
-      });
-
-      const mockMetadata = {
-        getColumn: jest.fn().mockImplementation(({ column }) => {
-          const columnMap = {
-            Body: { name: 'Body', type: 'String' },
-            Timestamp: { name: 'Timestamp', type: 'DateTime' },
-            SeverityText: { name: 'SeverityText', type: 'String' },
-            ServiceName: { name: 'ServiceName', type: 'String' },
-          };
-          return Promise.resolve(columnMap[column]);
-        }),
-      };
-
-      jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-        ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-        getMetadata: jest.fn().mockReturnValue(mockMetadata),
-      }));
-
-      // First run: process alert at 22:18
-      // Should check buckets: 22:00-22:05, 22:05-22:10, 22:10-22:15
-      await processAlert(
-        now,
-        details,
-        clickhouseClient,
-        connection.id,
-        alertProvider,
-        teamWebhooksById,
-      );
-
-      // Alert should be in ALERT state (service-b still alerting)
-      const updatedAlert = await Alert.findById(enhancedAlert.id);
-      expect(updatedAlert!.state).toBe('ALERT');
-
-      // Check alert histories after first run
-      const firstRunHistories = await AlertHistory.find({
-        alert: alert.id,
-      }).sort({ createdAt: 1 });
-
-      // Should have histories: 1 previous + 2 groups (service-a, service-b)
-      // service-a should resolve, service-b should alert
-      expect(firstRunHistories.length).toBeGreaterThan(1);
-
-      // Find the latest createdAt from all group histories (should be from 22:15)
-      const latestCreatedAt = firstRunHistories
-        .slice(1) // Skip the initial previous history
-        .reduce(
-          (latest, history) => {
-            return !latest || history.createdAt > latest
-              ? history.createdAt
-              : latest;
-          },
-          null as Date | null,
-        );
-
-      expect(latestCreatedAt).toEqual(new Date('2023-11-16T22:15:00.000Z'));
-
-      // Second run: process alert at 22:23:00
-      // The check was already done at 22:15 (latest createdAt from any group)
-      // Even though service-b doesn't exist in that bucket, we shouldn't recheck old buckets
-      // Should use the LATEST createdAt (22:15) from any group, not the earliest
-      // This means it should only check NEW bucket: 22:15-22:20
-      // Should NOT rescan 22:00-22:05 where service-b had data but was already checked
-      const nextRun = new Date('2023-11-16T22:23:00.000Z');
-      const previousMapNextRun = await getPreviousAlertHistories(
-        [enhancedAlert.id],
-        nextRun,
-      );
-
-      // Verify that previousMapNextRun has the latest createdAt from any group
-      const previousDates = Array.from(previousMapNextRun.values()).map(
-        h => h.createdAt,
-      );
-      const maxPreviousDate = previousDates.reduce(
-        (max, date) => (date > max ? date : max),
-        new Date(0),
-      );
-      expect(maxPreviousDate).toEqual(new Date('2023-11-16T22:15:00.000Z'));
-
-      await processAlert(
-        nextRun,
-        {
-          ...details,
-          previousMap: previousMapNextRun,
-        },
-        clickhouseClient,
-        connection.id,
-        alertProvider,
-        teamWebhooksById,
-      );
-
-      // Check all alert histories after second run
-      const allHistories = await AlertHistory.find({
-        alert: alert.id,
-      }).sort({ createdAt: 1 });
-
-      // Verify no histories were created for old timeframes (22:00-22:05)
-      // All new histories should have createdAt >= 22:15
-      const firstRunEndTime = new Date('2023-11-16T22:15:00.000Z').getTime();
-      const newHistories = allHistories.filter(
-        h => h.createdAt.getTime() > firstRunEndTime, // Exclude first run histories (which have createdAt <= 22:15)
-      );
-
-      // New histories should be for the new bucket (22:20) only
-      newHistories.forEach(history => {
-        expect(history.createdAt.getTime()).toBeGreaterThanOrEqual(
-          new Date('2023-11-16T22:20:00.000Z').getTime(),
-        );
-      });
     });
   });
 });
