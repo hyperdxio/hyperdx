@@ -1,9 +1,15 @@
 import express from 'express';
+import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import { AlertState } from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
+import {
+  handleSendGenericWebhook,
+  handleSendSlackWebhook,
+} from '@/tasks/checkAlerts/template';
 
 const router = express.Router();
 
@@ -102,6 +108,84 @@ router.post(
   },
 );
 
+router.put(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: z.string().refine(val => {
+        return mongoose.Types.ObjectId.isValid(val);
+      }),
+    }),
+    body: z.object({
+      body: z.string().optional(),
+      description: z.string().optional(),
+      headers: z
+        .record(httpHeaderNameValidator, httpHeaderValueValidator)
+        .optional(),
+      name: z.string(),
+      queryParams: z.record(z.string()).optional(),
+      service: z.nativeEnum(WebhookService),
+      url: z.string().url(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+      const { name, service, url, description, queryParams, headers, body } =
+        req.body;
+      const { id } = req.params;
+
+      // Check if webhook exists and belongs to team
+      const existingWebhook = await Webhook.findOne({
+        _id: id,
+        team: teamId,
+      });
+      if (!existingWebhook) {
+        return res.status(404).json({
+          message: 'Webhook not found',
+        });
+      }
+
+      // Check if another webhook with same service and url already exists (excluding current webhook)
+      const duplicateWebhook = await Webhook.findOne({
+        team: teamId,
+        service,
+        url,
+        _id: { $ne: id },
+      });
+      if (duplicateWebhook) {
+        return res.status(400).json({
+          message: 'A webhook with this service and URL already exists',
+        });
+      }
+
+      // Update webhook
+      const updatedWebhook = await Webhook.findOneAndUpdate(
+        { _id: id, team: teamId },
+        {
+          name,
+          service,
+          url,
+          description,
+          queryParams,
+          headers,
+          body,
+        },
+        { new: true, select: { __v: 0, team: 0 } },
+      );
+
+      res.json({
+        data: updatedWebhook,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 router.delete(
   '/:id',
   validateRequest({
@@ -119,6 +203,71 @@ router.delete(
       }
       await Webhook.findOneAndDelete({ _id: req.params.id, team: teamId });
       res.json({});
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.post(
+  '/test',
+  validateRequest({
+    body: z.object({
+      body: z.string().optional(),
+      headers: z
+        .record(httpHeaderNameValidator, httpHeaderValueValidator)
+        .optional(),
+      queryParams: z.record(z.string()).optional(),
+      service: z.nativeEnum(WebhookService),
+      url: z.string().url(),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const { service, url, queryParams, headers, body } = req.body;
+
+      // Create a temporary webhook object for testing
+      const testWebhook = new Webhook({
+        team: new ObjectId(teamId),
+        service,
+        url,
+        queryParams: queryParams,
+        headers: headers,
+        body,
+      });
+
+      // Send test message
+      const testMessage = {
+        hdxLink: 'https://hyperdx.io',
+        title: 'Test Webhook from HyperDX',
+        body: 'This is a test message to verify your webhook configuration is working correctly.',
+        startTime: Date.now(),
+        endTime: Date.now(),
+        state: AlertState.INSUFFICIENT_DATA,
+        eventId: 'test-event-id',
+      };
+
+      if (service === WebhookService.Slack) {
+        await handleSendSlackWebhook(testWebhook, testMessage);
+      } else if (
+        service === WebhookService.Generic ||
+        service === WebhookService.IncidentIO
+      ) {
+        await handleSendGenericWebhook(testWebhook, testMessage);
+      } else {
+        return res.status(400).json({
+          message: 'Unsupported webhook service type',
+        });
+      }
+
+      res.json({
+        message: 'Test webhook sent successfully',
+      });
     } catch (err) {
       next(err);
     }
