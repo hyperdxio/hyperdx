@@ -209,7 +209,6 @@ export default function DBTracePanel({
       )}
       {traceSourceData != null && eventRowWhere != null && (
         <>
-          <Divider my="md" />
           <Group>
             <Text size="sm" c="dark.2" my="sm">
               Service Map
