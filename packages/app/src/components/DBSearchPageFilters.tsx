@@ -684,7 +684,7 @@ const DBSearchPageFiltersComponent = ({
     isFieldPinned,
     pinnedFilters,
   } = usePinnedFilters(sourceId ?? null);
-  const { width, startResize } = useResizable(16, 'left');
+  const { size, startResize } = useResizable(16, 'left');
 
   const { data: jsonColumns } = useJsonColumns({
     databaseName: chartConfig.from.databaseName,
@@ -908,7 +908,7 @@ const DBSearchPageFiltersComponent = ({
   );
 
   return (
-    <Box className={classes.filtersPanel} style={{ width: `${width}%` }}>
+    <Box className={classes.filtersPanel} style={{ width: `${size}%` }}>
       <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
       <ScrollArea
         h="100%"
