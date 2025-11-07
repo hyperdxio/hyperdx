@@ -716,13 +716,9 @@ body {
   pointer-events: none;
 }
 
-// html.hdx-theme-light {
-//   filter: invert(1) hue-rotate(180deg) brightness(1.05);
-// }
-
-// html.hdx-theme-light .hdx-background-image {
-//   display: none;
-// }
+[data-mantine-color-scheme='light'] .hdx-background-image {
+  display: none;
+}
 
 a.mantine-focus-auto:hover {
   color: inherit;

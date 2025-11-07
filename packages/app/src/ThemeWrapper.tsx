@@ -142,15 +142,17 @@ const makeTheme = ({
 
 export const ThemeWrapper = ({
   fontFamily,
+  colorScheme = 'dark',
   children,
 }: {
   fontFamily?: string;
+  colorScheme?: 'dark' | 'light';
   children: React.ReactNode;
 }) => {
   const theme = React.useMemo(() => makeTheme({ fontFamily }), [fontFamily]);
 
   return (
-    <MantineProvider forceColorScheme="dark" theme={theme}>
+    <MantineProvider forceColorScheme={colorScheme} theme={theme}>
       <Notifications zIndex={999999} />
       {children}
     </MantineProvider>
