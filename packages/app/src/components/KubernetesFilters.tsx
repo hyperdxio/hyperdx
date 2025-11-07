@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -43,10 +43,13 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
     limit: 1000000,
   });
 
-  const options =
-    data?.[0]?.value
-      .map(value => ({ value, label: value }))
-      .sort((a, b) => a.value.localeCompare(b.value)) || []; // Sort alphabetically for better search results
+  const options = useMemo(
+    () =>
+      data?.[0]?.value
+        .map(value => ({ value, label: value }))
+        .sort((a, b) => a.value.localeCompare(b.value)) || [], // Sort alphabetically for better search results
+    [data],
+  );
 
   return (
     <Select
