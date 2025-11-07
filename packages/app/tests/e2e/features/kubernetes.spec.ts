@@ -148,4 +148,41 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
       'ResourceAttributes.k8s.namespace.name:"default"',
     );
   });
+
+  test('should switch to "All" tab when filtering by pod or namespace', async ({
+    page,
+  }) => {
+    // Verify initial state is "Running"
+    const podsTable = page.getByTestId('k8s-pods-table');
+    const runningTab = podsTable.getByRole('radio', { name: 'Running' });
+    await expect(runningTab).toBeChecked();
+
+    // Filter by namespace
+    const namespaceFilter = page.getByTestId('namespace-filter-select');
+    await namespaceFilter.click();
+    await page.getByRole('option', { name: 'default' }).click();
+
+    await page.waitForTimeout(500);
+
+    // Verify it switched to "All" tab
+    const allTab = podsTable.getByRole('radio', { name: 'All' });
+    await expect(allTab).toBeChecked();
+
+    // Clear the filter
+    const clearButton = namespaceFilter.locator('button[aria-label="Clear"]');
+    await clearButton.click();
+
+    await page.waitForTimeout(500);
+
+    // Filter by pod
+    const podFilter = page.getByTestId('pod-filter-select');
+    await podFilter.click();
+    const firstPodOption = page.getByRole('option').first();
+    await firstPodOption.click();
+
+    await page.waitForTimeout(500);
+
+    // Verify it's still on "All" tab
+    await expect(allTab).toBeChecked();
+  });
 });

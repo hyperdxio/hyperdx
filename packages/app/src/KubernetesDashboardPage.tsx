@@ -140,6 +140,13 @@ export const InfraPodsStatusTable = ({
   where: string;
 }) => {
   const [phaseFilter, setPhaseFilter] = React.useState('running');
+
+  // Auto-switch to "All" when search filters are applied
+  useEffect(() => {
+    if (where) {
+      setPhaseFilter('all');
+    }
+  }, [where]);
   const [sortState, setSortState] = React.useState<{
     column: InfraPodsStatusTableColumn;
     order: 'asc' | 'desc';
