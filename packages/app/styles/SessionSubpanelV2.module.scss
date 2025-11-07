@@ -10,7 +10,7 @@
 
 .eventList {
   width: 300px;
-  border-right: 1px solid $slate-950;
+  border-right: 1px solid var(--mantine-color-dark-9);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -22,7 +22,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px;
-  border-bottom: 1px solid $slate-950;
+  border-bottom: 1px solid var(--mantine-color-dark-9);
 }
 
 .eventListContainer {
@@ -32,7 +32,7 @@
 
 .eventRow {
   padding: 6px 12px;
-  border-bottom: 1px solid $slate-950;
+  border-bottom: 1px solid var(--mantine-color-dark-9);
   cursor: pointer;
   font-size: 12px;
   display: flex;
@@ -71,7 +71,7 @@
 }
 
 .eventRowIcon {
-  background: $slate-800;
+  background: var(--mantine-color-dark-8);
   width: 26px;
   height: 26px;
   display: flex;
@@ -108,7 +108,7 @@
   padding: 2px;
   margin: -2px;
   border-radius: 2px;
-  color: $slate-300;
+  color: var(--mantine-color-dark-3);
   font-size: 11px;
   align-self: center;
 
@@ -120,10 +120,10 @@
 .eventRowTitle {
   font-size: 12px;
   font-weight: bold;
-  color: $slate-200;
+  color: var(--mantine-color-dark-2);
 
   span {
-    color: $slate-400 !important;
+    color: var(--mantine-color-dark-4) !important;
     font-size: 11px;
     font-weight: normal;
 
@@ -137,7 +137,7 @@
 
 .eventRowDescription {
   font-size: 11px;
-  color: $slate-300;
+  color: var(--mantine-color-dark-3);
   max-width: 100%;
   overflow: hidden;
   white-space: nowrap;
@@ -160,8 +160,8 @@
   justify-content: space-between;
   align-items: center;
   padding: 6px 12px;
-  background-color: $slate-950;
-  border-bottom: 1px solid $slate-900;
+  background-color: var(--mantine-color-dark-9);
+  border-bottom: 1px solid var(--mantine-color-dark-9);
   width: 100%;
   max-width: 100%;
   gap: 12px;
@@ -169,7 +169,7 @@
 
 .playerHeaderUrl {
   font-size: 11px;
-  color: $slate-200;
+  color: var(--mantine-color-dark-2);
   width: 100%;
   max-width: 100%;
   overflow: hidden;
@@ -184,14 +184,14 @@
     45deg,
     #ffffff10,
     #ffffff10 15px,
-    $slate-950 15px,
-    $slate-950 30px
+    var(--mantine-color-dark-9) 15px,
+    var(--mantine-color-dark-9) 30px
   );
   display: flex;
   justify-content: center;
   align-items: center;
   position: relative;
-  color: $slate-300;
+  color: var(--mantine-color-dark-3);
 }
 
 .domPlayerWrapper {
@@ -219,7 +219,7 @@
   display: flex;
   padding: 6px 12px;
   align-items: center;
-  border-top: 1px solid $slate-950;
+  border-top: 1px solid var(--mantine-color-dark-9);
 }
 
 .playerToolbar {
@@ -227,7 +227,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 14px 20px;
-  border-top: 1px solid $slate-950;
+  border-top: 1px solid var(--mantine-color-dark-9);
 
   > div {
     flex: 1;

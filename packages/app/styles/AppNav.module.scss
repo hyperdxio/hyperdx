@@ -6,13 +6,13 @@
   display: flex;
   flex-flow: column nowrap;
   justify-content: space-between;
-  border-right: 1px solid $slate-950;
+  border-right: 1px solid var(--mantine-color-dark-9);
 }
 
 .list {
-  // background-color: #00000030;
-  // border-bottom: 1px solid $slate-950;
-  border-top: 1px solid $slate-950;
+  // background-color: #00000030;background-color
+  // border-bottom: 1px solid var(--mantine-color-dark-9);border-bottom
+  border-top: 1px solid var(--mantine-color-dark-9);
   overflow-x: hidden;
   max-width: 100%;
   padding: 4px 16px;
@@ -32,7 +32,7 @@
 }
 
 .listGroupName {
-  color: $slate-400;
+  color: var(--mantine-color-dark-4);
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 1px;
@@ -42,11 +42,11 @@
   display: flex;
   align-items: center;
 
-  // justify-content: space-between;
+  // justify-content: space-between;justify-content
   gap: 6px;
 
   &:hover {
-    color: $slate-300;
+    color: var(--mantine-color-dark-3);
     cursor: pointer;
   }
 }
@@ -55,7 +55,7 @@
   display: flex;
   justify-content: space-between;
   text-decoration: none;
-  color: $slate-200;
+  color: var(--mantine-color-dark-2);
   font-size: 13px;
   margin-bottom: 4px;
   max-width: 100%;
@@ -67,7 +67,7 @@
   gap: 10px;
 
   &:hover {
-    color: $slate-100;
+    color: var(--mantine-color-dark-1);
   }
 
   &:focus-visible {
@@ -81,7 +81,7 @@
 }
 
 .listEmptyMsg {
-  color: $slate-400;
+  color: var(--mantine-color-dark-4);
   font-size: 12px;
   margin: 8px 16px;
   overflow: hidden;
@@ -89,12 +89,12 @@
 }
 
 .listLinkActive {
-  // color: $green;
+  // color: $green;color
   color: var(--mantine-color-green-3);
   font-weight: 500;
 
   &:hover {
-    // color: $green;
+    // color: $green;color
     color: var(--mantine-color-green-3);
   }
 }
@@ -102,8 +102,8 @@
 .kbd {
   white-space: nowrap;
   letter-spacing: -1px;
-  color: $slate-400;
-  background: $slate-950;
+  color: var(--mantine-color-dark-4);
+  background: var(--mantine-color-dark-9);
   border-radius: 4px;
   padding: 0 4px;
   font-size: 10px;
@@ -129,7 +129,7 @@
   }
 
   &:active {
-    // background: var(--mantine-color-gray-9);
+    // background: var(--mantine-color-gray-9);background
     transform: translate(0, 1px);
   }
 }

@@ -48,11 +48,11 @@
 
   &:hover {
     cursor: pointer;
-    color: $slate-300 !important;
+    color: var(--mantine-color-dark-3) !important;
   }
 
   &:active {
-    color: $slate-500 !important;
+    color: var(--mantine-color-dark-5) !important;
   }
 }
 
@@ -83,20 +83,20 @@
     align-items: center;
     padding: 0 4px;
     gap: 4px;
-    background-color: $slate-950;
+    background-color: var(--mantine-color-dark-9);
 
     .textButton {
       padding: 2px 4px;
       border-radius: 3px;
 
       &:hover {
-        background-color: $slate-800;
-        color: $slate-200;
+        background-color: var(--mantine-color-dark-8);
+        color: var(--mantine-color-dark-2);
       }
 
       &:active {
-        background-color: $slate-700;
-        color: $slate-100;
+        background-color: var(--mantine-color-dark-7);
+        color: var(--mantine-color-dark-1);
       }
     }
   }
@@ -106,7 +106,8 @@
       opacity: 1;
     }
 
-    background-color: $slate-950;
+    /* TODO COLOR BG */
+    background-color: var(--mantine-color-dark-1);
 
     .filterActions {
       display: flex;
@@ -137,12 +138,12 @@
 
 @keyframes highlight {
   0% {
-    background-color: $slate-950;
+    background-color: var(--mantine-color-dark-9);
     transform: scale(1.02);
   }
 
   50% {
-    background-color: $slate-900;
+    background-color: var(--mantine-color-dark-9);
     transform: scale(1.01);
   }
 

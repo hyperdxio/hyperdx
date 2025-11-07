@@ -1,11 +1,11 @@
 @import './variables';
 
 .sectionHeader {
-  border-bottom: 1px solid $slate-950;
+  border-bottom: 1px solid var(--mantine-color-dark-9);
   margin-top: 30px;
   padding-bottom: 10px;
   font-size: 14px;
-  color: $slate-400;
+  color: var(--mantine-color-dark-4);
 }
 
 .historyCardWrapper {
@@ -22,7 +22,7 @@
 .historyCard {
   width: 4px;
   height: 16px;
-  background-color: $slate-950;
+  background-color: var(--mantine-color-dark-9);
   border-radius: 2px;
   margin: 0 1px;
   cursor: pointer;
@@ -48,12 +48,12 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px 0;
-  border-bottom: 1px solid $slate-950;
+  border-bottom: 1px solid var(--mantine-color-dark-9);
 }
 
 .alertLink {
   font-weight: 500;
-  color: $slate-200;
+  color: var(--mantine-color-dark-2);
   text-decoration: none;
 
   &:hover {

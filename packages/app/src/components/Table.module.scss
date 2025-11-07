@@ -22,7 +22,7 @@ $horizontalPadding: 12px;
     }
 
     tr {
-      border-bottom: 1px solid $slate-950;
+      border-bottom: 1px solid var(--mantine-color-dark-9);
     }
 
     tbody {
@@ -32,7 +32,7 @@ $horizontalPadding: 12px;
     }
 
     th {
-      color: $slate-300;
+      color: var(--mantine-color-dark-3);
       text-transform: uppercase;
       font-size: 9px;
       font-weight: 500;
@@ -103,7 +103,7 @@ $horizontalPadding: 12px;
 }
 
 .emptyMessage {
-  color: $slate-500;
+  color: var(--mantine-color-dark-5);
   text-align: center;
   padding: 10px;
 }
@@ -112,19 +112,19 @@ $horizontalPadding: 12px;
   display: flex;
   gap: 4px;
   border-radius: 4px;
-  background-color: $slate-950;
-  border: 1px solid $slate-900;
-  color: $slate-300;
+  background-color: var(--mantine-color-dark-9);
+  border: 1px solid var(--mantine-color-dark-9);
+  color: var(--mantine-color-dark-3);
   text-align: center;
   font-size: 11px;
 
   &:hover {
-    background-color: $slate-900;
-    border-color: $slate-800;
+    background-color: var(--mantine-color-dark-9);
+    border-color: var(--mantine-color-dark-8);
   }
 
   &:active {
-    background-color: $slate-950;
-    border-color: $slate-950;
+    background-color: var(--mantine-color-dark-9);
+    border-color: var(--mantine-color-dark-9);
   }
 }

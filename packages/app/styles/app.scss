@@ -1,6 +1,7 @@
 /* stylelint-disable */
 
 @import './variables';
+@import './design-tokens/_semantic-colors';
 @import '~bootstrap/scss/bootstrap';
 @import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css');
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap');
@@ -24,10 +25,10 @@
 html,
 body,
 html[class~='dark'] body {
-  background-color: $body-bg;
+  background-color: var(--color-bg-body);
 }
 .bg-body {
-  background-color: $body-bg;
+  background-color: var(--color-bg-body);
 }
 .bg-hdx-dark {
   background-color: $bg-hdx-dark;
@@ -90,27 +91,27 @@ html[class~='dark'] body {
 }
 
 .text-slate-700 {
-  color: $slate-700;
+  color: var(--mantine-color-dark-7);
 }
 
 .text-slate-600 {
-  color: $slate-600;
+  color: var(--mantine-color-dark-6);
 }
 
 .text-slate-500 {
-  color: $slate-500;
+  color: var(--mantine-color-dark-5);
 }
 
 .text-slate-400 {
-  color: $slate-400;
+  color: var(--mantine-color-dark-4);
 }
 
 .text-slate-300 {
-  color: $slate-300;
+  color: var(--mantine-color-dark-3);
 }
 
 .text-slate-200 {
-  color: $slate-200;
+  color: var(--mantine-color-dark-2);
 }
 
 .text-muted-hover {
@@ -715,13 +716,13 @@ body {
   pointer-events: none;
 }
 
-html.hdx-theme-light {
-  filter: invert(1) hue-rotate(180deg) brightness(1.05);
-}
+// html.hdx-theme-light {
+//   filter: invert(1) hue-rotate(180deg) brightness(1.05);
+// }
 
-html.hdx-theme-light .hdx-background-image {
-  display: none;
-}
+// html.hdx-theme-light .hdx-background-image {
+//   display: none;
+// }
 
 a.mantine-focus-auto:hover {
   color: inherit;

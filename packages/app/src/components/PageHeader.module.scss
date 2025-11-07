@@ -3,8 +3,8 @@
 .header {
   align-items: center;
   background-color: $body-bg;
-  border-bottom: 1px solid $slate-950;
-  color: $slate-200;
+  border-bottom: 1px solid var(--mantine-color-dark-9);
+  color: var(--mantine-color-dark-2);
   display: flex;
   font-weight: 500;
   height: 60px;

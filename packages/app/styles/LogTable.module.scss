@@ -44,7 +44,7 @@ $button-height: 18px;
 .expandedRowContent {
   max-height: 400px;
   overflow: auto;
-  background-color: $slate-950;
+  background-color: var(--mantine-color-dark-9);
   padding: 12px;
 }
 
