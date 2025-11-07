@@ -4,22 +4,9 @@ import { HTTPError } from 'ky';
 import { Button as BSButton, Modal as BSModal } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm } from 'react-hook-form';
-import type { ZodIssue } from 'zod';
-import { json, jsonParseLinter } from '@codemirror/lang-json';
-import { linter } from '@codemirror/lint';
-import { EditorView } from '@codemirror/view';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
-  AlertState,
-  SourceKind,
-  WebhookService,
-} from '@hyperdx/common-utils/dist/types';
-import {
-  isValidSlackUrl,
-  isValidUrl,
-} from '@hyperdx/common-utils/dist/validation';
-import {
-  Alert,
   Badge,
   Box,
   Button,
@@ -32,7 +19,6 @@ import {
   InputLabel,
   Loader,
   Modal as MModal,
-  Radio,
   Stack,
   Table,
   Text,
@@ -41,8 +27,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { UseQueryResult } from '@tanstack/react-query';
-import CodeMirror, { placeholder } from '@uiw/react-codemirror';
+import { IconPencil } from '@tabler/icons-react';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
 import SelectControlled from '@/components/SelectControlled';
@@ -50,31 +35,15 @@ import { TableSourceForm } from '@/components/SourceForm';
 import { IS_LOCAL_MODE } from '@/config';
 
 import { PageHeader } from './components/PageHeader';
+import { WebhookForm } from './components/TeamSettings/WebhookForm';
 import api from './api';
 import { useConnections } from './connection';
 import { DEFAULT_QUERY_TIMEOUT, DEFAULT_SEARCH_ROW_LIMIT } from './defaults';
 import { withAppNav } from './layout';
 import { useSources } from './source';
+import type { Webhook } from './types';
 import { useConfirm } from './useConfirm';
 import { capitalizeFirstLetter } from './utils';
-
-const DEFAULT_GENERIC_WEBHOOK_BODY = [
-  '{{title}}',
-  '{{body}}',
-  '{{link}}',
-  '{{state}}',
-  '{{startTime}}',
-  '{{endTime}}',
-  '{{eventId}}',
-];
-const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
-  DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
-
-const jsonLinterWithEmptyCheck = () => (editorView: EditorView) => {
-  const text = editorView.state.doc.toString().trim();
-  if (text === '') return [];
-  return jsonParseLinter()(editorView);
-};
 
 function InviteTeamMemberForm({
   isSubmitting,
@@ -699,260 +668,6 @@ function TeamMembersSection() {
   );
 }
 
-type WebhookForm = {
-  name: string;
-  url: string;
-  service: string;
-  description?: string;
-  body?: string;
-  headers?: string;
-};
-
-export function CreateWebhookForm({
-  onClose,
-  onSuccess,
-}: {
-  onClose: VoidFunction;
-  onSuccess: (webhookId?: string) => void;
-}) {
-  const saveWebhook = api.useSaveWebhook();
-
-  const form = useForm<WebhookForm>({
-    defaultValues: {
-      service: WebhookService.Slack,
-    },
-  });
-
-  const onSubmit: SubmitHandler<WebhookForm> = async values => {
-    const { service, name, url, description, body, headers } = values;
-    try {
-      // Parse headers JSON if provided (API will validate the content)
-      let parsedHeaders: Record<string, string> | undefined;
-      if (headers && headers.trim()) {
-        try {
-          parsedHeaders = JSON.parse(headers);
-        } catch (parseError) {
-          const errorMessage =
-            parseError instanceof Error
-              ? parseError.message
-              : 'Invalid JSON format';
-          notifications.show({
-            message: `Invalid JSON in headers: ${errorMessage}`,
-            color: 'red',
-            autoClose: 5000,
-          });
-          return;
-        }
-      }
-
-      let defaultBody = body;
-      if (!body) {
-        if (service === WebhookService.Generic) {
-          defaultBody = `{"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"}`;
-        } else if (service === WebhookService.IncidentIO) {
-          defaultBody = `{
-  "title": "{{title}}",
-  "description": "{{body}}",
-  "deduplication_key": "{{eventId}}",
-  "status": "{{#if (eq state "${AlertState.ALERT}")}}firing{{else}}resolved{{/if}}",
-  "source_url": "{{link}}"
-}`;
-        }
-      }
-
-      const response = await saveWebhook.mutateAsync({
-        service,
-        name,
-        url,
-        description: description || '',
-        body: defaultBody,
-        headers: parsedHeaders,
-      });
-      notifications.show({
-        color: 'green',
-        message: `Webhook created successfully`,
-      });
-      onSuccess(response.data?._id);
-      onClose();
-    } catch (e) {
-      console.error(e);
-      let message = 'Something went wrong. Please contact HyperDX team.';
-
-      if (e instanceof HTTPError) {
-        try {
-          const errorData = await e.response.json();
-          // Handle Zod validation errors from zod-express-middleware
-          // The library returns errors in format: { error: { issues: [...] } }
-          if (
-            errorData.error?.issues &&
-            Array.isArray(errorData.error.issues)
-          ) {
-            // TODO: use a library to format Zod validation errors
-            // Format Zod validation errors
-            const validationErrors = errorData.error.issues
-              .map((issue: ZodIssue) => {
-                const path = issue.path.join('.');
-                return `${path}: ${issue.message}`;
-              })
-              .join(', ');
-            message = `Validation error: ${validationErrors}`;
-          } else if (errorData.message) {
-            message = errorData.message;
-          } else {
-            // Fallback: show the entire error object as JSON
-            message = JSON.stringify(errorData);
-          }
-        } catch (parseError) {
-          console.error('Failed to parse error response:', parseError);
-          // If parsing fails, use default message
-        }
-      }
-
-      notifications.show({
-        message,
-        color: 'red',
-        autoClose: 5000,
-      });
-    }
-  };
-
-  const service = form.watch('service');
-
-  return (
-    <form onSubmit={form.handleSubmit(onSubmit)}>
-      <Stack mt="sm">
-        <Text>Create Webhook</Text>
-        <Radio.Group
-          label="Service Type"
-          required
-          value={service}
-          onChange={value => form.setValue('service', value)}
-        >
-          <Group mt="xs">
-            <Radio
-              value={WebhookService.Slack}
-              label="Slack"
-              {...form.register('service', { required: true })}
-            />
-            <Radio
-              value={WebhookService.Generic}
-              label="Generic"
-              {...form.register('service', { required: true })}
-            />
-            <Radio
-              value={WebhookService.IncidentIO}
-              label="Incident.io"
-              {...form.register('service', { required: true })}
-            />
-          </Group>
-        </Radio.Group>
-        <TextInput
-          label="Webhook Name"
-          placeholder="Post to #dev-alerts"
-          required
-          error={form.formState.errors.name?.message}
-          {...form.register('name', { required: true })}
-        />
-        <TextInput
-          label="Webhook URL"
-          placeholder={
-            service === WebhookService.Slack
-              ? 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
-              : service === WebhookService.IncidentIO
-                ? 'https://api.incident.io/v2/alert_events/http/ZZZZZZZZ?token=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
-                : 'https://example.com/webhook'
-          }
-          type="url"
-          required
-          error={form.formState.errors.url?.message}
-          {...form.register('url', {
-            required: true,
-            validate: (value, formValues) =>
-              formValues.service === WebhookService.Slack
-                ? isValidSlackUrl(value) ||
-                  'URL must be valid and have a slack.com domain'
-                : isValidUrl(value) || 'URL must be valid',
-          })}
-        />
-        <TextInput
-          label="Webhook Description (optional)"
-          placeholder="To be used for dev alerts"
-          error={form.formState.errors.description?.message}
-          {...form.register('description')}
-        />
-        {service === WebhookService.Generic && [
-          <label className=".mantine-TextInput-label" key="1">
-            Webhook Headers (optional)
-          </label>,
-          <div className="mb-2" key="2">
-            <CodeMirror
-              height="100px"
-              extensions={[
-                json(),
-                linter(jsonLinterWithEmptyCheck()),
-                placeholder(
-                  `{\n\t"Authorization": "Bearer token",\n\t"X-Custom-Header": "value"\n}`,
-                ),
-              ]}
-              theme="dark"
-              onChange={value => form.setValue('headers', value)}
-            />
-          </div>,
-          <label className=".mantine-TextInput-label" key="3">
-            Webhook Body (optional)
-          </label>,
-          <div className="mb-2" key="4">
-            <CodeMirror
-              height="100px"
-              extensions={[
-                json(),
-                linter(jsonLinterWithEmptyCheck()),
-                placeholder(
-                  `{\n\t"text": "${DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE}"\n}`,
-                ),
-              ]}
-              theme="dark"
-              onChange={value => form.setValue('body', value)}
-            />
-          </div>,
-          <Alert
-            icon={<i className="bi bi-info-circle-fill text-slate-400" />}
-            key="5"
-            className="mb-4"
-            color="gray"
-          >
-            <span>
-              Currently the body supports the following message template
-              variables:
-            </span>
-            <br />
-            <span>
-              {DEFAULT_GENERIC_WEBHOOK_BODY.map((body, index) => (
-                <span key={index}>
-                  <code>{body}</code>
-                  {index < DEFAULT_GENERIC_WEBHOOK_BODY.length - 1 && ', '}
-                </span>
-              ))}
-            </span>
-          </Alert>,
-        ]}
-        <Group justify="space-between">
-          <Button
-            variant="outline"
-            type="submit"
-            loading={saveWebhook.isPending}
-          >
-            Add Webhook
-          </Button>
-          <Button variant="outline" color="gray" onClick={onClose} type="reset">
-            Cancel
-          </Button>
-        </Group>
-      </Stack>
-    </form>
-  );
-}
-
 function DeleteWebhookButton({
   webhookId,
   webhookName,
@@ -1014,10 +729,11 @@ function IntegrationsSection() {
     WebhookService.IncidentIO,
   ]);
 
-  const allWebhooks = useMemo(() => {
-    return Array.isArray(webhookData?.data) ? webhookData?.data : [];
+  const allWebhooks = useMemo<Webhook[]>(() => {
+    return Array.isArray(webhookData?.data) ? webhookData.data : [];
   }, [webhookData]);
 
+  const [editedWebhookId, setEditedWebhookId] = useState<string | null>(null);
   const [
     isAddWebhookModalOpen,
     { open: openWebhookModal, close: closeWebhookModal },
@@ -1033,9 +749,9 @@ function IntegrationsSection() {
         <Text mb="xs">Webhooks</Text>
 
         <Stack>
-          {allWebhooks.map((webhook: any) => (
+          {allWebhooks.map(webhook => (
             <Fragment key={webhook._id}>
-              <Group justify="space-between">
+              <Group justify="space-between" align="flex-start">
                 <Stack gap={0}>
                   <Text size="sm">
                     {webhook.name} ({webhook.service})
@@ -1049,12 +765,47 @@ function IntegrationsSection() {
                     </Text>
                   )}
                 </Stack>
-                <DeleteWebhookButton
-                  webhookId={webhook._id}
-                  webhookName={webhook.name}
-                  onSuccess={refetchWebhooks}
-                />
+                <Group gap="xs">
+                  {editedWebhookId !== webhook._id && (
+                    <>
+                      <Button
+                        variant="subtle"
+                        color="gray.4"
+                        onClick={() => setEditedWebhookId(webhook._id)}
+                        size="compact-xs"
+                        leftSection={<IconPencil size={14} />}
+                      >
+                        Edit
+                      </Button>
+                      <DeleteWebhookButton
+                        webhookId={webhook._id}
+                        webhookName={webhook.name}
+                        onSuccess={refetchWebhooks}
+                      />
+                    </>
+                  )}
+                  {editedWebhookId === webhook._id && (
+                    <Button
+                      variant="subtle"
+                      color="gray.4"
+                      onClick={() => setEditedWebhookId(null)}
+                      size="compact-xs"
+                    >
+                      <i className="bi bi-x-lg me-2" /> Cancel
+                    </Button>
+                  )}
+                </Group>
               </Group>
+              {editedWebhookId === webhook._id && (
+                <WebhookForm
+                  webhook={webhook}
+                  onClose={() => setEditedWebhookId(null)}
+                  onSuccess={() => {
+                    setEditedWebhookId(null);
+                    refetchWebhooks();
+                  }}
+                />
+              )}
               <Divider />
             </Fragment>
           ))}
@@ -1065,7 +816,7 @@ function IntegrationsSection() {
             Add Webhook
           </Button>
         ) : (
-          <CreateWebhookForm
+          <WebhookForm
             onClose={closeWebhookModal}
             onSuccess={() => {
               refetchWebhooks();
