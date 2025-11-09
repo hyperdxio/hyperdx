@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { flatten } from 'flat';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
@@ -36,7 +37,7 @@ export function useRowData({
   const severityTextExpr =
     source.severityTextExpression || source.statusCodeExpression;
 
-  return useQueriedChartConfig(
+  const queryResult = useQueriedChartConfig(
     {
       connection: source.connection,
       select: [
@@ -125,6 +126,38 @@ export function useRowData({
       enabled: rowId != null,
     },
   );
+
+  // Normalize resource and event attributes to always use flat keys for both JSON and Map columns
+  const normalizedData = useMemo(() => {
+    if (!queryResult.data?.data?.[0]) {
+      return queryResult.data;
+    }
+
+    const row = queryResult.data.data[0];
+    const normalizedRow = { ...row };
+
+    if (row[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES]) {
+      normalizedRow[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES] = flatten(
+        row[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES],
+      );
+    }
+
+    if (row[ROW_DATA_ALIASES.EVENT_ATTRIBUTES]) {
+      normalizedRow[ROW_DATA_ALIASES.EVENT_ATTRIBUTES] = flatten(
+        row[ROW_DATA_ALIASES.EVENT_ATTRIBUTES],
+      );
+    }
+
+    return {
+      ...queryResult.data,
+      data: [normalizedRow],
+    };
+  }, [queryResult.data]);
+
+  return {
+    ...queryResult,
+    data: normalizedData,
+  };
 }
 
 export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {

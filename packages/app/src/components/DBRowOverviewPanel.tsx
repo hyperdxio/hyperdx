@@ -1,5 +1,4 @@
 import { useCallback, useContext, useMemo } from 'react';
-import { flatten } from 'flat';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
@@ -70,17 +69,9 @@ export function RowOverviewPanel({
     return false;
   });
 
-  // memo
-  const resourceAttributes = useMemo(() => {
-    return flatten<string, Record<string, string>>(
-      firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ,
-    );
-  }, [firstRow?.__hdx_resource_attributes]);
-
-  const _eventAttributes = firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
-  const flattenedEventAttributes = useMemo(() => {
-    return flatten<string, Record<string, string>>(_eventAttributes);
-  }, [_eventAttributes]);
+  const resourceAttributes = firstRow?.__hdx_resource_attributes ?? EMPTY_OBJ;
+  const flattenedEventAttributes =
+    firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
 
   const dataAttributes =
     eventAttributesExpr &&
