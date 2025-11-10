@@ -83,6 +83,10 @@ interface Message {
   eventId: string;
 }
 
+const isAlertResolved = (state: AlertState): boolean => {
+  return state === AlertState.OK;
+};
+
 export const notifyChannel = async ({
   channel,
   message,
@@ -304,20 +308,27 @@ export const buildAlertMessageTemplateHdxLink = (
 export const buildAlertMessageTemplateTitle = ({
   template,
   view,
+  state,
 }: {
   template?: string | null;
   view: AlertMessageTemplateDefaultView;
+  state?: AlertState;
 }) => {
   const { alert, dashboard, savedSearch, value } = view;
   const handlebars = createHandlebarsWithHelpers();
+
+  // Add emoji prefix based on alert state
+  const emoji = state && isAlertResolved(state) ? '✅ ' : '🚨 ';
+
   if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
       throw new Error(`Source is ${alert.source}  but savedSearch is null`);
     }
     // TODO: using template engine to render the title
-    return template
+    const baseTitle = template
       ? handlebars.compile(template)(view)
       : `Alert for "${savedSearch.name}" - ${value} lines found`;
+    return `${emoji}${baseTitle}`;
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
@@ -328,7 +339,7 @@ export const buildAlertMessageTemplateTitle = ({
         `Tile with id ${alert.tileId} not found in dashboard ${dashboard.name}`,
       );
     }
-    return template
+    const baseTitle = template
       ? handlebars.compile(template)(view)
       : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${value} ${
           doesExceedThreshold(alert.thresholdType, alert.threshold, value)
@@ -339,6 +350,7 @@ export const buildAlertMessageTemplateTitle = ({
               ? 'falls below'
               : 'exceeds'
         } ${alert.threshold}`;
+    return `${emoji}${baseTitle}`;
   }
 
   throw new Error(`Unsupported alert source: ${(alert as any).source}`);
@@ -527,9 +539,14 @@ export const renderAlertTemplate = async ({
   })})`;
   let rawTemplateBody;
 
+  // For resolved alerts, use a simple message instead of fetching data
+  if (isAlertResolved(state)) {
+    rawTemplateBody = `${group ? `Group: "${group}" - ` : ''}The alert has been resolved.\n${timeRangeMessage}
+${targetTemplate}`;
+  }
   // TODO: support advanced routing with template engine
   // users should be able to use '@' syntax to trigger alerts
-  if (alert.source === AlertSource.SAVED_SEARCH) {
+  else if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
       throw new Error(`Source is ${alert.source} but savedSearch is null`);
     }

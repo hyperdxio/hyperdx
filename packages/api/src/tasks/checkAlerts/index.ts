@@ -146,6 +146,7 @@ const fireChannelEvent = async ({
     title: buildAlertMessageTemplateTitle({
       template: alert.name,
       view: templateView,
+      state,
     }),
     template: alert.message,
     view: templateView,
