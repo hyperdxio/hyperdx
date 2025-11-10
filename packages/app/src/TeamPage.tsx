@@ -93,9 +93,7 @@ function ConnectionsSection() {
 
   return (
     <Box id="connections">
-      <Text size="md" c="gray.4">
-        Connections
-      </Text>
+      <Text size="md">Connections</Text>
       <Divider my="md" />
       <Card>
         <Stack mb="md">
@@ -119,7 +117,6 @@ function ConnectionsSection() {
                 {editedConnectionId !== c.id && (
                   <Button
                     variant="subtle"
-                    color="gray.4"
                     onClick={() => setEditedConnectionId(c.id)}
                     size="sm"
                   >
@@ -129,7 +126,6 @@ function ConnectionsSection() {
                 {editedConnectionId === c.id && (
                   <Button
                     variant="subtle"
-                    color="gray.4"
                     onClick={() => setEditedConnectionId(null)}
                     size="sm"
                   >
@@ -156,7 +152,6 @@ function ConnectionsSection() {
           (IS_LOCAL_MODE ? (connections?.length ?? 0) < 1 : true) && (
             <Button
               variant="outline"
-              color="gray.4"
               onClick={() => setIsCreatingConnection(true)}
             >
               Add Connection
@@ -193,11 +188,9 @@ function SourcesSection() {
 
   return (
     <Box id="sources">
-      <Text size="md" c="gray.4">
-        Sources
-      </Text>
+      <Text size="md">Sources</Text>
       <Divider my="md" />
-      <Card>
+      <Card variant="muted">
         <Stack>
           {sources?.map(s => (
             <>
@@ -227,7 +220,6 @@ function SourcesSection() {
                 {editedSourceId !== s.id && (
                   <Button
                     variant="subtle"
-                    color="gray.4"
                     onClick={() => setEditedSourceId(s.id)}
                     size="sm"
                   >
@@ -237,7 +229,6 @@ function SourcesSection() {
                 {editedSourceId === s.id && (
                   <Button
                     variant="subtle"
-                    color="gray.4"
                     onClick={() => setEditedSourceId(null)}
                     size="sm"
                   >
@@ -264,11 +255,7 @@ function SourcesSection() {
             />
           )}
           {!IS_LOCAL_MODE && !isCreatingSource && (
-            <Button
-              variant="outline"
-              onClick={() => setIsCreatingSource(true)}
-              color="gray.4"
-            >
+            <Button variant="default" onClick={() => setIsCreatingSource(true)}>
               Add Source
             </Button>
           )}
@@ -467,9 +454,7 @@ function TeamMembersSection() {
 
   return (
     <Box id="team_members">
-      <Text size="md" c="gray.4">
-        Team
-      </Text>
+      <Text size="md">Team</Text>
       <Divider my="md" />
 
       <Card>
@@ -627,7 +612,7 @@ function TeamMembersSection() {
         show={deleteTeamMemberConfirmationModalData.id != null}
         size="lg"
       >
-        <BSModal.Body className="bg-grey rounded">
+        <BSModal.Body className="bg-muted rounded">
           <h3 className="text-muted">Delete Team Member</h3>
           <p className="text-muted">
             Deleting this team member (
@@ -741,11 +726,9 @@ function IntegrationsSection() {
 
   return (
     <Box id="integrations">
-      <Text size="md" c="gray.4">
-        Integrations
-      </Text>
+      <Text size="md">Integrations</Text>
       <Divider my="md" />
-      <Card>
+      <Card variant="muted">
         <Text mb="xs">Webhooks</Text>
 
         <Stack>
@@ -770,7 +753,6 @@ function IntegrationsSection() {
                     <>
                       <Button
                         variant="subtle"
-                        color="gray.4"
                         onClick={() => setEditedWebhookId(webhook._id)}
                         size="compact-xs"
                         leftSection={<IconPencil size={14} />}
@@ -787,7 +769,6 @@ function IntegrationsSection() {
                   {editedWebhookId === webhook._id && (
                     <Button
                       variant="subtle"
-                      color="gray.4"
                       onClick={() => setEditedWebhookId(null)}
                       size="compact-xs"
                     >
@@ -812,7 +793,7 @@ function IntegrationsSection() {
         </Stack>
 
         {!isAddWebhookModalOpen ? (
-          <Button variant="outline" color="gray.4" onClick={openWebhookModal}>
+          <Button variant="outline" onClick={openWebhookModal}>
             Add Webhook
           </Button>
         ) : (
@@ -866,11 +847,9 @@ function TeamNameSection() {
   );
   return (
     <Box id="team_name">
-      <Text size="md" c="gray.4">
-        Team Name
-      </Text>
+      <Text size="md">Team Name</Text>
       <Divider my="md" />
-      <Card>
+      <Card variant="muted">
         {isEditingTeamName ? (
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <Group gap="xs">
@@ -1136,11 +1115,9 @@ function TeamQueryConfigSection() {
 
   return (
     <Box id="team_name">
-      <Text size="md" c="gray.4">
-        ClickHouse Client Settings
-      </Text>
+      <Text size="md">ClickHouse Client Settings</Text>
       <Divider my="md" />
-      <Card>
+      <Card variant="muted">
         <Stack>
           <ClickhouseSettingForm
             settingKey="searchRowLimit"
@@ -1254,14 +1231,10 @@ function ApiKeysSection() {
 
   return (
     <Box id="api_keys">
-      <Text size="md" c="gray.4">
-        API Keys
-      </Text>
+      <Text size="md">API Keys</Text>
       <Divider my="md" />
-      <Card>
-        <Text c="gray.3" mb="md">
-          Ingestion API Key
-        </Text>
+      <Card variant="muted" mb="md">
+        <Text mb="md">Ingestion API Key</Text>
         <Group gap="xs">
           {team?.apiKey && (
             <APIKeyCopyButton value={team.apiKey} dataTestId="api-key" />
@@ -1317,11 +1290,9 @@ function ApiKeysSection() {
         </MModal>
       </Card>
       {!isLoadingMe && me != null && (
-        <Card>
+        <Card variant="muted">
           <Card.Section p="md">
-            <Text c="gray.3" mb="md">
-              Personal API Access Key
-            </Text>
+            <Text mb="md">Personal API Access Key</Text>
             <APIKeyCopyButton value={me.accessKey} dataTestId="api-key" />
           </Card.Section>
         </Card>

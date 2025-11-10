@@ -946,7 +946,7 @@ export const RawLogTable = memo(
             })}
             <tr>
               <td colSpan={800}>
-                <div className="rounded fs-7 bg-grey text-center d-flex align-items-center justify-content-center mt-3">
+                <div className="rounded fs-7 bg-muted text-center d-flex align-items-center justify-content-center mt-3">
                   {isLoading ? (
                     <div className="my-3">
                       <div className="spin-animate d-inline-block">

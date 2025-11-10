@@ -481,7 +481,7 @@ function HeatmapContainer({
   if (isLoading || isMinMaxLoading) {
     return (
       <Paper shadow="xs" p="xl">
-        <Text size="sm" c="gray.4" ta="center">
+        <Text size="sm" ta="center">
           Loading...
         </Text>
       </Paper>
@@ -539,7 +539,7 @@ function HeatmapContainer({
   if (time.length < 2 || generatedTsBuckets?.length < 2) {
     return (
       <Paper shadow="xs" p="xl">
-        <Text size="sm" c="gray.4" ta="center">
+        <Text size="sm" ta="center">
           Not enough data points to render heatmap. Try expanding your search
           criteria.
         </Text>

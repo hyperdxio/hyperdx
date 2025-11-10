@@ -45,9 +45,7 @@ const PodDetailsProperty = React.memo(
         <Text size="xs" color="gray.6">
           {label}
         </Text>
-        <Text size="sm" color="gray.3">
-          {value}
-        </Text>
+        <Text size="sm">{value}</Text>
       </div>
     );
   },

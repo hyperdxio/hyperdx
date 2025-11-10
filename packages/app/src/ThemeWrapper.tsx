@@ -118,10 +118,48 @@ const makeTheme = ({
       },
     },
     Card: {
+      styles: (_theme: any, props: any) => {
+        if (props.variant === 'muted') {
+          return {
+            root: {
+              backgroundColor: 'var(--color-bg-muted)',
+              border: '1px solid var(--color-border)',
+            },
+          };
+        }
+        return {
+          root: {
+            backgroundColor: 'var(--color-bg-surface)',
+          },
+        };
+      },
+    },
+    Divider: {
       styles: {
         root: {
-          backgroundColor: '#191B1F',
+          borderColor: 'var(--color-border)',
         },
+      },
+    },
+    Paper: {
+      classNames: (_theme: any, props: any) => {
+        if (props.variant === 'muted') {
+          return {
+            root: 'paper-muted',
+          };
+        }
+        return {};
+      },
+      styles: (_theme: any, props: any) => {
+        if (props.variant === 'muted') {
+          return {
+            root: {
+              backgroundColor: 'var(--color-bg-muted)',
+              border: '1px solid var(--color-border)',
+            },
+          };
+        }
+        return {};
       },
     },
     Button: Button.extend({

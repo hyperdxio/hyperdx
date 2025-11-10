@@ -95,9 +95,7 @@ function DBServiceMapPage() {
     >
       <Group mb="md" justify="space-between">
         <Group>
-          <Text c="gray.4" size="xl">
-            Service Map
-          </Text>
+          <Text size="xl">Service Map</Text>
           <SourceSelectControlled
             control={control}
             name="source"
@@ -109,7 +107,7 @@ function DBServiceMapPage() {
           />
         </Group>
         <Group justify="flex-end">
-          <Text c="gray.4" bg="inherit" size="sm">
+          <Text bg="inherit" size="sm">
             Sampling {samplingLabel}
           </Text>
           <div style={{ minWidth: '200px' }}>

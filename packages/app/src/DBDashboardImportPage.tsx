@@ -3,7 +3,6 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { filter } from 'lodash';
-import { Container } from 'react-bootstrap';
 import { Controller, useForm } from 'react-hook-form';
 import { StringParam, useQueryParam } from 'use-query-params';
 import { z } from 'zod';
@@ -13,6 +12,7 @@ import { DashboardTemplateSchema } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
   Collapse,
+  Container,
   Group,
   Input,
   Stack,

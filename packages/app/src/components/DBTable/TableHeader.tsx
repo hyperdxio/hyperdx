@@ -47,7 +47,7 @@ export default function TableHeader({
           >
             <>
               {header.isPlaceholder ? null : (
-                <Text truncate="end" size="xs" flex="1" c="white">
+                <Text truncate="end" size="xs" flex="1">
                   {flexRender(
                     header.column.columnDef.header,
                     header.getContext(),

@@ -59,7 +59,7 @@ function InfrastructureTab({
     <Grid mt="md">
       <Grid.Col span={6}>
         <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" c="gray.4" mb="sm">
+          <Text size="sm" mb="sm">
             CPU Usage (Cores)
           </Text>
           <DBTimeChart
@@ -86,7 +86,7 @@ function InfrastructureTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" c="gray.4" mb="sm">
+          <Text size="sm" mb="sm">
             Memory Usage
           </Text>
           <DBTimeChart
@@ -112,7 +112,7 @@ function InfrastructureTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" c="gray.4" mb="sm">
+          <Text size="sm" mb="sm">
             Disk
           </Text>
           <DBTimeChart
@@ -146,7 +146,7 @@ function InfrastructureTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" c="gray.4" mb="sm">
+          <Text size="sm" mb="sm">
             S3 Requests
           </Text>
           <DBTimeChart
@@ -198,10 +198,10 @@ function InfrastructureTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" c="gray.4" mb="xs">
+          <Text size="sm" mb="xs">
             Network
           </Text>
-          <Text size="xs" c="gray.4" mb="sm">
+          <Text size="xs" mb="sm">
             Network activity for the entire machine, not only Clickhouse.
           </Text>
           <DBTimeChart
@@ -249,7 +249,7 @@ function InsertsTab({
       <Grid.Col span={12}>
         <ChartBox style={{ minHeight: 400 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
+            <Text size="sm">
               Insert{' '}
               {insertsBy === 'queries'
                 ? 'Queries'
@@ -323,9 +323,7 @@ function InsertsTab({
       <Grid.Col span={12}>
         <ChartBox style={{ minHeight: 200, height: 200 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Max Active Parts per Partition
-            </Text>
+            <Text size="sm">Max Active Parts per Partition</Text>
           </Group>
           <DBTimeChart
             config={{
@@ -355,10 +353,10 @@ function InsertsTab({
       </Grid.Col>
       <Grid.Col span={12}>
         <ChartBox style={{ height: 400 }}>
-          <Text size="sm" c="gray.4" mb="sm">
+          <Text size="sm" mb="sm">
             Active Parts Per Partition
           </Text>
-          <Text size="xs" c="gray.4" mb="md">
+          <Text size="xs" mb="md">
             Recommended to stay under 300, ClickHouse will automatically
             throttle inserts after 1,000 parts per partition and stop inserts at
             3,000 parts per partition.
@@ -499,9 +497,7 @@ function ClickhousePage() {
       <OnboardingModal requireSource={false} />
       <Group justify="space-between">
         <Group>
-          <Text c="gray.4" size="xl">
-            Clickhouse Dashboard
-          </Text>
+          <Text size="xl">Clickhouse Dashboard</Text>
           <ConnectionSelectControlled
             control={control}
             name="connection"
@@ -557,7 +553,7 @@ function ClickhousePage() {
             {/* <Grid.Col span={12}>
           <ChartBox style={{ minHeight: 300, height: 300 }}>
             <Group justify="space-between" align="center" mb="md">
-              <Text size="sm" c="gray.4" ms="xs">
+              <Text size="sm"  ms="xs">
                 Select P95 Query Latency
               </Text>
               <SegmentedControl
@@ -600,7 +596,7 @@ function ClickhousePage() {
             <Grid.Col span={12}>
               <ChartBox style={{ height: 250 }}>
                 <Flex justify="space-between" align="center">
-                  <Text size="sm" c="gray.4" ms="xs">
+                  <Text size="sm" ms="xs">
                     Query Latency
                   </Text>
                   {latencyFilter.latencyMin != null ||
@@ -656,7 +652,7 @@ function ClickhousePage() {
             </Grid.Col>
             <Grid.Col span={12}>
               <ChartBox style={{ height: 400 }}>
-                <Text size="sm" c="gray.4" mb="md">
+                <Text size="sm" mb="md">
                   Query Count by Table
                 </Text>
 
@@ -697,7 +693,7 @@ function ClickhousePage() {
             </Grid.Col>
             <Grid.Col span={12}>
               <ChartBox style={{ height: 400 }}>
-                <Text size="sm" c="gray.4" mb="md">
+                <Text size="sm" mb="md">
                   Most Time Consuming Query Patterns
                 </Text>
                 <DBTableChart
@@ -755,7 +751,7 @@ function ClickhousePage() {
             </Grid.Col>
             <Grid.Col span={12}>
               <ChartBox style={{ height: 400 }}>
-                <Text size="sm" c="gray.4" mb="md">
+                <Text size="sm" mb="md">
                   Slowest Queries
                 </Text>
                 <DBSqlRowTable

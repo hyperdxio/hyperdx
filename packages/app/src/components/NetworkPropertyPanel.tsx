@@ -232,7 +232,7 @@ export function NetworkPropertySubpanel({
             });
           }}
         >
-          <Button size="xs" color="gray.4" variant="light">
+          <Button size="xs" variant="light">
             <i className="bi bi-terminal-plus me-2" />
             Copy Request as Curl
           </Button>

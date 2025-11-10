@@ -209,7 +209,7 @@ export function ConnectionForm({
     >
       <Stack gap="md">
         <Box>
-          <Text c="gray.4" size="xs" mb="xs">
+          <Text size="xs" mb="xs">
             Connection Name
           </Text>
           <InputControlled
@@ -221,7 +221,7 @@ export function ConnectionForm({
           />
         </Box>
         <Box>
-          <Text c="gray.4" size="xs" mb="xs">
+          <Text size="xs" mb="xs">
             Host
           </Text>
           <InputControlled
@@ -233,7 +233,7 @@ export function ConnectionForm({
           />
         </Box>
         <Box>
-          <Text c="gray.4" size="xs" mb="xs">
+          <Text size="xs" mb="xs">
             Username
           </Text>
           <InputControlled
@@ -244,14 +244,13 @@ export function ConnectionForm({
           />
         </Box>
         <Box>
-          <Text c="gray.4" size="xs" mb="xs">
+          <Text size="xs" mb="xs">
             Password
           </Text>
           {!showUpdatePassword && !isNew && (
             <Button
               data-testid="update-password-button"
               variant="outline"
-              color="gray.4"
               onClick={() => {
                 setShowUpdatePassword(true);
               }}
@@ -272,7 +271,6 @@ export function ConnectionForm({
                 <Button
                   data-testid="cancel-password-button"
                   variant="outline"
-                  color="gray.4"
                   onClick={() => {
                     setShowUpdatePassword(false);
                     resetField('password');
@@ -339,7 +337,7 @@ export function ConnectionForm({
             />
           )}
           {onClose && showCancelButton && (
-            <Button variant="outline" color="gray.4" onClick={onClose}>
+            <Button variant="outline" onClick={onClose}>
               Cancel
             </Button>
           )}

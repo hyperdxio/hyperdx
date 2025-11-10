@@ -146,19 +146,10 @@ const OnboardingChecklist = ({
   }
 
   return (
-    <Card
-      withBorder
-      p="xs"
-      mb="sm"
-      radius="md"
-      style={{
-        background: 'var(--mantine-color-dark-8)',
-        borderColor: 'var(--mantine-color-dark-4)',
-      }}
-    >
+    <Card withBorder p="xs" mb="sm" radius="md">
       <Group justify="space-between" align="center" mb={isCollapsed ? 0 : 'xs'}>
         <Group gap="xs" align="center">
-          <Text size="sm" fw="bold" c="gray.3">
+          <Text size="sm" fw="bold">
             Get Started
           </Text>
           <Badge
@@ -199,7 +190,7 @@ const OnboardingChecklist = ({
                       : 'none',
                     backgroundColor: step.isComplete
                       ? 'transparent'
-                      : 'var(--mantine-color-dark-5)',
+                      : 'var(--color-text)',
                     color: step.isComplete
                       ? 'var(--mantine-color-green-6)'
                       : 'var(--mantine-color-gray-5)',

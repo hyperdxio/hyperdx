@@ -934,15 +934,15 @@ const DBSearchPageFiltersComponent = ({
             placement="right"
           >
             <Tabs.List w="100%">
-              <Tabs.Tab value="results" size="xs" c="gray.4" h="24px">
+              <Tabs.Tab value="results" size="xs" h="24px">
                 <Text size="xs">Results Table</Text>
               </Tabs.Tab>
               {showDelta && (
-                <Tabs.Tab value="delta" size="xs" c="gray.4" h="24px">
+                <Tabs.Tab value="delta" size="xs" h="24px">
                   <Text size="xs">Event Deltas</Text>
                 </Tabs.Tab>
               )}
-              <Tabs.Tab value="pattern" size="xs" c="gray.4" h="24px">
+              <Tabs.Tab value="pattern" size="xs" h="24px">
                 <Text size="xs">Event Patterns</Text>
               </Tabs.Tab>
             </Tabs.List>

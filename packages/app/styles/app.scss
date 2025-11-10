@@ -39,10 +39,6 @@
   background-color: var(--color-bg-surface);
 }
 
-.bg-grey {
-  background-color: red;
-}
-
 .bg-light-grey {
   background-color: #37414d;
 }
@@ -117,21 +113,6 @@
   color: var(--mantine-color-dark-2);
 }
 
-.text-muted-hover {
-  color: var(--color-text-muted-hover);
-  transition: color 0.2s ease;
-  &:hover {
-    color: #fff;
-  }
-}
-
-.text-muted-hover-black {
-  color: var(--color-text-muted);
-  transition: color 0.2s ease;
-  &:hover {
-    color: black;
-  }
-}
 
 
 // TODO remove

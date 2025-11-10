@@ -235,9 +235,7 @@ function BenchmarkPage() {
           <Grid>
             <Grid.Col span={6}>
               <Stack>
-                <Text size="lg" c="gray.4">
-                  Query 1
-                </Text>
+                <Text size="lg">Query 1</Text>
                 <ConnectionSelectControlled
                   control={control}
                   name="connections.0"
@@ -247,9 +245,7 @@ function BenchmarkPage() {
             </Grid.Col>
             <Grid.Col span={6}>
               <Stack>
-                <Text size="lg" c="gray.4">
-                  Query 2
-                </Text>
+                <Text size="lg">Query 2</Text>
                 <ConnectionSelectControlled
                   control={control}
                   name="connections.1"
@@ -273,9 +269,7 @@ function BenchmarkPage() {
               <Text size="lg" c="gray.2">
                 Query Estimate & Indexes
               </Text>
-              <Text c="gray.4" size="sm">
-                Index utilization of your query
-              </Text>
+              <Text size="sm">Index utilization of your query</Text>
             </Stack>
           </Grid.Col>
           <Grid.Col span={6}>

@@ -88,9 +88,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
   return (
     <ChartBox style={{ height: 350, overflow: 'auto' }}>
       <Group justify="space-between" align="center" mb="sm">
-        <Text size="sm" c="gray.4">
-          20 Top Most Time Consuming Operations
-        </Text>
+        <Text size="sm">20 Top Most Time Consuming Operations</Text>
       </Group>
       {source && (
         <DBListBarChart

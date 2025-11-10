@@ -154,7 +154,7 @@ const HDXHistogramChartTooltip = (props: any) => {
 
     return (
       <div
-        className="bg-grey px-3 py-2 rounded fs-8"
+        className="bg-muted px-3 py-2 rounded fs-8"
         style={{ pointerEvents: 'auto' }}
       >
         <div className="mb-2">

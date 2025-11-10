@@ -120,7 +120,6 @@ function FormRow({
         )}
       </Stack>
       <Text
-        c="gray.4"
         me="sm"
         style={{
           ...(!helpText ? { opacity: 0, pointerEvents: 'none' } : {}),
@@ -196,7 +195,6 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
               underline="always"
               onClick={() => setShowOptionalFields(true)}
               size="xs"
-              c="gray.4"
             >
               <Text me="sm" span>
                 <i className="bi bi-gear" />
@@ -209,7 +207,6 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
               onClick={() => setShowOptionalFields(false)}
               size="xs"
               variant="subtle"
-              color="gray.4"
             >
               Hide Optional Fields
             </Button>
@@ -1126,15 +1123,10 @@ export function TableSourceForm({
     >
       <Stack gap="md" mb="md">
         <Flex justify="space-between" align="center" mb="lg">
-          <Text c="gray.4">Source Settings</Text>
+          <Text>Source Settings</Text>
           <Group>
             {onCancel && (
-              <Button
-                variant="outline"
-                color="gray.4"
-                onClick={onCancel}
-                size="xs"
-              >
+              <Button variant="outline" onClick={onCancel} size="xs">
                 Cancel
               </Button>
             )}

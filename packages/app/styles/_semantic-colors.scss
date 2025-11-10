@@ -41,16 +41,19 @@
   --color-bg-body: var(--palette-neutral-base);
   --color-bg-surface: var(--palette-neutral-725);
   --color-bg-muted: var(--palette-neutral-750);
+  --color-bg-muted-hover: var(--palette-neutral-700);
   --color-bg-sidebar: var(--palette-neutral-750);
   --color-bg-header: var(--palette-neutral-900);
   --color-bg-hover: var(--palette-neutral-700);
   --color-bg-active: var(--palette-neutral-600);
   --color-bg-field: var(--palette-color-slate-725);
+  --color-bg-field-hover: var(--palette-color-slate-600);
 
   /* Borders & Dividers */
   --color-border: var(--palette-neutral-712);
 
   /* Text */
+  --color-text: var(--mantine-color-dark-0);
   --color-text-primary: var(--mantine-color-dark-0);
   --color-text-primary-hover: var(--mantine-color-green-3);
   --color-text-secondary: var(--mantine-color-dark-2);
@@ -85,18 +88,20 @@
   --color-bg-body: var(--palette-neutral-0);
   --color-bg-surface: var(--palette-neutral-0);
   --color-bg-muted: var(--palette-slate-50);
+  --color-bg-muted-hover: var(--palette-slate-100);
   --color-bg-sidebar: var(--palette-neutral-0);
   --color-bg-header: var(--mantine-color-dark-1);
   --color-bg-modal: var(--palette-neutral-0);
   --color-bg-hover: var(--mantine-color-dark-3);
   --color-bg-active: var(--mantine-color-dark-4);
   --color-bg-field: var(--palette-color-slate-25);
+  --color-bg-field-hover: var(--palette-slate-50);
 
   /* Borders & Dividers - inverted */
   --color-border: var(--palette-slate-100);
 
   /* Text - inverted */
-  --color-text-default: var(--palette-slate-900);
+  --color-text: var(--palette-slate-900);
   --color-text-primary: var(--mantine-color-green-5);
   --color-text-primary-hover: var(--mantine-color-green-6);
   --color-text-secondary: var(--mantine-color-dark-7);

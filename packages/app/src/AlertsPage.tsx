@@ -30,7 +30,6 @@ function AlertHistoryCard({ history }: { history: AlertHistory }) {
   return (
     <Tooltip
       label={latestHighestValue + ' ' + formatRelative(start, today)}
-      color="dark"
       withArrow
     >
       <div
@@ -63,7 +62,7 @@ function AlertHistoryCardList({ history }: { history: AlertHistory[] }) {
   return (
     <div className={styles.historyCardWrapper}>
       {paddingItems.map((_, index) => (
-        <Tooltip label="No data" color="dark" withArrow key={index}>
+        <Tooltip label="No data" withArrow key={index}>
           <div className={styles.historyCard} />
         </Tooltip>
       ))}

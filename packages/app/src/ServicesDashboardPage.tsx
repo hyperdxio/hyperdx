@@ -174,9 +174,7 @@ export function EndpointLatencyChart({
   return (
     <ChartBox style={{ height: 350 }}>
       <Group justify="space-between" align="center" mb="sm">
-        <Text size="sm" c="gray.4">
-          Request Latency
-        </Text>
+        <Text size="sm">Request Latency</Text>
         <Box>
           <Button.Group>
             <Button
@@ -302,9 +300,7 @@ function HttpTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Request Error Rate
-            </Text>
+            <Text size="sm">Request Error Rate</Text>
             <SegmentedControl
               size="xs"
               value={reqChartType}
@@ -354,9 +350,7 @@ function HttpTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Request Throughput
-            </Text>
+            <Text size="sm">Request Throughput</Text>
           </Group>
           {source && (
             <DBTimeChart
@@ -389,9 +383,7 @@ function HttpTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350, overflow: 'auto' }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              20 Top Most Time Consuming Endpoints
-            </Text>
+            <Text size="sm">20 Top Most Time Consuming Endpoints</Text>
           </Group>
 
           {source && (
@@ -466,7 +458,7 @@ function HttpTab({
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
+            <Text size="sm">
               Top 20{' '}
               {topEndpointsChartType === 'time'
                 ? 'Most Time Consuming'
@@ -569,9 +561,7 @@ function DatabaseTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Total Time Consumed per Query
-            </Text>
+            <Text size="sm">Total Time Consumed per Query</Text>
           </Group>
           {source && (
             <DBTimeChart
@@ -604,9 +594,7 @@ function DatabaseTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Throughput per Query
-            </Text>
+            <Text size="sm">Throughput per Query</Text>
           </Group>
           {source && (
             <DBTimeChart
@@ -642,9 +630,7 @@ function DatabaseTab({
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350, overflow: 'auto' }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Top 20 Most Time Consuming Queries
-            </Text>
+            <Text size="sm">Top 20 Most Time Consuming Queries</Text>
             <Box>
               <Button.Group>
                 <Button
@@ -815,9 +801,7 @@ function ErrorsTab({
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Error Events per Service
-            </Text>
+            <Text size="sm">Error Events per Service</Text>
           </Group>
           {source && (
             <DBTimeChart

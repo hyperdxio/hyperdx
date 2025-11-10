@@ -328,7 +328,7 @@ const LevelChip = React.memo(({ level }: { level?: string }) => {
     ? 'text-danger bg-danger'
     : level.includes('warn') || level.includes('warning')
       ? 'text-warning bg-warning'
-      : 'text-slate-300 bg-grey';
+      : 'text-slate-300 bg-muted';
 
   return (
     <span

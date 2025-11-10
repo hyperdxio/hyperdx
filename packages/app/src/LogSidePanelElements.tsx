@@ -240,7 +240,7 @@ const LevelChip = React.memo(({ level }: { level?: string }) => {
     ? 'text-danger bg-danger'
     : level.includes('warn') || level.includes('warning')
       ? 'text-warning bg-warning'
-      : 'text-slate-300 bg-grey';
+      : 'text-slate-300 bg-muted';
 
   return (
     <span
@@ -546,7 +546,7 @@ export const SourceMapsFtux = () => {
       mt="xs"
       onClose={() => setIsDismissed(true)}
     >
-      <Text size="xs" c="gray.4">
+      <Text size="xs">
         <Icon name="code-square" /> Some of the stack frames are pointing to
         minified files. Use hyperdx-cli to upload your source maps and see the
         original code.

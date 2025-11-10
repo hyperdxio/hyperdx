@@ -999,9 +999,7 @@ function KubernetesDashboardPage() {
       )}
       <Group justify="space-between">
         <Group>
-          <Text c="gray.4" size="xl">
-            Kubernetes Dashboard
-          </Text>
+          <Text size="xl">Kubernetes Dashboard</Text>
           <SourceSelectControlled
             name="logSourceId"
             control={control}

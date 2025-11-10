@@ -103,7 +103,7 @@ const AlertForm = ({
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <Stack gap="xs">
-        <Paper px="md" py="sm" bg="dark.6" radius="xs">
+        <Paper px="md" py="sm" radius="xs">
           <Text size="xxs" opacity={0.5}>
             Trigger
           </Text>
@@ -155,7 +155,7 @@ const AlertForm = ({
             size="xs"
           />
         </Paper>
-        <Paper px="md" py="sm" bg="dark.6" radius="xs">
+        <Paper px="md" py="sm" radius="xs">
           <Text size="xxs" opacity={0.5} mb={4}>
             Send to
           </Text>
@@ -186,7 +186,7 @@ const AlertForm = ({
       </Accordion>
 
       {defaultValues?.createdBy && (
-        <Paper px="md" py="sm" bg="dark.6" radius="xs" mt="sm">
+        <Paper px="md" py="sm" radius="xs" mt="sm">
           <Text size="xxs" opacity={0.5} mb={4}>
             Created by
           </Text>

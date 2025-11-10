@@ -177,7 +177,7 @@ function SearchNumRows({
 
   const numRows = data?.[0]?.rows;
   return (
-    <Text size="xs" c="gray.4" mb={4}>
+    <Text size="xs" mb={4}>
       {isLoading
         ? 'Scanned Rows ...'
         : error || !numRows
@@ -307,7 +307,7 @@ function SaveSearchModal({
         <Stack>
           {chartConfig != null ? (
             <Card withBorder>
-              <Text c="gray.4" size="xs" mb="xs">
+              <Text size="xs" mb="xs">
                 SELECT
               </Text>
               <Text
@@ -315,13 +315,13 @@ function SaveSearchModal({
                 size="xs"
                 c="gray.2"
               >{`${chartConfig.select}`}</Text>
-              <Text c="gray.4" size="xs" mb="xs">
+              <Text size="xs" mb="xs">
                 FROM
               </Text>
               <Text mb="sm" size="xs" c="gray.2">
                 {chartConfig?.from.databaseName}.{chartConfig?.from.tableName}
               </Text>
-              <Text c="gray.4" size="xs" mb="xs">
+              <Text size="xs" mb="xs">
                 WHERE
               </Text>
               {chartConfig.where ? (
@@ -329,11 +329,11 @@ function SaveSearchModal({
                   {chartConfig.where}
                 </Text>
               ) : (
-                <Text size="xxs" c="gray.4" fs="italic">
+                <Text size="xxs" fs="italic">
                   None
                 </Text>
               )}
-              <Text c="gray.4" size="xs" mb="xs" mt="sm">
+              <Text size="xs" mb="xs" mt="sm">
                 ORDER BY
               </Text>
               <Text size="xs" c="gray.2">
@@ -341,10 +341,10 @@ function SaveSearchModal({
               </Text>
             </Card>
           ) : (
-            <Text c="gray.4">Loading Chart Config...</Text>
+            <Text>Loading Chart Config...</Text>
           )}
           <Box>
-            <Text c="gray.4" size="xs" mb="xs">
+            <Text size="xs" mb="xs">
               Name
             </Text>
             <InputControlled
@@ -355,7 +355,7 @@ function SaveSearchModal({
             />
           </Box>
           <Box mb="sm">
-            <Text c="gray.4" size="xs" mb="xs">
+            <Text size="xs" mb="xs">
               Tags
             </Text>
             <Group gap="xs" align="center" mb="xs">
@@ -1570,7 +1570,7 @@ function DBSearchPage() {
         {!queryReady ? (
           <Paper shadow="xs" p="xl" h="100%">
             <Center mih={100} h="100%">
-              <Text size="sm" c="gray.4">
+              <Text size="sm">
                 Please start by selecting a database, table, and timestamp
                 column above to view data.
               </Text>

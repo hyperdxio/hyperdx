@@ -9,7 +9,7 @@ $button-height: 18px;
 }
 
 .tableHead {
-  background: var(--mantine-color-dark-8);
+  background: var(--color-bg-surface);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -62,19 +62,19 @@ $button-height: 18px;
   min-height: $button-height;
 
   &:hover {
-    background-color: var(--mantine-color-dark-5);
+    background-color: var(--color-bg-muted);
   }
 
   &:focus,
   &:focus-visible {
-    background-color: var(--mantine-color-dark-5);
+    background-color: var(--color-bg-muted);
     outline: none;
   }
 
   &:active {
     outline: none;
     box-shadow: none;
-    background-color: var(--mantine-color-dark-5);
+    background-color: var(--color-bg-muted);
   }
 
   svg {
@@ -119,7 +119,7 @@ $button-height: 18px;
 
   &:focus,
   &:focus-visible {
-    background-color: var(--mantine-color-dark-5);
+    background-color: var(--color-bg-muted);
     outline: none;
   }
 
@@ -159,8 +159,8 @@ $button-height: 18px;
 .iconActionButton {
   padding: 4px;
   border-radius: 4px;
-  background-color: var(--mantine-color-dark-4);
-  border: 1px solid var(--mantine-color-dark-3);
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
   width: 20px;
   height: 20px;
   display: flex;
@@ -174,7 +174,7 @@ $button-height: 18px;
   }
 
   &.copied {
-    color: var(--mantine-color-green-6);
+    color: var(--color-success);
   }
 }
 
@@ -192,11 +192,7 @@ $button-height: 18px;
 
   > span:hover {
     border-radius: 4px;
-    background-color: color-mix(
-      in srgb,
-      var(--mantine-color-dark-2) 30%,
-      transparent
-    );
+    background-color: var(--color-bg-muted-hover);
   }
 
   &.chart {

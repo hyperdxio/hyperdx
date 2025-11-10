@@ -191,7 +191,7 @@ const DashboardFilterEditForm = ({
             </CustomInputWrapper>
 
             <Group justify="flex-end" my="xs">
-              <Button variant="outline" color="gray.2" onClick={onCancel}>
+              <Button variant="default" onClick={onCancel}>
                 Cancel
               </Button>
               <Button type="submit">Save filter</Button>

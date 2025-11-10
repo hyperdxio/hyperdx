@@ -334,7 +334,6 @@ export const AppNavLink = ({
                 <Badge
                   size="xs"
                   ms="xs"
-                  color="gray.4"
                   autoContrast
                   radius="sm"
                   className="align-text-bottom"

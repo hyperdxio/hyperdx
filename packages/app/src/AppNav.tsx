@@ -664,13 +664,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 <Collapse in={isSearchExpanded}>
                   <div className={styles.list}>
                     {isLogViewsLoading ? (
-                      <Loader
-                        color="gray.7"
-                        variant="dots"
-                        mx="md"
-                        my="xs"
-                        size="sm"
-                      />
+                      <Loader variant="dots" mx="md" my="xs" size="sm" />
                     ) : (
                       !IS_LOCAL_MODE && (
                         <>

@@ -198,12 +198,12 @@ export default function DBRowSidePanelHeader({
       <Flex>
         {severityText && <LogLevel level={severityText} />}
         {severityText && isValidDate(date) && (
-          <Text size="xs" mx="xs" c="gray.4">
+          <Text size="xs" mx="xs">
             &middot;
           </Text>
         )}
         {isValidDate(date) && (
-          <Text c="gray.4" size="xs">
+          <Text size="xs">
             <FormatTime value={date} /> &middot;{' '}
             {formatDistanceToNowStrictShort(date)} ago
           </Text>
@@ -211,7 +211,6 @@ export default function DBRowSidePanelHeader({
       </Flex>
       {mainContent ? (
         <Paper
-          bg="dark.7"
           p="xs"
           mt="sm"
           style={{
@@ -222,15 +221,12 @@ export default function DBRowSidePanelHeader({
           ref={headerRef}
         >
           <Flex justify="space-between" mb="xs">
-            <Text size="xs" c="gray.4">
-              {mainContentHeader}
-            </Text>
+            <Text size="xs">{mainContentHeader}</Text>
             {/* Toggles expanded sidebar header*/}
             {headerHeight >= maxBoxHeight && (
               <Button
                 size="compact-xs"
                 variant="subtle"
-                color="gray.3"
                 onClick={() =>
                   setUserPreference({
                     ...userPreferences,
@@ -262,8 +258,8 @@ export default function DBRowSidePanelHeader({
           )}
         </Paper>
       ) : (
-        <Paper bg="dark.7" p="xs" mt="sm">
-          <Text size="xs" c="gray.4" mb="xs">
+        <Paper p="xs" mt="sm">
+          <Text size="xs" mb="xs">
             [Empty]
           </Text>
         </Paper>

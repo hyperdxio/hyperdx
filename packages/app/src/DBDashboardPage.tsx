@@ -249,7 +249,6 @@ const Tile = forwardRef(
                   <Button
                     data-testid={`tile-alerts-button-${chart.id}`}
                     variant="subtle"
-                    color="gray.4"
                     size="xxs"
                     onClick={onEditClick}
                     title="Alerts"
@@ -262,7 +261,6 @@ const Tile = forwardRef(
               <Button
                 data-testid={`tile-duplicate-button-${chart.id}`}
                 variant="subtle"
-                color="gray.4"
                 size="xxs"
                 onClick={onDuplicateClick}
                 title="Duplicate"
@@ -273,7 +271,6 @@ const Tile = forwardRef(
                 data-testid={`tile-edit-button-${chart.id}`}
                 variant="subtle"
                 size="xxs"
-                color="gray.4"
                 onClick={onEditClick}
                 title="Edit"
               >
@@ -283,7 +280,6 @@ const Tile = forwardRef(
                 data-testid={`tile-delete-button-${chart.id}`}
                 variant="subtle"
                 size="xxs"
-                color="gray.4"
                 onClick={onDeleteClick}
                 title="Delete"
               >
@@ -481,7 +477,6 @@ function DashboardName({
               ms="xs"
               variant="subtle"
               size="xs"
-              color="gray.4"
               onClick={() => setEditing(true)}
             >
               <i className="bi bi-pencil"></i>
@@ -882,7 +877,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       {IS_LOCAL_MODE === false && isLocalDashboard && isLocalDashboardEmpty && (
         <Paper my="lg" p="md">
           <Flex justify="space-between" align="center">
-            <Text c="gray.4" size="sm">
+            <Text size="sm">
               This is a temporary dashboard and can not be saved.
             </Text>
             <Button
@@ -917,8 +912,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               onChange={handleUpdateTags}
             >
               <Button
-                variant="outline"
-                color="dark.2"
+                variant="default"
                 px="xs"
                 size="xs"
                 style={{ flexShrink: 0 }}
@@ -993,7 +987,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             </Menu>
           )}
         </Group>
-        {/* <Button variant="outline" color="gray.4" size="sm">
+        {/* <Button variant="outline" size="sm">
           Save
         </Button> */}
       </Flex>
@@ -1057,10 +1051,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         >
           <Button
             onClick={() => setIsLive(prev => !prev)}
-            color={isLive ? 'green' : 'gray'}
             mr={6}
             size="sm"
-            variant="outline"
+            variant={isLive ? 'filled' : 'default'}
             title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
           >
             Live

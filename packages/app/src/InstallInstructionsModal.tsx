@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { Button, Modal } from 'react-bootstrap';
+import { Button, Modal } from '@mantine/core';
 
 import api from './api';
 import Clipboard from './Clipboard';
@@ -17,7 +17,7 @@ function CopyableValue({
         return (
           <div
             className={cx(
-              'd-flex fs-6 py-2 px-3 bg-grey rounded align-items-center justify-content-between cursor-pointer text-white-hover',
+              'd-flex fs-6 py-2 px-3 bg-muted rounded align-items-center justify-content-between cursor-pointer text-white-hover',
               {
                 'text-success': isCopied,
               },
@@ -56,14 +56,13 @@ export default function InstallInstructionModal({
 
   return (
     <Modal
-      aria-labelledby="contained-modal-title-vcenter"
-      centered
-      onHide={onHide}
-      show={show}
+      opened={show}
+      onClose={onHide}
+      title="Start Sending Telemetry"
       size="lg"
+      centered
     >
-      <Modal.Body className="bg-hdx-dark rounded inter">
-        <div className="fs-4 mb-4">Start Sending Telemetry</div>
+      <div className="inter">
         {team != null && (
           <div className="mb-4">
             <CopyableValue
@@ -175,11 +174,11 @@ export default function InstallInstructionModal({
           <span className="ms-2 text-muted">(Logs + Traces)</span>
         </div>
         <div className="mt-4">
-          <Button variant="dark" onClick={() => onHide()}>
+          <Button variant="default" onClick={() => onHide()}>
             Cancel
           </Button>
         </div>
-      </Modal.Body>
+      </div>
     </Modal>
   );
 }

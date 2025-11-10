@@ -134,7 +134,6 @@ export default function DBTracePanel({
           {traceId != null && (
             <Button
               variant="subtle"
-              color="gray.4"
               size="xs"
               onClick={() => setShowTraceIdInput(v => !v)}
             >
@@ -143,7 +142,7 @@ export default function DBTracePanel({
           )}
         </Flex>
         <Group gap="sm">
-          <Text size="sm" c="gray.4">
+          <Text size="sm">
             {parentSourceData?.kind === SourceKind.Log
               ? 'Trace Source'
               : 'Correlated Log Source'}
@@ -153,9 +152,7 @@ export default function DBTracePanel({
       </Flex>
       {(showTraceIdInput || !traceId) && parentSourceId != null && (
         <Stack gap="xs">
-          <Text c="gray.4" size="xs">
-            Trace ID Expression
-          </Text>
+          <Text size="xs">Trace ID Expression</Text>
           <Flex>
             <SQLInlineEditorControlled
               tableConnection={tcFromSource(parentSourceData)}
@@ -185,7 +182,6 @@ export default function DBTracePanel({
             <Button
               ms="sm"
               variant="outline"
-              color="gray.4"
               onClick={() => setShowTraceIdInput(false)}
               size="xs"
             >
@@ -216,7 +212,6 @@ export default function DBTracePanel({
             </Text>
             <Badge
               size="xs"
-              color="gray.4"
               autoContrast
               radius="sm"
               className="align-text-bottom"
@@ -275,9 +270,7 @@ export default function DBTracePanel({
       {traceSourceData != null && !eventRowWhere && (
         <Paper shadow="xs" p="xl" mt="md">
           <Center mih={100}>
-            <Text size="sm" c="gray.4">
-              Please select a span above to view details.
-            </Text>
+            <Text size="sm">Please select a span above to view details.</Text>
           </Center>
         </Paper>
       )}

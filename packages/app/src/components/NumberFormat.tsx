@@ -115,7 +115,7 @@ export const NumberFormatForm: React.VFC<{
         </div>
 
         <div style={{ marginTop: -6 }}>
-          <Paper p="xs" py={4} bg="dark.8">
+          <Paper p="xs" py={4}>
             <div
               className="text-slate-400"
               style={{

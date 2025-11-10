@@ -320,7 +320,6 @@ export default function SQLInlineEditor({
     >
       {label != null && (
         <Text
-          c="gray.4"
           mx="4px"
           size="xs"
           fw="bold"

@@ -235,8 +235,8 @@ export const TimePicker = ({
           styles={{
             input: {
               color: isLiveMode
-                ? 'var(--mantine-color-green-5)'
-                : 'var(--mantine-color-gray-1)',
+                ? 'var(--color-text-success)'
+                : 'var(--color-text)',
             },
           }}
           rightSection={
@@ -445,7 +445,7 @@ export const TimePicker = ({
                 </>
               )}
             </Stack>
-            <Text size="xxs" lh={1.2} c="gray.7">
+            <Text size="xxs" lh={1.2}>
               You can use natural language to select dates (e.g. yesterday, last
               monday at 5pm)
             </Text>
@@ -454,7 +454,7 @@ export const TimePicker = ({
               justify="flex-end"
               mt={8}
               pt={8}
-              style={{ borderTop: '1px solid #282828' }}
+              style={{ borderTop: '1px solid var(--color-border)' }}
             >
               <Button
                 data-testid="time-picker-apply"

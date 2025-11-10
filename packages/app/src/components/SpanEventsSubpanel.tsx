@@ -124,7 +124,6 @@ export const SpanEventsSubpanel = ({
             variant="default"
             size="xs"
             my="sm"
-            c="gray.4"
             onClick={handleToggleMoreRows}
           >
             {isExpanded ? (
