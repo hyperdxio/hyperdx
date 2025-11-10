@@ -2507,6 +2507,847 @@ describe('checkAlerts', () => {
         );
       });
     });
+
+    it('should zero-fill periods with no data for non-grouped, BELOW-threshold alerts', async () => {
+      // Setup
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.BELOW,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      await bulkInsertLogs([
+        // Period 1: Logs present
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        // Period 2: No logs present (should be zero-filled)
+      ]);
+
+      /**
+       * Period 1
+       */
+
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in OK state because there are two logs in the first period
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      // Alert history should reflect 2 logs
+      const alertHistoriesPeriod1 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod1.length).toBe(1);
+      expect(alertHistoriesPeriod1[0].state).toBe('OK');
+      expect(alertHistoriesPeriod1[0].counts).toBe(0);
+      expect(alertHistoriesPeriod1[0].lastValues.length).toBe(1);
+      expect(alertHistoriesPeriod1[0].lastValues[0].count).toBe(2);
+      expect(alertHistoriesPeriod1[0].lastValues[0].startTime).toEqual(
+        period1Start,
+      );
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(0);
+
+      /**
+       * Period 2
+       */
+
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in ALERT state because there are no logs in the second period
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Alert history should reflect 0 logs, which is an ALERT
+      const alertHistoriesPeriod2 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod2.length).toBe(2);
+      expect(alertHistoriesPeriod2[1].state).toBe('ALERT');
+      expect(alertHistoriesPeriod2[1].counts).toBe(1);
+      expect(alertHistoriesPeriod2[1].lastValues.length).toBe(1);
+      expect(alertHistoriesPeriod2[1].lastValues[0].count).toBe(0);
+      expect(alertHistoriesPeriod2[1].lastValues[0].startTime).toEqual(
+        period2Start,
+      );
+
+      // Send alert notification webhook based on the zero-filled period
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+    });
+
+    it('should zero-fill periods with no data for non-grouped, BELOW-threshold alerts when run over multiple periods', async () => {
+      // Setup
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.BELOW,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+      const period3Start = new Date(period2Start.getTime() + ms('5m'));
+
+      await bulkInsertLogs([
+        // Period 1: Logs present
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        // Period 2: No logs present (should be zero-filled)
+        // Period 3: Logs present again
+        {
+          ServiceName: 'api',
+          Timestamp: period3Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
+
+      /**
+       * Period 1
+       */
+
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in OK state because there are two logs in the first period
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      // Alert history should reflect 2 logs
+      const alertHistoriesPeriod1 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod1.length).toBe(1);
+      expect(alertHistoriesPeriod1[0].state).toBe('OK');
+      expect(alertHistoriesPeriod1[0].counts).toBe(0);
+      expect(alertHistoriesPeriod1[0].lastValues.length).toBe(1);
+      expect(alertHistoriesPeriod1[0].lastValues[0].count).toBe(2);
+      expect(alertHistoriesPeriod1[0].lastValues[0].startTime).toEqual(
+        period1Start,
+      );
+
+      /**
+       * Period 2+3
+       */
+
+      const secondRunTime = new Date(period3Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in ALERT state because there are no logs in the second period
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Alert histories should reflect ALERT state for period 2 and OK state for period 3
+      const alertHistoriesPeriod2 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod2).toHaveLength(2);
+
+      expect(alertHistoriesPeriod2[1].state).toBe('ALERT');
+      expect(alertHistoriesPeriod2[1].counts).toBe(1);
+      expect(alertHistoriesPeriod2[1].lastValues.length).toBe(2);
+
+      // Period 2 - zero-filled
+      expect(alertHistoriesPeriod2[1].lastValues[0].count).toBe(0);
+      expect(alertHistoriesPeriod2[1].lastValues[0].startTime).toEqual(
+        period2Start,
+      );
+
+      // Period 3
+      expect(alertHistoriesPeriod2[1].lastValues[1].count).toBe(1);
+      expect(alertHistoriesPeriod2[1].lastValues[1].startTime).toEqual(
+        period3Start,
+      );
+    });
+
+    it('should auto-resolve ABOVE threshold alerts when zero-filling periods with no data', async () => {
+      // Setup
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      await bulkInsertLogs([
+        // Period 1: 2 Logs present, ALERT
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        // Period 2: No logs present (should be zero-filled and resolved)
+      ]);
+
+      /**
+       * Period 1
+       */
+
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in OK state because there are two logs in the first period
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Alert history should reflect 2 logs
+      const alertHistoriesPeriod1 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod1.length).toBe(1);
+      expect(alertHistoriesPeriod1[0].state).toBe('ALERT');
+      expect(alertHistoriesPeriod1[0].counts).toBe(1);
+      expect(alertHistoriesPeriod1[0].lastValues.length).toBe(1);
+      expect(alertHistoriesPeriod1[0].lastValues[0].count).toBe(2);
+      expect(alertHistoriesPeriod1[0].lastValues[0].startTime).toEqual(
+        period1Start,
+      );
+
+      /**
+       * Period 2
+       */
+
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in OK state because there are no logs in the second period
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      // Alert histories should reflect OK state for period 2
+      const alertHistoriesPeriod2 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod2).toHaveLength(2);
+
+      expect(alertHistoriesPeriod2[1].state).toBe('OK');
+      expect(alertHistoriesPeriod2[1].counts).toBe(0);
+      expect(alertHistoriesPeriod2[1].lastValues.length).toBe(1);
+
+      // Period 2 - zero-filled
+      expect(alertHistoriesPeriod2[1].lastValues[0].count).toBe(0);
+      expect(alertHistoriesPeriod2[1].lastValues[0].startTime).toEqual(
+        period2Start,
+      );
+
+      // Verify that resolve webhook was called for the alert, then called for the resolution
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+    });
+
+    it('should auto-resolve ABOVE-threshold, grouped alerts based on zero-filled periods', async () => {
+      // Setup
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+      const period3Start = new Date(period2Start.getTime() + ms('5m'));
+
+      await bulkInsertLogs([
+        // Period 1: api service is in alarm, app service is not
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        // Period 2: app service is in alarm, api service alert is auto-resolved
+        {
+          ServiceName: 'app',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        // Period 3: no logs at all, app alarm is also auto-resolved
+      ]);
+
+      /**
+       * Period 1
+       */
+
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in ALERT state because the api service has 2 error logs
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // 2 alert histories, one for api (ALERT) and one for app (OK)
+      const alertHistoriesPeriod1 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod1).toHaveLength(2);
+
+      // api
+      const apiAlertHistory = alertHistoriesPeriod1.find(
+        ({ group }) => group === 'ServiceName:api',
+      );
+      expect(apiAlertHistory?.state).toBe('ALERT');
+      expect(apiAlertHistory?.counts).toBe(1);
+      expect(apiAlertHistory?.lastValues.length).toBe(1);
+      expect(apiAlertHistory?.lastValues[0].count).toBe(2);
+      expect(apiAlertHistory?.lastValues[0].startTime).toEqual(period1Start);
+
+      // app
+      const appAlertHistory = alertHistoriesPeriod1.find(
+        ({ group }) => group === 'ServiceName:app',
+      );
+      expect(appAlertHistory?.state).toBe('OK');
+      expect(appAlertHistory?.counts).toBe(0);
+      expect(appAlertHistory?.lastValues.length).toBe(1);
+      expect(appAlertHistory?.lastValues[0].count).toBe(1);
+      expect(appAlertHistory?.lastValues[0].startTime).toEqual(period1Start);
+
+      // Verify that webhook was called for the alert
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      jest.mocked(slack.postMessageToWebhook).mockReset();
+
+      /**
+       * Period 2
+       */
+
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in ALERT state because now the app service is in alarm
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // 4 alert histories, 2 for api (ALERT, OK) and 2 for app (OK, ALERT)
+      const alertHistoriesPeriod2 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod2).toHaveLength(4);
+
+      // api - should be zero-filled
+      const apiAlertHistory2 = alertHistoriesPeriod2.filter(
+        ({ group }) => group === 'ServiceName:api',
+      )[1];
+      expect(apiAlertHistory2?.state).toBe('OK');
+      expect(apiAlertHistory2?.counts).toBe(0);
+      expect(apiAlertHistory2?.lastValues.length).toBe(1);
+      expect(apiAlertHistory2?.lastValues[0].count).toBe(0);
+      expect(apiAlertHistory2?.lastValues[0].startTime).toEqual(period2Start);
+
+      // app
+      const appAlertHistory2 = alertHistoriesPeriod2.filter(
+        ({ group }) => group === 'ServiceName:app',
+      )[1];
+      expect(appAlertHistory2?.state).toBe('ALERT');
+      expect(appAlertHistory2?.counts).toBe(1);
+      expect(appAlertHistory2?.lastValues.length).toBe(1);
+      expect(appAlertHistory2?.lastValues[0].count).toBe(2);
+      expect(appAlertHistory2?.lastValues[0].startTime).toEqual(period2Start);
+
+      // Verify that resolve webhook was called for the alert (app) and for the called for the resolution (api)
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+      jest.mocked(slack.postMessageToWebhook).mockReset();
+
+      /**
+       * Period 3 - api is still OK, app should be auto-resolved
+       */
+      const thirdRunTime = new Date(period3Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        thirdRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in OK state since app should have been resolved
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      // 5 alert histories, 2 for api (ALERT, OK, <nothing for period 3>) and 3 for app (OK, ALERT, OK)
+      const alertHistoriesPeriod3 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod3).toHaveLength(5);
+
+      // api - should not have any new alert histories in this period
+      const apiAlertHistory3 = alertHistoriesPeriod3.filter(
+        ({ group }) => group === 'ServiceName:api',
+      );
+      expect(apiAlertHistory3).toHaveLength(2);
+
+      // app - should have an auto-resolve alert history
+      const appAlertHistory3 = alertHistoriesPeriod3.filter(
+        ({ group }) => group === 'ServiceName:app',
+      );
+      expect(appAlertHistory3).toHaveLength(3);
+      expect(appAlertHistory3[2].state).toBe('OK');
+      expect(appAlertHistory3[2].counts).toBe(0);
+      expect(appAlertHistory3[2].lastValues.length).toBe(1);
+      expect(appAlertHistory3[2].lastValues[0].count).toBe(0);
+      expect(appAlertHistory3[2].lastValues[0].startTime).toEqual(period3Start);
+
+      // Verify that resolve webhook was called for the resolution of the previous api alert
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not ALERT for a grouped alert based on zero-filled data if there are some groups in the period', async () => {
+      // Setup
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.BELOW,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      await bulkInsertLogs([
+        // Period 1: two groups, neither are in alarm
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        // Period 2: Logs for api, not for app.
+        {
+          ServiceName: 'api',
+          Timestamp: period2Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
+
+      /**
+       * Period 1
+       */
+
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in ALERT state because the api service has 2 error logs
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      // 2 alert histories, one for api (OK) and one for app (OK)
+      const alertHistoriesPeriod1 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod1).toHaveLength(2);
+
+      // api
+      const apiAlertHistory = alertHistoriesPeriod1.find(
+        ({ group }) => group === 'ServiceName:api',
+      );
+      expect(apiAlertHistory?.state).toBe('OK');
+      expect(apiAlertHistory?.counts).toBe(0);
+      expect(apiAlertHistory?.lastValues.length).toBe(1);
+      expect(apiAlertHistory?.lastValues[0].count).toBe(1);
+      expect(apiAlertHistory?.lastValues[0].startTime).toEqual(period1Start);
+
+      // app
+      const appAlertHistory = alertHistoriesPeriod1.find(
+        ({ group }) => group === 'ServiceName:app',
+      );
+      expect(appAlertHistory?.state).toBe('OK');
+      expect(appAlertHistory?.counts).toBe(0);
+      expect(appAlertHistory?.lastValues.length).toBe(1);
+      expect(appAlertHistory?.lastValues[0].count).toBe(1);
+      expect(appAlertHistory?.lastValues[0].startTime).toEqual(period1Start);
+
+      // Verify that webhook was not called for the alert
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+
+      /**
+       * Period 2 - 1 log for api (OK), no logs for app (no alert, because we don't zero-fill)
+       */
+
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in OK state because grouped alerts do not alert due to zero-fill
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      // 3 alert histories. 2 for api (OK, OK) and 1 for app (OK)
+      const alertHistoriesPeriod2 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod2).toHaveLength(3);
+
+      expect(alertHistoriesPeriod2[2].state).toBe('OK');
+      expect(alertHistoriesPeriod2[2].group).toBe('ServiceName:api');
+
+      // Verify that webhook was not called for the alert
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+    });
+
+    it('should ALERT for a grouped alert based on zero-filled data if there is no data for any group in the period', async () => {
+      // Setup
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.BELOW,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const period1Start = new Date('2023-11-16T22:05:00.000Z');
+      const period2Start = new Date(period1Start.getTime() + ms('5m'));
+
+      await bulkInsertLogs([
+        // Period 1: two groups, neither are in alarm
+        {
+          ServiceName: 'api',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: period1Start,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        // Period 2: No logs for either group
+      ]);
+
+      /**
+       * Period 1
+       */
+
+      const firstRunTime = new Date(period1Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        firstRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in ALERT state because the api service has 2 error logs
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      // 2 alert histories, one for api (OK) and one for app (OK)
+      const alertHistoriesPeriod1 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod1).toHaveLength(2);
+
+      // api
+      const apiAlertHistory = alertHistoriesPeriod1.find(
+        ({ group }) => group === 'ServiceName:api',
+      );
+      expect(apiAlertHistory?.state).toBe('OK');
+      expect(apiAlertHistory?.counts).toBe(0);
+      expect(apiAlertHistory?.lastValues.length).toBe(1);
+      expect(apiAlertHistory?.lastValues[0].count).toBe(1);
+      expect(apiAlertHistory?.lastValues[0].startTime).toEqual(period1Start);
+
+      // app
+      const appAlertHistory = alertHistoriesPeriod1.find(
+        ({ group }) => group === 'ServiceName:app',
+      );
+      expect(appAlertHistory?.state).toBe('OK');
+      expect(appAlertHistory?.counts).toBe(0);
+      expect(appAlertHistory?.lastValues.length).toBe(1);
+      expect(appAlertHistory?.lastValues[0].count).toBe(1);
+      expect(appAlertHistory?.lastValues[0].startTime).toEqual(period1Start);
+
+      // Verify that webhook was not called for the alert
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+
+      /**
+       * Period 2 - no data for either group
+       */
+
+      const secondRunTime = new Date(period2Start.getTime() + ms('5m'));
+      await processAlertAtTime(
+        secondRunTime,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Alert should be in ALERT state because there is no data and the period is zero-filled
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // 3 alert histories. The newest one should have an empty group and be in ALERT state
+      const alertHistoriesPeriod2 = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1 });
+      expect(alertHistoriesPeriod2).toHaveLength(3);
+
+      expect(alertHistoriesPeriod2[2].state).toBe('ALERT');
+      expect(alertHistoriesPeriod2[2].group).toBeUndefined();
+
+      // Verify that webhook was called for the alert
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('getPreviousAlertHistories', () => {
