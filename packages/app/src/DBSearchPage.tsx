@@ -1565,7 +1565,7 @@ function DBSearchPage() {
       <Flex
         direction="column"
         style={{ overflow: 'hidden', height: '100%' }}
-        className="bg-hdx-dark"
+        className="bg-muted"
       >
         {!queryReady ? (
           <Paper shadow="xs" p="xl" h="100%">

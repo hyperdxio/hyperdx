@@ -84,7 +84,7 @@ function SessionCard({
   return (
     <div
       data-testid={`session-card-${sessionId}`}
-      className="bg-hdx-dark rounded p-3 d-flex align-items-center justify-content-between text-white-hover-success-trigger"
+      className="bg-muted rounded p-3 d-flex align-items-center justify-content-between text-white-hover-success-trigger"
       onClick={onClick}
       role="button"
     >

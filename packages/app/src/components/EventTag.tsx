@@ -29,7 +29,7 @@ export default function EventTag({
 
   if (!hasActions) {
     return (
-      <div key={name} className="bg-hdx-dark px-2 py-0.5 me-1 my-1">
+      <div key={name} className="bg-muted px-2 py-0.5 me-1 my-1">
         {displayedKey || name}: {value}
       </div>
     );
@@ -46,7 +46,7 @@ export default function EventTag({
       <Popover.Target>
         <div
           key={name}
-          className="text-muted-hover bg-hdx-dark px-2 py-0.5 me-1 my-1 cursor-pointer"
+          className="text-muted-hover bg-muted px-2 py-0.5 me-1 my-1 cursor-pointer"
           onClick={() => setOpened(!opened)}
         >
           {displayedKey || name}: {value}

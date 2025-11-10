@@ -6,10 +6,11 @@ $button-height: 18px;
   table-layout: fixed;
   border-spacing: 0;
   border-collapse: separate;
+  background: var(--color-bg-body);
 }
 
 .tableHead {
-  background: var(--color-bg-surface);
+  background: var(--color-bg-body);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -126,7 +127,7 @@ $button-height: 18px;
   &:active {
     outline: none;
     box-shadow: none;
-    background-color: var(--color-bg-surface);
+    background-color: var(--color-bg-muted);
   }
 
   &.isWrapped {

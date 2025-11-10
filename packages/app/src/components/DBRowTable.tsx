@@ -720,7 +720,7 @@ export const RawLogTable = memo(
     return (
       <div
         data-testid="search-results-table"
-        className="overflow-auto h-100 fs-8 bg-inherit"
+        className="overflow-auto h-100 fs-8"
         onScroll={e => {
           fetchMoreOnBottomReached(e.target as HTMLDivElement);
 
@@ -740,7 +740,7 @@ export const RawLogTable = memo(
             config={config}
           />
         )}
-        <table className={cx('w-100 bg-inherit', styles.table)} id={tableId}>
+        <table className={cx('w-100', styles.table)} id={tableId}>
           <thead className={styles.tableHead}>
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>

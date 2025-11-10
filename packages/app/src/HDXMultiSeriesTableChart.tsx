@@ -196,13 +196,9 @@ export const Table = ({
   );
 
   return (
-    <div
-      className="overflow-auto h-100 fs-8 bg-inherit dark:bg-dark"
-      ref={tableContainerRef}
-    >
-      <table className="w-100 bg-inherit" style={{ tableLayout: 'fixed' }}>
+    <div className="overflow-auto h-100 fs-8" ref={tableContainerRef}>
+      <table className="w-100" style={{ tableLayout: 'fixed' }}>
         <thead
-          className="bg-inherit"
           style={{
             background: 'inherit',
             position: 'sticky',

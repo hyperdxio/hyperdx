@@ -275,7 +275,7 @@ export default function AutocompleteInput({
                 .map(({ value, label }, i) => (
                   <div
                     className={`py-2 px-3 ${
-                      selectedAutocompleteIndex === i ? 'bg-hdx-dark' : ''
+                      selectedAutocompleteIndex === i ? 'bg-muted' : ''
                     }`}
                     role="button"
                     key={value}
@@ -307,7 +307,7 @@ export default function AutocompleteInput({
                 return (
                   <UnstyledButton
                     className={`d-block w-100 text-start text-muted fw-normal px-3 py-2 fs-8 ${
-                      selectedQueryHistoryIndex === i ? 'bg-hdx-dark' : ''
+                      selectedQueryHistoryIndex === i ? 'bg-muted' : ''
                     }`}
                     key={value}
                     onMouseOver={() => setSelectedQueryHistoryIndex(i)}

@@ -33,7 +33,7 @@ export const AppNavContext = React.createContext<{
 
 export const AppNavCloudBanner = () => {
   return (
-    <div className="my-3 bg-hdx-dark rounded p-2 text-center">
+    <div className="my-3 bg-muted rounded p-2 text-center">
       <span className="text-slate-300 fs-8">
         Ready to deploy on ClickHouse Cloud?
       </span>

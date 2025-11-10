@@ -90,7 +90,7 @@ function DBServiceMapPage() {
     <Box
       data-testid="service-map-page"
       p="sm"
-      className="bg-hdx-dark"
+      className="bg-muted"
       style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
     >
       <Group mb="md" justify="space-between">

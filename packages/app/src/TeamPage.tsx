@@ -95,7 +95,7 @@ function ConnectionsSection() {
     <Box id="connections">
       <Text size="md">Connections</Text>
       <Divider my="md" />
-      <Card>
+      <Card variant="muted">
         <Stack mb="md">
           {connections?.map(c => (
             <Box key={c.id}>

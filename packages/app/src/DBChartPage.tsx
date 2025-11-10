@@ -223,7 +223,7 @@ function DBChartExplorerPage() {
   );
 
   return (
-    <Box data-testid="chart-explorer-page" p="sm" className="bg-hdx-dark">
+    <Box data-testid="chart-explorer-page" p="sm" className="bg-muted">
       <Head>
         <title>Chart Explorer - HyperDX</title>
       </Head>

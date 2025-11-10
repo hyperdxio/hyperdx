@@ -129,7 +129,7 @@ const makeTheme = ({
         }
         return {
           root: {
-            backgroundColor: 'var(--color-bg-surface)',
+            backgroundColor: 'var(--color-bg-body)',
           },
         };
       },
