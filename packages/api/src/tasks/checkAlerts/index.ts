@@ -9,6 +9,7 @@ import {
   getMetadata,
   Metadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
@@ -316,6 +317,10 @@ const getChartConfigFromAlert = (
 const getResponseMetadata = (
   data: ResponseJSON<Record<string, string | number>>,
 ) => {
+  if (!data?.meta) {
+    return undefined;
+  }
+
   // attach JS type
   const meta =
     data.meta?.map(m => ({
@@ -502,14 +507,78 @@ export const processAlert = async (
       }
     };
 
-    if (checksData?.data && checksData?.data.length > 0) {
-      const meta = getResponseMetadata(checksData);
-      if (!meta) {
-        logger.error({ alertId: alert.id }, 'Failed to get response metadata');
-        return;
+    const expectedBuckets = timeBucketByGranularity(
+      dateRange[0],
+      dateRange[1],
+      `${windowSizeInMins} minute`,
+    );
+
+    const meta = getResponseMetadata(checksData);
+    if (!meta) {
+      logger.error({ alertId: alert.id }, 'Failed to get response metadata');
+      return;
+    }
+
+    // Group data by time bucket (grouped alerts may have multiple entries per time bucket)
+    const checkDataByBucket = new Map<
+      number,
+      Record<string, string | number>[]
+    >();
+
+    for (const checkData of checksData.data) {
+      const bucketStart = new Date(checkData[meta.timestampColumnName]);
+      if (!checkDataByBucket.has(bucketStart.getTime())) {
+        checkDataByBucket.set(bucketStart.getTime(), []);
       }
 
-      for (const checkData of checksData.data) {
+      checkDataByBucket.get(bucketStart.getTime())!.push(checkData);
+    }
+
+    for (const bucketStart of expectedBuckets) {
+      const dataForBucket = checkDataByBucket.get(bucketStart.getTime());
+
+      // Handle case where no data is available for this bucket
+      const bucketHasData = dataForBucket && dataForBucket.length > 0;
+      if (!bucketHasData) {
+        logger.info(
+          { alertId: alert.id, bucketStart },
+          'No data returned from ClickHouse for time bucket',
+        );
+
+        // Empty periods are filled with a 0 values.
+        const zeroValueIsAlert = doesExceedThreshold(
+          alert.thresholdType,
+          alert.threshold,
+          0,
+        );
+
+        const hasAlertsInPreviousMap = previousMap
+          .values()
+          .some(history => history.state === AlertState.ALERT);
+
+        if (zeroValueIsAlert) {
+          const history = getOrCreateHistory('');
+          history.lastValues.push({ count: 0, startTime: bucketStart });
+          history.state = AlertState.ALERT;
+          history.counts += 1;
+          await trySendNotification({
+            state: AlertState.ALERT,
+            group: '',
+            totalCount: 0,
+            startTime: bucketStart,
+          });
+        } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
+          // For grouped alerts, if there are alerts in the previous map,
+          // we will handle creating a history as part of auto-resolve later
+          const history = getOrCreateHistory('');
+          history.lastValues.push({ count: 0, startTime: bucketStart });
+        }
+
+        continue;
+      }
+
+      // We have at least one data point for this bucket
+      for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
 
         // TODO: we might want to fix the null value from the upstream (check if this is still needed)
@@ -522,7 +591,6 @@ export const processAlert = async (
         const groupKey = hasGroupBy ? extraFields.join(', ') : '';
         const history = getOrCreateHistory(groupKey);
 
-        const bucketStart = new Date(checkData[meta.timestampColumnName]);
         if (doesExceedThreshold(alert.thresholdType, alert.threshold, value)) {
           history.state = AlertState.ALERT;
           await trySendNotification({
@@ -546,10 +614,12 @@ export const processAlert = async (
       for (const [previousKey, previousHistory] of previousMap.entries()) {
         const groupKey = extractGroupKeyFromMapKey(previousKey, alert.id);
 
-        // If this group was previously ALERT but is missing from current data, create an OK history
+        // If this group was previously ALERT but is missing from current data and would be resolved by a 0 value,
+        // create an OK history for the group
         if (
           previousHistory.state === AlertState.ALERT &&
-          !histories.has(groupKey)
+          !histories.has(groupKey) &&
+          !doesExceedThreshold(alert.thresholdType, alert.threshold, 0)
         ) {
           logger.info(
             {
@@ -558,7 +628,8 @@ export const processAlert = async (
             },
             `Group "${groupKey}" is missing from current data but was previously alerting - creating OK history`,
           );
-          getOrCreateHistory(groupKey);
+          const history = getOrCreateHistory(groupKey);
+          history.lastValues.push({ count: 0, startTime: expectedBuckets[0] });
         }
       }
     }
