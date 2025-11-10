@@ -1,7 +1,6 @@
 import { Fragment, useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { HTTPError } from 'ky';
-import { Button as BSButton, Modal as BSModal } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
@@ -18,7 +17,7 @@ import {
   Group,
   InputLabel,
   Loader,
-  Modal as MModal,
+  Modal,
   Stack,
   Table,
   Text,
@@ -587,7 +586,7 @@ function TeamMembersSection() {
         </Card.Section>
       </Card>
 
-      <MModal
+      <Modal
         centered
         onClose={() => setTeamInviteModalShow(false)}
         opened={teamInviteModalShow}
@@ -597,58 +596,56 @@ function TeamMembersSection() {
           onSubmit={onSubmitTeamInviteForm}
           isSubmitting={saveTeamInvitation.isPending}
         />
-      </MModal>
+      </Modal>
 
-      <BSModal
-        aria-labelledby="contained-modal-title-vcenter"
+      <Modal
         centered
-        onHide={() =>
+        onClose={() =>
           setDeleteTeamMemberConfirmationModalData({
             mode: null,
             id: null,
             email: null,
           })
         }
-        show={deleteTeamMemberConfirmationModalData.id != null}
+        opened={deleteTeamMemberConfirmationModalData.id != null}
         size="lg"
+        title="Delete Team Member"
       >
-        <BSModal.Body className="bg-muted rounded">
-          <h3 className="text-muted">Delete Team Member</h3>
-          <p className="text-muted">
+        <Stack>
+          <Text>
             Deleting this team member (
             {deleteTeamMemberConfirmationModalData.email}) will revoke their
             access to the team&apos;s resources and services. This action is not
             reversible.
-          </p>
-          <BSButton
-            variant="outline-secondary"
-            className="mt-2 px-4 ms-2 float-end"
-            size="sm"
-            onClick={() =>
-              setDeleteTeamMemberConfirmationModalData({
-                mode: null,
-                id: null,
-                email: null,
-              })
-            }
-          >
-            Cancel
-          </BSButton>
-          <BSButton
-            variant="outline-danger"
-            className="mt-2 px-4 float-end"
-            size="sm"
-            onClick={() =>
-              deleteTeamMemberConfirmationModalData.id &&
-              onConfirmDeleteTeamMember(
-                deleteTeamMemberConfirmationModalData.id,
-              )
-            }
-          >
-            Confirm
-          </BSButton>
-        </BSModal.Body>
-      </BSModal>
+          </Text>
+          <Group justify="flex-end" gap="xs">
+            <Button
+              variant="default"
+              onClick={() =>
+                setDeleteTeamMemberConfirmationModalData({
+                  mode: null,
+                  id: null,
+                  email: null,
+                })
+              }
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              color="red"
+              onClick={() =>
+                deleteTeamMemberConfirmationModalData.id &&
+                onConfirmDeleteTeamMember(
+                  deleteTeamMemberConfirmationModalData.id,
+                )
+              }
+            >
+              Confirm
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Box>
   );
 }
@@ -1249,7 +1246,7 @@ function ApiKeysSection() {
             </Button>
           )}
         </Group>
-        <MModal
+        <Modal
           aria-labelledby="contained-modal-title-vcenter"
           centered
           onClose={() => setRotateApiKeyConfirmationModalShow(false)}
@@ -1261,7 +1258,7 @@ function ApiKeysSection() {
             </Text>
           }
         >
-          <MModal.Body>
+          <Modal.Body>
             <Text size="md">
               Rotating the API key will invalidate your existing API key and
               generate a new one for you. This action is <b>not reversible</b>.
@@ -1286,8 +1283,8 @@ function ApiKeysSection() {
                 Confirm
               </Button>
             </Group>
-          </MModal.Body>
-        </MModal>
+          </Modal.Body>
+        </Modal>
       </Card>
       {!isLoadingMe && me != null && (
         <Card variant="muted">
