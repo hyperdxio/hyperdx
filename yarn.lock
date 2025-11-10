@@ -4490,7 +4490,6 @@ __metadata:
     prettier: "npm:^3.3.2"
     react: "npm:18.3.1"
     react-bootstrap: "npm:^2.4.0"
-    react-bootstrap-range-slider: "npm:^3.0.8"
     react-copy-to-clipboard: "npm:^5.1.0"
     react-dom: "npm:18.3.1"
     react-error-boundary: "npm:^3.1.4"
@@ -24522,20 +24521,6 @@ __metadata:
     csstype: "npm:^3.0.10"
     lodash.curry: "npm:^4.1.1"
   checksum: 10c0/00ed3bbc4b7cf829117eb38d2e350b03ef6a746a3b58e57494a2cf8a3de6f98494ee9209543a399d474e8a6c0172584b3b61309e59e57c2b2694b5dc910a14a1
-  languageName: node
-  linkType: hard
-
-"react-bootstrap-range-slider@npm:^3.0.8":
-  version: 3.0.8
-  resolution: "react-bootstrap-range-slider@npm:3.0.8"
-  dependencies:
-    classnames: "npm:^2.3.1"
-    prop-types: "npm:^15.7.2"
-  peerDependencies:
-    react: ">=17.0.0"
-    react-bootstrap: ">=1.0.0"
-    react-dom: ">=17.0.0"
-  checksum: 10c0/508d90bc7e6e15b6d45b95c3805c55f5c1809882b138fe5ed908def3a90ed381195f926f4c6bcc5ff1cf4c94b4a745a8fb256abd1fc0cd3e01494471e06cd5c3
   languageName: node
   linkType: hard
 

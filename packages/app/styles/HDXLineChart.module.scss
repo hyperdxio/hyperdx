@@ -1,5 +1,4 @@
-@import './variables';
-
+/* stylelint-disable */
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -42,10 +41,6 @@
   background-color: rgba(#1a1d23, 0.75);
   border: 1px solid #5f6776;
   border-radius: 2px;
-
-  // background-color: rgb(0 0 0 / 80%);background-color
-  // backdrop-filter: blur(2px);backdrop-filter
-  // border-radius: 4px;border-radius
   font-size: 11px;
 }
 

@@ -77,7 +77,6 @@
     "object-hash": "^3.0.0",
     "react": "18.3.1",
     "react-bootstrap": "^2.4.0",
-    "react-bootstrap-range-slider": "^3.0.8",
     "react-copy-to-clipboard": "^5.1.0",
     "react-dom": "18.3.1",
     "react-error-boundary": "^3.1.4",

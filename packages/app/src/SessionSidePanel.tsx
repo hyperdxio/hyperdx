@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Button } from 'react-bootstrap';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -8,6 +7,7 @@ import {
   SearchConditionLanguage,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { Button } from '@mantine/core';
 import { Drawer } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
@@ -122,19 +122,19 @@ export default function SessionSidePanel({
                   }}
                 >
                   <Button
-                    variant="dark"
-                    className="text-muted-hover mx-2 d-flex align-items-center fs-8"
+                    variant="default"
                     size="sm"
+                    leftSection={<i className="bi bi-link-45deg fs-7.5" />}
+                    style={{ fontSize: '12px' }}
                   >
-                    <i className="bi bi-link-45deg me-2 fs-7.5" />
                     Share Session
                   </Button>
                 </CopyToClipboard>
                 <Button
-                  variant="dark"
-                  className="text-muted-hover d-flex align-items-center"
+                  variant="default"
                   size="sm"
                   onClick={onClose}
+                  style={{ padding: '4px 8px' }}
                 >
                   <i className="bi bi-x-lg" />
                 </Button>
