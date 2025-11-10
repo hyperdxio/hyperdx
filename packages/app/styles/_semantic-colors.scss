@@ -9,16 +9,16 @@
 /* Dark Mode (default) */
 [data-mantine-color-scheme='dark'] {
   /* Backgrounds */
-  --color-bg-body: var(--mantine-color-dark-9);
-  --color-bg-surface: var(--mantine-color-dark-7);
-  --color-bg-muted: var(--mantine-color-dark-8);
-  --color-bg-muted-hover: var(--mantine-color-dark-7);
-  --color-bg-sidebar: var(--mantine-color-dark-9);
-  --color-bg-header: var(--mantine-color-dark-9);
-  --color-bg-hover: var(--mantine-color-dark-7);
-  --color-bg-active: var(--mantine-color-dark-6);
+  --color-bg-body: var(--mantine-color-dark-7);
+  --color-bg-surface: var(--mantine-color-dark-6);
+  --color-bg-muted: var(--mantine-color-dark-7);
+  --color-bg-muted-hover: var(--mantine-color-dark-6);
+  --color-bg-sidebar: var(--mantine-color-dark-7);
+  --color-bg-header: var(--mantine-color-dark-7);
+  --color-bg-hover: var(--mantine-color-dark-6);
+  --color-bg-active: var(--mantine-color-dark-5);
   --color-bg-field: var(--mantine-color-dark-6);
-  --color-bg-field-hover: var(--mantine-color-dark-6);
+  --color-bg-field-hover: var(--mantine-color-dark-5);
 
   /* Borders & Dividers */
   --color-border: var(--mantine-color-dark-6);
@@ -33,6 +33,7 @@
   --color-text-inverse: var(--mantine-color-dark-9);
   --color-text-success: var(--mantine-color-dark-0);
   --color-text-success-hover: var(--mantine-color-green-3);
+  --color-text-danger: var(--mantine-color-red-4);
 
   /* Icons */
   --color-icon-primary: var(--mantine-color-dark-1);
@@ -60,10 +61,16 @@
   --color-json-object: var(--mantine-color-green-4);
   --color-json-array: var(--mantine-color-green-4);
   --color-json-punctuation: var(--mantine-color-dark-4);
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body) !important;
 }
 
 /* Light Mode */
 [data-mantine-color-scheme='light'] {
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body);
+
   /* Backgrounds - inverted (dark becomes light) */
   --color-bg-body: var(--mantine-color-white);
   --color-bg-surface: var(--mantine-color-gray-1);
@@ -90,6 +97,7 @@
   --color-text-inverse: var(--mantine-color-dark-0);
   --color-text-success: var(--mantine-color-green-8);
   --color-text-success-hover: var(--mantine-color-green-9);
+  --color-text-danger: var(--mantine-color-red-7);
 
   /* Icons - inverted */
   --color-icon-primary: var(--mantine-color-dark-8);

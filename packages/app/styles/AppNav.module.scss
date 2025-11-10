@@ -57,12 +57,10 @@
   text-decoration: none;
   color: var(--color-text-muted);
   font-size: 13px;
-  margin-bottom: 4px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding-left: 16px;
   user-select: none;
   gap: 10px;
 
@@ -73,10 +71,6 @@
   &:focus-visible {
     outline: none;
     border-left: 2px solid $green;
-  }
-
-  &:last-of-type {
-    margin-bottom: 12px;
   }
 }
 

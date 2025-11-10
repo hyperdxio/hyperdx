@@ -255,7 +255,7 @@ export default function AutocompleteInput({
           }
         />
       </Popover.Target>
-      <Popover.Dropdown className="bg-surface border rounded p-0">
+      <Popover.Dropdown className="p-0">
         {aboveSuggestions != null && (
           <div className="d-flex p-2 flex-wrap px-3">{aboveSuggestions}</div>
         )}

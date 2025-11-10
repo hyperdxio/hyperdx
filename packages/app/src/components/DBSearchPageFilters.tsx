@@ -181,7 +181,11 @@ export const FilterCheckbox = ({
           >
             <Text
               size="xs"
-              c={value === 'excluded' ? 'red.4' : 'gray.3'}
+              c={
+                value === 'excluded'
+                  ? 'var(--color-text-danger)'
+                  : 'var(--color-text)'
+              }
               truncate="end"
               flex={1}
               title={label}

@@ -219,7 +219,6 @@ const OnboardingChecklist = ({
                   <Text
                     size="sm"
                     fw="500"
-                    c={step.isComplete ? 'gray.5' : 'gray.3'}
                     style={{
                       textDecoration: step.isComplete ? 'line-through' : 'none',
                       opacity: step.isComplete ? 0.8 : 1,
