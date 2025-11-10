@@ -600,7 +600,11 @@ export function formatResponseForTimeChart({
     const ts = date.getTime() / 1000;
 
     for (const valueColumn of valueColumns) {
-      const tsBucket = tsBucketMap.get(ts) ?? {};
+      let tsBucket = tsBucketMap.get(ts);
+      if (tsBucket == null) {
+        tsBucket = { [timestampColumn.name]: ts };
+        tsBucketMap.set(ts, tsBucket);
+      }
 
       const keyName = [
         // Simplify the display name if there's only one series and a group by
@@ -614,11 +618,8 @@ export function formatResponseForTimeChart({
       const value =
         typeof rawValue === 'number' ? rawValue : Number.parseFloat(rawValue);
 
-      tsBucketMap.set(ts, {
-        ...tsBucket,
-        [timestampColumn.name]: ts,
-        [keyName]: value,
-      });
+      // Mutate the existing bucket object to avoid repeated large object copies
+      tsBucket[keyName] = value;
 
       let color: string | undefined = undefined;
       if (

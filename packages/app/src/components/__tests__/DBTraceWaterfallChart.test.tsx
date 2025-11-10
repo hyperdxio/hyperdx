@@ -1,6 +1,6 @@
 import React from 'react';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -111,7 +111,7 @@ describe('DBTraceWaterfallChartContainer', () => {
   const renderComponent = (
     logTableSource: typeof mockLogTableSource | null = mockLogTableSource,
   ) => {
-    return render(
+    return renderWithMantine(
       <DBTraceWaterfallChartContainer
         traceTableSource={mockTraceTableSource}
         logTableSource={logTableSource}

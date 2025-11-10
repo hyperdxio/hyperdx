@@ -233,11 +233,11 @@ const DBRowSidePanel = ({
       if (!source?.resourceAttributesExpression || !normalizedRow) {
         return false;
       }
+
+      const resourceAttrs = normalizedRow['__hdx_resource_attributes'];
       return (
-        normalizedRow[source.resourceAttributesExpression]?.['k8s.pod.uid'] !=
-          null ||
-        normalizedRow[source.resourceAttributesExpression]?.['k8s.node.name'] !=
-          null
+        resourceAttrs?.['k8s.pod.uid'] != null ||
+        resourceAttrs?.['k8s.node.name'] != null
       );
     } catch (e) {
       console.error(e);
@@ -472,7 +472,7 @@ export default function DBRowSidePanelErrorBoundary({
   const drawerZIndex = contextZIndex + 10;
 
   const initialWidth = 80;
-  const { width, startResize } = useResizable(initialWidth);
+  const { size, startResize } = useResizable(initialWidth);
 
   // Keep track of sub-drawers so we can disable closing this root drawer
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
@@ -512,7 +512,7 @@ export default function DBRowSidePanelErrorBoundary({
         }
       }}
       position="right"
-      size={`${width}vw`}
+      size={`${size}vw`}
       styles={{
         body: {
           padding: '0',

@@ -377,7 +377,7 @@ export default function TimelineChart({
   const prevScale = usePrevious(scale);
 
   const initialWidthPercent = (initialLabelWidth / window.innerWidth) * 100;
-  const { width: labelWidthPercent, startResize } = useResizable(
+  const { size: labelWidthPercent, startResize } = useResizable(
     initialWidthPercent,
     'left',
   );
