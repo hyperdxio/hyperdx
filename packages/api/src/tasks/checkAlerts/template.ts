@@ -83,7 +83,7 @@ interface Message {
   eventId: string;
 }
 
-export const isAlertResolved = (state: AlertState): boolean => {
+export const isAlertResolved = (state?: AlertState): boolean => {
   return state === AlertState.OK;
 };
 
@@ -318,7 +318,7 @@ export const buildAlertMessageTemplateTitle = ({
   const handlebars = createHandlebarsWithHelpers();
 
   // Add emoji prefix based on alert state
-  const emoji = state && isAlertResolved(state) ? '✅ ' : '🚨 ';
+  const emoji = isAlertResolved(state) ? '✅ ' : '🚨 ';
 
   if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
