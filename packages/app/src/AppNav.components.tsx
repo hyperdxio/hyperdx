@@ -327,24 +327,14 @@ export const AppNavLink = ({
       >
         <span>
           <span className={styles.linkIcon}>{icon}</span>
-          {!isCollapsed && (
-            <span>
-              {label}
-              {isBeta && (
-                <Badge
-                  size="xs"
-                  ms="xs"
-                  autoContrast
-                  radius="sm"
-                  className="align-text-bottom"
-                >
-                  Beta
-                </Badge>
-              )}
-            </span>
-          )}
+          {!isCollapsed && <span>{label}</span>}
         </span>
       </Link>
+      {!isCollapsed && isBeta && (
+        <Badge size="xs" radius="sm" color="gray" style={{ marginRight: 8 }}>
+          Beta
+        </Badge>
+      )}
       {!isCollapsed && onToggle && (
         <ActionIcon
           data-testid={`${testId}-toggle`}

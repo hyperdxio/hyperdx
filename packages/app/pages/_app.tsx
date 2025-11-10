@@ -5,7 +5,6 @@ import Head from 'next/head';
 import { NextAdapter } from 'next-query-params';
 import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
-import SSRProvider from 'react-bootstrap/SSRProvider';
 import { QueryParamProvider } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
 import { ColorSchemeScript } from '@mantine/core';
@@ -120,25 +119,21 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         />
       </Head>
 
-      <SSRProvider>
-        <HDXQueryParamProvider>
-          <QueryParamProvider adapter={NextAdapter}>
-            <QueryClientProvider client={queryClient}>
-              <ThemeWrapper
-                fontFamily={userPreferences.font}
-                colorScheme={
-                  userPreferences.theme === 'dark' ? 'dark' : 'light'
-                }
-              >
-                {getLayout(<Component {...pageProps} />)}
-                {confirmModal}
-              </ThemeWrapper>
-              <ReactQueryDevtools initialIsOpen={true} />
-              {background}
-            </QueryClientProvider>
-          </QueryParamProvider>
-        </HDXQueryParamProvider>
-      </SSRProvider>
+      <HDXQueryParamProvider>
+        <QueryParamProvider adapter={NextAdapter}>
+          <QueryClientProvider client={queryClient}>
+            <ThemeWrapper
+              fontFamily={userPreferences.font}
+              colorScheme={userPreferences.theme === 'dark' ? 'dark' : 'light'}
+            >
+              {getLayout(<Component {...pageProps} />)}
+              {confirmModal}
+            </ThemeWrapper>
+            <ReactQueryDevtools initialIsOpen={true} />
+            {background}
+          </QueryClientProvider>
+        </QueryParamProvider>
+      </HDXQueryParamProvider>
     </React.Fragment>
   );
 }

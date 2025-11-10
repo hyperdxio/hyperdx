@@ -14,7 +14,6 @@ const makeTheme = ({
 }: {
   fontFamily?: string;
 }): MantineThemeOverride => ({
-  defaultRadius: 'xs',
   cursorType: 'pointer',
   fontFamily,
   primaryColor: 'green',
