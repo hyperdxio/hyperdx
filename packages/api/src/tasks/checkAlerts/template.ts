@@ -83,7 +83,7 @@ interface Message {
   eventId: string;
 }
 
-const isAlertResolved = (state: AlertState): boolean => {
+export const isAlertResolved = (state: AlertState): boolean => {
   return state === AlertState.OK;
 };
 
