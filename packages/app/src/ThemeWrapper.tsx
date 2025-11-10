@@ -6,6 +6,7 @@ import {
   MantineThemeOverride,
   rem,
   Select,
+  Text,
 } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 
@@ -182,6 +183,18 @@ const makeTheme = ({
         return {};
       },
     },
+    Text: Text.extend({
+      styles: (theme, props) => {
+        if (props.variant === 'danger') {
+          return {
+            root: {
+              color: 'var(--color-text-danger)',
+            },
+          };
+        }
+        return {};
+      },
+    }),
     Button: Button.extend({
       vars: (theme, props) => {
         if (props.size === 'xxs') {

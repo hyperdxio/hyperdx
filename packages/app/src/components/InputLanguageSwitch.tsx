@@ -12,12 +12,12 @@ export default function InputLanguageSwitch({
   return (
     <Flex wrap="nowrap" gap="xxxs" px="sm">
       {showHotkey && (
-        <Text c="gray.3" size="xxs" bg="gray.8" px={4} py={0} mr={4} lh={1.4}>
+        <Text size="xxs" bg="gray.8" px={4} py={0} mr={4} lh={1.4}>
           /
         </Text>
       )}
       <Text
-        c={language === 'sql' ? 'green' : 'dark.0'}
+        c={language === 'sql' ? 'green' : 'gray'}
         onClick={() => onLanguageChange('sql')}
         size="xs"
         role="button"
@@ -28,7 +28,7 @@ export default function InputLanguageSwitch({
       <Text
         size="xs"
         role="button"
-        c={language === 'lucene' ? 'green' : 'dark.0'}
+        c={language === 'lucene' ? 'green' : 'gray'}
         onClick={() => onLanguageChange('lucene')}
       >
         Lucene

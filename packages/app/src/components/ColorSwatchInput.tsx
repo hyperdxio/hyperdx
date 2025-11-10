@@ -52,7 +52,6 @@ export const ColorSwatchInput = ({
           size="compact-xs"
           variant="light"
           color="gray"
-          bg="gray.8"
           onClick={() => setOpened(o => !o)}
         >
           {value ? (

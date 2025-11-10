@@ -998,9 +998,7 @@ function ClickhouseSettingForm({
   return (
     <Stack gap="xs" mb="md">
       <Group gap="xs">
-        <InputLabel c="gray.3" size="md">
-          {label}
-        </InputLabel>
+        <InputLabel size="md">{label}</InputLabel>
         {tooltip && (
           <Tooltip label={tooltip}>
             <Text size="sm" style={{ cursor: 'help' }}>

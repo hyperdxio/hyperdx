@@ -926,7 +926,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
             <Menu width={250}>
               <Menu.Target>
-                <Button variant="outline" color="dark.2" px="xs" size="xs">
+                <Button variant="default" px="xs" size="xs">
                   <i className="bi bi-three-dots-vertical" />
                 </Button>
               </Menu.Target>

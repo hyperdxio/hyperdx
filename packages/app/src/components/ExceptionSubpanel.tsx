@@ -540,7 +540,7 @@ export const ExceptionSubpanel = ({
           firstException && (
             <>
               <div>
-                <Text fw="bold" component="span" size="sm" c="red.6">
+                <Text fw="bold" component="span" size="sm" variant="danger">
                   {firstException.type}:{' '}
                 </Text>
                 <span className="text-muted">{firstException.value}</span>

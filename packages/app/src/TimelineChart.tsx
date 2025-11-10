@@ -2,6 +2,7 @@ import { memo, RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import { Tooltip } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { color } from '@uiw/react-codemirror';
 
 import useResizable from './hooks/useResizable';
 import { useDrag, usePrevious } from './utils';
@@ -165,7 +166,7 @@ function TimelineXAxis({
           width: 1,
           marginRight: -1,
           marginLeft: i === 0 ? 0 : `${percSpacing.toFixed(6)}%`,
-          background: 'rgba(255, 255, 255, 0.08)',
+          background: 'var(--color-bg-surface)',
         }}
       >
         <div className="ms-2 text-slate-400 fs-8.5">
@@ -338,6 +339,7 @@ type Row = {
   style?: any;
   type?: string;
   className?: string;
+  isActive?: boolean;
 };
 
 export default function TimelineChart({
@@ -560,6 +562,7 @@ export default function TimelineChart({
                   'd-flex align-items-center overflow-hidden',
                   row.className,
                   styles.timelineRow,
+                  row.isActive && styles.timelineRowActive,
                 )}`}
                 style={{
                   // position: 'absolute',
@@ -582,7 +585,7 @@ export default function TimelineChart({
                   <div
                     className={resizeStyles.resizeHandle}
                     onMouseDown={startResize}
-                    style={{ backgroundColor: '#3a3a44' }}
+                    style={{ backgroundColor: 'var(--color-bg-neutral)' }}
                   />
                 </div>
                 <NewTimelineRow
@@ -590,10 +593,11 @@ export default function TimelineChart({
                   height={rowHeight}
                   maxVal={maxVal}
                   eventStyles={{
-                    boxShadow: '0px 0px 4px rgba(0, 0, 0, 0.5)',
                     borderRadius: 2,
                     fontSize: rowHeight * 0.5,
-                    border: '1px solid #FFFFFF10',
+                    border: '1px solid var(--color-border)',
+                    backgroundColor: 'var(--color-bg-neutral)',
+                    color: 'var(--color-text)',
                   }}
                   scale={scale}
                   offset={offset}

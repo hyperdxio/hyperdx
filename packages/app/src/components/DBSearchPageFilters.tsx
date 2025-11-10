@@ -122,7 +122,7 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
         : `~${Math.round(percentage)}%`;
 
   return (
-    <Text size="xs" c="gray.3" className={isLoading ? 'effect-pulse' : ''}>
+    <Text size="xs" className={isLoading ? 'effect-pulse' : ''}>
       {formattedPercentage}
     </Text>
   );
@@ -991,7 +991,7 @@ const DBSearchPageFiltersComponent = ({
                   withArrow
                   label="Denoise results will visually remove events matching common event patterns from the results table."
                 >
-                  <Text size="xs" c="gray.3" mt="-1px">
+                  <Text size="xs" mt="-1px">
                     <i className="bi bi-noise-reduction"></i> Denoise Results
                   </Text>
                 </Tooltip>

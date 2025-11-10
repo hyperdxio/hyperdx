@@ -476,7 +476,7 @@ export function DBTraceWaterfallChartContainer({
               <div
                 key={index}
                 style={{
-                  borderLeft: '1px solid var(--mantine-color-dark-4)',
+                  borderLeft: '1px solid var(--color-border)',
                   marginLeft: 5,
                   width: 8,
                   minWidth: 8,
@@ -530,8 +530,8 @@ export function DBTraceWaterfallChartContainer({
       style: {
         // paddingTop: 1,
         marginTop: i === 0 ? 32 : 0,
-        backgroundColor: isHighlighted ? '#202127' : undefined,
       },
+      isActive: isHighlighted,
       events: [
         {
           id,

@@ -703,7 +703,7 @@ export default function EditTimeChartForm({
               },
             }}
           />
-          <Box p="md" bg="dark.6" mb="md">
+          <Box p="md" mb="md">
             <HDXMarkdownChart
               config={{
                 markdown: watch('markdown') || 'Preview',

@@ -285,8 +285,6 @@ export default function ContextSubpanel({
               />
             )}
             <SegmentedControl
-              bg="dark.7"
-              color="dark.5"
               size="xs"
               data={[
                 { label: '100ms', value: ms('100ms').toString() },

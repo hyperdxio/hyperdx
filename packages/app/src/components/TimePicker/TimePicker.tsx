@@ -241,7 +241,12 @@ export const TimePicker = ({
           }}
           rightSection={
             opened && (
-              <Text size="xxs" bg="gray.8" px={4}>
+              <Text
+                size="xxs"
+                bg="var(--color-bg-active)"
+                px={4}
+                c="var(--color-text)"
+              >
                 d
               </Text>
             )
