@@ -11,31 +11,24 @@ export default function Logo({
     sm: {
       fontSize: 14,
       iconSize: 14,
-      iconMarginBottom: 3,
     },
     md: {
       fontSize: 16,
       iconSize: 16,
-      iconMarginBottom: 3,
     },
     lg: {
       fontSize: 18,
       iconSize: 18,
-      iconMarginBottom: 3,
     },
     xl: {
       fontSize: 22,
       iconSize: 22,
-      iconMarginBottom: 3,
     },
   };
 
   return (
-    <div className="align-items-center d-flex">
-      <div
-        className="me-2"
-        style={{ marginBottom: configs[size].iconMarginBottom }}
-      >
+    <div className="align-items-center d-flex gap-2">
+      <div className="d-flex align-items-center justify-content-center">
         <Icon size={configs[size].iconSize} />
       </div>
 

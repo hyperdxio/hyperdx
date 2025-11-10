@@ -14,6 +14,10 @@
   background-color: var(--color-bg-muted);
 }
 
+.bg-muted-hover {
+  background-color: var(--color-bg-muted-hover);
+}
+
 // Border utilities
 .border {
   border: 1px solid var(--color-border) !important;

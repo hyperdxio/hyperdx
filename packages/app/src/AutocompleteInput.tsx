@@ -293,7 +293,7 @@ export default function AutocompleteInput({
           )}
         </div>
         {belowSuggestions != null && (
-          <div className="border-top border-dark bg-body px-3 pt-2 pb-1 mt-2 fs-8 d-flex align-items-center text-muted flex-wrap">
+          <div className="border-top px-3 pt-2 pb-1 mt-2 fs-8 d-flex align-items-center text-muted flex-wrap">
             {belowSuggestions}
           </div>
         )}

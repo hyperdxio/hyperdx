@@ -118,7 +118,7 @@ export default function SearchInputV2({
           <div className="mb-2 me-2">
             <span className="me-1">Full Text:</span>
             <code
-              className="text-muted bg-body p-1 rounded border border-dark"
+              className="text-muted bg-muted-hover p-1 rounded border border-dark"
               role="button"
               onClick={() => {
                 const newValue =
@@ -133,7 +133,7 @@ export default function SearchInputV2({
           <div className="mb-2 me-2">
             <span className="me-1">Substring:</span>
             <code
-              className="text-muted bg-body p-1 rounded border border-dark"
+              className="text-muted bg-muted-hover p-1 rounded border border-dark"
               role="button"
               onClick={() => {
                 const newValue =
@@ -148,7 +148,7 @@ export default function SearchInputV2({
           <div className="mb-2 me-2">
             <span className="me-1">Exact:</span>
             <code
-              className="text-muted bg-body p-1 rounded border border-dark"
+              className="text-muted bg-muted-hover p-1 rounded border border-dark"
               role="button"
               onClick={() => {
                 const newValue =
@@ -163,7 +163,7 @@ export default function SearchInputV2({
           <div className="mb-2 me-2">
             <span className="me-1">Not:</span>
             <code
-              className="text-muted bg-body p-1 rounded border border-dark"
+              className="text-muted bg-muted-hover p-1 rounded border border-dark"
               role="button"
               onClick={() => {
                 const newValue =
@@ -178,7 +178,7 @@ export default function SearchInputV2({
           <div className="mb-2 me-2">
             <span className="me-1">Existence:</span>
             <code
-              className="text-muted bg-body p-1 rounded border border-dark"
+              className="text-muted bg-muted-hover p-1 rounded border border-dark"
               role="button"
               onClick={() => {
                 const newValue =
@@ -193,7 +193,7 @@ export default function SearchInputV2({
           <div className="mb-2 me-2">
             <span className="me-1">Boolean:</span>
             <code
-              className="text-muted bg-body p-1 rounded border border-dark"
+              className="text-muted bg-muted-hover p-1 rounded border border-dark"
               role="button"
               onClick={() => {
                 const newValue =

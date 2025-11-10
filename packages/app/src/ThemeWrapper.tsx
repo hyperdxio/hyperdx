@@ -113,6 +113,7 @@ const makeTheme = ({
     Input: {
       styles: {
         input: {
+          backgroundColor: 'var(--color-bg-field)',
           border: '1px solid var(--color-border)',
         },
       },
@@ -138,6 +139,26 @@ const makeTheme = ({
       styles: {
         root: {
           borderColor: 'var(--color-border)',
+          borderTopColor: 'var(--color-border)',
+          '--divider-color': 'var(--color-border)',
+          '--item-border-color': 'var(--color-border)',
+        },
+      },
+    },
+    Accordion: {
+      styles: {
+        control: {
+          '--item-border-color': 'var(--color-border)',
+        },
+        item: {
+          borderColor: 'var(--color-border)',
+        },
+      },
+    },
+    UnstyledButton: {
+      styles: {
+        root: {
+          '--item-border-color': 'var(--color-border)',
         },
       },
     },

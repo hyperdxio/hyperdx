@@ -74,6 +74,18 @@
   }
 }
 
+.linkIcon {
+  margin-right: 8px;
+  display: inline-flex;
+  vertical-align: middle;
+  transition: all 0.2s ease-in-out;
+
+   &:hover {
+    // color: $green;
+    color: var(--color-text-success);
+  }
+}
+
 .listEmptyMsg {
   color: var(--color-text-muted);
   font-size: 12px;
@@ -87,10 +99,7 @@
   color: var(--color-text-success);
   font-weight: 500;
 
-  &:hover {
-    // color: $green;
-    color: var(--color-text-success);
-  }
+ 
 }
 
 .kbd {

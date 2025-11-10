@@ -13,6 +13,7 @@ import {
 import HyperDX from '@hyperdx/browser';
 import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Badge,
   Box,
   Button,
@@ -24,6 +25,16 @@ import {
   ScrollArea,
 } from '@mantine/core';
 import { useDisclosure, useLocalStorage } from '@mantine/hooks';
+import {
+  IconBell,
+  IconChartLine,
+  IconDeviceLaptop,
+  IconFileText,
+  IconLayoutGrid,
+  IconLayoutSidebarLeftCollapse,
+  IconSettings,
+  IconSitemap,
+} from '@tabler/icons-react';
 
 import {
   useCreateDashboard,
@@ -615,18 +626,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </Group>
               )}
             </Link>
-            <Button
-              variant="subtle"
-              p={isCollapsed ? '0px' : '8px'}
-              h="32px"
-              size="md"
+            <ActionIcon
+              variant="transparent"
+              size="sm"
               className={isCollapsed ? 'mt-4' : ''}
-              style={{ marginRight: -4 }}
+              style={{ marginRight: -4, marginLeft: -4 }}
               title="Collapse/Expand Navigation"
               onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
             >
-              <i className="bi bi-layout-sidebar"></i>
-            </Button>
+              <IconLayoutSidebarLeftCollapse size={16} />
+            </ActionIcon>
           </div>
         </div>
         <ScrollArea
@@ -644,7 +653,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             <div className="mt-2">
               <AppNavLink
                 label="Search"
-                iconName="bi-layout-text-sidebar-reverse"
+                icon={<IconFileText size={16} />}
                 href="/search"
                 className={cx({
                   'text-success fw-600':
@@ -710,28 +719,32 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               <AppNavLink
                 label="Chart Explorer"
                 href="/chart"
-                iconName="bi-graph-up"
+                icon={<IconChartLine size={16} />}
               />
               {!IS_LOCAL_MODE && (
-                <AppNavLink label="Alerts" href="/alerts" iconName="bi-bell" />
+                <AppNavLink
+                  label="Alerts"
+                  href="/alerts"
+                  icon={<IconBell size={16} />}
+                />
               )}
               <AppNavLink
                 label="Client Sessions"
                 href="/sessions"
-                iconName="bi-laptop"
+                icon={<IconDeviceLaptop size={16} />}
               />
 
               <AppNavLink
                 label="Service Map"
                 href="/service-map"
-                iconName="bi-diagram-2-fill"
+                icon={<IconSitemap size={16} />}
                 isBeta
               />
 
               <AppNavLink
                 label="Dashboards"
                 href="/dashboards"
-                iconName="bi-grid-1x2"
+                icon={<IconLayoutGrid size={16} />}
                 isExpanded={isDashboardsExpanded}
                 onToggle={() => setIsDashboardExpanded(!isDashboardsExpanded)}
               />
@@ -836,7 +849,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   <AppNavLink
                     label="Team Settings"
                     href="/team"
-                    iconName="bi-gear"
+                    icon={<IconSettings size={16} />}
                   />
                 </Box>
               )}

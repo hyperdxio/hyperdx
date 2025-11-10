@@ -295,7 +295,7 @@ export const AppNavHelpMenu = ({
 export const AppNavLink = ({
   className,
   label,
-  iconName,
+  icon,
   href,
   isExpanded,
   onToggle,
@@ -303,7 +303,7 @@ export const AppNavLink = ({
 }: {
   className?: string;
   label: React.ReactNode;
-  iconName: string;
+  icon: React.ReactNode;
   href: string;
   isExpanded?: boolean;
   onToggle?: () => void;
@@ -326,7 +326,7 @@ export const AppNavLink = ({
         )}
       >
         <span>
-          <i className={`bi ${iconName} pe-2 text-slate-300`} />{' '}
+          <span className={styles.linkIcon}>{icon}</span>
           {!isCollapsed && (
             <span>
               {label}
