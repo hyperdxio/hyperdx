@@ -57,15 +57,11 @@ export const ColorSwatchInput = ({
         >
           {value ? (
             <Group gap="xs">
-              <Text size="xs" c="gray.5">
-                Color
-              </Text>
+              <Text size="xs">Color</Text>
               <ColorSwatch color={value} size={14} />
             </Group>
           ) : (
-            <Text size="xs" c="gray.5">
-              Choose color
-            </Text>
+            <Text size="xs">Choose color</Text>
           )}
         </Button>
       </Popover.Target>

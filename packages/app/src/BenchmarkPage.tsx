@@ -266,9 +266,7 @@ function BenchmarkPage() {
         <Grid mt="md">
           <Grid.Col span={12}>
             <Stack>
-              <Text size="lg" c="gray.2">
-                Query Estimate & Indexes
-              </Text>
+              <Text size="lg">Query Estimate & Indexes</Text>
               <Text size="sm">Index utilization of your query</Text>
             </Stack>
           </Grid.Col>

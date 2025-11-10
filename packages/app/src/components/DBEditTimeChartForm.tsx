@@ -229,7 +229,6 @@ function ChartSeriesEditorComponent({
             )}
           </Group>
         }
-        c="dark.2"
         labelPosition="right"
         mb={8}
         mt="sm"

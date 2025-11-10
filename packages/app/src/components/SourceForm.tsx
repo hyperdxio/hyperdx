@@ -112,7 +112,7 @@ function FormRow({
         }}
       >
         {typeof label === 'string' ? (
-          <Text tt="capitalize" c="gray.6" size="sm">
+          <Text tt="capitalize" size="sm">
             {label}
           </Text>
         ) : (

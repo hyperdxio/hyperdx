@@ -1,11 +1,11 @@
 @import './variables';
 
 .sectionHeader {
-  border-bottom: 1px solid var(--mantine-color-dark-9);
+  border-bottom: 1px solid var(--color-border);
   margin-top: 30px;
   padding-bottom: 10px;
   font-size: 14px;
-  color: var(--mantine-color-dark-4);
+  color: var(--color-text-muted);
 }
 
 .historyCardWrapper {
@@ -22,7 +22,7 @@
 .historyCard {
   width: 4px;
   height: 16px;
-  background-color: var(--mantine-color-dark-9);
+  background-color: var(--color-bg-muted);
   border-radius: 2px;
   margin: 0 1px;
   cursor: pointer;
@@ -34,11 +34,11 @@
   }
 
   &.ok {
-    background-color: #00d474;
+    background-color: var(--color-success);
   }
 
   &.alarm {
-    background-color: #e74c3c;
+    background-color: var(--color-danger);
   }
 }
 
@@ -48,15 +48,15 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px 0;
-  border-bottom: 1px solid var(--mantine-color-dark-9);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .alertLink {
   font-weight: 500;
-  color: var(--mantine-color-dark-2);
+  color: var(--color-text-secondary);
   text-decoration: none;
 
   &:hover {
-    color: #fff;
+    color: var(--color-text);
   }
 }

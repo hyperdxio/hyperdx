@@ -61,10 +61,10 @@ export const PlaybarSlider = ({
             className={styles.markerDot}
             style={{
               backgroundColor: mark.isSuccess
-                ? 'var(--mantine-color-green-6)'
+                ? 'var(--color-text-success)'
                 : mark.isError
-                  ? 'var(--mantine-color-red-6)'
-                  : 'var(--mantine-color-gray-6)',
+                  ? 'var(--color-text-danger)'
+                  : 'var(--color-text-muted)',
               left: `${((mark.ts - min) / (max - min)) * 100}%`,
             }}
             onClick={() => onChange(mark.ts)}

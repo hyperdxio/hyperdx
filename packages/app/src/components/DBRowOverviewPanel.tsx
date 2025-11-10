@@ -196,7 +196,7 @@ export function RowOverviewPanel({
         {isHttpRequest && (
           <Accordion.Item value="network">
             <Accordion.Control>
-              <Text size="sm" c="gray.2" ps="md">
+              <Text size="sm" ps="md">
                 HTTP Request
               </Text>
             </Accordion.Control>
@@ -215,7 +215,7 @@ export function RowOverviewPanel({
         {hasException && (
           <Accordion.Item value="exception">
             <Accordion.Control>
-              <Text size="sm" c="gray.2" ps="md">
+              <Text size="sm" ps="md">
                 Exception
               </Text>
             </Accordion.Control>
@@ -236,7 +236,7 @@ export function RowOverviewPanel({
         {hasSpanEvents && (
           <Accordion.Item value="spanEvents">
             <Accordion.Control>
-              <Text size="sm" c="gray.2" ps="md">
+              <Text size="sm" ps="md">
                 Span Events
               </Text>
             </Accordion.Control>
@@ -251,7 +251,7 @@ export function RowOverviewPanel({
         {Object.keys(topLevelAttributes).length > 0 && (
           <Accordion.Item value="topLevelAttributes">
             <Accordion.Control>
-              <Text size="sm" c="gray.2" ps="md">
+              <Text size="sm" ps="md">
                 Top Level Attributes
               </Text>
             </Accordion.Control>
@@ -268,7 +268,7 @@ export function RowOverviewPanel({
 
         <Accordion.Item value="eventAttributes">
           <Accordion.Control>
-            <Text size="sm" c="gray.2" ps="md">
+            <Text size="sm" ps="md">
               {source.kind === 'log' ? 'Log' : 'Span'} Attributes
             </Text>
           </Accordion.Control>
@@ -284,7 +284,7 @@ export function RowOverviewPanel({
 
         <Accordion.Item value="resourceAttributes">
           <Accordion.Control>
-            <Text size="sm" c="gray.2" ps="md">
+            <Text size="sm" ps="md">
               Resource Attributes
             </Text>
           </Accordion.Control>

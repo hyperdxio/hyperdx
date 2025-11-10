@@ -1,11 +1,11 @@
 // @ts-nocheck TODO: remove this line
 
 import Link from 'next/link';
-import { Button, Container, Nav, Navbar, NavDropdown } from 'react-bootstrap';
+import { Anchor, Burger, Button, Container, Group } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 
 import api from './api';
 import Logo from './Logo';
-import NavHoverDropdown from './NavHoverDropdown';
 
 export default function LandingHeader({
   activeKey,
@@ -18,69 +18,145 @@ export default function LandingHeader({
   const isLoggedIn = Boolean(me);
 
   const { data: installation } = api.useInstallation();
+  const [opened, { toggle }] = useDisclosure(false);
 
   return (
     <>
-      <Navbar
-        collapseOnSelect
-        expand="lg"
-        variant="dark"
-        fixed="top"
-        style={{ background: '#0f1216b3', backdropFilter: 'blur(12px)' }}
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          background: '#0f1216b3',
+          backdropFilter: 'blur(12px)',
+          zIndex: 100,
+        }}
       >
-        <Container fluid className="mx-md-4 mt-3">
-          <Navbar.Brand href="/">
-            <Logo />
-          </Navbar.Brand>
-          <Navbar.Toggle aria-controls="responsive-navbar-nav" />
-          <Navbar.Collapse className="justify-content-end">
-            <Nav style={{ fontSize: 14 }} activeKey={activeKey}>
-              <Nav.Link href="https://hyperdx.io" className="mx-2">
+        <Container fluid px="xl" py="md">
+          <Group justify="space-between" align="center">
+            <Link href="/" style={{ textDecoration: 'none' }}>
+              <Logo />
+            </Link>
+
+            <Burger
+              opened={opened}
+              onClick={toggle}
+              hiddenFrom="lg"
+              color="white"
+            />
+
+            <Group gap="md" visibleFrom="lg" style={{ fontSize: 14 }}>
+              <Anchor
+                href="https://hyperdx.io"
+                underline="never"
+                style={{ fontWeight: activeKey === 'cloud' ? 600 : 400 }}
+              >
                 HyperDX Cloud
-              </Nav.Link>
-              <Nav.Link
+              </Anchor>
+              <Anchor
                 href="https://clickhouse.com/docs/use-cases/observability/clickstack"
-                className="mx-2"
+                underline="never"
+                style={{ fontWeight: activeKey === 'docs' ? 600 : 400 }}
               >
                 Docs
-              </Nav.Link>
+              </Anchor>
               {!isLoggedIn && installation?.isTeamExisting === true && (
-                <Nav.Link
+                <Anchor
                   href="/login"
-                  active={activeKey === '/login'}
-                  className="mx-2"
+                  underline="never"
+                  style={{ fontWeight: activeKey === '/login' ? 600 : 400 }}
                 >
                   Login
-                </Nav.Link>
+                </Anchor>
               )}
               {!isLoggedIn &&
                 activeKey !== '/register' &&
                 installation?.isTeamExisting === false && (
-                  <div className="d-flex align-items-center mx-2">
-                    <Link href={'/register'} passHref legacyBehavior>
-                      <Button variant="outline-success" className="fs-7.5">
-                        Setup Account
-                      </Button>
-                    </Link>
-                  </div>
-                )}
-              {isLoggedIn && (
-                <div className="d-flex align-items-center mx-2">
-                  <Link href="/search" passHref legacyBehavior>
+                  <Link href="/register" passHref legacyBehavior>
                     <Button
-                      variant="outline-success"
-                      className="px-3"
+                      component="a"
+                      variant="outline"
+                      color="green"
                       size="sm"
                     >
-                      Go to Search
+                      Setup Account
                     </Button>
                   </Link>
-                </div>
+                )}
+              {isLoggedIn && (
+                <Link href="/search" passHref legacyBehavior>
+                  <Button
+                    component="a"
+                    variant="outline"
+                    color="green"
+                    size="sm"
+                  >
+                    Go to Search
+                  </Button>
+                </Link>
               )}
-            </Nav>
-          </Navbar.Collapse>
+            </Group>
+          </Group>
+
+          {/* Mobile menu */}
+          {opened && (
+            <Group gap="sm" mt="md" hiddenFrom="lg" style={{ fontSize: 14 }}>
+              <Anchor
+                href="https://hyperdx.io"
+                underline="never"
+                style={{ fontWeight: activeKey === 'cloud' ? 600 : 400 }}
+              >
+                HyperDX Cloud
+              </Anchor>
+              <Anchor
+                href="https://clickhouse.com/docs/use-cases/observability/clickstack"
+                underline="never"
+                style={{ fontWeight: activeKey === 'docs' ? 600 : 400 }}
+              >
+                Docs
+              </Anchor>
+              {!isLoggedIn && installation?.isTeamExisting === true && (
+                <Anchor
+                  href="/login"
+                  underline="never"
+                  style={{ fontWeight: activeKey === '/login' ? 600 : 400 }}
+                >
+                  Login
+                </Anchor>
+              )}
+              {!isLoggedIn &&
+                activeKey !== '/register' &&
+                installation?.isTeamExisting === false && (
+                  <Link href="/register" passHref legacyBehavior>
+                    <Button
+                      component="a"
+                      variant="outline"
+                      color="green"
+                      size="sm"
+                      fullWidth
+                    >
+                      Setup Account
+                    </Button>
+                  </Link>
+                )}
+              {isLoggedIn && (
+                <Link href="/search" passHref legacyBehavior>
+                  <Button
+                    component="a"
+                    variant="outline"
+                    color="green"
+                    size="sm"
+                    fullWidth
+                  >
+                    Go to Search
+                  </Button>
+                </Link>
+              )}
+            </Group>
+          )}
         </Container>
-      </Navbar>
+      </div>
       {!fixed && <div style={{ height: 70 }} />}
     </>
   );

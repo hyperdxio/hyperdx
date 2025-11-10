@@ -3,9 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { format } from 'date-fns';
-import { CloseButton } from 'react-bootstrap';
 import { JSONTree } from 'react-json-tree';
-import { Alert, Button, Text, Tooltip } from '@mantine/core';
+import { Alert, Button, CloseButton, Text, Tooltip } from '@mantine/core';
 import { ColumnDef, Row, Table } from '@tanstack/react-table';
 
 import HyperJson from './components/HyperJson';
@@ -518,11 +517,7 @@ export const LogSidePanelKbdShortcuts = () => {
             <Kbd>ESC</Kbd> to close
           </div>
         </div>
-        <CloseButton
-          variant="white"
-          aria-label="Hide"
-          onClick={handleDismiss}
-        />
+        <CloseButton aria-label="Hide" onClick={handleDismiss} />
       </div>
     </div>
   );

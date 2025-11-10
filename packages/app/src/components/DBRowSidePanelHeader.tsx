@@ -99,7 +99,7 @@ function BreadcrumbNavigation({
 
     // Add current level
     items.push(
-      <Text key="current" size="sm" c="gray.2">
+      <Text key="current" size="sm">
         Selected Event
       </Text>,
     );

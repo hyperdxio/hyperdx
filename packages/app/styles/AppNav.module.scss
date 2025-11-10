@@ -70,7 +70,7 @@
 
   &:focus-visible {
     outline: none;
-    border-left: 2px solid $green;
+    background: var(--color-bg-muted);
   }
 }
 
@@ -78,7 +78,7 @@
   margin-right: 8px;
   display: inline-flex;
   vertical-align: middle;
-  transition: all 0.2s ease-in-out;
+  transition: all 0.2s ease-in-out  ;
 
    &:hover {
     // color: $green;
@@ -130,7 +130,6 @@
   }
 
   &:active {
-    // background: var(--mantine-color-gray-9);
     transform: translate(0, 1px);
   }
 }

@@ -374,7 +374,7 @@ export const DBSearchPageAlertModal = ({
         />
         <Stack gap={0} mb="md">
           <Group>
-            <Text c="dark.1" size="sm">
+            <Text size="sm">
               Alerts for <strong>{savedSearch?.name}</strong>
             </Text>
             {!id && (
@@ -387,9 +387,7 @@ export const DBSearchPageAlertModal = ({
               />
             )}
           </Group>
-          <Text c="dark.2" size="xxs">
-            {savedSearch?.where}
-          </Text>
+          <Text size="xxs">{savedSearch?.where}</Text>
         </Stack>
 
         <Tabs value={activeIndex} onChange={setTab} mb="xs">

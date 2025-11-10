@@ -131,7 +131,7 @@ const renderKubeEvent = (source: TSource) => (event: KubeEvent) => {
   return (
     <Timeline.Item key={event.id}>
       <Link href={href} passHref legacyBehavior>
-        <Anchor size="xs" fz={11} c="gray.6" title={event.timestamp}>
+        <Anchor size="xs" fz={11} title={event.timestamp}>
           <FormatTime value={event.timestamp} />
         </Anchor>
       </Link>
@@ -285,7 +285,7 @@ export const KubeTimeline = ({
       <Timeline bulletSize={12} lineWidth={1}>
         {podEventsAfterAnchor.map(renderKubeEvent(logSource))}
         <Timeline.Item key={anchorEvent.timestamp} ref={anchorRef}>
-          <Text size="xs" fz={11} c="gray.6" title={anchorEvent.timestamp}>
+          <Text size="xs" fz={11} title={anchorEvent.timestamp}>
             <FormatTime value={anchorEvent.timestamp} />
           </Text>
           <Group gap="xs" my={4}>

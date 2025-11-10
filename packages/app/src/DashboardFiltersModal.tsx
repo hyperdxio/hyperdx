@@ -218,7 +218,7 @@ const EmptyState = ({ onCreateFilter, onClose }: EmptyStateProps) => {
           Add filters to let users quickly narrow data on key columns. Saved
           filters will stay with this dashboard.
         </Text>
-        <Button variant="outline" color="gray.2" onClick={onCreateFilter}>
+        <Button variant="filled" onClick={onCreateFilter}>
           Add new filter
         </Button>
       </Stack>
@@ -258,9 +258,9 @@ const DashboardFiltersList = ({
           <Paper
             key={filter.id}
             withBorder
-            bg={'dark.5'}
             className={styles.filterPaper}
             p="xs"
+            variant="muted"
           >
             <Group justify="space-between" className={styles.filterHeader}>
               <Text size="xs">{filter.name}</Text>
@@ -296,7 +296,7 @@ const DashboardFiltersList = ({
       </Stack>
 
       <Group justify="center" my="sm">
-        <Button variant="outline" color="gray.2" onClick={onAddNew}>
+        <Button variant="filled" onClick={onAddNew}>
           Add new filter
         </Button>
       </Group>

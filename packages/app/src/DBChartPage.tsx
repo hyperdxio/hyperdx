@@ -126,7 +126,7 @@ function AIAssistant({
           onClose={() => setAlertDismissed(true)}
           p="xxs"
         >
-          <Text size="xs" c="dark.2" pt="2px">
+          <Text size="xs" pt="2px">
             New AI Assistant available, enable with configuring the{' '}
             <code>ANTHROPIC_API_KEY</code> environment variable on the HyperDX
             server.

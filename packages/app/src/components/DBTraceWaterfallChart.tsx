@@ -486,7 +486,6 @@ export function DBTraceWaterfallChartContainer({
               ></div>
             ))}
             <Text
-              c="dark.2"
               span
               me="xxs"
               style={{
@@ -502,7 +501,7 @@ export function DBTraceWaterfallChartContainer({
                 }`}
               />{' '}
             </Text>
-            <Text span size="xxs" c="dark.2" me="xs" pt="2px">
+            <Text span size="xxs" me="xs" pt="2px">
               {result.children.length > 0 ? `(${result.children.length})` : ''}
             </Text>
             <Text

@@ -615,7 +615,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     <Badge
                       size="xs"
                       color="gray"
-                      bg="gray.8"
                       variant="light"
                       fw="normal"
                       title="Showing time in UTC"

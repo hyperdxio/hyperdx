@@ -101,7 +101,7 @@ export const TextButton = ({
       className={classes.textButton}
       data-testid={dataTestId}
     >
-      <Text size="xxs" c="gray.6" lh={1} ms={ms}>
+      <Text size="xxs" lh={1} ms={ms}>
         {label}
       </Text>
     </UnstyledButton>
@@ -223,7 +223,7 @@ export const FilterCheckbox = ({
         />
       </div>
       {pinned && (
-        <Text size="xxs" c="gray.6">
+        <Text size="xxs">
           <i className="bi bi-pin-angle-fill"></i>
         </Text>
       )}
@@ -1006,9 +1006,7 @@ const DBSearchPageFiltersComponent = ({
             </Flex>
           ) : (
             shownFacets.length === 0 && (
-              <Text size="xxs" c="gray.6">
-                No filters available
-              </Text>
+              <Text size="xxs">No filters available</Text>
             )
           )}
           {/* Show facets even when loading to ensure pinned filters are visible while loading */}
@@ -1072,10 +1070,10 @@ const DBSearchPageFiltersComponent = ({
 
           {showMoreFields && (
             <div>
-              <Text size="xs" c="gray.6" fw="bold">
+              <Text size="xs" fw="bold">
                 Not seeing a filter?
               </Text>
-              <Text size="xxs" c="gray.6">
+              <Text size="xxs">
                 {`Try searching instead (e.g. column:foo)`}
               </Text>
             </div>

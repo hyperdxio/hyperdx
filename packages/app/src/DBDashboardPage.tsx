@@ -231,7 +231,7 @@ const Tile = forwardRef(
         onTouchEnd={onTouchEnd}
       >
         <div className="d-flex justify-content-between align-items-center mb-2 cursor-grab">
-          <Text size="sm" c="gray.2" ms="xs">
+          <Text size="sm" ms="xs">
             {chart.config.name}
           </Text>
           {hovered ? (

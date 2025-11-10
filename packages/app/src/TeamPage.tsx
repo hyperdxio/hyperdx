@@ -1006,7 +1006,7 @@ function ClickhouseSettingForm({
         </InputLabel>
         {tooltip && (
           <Tooltip label={tooltip}>
-            <Text c="gray.5" size="sm" style={{ cursor: 'help' }}>
+            <Text size="sm" style={{ cursor: 'help' }}>
               <i className="bi bi-question-circle" />
             </Text>
           </Tooltip>

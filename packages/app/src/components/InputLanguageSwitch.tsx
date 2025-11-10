@@ -24,9 +24,7 @@ export default function InputLanguageSwitch({
       >
         SQL
       </Text>
-      <Text c="dark.2" size="xs">
-        |
-      </Text>
+      <Text size="xs">|</Text>
       <Text
         size="xs"
         role="button"

@@ -22,7 +22,7 @@ $padding-x: 24px;
   background-color: transparent;
 
   &:hover {
-    background-color: var(--mantine-color-dark-9);
+    background-color: var(--color-border);
     transition: background-color 0.2s ease-in-out;
   }
 }
@@ -48,14 +48,14 @@ $padding-x: 24px;
 }
 
 .severityChip {
-  background: var(--mantine-color-dark-8);
+  background: var(--color-bg-surface);
   padding: 4px 12px;
   border-radius: 16px;
   margin-right: 8px;
 }
 
 .loadingState {
-  color: var(--mantine-color-dark-6);
+  color: var(--color-text-muted);
   width: 100%;
   margin: $padding-x;
   font-size: 16px;
@@ -64,29 +64,29 @@ $padding-x: 24px;
 }
 
 .panelSectionWrapper {
-  background-color: #14171b;
+  background-color: var(--color-bg-surface);
   margin: 12px 0;
   border-radius: 6px;
 }
 
 .panelSectionWrapperTitle {
   padding: 18px 24px;
-  border-bottom: 1px solid var(--mantine-color-dark-9);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .kbdShortcuts {
-  background: var(--mantine-color-dark-9);
-  border-top: 1px solid var(--mantine-color-dark-9);
+  background: var(--color-bg-surface);
+  border-top: 1px solid var(--color-border);
   padding: 12px $padding-x;
-  color: var(--mantine-color-dark-3);
+  color: var(--color-text-secondary);
   font-size: 11px;
 }
 
 .kbd {
   display: inline-block;
-  background: var(--mantine-color-dark-9);
+  background: var(--color-bg-surface);
   letter-spacing: 0.5px;
-  border: 1px solid var(--mantine-color-dark-5);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   padding: 1px 6px;
   margin: 0 2px;
@@ -95,25 +95,25 @@ $padding-x: 24px;
 .kbdDivider {
   height: 21px;
   width: 1px;
-  background: var(--mantine-color-dark-8);
+  background: var(--color-bg-muted);
 }
 
 .lineContext {
-  color: var(--mantine-color-dark-3);
-  background-color: #ffffff08;
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg-hover);
   padding: 8px 0;
   border-radius: 4px;
   margin-top: 8px;
 }
 
 .lineContextCurrentLine {
-  background-color: var(--mantine-color-dark-8);
-  color: var(--mantine-color-dark-1);
+  background-color: var(--color-bg-muted);
+  color: var(--color-text);
   font-weight: 600;
 
   .lineContextLineNo {
-    color: var(--mantine-color-dark-1);
-    border-right-color: var(--mantine-color-dark-6);
+    color: var(--color-text);
+    border-right-color: var(--color-border);
   }
 }
 
@@ -121,13 +121,13 @@ $padding-x: 24px;
   display: inline-block;
   width: 60px;
   text-align: right;
-  border-right: 1px solid var(--mantine-color-dark-9);
+  border-right: 1px solid var(--color-border);
   padding-right: 12px;
   margin-right: 12px;
 }
 
 .emptyMessage {
-  color: var(--mantine-color-dark-5);
+  color: var(--color-text-muted);
   text-align: center;
   padding: 10px;
 }
@@ -152,10 +152,10 @@ $padding-x: 24px;
   cursor: pointer;
 
   &:hover {
-    background-color: #ffffff08;
+    background-color: var(--color-bg-hover);
   }
 
   &:active {
-    background-color: #ffffff12;
+    background-color: var(--color-bg-muted);
   }
 }

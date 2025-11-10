@@ -186,14 +186,14 @@ const OnboardingChecklist = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     border: step.isComplete
-                      ? '1px solid var(--mantine-color-green-6)'
+                      ? '1px solid var(--color-text-success)'
                       : 'none',
                     backgroundColor: step.isComplete
                       ? 'transparent'
                       : 'var(--color-text)',
                     color: step.isComplete
-                      ? 'var(--mantine-color-green-6)'
-                      : 'var(--mantine-color-gray-5)',
+                      ? 'var(--color-text-success)'
+                      : 'var(--color-text-muted)',
                     flexShrink: 0,
                   }}
                 >
@@ -226,9 +226,7 @@ const OnboardingChecklist = ({
                   >
                     {step.title}
                   </Text>
-                  <Text size="xs" c="gray.6">
-                    {step.description}
-                  </Text>
+                  <Text size="xs">{step.description}</Text>
                 </div>
 
                 {!step.isComplete && (step.href || step.onClick) && (
@@ -236,7 +234,7 @@ const OnboardingChecklist = ({
                     className="bi bi-arrow-right"
                     style={{
                       fontSize: 12,
-                      color: 'var(--mantine-color-gray-5)',
+                      color: 'var(--color-text-muted)',
                     }}
                   />
                 )}
@@ -257,7 +255,7 @@ const OnboardingChecklist = ({
                       borderRadius: 6,
                       cursor: 'pointer',
                       ':hover': {
-                        backgroundColor: 'var(--mantine-color-dark-7)',
+                        backgroundColor: 'var(--color-bg-muted)',
                       },
                     }}
                   >
@@ -278,7 +276,7 @@ const OnboardingChecklist = ({
                     borderRadius: 6,
                     cursor: 'pointer',
                     ':hover': {
-                      backgroundColor: 'var(--mantine-color-dark-7)',
+                      backgroundColor: 'var(--color-bg-hover)',
                     },
                   }}
                 >

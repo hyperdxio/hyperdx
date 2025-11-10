@@ -310,24 +310,18 @@ function SaveSearchModal({
               <Text size="xs" mb="xs">
                 SELECT
               </Text>
-              <Text
-                mb="sm"
-                size="xs"
-                c="gray.2"
-              >{`${chartConfig.select}`}</Text>
+              <Text mb="sm" size="xs">{`${chartConfig.select}`}</Text>
               <Text size="xs" mb="xs">
                 FROM
               </Text>
-              <Text mb="sm" size="xs" c="gray.2">
+              <Text mb="sm" size="xs">
                 {chartConfig?.from.databaseName}.{chartConfig?.from.tableName}
               </Text>
               <Text size="xs" mb="xs">
                 WHERE
               </Text>
               {chartConfig.where ? (
-                <Text size="xs" c="gray.2">
-                  {chartConfig.where}
-                </Text>
+                <Text size="xs">{chartConfig.where}</Text>
               ) : (
                 <Text size="xxs" fs="italic">
                   None
@@ -336,9 +330,7 @@ function SaveSearchModal({
               <Text size="xs" mb="xs" mt="sm">
                 ORDER BY
               </Text>
-              <Text size="xs" c="gray.2">
-                {chartConfig.orderBy}
-              </Text>
+              <Text size="xs">{chartConfig.orderBy}</Text>
             </Card>
           ) : (
             <Text>Loading Chart Config...</Text>

@@ -127,7 +127,7 @@ export default function DBTracePanel({
     <div data-testid={dataTestId}>
       <Flex align="center" justify="space-between" mb="sm">
         <Flex align="center">
-          <Text c="dark.2" size="xs" me="xs">
+          <Text size="xs" me="xs">
             {parentSourceData?.traceIdExpression}:{' '}
             {traceId || 'No trace id found for event'}
           </Text>
@@ -207,7 +207,7 @@ export default function DBTracePanel({
         <>
           <Divider my="md" />
           <Group>
-            <Text size="sm" c="dark.2" my="sm">
+            <Text size="sm" my="sm">
               Service Map
             </Text>
             <Badge
@@ -227,7 +227,7 @@ export default function DBTracePanel({
             />
           </div>
           <Divider my="md" />
-          <Text size="sm" c="dark.2" my="sm">
+          <Text size="sm" my="sm">
             Event Details
           </Text>
           <TabBar

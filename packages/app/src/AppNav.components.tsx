@@ -251,7 +251,7 @@ export const AppNavHelpMenu = ({
             <Menu.Label>
               Help{' '}
               {version && (
-                <Text size="xs" c="gray.7" component="span">
+                <Text size="xs" component="span">
                   v{version}
                 </Text>
               )}
