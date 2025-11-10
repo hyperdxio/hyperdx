@@ -24,7 +24,7 @@ function AlertHistoryCard({ history }: { history: AlertHistory }) {
 
   return (
     <Tooltip
-      label={`${history.counts ?? 0} alerts at ${formatRelative(start, today)}`}
+      label={`${history.counts ?? 0} alerts ${formatRelative(start, today)}`}
       color="dark"
       withArrow
     >
