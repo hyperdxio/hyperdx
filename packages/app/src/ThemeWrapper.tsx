@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ActionIcon,
   Button,
   MantineProvider,
   MantineThemeOverride,
@@ -18,6 +19,7 @@ const makeTheme = ({
   fontFamily,
   primaryColor: 'green',
   primaryShade: 8,
+  autoContrast: true,
   white: '#fff',
   fontSizes: {
     xxs: '11px',
@@ -104,14 +106,14 @@ const makeTheme = ({
     Select: Select.extend({
       styles: {
         input: {
-          border: '1px solid var(--mantine-color-gray-7)',
+          border: '1px solid var(--color-border)',
         },
       },
     }),
     Input: {
       styles: {
         input: {
-          border: '1px solid var(--mantine-color-gray-7)',
+          border: '1px solid var(--color-border)',
         },
       },
     },
@@ -135,6 +137,48 @@ const makeTheme = ({
         }
 
         return { root: {} };
+      },
+    }),
+    ActionIcon: ActionIcon.extend({
+      defaultProps: {
+        variant: 'subtle',
+        color: 'gray',
+      },
+      styles: (theme, props) => {
+        // Subtle variant stays transparent
+        if (props.variant === 'subtle') {
+          return {
+            root: {
+              backgroundColor: 'transparent !important',
+              color: `${theme.colors.gray[0]} !important`,
+              '&:hover': {
+                backgroundColor: `${theme.colors.dark[6]} !important`,
+              },
+              '&:active': {
+                backgroundColor: `${theme.colors.dark[5]} !important`,
+              },
+            },
+          };
+        }
+
+        // Default variant
+        if (props.variant === 'default') {
+          return {
+            root: {
+              backgroundColor: `${theme.colors.dark[6]} !important`,
+              color: `${theme.colors.gray[0]} !important`,
+              border: 'none !important',
+              '&:hover': {
+                backgroundColor: `${theme.colors.dark[5]} !important`,
+              },
+              '&:active': {
+                backgroundColor: `${theme.colors.dark[4]} !important`,
+              },
+            },
+          };
+        }
+
+        return {};
       },
     }),
   },

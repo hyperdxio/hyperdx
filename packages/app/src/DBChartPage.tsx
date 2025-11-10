@@ -119,7 +119,7 @@ function AIAssistant({
     return (
       <Box mb="sm">
         <Alert
-          color="dark.3"
+          color="dark"
           icon={<i className="bi bi-info-circle" />}
           variant="outline"
           withCloseButton

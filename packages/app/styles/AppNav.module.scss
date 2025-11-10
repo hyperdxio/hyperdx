@@ -1,3 +1,4 @@
+/* stylelint-disable */
 @import './variables';
 
 .wrapper {
@@ -6,13 +7,11 @@
   display: flex;
   flex-flow: column nowrap;
   justify-content: space-between;
-  border-right: 1px solid var(--mantine-color-dark-9);
+  border-right: 1px solid var(--color-border);
 }
 
 .list {
-  // background-color: #00000030;background-color
-  // border-bottom: 1px solid var(--mantine-color-dark-9);border-bottom
-  border-top: 1px solid var(--mantine-color-dark-9);
+  border-top: 1px solid var(--color-border);
   overflow-x: hidden;
   max-width: 100%;
   padding: 4px 16px;
@@ -21,7 +20,7 @@
 
 .scrollbar {
   .thumb {
-    background-color: var(--mantine-color-gray-9);
+    background-color: var(--color-border);
   }
 }
 
@@ -42,7 +41,7 @@
   display: flex;
   align-items: center;
 
-  // justify-content: space-between;justify-content
+  // justify-content: space-between;
   gap: 6px;
 
   &:hover {
@@ -89,12 +88,12 @@
 }
 
 .listLinkActive {
-  // color: $green;color
+  // color: $green;
   color: var(--mantine-color-green-3);
   font-weight: 500;
 
   &:hover {
-    // color: $green;color
+    // color: $green;
     color: var(--mantine-color-green-3);
   }
 }
@@ -121,15 +120,13 @@
 .appNavMenu {
   pointer-events: all;
   cursor: pointer;
-  box-shadow: 0 5px 10px 10px #0f1215e0;
-  background: var(--mantine-color-gray-9);
 
   &:hover {
     background: var(--mantine-color-gray-8);
   }
 
   &:active {
-    // background: var(--mantine-color-gray-9);background
+    // background: var(--mantine-color-gray-9);
     transform: translate(0, 1px);
   }
 }

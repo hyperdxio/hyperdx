@@ -535,7 +535,7 @@ export default function DBRowSidePanelErrorBoundary({
                   An error occurred while rendering this event.
                 </div>
 
-                <div className="px-2 py-1 m-2 fs-7 font-monospace bg-dark-grey p-4">
+                <div className="px-2 py-1 m-2 fs-7 font-monospace bg-body p-4">
                   {error?.error?.message}
                 </div>
               </Stack>

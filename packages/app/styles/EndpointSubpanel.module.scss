@@ -5,7 +5,7 @@
   flex-direction: column;
   font-size: 12px;
   height: 100%;
-  background-color: $body-bg;
+  background: var(--color-bg-body);
   box-shadow: 0 0 100px 40px rgb(0 0 0 / 70%);
   border-left: 1px solid var(--mantine-color-dark-9);
 }

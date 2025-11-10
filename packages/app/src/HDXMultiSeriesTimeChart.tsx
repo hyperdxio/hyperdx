@@ -476,10 +476,7 @@ export const MemoChart = memo(function MemoChart({
           })}
         </defs>
         {isHovered && (
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="var(--mantine-color-dark-6)"
-          />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
         )}
         <XAxis
           dataKey={timestampKey ?? 'ts_bucket'}

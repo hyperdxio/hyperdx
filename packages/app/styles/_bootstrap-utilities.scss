@@ -1,0 +1,26 @@
+/* stylelint-disable */
+// Bootstrap layout utility classes only
+// This provides classes like d-flex, flex-column, m-*, p-*, etc.
+// Excludes color utilities to avoid conflicts with custom colors
+
+@import '~bootstrap/scss/functions';
+@import '~bootstrap/scss/variables';
+@import '~bootstrap/scss/maps';
+@import '~bootstrap/scss/mixins';
+@import '~bootstrap/scss/utilities';
+
+// Override utilities to only include layout classes (no color utilities)
+$utilities: map-remove(
+  $utilities,
+  'color',
+  'background-color',
+  'gradient',
+  'text-color',
+  'link-color',
+  'link-offset',
+  'link-underline',
+  'link-underline-opacity'
+);
+
+// Generate utility classes
+@import '~bootstrap/scss/utilities/api';

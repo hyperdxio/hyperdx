@@ -1,0 +1,201 @@
+// Custom utility classes for HyperDX
+// These supplement Bootstrap utilities with Mantine-based styling
+
+// Background utilities
+.bg-surface {
+  background-color: var(--color-bg-surface) !important;
+}
+
+.bg-body {
+  background-color: var(--color-bg-body) !important;
+}
+
+.bg-hdx-dark {
+  background-color: var(--color-bg-surface);
+}
+
+// Border utilities
+.border {
+  border: 1px solid var(--color-border) !important;
+}
+
+.border-top {
+  border-top: 1px solid var(--color-border) !important;
+}
+
+.border-bottom {
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+.border-start {
+  border-left: 1px solid var(--color-border) !important;
+}
+
+.border-end {
+  border-right: 1px solid var(--color-border) !important;
+}
+
+.border-dark {
+  border-color: var(--color-border) !important;
+}
+
+.border-0 {
+  border: 0 !important;
+}
+
+// Rounded utilities
+.rounded {
+  border-radius: var(--mantine-radius-default) !important;
+}
+
+.rounded-sm {
+  border-radius: var(--mantine-radius-sm) !important;
+}
+
+.rounded-lg {
+  border-radius: var(--mantine-radius-lg) !important;
+}
+
+.rounded-0 {
+  border-radius: 0 !important;
+}
+
+// Text color utilities
+.text-muted {
+  color: var(--color-text-muted) !important;
+}
+
+.text-light {
+  color: var(--color-text) !important;
+}
+
+.text-primary {
+  color: var(--color-text-primary) !important;
+}
+
+.text-success {
+  color: var(--color-text-success) !important;
+}
+
+.text-danger {
+  color: var(--color-text-danger) !important;
+}
+
+.text-warning {
+  color: var(--color-text-warning) !important;
+}
+
+// Font size utilities
+.fs-8 {
+  font-size: var(--mantine-font-size-xs) !important;
+}
+
+.fs-7 {
+  font-size: var(--mantine-font-size-sm) !important;
+}
+
+// Font weight utilities
+.fw-normal {
+  font-weight: 400 !important;
+}
+
+.fw-bold {
+  font-weight: 700 !important;
+}
+
+.fw-500 {
+  font-weight: 500 !important;
+}
+
+.fw-600 {
+  font-weight: 600 !important;
+}
+
+// Padding utilities (to supplement Bootstrap if needed)
+.p-0 {
+  padding: 0 !important;
+}
+
+.p-2 {
+  padding: var(--mantine-spacing-sm) !important;
+}
+
+.p-3 {
+  padding: var(--mantine-spacing-md) !important;
+}
+
+.px-3 {
+  padding-left: var(--mantine-spacing-md) !important;
+  padding-right: var(--mantine-spacing-md) !important;
+}
+
+.py-2 {
+  padding-top: var(--mantine-spacing-sm) !important;
+  padding-bottom: var(--mantine-spacing-sm) !important;
+}
+
+.pt-2 {
+  padding-top: var(--mantine-spacing-sm) !important;
+}
+
+.pb-1 {
+  padding-bottom: var(--mantine-spacing-xs) !important;
+}
+
+// Margin utilities
+.m-0 {
+  margin: 0 !important;
+}
+
+.me-1 {
+  margin-right: var(--mantine-spacing-xs) !important;
+}
+
+.me-2 {
+  margin-right: var(--mantine-spacing-sm) !important;
+}
+
+.mb-2 {
+  margin-bottom: var(--mantine-spacing-sm) !important;
+}
+
+.mt-2 {
+  margin-top: var(--mantine-spacing-sm) !important;
+}
+
+// Width utilities
+.w-100 {
+  width: 100% !important;
+}
+
+.w-auto {
+  width: auto !important;
+}
+
+// Display utilities (supplement Bootstrap)
+.d-block {
+  display: block !important;
+}
+
+.d-flex {
+  display: flex !important;
+}
+
+// Text alignment
+.text-start {
+  text-align: left !important;
+}
+
+.text-center {
+  text-align: center !important;
+}
+
+.text-end {
+  text-align: right !important;
+}
+
+.text-truncate {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}

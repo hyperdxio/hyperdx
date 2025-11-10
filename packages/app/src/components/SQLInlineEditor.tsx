@@ -309,9 +309,9 @@ export default function SQLInlineEditor({
     <Paper
       flex="auto"
       shadow="none"
-      bg="dark.6"
       style={{
-        border: `1px solid ${error ? 'var(--mantine-color-red-7)' : 'var(--mantine-color-gray-7)'}`,
+        backgroundColor: 'var(--color-bg-field)',
+        border: `1px solid ${error ? 'var(--mantine-color-red-7)' : 'var(--color-border)'}`,
         display: 'flex',
         alignItems: 'center',
         minHeight: size === 'xs' ? 30 : 36,

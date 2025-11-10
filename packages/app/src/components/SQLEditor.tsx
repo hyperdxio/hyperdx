@@ -42,9 +42,8 @@ export default function SQLEditor({
     <Paper
       flex="auto"
       shadow="none"
-      bg="dark.6"
       style={{
-        border: '1px solid var(--mantine-color-gray-7)',
+        bg: 'var(--color-bg-field)',
         display: 'flex',
         alignItems: 'center',
       }}

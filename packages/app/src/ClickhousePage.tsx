@@ -607,7 +607,6 @@ function ClickhousePage() {
                   latencyFilter.latencyMax != null ? (
                     <Button
                       size="xs"
-                      color="gray.4"
                       variant="subtle"
                       onClick={() => {
                         // Clears the min/max latency filters that are used to filter the query results

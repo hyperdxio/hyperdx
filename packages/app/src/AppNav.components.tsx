@@ -320,9 +320,9 @@ export const AppNavLink = ({
         data-testid={testId}
         href={href}
         className={cx(
+          styles.listLink,
+          { [styles.listLinkActive]: pathname?.includes(href) },
           className,
-          'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-          { 'fw-600 text-success': pathname?.includes(href) },
         )}
       >
         <span>
@@ -350,7 +350,6 @@ export const AppNavLink = ({
         <ActionIcon
           data-testid={`${testId}-toggle`}
           variant="subtle"
-          color="dark.2"
           size="sm"
           onClick={onToggle}
         >

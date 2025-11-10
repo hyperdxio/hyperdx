@@ -11,13 +11,10 @@ $red: #ff5d5b;
 $blue: #3788f6;
 $purple: #8f57f3;
 $gray-100: #f8f9fa;
-$body-color: $gray-100;
-$bg-hdx-dark: #1a1d23;
 $bg-dark-grey: #1f2429;
 $bg-grey: #21272e;
 $bg-purple: #2e273b;
 $bg-purple-active: #4a4eb5;
-$body-bg: #0f1215;
 $code-color: #4bb74a;
 $info: $purple;
 
@@ -79,9 +76,7 @@ $font-sizes: (
 $input-bg: #ffffff1a;
 $input-border-width: 0;
 $input-group-addon-bg: $input-bg;
-$form-select-indicator-color: $body-color;
 $accordion-button-bg: $bg-purple;
 $accordion-button-active-bg: $bg-purple-active;
-$accordion-button-active-color: $body-color;
-$accordion-bg: $body-bg;
+$accordion-bg: var(--color-bg-body);
 $accordion-border-radius: 5px;

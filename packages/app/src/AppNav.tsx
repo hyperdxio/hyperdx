@@ -69,7 +69,6 @@ function NewDashboardButton() {
           py="0px"
           px="sm"
           fw={400}
-          color="gray.2"
         >
           <span className="pe-2">+</span> Create Dashboard
         </Button>
@@ -84,7 +83,6 @@ function NewDashboardButton() {
       py="0px"
       px="sm"
       fw={400}
-      color="gray.2"
       onClick={() =>
         createDashboard.mutate(
           {
@@ -619,7 +617,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             </Link>
             <Button
               variant="subtle"
-              color="gray.4"
               p={isCollapsed ? '0px' : '8px'}
               h="32px"
               size="md"
@@ -751,13 +748,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     <NewDashboardButton />
 
                     {isDashboardsLoading ? (
-                      <Loader
-                        color="gray.7"
-                        variant="dots"
-                        mx="md"
-                        my="xs"
-                        size="sm"
-                      />
+                      <Loader variant="dots" mx="md" my="xs" size="sm" />
                     ) : (
                       !IS_LOCAL_MODE && (
                         <>

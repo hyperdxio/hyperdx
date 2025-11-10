@@ -8,11 +8,11 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: #00000030;
+  background-color: var(--color-bg-muted);
   word-break: break-all;
   flex-shrink: 0;
   flex-grow: 0;
-  border-right: 1px solid var(--mantine-color-dark-6);
+  border-right: 1px solid var(--color-border);
   overflow: hidden;
   z-index: 3; // higher z-index to be above other elements
 
@@ -154,14 +154,14 @@
 }
 
 .searchStatsContainer {
-  background-color: $bg-hdx-dark;
+  background-color: var(--color-bg-body);
   padding-inline: var(--mantine-spacing-xs);
   padding-block: var(--mantine-spacing-xxs);
   z-index: 3;
 }
 
 .timeChartContainer {
-  background-color: $bg-hdx-dark;
+  background-color: var(--color-bg-body);
   padding-inline: var(--mantine-spacing-xs);
   padding-block: var(--mantine-spacing-xxs);
   height: 120px;
@@ -169,7 +169,8 @@
 }
 
 .searchForm {
-  background-color: $body-bg;
+  background: var(--color-bg-body);
   z-index: 4;
   padding-bottom: var(--mantine-spacing-xs);
+  border-bottom: 1px solid var(--color-border);
 }

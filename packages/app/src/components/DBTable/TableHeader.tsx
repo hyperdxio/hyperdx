@@ -83,7 +83,7 @@ export default function TableHeader({
               onMouseDown={header.getResizeHandler()}
               onTouchStart={header.getResizeHandler()}
               className={cx(
-                `resizer text-gray-600 cursor-col-resize`,
+                `resizer text-cursor-col-resize`,
                 header.column.getIsResizing() && 'isResizing',
               )}
             >

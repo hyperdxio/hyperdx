@@ -1315,7 +1315,6 @@ function DBSearchPage() {
                 <ActionIcon
                   data-testid="source-settings-menu"
                   variant="subtle"
-                  color="dark.2"
                   size="sm"
                   title="Edit Source"
                 >
@@ -1384,9 +1383,7 @@ function DBSearchPage() {
               {!savedSearchId ? (
                 <Button
                   data-testid="save-search-button"
-                  variant="outline"
-                  color="dark.2"
-                  px="xs"
+                  variant="default"
                   size="xs"
                   onClick={onSaveSearch}
                   style={{ flexShrink: 0 }}
@@ -1396,9 +1393,7 @@ function DBSearchPage() {
               ) : (
                 <Button
                   data-testid="update-search-button"
-                  variant="outline"
-                  color="dark.2"
-                  px="xs"
+                  variant="default"
                   size="xs"
                   onClick={() => {
                     setSaveSearchModalState('update');
@@ -1411,9 +1406,7 @@ function DBSearchPage() {
               {!IS_LOCAL_MODE && (
                 <Button
                   data-testid="alerts-button"
-                  variant="outline"
-                  color="dark.2"
-                  px="xs"
+                  variant="default"
                   size="xs"
                   onClick={openAlertModal}
                   style={{ flexShrink: 0 }}
@@ -1430,8 +1423,7 @@ function DBSearchPage() {
                   >
                     <Button
                       data-testid="tags-button"
-                      variant="outline"
-                      color="dark.2"
+                      variant="default"
                       px="xs"
                       size="xs"
                       style={{ flexShrink: 0 }}
