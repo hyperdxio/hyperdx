@@ -43,6 +43,7 @@ import {
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
   getDefaultExternalAction,
+  isAlertResolved,
   renderAlertTemplate,
   translateExternalActionsToInternal,
 } from '@/tasks/checkAlerts/template';
@@ -229,14 +230,68 @@ describe('checkAlerts', () => {
         buildAlertMessageTemplateTitle({
           view: defaultSearchView,
         }),
-      ).toMatchInlineSnapshot(`"Alert for \\"My Search\\" - 10 lines found"`);
+      ).toMatchInlineSnapshot(
+        `"🚨 Alert for \\"My Search\\" - 10 lines found"`,
+      );
       expect(
         buildAlertMessageTemplateTitle({
           view: defaultChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 5 exceeds 1"`,
+        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 5 exceeds 1"`,
       );
+    });
+
+    it('buildAlertMessageTemplateTitle with state parameter', () => {
+      // Test ALERT state (should have 🚨 emoji)
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: defaultSearchView,
+          state: AlertState.ALERT,
+        }),
+      ).toMatchInlineSnapshot(
+        `"🚨 Alert for \\"My Search\\" - 10 lines found"`,
+      );
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: defaultChartView,
+          state: AlertState.ALERT,
+        }),
+      ).toMatchInlineSnapshot(
+        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 5 exceeds 1"`,
+      );
+
+      // Test OK state (should have ✅ emoji)
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: defaultSearchView,
+          state: AlertState.OK,
+        }),
+      ).toMatchInlineSnapshot(
+        `"✅ Alert for \\"My Search\\" - 10 lines found"`,
+      );
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: defaultChartView,
+          state: AlertState.OK,
+        }),
+      ).toMatchInlineSnapshot(
+        `"✅ Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 5 exceeds 1"`,
+      );
+    });
+
+    it('isAlertResolved', () => {
+      // Test OK state returns true
+      expect(isAlertResolved(AlertState.OK)).toBe(true);
+
+      // Test ALERT state returns false
+      expect(isAlertResolved(AlertState.ALERT)).toBe(false);
+
+      // Test INSUFFICIENT_DATA state returns false
+      expect(isAlertResolved(AlertState.INSUFFICIENT_DATA)).toBe(false);
+
+      // Test DISABLED state returns false
+      expect(isAlertResolved(AlertState.DISABLED)).toBe(false);
     });
 
     it('getDefaultExternalAction', () => {
@@ -372,7 +427,7 @@ describe('checkAlerts', () => {
             },
           },
         },
-        title: 'Alert for "My Search" - 10 lines found',
+        title: '🚨 Alert for "My Search" - 10 lines found',
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
@@ -382,12 +437,12 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "My Search" - 10 lines found',
+          text: '🚨 Alert for "My Search" - 10 lines found',
           blocks: [
             {
               text: {
                 text: [
-                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
@@ -432,7 +487,7 @@ describe('checkAlerts', () => {
             webhookName: 'My_Webhook',
           },
         },
-        title: 'Alert for "My Search" - 10 lines found',
+        title: '🚨 Alert for "My Search" - 10 lines found',
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
         ]),
@@ -442,12 +497,12 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "My Search" - 10 lines found',
+          text: '🚨 Alert for "My Search" - 10 lines found',
           blocks: [
             {
               text: {
                 text: [
-                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
@@ -517,7 +572,7 @@ describe('checkAlerts', () => {
             },
           },
         },
-        title: 'Alert for "My Search" - 10 lines found',
+        title: '🚨 Alert for "My Search" - 10 lines found',
         teamWebhooksById,
       });
 
@@ -541,7 +596,7 @@ describe('checkAlerts', () => {
             host: 'web2',
           },
         },
-        title: 'Alert for "My Search" - 10 lines found',
+        title: '🚨 Alert for "My Search" - 10 lines found',
         teamWebhooksById,
       });
 
@@ -549,12 +604,12 @@ describe('checkAlerts', () => {
       expect(slack.postMessageToWebhook).toHaveBeenCalledWith(
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "My Search" - 10 lines found',
+          text: '🚨 Alert for "My Search" - 10 lines found',
           blocks: [
             {
               text: {
                 text: [
-                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
@@ -578,12 +633,12 @@ describe('checkAlerts', () => {
       expect(slack.postMessageToWebhook).toHaveBeenCalledWith(
         'https://hooks.slack.com/services/456',
         {
-          text: 'Alert for "My Search" - 10 lines found',
+          text: '🚨 Alert for "My Search" - 10 lines found',
           blocks: [
             {
               text: {
                 text: [
-                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | Alert for "My Search" - 10 lines found>*',
+                  '*<http://app:8080/search/fake-saved-search-id?from=1679091183103&to=1679091239103&isLive=false | 🚨 Alert for "My Search" - 10 lines found>*',
                   'Group: "http"',
                   '10 lines found, expected less than 1 lines',
                   'Time Range (UTC): [Mar 17 10:13:03 PM - Mar 17 10:13:59 PM)',
@@ -604,6 +659,63 @@ describe('checkAlerts', () => {
           ],
         },
       );
+    });
+
+    it('renderAlertTemplate - resolved alert with simplified message', async () => {
+      const team = await createTeam({ name: 'My Team' });
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My_Webhook',
+      }).save();
+
+      await renderAlertTemplate({
+        alertProvider,
+        clickhouseClient: {} as any,
+        metadata: {} as any,
+        state: AlertState.OK, // Resolved state
+        template: '@webhook-My_Webhook',
+        view: {
+          ...defaultSearchView,
+          alert: {
+            ...defaultSearchView.alert,
+            channel: {
+              type: null, // using template instead
+            },
+          },
+        },
+        title: '✅ Alert for "My Search" - 10 lines found',
+        teamWebhooksById: new Map<string, typeof webhook>([
+          [webhook._id.toString(), webhook],
+        ]),
+      });
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(slack.postMessageToWebhook).toHaveBeenCalledWith(
+        'https://hooks.slack.com/services/123',
+        {
+          text: '✅ Alert for "My Search" - 10 lines found',
+          blocks: [
+            {
+              text: {
+                text: expect.stringContaining('The alert has been resolved'),
+                type: 'mrkdwn',
+              },
+              type: 'section',
+            },
+          ],
+        },
+      );
+
+      // Verify the message includes the time range but not detailed logs
+      const callArgs = (slack.postMessageToWebhook as any).mock.calls[0][1];
+      const messageText = callArgs.blocks[0].text.text;
+      expect(messageText).toContain('The alert has been resolved');
+      expect(messageText).toContain('Time Range (UTC):');
+      expect(messageText).toContain('Group: "http"');
+      // Should NOT contain detailed log data
+      expect(messageText).not.toContain('lines found, expected');
     });
   });
 
@@ -915,7 +1027,7 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "My Search" - 3 lines found',
+          text: '🚨 Alert for "My Search" - 3 lines found',
           blocks: [
             {
               text: expect.any(Object),
@@ -928,7 +1040,7 @@ describe('checkAlerts', () => {
         2,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "My Search" - 1 lines found',
+          text: '🚨 Alert for "My Search" - 1 lines found',
           blocks: [
             {
               text: expect.any(Object),
@@ -1089,12 +1201,12 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1',
+          text: '🚨 Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1>*`,
                   '',
                   '3 exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
@@ -1281,7 +1393,7 @@ describe('checkAlerts', () => {
       expect(fetchMock).toHaveBeenCalledWith('https://webhook.site/123', {
         method: 'POST',
         body: JSON.stringify({
-          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1`,
+          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 exceeds 1`,
         }),
         headers: {
           'Content-Type': 'application/json',
@@ -2087,12 +2199,12 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: 'Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1',
+          text: '🚨 Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1>*`,
                   '',
                   '6.25 exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
