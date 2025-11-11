@@ -1,3 +1,4 @@
+import { omit } from 'lodash';
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
@@ -287,15 +288,19 @@ export function useAliasMapFromChartConfig(
   options?: UseQueryOptions<Record<string, string>>,
 ) {
   return useQuery<Record<string, string>>({
-    // Only include config properties that affect SELECT aliases
-    // (not dateRange, where, orderBy, limit which don't affect aliases)
+    // Omit properties that don't affect SELECT aliases (time filters, result modifiers)
+    // to prevent unnecessary refetches during live tail when only dateRange changes.
+    // Everything else (select, from, with, groupBy, selectGroupBy, granularity, etc.) is kept.
     queryKey: [
       'aliasMap',
-      config?.select,
-      config?.from,
-      config?.connection,
-      config?.with,
-      config?.groupBy,
+      omit(config, [
+        'dateRange',
+        'dateRangeEndInclusive',
+        'where',
+        'orderBy',
+        'limit',
+        'timestampValueExpression',
+      ]),
     ],
     queryFn: async () => {
       if (config == null) {
