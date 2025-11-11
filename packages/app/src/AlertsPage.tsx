@@ -18,18 +18,14 @@ import type { AlertsPageItem } from './types';
 
 import styles from '../styles/AlertsPage.module.scss';
 
-// TODO: exceptions latestHighestValue needs to be different condition (total count of exceptions not highest value within an exception)
-
 function AlertHistoryCard({ history }: { history: AlertHistory }) {
   const start = new Date(history.createdAt.toString());
   const today = React.useMemo(() => new Date(), []);
-  const latestHighestValue = history.lastValues.length
-    ? Math.max(...history.lastValues.map(({ count }) => count))
-    : 0;
 
   return (
     <Tooltip
-      label={latestHighestValue + ' ' + formatRelative(start, today)}
+      label={`${history.counts ?? 0} alerts ${formatRelative(start, today)}`}
+      color="dark"
       withArrow
     >
       <div

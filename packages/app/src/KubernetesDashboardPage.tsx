@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import cx from 'classnames';
@@ -8,6 +8,7 @@ import { useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
+  Alert,
   Badge,
   Box,
   Button,
@@ -15,7 +16,6 @@ import {
   Flex,
   Grid,
   Group,
-  ScrollArea,
   SegmentedControl,
   Skeleton,
   Table,
@@ -24,8 +24,10 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { TimePicker } from '@/components/TimePicker';
+import { useVirtualList } from '@/hooks/useVirtualList';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { DBTimeChart } from './components/DBTimeChart';
@@ -50,8 +52,6 @@ import { useSources } from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
-
-const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
 const getKubePhaseNumber = (phase: string) => {
   switch (phase) {
@@ -91,6 +91,8 @@ const Th = React.memo<{
     </Table.Th>
   );
 });
+
+const TABLE_FETCH_LIMIT = 10000;
 
 type InfraPodsStatusTableColumn =
   | 'restarts'
@@ -147,8 +149,8 @@ export const InfraPodsStatusTable = ({
   });
 
   const groupBy = ['k8s.pod.name', 'k8s.namespace.name', 'k8s.node.name'];
-  const { data, isError, isLoading } = useQueriedChartConfig(
-    convertV1ChartConfigToV2(
+  const { data, isError, isLoading } = useQueriedChartConfig({
+    ...convertV1ChartConfigToV2(
       {
         series: [
           {
@@ -230,7 +232,8 @@ export const InfraPodsStatusTable = ({
         metric: metricSource,
       },
     ),
-  );
+    limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
+  });
 
   // TODO: Use useTable
   const podsList = React.useMemo(() => {
@@ -238,30 +241,34 @@ export const InfraPodsStatusTable = ({
       return [];
     }
 
-    return data.data
-      .map((row: any) => {
-        return {
-          id: makeId(),
-          name: row["arrayElement(ResourceAttributes, 'k8s.pod.name')"],
-          namespace:
-            row["arrayElement(ResourceAttributes, 'k8s.namespace.name')"],
-          node: row["arrayElement(ResourceAttributes, 'k8s.node.name')"],
-          restarts: row['last_value(k8s.container.restarts)'],
-          uptime: row['undefined(k8s.pod.uptime)'],
-          cpuAvg: row['avg(k8s.pod.cpu.utilization)'],
-          cpuLimitUtilization: row['avg(k8s.pod.cpu_limit_utilization)'],
-          memAvg: row['avg(k8s.pod.memory.usage)'],
-          memLimitUtilization: row['avg(k8s.pod.memory_limit_utilization)'],
-          phase: row['last_value(k8s.pod.phase)'],
-        };
-      })
-      .filter(pod => {
-        if (phaseFilter === 'all') {
-          return true;
-        }
-        return pod.phase === getKubePhaseNumber(phaseFilter);
-      });
+    // Filter first to reduce the number of objects we create
+    const phaseFilteredData = data.data.filter((row: any) => {
+      if (phaseFilter === 'all') {
+        return true;
+      }
+      return (
+        row['last_value(k8s.pod.phase)'] === getKubePhaseNumber(phaseFilter)
+      );
+    });
+
+    // Transform only the filtered data
+    return phaseFilteredData.map((row: any, index: number) => ({
+      id: `pod-${index}`, // Use index-based ID instead of random makeId()
+      name: row["arrayElement(ResourceAttributes, 'k8s.pod.name')"],
+      namespace: row["arrayElement(ResourceAttributes, 'k8s.namespace.name')"],
+      node: row["arrayElement(ResourceAttributes, 'k8s.node.name')"],
+      restarts: row['last_value(k8s.container.restarts)'],
+      uptime: row['undefined(k8s.pod.uptime)'],
+      cpuAvg: row['avg(k8s.pod.cpu.utilization)'],
+      cpuLimitUtilization: row['avg(k8s.pod.cpu_limit_utilization)'],
+      memAvg: row['avg(k8s.pod.memory.usage)'],
+      memLimitUtilization: row['avg(k8s.pod.memory_limit_utilization)'],
+      phase: row['last_value(k8s.pod.phase)'],
+    }));
   }, [data, phaseFilter]);
+
+  // Check if we're hitting the fetch limit (indicating there might be more data)
+  const isAtFetchLimit = data?.data && data.data.length >= TABLE_FETCH_LIMIT;
 
   const getLink = React.useCallback((podName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -278,6 +285,32 @@ export const InfraPodsStatusTable = ({
     },
     sort: sortState.column === column ? sortState.order : null,
   });
+
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: podsList.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: useCallback(() => 40, []),
+    overscan: 10,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
+
+  const [paddingTop, paddingBottom] = useMemo(
+    () =>
+      virtualItems.length > 0
+        ? [
+            Math.max(
+              0,
+              virtualItems[0].start - rowVirtualizer.options.scrollMargin,
+            ),
+            Math.max(0, totalSize - virtualItems[virtualItems.length - 1].end),
+          ]
+        : [0, 0],
+    [virtualItems, rowVirtualizer.options.scrollMargin, totalSize],
+  );
 
   return (
     <Card p="md" data-testid="k8s-pods-table">
@@ -298,10 +331,20 @@ export const InfraPodsStatusTable = ({
           />
         </Group>
       </Card.Section>
+      {isAtFetchLimit && !isLoading && !isError && podsList.length > 0 && (
+        <Card.Section px="md" py="xs">
+          <Alert variant="light" color="blue">
+            Showing first {TABLE_FETCH_LIMIT.toLocaleString()} pods. Use the
+            filters above to narrow your search.
+          </Alert>
+        </Card.Section>
+      )}
       <Card.Section>
-        <ScrollArea
-          viewportProps={{
-            style: { maxHeight: 300 },
+        <div
+          ref={tableContainerRef}
+          style={{
+            height: '300px',
+            overflow: 'auto',
           }}
         >
           {isLoading ? (
@@ -339,88 +382,111 @@ export const InfraPodsStatusTable = ({
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {podsList.map(pod => (
-                  <Link key={pod.id} href={getLink(pod.name)} legacyBehavior>
-                    <Table.Tr className="cursor-pointer">
-                      <Table.Td>{pod.name}</Table.Td>
-                      <Table.Td
-                        data-testid={`k8s-pods-table-namespace-${pod.id}`}
+                {paddingTop > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={8}
+                      style={{ height: `${paddingTop}px` }}
+                    />
+                  </Table.Tr>
+                )}
+                {virtualItems.map(virtualRow => {
+                  const pod = podsList[virtualRow.index];
+                  return (
+                    <Link key={pod.id} href={getLink(pod.name)} legacyBehavior>
+                      <Table.Tr
+                        className="cursor-pointer"
+                        ref={rowVirtualizer.measureElement}
+                        data-index={virtualRow.index}
                       >
-                        {pod.namespace}
-                      </Table.Td>
-                      <Table.Td>{pod.node}</Table.Td>
-                      <Table.Td>
-                        <FormatPodStatus status={pod.phase} />
-                      </Table.Td>
-                      <Table.Td>
-                        <Tooltip
-                          color="gray"
-                          label={
-                            formatNumber(
-                              pod.cpuAvg,
-                              K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                            ) + ' avg'
-                          }
+                        <Table.Td>{pod.name}</Table.Td>
+                        <Table.Td
+                          data-testid={`k8s-pods-table-namespace-${pod.id}`}
                         >
-                          <Text
-                            span
-                            c={pod.cpuLimitUtilization ? undefined : 'gray.7'}
+                          {pod.namespace}
+                        </Table.Td>
+                        <Table.Td>{pod.node}</Table.Td>
+                        <Table.Td>
+                          <FormatPodStatus status={pod.phase} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Tooltip
+                            color="gray"
+                            label={
+                              formatNumber(
+                                pod.cpuAvg,
+                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                              ) + ' avg'
+                            }
                           >
-                            {pod.cpuLimitUtilization
-                              ? formatNumber(
-                                  pod.cpuLimitUtilization,
-                                  K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                                )
-                              : '-'}
-                          </Text>
-                        </Tooltip>
-                      </Table.Td>
-                      <Table.Td>
-                        <Tooltip
-                          color="gray"
-                          label={
-                            formatNumber(pod.memAvg, K8S_MEM_NUMBER_FORMAT) +
-                            ' avg'
-                          }
-                        >
-                          <Text
-                            span
-                            c={pod.memLimitUtilization ? undefined : 'gray.7'}
+                            <Text
+                              span
+                              c={pod.cpuLimitUtilization ? undefined : 'gray.7'}
+                            >
+                              {pod.cpuLimitUtilization
+                                ? formatNumber(
+                                    pod.cpuLimitUtilization,
+                                    K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                                  )
+                                : '-'}
+                            </Text>
+                          </Tooltip>
+                        </Table.Td>
+                        <Table.Td>
+                          <Tooltip
+                            color="gray"
+                            label={
+                              formatNumber(pod.memAvg, K8S_MEM_NUMBER_FORMAT) +
+                              ' avg'
+                            }
                           >
-                            {pod.memLimitUtilization
-                              ? formatNumber(
-                                  pod.memLimitUtilization,
-                                  K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                                )
-                              : '-'}
+                            <Text
+                              span
+                              c={pod.memLimitUtilization ? undefined : 'gray.7'}
+                            >
+                              {pod.memLimitUtilization
+                                ? formatNumber(
+                                    pod.memLimitUtilization,
+                                    K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                                  )
+                                : '-'}
+                            </Text>
+                          </Tooltip>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text span c={pod.uptime ? undefined : 'gray.7'}>
+                            {pod.uptime ? formatUptime(pod.uptime) : '–'}
                           </Text>
-                        </Tooltip>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text span c={pod.uptime ? undefined : 'gray.7'}>
-                          {pod.uptime ? formatUptime(pod.uptime) : '–'}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text
-                          color={
-                            pod.restarts >= 10
-                              ? 'red.6'
-                              : pod.restarts >= 5
-                                ? 'yellow.3'
-                                : 'grey.7'
-                          }
-                        >
-                          {pod.restarts}
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  </Link>
-                ))}
+                        </Table.Td>
+                        <Table.Td>
+                          <Text
+                            color={
+                              pod.restarts >= 10
+                                ? 'red.6'
+                                : pod.restarts >= 5
+                                  ? 'yellow.3'
+                                  : 'grey.7'
+                            }
+                          >
+                            {pod.restarts}
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    </Link>
+                  );
+                })}
+                {paddingBottom > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={8}
+                      style={{ height: `${paddingBottom}px` }}
+                    />
+                  </Table.Tr>
+                )}
               </Table.Tbody>
             </Table>
           )}
-        </ScrollArea>
+        </div>
       </Card.Section>
     </Card>
   );
@@ -437,8 +503,8 @@ const NodesTable = ({
 }) => {
   const groupBy = ['k8s.node.name'];
 
-  const { data, isError, isLoading } = useQueriedChartConfig(
-    convertV1ChartConfigToV2(
+  const { data, isError, isLoading } = useQueriedChartConfig({
+    ...convertV1ChartConfigToV2(
       {
         series: [
           {
@@ -481,7 +547,8 @@ const NodesTable = ({
         metric: metricSource,
       },
     ),
-  );
+    limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
+  });
 
   const getLink = React.useCallback((nodeName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -505,15 +572,25 @@ const NodesTable = ({
     });
   }, [data]);
 
+  const {
+    containerRef: nodesContainerRef,
+    rowVirtualizer: nodesRowVirtualizer,
+    virtualItems: nodeVirtualItems,
+    paddingTop: nodesPaddingTop,
+    paddingBottom: nodesPaddingBottom,
+  } = useVirtualList(nodesList.length, 40, 10);
+
   return (
     <Card p="md" data-testid="k8s-nodes-table">
       <Card.Section p="md" py="xs" withBorder>
         Nodes
       </Card.Section>
       <Card.Section>
-        <ScrollArea
-          viewportProps={{
-            style: { maxHeight: 300 },
+        <div
+          ref={nodesContainerRef}
+          style={{
+            height: '300px',
+            overflow: 'auto',
           }}
         >
           {isLoading ? (
@@ -537,58 +614,80 @@ const NodesTable = ({
                   <Table.Th style={{ width: 130 }}>Uptime</Table.Th>
                 </Table.Tr>
               </Table.Thead>
-
               <Table.Tbody>
-                {nodesList.map(node => (
-                  <Link
-                    key={node.name}
-                    href={getLink(node.name)}
-                    legacyBehavior
-                  >
-                    <Table.Tr className="cursor-pointer">
-                      <Table.Td>{node.name || 'N/A'}</Table.Td>
-                      <Table.Td>
-                        {node.ready === 1 ? (
-                          <Badge
-                            variant="light"
-                            color="green"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Ready
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="light"
-                            color="red"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Not Ready
-                          </Badge>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(
-                          node.cpuAvg,
-                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
-                      </Table.Td>
-                      <Table.Td>
-                        {node.uptime ? formatUptime(node.uptime) : '–'}
-                      </Table.Td>
-                    </Table.Tr>
-                  </Link>
-                ))}
+                {nodesPaddingTop > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={5}
+                      style={{ height: `${nodesPaddingTop}px` }}
+                    />
+                  </Table.Tr>
+                )}
+                {nodeVirtualItems.map(virtualRow => {
+                  const node = nodesList[virtualRow.index];
+                  return (
+                    <Link
+                      key={node.name}
+                      href={getLink(node.name)}
+                      legacyBehavior
+                    >
+                      <Table.Tr
+                        className="cursor-pointer"
+                        ref={nodesRowVirtualizer.measureElement}
+                        data-index={virtualRow.index}
+                      >
+                        <Table.Td>{node.name || 'N/A'}</Table.Td>
+                        <Table.Td>
+                          {node.ready === 1 ? (
+                            <Badge
+                              variant="light"
+                              color="green"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Ready
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="light"
+                              color="red"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Not Ready
+                            </Badge>
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(
+                            node.cpuAvg,
+                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
+                        </Table.Td>
+                        <Table.Td>
+                          {node.uptime ? formatUptime(node.uptime) : '–'}
+                        </Table.Td>
+                      </Table.Tr>
+                    </Link>
+                  );
+                })}
+                {nodesPaddingBottom > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={5}
+                      style={{ height: `${nodesPaddingBottom}px` }}
+                    />
+                  </Table.Tr>
+                )}
               </Table.Tbody>
             </Table>
           )}
-        </ScrollArea>
+        </div>
       </Card.Section>
     </Card>
   );
@@ -605,8 +704,8 @@ const NamespacesTable = ({
 }) => {
   const groupBy = ['k8s.namespace.name'];
 
-  const { data, isError, isLoading } = useQueriedChartConfig(
-    convertV1ChartConfigToV2(
+  const { data, isError, isLoading } = useQueriedChartConfig({
+    ...convertV1ChartConfigToV2(
       {
         series: [
           {
@@ -646,7 +745,8 @@ const NamespacesTable = ({
         metric: metricSource,
       },
     ),
-  );
+    limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
+  });
 
   const namespacesList = React.useMemo(() => {
     if (!data) {
@@ -663,6 +763,14 @@ const NamespacesTable = ({
     });
   }, [data]);
 
+  const {
+    containerRef: namespacesContainerRef,
+    rowVirtualizer: namespacesRowVirtualizer,
+    virtualItems: namespaceVirtualItems,
+    paddingTop: namespacesPaddingTop,
+    paddingBottom: namespacesPaddingBottom,
+  } = useVirtualList(namespacesList.length, 40, 10);
+
   const getLink = React.useCallback((namespaceName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
     searchParams.set('namespaceName', `${namespaceName}`);
@@ -675,9 +783,11 @@ const NamespacesTable = ({
         Namespaces
       </Card.Section>
       <Card.Section>
-        <ScrollArea
-          viewportProps={{
-            style: { maxHeight: 300 },
+        <div
+          ref={namespacesContainerRef}
+          style={{
+            height: '300px',
+            overflow: 'auto',
           }}
         >
           {isLoading ? (
@@ -701,53 +811,79 @@ const NamespacesTable = ({
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {namespacesList.map(namespace => (
-                  <Link
-                    key={namespace.name}
-                    href={getLink(namespace.name)}
-                    legacyBehavior
-                  >
-                    <Table.Tr className="cursor-pointer">
-                      <Table.Td>{namespace.name || 'N/A'}</Table.Td>
-                      <Table.Td>
-                        {namespace.phase === 1 ? (
-                          <Badge
-                            variant="light"
-                            color="green"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Ready
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="light"
-                            color="red"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Terminating
-                          </Badge>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(
-                          namespace.cpuAvg,
-                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(namespace.memAvg, K8S_MEM_NUMBER_FORMAT)}
-                      </Table.Td>
-                    </Table.Tr>
-                  </Link>
-                ))}
+                {namespacesPaddingTop > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={4}
+                      style={{ height: `${namespacesPaddingTop}px` }}
+                    />
+                  </Table.Tr>
+                )}
+                {namespaceVirtualItems.map(virtualRow => {
+                  const namespace = namespacesList[virtualRow.index];
+                  return (
+                    <Link
+                      key={namespace.name}
+                      href={getLink(namespace.name)}
+                      legacyBehavior
+                    >
+                      <Table.Tr
+                        className="cursor-pointer"
+                        ref={namespacesRowVirtualizer.measureElement}
+                        data-index={virtualRow.index}
+                      >
+                        <Table.Td>{namespace.name || 'N/A'}</Table.Td>
+                        <Table.Td>
+                          {namespace.phase === 1 ? (
+                            <Badge
+                              variant="light"
+                              color="green"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Ready
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="light"
+                              color="red"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Terminating
+                            </Badge>
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(
+                            namespace.cpuAvg,
+                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(
+                            namespace.memAvg,
+                            K8S_MEM_NUMBER_FORMAT,
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    </Link>
+                  );
+                })}
+                {namespacesPaddingBottom > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={4}
+                      style={{ height: `${namespacesPaddingBottom}px` }}
+                    />
+                  </Table.Tr>
+                )}
               </Table.Tbody>
             </Table>
           )}
-        </ScrollArea>
+        </div>
       </Card.Section>
     </Card>
   );
