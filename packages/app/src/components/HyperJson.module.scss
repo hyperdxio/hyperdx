@@ -65,7 +65,7 @@
     }
 
     &:active {
-      background-color: var(--color-bg-muted-hover);
+      background-color: var(--color-bg-highlighted);
     }
   }
 }
@@ -91,7 +91,7 @@
   height: 100%;
 
   &:hover {
-    background-color: var(--color-bg-muted-hover);
+    background-color: var(--color-bg-highlighted);
   }
 
   &:active {
@@ -105,7 +105,7 @@
 
 .clickable {
   &:active {
-    background-color: var(--color-bg-muted-hover);
+    background-color: var(--color-bg-highlighted);
   }
 }
 
@@ -156,7 +156,7 @@
   }
 
   &:active {
-    background-color: var(--color-bg-muted-hover);
+    background-color: var(--color-bg-highlighted);
   }
 }
 

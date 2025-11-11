@@ -29,95 +29,6 @@
 }
 
 
-.bg-light-grey {
-  background-color: #37414d;
-}
-.bg-light-grey-hover {
-  background-color: #37414d;
-  &:hover {
-    background-color: #4e5c6d;
-  }
-}
-
-.bg-inherit {
-  background-color: inherit;
-}
-
-
-.bg-default-dark-grey-hover {
-  &:hover {
-    background-color: var(--color-bg-surface-hover);
-  }
-}
-
-.border-grey-top {
-  border-top: 1px solid #393939;
-}
-.border-grey-bottom {
-  border-bottom: 1px solid #393939;
-}
-.border-grey {
-  border-color: #393939 !important;
-}
-.border-grey-gradient {
-  box-shadow: 0 0 0 1px rgb(82 82 82 / 60%);
-}
-
-.fw-500 {
-  font-weight: 500;
-}
-.fw-600 {
-  font-weight: 600;
-}
-
-.text-success {
-  color: var(--color-text-success);
-}
-
-// Darker than text-muted
-.text-gray-600 {
-   color: var(--mantine-color-dark-6);
-}
-
-.text-slate-700 {
-  color: var(--mantine-color-dark-7);
-}
-
-.text-slate-600 {
-  color: var(--mantine-color-dark-6);
-}
-
-.text-slate-500 {
-  color: var(--mantine-color-dark-5);
-}
-
-.text-slate-400 {
-  color: var(--mantine-color-dark-4);
-}
-
-.text-slate-300 {
-  color: var(--mantine-color-dark-3);
-}
-
-.text-slate-200 {
-  color: var(--mantine-color-dark-2);
-}
-
-
-
-// TODO remove
-.text-white-hover-green {
-  color: var(--color-text);
-  transition: color 0.2s ease;
-  &:hover {
-    color: var(--color-green);
-  }
-}
-
-// TODO remove
-.text-white-hover-success-trigger {
-}
-
 :root {
   --mantine-webkit-font-smoothing: inherit;
   --mantine-moz-font-smoothing: inherit;
@@ -138,56 +49,12 @@ body {
   }
 }
 
-.cursor-default {
-  cursor: default;
-}
-
-.cursor-pointer {
-  cursor: pointer;
-}
-
-.cursor-grab {
-  cursor: grab;
-}
-
-.cursor-col-resize {
-  cursor: col-resize;
-}
-
-.cursor-zoom-in {
-  cursor: zoom-in !important;
-}
-
-.cursor-crosshair {
-  cursor: crosshair !important;
-}
-
 .nav-link.active {
   font-weight: 500;
 }
 
 
-.bg-warning-transparent {
-  background-color: color-mix(in srgb, var(--mantine-color-yellow-5) 15%, transparent);
-}
-.bg-danger-transparent {
-  background-color: color-mix(in srgb, var(--mantine-color-red-5) 15%, transparent);
-}
-
-.transition-width {
-  transition: width 0.2s ease-in-out;
-}
-
-.transition-height {
-  transition: height 0.2s ease-in-out;
-}
-
-.min-height-65vh {
-  min-height: 65vh;
-}
-
 /* Custom Components */
-
 .player-skipping-overlay {
   position: absolute;
   z-index: 10;
@@ -422,30 +289,6 @@ body {
   fill: rgba(204, 204, 204, 0.2) !important;
 }
 
-.white-text-gradient {
-  background: linear-gradient(180deg, #ffffff 0%, #c1c1c1 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  text-fill-color: transparent;
-}
-// For the landing green->purple bg gradient card
-.fancy-card-bg {
-  background:
-    radial-gradient(
-        79.84% 219.18% at 89.97% 87.4%,
-        rgba(80, 250, 219, 0.06) 0%,
-        rgba(164, 42, 238, 0.051) 100%
-      )
-      /* warning: gradient uses a rotation that is not supported by CSS and may not behave as expected */,
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.075) 0%,
-      rgba(255, 255, 255, 0.045) 100%
-    );
-  border-radius: 4px;
-}
-
 .effect-pulse {
   animation: pulse 1s infinite;
 }
@@ -514,10 +357,4 @@ a.mantine-focus-auto:hover {
   &:focus-visible {
     outline: none;
   }
-}
-
-.u-select {
-  border: 1px solid #50fa7b;
-  background: #50fa7a0d !important;
-  color: #2E224788;
 }

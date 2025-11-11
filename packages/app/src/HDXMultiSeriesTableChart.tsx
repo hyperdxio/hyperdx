@@ -251,7 +251,7 @@ export const Table = ({
             return (
               <tr
                 key={virtualRow.key}
-                className="bg-default-dark-grey-hover"
+                className="bg-muted-hover"
                 data-index={virtualRow.index}
                 ref={rowVirtualizer.measureElement}
               >

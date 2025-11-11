@@ -19,6 +19,18 @@
   background-color: var(--color-bg-muted-hover);
 }
 
+.bg-highlighted {
+  background-color: var(--color-bg-highlighted);
+}
+
+.bg-danger-transparent {
+  background-color: color-mix(
+    in srgb,
+    var(--mantine-color-red-5) 15%,
+    transparent
+  );
+}
+
 // Border utilities
 .border {
   border: 1px solid var(--color-border) !important;
@@ -123,4 +135,28 @@
 
 .fw-600 {
   font-weight: 600 !important;
+}
+
+.cursor-default {
+  cursor: default;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.cursor-grab {
+  cursor: grab;
+}
+
+.cursor-col-resize {
+  cursor: col-resize;
+}
+
+.cursor-zoom-in {
+  cursor: zoom-in !important;
+}
+
+.cursor-crosshair {
+  cursor: crosshair !important;
 }
