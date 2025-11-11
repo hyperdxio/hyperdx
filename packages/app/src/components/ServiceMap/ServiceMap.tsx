@@ -175,6 +175,17 @@ function ServiceMapPresentation({
     );
   }
 
+  if (services && services.size === 0) {
+    return (
+      <Center className="w-100 h-100">
+        <Text size="sm" c="gray.5">
+          No services found. The Service Map shows links between services with
+          related Client- and Server-kind spans.
+        </Text>
+      </Center>
+    );
+  }
+
   if (error) {
     return (
       <Box>
