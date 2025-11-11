@@ -28,8 +28,9 @@ export default function LandingHeader({
           top: 0,
           left: 0,
           right: 0,
-          background: '#0f1216b3',
+          background: 'var(--color-bg-body)',
           backdropFilter: 'blur(12px)',
+          border: '1px solid var(--color-border)',
           zIndex: 100,
         }}
       >
@@ -49,6 +50,7 @@ export default function LandingHeader({
             <Group gap="md" visibleFrom="lg" style={{ fontSize: 14 }}>
               <Anchor
                 href="https://hyperdx.io"
+                c={activeKey === 'cloud' ? 'green' : 'gray'}
                 underline="never"
                 style={{ fontWeight: activeKey === 'cloud' ? 600 : 400 }}
               >
@@ -56,6 +58,7 @@ export default function LandingHeader({
               </Anchor>
               <Anchor
                 href="https://clickhouse.com/docs/use-cases/observability/clickstack"
+                c={activeKey === 'docs' ? 'green' : 'gray'}
                 underline="never"
                 style={{ fontWeight: activeKey === 'docs' ? 600 : 400 }}
               >
@@ -64,6 +67,7 @@ export default function LandingHeader({
               {!isLoggedIn && installation?.isTeamExisting === true && (
                 <Anchor
                   href="/login"
+                  c={activeKey === '/login' ? 'green' : 'gray'}
                   underline="never"
                   style={{ fontWeight: activeKey === '/login' ? 600 : 400 }}
                 >

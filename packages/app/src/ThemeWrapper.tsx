@@ -180,7 +180,11 @@ const makeTheme = ({
             },
           };
         }
-        return {};
+        return {
+          root: {
+            border: '1px solid var(--color-border)',
+          },
+        };
       },
     },
     Text: Text.extend({
