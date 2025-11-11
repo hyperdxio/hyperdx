@@ -157,7 +157,7 @@ function ServiceMapPresentation({
 
   if (isLoading) {
     return (
-      <Center className={`${styles.graphContainer} h-100`}>
+      <Center className={`${styles.graphContainer} h-100 w-100`}>
         <Loader size="lg" />
       </Center>
     );

@@ -209,28 +209,6 @@ export default function DBTracePanel({
       )}
       {traceSourceData != null && eventRowWhere != null && (
         <>
-          <Group>
-            <Text size="sm" c="dark.2" my="sm">
-              Service Map
-            </Text>
-            <Badge
-              size="xs"
-              color="gray.4"
-              autoContrast
-              radius="sm"
-              className="align-text-bottom"
-            >
-              Beta
-            </Badge>
-          </Group>
-          <div style={{ height: '300px', width: '100%', display: 'flex' }}>
-            <ServiceMap
-              traceId={traceId}
-              traceTableSource={traceSourceData}
-              dateRange={dateRange}
-            />
-          </div>
-          <Divider my="md" />
           <Text size="sm" c="dark.2" my="sm">
             Event Details
           </Text>
