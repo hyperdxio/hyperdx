@@ -13,6 +13,7 @@ export type ServiceMapNodeData = ServiceAggregation & {
   dateRange: [Date, Date];
   source: TSource;
   maxErrorPercentage: number;
+  isSingleTrace?: boolean;
 };
 
 export default function ServiceMapNode(
@@ -28,6 +29,7 @@ export default function ServiceMapNode(
     source,
     dateRange,
     maxErrorPercentage,
+    isSingleTrace,
   } = data;
 
   const { backgroundColor, borderColor } = getNodeColors(
@@ -45,6 +47,7 @@ export default function ServiceMapNode(
           source={source}
           dateRange={dateRange}
           serviceName={serviceName}
+          isSingleTrace={isSingleTrace}
         />
       </NodeToolbar>
       <div className={`${styles.serviceNode}`}>

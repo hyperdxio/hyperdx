@@ -76,6 +76,7 @@ interface ServiceMapPresentationProps {
   error: Error | null;
   dateRange: [Date, Date];
   source: TSource;
+  isSingleTrace?: boolean;
 }
 
 function ServiceMapPresentation({
@@ -84,6 +85,7 @@ function ServiceMapPresentation({
   error,
   dateRange,
   source,
+  isSingleTrace,
 }: ServiceMapPresentationProps) {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -123,6 +125,7 @@ function ServiceMapPresentation({
           dateRange,
           source,
           maxErrorPercentage,
+          isSingleTrace,
         },
         position: { x: index * 150, y: 100 },
         type: 'service',
@@ -151,6 +154,7 @@ function ServiceMapPresentation({
                   source,
                   dateRange,
                   serviceName,
+                  isSingleTrace,
                 },
               };
             },
@@ -230,6 +234,7 @@ interface ServiceMapProps {
   traceTableSource: TSource;
   dateRange: [Date, Date];
   samplingFactor?: number;
+  isSingleTrace?: boolean;
 }
 
 export default function ServiceMap({
@@ -237,6 +242,7 @@ export default function ServiceMap({
   traceTableSource,
   dateRange,
   samplingFactor = 1,
+  isSingleTrace,
 }: ServiceMapProps) {
   const {
     isLoading,
@@ -267,6 +273,7 @@ export default function ServiceMap({
         error={error}
         dateRange={dateRange}
         source={traceTableSource}
+        isSingleTrace={isSingleTrace}
       />
     </ReactFlowProvider>
   );

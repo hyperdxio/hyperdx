@@ -15,6 +15,7 @@ export type ServiceMapEdgeData = {
   dateRange: [Date, Date];
   source: TSource;
   serviceName: string;
+  isSingleTrace?: boolean;
 };
 
 export default function ServiceMapEdge(
@@ -26,8 +27,14 @@ export default function ServiceMapEdge(
     return null;
   }
 
-  const { totalRequests, errorPercentage, dateRange, serviceName, source } =
-    props.data;
+  const {
+    totalRequests,
+    errorPercentage,
+    dateRange,
+    serviceName,
+    source,
+    isSingleTrace,
+  } = props.data;
 
   return (
     <>
@@ -44,6 +51,7 @@ export default function ServiceMapEdge(
           source={source}
           dateRange={dateRange}
           serviceName={serviceName}
+          isSingleTrace={isSingleTrace}
         />
       </EdgeToolbar>
     </>

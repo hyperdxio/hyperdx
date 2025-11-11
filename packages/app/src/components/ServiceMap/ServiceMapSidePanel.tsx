@@ -39,6 +39,7 @@ export default function ServiceMapSidePanel({
           traceTableSource={traceTableSource}
           traceId={traceId}
           dateRange={dateRange}
+          isSingleTrace
         />
       ) : null}
     </Stack>

@@ -12,12 +12,14 @@ export default function ServiceMapTooltip({
   source,
   dateRange,
   serviceName,
+  isSingleTrace,
 }: {
   totalRequests: number;
   errorPercentage: number;
   source: TSource;
   dateRange: [Date, Date];
   serviceName: string;
+  isSingleTrace?: boolean;
 }) {
   return (
     <div className={styles.toolbar}>
@@ -35,7 +37,8 @@ export default function ServiceMapTooltip({
         }
         className={styles.linkButton}
       >
-        {formatApproximateNumber(totalRequests)} request
+        {isSingleTrace ? totalRequests : formatApproximateNumber(totalRequests)}{' '}
+        request
         {totalRequests !== 1 ? 's' : ''}
       </UnstyledButton>
       {errorPercentage > 0 ? (
