@@ -1,13 +1,13 @@
 /* Dark Mode (default) */
 [data-mantine-color-scheme='dark'] {
   /* Backgrounds */
-  --color-bg-body: var(--mantine-color-dark-7);
-  --color-bg-surface: var(--mantine-color-dark-6);
+  --color-bg-body: var(--mantine-color-dark-8);
+  --color-bg-surface: var(--mantine-color-dark-5);
   --color-bg-muted: var(--mantine-color-dark-7);
-  --color-bg-muted-hover: var(--mantine-color-dark-5);
+  --color-bg-muted-hover: var(--mantine-color-dark-6);
   --color-bg-highlighted: var(--mantine-color-dark-5);
-  --color-bg-sidebar: var(--mantine-color-dark-7);
-  --color-bg-header: var(--mantine-color-dark-7);
+  --color-bg-sidebar: var(--mantine-color-dark-8);
+  --color-bg-header: var(--mantine-color-dark-8);
   --color-bg-hover: var(--mantine-color-dark-6);
   --color-bg-active: var(--mantine-color-dark-5);
   --color-bg-field: var(--mantine-color-dark-6);
@@ -70,6 +70,7 @@
   --color-bg-body: var(--mantine-color-white);
   --color-bg-surface: var(--mantine-color-gray-1);
   --color-bg-muted: #f6f6fa;
+  --color-bg-muted-hover: #e6e8ed;
   --color-bg-highlighted: #e6e8ed;
   --color-bg-sidebar: var(--mantine-color-white);
   --color-bg-header: var(--mantine-color-gray-1);
