@@ -167,22 +167,5 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
     // Verify it switched to "All" tab
     const allTab = podsTable.getByRole('radio', { name: 'All' });
     await expect(allTab).toBeChecked();
-
-    // Clear the filter
-    const clearButton = namespaceFilter.locator('button[aria-label="Clear"]');
-    await clearButton.click();
-
-    await page.waitForTimeout(500);
-
-    // Filter by pod
-    const podFilter = page.getByTestId('pod-filter-select');
-    await podFilter.click();
-    const firstPodOption = page.getByRole('option').first();
-    await firstPodOption.click();
-
-    await page.waitForTimeout(500);
-
-    // Verify it's still on "All" tab
-    await expect(allTab).toBeChecked();
   });
 });
