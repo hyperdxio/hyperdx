@@ -408,11 +408,7 @@ const HyperJson = ({
             [styles.withLineWrap]: lineWrap,
           })}
         >
-          {isEmpty ? (
-            <div className="text-slate-400">Empty</div>
-          ) : (
-            <TreeNode data={data} />
-          )}
+          {isEmpty ? <div>Empty</div> : <TreeNode data={data} />}
         </div>
       </HydrateAtoms>
     </Provider>

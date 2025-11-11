@@ -179,9 +179,9 @@ export const NetworkBody = ({
           )}
         </pre>
       ) : body === '' ? (
-        <div className="text-slate-400 px-4 py-3">{emptyMessage}</div>
+        <div className="px-4 py-3">{emptyMessage}</div>
       ) : (
-        <div className="text-slate-400 px-4 py-3">{notCollectedMessage}</div>
+        <div className="px-4 py-3">{notCollectedMessage}</div>
       )}
     </>
   );

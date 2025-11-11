@@ -166,7 +166,7 @@ const OnboardingChecklist = ({
           onClick={() => setIsCollapsed(!isCollapsed)}
         >
           <i
-            className={`bi bi-chevron-${isCollapsed ? 'down' : 'up'} text-slate-400`}
+            className={`bi bi-chevron-${isCollapsed ? 'down' : 'up'} `}
             style={{ fontSize: 12 }}
           />
         </ActionIcon>

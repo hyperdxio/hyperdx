@@ -43,13 +43,13 @@ const URLHoverCard = memo(({ url }: { url: string }) => {
           <table className="table fs-8 mb-0">
             <tr>
               <td>
-                <i className="bi bi-globe fs-8 text-slate-300"></i>
+                <i className="bi bi-globe fs-8 "></i>
               </td>
               <td>{parsedUrl?.host}</td>
             </tr>
             <tr>
               <td>
-                <i className="bi bi-link-45deg text-slate-300 fs-7"></i>
+                <i className="bi bi-link-45deg fs-7"></i>
               </td>
               <td>{parsedUrl?.pathname}</td>
             </tr>

@@ -117,7 +117,6 @@ export const NumberFormatForm: React.VFC<{
         <div style={{ marginTop: -6 }}>
           <Paper p="xs" py={4}>
             <div
-              className="text-slate-400"
               style={{
                 fontSize: 11,
               }}
@@ -130,9 +129,7 @@ export const NumberFormatForm: React.VFC<{
 
         {values.output !== 'time' && (
           <div>
-            <div className="text-slate-300 fs-8 mt-2 fw-bold mb-1">
-              Decimals
-            </div>
+            <div className="fs-8 mt-2 fw-bold mb-1">Decimals</div>
             <Slider
               mb="xl"
               min={0}

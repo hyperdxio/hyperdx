@@ -373,7 +373,7 @@ export function WebhookForm({
             />
           </div>,
           <Alert
-            icon={<i className="bi bi-info-circle-fill text-slate-400" />}
+            icon={<i className="bi bi-info-circle-fill " />}
             key="5"
             className="mb-4"
             color="gray"

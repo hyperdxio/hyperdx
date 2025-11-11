@@ -845,7 +845,7 @@ function Heatmap({
             }}
           />
           <div
-            className="px-2 py-1 fs-8 text-slate-200"
+            className="px-2 py-1 fs-8"
             style={{
               position: 'absolute',
               top: highlightedPoint.yCoord + 5,
@@ -885,7 +885,7 @@ function Heatmap({
       )}
       {selectingInfo != null && onFilter != null && (
         <div
-          className="px-2 py-1 text-slate-200 fs-8"
+          className="px-2 py-1 fs-8"
           style={{
             backdropFilter: 'blur(4px)',
             backgroundColor: 'rgba(#1A1D23 0.4)',

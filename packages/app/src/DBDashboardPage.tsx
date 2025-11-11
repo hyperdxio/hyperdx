@@ -241,9 +241,7 @@ const Tile = forwardRef(
                   size={5}
                   zIndex={1}
                   color={alertIndicatorColor}
-                  label={
-                    !alert && <span className="text-slate-400 fs-8">+</span>
-                  }
+                  label={!alert && <span className="fs-8">+</span>}
                   mr={4}
                 >
                   <Button

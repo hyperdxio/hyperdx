@@ -169,9 +169,7 @@ function TimelineXAxis({
           background: 'var(--color-bg-surface)',
         }}
       >
-        <div className="ms-2 text-slate-400 fs-8.5">
-          {renderMs(i * interval)}
-        </div>
+        <div className="ms-2 fs-8.5">{renderMs(i * interval)}</div>
       </div>,
     );
   }

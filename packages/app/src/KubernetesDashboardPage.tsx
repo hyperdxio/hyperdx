@@ -83,7 +83,7 @@ const Th = React.memo<{
       {children}
       {!!sort && (
         <i
-          className={`ps-1 text-slate-400 fs-8.5 bi bi-caret-${
+          className={`ps-1 fs-8.5 bi bi-caret-${
             sort === 'asc' ? 'up-fill' : 'down-fill'
           }`}
         />
@@ -350,13 +350,11 @@ export const InfraPodsStatusTable = ({
           {isLoading ? (
             <TableLoading />
           ) : isError ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               Unable to load pod metrics
             </div>
           ) : podsList.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
-              No pods found
-            </div>
+            <div className="p-4 text-center text-muted fs-8">No pods found</div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
               <Table.Thead className="muted-thead">
@@ -596,11 +594,11 @@ const NodesTable = ({
           {isLoading ? (
             <TableLoading />
           ) : isError ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               Unable to load nodes
             </div>
           ) : nodesList.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               No nodes found
             </div>
           ) : (
@@ -793,11 +791,11 @@ const NamespacesTable = ({
           {isLoading ? (
             <TableLoading />
           ) : isError ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               Unable to load namespaces
             </div>
           ) : namespacesList.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               No namespaces found
             </div>
           ) : (

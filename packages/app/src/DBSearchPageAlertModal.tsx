@@ -56,7 +56,7 @@ const SavedSearchAlertFormSchema = z
   .passthrough();
 
 const CHANNEL_ICONS = {
-  webhook: <i className="bi bi-slack fs-7 text-slate-400" />,
+  webhook: <i className="bi bi-slack fs-7 " />,
 };
 
 const AlertForm = ({
@@ -166,7 +166,7 @@ const AlertForm = ({
         </Paper>
         {groupBy && thresholdType === AlertThresholdType.BELOW && (
           <MantineAlert
-            icon={<i className="bi bi-info-circle-fill text-slate-400" />}
+            icon={<i className="bi bi-info-circle-fill " />}
             bg="dark.6"
             py="xs"
           >
@@ -417,10 +417,7 @@ export const DBSearchPageAlertModal = ({
             ))}
             <Tabs.Tab value="stage">
               <Group gap={4}>
-                <i
-                  className="bi bi-plus fs-5 text-slate-400"
-                  style={{ marginLeft: -8 }}
-                />
+                <i className="bi bi-plus fs-5 " style={{ marginLeft: -8 }} />
                 New Alert
               </Group>
             </Tabs.Tab>

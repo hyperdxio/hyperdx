@@ -22,7 +22,7 @@ const spanEventColumns: ColumnDef<SpanEventData>[] = [
     header: 'Timestamp',
     size: 120,
     cell: ({ row }) => (
-      <span className="text-slate-500">
+      <span className="text-muted">
         <FormatTime
           value={new Date(row.original.Timestamp).getTime()}
           format="withMs"
@@ -35,7 +35,7 @@ const spanEventColumns: ColumnDef<SpanEventData>[] = [
     header: 'Name',
     size: 180,
     cell: ({ row }) => (
-      <span className="text-slate-300 d-flex align-items-center gap-2">
+      <span className="d-flex align-items-center gap-2">
         {row.original.Name}
       </span>
     ),
@@ -53,7 +53,7 @@ const spanEventColumns: ColumnDef<SpanEventData>[] = [
           </Box>
         );
       }
-      return <span className="text-slate-500">Empty</span>;
+      return <span className="text-muted">Empty</span>;
     },
   },
 ];
@@ -93,7 +93,7 @@ export const SpanEventsSubpanel = ({
 
   if (!sortedEvents || sortedEvents.length === 0) {
     return (
-      <div className="p-3 text-slate-500 fs-7">
+      <div className="p-3 text-muted fs-7">
         No span events available for this trace
       </div>
     );

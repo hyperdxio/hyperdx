@@ -509,7 +509,7 @@ export default function SessionsPage() {
           <>
             {sessionSource && sessionSource.kind !== SourceKind.Session && (
               <Alert
-                icon={<i className="bi bi-info-circle-fill text-slate-400" />}
+                icon={<i className="bi bi-info-circle-fill " />}
                 color="gray"
                 py="xs"
                 mt="md"
@@ -543,7 +543,7 @@ function SessionSetupInstructions() {
   return (
     <>
       <Stack w={500} mx="auto" mt="xl" gap="xxs">
-        <i className="bi bi-laptop text-slate-600 fs-1"></i>
+        <i className="bi bi-laptop text-muted fs-1"></i>
         <Text c="gray" fw={500} size="xs">
           Instructions
         </Text>

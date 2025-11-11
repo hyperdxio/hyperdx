@@ -62,17 +62,17 @@ export const StacktraceFrame = ({
   return (
     <Group gap="xs" display="inline-flex">
       <div
-        className="text-slate-200 fs-8"
+        className=" fs-8"
         style={{
           opacity: isLoading ? 0.8 : 1,
           filter: isLoading ? 'blur(1px)' : 'none',
         }}
       >
         {filename}
-        <span className="text-slate-400">
+        <span>
           :{lineno}:{colno}
         </span>
-        <span className="text-slate-400">{' in '}</span>
+        <span>{' in '}</span>
         {functionName && (
           <span
             style={{
@@ -127,7 +127,7 @@ export const CollapsibleSection = ({
         onClick={() => setCollapsed(!collapsed)}
       >
         <i className={`bi bi-chevron-${collapsed ? 'right' : 'down'} me-2`}></i>
-        <div className="fs-7 text-slate-200">{title}</div>
+        <div className="fs-7">{title}</div>
       </div>
       {collapsed ? null : <div className="mb-4">{children}</div>}
     </div>
@@ -161,7 +161,7 @@ export const StacktraceValue = ({
         borderRight: '1px solid #ffffff20',
       }}
     >
-      <div className="text-slate-400">{label}</div>
+      <div>{label}</div>
       <div className="fs-7">{value}</div>
     </div>
   );
@@ -226,10 +226,7 @@ export const StacktraceRow = ({
               withArrow
               color="gray"
             >
-              <i
-                className="bi bi-box-seam text-slate-400 me-2"
-                title="in_app: false"
-              />
+              <i className="bi bi-box-seam me-2" title="in_app: false" />
             </Tooltip>
           )}
           {augmentedFrame && (
@@ -295,11 +292,7 @@ export const stacktraceColumns: ColumnDef<TStacktraceFrame>[] = [
  * Breadcrumbs
  */
 
-const Url = ({ url }: { url?: string }) => (
-  <span className="text-slate-300" title={url}>
-    {url}
-  </span>
-);
+const Url = ({ url }: { url?: string }) => <span title={url}>{url}</span>;
 
 const StatusChip = React.memo(({ status }: { status?: number }) => {
   if (!status) {
@@ -328,7 +321,7 @@ const LevelChip = React.memo(({ level }: { level?: string }) => {
     ? 'text-danger bg-danger'
     : level.includes('warn') || level.includes('warning')
       ? 'text-warning bg-warning'
-      : 'text-slate-300 bg-muted';
+      : 'bg-muted';
 
   return (
     <span
@@ -345,7 +338,7 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
     header: 'Category',
     size: 180,
     cell: ({ row }) => (
-      <span className="text-slate-300 d-flex align-items-center gap-2">
+      <span className="d-flex align-items-center gap-2">
         {row.original.category}
         {row.original.category === 'console' && (
           <LevelChip level={row.original.level} />
@@ -371,7 +364,7 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
         return (
           <div className="text-truncate">
             <span>{method} </span>
-            <span className="text-slate-300" title={url}>
+            <span title={url}>
               <Url url={url} />
             </span>
           </div>
@@ -383,11 +376,11 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
         const { from, to } = row.original.data;
         return (
           <div className="text-truncate">
-            <span className="text-slate-300" title={from}>
+            <span title={from}>
               <Url url={from} />
             </span>
             <span>{' → '}</span>
-            <span className="text-slate-300" title={to}>
+            <span title={to}>
               <Url url={to} />
             </span>
           </div>
@@ -398,10 +391,7 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
       if (row.original.category === 'console') {
         const { message } = row.original;
         return (
-          <pre
-            className="text-slate-300 mb-0 text-truncate fs-8"
-            title={message}
-          >
+          <pre className="mb-0 text-truncate fs-8" title={message}>
             {message}
           </pre>
         );
@@ -411,14 +401,14 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
         return <div className="text-truncate">{row.original.message}</div>;
       }
 
-      return <span className="text-slate-500">Empty</span>;
+      return <span className="text-muted">Empty</span>;
     },
   },
   {
     header: 'Timestamp',
     size: 220,
     cell: ({ row }) => (
-      <span className="text-slate-500">
+      <span className="text-muted">
         <FormatTime value={row.original.timestamp * 1000} format="withMs" />
       </span>
     ),

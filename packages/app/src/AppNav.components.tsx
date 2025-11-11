@@ -34,9 +34,7 @@ export const AppNavContext = React.createContext<{
 export const AppNavCloudBanner = () => {
   return (
     <div className="my-3 bg-muted rounded p-2 text-center">
-      <span className="text-slate-300 fs-8">
-        Ready to deploy on ClickHouse Cloud?
-      </span>
+      <span className="fs-8">Ready to deploy on ClickHouse Cloud?</span>
       <div className="mt-2 mb-2">
         <Link
           href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started#deploy-with-clickhouse-cloud"
@@ -141,7 +139,7 @@ export const AppNavUserMenu = ({
                     </Text>
                   </div>
                 </Tooltip>
-                <Icon name="chevron-right" className="fs-8 text-slate-400" />
+                <Icon name="chevron-right" className="fs-8 " />
               </>
             )}
           </Group>
@@ -237,12 +235,7 @@ export const AppNavHelpMenu = ({
         >
           <Menu.Target>
             <UnstyledButton data-testid="help-menu-trigger" w="100%">
-              <Group
-                align="center"
-                justify="center"
-                h={size}
-                className="text-slate-200 "
-              >
+              <Group align="center" justify="center" h={size}>
                 <Icon name="question-lg" />
               </Group>
             </UnstyledButton>

@@ -84,7 +84,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
           {alert.dashboard?.name}
           {tileName ? (
             <>
-              <i className="bi bi-chevron-right fs-8 mx-1 text-slate-400" />
+              <i className="bi bi-chevron-right fs-8 mx-1 " />
               {tileName}
             </>
           ) : null}
@@ -123,7 +123,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
       <>
         If value is {alert.thresholdType === 'above' ? 'over' : 'under'}{' '}
         <span className="fw-bold">{alert.threshold}</span>
-        <span className="text-slate-400">&middot;</span>
+        <span>&middot;</span>
       </>
     );
   }, [alert]);
@@ -172,16 +172,16 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
               className={styles.alertLink}
               title={linkTitle}
             >
-              <i className={`bi ${alertIcon} text-slate-200 me-2 fs-8`} />
+              <i className={`bi ${alertIcon} me-2 fs-8`} />
               {alertName}
             </Link>
           </div>
-          <div className="text-slate-400 fs-8 d-flex gap-2">
+          <div className="fs-8 d-flex gap-2">
             {alertType}
             {notificationMethod}
             {alert.createdBy && (
               <>
-                <span className="text-slate-400">&middot;</span>
+                <span>&middot;</span>
                 <span>
                   Created by {alert.createdBy.name || alert.createdBy.email}
                 </span>
@@ -219,7 +219,7 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
           <i className="bi bi-check-lg"></i> OK
         </div>
         {okData.length === 0 && (
-          <div className="text-center text-slate-400 my-4 fs-8">No alerts</div>
+          <div className="text-center my-4 fs-8">No alerts</div>
         )}
         {okData.map((alert, index) => (
           <AlertDetails key={index} alert={alert} />
@@ -243,7 +243,7 @@ export default function AlertsPage() {
       <div className="my-4">
         <Container maw={1500}>
           <Alert
-            icon={<i className="bi bi-info-circle-fill text-slate-400" />}
+            icon={<i className="bi bi-info-circle-fill " />}
             color="gray"
             py="xs"
             mt="md"
@@ -259,19 +259,15 @@ export default function AlertsPage() {
             from dashboard charts and saved searches.
           </Alert>
           {isLoading ? (
-            <div className="text-center text-slate-400 my-4 fs-8">
-              Loading...
-            </div>
+            <div className="text-center my-4 fs-8">Loading...</div>
           ) : isError ? (
-            <div className="text-center text-slate-400 my-4 fs-8">Error</div>
+            <div className="text-center my-4 fs-8">Error</div>
           ) : alerts?.length ? (
             <>
               <AlertCardList alerts={alerts} />
             </>
           ) : (
-            <div className="text-center text-slate-400 my-4 fs-8">
-              No alerts created yet
-            </div>
+            <div className="text-center my-4 fs-8">No alerts created yet</div>
           )}
         </Container>
       </div>

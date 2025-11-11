@@ -124,10 +124,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
       <LandingHeader activeKey={`/${action}`} fixed />
       <div className="d-flex justify-content-center align-items-center vh-100">
         <div style={{ width: '26rem' }}>
-          <div
-            className="text-center mb-2 fs-5 text-slate-300"
-            style={{ marginTop: -30 }}
-          >
+          <div className="text-center mb-2 fs-5 " style={{ marginTop: -30 }}>
             {config.IS_OSS && isRegister
               ? 'Setup '
               : isRegister
@@ -136,7 +133,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
             <span className="text-success fw-bold">HyperDX</span>
           </div>
           {action === 'login' && (
-            <div className="text-center mb-2 text-slate-300">Welcome back!</div>
+            <div className="text-center mb-2 ">Welcome back!</div>
           )}
           {isRegister && config.IS_OSS === true && (
             <div className="text-center mb-2 text-muted">
@@ -243,19 +240,13 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
               )}
 
               {isRegister && config.IS_OSS === false && (
-                <div
-                  data-test-id="login-link"
-                  className="text-center fs-8 text-slate-400"
-                >
+                <div data-test-id="login-link" className="text-center fs-8 ">
                   Already have an account? <Link href="/login">Log in</Link>{' '}
                   instead.
                 </div>
               )}
               {action === 'login' && config.IS_OSS === false && (
-                <div
-                  data-test-id="register-link"
-                  className="text-center fs-8 text-slate-400"
-                >
+                <div data-test-id="register-link" className="text-center fs-8 ">
                   Don{"'"}t have an account yet?{' '}
                   <Link href="/register">Register</Link> instead.
                 </div>

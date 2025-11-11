@@ -71,7 +71,7 @@ function InviteTeamMemberForm({
           placeholder="you@company.com"
           withAsterisk={false}
         />
-        <div className="text-slate-300 fs-8">
+        <div className="fs-8">
           The invite link will automatically expire after 30 days.
         </div>
         <Button variant="light" type="submit" disabled={!email || isSubmitting}>
@@ -459,7 +459,7 @@ function TeamMembersSection() {
       <Card>
         <Card.Section withBorder py="sm" px="lg">
           <Group align="center" justify="space-between">
-            <div className="text-slate-300 fs-7">Team Members</div>
+            <div className="fs-7">Team Members</div>
             <Button
               variant="light"
               leftSection={<i className="bi bi-person-plus-fill" />}
@@ -490,7 +490,7 @@ function TeamMembersSection() {
                       <Group mt={4} fz="xs">
                         <div>{member.email}</div>
                         {member.hasPasswordAuth && (
-                          <div className="text-slate-300">
+                          <div>
                             <i className="bi bi-lock-fill" /> Password Auth
                           </div>
                         )}
@@ -888,12 +888,12 @@ function TeamNameSection() {
           </form>
         ) : (
           <Group gap="lg">
-            <div className="text-slate-300 fs-7">{team.name}</div>
+            <div className="fs-7">{team.name}</div>
             {hasAdminAccess && (
               <Button
                 size="xs"
                 variant="default"
-                leftSection={<i className="bi bi-pencil text-slate-300" />}
+                leftSection={<i className="bi bi-pencil " />}
                 onClick={() => {
                   setIsEditingTeamName(true);
                 }}
@@ -1087,7 +1087,7 @@ function ClickhouseSettingForm({
             <Button
               size="xs"
               variant="default"
-              leftSection={<i className="bi bi-pencil text-slate-300" />}
+              leftSection={<i className="bi bi-pencil " />}
               onClick={() => setIsEditing(true)}
             >
               Change
@@ -1174,7 +1174,7 @@ const APIKeyCopyButton = ({
         variant={copied ? 'light' : 'default'}
         color="gray"
         rightSection={
-          <div className="text-slate-300 ms-2 text-nowrap">
+          <div className="ms-2 text-nowrap">
             {copied ? (
               <i className="bi bi-check-lg me-2" />
             ) : (

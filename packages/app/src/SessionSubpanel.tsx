@@ -607,7 +607,7 @@ export default function SessionSubpanel({
                 {showRelativeTime ? (
                   <>
                     {formatmmss((focus?.ts ?? 0) - minTs)}
-                    <span className="fw-normal text-slate-300 ms-2">
+                    <span className="fw-normal ms-2">
                       {' / '}
                       {formatmmss(maxTs - minTs)}
                     </span>
