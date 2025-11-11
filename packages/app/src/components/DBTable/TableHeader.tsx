@@ -9,6 +9,8 @@ import { flexRender, Header } from '@tanstack/react-table';
 
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 
+import styles from '../Table.module.scss';
+
 export default function TableHeader({
   isLast,
   header,
@@ -83,7 +85,7 @@ export default function TableHeader({
               onMouseDown={header.getResizeHandler()}
               onTouchStart={header.getResizeHandler()}
               className={cx(
-                `resizer text-cursor-col-resize`,
+                `resizer ${styles.cursorColResize}`,
                 header.column.getIsResizing() && 'isResizing',
               )}
             >

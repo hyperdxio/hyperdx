@@ -89,7 +89,7 @@ function BreadcrumbNavigation({
             onClick={() => handleBreadcrumbItemClick(index)}
             style={{ textDecoration: 'none' }}
           >
-            <Text size="sm" c="blue.4" style={{ cursor: 'pointer' }}>
+            <Text size="sm" c="blue" style={{ cursor: 'pointer' }}>
               {index === 0 ? 'Original Event' : crumb.label}
             </Text>
           </UnstyledButton>

@@ -126,3 +126,9 @@ $horizontalPadding: 12px;
     border-color: var(--color-border);
   }
 }
+
+.cursorColResize {
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+}

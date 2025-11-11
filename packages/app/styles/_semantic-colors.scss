@@ -1,7 +1,6 @@
 :root {
   /* Semantic Highlights (same for both themes) */
   --color-accent: var(--mantine-color-blue-5);
-  --color-success: var(--mantine-color-green-5);
   --color-warning: var(--mantine-color-yellow-5);
   --color-error: var(--mantine-color-red-5);
 }
@@ -20,6 +19,7 @@
   --color-bg-field: var(--mantine-color-dark-6);
   --color-bg-field-hover: var(--mantine-color-dark-5);
   --color-bg-neutral: var(--mantine-color-dark-4);
+  --color-bg-success: var(--mantine-color-green-5);
 
   /* Borders & Dividers */
   --color-border: var(--mantine-color-dark-5);
@@ -32,7 +32,7 @@
   --color-text-muted: var(--mantine-color-dark-2);
   --color-text-muted-hover: var(--mantine-color-dark-1);
   --color-text-inverse: var(--mantine-color-dark-9);
-  --color-text-success: var(--mantine-color-dark-0);
+  --color-text-success: var(--mantine-color-green-4);
   --color-text-success-hover: var(--mantine-color-green-3);
   --color-text-danger: var(--mantine-color-red-4);
 
@@ -85,6 +85,7 @@
   --color-bg-field: var(--color-bg-muted);
   --color-bg-field-hover: var(--mantine-color-gray-1);
   --color-bg-neutral: var(--mantine-color-gray-5);
+  --color-bg-success: var(--mantine-color-green-8);
 
   /* Borders & Dividers - inverted */
   --color-border: var(--mantine-color-gray-2);
@@ -119,10 +120,10 @@
   --color-bg-kbd: var(--mantine-color-dark-0);
 
   /* JSON Syntax Highlighting */
-  --color-json-string: var(--mantine-color-green-7);
+  --color-json-string: var(--mantine-color-green-9);
   --color-json-number: var(--mantine-color-orange-7);
   --color-json-boolean: var(--mantine-color-orange-7);
-  --color-json-key: var(--mantine-color-violet-7);
+  --color-json-key: var(--mantine-color-violet-9);
   --color-json-object: var(--mantine-color-green-7);
   --color-json-array: var(--mantine-color-green-7);
   --color-json-punctuation: var(--mantine-color-dark-5);
