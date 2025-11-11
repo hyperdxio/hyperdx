@@ -85,11 +85,10 @@ export default function SessionSidePanel({
       styles={{
         body: {
           padding: 0,
-          background: '#0F1216',
           height: '100vh',
         },
       }}
-      className="border-start border-dark"
+      className="border-start"
     >
       <ZIndexContext.Provider value={zIndex}>
         <div className="d-flex flex-column h-100">
@@ -111,7 +110,7 @@ export default function SessionSidePanel({
                   <span>{session?.sessionCount} Events</span>
                 </div>
               </div>
-              <div className="d-flex">
+              <div className="d-flex gap-2">
                 <CopyToClipboard
                   text={window.location.href}
                   onCopy={() => {

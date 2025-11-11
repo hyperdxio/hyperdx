@@ -16,7 +16,9 @@
 }
 
 .bg-muted-hover {
-  background-color: var(--color-bg-muted-hover);
+  &:hover {
+    background-color: var(--color-bg-muted);
+  }
 }
 
 .bg-highlighted {

@@ -41,7 +41,7 @@
 
 .eventRowError {
   .eventRowIcon {
-    background: var(--color-text-danger);
+    background: var(--color-bg-danger);
   }
 
   .eventRowTitle {
@@ -51,7 +51,7 @@
 
 .eventRowSuccess {
   .eventRowIcon {
-    background: var(--color-text-success);
+    background: var(--color-bg-success);
 
     i {
       color: #000;
@@ -69,7 +69,7 @@
 }
 
 .eventRowIcon {
-  background: var(--color-text);
+  background: var(--color-bg-neutral);
   width: 26px;
   height: 26px;
   display: flex;
@@ -98,7 +98,7 @@
   border-radius: 2px;
 
   &:hover {
-    background: var(--color-bg-hover);
+    background: var(--color-bg-highlighted);
   }
 }
 
@@ -111,7 +111,7 @@
   align-self: center;
 
   &:hover {
-    background: var(--color-bg-muted);
+    background: var(--color-bg-highlighted);
   }
 }
 

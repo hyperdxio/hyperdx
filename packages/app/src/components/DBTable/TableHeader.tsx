@@ -22,7 +22,7 @@ export default function TableHeader({
 }) {
   return (
     <th
-      className="overflow-hidden bg-muted"
+      className="overflow-hidden"
       key={header.id}
       colSpan={header.colSpan}
       style={{

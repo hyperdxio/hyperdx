@@ -197,7 +197,10 @@ export const Table = ({
 
   return (
     <div className="overflow-auto h-100 fs-8" ref={tableContainerRef}>
-      <table className="w-100" style={{ tableLayout: 'fixed' }}>
+      <table
+        className="w-100"
+        style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}
+      >
         <thead
           style={{
             background: 'inherit',
@@ -225,7 +228,7 @@ export const Table = ({
                             <CsvExportButton
                               data={csvData}
                               filename="HyperDX_table_results"
-                              className="fs-8 text-muted-hover ms-2"
+                              className="fs-8 ms-2"
                               title="Download table as CSV"
                             >
                               <i className="bi bi-download" />
