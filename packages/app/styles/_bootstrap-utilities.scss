@@ -1,6 +1,20 @@
 /* stylelint-disable */
 // Custom layout utility classes to replace Bootstrap
-// Provides classes like d-flex, flex-column, m-*, p-*, etc.
+// 
+// WHY THIS FILE EXISTS:
+// This project migrated from Bootstrap to Mantine UI components, but Bootstrap utility
+// classes (d-flex, p-3, m-2, etc.) are used extensively throughout the codebase in 
+// hundreds of components. Rather than refactoring all components to use Mantine's prop-based
+// styling system (which would be a massive undertaking), we've recreated the most commonly 
+// used Bootstrap utilities here using Mantine's spacing variables.
+//
+// FUTURE CONSIDERATION:
+// As components are refactored, prefer using Mantine's native props:
+// - <Box p="md" /> instead of <div className="p-3" />
+// - <Flex gap="sm" /> instead of <div className="d-flex gap-2" />
+// - <Stack /> instead of <div className="d-flex flex-column" />
+//
+// This file provides classes like d-flex, flex-column, m-*, p-*, etc.
 
 // Display utilities
 .d-none {

@@ -224,13 +224,13 @@ const makeTheme = ({
         if (props.variant === 'subtle') {
           return {
             root: {
-              backgroundColor: 'transparent !important',
-              color: `${theme.colors.gray[0]} !important`,
+              backgroundColor: 'transparent',
+              color: 'var(--color-text)',
               '&:hover': {
-                backgroundColor: `${theme.colors.dark[6]} !important`,
+                backgroundColor: 'var(--color-bg-hover)',
               },
               '&:active': {
-                backgroundColor: `${theme.colors.dark[5]} !important`,
+                backgroundColor: 'var(--color-bg-muted)',
               },
             },
           };
@@ -240,14 +240,14 @@ const makeTheme = ({
         if (props.variant === 'default') {
           return {
             root: {
-              backgroundColor: `${theme.colors.dark[6]} !important`,
-              color: `${theme.colors.gray[0]} !important`,
-              border: 'none !important',
+              backgroundColor: 'var(--color-bg-hover)',
+              color: 'var(--color-text)',
+              border: 'none',
               '&:hover': {
-                backgroundColor: `${theme.colors.dark[5]} !important`,
+                backgroundColor: 'var(--color-bg-muted)',
               },
               '&:active': {
-                backgroundColor: `${theme.colors.dark[4]} !important`,
+                backgroundColor: 'var(--color-bg-surface)',
               },
             },
           };
