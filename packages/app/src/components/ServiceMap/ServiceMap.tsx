@@ -15,6 +15,8 @@ import {
   NodeChange,
   Position,
   ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
 } from '@xyflow/react';
 
 import useServiceMap, { ServiceAggregation } from '@/hooks/useServiceMap';
@@ -85,6 +87,12 @@ function ServiceMapPresentation({
 }: ServiceMapPresentationProps) {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
+  const { fitView } = useReactFlow();
+
+  // Fit the data to the viewport whenever input service information changes
+  useEffect(() => {
+    fitView();
+  }, [fitView, services]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node>[]) =>
@@ -252,12 +260,14 @@ export default function ServiceMap({
   }, [error]);
 
   return (
-    <ServiceMapPresentation
-      services={services}
-      isLoading={isLoading}
-      error={error}
-      dateRange={dateRange}
-      source={traceTableSource}
-    />
+    <ReactFlowProvider>
+      <ServiceMapPresentation
+        services={services}
+        isLoading={isLoading}
+        error={error}
+        dateRange={dateRange}
+        source={traceTableSource}
+      />
+    </ReactFlowProvider>
   );
 }
