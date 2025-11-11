@@ -167,9 +167,6 @@ export const InfraPodsStatusTable = ({
             aggFn: 'last_value',
             where,
             groupBy,
-            ...(sortState.column === 'phase' && {
-              sortOrder: sortState.order,
-            }),
           },
           {
             table: 'metrics',
@@ -178,9 +175,6 @@ export const InfraPodsStatusTable = ({
             aggFn: 'last_value',
             where,
             groupBy,
-            ...(sortState.column === 'restarts' && {
-              sortOrder: sortState.order,
-            }),
           },
           {
             table: 'metrics',
@@ -189,9 +183,6 @@ export const InfraPodsStatusTable = ({
             aggFn: undefined,
             where,
             groupBy,
-            ...(sortState.column === 'uptime' && {
-              sortOrder: sortState.order,
-            }),
           },
           {
             table: 'metrics',
@@ -208,9 +199,6 @@ export const InfraPodsStatusTable = ({
             aggFn: 'avg',
             where,
             groupBy,
-            ...(sortState.column === 'cpuLimit' && {
-              sortOrder: sortState.order,
-            }),
           },
           {
             table: 'metrics',
@@ -227,9 +215,6 @@ export const InfraPodsStatusTable = ({
             aggFn: 'avg',
             where,
             groupBy,
-            ...(sortState.column === 'memLimit' && {
-              sortOrder: sortState.order,
-            }),
           },
         ],
         dateRange,
@@ -242,13 +227,15 @@ export const InfraPodsStatusTable = ({
     limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
   });
 
+  const resourceAttr = metricSource.resourceAttributesExpression;
+
   // TODO: Use useTable
   const podsList = React.useMemo(() => {
     if (!data) {
       return [];
     }
 
-    // Filter first to reduce the number of objects we create
+    // Filter by phase
     const phaseFilteredData = data.data.filter((row: any) => {
       if (phaseFilter === 'all') {
         return true;
@@ -258,21 +245,53 @@ export const InfraPodsStatusTable = ({
       );
     });
 
-    // Transform only the filtered data
-    return phaseFilteredData.map((row: any, index: number) => ({
-      id: `pod-${index}`, // Use index-based ID instead of random makeId()
-      name: row["arrayElement(ResourceAttributes, 'k8s.pod.name')"],
-      namespace: row["arrayElement(ResourceAttributes, 'k8s.namespace.name')"],
-      node: row["arrayElement(ResourceAttributes, 'k8s.node.name')"],
-      restarts: row['last_value(k8s.container.restarts)'],
-      uptime: row['undefined(k8s.pod.uptime)'],
-      cpuAvg: row['avg(k8s.pod.cpu.utilization)'],
-      cpuLimitUtilization: row['avg(k8s.pod.cpu_limit_utilization)'],
-      memAvg: row['avg(k8s.pod.memory.usage)'],
-      memLimitUtilization: row['avg(k8s.pod.memory_limit_utilization)'],
-      phase: row['last_value(k8s.pod.phase)'],
-    }));
-  }, [data, phaseFilter]);
+    // Transform the filtered data
+    const transformedData = phaseFilteredData.map(
+      (row: any, index: number) => ({
+        id: `pod-${index}`, // Use index-based ID instead of random makeId()
+        name: row[`arrayElement(${resourceAttr}, 'k8s.pod.name')`],
+        namespace: row[`arrayElement(${resourceAttr}, 'k8s.namespace.name')`],
+        node: row[`arrayElement(${resourceAttr}, 'k8s.node.name')`],
+        restarts: row['last_value(k8s.container.restarts)'],
+        uptime: row['undefined(k8s.pod.uptime)'],
+        cpuAvg: row['avg(k8s.pod.cpu.utilization)'],
+        cpuLimitUtilization: row['avg(k8s.pod.cpu_limit_utilization)'],
+        memAvg: row['avg(k8s.pod.memory.usage)'],
+        memLimitUtilization: row['avg(k8s.pod.memory_limit_utilization)'],
+        phase: row['last_value(k8s.pod.phase)'],
+      }),
+    );
+
+    // Sort the data client-side
+    return transformedData.sort((a, b) => {
+      const getValue = (pod: (typeof transformedData)[0]) => {
+        switch (sortState.column) {
+          case 'phase':
+            return pod.phase;
+          case 'restarts':
+            return pod.restarts;
+          case 'uptime':
+            return pod.uptime;
+          case 'cpuLimit':
+            return pod.cpuLimitUtilization;
+          case 'memLimit':
+            return pod.memLimitUtilization;
+        }
+      };
+
+      const aValue = getValue(a);
+      const bValue = getValue(b);
+
+      // Handle null/undefined - push to end
+      if (aValue == null && bValue == null) return 0;
+      if (aValue == null) return 1;
+      if (bValue == null) return -1;
+
+      // Compare and apply sort order
+      const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+      return sortState.order === 'asc' ? comparison : -comparison;
+    });
+  }, [data, phaseFilter, sortState, resourceAttr]);
 
   // Check if we're hitting the fetch limit (indicating there might be more data)
   const isAtFetchLimit = data?.data && data.data.length >= TABLE_FETCH_LIMIT;
@@ -563,6 +582,8 @@ const NodesTable = ({
     return window.location.pathname + '?' + searchParams.toString();
   }, []);
 
+  const resourceAttr = metricSource.resourceAttributesExpression;
+
   const nodesList = React.useMemo(() => {
     if (!data) {
       return [];
@@ -570,14 +591,14 @@ const NodesTable = ({
 
     return data.data.map((row: any) => {
       return {
-        name: row["arrayElement(ResourceAttributes, 'k8s.node.name')"],
+        name: row[`arrayElement(${resourceAttr}, 'k8s.node.name')`],
         cpuAvg: row['avg(k8s.node.cpu.utilization)'],
         memAvg: row['avg(k8s.node.memory.usage)'],
         ready: row['avg(k8s.node.condition_ready)'],
         uptime: row['undefined(k8s.node.uptime)'],
       };
     });
-  }, [data]);
+  }, [data, resourceAttr]);
 
   const {
     containerRef: nodesContainerRef,
@@ -755,6 +776,8 @@ const NamespacesTable = ({
     limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
   });
 
+  const resourceAttr = metricSource.resourceAttributesExpression;
+
   const namespacesList = React.useMemo(() => {
     if (!data) {
       return [];
@@ -762,13 +785,13 @@ const NamespacesTable = ({
 
     return data.data.map((row: any) => {
       return {
-        name: row["arrayElement(ResourceAttributes, 'k8s.namespace.name')"],
+        name: row[`arrayElement(${resourceAttr}, 'k8s.namespace.name')`],
         cpuAvg: row['sum(k8s.pod.cpu.utilization)'],
         memAvg: row['sum(k8s.pod.memory.usage)'],
         phase: row['last_value(k8s.namespace.phase)'],
       };
     });
-  }, [data]);
+  }, [data, resourceAttr]);
 
   const {
     containerRef: namespacesContainerRef,
