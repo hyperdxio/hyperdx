@@ -1,5 +1,6 @@
 // Custom utility classes for HyperDX
-// These supplement Bootstrap utilities with Mantine-based styling
+// These are HyperDX-specific utilities using semantic color tokens
+// Layout utilities (spacing, display, flexbox, etc.) are in _bootstrap-utilities.scss
 
 // Background utilities
 .bg-surface {
@@ -122,93 +123,4 @@
 
 .fw-600 {
   font-weight: 600 !important;
-}
-
-// Padding utilities (to supplement Bootstrap if needed)
-.p-0 {
-  padding: 0 !important;
-}
-
-.p-2 {
-  padding: var(--mantine-spacing-sm) !important;
-}
-
-.p-3 {
-  padding: var(--mantine-spacing-md) !important;
-}
-
-.px-3 {
-  padding-left: var(--mantine-spacing-md) !important;
-  padding-right: var(--mantine-spacing-md) !important;
-}
-
-.py-2 {
-  padding-top: var(--mantine-spacing-sm) !important;
-  padding-bottom: var(--mantine-spacing-sm) !important;
-}
-
-.pt-2 {
-  padding-top: var(--mantine-spacing-sm) !important;
-}
-
-.pb-1 {
-  padding-bottom: var(--mantine-spacing-xs) !important;
-}
-
-// Margin utilities
-.m-0 {
-  margin: 0 !important;
-}
-
-.me-1 {
-  margin-right: var(--mantine-spacing-xs) !important;
-}
-
-.me-2 {
-  margin-right: var(--mantine-spacing-sm) !important;
-}
-
-.mb-2 {
-  margin-bottom: var(--mantine-spacing-sm) !important;
-}
-
-.mt-2 {
-  margin-top: var(--mantine-spacing-sm) !important;
-}
-
-// Width utilities
-.w-100 {
-  width: 100% !important;
-}
-
-.w-auto {
-  width: auto !important;
-}
-
-// Display utilities (supplement Bootstrap)
-.d-block {
-  display: block !important;
-}
-
-.d-flex {
-  display: flex !important;
-}
-
-// Text alignment
-.text-start {
-  text-align: left !important;
-}
-
-.text-center {
-  text-align: center !important;
-}
-
-.text-end {
-  text-align: right !important;
-}
-
-.text-truncate {
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
 }
