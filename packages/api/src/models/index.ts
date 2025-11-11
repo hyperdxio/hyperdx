@@ -35,6 +35,9 @@ mongoose.connection.on('reconnectFailed', () => {
 });
 
 export const connectDB = async () => {
+  // breadcrumbs for future greppers: aws4 is included as a dependency of the api so that
+  // users can use AWS auth in their mongo connection string here, e.g.
+  // mongodb+srv://blahblah...mongodb.net/hyperdx?authSource=%24external&authMechanism=MONGODB-AWS
   if (config.MONGO_URI == null) {
     throw new Error('MONGO_URI is not set');
   }

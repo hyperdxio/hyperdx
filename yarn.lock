@@ -4332,6 +4332,7 @@ __metadata:
     "@opentelemetry/host-metrics": "npm:^0.35.5"
     "@opentelemetry/sdk-metrics": "npm:^1.30.1"
     "@slack/webhook": "npm:^6.1.0"
+    "@types/aws4": "npm:^1"
     "@types/compression": "npm:^1.7.3"
     "@types/cors": "npm:^2.8.14"
     "@types/express": "npm:^4.17.13"
@@ -4347,6 +4348,7 @@ __metadata:
     "@types/swagger-jsdoc": "npm:^6"
     "@types/uuid": "npm:^8.3.4"
     ai: "npm:5.0.59"
+    aws4: "npm:^1.13.2"
     chrono-node: "npm:^2.9.0"
     compression: "npm:^1.7.4"
     connect-mongo: "npm:^4.6.0"
@@ -9473,6 +9475,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/aws4@npm:^1":
+  version: 1.11.6
+  resolution: "@types/aws4@npm:1.11.6"
+  dependencies:
+    "@types/node": "npm:*"
+  checksum: 10c0/abb84d0dad0b791124389b1bfd2c4c2813077af162cac128f1eb0793f0d4fe3084aa1168f62b41e39f80730aa45b95a9a0034f85c254bebf2194721fe02bc9ad
+  languageName: node
+  linkType: hard
+
 "@types/babel__core@npm:^7.1.14":
   version: 7.20.0
   resolution: "@types/babel__core@npm:7.20.0"
@@ -12089,6 +12100,13 @@ __metadata:
   dependencies:
     possible-typed-array-names: "npm:^1.0.0"
   checksum: 10c0/d07226ef4f87daa01bd0fe80f8f310982e345f372926da2e5296aecc25c41cab440916bbaa4c5e1034b453af3392f67df5961124e4b586df1e99793a1374bdb2
+  languageName: node
+  linkType: hard
+
+"aws4@npm:^1.13.2":
+  version: 1.13.2
+  resolution: "aws4@npm:1.13.2"
+  checksum: 10c0/c993d0d186d699f685d73113733695d648ec7d4b301aba2e2a559d0cd9c1c902308cc52f4095e1396b23fddbc35113644e7f0a6a32753636306e41e3ed6f1e79
   languageName: node
   linkType: hard
 
