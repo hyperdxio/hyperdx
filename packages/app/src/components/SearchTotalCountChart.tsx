@@ -63,7 +63,7 @@ export default function SearchTotalCountChart({
       {isLoading ? (
         <span className="effect-pulse">&middot;&middot;&middot; Results</span>
       ) : totalCount !== null && !isError ? (
-        `${totalCount} Results`
+        `${totalCount?.toLocaleString()} Results`
       ) : (
         '0 Results'
       )}
