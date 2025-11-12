@@ -1081,7 +1081,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <IconFilterEdit strokeWidth={1} />
           </Button>
         </Tooltip>
-        <Button variant="outline" type="submit">
+        <Button
+          data-testid="search-submit-button"
+          variant="outline"
+          type="submit"
+        >
           <IconPlayerPlayFilled size={16} />
         </Button>
       </Flex>
