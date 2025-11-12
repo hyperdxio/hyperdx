@@ -428,37 +428,38 @@
   margin-bottom: auto !important;
 }
 
-// Padding utilities
+// Padding utilities (using Mantine spacing as base unit: 1rem)
+// Bootstrap scale: 0.25rem increments (p-1 = 0.25rem, p-2 = 0.5rem, etc.)
 .p-0 {
   padding: 0 !important;
 }
 
 .p-0\.5 {
-  padding: .125rem !important;
+  padding: calc(var(--mantine-spacing-md) * 0.125) !important; // 0.125rem
 }
 
 .p-1 {
-  padding: .25rem !important;
+  padding: calc(var(--mantine-spacing-md) * 0.25) !important; // 0.25rem
 }
 
 .p-2 {
-  padding: .5rem !important;
+  padding: calc(var(--mantine-spacing-md) * 0.5) !important; // 0.5rem
 }
 
 .p-3 {
-  padding: 1rem !important;
+  padding: var(--mantine-spacing-md) !important; // 1rem
 }
 
 .p-4 {
-  padding: 1.5rem !important;
+  padding: calc(var(--mantine-spacing-md) * 1.5) !important; // 1.5rem
 }
 
 .p-4\.5 {
-  padding: 2rem !important;
+  padding: calc(var(--mantine-spacing-md) * 2) !important; // 2rem
 }
 
 .p-5 {
-  padding: 3rem !important;
+  padding: calc(var(--mantine-spacing-md) * 3) !important; // 3rem
 }
 
 // Padding bottom
@@ -467,31 +468,31 @@
 }
 
 .pb-0\.5 {
-    padding-bottom: .125rem!important
+    padding-bottom: calc(var(--mantine-spacing-md) * 0.125)!important
 }
 
 .pb-1 {
-    padding-bottom: .25rem!important
+    padding-bottom: calc(var(--mantine-spacing-md) * 0.25)!important
 }
 
 .pb-2 {
-    padding-bottom: .5rem!important
+    padding-bottom: calc(var(--mantine-spacing-md) * 0.5)!important
 }
 
 .pb-3 {
-    padding-bottom: 1rem!important
+    padding-bottom: var(--mantine-spacing-md)!important
 }
 
 .pb-4 {
-    padding-bottom: 1.5rem!important
+    padding-bottom: calc(var(--mantine-spacing-md) * 1.5)!important
 }
 
 .pb-4\.5 {
-    padding-bottom: 2rem!important
+    padding-bottom: calc(var(--mantine-spacing-md) * 2)!important
 }
 
 .pb-5 {
-    padding-bottom: 3rem!important
+    padding-bottom: calc(var(--mantine-spacing-md) * 3)!important
 }
 
 // Padding top
@@ -500,31 +501,31 @@
 }
 
 .pt-0\.5 {
-  padding-top: .125rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 0.125) !important;
 }
 
 .pt-1 {
-  padding-top: .25rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 0.25) !important;
 }
 
 .pt-2 {
-  padding-top: .5rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 0.5) !important;
 }
 
 .pt-3 {
-  padding-top: 1rem !important;
+  padding-top: var(--mantine-spacing-md) !important;
 }
 
 .pt-4 {
-  padding-top: 1.5rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 1.5) !important;
 }
 
 .pt-4\.5 {
-  padding-top: 2rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 2) !important;
 }
 
 .pt-5 {
-  padding-top: 3rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 3) !important;
 }
 
 // Padding start (left in LTR)
@@ -533,31 +534,31 @@
 }
 
 .ps-0\.5 {
-  padding-inline-start: .125rem !important;
+  padding-inline-start: calc(var(--mantine-spacing-md) * 0.125) !important;
 }
 
 .ps-1 {
-  padding-inline-start: .25rem !important;
+  padding-inline-start: calc(var(--mantine-spacing-md) * 0.25) !important;
 }
 
 .ps-2 {
-  padding-inline-start: .5rem !important;
+  padding-inline-start: calc(var(--mantine-spacing-md) * 0.5) !important;
 }
 
 .ps-3 {
-  padding-inline-start: 1rem !important;
+  padding-inline-start: var(--mantine-spacing-md) !important;
 }
 
 .ps-4 {
-  padding-inline-start: 1.5rem !important;
+  padding-inline-start: calc(var(--mantine-spacing-md) * 1.5) !important;
 }
 
 .ps-4\.5 {
-  padding-inline-start: 2rem !important;
+  padding-inline-start: calc(var(--mantine-spacing-md) * 2) !important;
 }
 
 .ps-5 {
-  padding-inline-start: 3rem !important;
+  padding-inline-start: calc(var(--mantine-spacing-md) * 3) !important;
 }
 
 // Padding end (right in LTR)
@@ -566,31 +567,31 @@
 }
 
 .pe-0\.5 {
-  padding-inline-end: .125rem !important;
+  padding-inline-end: calc(var(--mantine-spacing-md) * 0.125) !important;
 }
 
 .pe-1 {
-  padding-inline-end: .25rem !important;
+  padding-inline-end: calc(var(--mantine-spacing-md) * 0.25) !important;
 }
 
 .pe-2 {
-  padding-inline-end: .5rem !important;
+  padding-inline-end: calc(var(--mantine-spacing-md) * 0.5) !important;
 }
 
 .pe-3 {
-  padding-inline-end: 1rem !important;
+  padding-inline-end: var(--mantine-spacing-md) !important;
 }
 
 .pe-4 {
-  padding-inline-end: 1.5rem !important;
+  padding-inline-end: calc(var(--mantine-spacing-md) * 1.5) !important;
 }
 
 .pe-4\.5 {
-  padding-inline-end: 2rem !important;
+  padding-inline-end: calc(var(--mantine-spacing-md) * 2) !important;
 }
 
 .pe-5 {
-  padding-inline-end: 3rem !important;
+  padding-inline-end: calc(var(--mantine-spacing-md) * 3) !important;
 }
 
 // Padding x-axis
@@ -600,38 +601,38 @@
 }
 
 .px-0\.5 {
-  padding-left: .125rem !important;
-  padding-right: .125rem !important;
+  padding-left: calc(var(--mantine-spacing-md) * 0.125) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 0.125) !important;
 }
 
 .px-1 {
-  padding-left: .25rem !important;
-  padding-right: .25rem !important;
+  padding-left: calc(var(--mantine-spacing-md) * 0.25) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 0.25) !important;
 }
 
 .px-2 {
-  padding-left: .5rem !important;
-  padding-right: .5rem !important;
+  padding-left: calc(var(--mantine-spacing-md) * 0.5) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 0.5) !important;
 }
 
 .px-3 {
-  padding-left: 1rem !important;
-  padding-right: 1rem !important;
+  padding-left: var(--mantine-spacing-md) !important;
+  padding-right: var(--mantine-spacing-md) !important;
 }
 
 .px-4 {
-  padding-left: 1.5rem !important;
-  padding-right: 1.5rem !important;
+  padding-left: calc(var(--mantine-spacing-md) * 1.5) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 1.5) !important;
 }
 
 .px-4\.5 {
-  padding-left: 2rem !important;
-  padding-right: 2rem !important;
+  padding-left: calc(var(--mantine-spacing-md) * 2) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 2) !important;
 }
 
 .px-5 {
-  padding-left: 3rem !important;
-  padding-right: 3rem !important;
+  padding-left: calc(var(--mantine-spacing-md) * 3) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 3) !important;
 }
 
 // Padding y-axis
@@ -641,38 +642,38 @@
 }
 
 .py-0\.5 {
-  padding-top: .125rem !important;
-  padding-bottom: .125rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 0.125) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 0.125) !important;
 }
 
 .py-1 {
-  padding-top: .25rem !important;
-  padding-bottom: .25rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 0.25) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 0.25) !important;
 }
 
 .py-2 {
-  padding-top: .5rem !important;
-  padding-bottom: .5rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 0.5) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 0.5) !important;
 }
 
 .py-3 {
-  padding-top: 1rem !important;
-  padding-bottom: 1rem !important;
+  padding-top: var(--mantine-spacing-md) !important;
+  padding-bottom: var(--mantine-spacing-md) !important;
 }
 
 .py-4 {
-  padding-top: 1.5rem !important;
-  padding-bottom: 1.5rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 1.5) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 1.5) !important;
 }
 
 .py-4\.5 {
-  padding-top: 2rem !important;
-  padding-bottom: 2rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 2) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 2) !important;
 }
 
 .py-5 {
-  padding-top: 3rem !important;
-  padding-bottom: 3rem !important;
+  padding-top: calc(var(--mantine-spacing-md) * 3) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 3) !important;
 }
 
 // Width utilities
