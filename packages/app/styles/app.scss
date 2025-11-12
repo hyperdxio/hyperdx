@@ -169,7 +169,7 @@ body {
 
 .ds-table.table-hover {
   tr.data-row:hover {
-    background-color: #151515af;
+    background-color: var(--color-bg-muted);
   }
 }
 
@@ -199,30 +199,27 @@ body {
   }
 
   .ds-react-select__control {
-    // background: $bg-dark;
-    background: transparent;
+    background: var(--color-bg-field);
     border: 1px solid var(--color-border);
-    // @apply bg-white dark:bg-neutral-700 border-2 border-neutral-300 dark:border-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-500;
-  }
-
-  .ds-react-select__control--is-focused {
-    // @apply border-neutral-500 hover:border-neutral-500 dark:border-neutral-400 dark:hover:border-neutral-400 shadow-none;
   }
 
   .ds-react-select__menu {
-    background: var(--color-bg-surface);
-    border: 1px solid var(--color-text);
-    // @apply bg-neutral-100 dark:bg-neutral-700 border-2 border-neutral-300 dark:border-neutral-600;
+    background: var(--color-bg-field);
+    border: 1px solid var(--color-border);
   }
 
   .ds-react-select__option {
     color: var(--color-text);
-    // background: $bg-dark;
-    // @apply text-neutral-600 dark:text-neutral-200 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-700 dark:hover:bg-neutral-800;
   }
+
   .ds-react-select__option--is-focused {
-    background: var(--color-bg-field-hover);
+    background: var(--color-bg-muted);
   }
+
+  .ds-react-select__option--is-selected {
+    background: var(--color-bg-muted);
+  }
+
   .ds-react-select__multi-value {
     background: var(--color-bg-field);
 
@@ -251,9 +248,9 @@ body {
 // React Grid for Dashboarding
 .react-grid-item.react-grid-placeholder {
   // Override the default placeholder color from red
-  background: rgba(#A1A1AA, 0.05) !important;
-  border: 1px solid rgba(#FAFAFA, 0.4) !important;
-  opacity: 1 !important;
+  background: var(--color-bg-muted) !important;
+  border: 1px solid var(--color-border) !important;
+  opacity: 0.4 !important;
 }
 .react-grid-item > .react-resizable-handle::after {
   border-color: var(--color-text) !important;
