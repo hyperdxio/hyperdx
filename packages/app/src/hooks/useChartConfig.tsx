@@ -286,8 +286,30 @@ export function useAliasMapFromChartConfig(
   config: ChartConfigWithOptDateRange | undefined,
   options?: UseQueryOptions<Record<string, string>>,
 ) {
+  // For granularity: 'auto', the bucket size depends on dateRange duration (not absolute times).
+  // Include duration in key to detect when bucket size changes, but omit absolute times
+  // to prevent refetches when the time window just slides forward (e.g., live tail).
+  const dateRangeDuration =
+    config?.dateRange && isUsingGranularity(config)
+      ? config.dateRange[1].getTime() - config.dateRange[0].getTime()
+      : undefined;
+
   return useQuery<Record<string, string>>({
-    queryKey: ['aliasMap', config],
+    // Only include config properties that affect SELECT structure and aliases.
+    // When adding new ChartConfig fields, check renderChartConfig.ts to see if they
+    // affect the SELECT clause. If yes, add them here to avoid stale alias maps.
+    queryKey: [
+      'aliasMap',
+      config?.select,
+      config?.from,
+      config?.connection,
+      config?.with,
+      config?.groupBy,
+      config?.selectGroupBy,
+      config?.granularity,
+      config?.seriesReturnType,
+      dateRangeDuration,
+    ],
     queryFn: async () => {
       if (config == null) {
         return {};
