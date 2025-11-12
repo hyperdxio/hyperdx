@@ -82,16 +82,9 @@ export const AppNavUserMenu = ({
       <Menu.Target>
         <Paper
           data-testid="user-menu-trigger"
-          m="sm"
-          mt={8}
-          px={8}
-          py={4}
-          radius="md"
-          {...(isCollapsed && {
-            p: 2,
-            bg: 'transparent',
+          className={cx(styles.userMenuTrigger, {
+            [styles.userMenuTriggerCollapsed]: isCollapsed,
           })}
-          className={styles.appNavMenu}
         >
           <Group gap="xs" wrap="nowrap" miw={0}>
             <Avatar size="sm" radius="xl" color="green">
@@ -211,21 +204,13 @@ export const AppNavHelpMenu = ({
   ] = useDisclosure(false);
 
   // const isTeamHasNoData = useIsTeamHasNoData();
-  const size = 28;
 
   return (
     <>
       <Paper
-        mb={8}
-        ml="sm"
-        withBorder
-        w={size}
-        h={size}
-        radius="xl"
-        {...(isCollapsed && {
-          ml: 'sm',
+        className={cx(styles.helpMenuTrigger, {
+          [styles.helpMenuTriggerCollapsed]: isCollapsed,
         })}
-        className={styles.appNavMenu}
       >
         <Menu
           withArrow
@@ -235,7 +220,7 @@ export const AppNavHelpMenu = ({
         >
           <Menu.Target>
             <UnstyledButton data-testid="help-menu-trigger" w="100%">
-              <Group align="center" justify="center" h={size}>
+              <Group align="center" justify="center" h={28}>
                 <Icon name="question-lg" />
               </Group>
             </UnstyledButton>
