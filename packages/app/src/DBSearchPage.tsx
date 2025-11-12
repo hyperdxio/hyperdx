@@ -183,7 +183,7 @@ function SearchNumRows({
         ? 'Scanned Rows ...'
         : error || !numRows
           ? ''
-          : `Scanned Rows: ${numRows}`}
+          : `Scanned Rows: ${Number.parseInt(numRows)?.toLocaleString()}`}
     </Text>
   );
 }
