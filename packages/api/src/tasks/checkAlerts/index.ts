@@ -793,7 +793,7 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
         );
 
         for (const alert of alerts) {
-          await this.task_queue.add(() =>
+          this.task_queue.add(async () =>
             processAlert(
               alertTask.now,
               alert,
@@ -855,7 +855,7 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
     for (const task of alertTasks) {
       const teamWebhooksById =
         teamToWebhooks.get(task.conn.team.toString()) ?? new Map();
-      await this.task_queue.add(() =>
+      this.task_queue.add(async () =>
         this.processAlertTask(task, teamWebhooksById),
       );
     }
@@ -866,6 +866,9 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       'finished scheduling alert tasks on the task_queue',
     );
 
+    // make sure to await here to drain the work queue and allow
+    // functions to execute. if not, execute will terminate without
+    // executing all checks
     await this.task_queue.onIdle();
     logger.info(
       {
