@@ -359,3 +359,10 @@ a.mantine-focus-auto:hover {
     outline: none;
   }
 }
+
+// Global cursor pointer for interactive elements
+button,
+a,
+[role='button'] {
+  cursor: pointer;
+}

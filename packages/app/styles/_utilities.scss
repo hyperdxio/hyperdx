@@ -25,6 +25,12 @@
   background-color: var(--color-bg-highlighted);
 }
 
+.bg-highlighted-hover {
+  &:hover {
+    background-color: var(--color-bg-highlighted);
+  }
+}
+
 .bg-danger-transparent {
   background-color: color-mix(
     in srgb,

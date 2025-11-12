@@ -54,6 +54,8 @@ import { useSource, useSources } from './source';
 import { FormatTime } from './useFormatTime';
 import { formatDistanceToNowStrictShort } from './utils';
 
+import styles from '../styles/SessionsPage.module.scss';
+
 function SessionCard({
   email,
   maxTime,
@@ -85,14 +87,11 @@ function SessionCard({
   return (
     <div
       data-testid={`session-card-${sessionId}`}
-      className="bg-muted rounded p-3 d-flex align-items-center justify-content-between"
+      className={`bg-muted rounded p-3 d-flex align-items-center justify-content-between ${styles.sessionCard}`}
       onClick={onClick}
       role="button"
     >
-      <div
-        style={{ width: '50%', maxWidth: 500 }}
-        className="child-hover-trigger"
-      >
+      <div style={{ width: '50%', maxWidth: 500 }} className={styles.emailText}>
         {email || `Anonymous Session ${sessionId}`}
       </div>
       <div>
