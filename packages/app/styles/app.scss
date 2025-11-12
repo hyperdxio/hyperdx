@@ -256,12 +256,13 @@ body {
   opacity: 1 !important;
 }
 .react-grid-item > .react-resizable-handle::after {
-  // border-color: rgba($green, 0.4) !important;
-  border-color: rgba(#FAFAFA, 0.8) !important;
-  right: -4px;
+  border-color: var(--color-text) !important;
+  right: -4px ;
   bottom: -4px;
   width: 4px;
   height: 4px;
+  border-right: 2px solid var(--color-text) !important;
+  border-bottom: 2px solid var(--color-text) !important;
 }
 
 // Nextra Overrides

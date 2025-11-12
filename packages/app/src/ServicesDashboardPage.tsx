@@ -24,6 +24,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
+import { IconPlayerPlayFilled } from '@tabler/icons-react';
 
 import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
@@ -1002,7 +1003,7 @@ function ServicesDashboardPage() {
               </Button>
             </Tooltip>
             <Button variant="outline" type="submit" px="sm">
-              <i className="bi bi-play"></i>
+              <IconPlayerPlayFilled size={16} />
             </Button>
           </Group>
         </Group>

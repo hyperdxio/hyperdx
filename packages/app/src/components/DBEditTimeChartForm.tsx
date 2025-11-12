@@ -47,6 +47,7 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
+import { IconPlayerPlayFilled } from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
@@ -992,10 +993,9 @@ export default function EditTimeChartForm({
               data-testid="chart-run-query-button"
               variant="outline"
               type="submit"
-              color="green"
               onClick={onSubmit}
             >
-              <i className="bi bi-play"></i>
+              <IconPlayerPlayFilled size={16} />
             </Button>
           )}
         </Flex>

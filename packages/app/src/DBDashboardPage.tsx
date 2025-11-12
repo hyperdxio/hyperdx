@@ -45,7 +45,7 @@ import {
 } from '@mantine/core';
 import { useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconFilterEdit } from '@tabler/icons-react';
+import { IconFilterEdit, IconPlayerPlayFilled } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
@@ -212,7 +212,7 @@ const Tile = forwardRef(
     return (
       <div
         data-testid={`dashboard-tile-${chart.id}`}
-        className={`p-2 ${className} d-flex flex-column ${
+        className={`p-2 ${className} d-flex flex-column bg-muted rounded ${
           isHighlighed && 'dashboard-chart-highlighted'
         }`}
         id={`chart-${chart.id}`}
@@ -221,9 +221,6 @@ const Tile = forwardRef(
         key={chart.id}
         ref={ref}
         style={{
-          background:
-            'linear-gradient(180deg, rgba(250,250,250,0.018) 0%, rgba(250,250,250,0.008) 100%)',
-          borderRadius: 2,
           ...style,
         }}
         onMouseDown={onMouseDown}
@@ -247,6 +244,7 @@ const Tile = forwardRef(
                   <Button
                     data-testid={`tile-alerts-button-${chart.id}`}
                     variant="subtle"
+                    color="gray"
                     size="xxs"
                     onClick={onEditClick}
                     title="Alerts"
@@ -259,6 +257,7 @@ const Tile = forwardRef(
               <Button
                 data-testid={`tile-duplicate-button-${chart.id}`}
                 variant="subtle"
+                color="gray"
                 size="xxs"
                 onClick={onDuplicateClick}
                 title="Duplicate"
@@ -268,6 +267,7 @@ const Tile = forwardRef(
               <Button
                 data-testid={`tile-edit-button-${chart.id}`}
                 variant="subtle"
+                color="gray"
                 size="xxs"
                 onClick={onEditClick}
                 title="Edit"
@@ -277,6 +277,7 @@ const Tile = forwardRef(
               <Button
                 data-testid={`tile-delete-button-${chart.id}`}
                 variant="subtle"
+                color="gray"
                 size="xxs"
                 onClick={onDeleteClick}
                 title="Delete"
@@ -1062,9 +1063,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             onClick={refresh}
             loading={manualRefreshCooloff}
             disabled={manualRefreshCooloff}
-            color="gray"
             mr={6}
-            variant="outline"
+            variant="default"
             title="Refresh dashboard"
             px="xs"
           >
@@ -1073,8 +1073,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </Tooltip>
         <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
           <Button
-            variant="outline"
-            color="gray"
+            variant="default"
             px="xs"
             mr={6}
             onClick={() => setShowFiltersModal(true)}
@@ -1082,8 +1081,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <IconFilterEdit strokeWidth={1} />
           </Button>
         </Tooltip>
-        <Button variant="outline" type="submit" color="green">
-          <i className="bi bi-play"></i>
+        <Button variant="outline" type="submit">
+          <IconPlayerPlayFilled size={16} />
         </Button>
       </Flex>
       <DashboardFilters

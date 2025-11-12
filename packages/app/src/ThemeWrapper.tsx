@@ -247,7 +247,7 @@ const makeTheme = ({
                 backgroundColor: 'var(--color-bg-muted)',
               },
               '&:active': {
-                backgroundColor: 'var(--color-bg-surface)',
+                backgroundColor: 'var(--color-bg-muted)',
               },
             },
           };

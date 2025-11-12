@@ -184,7 +184,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                         placeholder="Confirm Password"
                         {...form.confirmPassword}
                       />
-                      <Notification color="gray.7" withCloseButton={false}>
+                      <Notification withCloseButton={false}>
                         <PasswordCheck password={currentPassword} />
                       </Notification>
                     </>

@@ -311,7 +311,7 @@ export default function SQLInlineEditor({
       shadow="none"
       style={{
         backgroundColor: 'var(--color-bg-field)',
-        border: `1px solid ${error ? 'var(--mantine-color-red-7)' : 'var(--color-border)'}`,
+        border: `1px solid ${error ? 'var(--color-bg-danger)' : 'var(--color-border)'}`,
         display: 'flex',
         alignItems: 'center',
         minHeight: size === 'xs' ? 30 : 36,

@@ -21,10 +21,9 @@
 }
 
 .legendMoreLink {
-  color: var(--mantine-color-dark-4);
+  color: var(--color-text-muted);
   cursor: pointer;
   text-decoration: underline;
-  text-decoration-color: var(--mantine-color-dark-7);
 }
 
 .legendTooltipContent {
@@ -38,16 +37,15 @@
 
 .chartTooltip {
   backdrop-filter: blur(8px);
-  background-color: rgba(#1a1d23, 0.75);
-  border: 1px solid #5f6776;
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
   border-radius: 2px;
   font-size: 11px;
 }
 
 .chartTooltipHeader {
   padding: 2px 12px;
-  color: var(--mantine-color-dark-2);
-  border-bottom: 1px solid var(--mantine-color-dark-4);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .chartTooltipContent {

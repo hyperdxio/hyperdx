@@ -17,7 +17,7 @@ import { ActionIcon } from '@mantine/core';
 import { Paper } from '@mantine/core';
 import { Center } from '@mantine/core';
 import { Text } from '@mantine/core';
-import { IconPlayerPlay } from '@tabler/icons-react';
+import { IconPlayerPlayFilled } from '@tabler/icons-react';
 
 import { getDurationMsExpression } from '@/source';
 
@@ -196,7 +196,7 @@ function DBSearchHeatmapForm({
           h="auto"
           title="Run"
         >
-          <IconPlayerPlay />
+          <IconPlayerPlayFilled />
         </ActionIcon>
       </Flex>
     </form>

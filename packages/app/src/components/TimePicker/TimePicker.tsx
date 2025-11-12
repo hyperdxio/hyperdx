@@ -22,10 +22,9 @@ import {
 } from '@mantine/core';
 import { DateInput, DateInputProps } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
+import { IconBolt, IconCalendarFilled } from '@tabler/icons-react';
 
 import { useUserPreferences } from '@/useUserPreferences';
-
-import { Icon } from '../Icon';
 
 import { TimePickerMode } from './types';
 import { useTimePickerForm } from './useTimePickerForm';
@@ -224,12 +223,9 @@ export const TimePicker = ({
           data-testid="time-picker-input"
           leftSection={
             isLiveMode ? (
-              <Icon
-                name="lightning-charge-fill"
-                className="fs-8 text-success"
-              />
+              <IconBolt size={16} className="text-success" />
             ) : (
-              <Icon name="calendar-fill" className="fs-8" />
+              <IconCalendarFilled size={16} />
             )
           }
           styles={{
@@ -241,12 +237,7 @@ export const TimePicker = ({
           }}
           rightSection={
             opened && (
-              <Text
-                size="xxs"
-                bg="var(--color-bg-active)"
-                px={4}
-                c="var(--color-text)"
-              >
+              <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
                 d
               </Text>
             )

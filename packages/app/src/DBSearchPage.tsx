@@ -57,6 +57,7 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import { IconPlayerPlayFilled } from '@tabler/icons-react';
 import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
@@ -1538,9 +1539,9 @@ function DBSearchPage() {
             data-testid="search-submit-button"
             variant="outline"
             type="submit"
-            color={formState.isDirty ? 'green' : 'gray.4'}
+            color={formState.isDirty ? 'var(--color-text-success)' : 'gray'}
           >
-            <i className="bi bi-play"></i>
+            <IconPlayerPlayFilled size={16} />
           </Button>
         </Flex>
       </form>
