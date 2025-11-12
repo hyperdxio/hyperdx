@@ -15,18 +15,19 @@
   --color-bg-success: var(--mantine-color-green-5);
   --color-bg-danger: var(--mantine-color-red-5);
   --color-bg-warning: var(--mantine-color-orange-5);
+  --color-bg-brand: #4ffa7a;
 
   /* Borders & Dividers */
   --color-border: var(--mantine-color-dark-5);
 
   /* Text */
   --color-text: var(--mantine-color-dark-0);
+  --color-text-inverted: var(--mantine-color-dark-9);
   --color-text-primary: var(--mantine-color-dark-0);
   --color-text-primary-hover: var(--mantine-color-green-3);
   --color-text-secondary: var(--mantine-color-dark-2);
   --color-text-muted: var(--mantine-color-dark-2);
   --color-text-muted-hover: var(--mantine-color-dark-1);
-  --color-text-inverse: var(--mantine-color-dark-9);
   --color-text-success: var(--mantine-color-green-4);
   --color-text-success-hover: var(--mantine-color-green-3);
   --color-text-danger: var(--mantine-color-red-4);
@@ -83,19 +84,20 @@
   --color-bg-success: var(--mantine-color-green-8);
   --color-bg-danger: var(--mantine-color-red-8);
   --color-bg-warning: var(--mantine-color-orange-8);
+  --color-bg-brand: var(--mantine-color-green-8);
 
   /* Borders & Dividers - inverted */
   --color-border: var(--mantine-color-gray-2);
 
   /* Text - inverted */
   --color-text: var(--mantine-color-dark-9);
+  --color-text-inverted: var(--mantine-color-white);
   --color-text-primary: var(--mantine-color-green-5);
   --color-text-primary-hover: var(--mantine-color-green-6);
   --color-text-secondary: var(--mantine-color-gray-5);
   --color-text-muted: var(--mantine-color-dark-6);
   --color-text-muted-hover: var(--mantine-color-dark-9);
-  --color-text-inverse: var(--mantine-color-dark-0);
-  --color-text-success: var(--mantine-color-green-9);
+  --color-text-success: var(--mantine-color-green-8);
   --color-text-danger: var(--mantine-color-red-7);
 
   /* Icons - inverted */

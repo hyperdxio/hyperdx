@@ -138,7 +138,7 @@ function RowOverviewPanelWrapper({
 
   return (
     <div className="position-relative">
-      <div className="bg-body px-3 pt-2 position-relative">
+      <div className="px-3 pt-2 position-relative">
         <TabBar
           className="fs-8"
           items={[
@@ -155,7 +155,7 @@ function RowOverviewPanelWrapper({
           onClick={setActiveTab}
         />
       </div>
-      <div className="bg-body">
+      <div>
         {activeTab === InlineTab.Overview && (
           <div className="inline-overview-panel">
             <RowOverviewPanel source={source} rowId={rowId} />

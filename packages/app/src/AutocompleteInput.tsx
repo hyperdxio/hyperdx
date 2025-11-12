@@ -178,6 +178,8 @@ export default function AutocompleteInput({
           }}
           onKeyDown={e => {
             if (e.key === 'Escape' && e.target instanceof HTMLTextAreaElement) {
+              e.preventDefault();
+              setIsInputDropdownOpen(false);
               e.target.blur();
             }
 

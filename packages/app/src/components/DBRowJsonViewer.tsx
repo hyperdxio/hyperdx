@@ -403,7 +403,7 @@ export function DBRowJsonViewer({
   const jsonOptions = useAtomValue(viewerOptionsAtom);
 
   return (
-    <div className="flex-grow-1 bg-body overflow-auto">
+    <div className="flex-grow-1 overflow-auto">
       <Box py="xs">
         <Group gap="xs">
           <Input

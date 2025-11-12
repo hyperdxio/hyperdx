@@ -75,10 +75,11 @@
 .linkIcon {
   margin-right: 8px;
   display: inline-flex;
+  align-items: center;
   vertical-align: middle;
-  transition: all 0.2s ease-in-out  ;
+  transition: all 0.2s ease-in-out;
 
-   &:hover {
+  &:hover {
     color: var(--color-text-success);
   }
 }

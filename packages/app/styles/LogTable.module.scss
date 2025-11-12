@@ -43,8 +43,7 @@ $button-height: 18px;
 .expandedRowContent {
   max-height: 400px;
   overflow: auto;
-  background-color: var(--color-bg-body);
-  padding: 12px;
+  background-color: var(--color-bg-muted);
 }
 
 .expandButton {

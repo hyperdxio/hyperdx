@@ -211,29 +211,38 @@
   gap: var(--mantine-spacing-xl) !important;
 }
 
-// Margin utilities (using Mantine spacing)
+// Margin utilities (using Mantine spacing as base unit: 1rem)
+// Bootstrap scale: 0.25rem increments (m-1 = 0.25rem, m-2 = 0.5rem, etc.)
 .m-0 {
   margin: 0 !important;
 }
 
+.m-0\.5 {
+  margin: calc(var(--mantine-spacing-md) * 0.125) !important; // 0.125rem
+}
+
 .m-1 {
-  margin: var(--mantine-spacing-xs) !important;
+  margin: calc(var(--mantine-spacing-md) * 0.25) !important; // 0.25rem
 }
 
 .m-2 {
-  margin: var(--mantine-spacing-sm) !important;
+  margin: calc(var(--mantine-spacing-md) * 0.5) !important; // 0.5rem
 }
 
 .m-3 {
-  margin: var(--mantine-spacing-md) !important;
+  margin: var(--mantine-spacing-md) !important; // 1rem
 }
 
 .m-4 {
-  margin: var(--mantine-spacing-lg) !important;
+  margin: calc(var(--mantine-spacing-md) * 1.5) !important; // 1.5rem
+}
+
+.m-4\.5 {
+  margin: calc(var(--mantine-spacing-md) * 2) !important; // 2rem
 }
 
 .m-5 {
-  margin: var(--mantine-spacing-xl) !important;
+  margin: calc(var(--mantine-spacing-md) * 3) !important; // 3rem
 }
 
 .m-auto {
@@ -245,12 +254,16 @@
   margin-top: 0 !important;
 }
 
+.mt-0\.5 {
+  margin-top: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
 .mt-1 {
-  margin-top: var(--mantine-spacing-xs) !important;
+  margin-top: calc(var(--mantine-spacing-md) * 0.25) !important;
 }
 
 .mt-2 {
-  margin-top: var(--mantine-spacing-sm) !important;
+  margin-top: calc(var(--mantine-spacing-md) * 0.5) !important;
 }
 
 .mt-3 {
@@ -258,11 +271,15 @@
 }
 
 .mt-4 {
-  margin-top: var(--mantine-spacing-lg) !important;
+  margin-top: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.mt-4\.5 {
+  margin-top: calc(var(--mantine-spacing-md) * 2) !important;
 }
 
 .mt-5 {
-  margin-top: var(--mantine-spacing-xl) !important;
+  margin-top: calc(var(--mantine-spacing-md) * 3) !important;
 }
 
 .mt-auto {
@@ -274,12 +291,16 @@
   margin-bottom: 0 !important;
 }
 
+.mb-0\.5 {
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
 .mb-1 {
-  margin-bottom: var(--mantine-spacing-xs) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.25) !important;
 }
 
 .mb-2 {
-  margin-bottom: var(--mantine-spacing-sm) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.5) !important;
 }
 
 .mb-3 {
@@ -287,11 +308,15 @@
 }
 
 .mb-4 {
-  margin-bottom: var(--mantine-spacing-lg) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.mb-4\.5 {
+  margin-bottom: calc(var(--mantine-spacing-md) * 2) !important;
 }
 
 .mb-5 {
-  margin-bottom: var(--mantine-spacing-xl) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 3) !important;
 }
 
 .mb-auto {
@@ -303,12 +328,16 @@
   margin-inline-start: 0 !important;
 }
 
+.ms-0\.5 {
+  margin-inline-start: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
 .ms-1 {
-  margin-inline-start: var(--mantine-spacing-xs) !important;
+  margin-inline-start: calc(var(--mantine-spacing-md) * 0.25) !important;
 }
 
 .ms-2 {
-  margin-inline-start: var(--mantine-spacing-sm) !important;
+  margin-inline-start: calc(var(--mantine-spacing-md) * 0.5) !important;
 }
 
 .ms-3 {
@@ -316,11 +345,15 @@
 }
 
 .ms-4 {
-  margin-inline-start: var(--mantine-spacing-lg) !important;
+  margin-inline-start: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.ms-4\.5 {
+  margin-inline-start: calc(var(--mantine-spacing-md) * 2) !important;
 }
 
 .ms-5 {
-  margin-inline-start: var(--mantine-spacing-xl) !important;
+  margin-inline-start: calc(var(--mantine-spacing-md) * 3) !important;
 }
 
 .ms-auto {
@@ -332,12 +365,16 @@
   margin-inline-end: 0 !important;
 }
 
+.me-0\.5 {
+  margin-inline-end: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
 .me-1 {
-  margin-inline-end: var(--mantine-spacing-xs) !important;
+  margin-inline-end: calc(var(--mantine-spacing-md) * 0.25) !important;
 }
 
 .me-2 {
-  margin-inline-end: var(--mantine-spacing-sm) !important;
+  margin-inline-end: calc(var(--mantine-spacing-md) * 0.5) !important;
 }
 
 .me-3 {
@@ -345,11 +382,15 @@
 }
 
 .me-4 {
-  margin-inline-end: var(--mantine-spacing-lg) !important;
+  margin-inline-end: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.me-4\.5 {
+  margin-inline-end: calc(var(--mantine-spacing-md) * 2) !important;
 }
 
 .me-5 {
-  margin-inline-end: var(--mantine-spacing-xl) !important;
+  margin-inline-end: calc(var(--mantine-spacing-md) * 3) !important;
 }
 
 .me-auto {
@@ -362,14 +403,19 @@
   margin-right: 0 !important;
 }
 
+.mx-0\.5 {
+  margin-left: calc(var(--mantine-spacing-md) * 0.125) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
 .mx-1 {
-  margin-left: var(--mantine-spacing-xs) !important;
-  margin-right: var(--mantine-spacing-xs) !important;
+  margin-left: calc(var(--mantine-spacing-md) * 0.25) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 0.25) !important;
 }
 
 .mx-2 {
-  margin-left: var(--mantine-spacing-sm) !important;
-  margin-right: var(--mantine-spacing-sm) !important;
+  margin-left: calc(var(--mantine-spacing-md) * 0.5) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 0.5) !important;
 }
 
 .mx-3 {
@@ -378,13 +424,18 @@
 }
 
 .mx-4 {
-  margin-left: var(--mantine-spacing-lg) !important;
-  margin-right: var(--mantine-spacing-lg) !important;
+  margin-left: calc(var(--mantine-spacing-md) * 1.5) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.mx-4\.5 {
+  margin-left: calc(var(--mantine-spacing-md) * 2) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 2) !important;
 }
 
 .mx-5 {
-  margin-left: var(--mantine-spacing-xl) !important;
-  margin-right: var(--mantine-spacing-xl) !important;
+  margin-left: calc(var(--mantine-spacing-md) * 3) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 3) !important;
 }
 
 .mx-auto {
@@ -398,14 +449,19 @@
   margin-bottom: 0 !important;
 }
 
+.my-0\.5 {
+  margin-top: calc(var(--mantine-spacing-md) * 0.125) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
 .my-1 {
-  margin-top: var(--mantine-spacing-xs) !important;
-  margin-bottom: var(--mantine-spacing-xs) !important;
+  margin-top: calc(var(--mantine-spacing-md) * 0.25) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.25) !important;
 }
 
 .my-2 {
-  margin-top: var(--mantine-spacing-sm) !important;
-  margin-bottom: var(--mantine-spacing-sm) !important;
+  margin-top: calc(var(--mantine-spacing-md) * 0.5) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.5) !important;
 }
 
 .my-3 {
@@ -414,13 +470,18 @@
 }
 
 .my-4 {
-  margin-top: var(--mantine-spacing-lg) !important;
-  margin-bottom: var(--mantine-spacing-lg) !important;
+  margin-top: calc(var(--mantine-spacing-md) * 1.5) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.my-4\.5 {
+  margin-top: calc(var(--mantine-spacing-md) * 2) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 2) !important;
 }
 
 .my-5 {
-  margin-top: var(--mantine-spacing-xl) !important;
-  margin-bottom: var(--mantine-spacing-xl) !important;
+  margin-top: calc(var(--mantine-spacing-md) * 3) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 3) !important;
 }
 
 .my-auto {

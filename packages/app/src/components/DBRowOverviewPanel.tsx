@@ -160,7 +160,7 @@ export function RowOverviewPanel({
       : undefined;
 
   return (
-    <div className="flex-grow-1 bg-body overflow-auto" data-testid={dataTestId}>
+    <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
       {!hideHeader && (
         <Box px="32px" pt="md">
           <DBRowSidePanelHeader

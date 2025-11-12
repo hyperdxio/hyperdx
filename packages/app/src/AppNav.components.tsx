@@ -302,8 +302,9 @@ export const AppNavLink = ({
           { [styles.listLinkActive]: pathname?.includes(href) },
           className,
         )}
+        style={{ display: 'flex', alignItems: 'center' }}
       >
-        <span>
+        <span style={{ display: 'flex', alignItems: 'center' }}>
           <span className={styles.linkIcon}>{icon}</span>
           {!isCollapsed && <span>{label}</span>}
         </span>

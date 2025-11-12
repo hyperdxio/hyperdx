@@ -27,13 +27,13 @@ import {
 import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 import {
   IconBell,
-  IconChartLine,
+  IconChartDots,
   IconDeviceLaptop,
-  IconFileText,
   IconLayoutGrid,
   IconLayoutSidebarLeftCollapse,
   IconSettings,
   IconSitemap,
+  IconTable,
 } from '@tabler/icons-react';
 
 import {
@@ -652,7 +652,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             <div className="mt-2">
               <AppNavLink
                 label="Search"
-                icon={<IconFileText size={16} />}
+                icon={<IconTable size={16} />}
                 href="/search"
                 className={cx({
                   'text-success fw-600':
@@ -718,7 +718,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               <AppNavLink
                 label="Chart Explorer"
                 href="/chart"
-                icon={<IconChartLine size={16} />}
+                icon={<IconChartDots size={16} />}
               />
               {!IS_LOCAL_MODE && (
                 <AppNavLink
