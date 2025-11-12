@@ -151,7 +151,6 @@ export const FilterCheckbox = ({
         onClick={() => onChange?.(!value)}
         style={{ minWidth: 0 }}
         wrap="nowrap"
-        align="flex-start"
       >
         <Checkbox
           checked={!!value}
