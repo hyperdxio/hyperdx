@@ -3,6 +3,7 @@ import {
   ActionIcon,
   Button,
   MantineProvider,
+  MantineTheme,
   MantineThemeOverride,
   rem,
   Select,
@@ -77,7 +78,6 @@ const makeTheme = ({
       '#1A1B1E',
       '#141517',
       '#101113',
-      '#14171b',
     ],
   },
   headings: {
@@ -119,7 +119,7 @@ const makeTheme = ({
       },
     },
     Card: {
-      styles: (_theme: any, props: any) => {
+      styles: (_theme: MantineTheme, props: { variant?: string }) => {
         if (props.variant === 'muted') {
           return {
             root: {
@@ -163,7 +163,7 @@ const makeTheme = ({
       },
     },
     Paper: {
-      classNames: (_theme: any, props: any) => {
+      classNames: (_theme: MantineTheme, props: { variant?: string }) => {
         if (props.variant === 'muted') {
           return {
             root: 'paper-muted',
@@ -171,7 +171,7 @@ const makeTheme = ({
         }
         return {};
       },
-      styles: (_theme: any, props: any) => {
+      styles: (_theme: MantineTheme, props: { variant?: string }) => {
         if (props.variant === 'muted') {
           return {
             root: {
