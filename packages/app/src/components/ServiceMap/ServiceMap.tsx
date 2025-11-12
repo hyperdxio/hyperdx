@@ -165,7 +165,7 @@ function ServiceMapPresentation({
 
     setNodes(nodeWithLayout);
     setEdges(edges);
-  }, [services, dateRange, source, maxErrorPercentage]);
+  }, [services, dateRange, source, maxErrorPercentage, isSingleTrace]);
 
   if (isLoading) {
     return (
