@@ -40,18 +40,18 @@ const makeTheme = ({
     xl: 'calc(2rem * var(--mantine-scale))',
   },
   colors: {
-    // https://mantine.dev/colors-generator/?color=09D99C
+    // https://uicolors.app/generate/00c28a
     green: [
-      '#e2fff8',
-      '#cefef0',
-      '#a0fbe0',
-      '#6df9cf',
-      '#09D99C', // Toned Down
-      '#2ff5b8',
-      '#1ef5b3',
-      '#09da9d',
+      '#eafff6',
+      '#cdfee7',
+      '#a0fad5',
+      '#63f2bf',
+      '#25e2a5',
       '#00c28a',
-      '#00a875',
+      '#00a475',
+      '#008362',
+      '#00674e',
+      '#005542',
     ],
     // https://mantine.dev/colors-generator/?color=A1A1AA
     // Customized with FAFAFA, D7D8DB, A1A1AA
