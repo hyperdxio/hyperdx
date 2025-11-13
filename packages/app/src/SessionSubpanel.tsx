@@ -353,7 +353,7 @@ export default function SessionSubpanel({
       select: commonSelect,
       from: traceSource.from,
       dateRange: [start, end],
-      whereLanguage: 'lucene',
+      whereLanguage,
       where: searchedQuery,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
@@ -376,7 +376,7 @@ export default function SessionSubpanel({
       traceSource.connection,
       start,
       end,
-      // whereLanguage,
+      whereLanguage,
       searchedQuery,
       tab,
       highlightedEventsFilter,
@@ -402,7 +402,7 @@ export default function SessionSubpanel({
       select: commonSelect,
       from: traceSource.from,
       dateRange: [start, end],
-      whereLanguage: 'lucene',
+      whereLanguage,
       where: searchedQuery,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
@@ -425,6 +425,7 @@ export default function SessionSubpanel({
       traceSource.connection,
       start,
       end,
+      whereLanguage,
       searchedQuery,
       tab,
       highlightedEventsFilter,
@@ -495,6 +496,7 @@ export default function SessionSubpanel({
                 language="sql"
                 size="xs"
                 enableHotkey
+                onSubmit={handleSubmit(handleWhereSubmit)}
               />
             ) : (
               <SearchInputV2
@@ -505,6 +507,7 @@ export default function SessionSubpanel({
                 size="xs"
                 placeholder="Search your events w/ Lucene ex. column:foo"
                 enableHotkey
+                onSubmit={handleSubmit(handleWhereSubmit)}
               />
             )}
           </form>

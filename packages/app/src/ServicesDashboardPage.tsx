@@ -995,6 +995,7 @@ function ServicesDashboardPage() {
                   language="lucene"
                   placeholder="Search your events w/ Lucene ex. column:foo"
                   enableHotkey
+                  onSubmit={onSubmit}
                 />
               }
             />

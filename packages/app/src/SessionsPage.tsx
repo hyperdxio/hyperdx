@@ -470,6 +470,7 @@ export default function SessionsPage() {
                   <SearchInputV2
                     tableConnection={tcFromSource(traceTrace)}
                     control={control}
+                    onSubmit={onSubmit}
                     name="where"
                     onLanguageChange={lang =>
                       setValue('whereLanguage', lang, {
