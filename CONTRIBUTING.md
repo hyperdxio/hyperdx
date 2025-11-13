@@ -11,7 +11,7 @@ Service Descriptions:
   OpAMP supervisor that dynamically pulls configuration from HyperDX API.
 - ClickHouse (ch-server): ClickHouse database, stores all telemetry.
 - MongoDB (db): Stores user/saved search/alert/dashboard data.
-- HyperDX API (api): Node.js API, executes Clickhouse queries on behalf of the
+- HyperDX API (api): Node.js API, executes ClickHouse queries on behalf of the
   frontend and serves the frontend. serves the frontend. Can also run alert
   checker.
 - HyperDX UI (app): Next.js frontend, serves the UI.
