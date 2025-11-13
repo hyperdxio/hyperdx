@@ -89,7 +89,6 @@
     "react-markdown": "^8.0.4",
     "react-papaparse": "^4.4.0",
     "react-query": "^3.39.3",
-    "react-select": "^5.7.0",
     "react-sortable-hoc": "^2.0.0",
     "react-useportal": "^1.0.18",
     "recharts": "^2.12.7",

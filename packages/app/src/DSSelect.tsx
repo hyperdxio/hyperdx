@@ -1,7 +1,7 @@
-import Select from 'react-select';
+import { Select } from '@mantine/core';
 
 export default function DSSelect<
-  Option extends { value: string | undefined; label: React.ReactNode },
+  Option extends { label: string; value: string },
 >({
   options,
   value,
@@ -15,12 +15,11 @@ export default function DSSelect<
 }) {
   return (
     <Select
-      isDisabled={disabled}
-      options={options}
+      disabled={disabled}
+      data={options}
       className="ds-select"
-      value={options.find(v => v.value === value)}
-      onChange={newValue => onChange(newValue?.value)}
-      classNamePrefix="ds-react-select"
+      value={value}
+      onChange={newValue => onChange(newValue ?? undefined)}
     />
   );
 }
