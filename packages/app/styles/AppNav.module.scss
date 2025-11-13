@@ -119,18 +119,6 @@
   }
 }
 
-.appNavMenu {
-  pointer-events: all;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--color-bg-muted);
-  }
-
-  &:active {
-    transform: translate(0, 1px);
-  }
-}
 
 // User menu trigger styling
 .userMenuTrigger {
@@ -204,4 +192,17 @@
       transform: translate(0, 1px);
     }
   }
+}
+
+// Bottom section with gradient overlay
+.bottomSection {
+  position: absolute;
+  bottom: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    var(--color-bg-sidebar) 50%,
+    transparent 100%
+  );
+  padding-top: 40px;
 }

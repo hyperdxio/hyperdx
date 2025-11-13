@@ -868,11 +868,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         </ScrollArea>
 
         <div
+          className={styles.bottomSection}
           style={{
             width: navWidth,
-            position: 'absolute',
-            bottom: 0,
-            pointerEvents: 'none',
           }}
         >
           <AppNavHelpMenu
