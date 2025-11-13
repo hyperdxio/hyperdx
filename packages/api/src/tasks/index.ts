@@ -51,6 +51,9 @@ async function main(argv: TaskArgs): Promise<void> {
   });
 }
 
+// Entry point
+const argv = asTaskArgs(minimist(process.argv.slice(2)));
+
 const instrumentedMain = timeExec(main, duration => {
   const gauge = taskExecutionDurationGauge.get(argv.taskName);
   if (gauge) {
@@ -59,8 +62,6 @@ const instrumentedMain = timeExec(main, duration => {
   logger.info(`${argv.taskName} finished in ${duration.toFixed(2)} ms`);
 });
 
-// Entry point
-const argv = asTaskArgs(minimist(process.argv.slice(2)));
 // WARNING: the cron job will be enabled only in development mode
 if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
   logger.info('In-app cron job is enabled');
