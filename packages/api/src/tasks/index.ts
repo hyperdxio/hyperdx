@@ -57,7 +57,7 @@ const argv = asTaskArgs(minimist(process.argv.slice(2)));
 const instrumentedMain = timeExec(main, duration => {
   const gauge = taskExecutionDurationGauge.get(argv.taskName);
   if (gauge) {
-    gauge.record(duration, { useCron: true });
+    gauge.record(duration, { useCron: !RUN_SCHEDULED_TASKS_EXTERNALLY });
   }
   logger.info(`${argv.taskName} finished in ${duration.toFixed(2)} ms`);
 });

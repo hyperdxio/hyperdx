@@ -54,7 +54,7 @@ for (const name of Object.values(TaskName)) {
 }
 
 export function timeExec<T extends unknown[], R>(
-  fn: (...args: T) => R,
+  fn: (...args: T) => Promise<R>,
   recordFn?: (duration: number) => void,
 ) {
   return async (...args: T) => {
