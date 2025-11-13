@@ -23,10 +23,11 @@ export default function Clipboard({
       }}
     >
       <Button
-        variant="subtle"
+        variant="default"
         p={0}
         className={cx('text-decoration-none', className)}
         size="xs"
+        fullWidth
       >
         {children({ isCopied })}
       </Button>

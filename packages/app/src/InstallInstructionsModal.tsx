@@ -12,12 +12,12 @@ function CopyableValue({
   value: string;
 }) {
   return (
-    <Clipboard text={value} className="d-block mx-auto p-0 w-100">
+    <Clipboard text={value} className="d-flex mx-auto p-0 w-100">
       {({ isCopied }) => {
         return (
           <div
             className={cx(
-              'd-flex fs-6 py-2 px-3 bg-muted rounded align-items-center justify-content-between cursor-pointer text-white-hover',
+              'd-flex w-100 py-2 px-2 gap-2 rounded align-items-center justify-content-between cursor-pointer',
               {
                 'text-success': isCopied,
               },
@@ -25,7 +25,7 @@ function CopyableValue({
           >
             <div className="fs-7 d-flex text-truncate align-items-center">
               {label}
-              <pre className="mb-0 user-select-all d-inline text-truncate fs-7 lh-1">
+              <pre className="m-0 user-select-all d-inline text-truncate fs-7 lh-1">
                 {value}
               </pre>
             </div>
@@ -36,7 +36,7 @@ function CopyableValue({
                   'bi-clipboard-check': isCopied,
                 })}
               ></i>
-              {isCopied ? 'Copied to Clipboard!' : 'Copy'}
+              {isCopied ? 'Copied!' : 'Copy'}
             </div>
           </div>
         );
@@ -79,95 +79,104 @@ export default function InstallInstructionModal({
           Click on a link below to view installation instructions for your
           application.
         </div>
-        <div className="fs-5 mb-2">Backend</div>
-        <div className="fs-6 mb-2">
+        <div className="fs-6 mb-2">Backend</div>
+        <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/nodejs"
             target="_blank"
             rel="noreferrer"
+            className="text-link"
           >
             Node.js
           </a>
           <span className="ms-2 text-muted">(Logs + Traces)</span>
         </div>
-        <div className="fs-6 mb-2">
+        <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/golang"
             target="_blank"
             rel="noreferrer"
+            className="text-link"
           >
             Go
           </a>
           <span className="ms-2 text-muted">(Logs + Traces)</span>
         </div>
-        <div className="fs-6 mb-2">
+        <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/python"
             target="_blank"
             rel="noreferrer"
+            className="text-link"
           >
             Python
           </a>
           <span className="ms-2 text-muted">(Logs + Traces)</span>
         </div>
-        <div className="fs-6 mb-2">
+        <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/java"
             target="_blank"
             rel="noreferrer"
+            className="text-link"
           >
             Java
           </a>
           <span className="ms-2 text-muted">(Logs + Traces)</span>
         </div>
-        <div className="fs-6 mb-2">
+        <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/elixir"
             target="_blank"
             rel="noreferrer"
+            className="text-link"
           >
             Elixir
           </a>
           <span className="ms-2 text-muted">(Logs)</span>
         </div>
-        <div className="fs-6 mb-2">
+        <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/ruby-on-rails"
             target="_blank"
             rel="noreferrer"
+            className="text-link"
           >
             Ruby on Rails
           </a>
           <span className="ms-2 text-muted">(Traces)</span>
         </div>
-        <div className="fs-5 mb-2 mt-4">Platform</div>
-        <div className="fs-6 mb-2">
+        <div className="fs-6 mb-2 mt-4">Platform</div>
+        <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/ingesting-data/kubernetes"
             target="_blank"
             rel="noreferrer"
+            className="text-link"
           >
             Kubernetes
           </a>
           <span className="ms-2 text-muted">(Logs + Metrics)</span>
         </div>
-        <div className="fs-5 mb-2 mt-4">Browser</div>
-        <div className="fs-6 mb-2">
+        <div className="fs-6 mb-2 mt-4">Browser</div>
+        <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
             target="_blank"
             rel="noreferrer"
+            className="text-link"
           >
             JavaScript/TypeScript
           </a>
           <span className="ms-2 text-muted">(Logs + Traces)</span>
         </div>
-        <div className="fs-5 mb-2 mt-4">Data Collector</div>
-        <div className="fs-6 mb-2">
+        <div className="fs-6 mb-2 mt-4">Data Collector</div>
+        <div className="mb-2">
           <a
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/ingesting-data/opentelemetry#sending-otel-data"
             target="_blank"
             rel="noreferrer"
+            className="text-link"
           >
             OpenTelemetry
           </a>

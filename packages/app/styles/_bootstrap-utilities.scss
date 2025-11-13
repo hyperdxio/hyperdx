@@ -977,3 +977,40 @@
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
 }
+
+// Font size utilities
+.fs-1 {
+  font-size: 2.5rem !important; // 40px
+}
+
+.fs-2 {
+  font-size: 2rem !important; // 32px
+}
+
+.fs-3 {
+  font-size: 1.75rem !important; // 28px
+}
+
+.fs-4 {
+  font-size: 1.5rem !important; // 24px
+}
+
+.fs-5 {
+  font-size: 1.25rem !important; // 20px
+}
+
+.fs-6 {
+  font-size: 1rem !important; // 16px (base)
+}
+
+.fs-7 {
+  font-size: 0.875rem !important; // 14px
+}
+
+.fs-8 {
+  font-size: 0.75rem !important; // 12px
+}
+
+.fs-9 {
+  font-size: 0.625rem !important; // 10px
+}

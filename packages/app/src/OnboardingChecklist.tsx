@@ -187,13 +187,13 @@ const OnboardingChecklist = ({
                     justifyContent: 'center',
                     border: step.isComplete
                       ? '1px solid var(--color-text-success)'
-                      : 'none',
+                      : '1px solid var(--color-border)',
                     backgroundColor: step.isComplete
                       ? 'transparent'
-                      : 'var(--color-text)',
+                      : 'var(--color-bg-muted)',
                     color: step.isComplete
                       ? 'var(--color-text-success)'
-                      : 'var(--color-text-muted)',
+                      : 'var(--color-text)',
                     flexShrink: 0,
                   }}
                 >
@@ -226,7 +226,9 @@ const OnboardingChecklist = ({
                   >
                     {step.title}
                   </Text>
-                  <Text size="xs">{step.description}</Text>
+                  <Text size="xs" c="dimmed">
+                    {step.description}
+                  </Text>
                 </div>
 
                 {!step.isComplete && (step.href || step.onClick) && (
