@@ -107,6 +107,15 @@
   color: var(--color-text-success) !important;
 }
 
+.text-success-hover {
+  color: var(--color-text-success);
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--color-text-success-hover);
+  }
+}
+
 .text-link {
   color: var(--color-text-primary) !important;
 }

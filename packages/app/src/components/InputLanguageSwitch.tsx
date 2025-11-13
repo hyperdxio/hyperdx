@@ -36,6 +36,7 @@ export default function InputLanguageSwitch({
       <Text
         size="xs"
         role="button"
+        fw={500}
         c={language === 'lucene' ? 'var(--color-text-success)' : 'gray'}
         onClick={() => onLanguageChange('lucene')}
       >
