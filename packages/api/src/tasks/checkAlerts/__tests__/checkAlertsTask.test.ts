@@ -14,7 +14,7 @@ import {
   AlertTaskType,
   loadProvider,
 } from '@/tasks/checkAlerts/providers';
-import { CheckAlertsTaskArgs } from '@/tasks/types';
+import { CheckAlertsTaskArgs, TaskName } from '@/tasks/types';
 
 jest.mock('@/tasks/checkAlerts/providers', () => {
   return {
@@ -65,7 +65,7 @@ describe('CheckAlertTask', () => {
     });
 
     it('should execute successfully with no alert tasks', async () => {
-      const args: CheckAlertsTaskArgs = { taskName: 'check-alerts' };
+      const args: CheckAlertsTaskArgs = { taskName: TaskName.CHECK_ALERTS };
       const task = new CheckAlertTask(args);
 
       mockAlertProvider.getAlertTasks.mockResolvedValue([]);
@@ -83,7 +83,7 @@ describe('CheckAlertTask', () => {
 
     it('should execute successfully with custom provider', async () => {
       const args: CheckAlertsTaskArgs = {
-        taskName: 'check-alerts',
+        taskName: TaskName.CHECK_ALERTS,
         provider: 'custom-provider',
       };
       const task = new CheckAlertTask(args);
@@ -99,7 +99,7 @@ describe('CheckAlertTask', () => {
     });
 
     it('should process alert tasks', async () => {
-      const args: CheckAlertsTaskArgs = { taskName: 'check-alerts' };
+      const args: CheckAlertsTaskArgs = { taskName: TaskName.CHECK_ALERTS };
       const task = new CheckAlertTask(args);
 
       const mockAlert = {
@@ -171,7 +171,7 @@ describe('CheckAlertTask', () => {
     });
 
     it("should ensure that the correct team's webhooks are passed to processAlert", async () => {
-      const args: CheckAlertsTaskArgs = { taskName: 'check-alerts' };
+      const args: CheckAlertsTaskArgs = { taskName: TaskName.CHECK_ALERTS };
       const task = new CheckAlertTask(args);
 
       // Create two teams

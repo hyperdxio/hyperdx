@@ -1,15 +1,20 @@
 import { z } from 'zod';
 
+export enum TaskName {
+  PING_PONG = 'ping-pong',
+  CHECK_ALERTS = 'check-alerts',
+}
+
 /**
  * Command line arguments structure for tasks.
  * Contains task name and optional provider configuration.
  */
 const pingTaskArgsSchema = z.object({
-  taskName: z.literal('ping-pong'),
+  taskName: z.literal(TaskName.PING_PONG),
 });
 
 const checkAlertsTaskArgsSchema = z.object({
-  taskName: z.literal('check-alerts'),
+  taskName: z.literal(TaskName.CHECK_ALERTS),
   provider: z.string().optional(),
   concurrency: z
     .number()
