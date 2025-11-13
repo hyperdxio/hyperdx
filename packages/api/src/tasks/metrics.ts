@@ -53,7 +53,7 @@ for (const name of Object.values(TaskName)) {
   );
 }
 
-export function timeExec<T extends any[], R>(
+export function timeExec<T extends unknown[], R>(
   fn: (...args: T) => R,
   recordFn?: (duration: number) => void,
 ) {
