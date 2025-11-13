@@ -457,6 +457,7 @@ export const FilterGroup = ({
               component={UnstyledButton}
               flex="1"
               p="0"
+              pr="xxxs"
               data-testid="filter-group-control"
               classNames={{
                 chevron: 'm-0',
@@ -488,15 +489,8 @@ export const FilterGroup = ({
                     }
                   }}
                   styles={{ input: { transition: 'padding 0.2s' } }}
-                  rightSectionWidth={isExpanded ? 20 : 2}
-                  rightSection={
-                    <IconSearch
-                      size={15}
-                      stroke={2}
-                      className={`${isExpanded ? 'opacity-100' : 'opacity-0'}`}
-                      style={{ transition: 'opacity 0.4s 0.2s' }}
-                    />
-                  }
+                  rightSectionWidth={20}
+                  rightSection={<IconSearch size={12} stroke={2} />}
                   classNames={{
                     input: 'ps-0.5',
                   }}
