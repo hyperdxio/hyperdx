@@ -6,7 +6,6 @@
   flex-direction: column;
   padding: 0 4px;
   font-size: 12px;
-  background-color: var(--color-bg-surface);
 }
 
 .withTabulate {
@@ -31,8 +30,6 @@
   display: flex;
   gap: 10px;
   padding: 2px 8px;
-
-  // margin: 0 -10px;margin
   align-items: flex-start;
   border-radius: 3px;
   position: relative;
@@ -100,10 +97,6 @@
   }
 }
 
-.nestedLine {
-  // margin-bottom: 8px;margin-bottom
-}
-
 .clickable {
   &:active {
     background-color: var(--color-bg-highlighted);
@@ -162,7 +155,6 @@
 }
 
 .keyContainer {
-  // min-width: 160px;min-width
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -208,7 +200,6 @@
   color: var(--color-json-string);
   word-break: break-all;
 
-  // margin-left: -6px;margin-left
   &::before,
   &::after {
     content: '"';

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import cx from 'classnames';
 import { format } from 'date-fns';
 import { JSONTree } from 'react-json-tree';
-import { Alert, Button, CloseButton, Text, Tooltip } from '@mantine/core';
+import { Alert, Button, CloseButton, Kbd, Text, Tooltip } from '@mantine/core';
 import { ColumnDef, Row, Table } from '@tanstack/react-table';
 
 import HyperJson from './components/HyperJson';
@@ -473,10 +473,6 @@ export const NetworkBody = ({
 /**
  * Keyboard shortcuts
  */
-export const Kbd = ({ children }: { children: string }) => (
-  <div className={styles.kbd}>{children}</div>
-);
-
 export const LogSidePanelKbdShortcuts = () => {
   const [isDismissed, setDismissed] = useLocalStorage<boolean>(
     'kbd-shortcuts-dismissed',
@@ -496,8 +492,8 @@ export const LogSidePanelKbdShortcuts = () => {
       <div className="d-flex justify-content-between align-items-center ">
         <div className="d-flex align-items-center gap-3">
           <div>
-            Use <Kbd>←</Kbd>
-            <Kbd>→</Kbd> arrow keys or <Kbd>k</Kbd>
+            Use <Kbd className="me-1">←</Kbd>
+            <Kbd>→</Kbd> arrow keys or <Kbd className="me-1">k</Kbd>
             <Kbd>j</Kbd> to move through events
           </div>
           <div className={styles.kbdDivider} />

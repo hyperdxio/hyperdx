@@ -1,7 +1,5 @@
 /* stylelint-disable */
 
-// TODO: Use variables for spacings;
-$padding-x: 24px;
 
 .panel {
   display: flex;
@@ -31,11 +29,11 @@ $padding-x: 24px;
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--color-border);
-  padding: 12px $padding-x;
+  padding: 12px var(--mantine-spacing-xl);
 }
 
 .panelDetails {
-  padding: $padding-x;
+  padding: var(--mantine-spacing-xl);
   padding-bottom: 16px;
   display: flex;
   flex-direction: column;
@@ -43,7 +41,7 @@ $padding-x: 24px;
 }
 
 .panelContent {
-  padding: 0 $padding-x;
+  padding: 0 var(--mantine-spacing-xl);
 }
 
 .severityChip {
@@ -56,14 +54,14 @@ $padding-x: 24px;
 .loadingState {
   color: var(--color-text-muted);
   width: 100%;
-  margin: $padding-x;
+  margin: var(--mantine-spacing-xl);
   font-size: 16px;
   text-align: center;
   flex-grow: 1;
 }
 
 .panelSectionWrapper {
-  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
   margin: 12px 0;
   border-radius: 6px;
 }
@@ -74,9 +72,9 @@ $padding-x: 24px;
 }
 
 .kbdShortcuts {
-  background: var(--color-bg-surface);
+  background: var(--color-bg-muted);
   border-top: 1px solid var(--color-border);
-  padding: 12px $padding-x;
+  padding: 12px var(--mantine-spacing-xl);
   color: var(--color-text-secondary);
   font-size: 11px;
 }
@@ -94,7 +92,7 @@ $padding-x: 24px;
 .kbdDivider {
   height: 21px;
   width: 1px;
-  background: var(--color-bg-muted);
+  background: var(--color-border);
 }
 
 .lineContext {

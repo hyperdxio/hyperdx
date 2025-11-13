@@ -1,4 +1,5 @@
 /* stylelint-disable */
+
 .wrapper {
   height: 100vh;
   max-height: 100vh;
@@ -39,8 +40,6 @@
   width: 100%;
   display: flex;
   align-items: center;
-
-  // justify-content: space-between;
   gap: 6px;
 
   &:hover {
@@ -93,7 +92,6 @@
 }
 
 .listLinkActive {
-  // color: $green;
   color: var(--color-text-success);
   font-weight: 500;
 
@@ -172,7 +170,7 @@
 
   &:hover {
     background: var(--color-bg-muted);
-    border-color: var(--color-border-strong);
+    border-color: var(--color-border);
   }
 
   &:active {
