@@ -58,7 +58,7 @@ import {
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconPlayerPlayFilled } from '@tabler/icons-react';
-import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
+import { useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
@@ -1140,10 +1140,7 @@ function DBSearchPage() {
     }
   }, [isReady, queryReady, isChartConfigLoading, onSearch]);
 
-  const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig, {
-    placeholderData: keepPreviousData,
-    queryKey: ['aliasMap', dbSqlRowTableConfig, 'withPlaceholder'],
-  });
+  const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
   const aliasWith = useMemo(
     () =>
