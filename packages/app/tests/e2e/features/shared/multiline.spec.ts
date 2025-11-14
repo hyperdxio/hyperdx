@@ -106,7 +106,6 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         const whereLabel = scopedContainer.locator(
           `div.mantine-Text-root:has-text("${whereText}")`,
         );
-        console.log(whereLabel);
         await expect(whereLabel).toBeVisible();
       }
     });
