@@ -279,34 +279,41 @@ export const getAttributesFromData = (
   const luceneExpressionsByDisplayKey = new Map<string, string>();
   const jsonColumns = getJSONColumnNames(meta);
 
-  for (const row of data) {
-    for (const {
-      sqlExpression,
-      luceneExpression,
-      alias,
-    } of source.highlightedAttributeExpressions ?? []) {
-      const displayName = alias || sqlExpression;
+  try {
+    for (const row of data) {
+      for (const {
+        sqlExpression,
+        luceneExpression,
+        alias,
+      } of source.highlightedAttributeExpressions ?? []) {
+        const displayName = alias || sqlExpression;
 
-      const isJsonExpression = jsonColumns.includes(
-        sqlExpression.split('.')[0],
-      );
-      const sqlExpressionWithJSONSupport = isJsonExpression
-        ? `toString(${sqlExpression})`
-        : sqlExpression;
+        const isJsonExpression = jsonColumns.includes(
+          sqlExpression.split('.')[0],
+        );
+        const sqlExpressionWithJSONSupport = isJsonExpression
+          ? `toString(${sqlExpression})`
+          : sqlExpression;
 
-      sqlExpressionsByDisplayKey.set(displayName, sqlExpressionWithJSONSupport);
-      if (luceneExpression) {
-        luceneExpressionsByDisplayKey.set(displayName, luceneExpression);
-      }
-
-      const value = row[displayName];
-      if (value && typeof value === 'string') {
-        if (!attributeValuesByDisplayKey.has(displayName)) {
-          attributeValuesByDisplayKey.set(displayName, new Set());
+        sqlExpressionsByDisplayKey.set(
+          displayName,
+          sqlExpressionWithJSONSupport,
+        );
+        if (luceneExpression) {
+          luceneExpressionsByDisplayKey.set(displayName, luceneExpression);
         }
-        attributeValuesByDisplayKey.get(displayName)!.add(value);
+
+        const value = row[displayName];
+        if (value && typeof value === 'string') {
+          if (!attributeValuesByDisplayKey.has(displayName)) {
+            attributeValuesByDisplayKey.set(displayName, new Set());
+          }
+          attributeValuesByDisplayKey.get(displayName)!.add(value);
+        }
       }
     }
+  } catch (e) {
+    console.error('Error extracting attributes from data', e);
   }
 
   return Array.from(attributeValuesByDisplayKey.entries()).flatMap(
@@ -350,12 +357,18 @@ export function DBTraceAttributes({
       traceEventData,
       traceEventMeta,
     );
+
     if (logSource && logEventData && logEventMeta) {
       attributes.push(
         ...getAttributesFromData(logSource, logEventData, logEventMeta),
       );
     }
-    return attributes;
+
+    return attributes.sort(
+      (a, b) =>
+        a.displayedKey.localeCompare(b.displayedKey) ||
+        a.value.localeCompare(b.value),
+    );
   }, [
     traceSource,
     traceEventData,
@@ -364,23 +377,6 @@ export function DBTraceAttributes({
     logEventData,
     logEventMeta,
   ]);
-
-  const handleGenerateSearchUrl = useCallback(
-    (
-      query: string | undefined,
-      queryLanguage: 'sql' | 'lucene' | undefined,
-      source: TSource,
-    ) => {
-      return (
-        generateSearchUrl?.({
-          where: query || '',
-          whereLanguage: queryLanguage ?? 'lucene',
-          source,
-        }) || ''
-      );
-    },
-    [generateSearchUrl],
-  );
 
   return (
     <Flex wrap="wrap" gap="2px" mb="md">
@@ -400,8 +396,15 @@ export function DBTraceAttributes({
                 onPropertyAddClick: undefined,
                 sqlExpression: undefined,
               })}
-          generateSearchUrl={(query, queryLanguage) =>
-            handleGenerateSearchUrl(query, queryLanguage, source)
+          generateSearchUrl={
+            generateSearchUrl
+              ? (query, queryLanguage) =>
+                  generateSearchUrl({
+                    where: query || '',
+                    whereLanguage: queryLanguage ?? 'lucene',
+                    source,
+                  })
+              : undefined
           }
         />
       ))}

@@ -209,8 +209,23 @@ function HighlightedAttributeExpressionsFormRow({
               <InputControlled
                 control={control}
                 name={`highlightedAttributeExpressions.${index}.luceneExpression`}
-                placeholder="(Optional) ResourceAttributes.http.host"
+                placeholder="ResourceAttributes.http.host (Optional) "
               />
+            </Grid.Col>
+            <Grid.Col span={1} pe={0}>
+              <Text me="sm" mt={6}>
+                <Tooltip
+                  label={
+                    'An optional, Lucene version of the above expression. If provided, it is used when searching for this attribute value.'
+                  }
+                  color="dark"
+                  c="white"
+                  multiline
+                  maw={600}
+                >
+                  <i className="bi bi-question-circle cursor-pointer" />
+                </Tooltip>
+              </Text>
             </Grid.Col>
           </React.Fragment>
         ))}
