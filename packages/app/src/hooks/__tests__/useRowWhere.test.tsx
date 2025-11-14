@@ -174,7 +174,7 @@ describe('processRowToWhereClause', () => {
     const result = processRowToWhereClause(row, columnMap);
 
     expect(result).toBe(
-      "toJSONString(dynamic_field) = toJSONString(JSONExtract('\\\"quoted_value\\\"', 'Dynamic'))",
+      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('\\\"quoted_value\\\"', 'Dynamic')), toJSONString('\\\"quoted_value\\\"'))",
     );
   });
 
@@ -194,7 +194,7 @@ describe('processRowToWhereClause', () => {
     const row = { dynamic_field: '{\\"took\\":7, not a valid json' };
     const result = processRowToWhereClause(row, columnMap);
     expect(result).toBe(
-      "toJSONString(dynamic_field) = toJSONString(JSONExtract('{\\\\\\\"took\\\\\\\":7, not a valid json', 'Dynamic'))",
+      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('{\\\\\\\"took\\\\\\\":7, not a valid json', 'Dynamic')), toJSONString('{\\\\\\\"took\\\\\\\":7, not a valid json'))",
     );
   });
 
@@ -214,7 +214,7 @@ describe('processRowToWhereClause', () => {
     const row = { dynamic_field: "{'foo': {'bar': 'baz'}}" };
     const result = processRowToWhereClause(row, columnMap);
     expect(result).toBe(
-      "toJSONString(dynamic_field) = toJSONString(JSONExtract('{\\'foo\\': {\\'bar\\': \\'baz\\'}}', 'Dynamic'))",
+      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('{\\'foo\\': {\\'bar\\': \\'baz\\'}}', 'Dynamic')), toJSONString('{\\'foo\\': {\\'bar\\': \\'baz\\'}}'))",
     );
   });
 
@@ -234,7 +234,7 @@ describe('processRowToWhereClause', () => {
     const row = { dynamic_field: "['foo', 'bar']" };
     const result = processRowToWhereClause(row, columnMap);
     expect(result).toBe(
-      "toJSONString(dynamic_field) = toJSONString(JSONExtract('[\\'foo\\', \\'bar\\']', 'Dynamic'))",
+      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('[\\'foo\\', \\'bar\\']', 'Dynamic')), toJSONString('[\\'foo\\', \\'bar\\']'))",
     );
   });
 
