@@ -1,8 +1,8 @@
 .filtersContainer {
   max-height: 400px;
   overflow-y: auto;
-  border-top: 1px solid var(--mantine-color-dark-4);
-  border-bottom: 1px solid var(--mantine-color-dark-4);
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
   padding: var(--mantine-spacing-sm) 0;
   margin-bottom: var(--mantine-spacing-xs) 0;
 }
@@ -18,6 +18,6 @@
 
 .deleteButton {
   &:hover {
-    color: var(--mantine-color-red-4);
+    color: var(--color-text-danger);
   }
 }

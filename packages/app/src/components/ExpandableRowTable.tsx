@@ -51,7 +51,7 @@ export const ExpandedLogRow = memo(
         <td colSpan={columnsLength} className="p-0 border-0">
           <div className={cx('mx-2 mb-2 rounded', styles.expandedRowContent)}>
             <div className="position-relative">
-              <div className="bg-body px-3 pt-2 position-relative">
+              <div className="px-3 pt-2 position-relative">
                 {openSidebar && (
                   <button
                     type="button"

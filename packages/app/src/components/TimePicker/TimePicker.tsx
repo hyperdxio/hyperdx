@@ -22,10 +22,9 @@ import {
 } from '@mantine/core';
 import { DateInput, DateInputProps } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
+import { IconBolt, IconCalendarFilled } from '@tabler/icons-react';
 
 import { useUserPreferences } from '@/useUserPreferences';
-
-import { Icon } from '../Icon';
 
 import { TimePickerMode } from './types';
 import { useTimePickerForm } from './useTimePickerForm';
@@ -224,24 +223,21 @@ export const TimePicker = ({
           data-testid="time-picker-input"
           leftSection={
             isLiveMode ? (
-              <Icon
-                name="lightning-charge-fill"
-                className="fs-8 text-success"
-              />
+              <IconBolt size={16} className="text-success" />
             ) : (
-              <Icon name="calendar-fill" className="fs-8" />
+              <IconCalendarFilled size={16} />
             )
           }
           styles={{
             input: {
               color: isLiveMode
-                ? 'var(--mantine-color-green-5)'
-                : 'var(--mantine-color-gray-1)',
+                ? 'var(--color-text-success)'
+                : 'var(--color-text)',
             },
           }}
           rightSection={
             opened && (
-              <Text size="xxs" bg="gray.8" px={4}>
+              <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
                 d
               </Text>
             )
@@ -322,7 +318,7 @@ export const TimePicker = ({
               <Stack gap={0} p="xs">
                 {relativeTimeOptions.map((item, index) =>
                   item === 'divider' ? (
-                    <Divider key={index} my={4} color="gray.9" />
+                    <Divider key={index} my={4} />
                   ) : (
                     <Button
                       key={item[0]}
@@ -445,7 +441,7 @@ export const TimePicker = ({
                 </>
               )}
             </Stack>
-            <Text size="xxs" lh={1.2} c="gray.7">
+            <Text size="xxs" lh={1.2}>
               You can use natural language to select dates (e.g. yesterday, last
               monday at 5pm)
             </Text>
@@ -454,7 +450,7 @@ export const TimePicker = ({
               justify="flex-end"
               mt={8}
               pt={8}
-              style={{ borderTop: '1px solid #282828' }}
+              style={{ borderTop: '1px solid var(--color-border)' }}
             >
               <Button
                 data-testid="time-picker-apply"

@@ -13,6 +13,7 @@ import {
 import HyperDX from '@hyperdx/browser';
 import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Badge,
   Box,
   Button,
@@ -24,6 +25,16 @@ import {
   ScrollArea,
 } from '@mantine/core';
 import { useDisclosure, useLocalStorage } from '@mantine/hooks';
+import {
+  IconBell,
+  IconChartDots,
+  IconDeviceLaptop,
+  IconLayoutGrid,
+  IconLayoutSidebarLeftCollapse,
+  IconSettings,
+  IconSitemap,
+  IconTable,
+} from '@tabler/icons-react';
 
 import {
   useCreateDashboard,
@@ -66,10 +77,10 @@ function NewDashboardButton() {
         <Button
           data-testid="create-dashboard-button"
           variant="transparent"
+          color="var(--color-text)"
           py="0px"
           px="sm"
           fw={400}
-          color="gray.2"
         >
           <span className="pe-2">+</span> Create Dashboard
         </Button>
@@ -81,10 +92,10 @@ function NewDashboardButton() {
     <Button
       data-testid="create-dashboard-button"
       variant="transparent"
+      color="var(--color-text)"
       py="0px"
       px="sm"
       fw={400}
-      color="gray.2"
       onClick={() =>
         createDashboard.mutate(
           {
@@ -144,7 +155,7 @@ function SearchInput({
       placeholder={placeholder}
       value={value}
       onChange={e => onChange(e.currentTarget.value)}
-      leftSection={<i className="bi bi-search fs-8 ps-1 text-slate-400" />}
+      leftSection={<i className="bi bi-search fs-8 ps-1 " />}
       onKeyDown={handleKeyDown}
       rightSection={
         value ? (
@@ -461,8 +472,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         key={savedSearch.id}
         tabIndex={0}
         className={cx(
-          styles.listLink,
-          savedSearch.id === query.savedSearchId && styles.listLinkActive,
+          styles.nestedLink,
+          savedSearch.id === query.savedSearchId && styles.nestedLinkActive,
         )}
         title={savedSearch.name}
         draggable
@@ -524,8 +535,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         href={`/dashboards/${dashboard.id}`}
         key={dashboard.id}
         tabIndex={0}
-        className={cx(styles.listLink, {
-          [styles.listLinkActive]: dashboard.id === query.dashboardId,
+        className={cx(styles.nestedLink, {
+          [styles.nestedLinkActive]: dashboard.id === query.dashboardId,
         })}
         draggable
         data-dashboardid={dashboard.id}
@@ -606,7 +617,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     <Badge
                       size="xs"
                       color="gray"
-                      bg="gray.8"
                       variant="light"
                       fw="normal"
                       title="Showing time in UTC"
@@ -617,19 +627,16 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </Group>
               )}
             </Link>
-            <Button
-              variant="subtle"
-              color="gray.4"
-              p={isCollapsed ? '0px' : '8px'}
-              h="32px"
-              size="md"
+            <ActionIcon
+              variant="transparent"
+              size="sm"
               className={isCollapsed ? 'mt-4' : ''}
-              style={{ marginRight: -4 }}
+              style={{ marginRight: -4, marginLeft: -4 }}
               title="Collapse/Expand Navigation"
               onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
             >
-              <i className="bi bi-layout-sidebar"></i>
-            </Button>
+              <IconLayoutSidebarLeftCollapse size={16} />
+            </ActionIcon>
           </div>
         </div>
         <ScrollArea
@@ -647,7 +654,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             <div className="mt-2">
               <AppNavLink
                 label="Search"
-                iconName="bi-layout-text-sidebar-reverse"
+                icon={<IconTable size={16} />}
                 href="/search"
                 className={cx({
                   'text-success fw-600':
@@ -667,13 +674,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 <Collapse in={isSearchExpanded}>
                   <div className={styles.list}>
                     {isLogViewsLoading ? (
-                      <Loader
-                        color="gray.7"
-                        variant="dots"
-                        mx="md"
-                        my="xs"
-                        size="sm"
-                      />
+                      <Loader variant="dots" mx="md" my="xs" size="sm" />
                     ) : (
                       !IS_LOCAL_MODE && (
                         <>
@@ -719,28 +720,32 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               <AppNavLink
                 label="Chart Explorer"
                 href="/chart"
-                iconName="bi-graph-up"
+                icon={<IconChartDots size={16} />}
               />
               {!IS_LOCAL_MODE && (
-                <AppNavLink label="Alerts" href="/alerts" iconName="bi-bell" />
+                <AppNavLink
+                  label="Alerts"
+                  href="/alerts"
+                  icon={<IconBell size={16} />}
+                />
               )}
               <AppNavLink
                 label="Client Sessions"
                 href="/sessions"
-                iconName="bi-laptop"
+                icon={<IconDeviceLaptop size={16} />}
               />
 
               <AppNavLink
                 label="Service Map"
                 href="/service-map"
-                iconName="bi-diagram-2-fill"
+                icon={<IconSitemap size={16} />}
                 isBeta
               />
 
               <AppNavLink
                 label="Dashboards"
                 href="/dashboards"
-                iconName="bi-grid-1x2"
+                icon={<IconLayoutGrid size={16} />}
                 isExpanded={isDashboardsExpanded}
                 onToggle={() => setIsDashboardExpanded(!isDashboardsExpanded)}
               />
@@ -751,13 +756,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     <NewDashboardButton />
 
                     {isDashboardsLoading ? (
-                      <Loader
-                        color="gray.7"
-                        variant="dots"
-                        mx="md"
-                        my="xs"
-                        size="sm"
-                      />
+                      <Loader variant="dots" mx="md" my="xs" size="sm" />
                     ) : (
                       !IS_LOCAL_MODE && (
                         <>
@@ -811,8 +810,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       <Link
                         href={`/clickhouse`}
                         tabIndex={0}
-                        className={cx(styles.listLink, {
-                          [styles.listLinkActive]:
+                        className={cx(styles.nestedLink, {
+                          [styles.nestedLinkActive]:
                             pathname.startsWith('/clickhouse'),
                         })}
                       >
@@ -821,8 +820,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       <Link
                         href={`/services`}
                         tabIndex={0}
-                        className={cx(styles.listLink, {
-                          [styles.listLinkActive]:
+                        className={cx(styles.nestedLink, {
+                          [styles.nestedLinkActive]:
                             pathname.startsWith('/services'),
                         })}
                       >
@@ -832,8 +831,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         <Link
                           href={`/kubernetes`}
                           tabIndex={0}
-                          className={cx(styles.listLink, {
-                            [styles.listLinkActive]:
+                          className={cx(styles.nestedLink, {
+                            [styles.nestedLinkActive]:
                               pathname.startsWith('/kubernetes'),
                           })}
                           data-testid="k8s-dashboard-nav-link"
@@ -851,7 +850,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   <AppNavLink
                     label="Team Settings"
                     href="/team"
-                    iconName="bi-gear"
+                    icon={<IconSettings size={16} />}
                   />
                 </Box>
               )}
@@ -871,11 +870,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         </ScrollArea>
 
         <div
+          className={styles.bottomSection}
           style={{
             width: navWidth,
-            position: 'absolute',
-            bottom: 0,
-            pointerEvents: 'none',
           }}
         >
           <AppNavHelpMenu

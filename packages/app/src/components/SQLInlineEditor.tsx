@@ -13,7 +13,13 @@ import {
   Field,
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { Flex, Paper, Text, Tooltip } from '@mantine/core';
+import {
+  Flex,
+  Paper,
+  Text,
+  Tooltip,
+  useMantineColorScheme,
+} from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 import CodeMirror, {
   Compartment,
@@ -136,6 +142,46 @@ const createStyleTheme = (allowMultiline: boolean = false) =>
       whiteSpace: 'nowrap',
       wordWrap: 'break-word',
       maxWidth: '100%',
+      backgroundColor: 'var(--color-bg-field) !important',
+      border: '1px solid var(--color-border) !important',
+      borderRadius: '8px',
+      boxShadow:
+        '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+      padding: '4px',
+    },
+    '& .cm-tooltip-autocomplete > ul': {
+      fontFamily: 'inherit',
+      maxHeight: '300px',
+    },
+    '& .cm-tooltip-autocomplete > ul > li': {
+      padding: '4px 8px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      color: 'var(--color-text)',
+    },
+    '& .cm-tooltip-autocomplete > ul > li[aria-selected]': {
+      backgroundColor: 'var(--color-bg-field-highlighted) !important',
+      color: 'var(--color-text-muted) !important',
+    },
+    '& .cm-tooltip-autocomplete .cm-completionLabel': {
+      color: 'var(--color-text)',
+    },
+    '& .cm-tooltip-autocomplete .cm-completionDetail': {
+      color: 'var(--color-text-muted)',
+      fontStyle: 'normal',
+      marginLeft: '8px',
+    },
+    '& .cm-tooltip-autocomplete .cm-completionInfo': {
+      backgroundColor: 'var(--color-bg-field)',
+      border: '1px solid var(--color-border)',
+      borderRadius: '4px',
+      padding: '8px',
+      color: 'var(--color-text)',
+    },
+    '& .cm-completionIcon': {
+      width: '16px',
+      marginRight: '6px',
+      opacity: 0.7,
     },
     '& .cm-scroller': {
       overflowX: 'hidden',
@@ -167,6 +213,7 @@ export default function SQLInlineEditor({
   parentRef,
   allowMultiline = false,
 }: SQLInlineEditorProps & TableConnectionChoice) {
+  const { colorScheme } = useMantineColorScheme();
   const _tableConnections = tableConnection
     ? [tableConnection]
     : tableConnections;
@@ -309,9 +356,9 @@ export default function SQLInlineEditor({
     <Paper
       flex="auto"
       shadow="none"
-      bg="dark.6"
       style={{
-        border: `1px solid ${error ? 'var(--mantine-color-red-7)' : 'var(--mantine-color-gray-7)'}`,
+        backgroundColor: 'var(--color-bg-field)',
+        border: `1px solid ${error ? 'var(--color-bg-danger)' : 'var(--color-border)'}`,
         display: 'flex',
         alignItems: 'center',
         minHeight: size === 'xs' ? 30 : 36,
@@ -320,13 +367,13 @@ export default function SQLInlineEditor({
     >
       {label != null && (
         <Text
-          c="gray.4"
           mx="4px"
           size="xs"
           fw="bold"
           style={{
             whiteSpace: 'nowrap',
           }}
+          component="div"
         >
           <Tooltip label={tooltipText} disabled={!tooltipText}>
             <Flex align="center" gap={2}>
@@ -342,7 +389,7 @@ export default function SQLInlineEditor({
           ref={ref}
           value={value}
           onChange={onChange}
-          theme={'dark'}
+          theme={colorScheme === 'dark' ? 'dark' : 'light'}
           onFocus={() => {
             setIsFocused(true);
           }}

@@ -23,11 +23,13 @@ export default function TabItem({
       {...props}
     >
       <span>{children}</span>
-      <div className="w-100 mt-2" style={{ height: 4 }}>
+      <div className="w-100 mt-2" style={{ height: 2 }}>
         <div
           className="h-100 w-100"
           style={{
-            background: active ? '#50FA7B' : '#242d33',
+            background: active
+              ? 'var(--color-bg-success)'
+              : 'var(--color-border)',
           }}
         ></div>
       </div>

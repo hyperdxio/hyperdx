@@ -4,6 +4,7 @@ import { sql } from '@codemirror/lang-sql';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Button, Paper } from '@mantine/core';
+import { IconCheck, IconCopy } from '@tabler/icons-react';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { useRenderedSqlChartConfig } from '@/hooks/useChartConfig';
@@ -19,20 +20,29 @@ function tryFormat(data?: string) {
   }
 }
 
-function CopyButton({ text = '' }: { text?: string }) {
+function CopyButton({
+  text = '',
+  size = 'md',
+}: {
+  text?: string;
+  size?: 'xs' | 'md';
+}) {
   const [copied, setCopied] = useState(false);
+
+  const iconSize = size === 'xs' ? 14 : 16;
+  const buttonSize = size === 'xs' ? 'compact-xs' : 'sm';
 
   return (
     <CopyToClipboard text={text ?? ''} onCopy={() => setCopied(true)}>
       <Button
-        variant={copied ? 'light' : 'outline'}
-        color="gray"
+        variant={copied ? 'light' : 'default'}
+        size={buttonSize}
         className="position-absolute top-0 end-0"
       >
         {copied ? (
-          <i className="bi bi-check-lg me-2" />
+          <IconCheck size={iconSize} className="me-2" />
         ) : (
-          <i className="bi bi-clipboard-fill me-2" />
+          <IconCopy size={iconSize} className="me-2" />
         )}
         {copied ? 'Copied!' : 'Copy'}
       </Button>
@@ -44,10 +54,12 @@ export function SQLPreview({
   data,
   formatData = true,
   enableCopy = false,
+  copyButtonSize = 'md',
 }: {
   data?: string;
   formatData?: boolean;
   enableCopy?: boolean;
+  copyButtonSize?: 'xs' | 'md';
 }) {
   const displayed = formatData ? tryFormat(data) : data;
 
@@ -66,7 +78,7 @@ export function SQLPreview({
         extensions={[sql()]}
         editable={false}
       />
-      {enableCopy && <CopyButton text={displayed} />}
+      {enableCopy && <CopyButton text={displayed} size={copyButtonSize} />}
     </div>
   );
 }
