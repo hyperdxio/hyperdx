@@ -34,6 +34,7 @@ import {
   DisplayType,
   Filter,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -1091,22 +1092,39 @@ function DBSearchPage() {
     ({
       where,
       whereLanguage,
+      source,
     }: {
       where: SearchConfig['where'];
       whereLanguage: SearchConfig['whereLanguage'];
+      source?: TSource;
     }) => {
-      const qParams = new URLSearchParams({
-        where: where || searchedConfig.where || '',
-        whereLanguage: whereLanguage || 'sql',
-        from: searchedTimeRange[0].getTime().toString(),
-        to: searchedTimeRange[1].getTime().toString(),
-        select: searchedConfig.select || '',
-        source: searchedSource?.id || '',
-        filters: JSON.stringify(searchedConfig.filters ?? []),
-        isLive: 'false',
-        liveInterval: interval.toString(),
-      });
-      return `/search?${qParams.toString()}`;
+      // When generating a search based on a different source,
+      // filters and select for the current source are not preserved.
+      if (source && source.id !== searchedSource?.id) {
+        const qParams = new URLSearchParams({
+          where: where || '',
+          whereLanguage: whereLanguage || 'sql',
+          from: searchedTimeRange[0].getTime().toString(),
+          to: searchedTimeRange[1].getTime().toString(),
+          source: source.id,
+          isLive: 'false',
+          liveInterval: interval.toString(),
+        });
+        return `/search?${qParams.toString()}`;
+      } else {
+        const qParams = new URLSearchParams({
+          where: where || searchedConfig.where || '',
+          whereLanguage: whereLanguage || 'sql',
+          from: searchedTimeRange[0].getTime().toString(),
+          to: searchedTimeRange[1].getTime().toString(),
+          select: searchedConfig.select || '',
+          source: searchedSource?.id || '',
+          filters: JSON.stringify(searchedConfig.filters ?? []),
+          isLive: 'false',
+          liveInterval: interval.toString(),
+        });
+        return `/search?${qParams.toString()}`;
+      }
     },
     [
       interval,
@@ -1829,6 +1847,7 @@ function DBSearchPage() {
                             dbSqlRowTableConfig,
                             isChildModalOpen: isDrawerChildModalOpen,
                             setChildModalOpen: setDrawerChildModalOpen,
+                            source: searchedSource,
                           }}
                           config={dbSqlRowTableConfig}
                           sourceId={searchedConfig.source}

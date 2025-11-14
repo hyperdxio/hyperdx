@@ -548,6 +548,14 @@ const RequiredTimestampColumnSchema = z
   .string()
   .min(1, 'Timestamp Column is required');
 
+const HighlightedAttributeExpressionsSchema = z.array(
+  z.object({
+    sqlExpression: z.string().min(1, 'Attribute SQL Expression is required'),
+    luceneExpression: z.string().optional(),
+    alias: z.string().optional(),
+  }),
+);
+
 // Log source form schema
 const LogSourceAugmentation = {
   kind: z.literal(SourceKind.Log),
@@ -570,6 +578,8 @@ const LogSourceAugmentation = {
   implicitColumnExpression: z.string().optional(),
   uniqueRowIdExpression: z.string().optional(),
   tableFilterExpression: z.string().optional(),
+  highlightedAttributeExpressions:
+    HighlightedAttributeExpressionsSchema.optional(),
 };
 
 // Trace source form schema
@@ -600,6 +610,8 @@ const TraceSourceAugmentation = {
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
+  highlightedAttributeExpressions:
+    HighlightedAttributeExpressionsSchema.optional(),
 };
 
 // Session source form schema

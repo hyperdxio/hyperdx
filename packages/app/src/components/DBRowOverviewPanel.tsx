@@ -81,11 +81,11 @@ export function RowOverviewPanel({
       : {};
 
   const _generateSearchUrl = useCallback(
-    (query?: string, timeRange?: [Date, Date]) => {
+    (query?: string, queryLanguage?: 'sql' | 'lucene') => {
       return (
         generateSearchUrl?.({
           where: query,
-          whereLanguage: 'lucene',
+          whereLanguage: queryLanguage,
         }) ?? '/'
       );
     },
@@ -195,8 +195,6 @@ export function RowOverviewPanel({
               <Box px="md">
                 <NetworkPropertySubpanel
                   eventAttributes={flattenedEventAttributes}
-                  onPropertyAddClick={onPropertyAddClick}
-                  generateSearchUrl={_generateSearchUrl}
                 />
               </Box>
             </Accordion.Panel>
