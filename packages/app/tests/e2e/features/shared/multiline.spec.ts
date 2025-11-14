@@ -54,6 +54,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     page: Page,
     editor: Locator,
     additionalLines: string[],
+    mode: EditorConfig['mode'],
   ) => {
     const initialBox = await editor.boundingBox();
     const initialHeight = initialBox?.height || 0;
@@ -61,11 +62,11 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     // Add more content
     for (const line of additionalLines) {
       await editor.press('Shift+Enter');
-      await editor.type(line);
+      await editor.pressSequentially(line);
     }
 
     // Wait for potential height changes to take effect
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(500);
 
     const expandedBox = await editor.boundingBox();
     const expandedHeight = expandedBox?.height || 0;
@@ -77,16 +78,24 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         `Height did not expand: initial=${initialHeight}, final=${expandedHeight}`,
       );
 
-      // Fallback: verify that content was actually added (multiline functionality works)
-      const content = await editor.textContent();
-      const inputValue = await editor.inputValue().catch(() => null);
-      const actualContent = content || inputValue || '';
+      // For SQL - its rendered in CodeMirror, we can check line count through its DOM
+      if (mode === 'SQL') {
+        const numLines = await editor.evaluate(
+          node => node.querySelectorAll('.cm-line').length,
+        );
+        expect(numLines).toBeGreaterThan(1);
+        // For Lucene - fallback to checking the value of the textarea
+      } else {
+        const content = await editor.textContent();
+        const inputValue = await editor.inputValue().catch(() => null);
+        const actualContent = content || inputValue || '';
 
-      // Check that we have multiple lines of content
-      const lineCount = actualContent
-        .split('\n')
-        .filter(line => line.trim()).length;
-      expect(lineCount).toBeGreaterThan(1);
+        // Check that we have multiple lines of content
+        const lineCount = actualContent
+          .split('\n')
+          .filter(line => line.trim()).length;
+        expect(lineCount).toBeGreaterThan(1);
+      }
     } else {
       expect(expandedHeight).toBeGreaterThan(initialHeight);
     }
@@ -151,7 +160,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
               'user_id:* AND session_id:exists',
             ];
 
-      await testHeightExpansion(page, editor, additionalLines);
+      await testHeightExpansion(page, editor, additionalLines, config.mode);
     });
 
     // SQL-specific max height test

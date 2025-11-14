@@ -1,6 +1,5 @@
 import { useMemo, useRef } from 'react';
 import { add } from 'date-fns';
-import Select from 'react-select';
 import { z } from 'zod';
 import {
   filterColumnMetaByType,
@@ -195,33 +194,6 @@ export function seriesToUrlSearchQueryParam({
     from: `${dateRange[0].getTime()}`,
     to: `${dateRange[1].getTime()}`,
   });
-}
-
-export function TableSelect({
-  table,
-  setTableAndAggFn,
-}: {
-  setTableAndAggFn: (table: SourceTable, fn: AggFn) => void;
-  table: string;
-}) {
-  return (
-    <Select
-      options={TABLES}
-      className="ds-select w-auto text-nowrap"
-      value={TABLES.find(v => v.value === table)}
-      onChange={opt => {
-        const val = opt?.value ?? 'logs';
-        if (val === 'logs') {
-          setTableAndAggFn('logs', 'count');
-        } else if (val === 'metrics') {
-          // TODO: This should set rate if metric field is a sum
-          // or we should just reset the field if changing tables
-          setTableAndAggFn('metrics', 'max');
-        }
-      }}
-      classNamePrefix="ds-react-select"
-    />
-  );
 }
 
 export function TableToggle({

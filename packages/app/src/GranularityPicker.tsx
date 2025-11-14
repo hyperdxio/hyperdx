@@ -1,8 +1,8 @@
 import { memo } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import { Select } from '@mantine/core';
 
 import { Granularity } from './ChartUtils';
-import DSSelect from './DSSelect';
 
 export default function GranularityPicker({
   value,
@@ -14,9 +14,9 @@ export default function GranularityPicker({
   disabled?: boolean;
 }) {
   return (
-    <DSSelect
+    <Select
       disabled={disabled}
-      options={[
+      data={[
         {
           value: 'auto' as const,
           label: 'Auto Granularity',
@@ -58,7 +58,9 @@ export default function GranularityPicker({
           label: '7 Day Granularity',
         },
       ]}
-      onChange={onChange}
+      onChange={v =>
+        onChange((v ?? undefined) as Granularity | 'auto' | undefined)
+      }
       value={value}
     />
   );
