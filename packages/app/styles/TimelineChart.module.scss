@@ -2,8 +2,12 @@
   cursor: pointer;
 
   &:hover {
-    background-color: #aaaaff07;
+    background-color: var(--color-bg-muted);
   }
+}
+
+.timelineRowActive {
+  background-color: var(--color-bg-surface);
 }
 
 .labelContainer {

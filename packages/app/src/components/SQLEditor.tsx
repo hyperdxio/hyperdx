@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { acceptCompletion, startCompletion } from '@codemirror/autocomplete';
 import { sql, SQLDialect } from '@codemirror/lang-sql';
-import { Flex, Group, Paper, Text } from '@mantine/core';
+import { Flex, Group, Paper, Text, useMantineColorScheme } from '@mantine/core';
 import CodeMirror, {
   Compartment,
   EditorView,
@@ -34,6 +34,7 @@ export default function SQLEditor({
   placeholder,
   value,
 }: SQLInlineEditorProps) {
+  const { colorScheme } = useMantineColorScheme();
   const ref = useRef<ReactCodeMirrorRef>(null);
 
   const compartmentRef = useRef<Compartment>(new Compartment());
@@ -42,9 +43,8 @@ export default function SQLEditor({
     <Paper
       flex="auto"
       shadow="none"
-      bg="dark.6"
       style={{
-        border: '1px solid var(--mantine-color-gray-7)',
+        bg: 'var(--color-bg-field)',
         display: 'flex',
         alignItems: 'center',
       }}
@@ -56,7 +56,7 @@ export default function SQLEditor({
           ref={ref}
           value={value}
           onChange={onChange}
-          theme={'dark'}
+          theme={colorScheme === 'dark' ? 'dark' : 'light'}
           minHeight={'100px'}
           extensions={[
             styleTheme,

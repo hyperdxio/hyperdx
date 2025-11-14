@@ -247,8 +247,6 @@ export default function ContextSubpanel({
         <Flex direction="column" mih="0px" style={{ flexGrow: 1 }}>
           <Group justify="space-between" p="sm">
             <SegmentedControl
-              bg="dark.7"
-              color="dark.5"
               size="xs"
               data={generateSegmentedControlData()}
               value={contextBy}
@@ -287,8 +285,6 @@ export default function ContextSubpanel({
               />
             )}
             <SegmentedControl
-              bg="dark.7"
-              color="dark.5"
               size="xs"
               data={[
                 { label: '100ms', value: ms('100ms').toString() },

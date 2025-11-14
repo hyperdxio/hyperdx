@@ -45,7 +45,7 @@ import {
 } from '@mantine/core';
 import { useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconFilterEdit } from '@tabler/icons-react';
+import { IconFilterEdit, IconPlayerPlay } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
@@ -212,7 +212,7 @@ const Tile = forwardRef(
     return (
       <div
         data-testid={`dashboard-tile-${chart.id}`}
-        className={`p-2 ${className} d-flex flex-column ${
+        className={`p-2 ${className} d-flex flex-column bg-muted rounded ${
           isHighlighed && 'dashboard-chart-highlighted'
         }`}
         id={`chart-${chart.id}`}
@@ -221,9 +221,6 @@ const Tile = forwardRef(
         key={chart.id}
         ref={ref}
         style={{
-          background:
-            'linear-gradient(180deg, rgba(250,250,250,0.018) 0%, rgba(250,250,250,0.008) 100%)',
-          borderRadius: 2,
           ...style,
         }}
         onMouseDown={onMouseDown}
@@ -231,7 +228,7 @@ const Tile = forwardRef(
         onTouchEnd={onTouchEnd}
       >
         <div className="d-flex justify-content-between align-items-center mb-2 cursor-grab">
-          <Text size="sm" c="gray.2" ms="xs">
+          <Text size="sm" ms="xs">
             {chart.config.name}
           </Text>
           {hovered ? (
@@ -241,15 +238,13 @@ const Tile = forwardRef(
                   size={5}
                   zIndex={1}
                   color={alertIndicatorColor}
-                  label={
-                    !alert && <span className="text-slate-400 fs-8">+</span>
-                  }
+                  label={!alert && <span className="fs-8">+</span>}
                   mr={4}
                 >
                   <Button
                     data-testid={`tile-alerts-button-${chart.id}`}
                     variant="subtle"
-                    color="gray.4"
+                    color="gray"
                     size="xxs"
                     onClick={onEditClick}
                     title="Alerts"
@@ -262,7 +257,7 @@ const Tile = forwardRef(
               <Button
                 data-testid={`tile-duplicate-button-${chart.id}`}
                 variant="subtle"
-                color="gray.4"
+                color="gray"
                 size="xxs"
                 onClick={onDuplicateClick}
                 title="Duplicate"
@@ -272,8 +267,8 @@ const Tile = forwardRef(
               <Button
                 data-testid={`tile-edit-button-${chart.id}`}
                 variant="subtle"
+                color="gray"
                 size="xxs"
-                color="gray.4"
                 onClick={onEditClick}
                 title="Edit"
               >
@@ -282,8 +277,8 @@ const Tile = forwardRef(
               <Button
                 data-testid={`tile-delete-button-${chart.id}`}
                 variant="subtle"
+                color="gray"
                 size="xxs"
-                color="gray.4"
                 onClick={onDeleteClick}
                 title="Delete"
               >
@@ -481,7 +476,6 @@ function DashboardName({
               ms="xs"
               variant="subtle"
               size="xs"
-              color="gray.4"
               onClick={() => setEditing(true)}
             >
               <i className="bi bi-pencil"></i>
@@ -882,7 +876,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       {IS_LOCAL_MODE === false && isLocalDashboard && isLocalDashboardEmpty && (
         <Paper my="lg" p="md">
           <Flex justify="space-between" align="center">
-            <Text c="gray.4" size="sm">
+            <Text size="sm">
               This is a temporary dashboard and can not be saved.
             </Text>
             <Button
@@ -917,8 +911,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               onChange={handleUpdateTags}
             >
               <Button
-                variant="outline"
-                color="dark.2"
+                variant="default"
                 px="xs"
                 size="xs"
                 style={{ flexShrink: 0 }}
@@ -932,7 +925,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
             <Menu width={250}>
               <Menu.Target>
-                <Button variant="outline" color="dark.2" px="xs" size="xs">
+                <Button variant="default" px="xs" size="xs">
                   <i className="bi bi-three-dots-vertical" />
                 </Button>
               </Menu.Target>
@@ -993,7 +986,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             </Menu>
           )}
         </Group>
-        {/* <Button variant="outline" color="gray.4" size="sm">
+        {/* <Button variant="outline" size="sm">
           Save
         </Button> */}
       </Flex>
@@ -1058,10 +1051,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         >
           <Button
             onClick={() => setIsLive(prev => !prev)}
-            color={isLive ? 'green' : 'gray'}
             mr={6}
             size="sm"
-            variant="outline"
+            variant={isLive ? 'filled' : 'default'}
             title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
           >
             Live
@@ -1072,9 +1064,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             onClick={refresh}
             loading={manualRefreshCooloff}
             disabled={manualRefreshCooloff}
-            color="gray"
             mr={6}
-            variant="outline"
+            variant="default"
             title="Refresh dashboard"
             px="xs"
           >
@@ -1083,8 +1074,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </Tooltip>
         <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
           <Button
-            variant="outline"
-            color="gray"
+            variant="default"
             px="xs"
             mr={6}
             onClick={() => setShowFiltersModal(true)}
@@ -1092,8 +1082,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <IconFilterEdit strokeWidth={1} />
           </Button>
         </Tooltip>
-        <Button variant="outline" type="submit" color="green">
-          <i className="bi bi-play"></i>
+        <Button
+          data-testid="search-submit-button"
+          variant="outline"
+          type="submit"
+        >
+          <IconPlayerPlay size={16} />
         </Button>
       </Flex>
       <DashboardFilters
@@ -1157,7 +1151,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         data-testid="add-new-tile-button"
         variant="outline"
         mt="sm"
-        color={dashboard?.tiles.length === 0 ? 'green' : 'dark.3'}
+        color={dashboard?.tiles.length === 0 ? 'green' : 'gray'}
         fw={400}
         onClick={onAddTile}
         w="100%"

@@ -1,11 +1,9 @@
-@import './variables';
-
 .sectionHeader {
-  border-bottom: 1px solid $slate-950;
+  border-bottom: 1px solid var(--color-border);
   margin-top: 30px;
   padding-bottom: 10px;
   font-size: 14px;
-  color: $slate-400;
+  color: var(--color-text-muted);
 }
 
 .historyCardWrapper {
@@ -22,7 +20,7 @@
 .historyCard {
   width: 4px;
   height: 16px;
-  background-color: $slate-950;
+  background-color: var(--color-bg-muted);
   border-radius: 2px;
   margin: 0 1px;
   cursor: pointer;
@@ -34,11 +32,11 @@
   }
 
   &.ok {
-    background-color: #00d474;
+    background-color: var(--color-success);
   }
 
   &.alarm {
-    background-color: #e74c3c;
+    background-color: var(--color-danger);
   }
 }
 
@@ -48,15 +46,15 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px 0;
-  border-bottom: 1px solid $slate-950;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .alertLink {
   font-weight: 500;
-  color: $slate-200;
+  color: var(--color-text-secondary);
   text-decoration: none;
 
   &:hover {
-    color: #fff;
+    color: var(--color-text);
   }
 }

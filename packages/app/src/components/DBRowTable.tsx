@@ -720,7 +720,7 @@ export const RawLogTable = memo(
     return (
       <div
         data-testid="search-results-table"
-        className="overflow-auto h-100 fs-8 bg-inherit"
+        className="overflow-auto h-100 fs-8"
         onScroll={e => {
           fetchMoreOnBottomReached(e.target as HTMLDivElement);
 
@@ -740,7 +740,7 @@ export const RawLogTable = memo(
             config={config}
           />
         )}
-        <table className={cx('w-100 bg-inherit', styles.table)} id={tableId}>
+        <table className={cx('w-100', styles.table)} id={tableId}>
           <thead className={styles.tableHead}>
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>
@@ -946,7 +946,7 @@ export const RawLogTable = memo(
             })}
             <tr>
               <td colSpan={800}>
-                <div className="rounded fs-7 bg-grey text-center d-flex align-items-center justify-content-center mt-3">
+                <div className="rounded fs-7 bg-muted text-center d-flex align-items-center justify-content-center mt-3">
                   {isLoading ? (
                     <div className="my-3">
                       <div className="spin-animate d-inline-block">
@@ -1020,12 +1020,12 @@ export const RawLogTable = memo(
                     dedupedRows.length === 0 ? (
                     <div className="my-3" data-testid="db-row-table-no-results">
                       No results found.
-                      <Text mt="sm" c="gray.3">
+                      <Text mt="sm">
                         Try checking the query explainer in the search bar if
                         there are any search syntax issues.
                       </Text>
                       {dateRange?.[0] != null && dateRange?.[1] != null ? (
-                        <Text mt="sm" c="gray.3">
+                        <Text mt="sm">
                           Searched Time Range:{' '}
                           {formatDistance(dateRange?.[1], dateRange?.[0])} {'('}
                           <FormatTime
@@ -1389,14 +1389,12 @@ function DBSqlRowTableComponent({
           </Text>
           <Box mah={100} style={{ overflow: 'auto' }}>
             {noisyPatterns.data?.map(p => (
-              <Text c="gray.3" fz="xs" key={p.id}>
+              <Text fz="xs" key={p.id}>
                 {p.pattern}
               </Text>
             ))}
             {noisyPatternIds.length === 0 && (
-              <Text c="gray.3" fz="xs">
-                No noisy patterns found
-              </Text>
+              <Text fz="xs">No noisy patterns found</Text>
             )}
           </Box>
         </Box>

@@ -1,4 +1,4 @@
-@import './variables';
+/* stylelint-disable */
 
 .wrapper {
   height: 100vh;
@@ -6,13 +6,12 @@
   display: flex;
   flex-flow: column nowrap;
   justify-content: space-between;
-  border-right: 1px solid $slate-950;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg-sidebar);
 }
 
 .list {
-  // background-color: #00000030;
-  // border-bottom: 1px solid $slate-950;
-  border-top: 1px solid $slate-950;
+  border-top: 1px solid var(--color-border);
   overflow-x: hidden;
   max-width: 100%;
   padding: 4px 16px;
@@ -21,7 +20,7 @@
 
 .scrollbar {
   .thumb {
-    background-color: var(--mantine-color-gray-9);
+    background-color: var(--color-border);
   }
 }
 
@@ -32,21 +31,20 @@
 }
 
 .listGroupName {
-  color: $slate-400;
+  color: var(--color-text-muted);
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 1px;
-  margin-bottom: 6px;
+  margin-bottom: 2x;
+  margin-top: 6px;
   padding-left: 16px;
   width: 100%;
   display: flex;
   align-items: center;
-
-  // justify-content: space-between;
   gap: 6px;
 
   &:hover {
-    color: $slate-300;
+    color: var(--color-text);
     cursor: pointer;
   }
 }
@@ -55,55 +53,82 @@
   display: flex;
   justify-content: space-between;
   text-decoration: none;
-  color: $slate-200;
-  font-size: 13px;
-  margin-bottom: 4px;
+  color: var(--color-text);
+  font-size: 14px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding-left: 16px;
   user-select: none;
   gap: 10px;
 
   &:hover {
-    color: $slate-100;
+    color: var(--color-text-success);
   }
 
   &:focus-visible {
     outline: none;
-    border-left: 2px solid $green;
+    background: var(--color-bg-muted);
   }
+}
 
-  &:last-of-type {
-    margin-bottom: 12px;
+.linkIcon {
+  margin-right: 8px;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  transition: all 0.2s ease-in-out;
+
+  &:hover {
+    color: var(--color-text-success);
   }
 }
 
 .listEmptyMsg {
-  color: $slate-400;
+  color: var(--color-text-muted);
   font-size: 12px;
   margin: 8px 16px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.listLinkActive {
-  // color: $green;
-  color: var(--mantine-color-green-3);
-  font-weight: 500;
+.nestedLink {
+  display: block;
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 13px;
+  padding-left: 16px;
+  padding-block: 2px;
+  transition: all 0.2s ease-in-out;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
-  &:hover {
-    // color: $green;
-    color: var(--mantine-color-green-3);
+   &:hover {
+    color: var(--color-text-success);
   }
+
+  &:focus-visible {
+    outline: none;
+    background: var(--color-bg-muted);
+  }
+}
+
+.nestedLinkActive {
+  color: var(--color-text-success);
+  font-weight: 500;
+}
+
+.listLinkActive {
+  color: var(--color-text-success);
+  font-weight: 500;
 }
 
 .kbd {
   white-space: nowrap;
   letter-spacing: -1px;
-  color: $slate-400;
-  background: $slate-950;
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface);
   border-radius: 4px;
   padding: 0 4px;
   font-size: 10px;
@@ -118,18 +143,90 @@
   }
 }
 
-.appNavMenu {
+
+// User menu trigger styling
+.userMenuTrigger {
   pointer-events: all;
   cursor: pointer;
-  box-shadow: 0 5px 10px 10px #0f1215e0;
-  background: var(--mantine-color-gray-9);
+  margin: 8px 0.875rem 0.875rem;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  max-width: 100%;
+  overflow: hidden;
 
   &:hover {
-    background: var(--mantine-color-gray-8);
+    background: var(--color-bg-muted);
   }
 
   &:active {
-    // background: var(--mantine-color-gray-9);
     transform: translate(0, 1px);
   }
+
+  &Collapsed {
+    padding: 2px;
+    margin: 8px auto 0.875rem;
+    background: transparent;
+    border: none !important;
+    width: fit-content;
+
+    &:hover {
+      background: var(--color-bg-muted);
+    }
+
+    &:active {
+      transform: translate(0, 1px);
+    }
+  }
+}
+
+// Help menu trigger styling
+.helpMenuTrigger {
+  pointer-events: all;
+  cursor: pointer;
+  margin: 0 0.875rem 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  transition: background-color 0.2s ease, transform 0.1s ease, border-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: var(--color-bg-muted);
+    border-color: var(--color-border);
+  }
+
+  &:active {
+    transform: translate(0, 1px);
+  }
+
+  &Collapsed {
+    margin: 0 auto 8px;
+    border: none;
+    background: transparent;
+
+    &:hover {
+      background: var(--color-bg-muted);
+    }
+
+    &:active {
+      transform: translate(0, 1px);
+    }
+  }
+}
+
+// Bottom section with gradient overlay
+.bottomSection {
+  position: absolute;
+  bottom: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    var(--color-bg-sidebar) 50%,
+    transparent 100%
+  );
+  padding-top: 40px;
 }

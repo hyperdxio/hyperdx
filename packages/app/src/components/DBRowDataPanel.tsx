@@ -192,7 +192,7 @@ export function RowDataPanel({
   const jsonColumns = getJSONColumnNames(data?.meta);
 
   return (
-    <div className="flex-grow-1 bg-body overflow-auto" data-testid={dataTestId}>
+    <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
       <Box mx="md" my="sm">
         <DBRowJsonViewer data={firstRow} jsonColumns={jsonColumns} />
       </Box>

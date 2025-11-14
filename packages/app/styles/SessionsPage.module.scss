@@ -1,0 +1,11 @@
+.sessionCard {
+  &:hover {
+    .emailText {
+      color: var(--color-text-success);
+    }
+  }
+}
+
+.emailText {
+  transition: color 0.2s ease;
+}

@@ -47,6 +47,7 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
+import { IconPlayerPlay } from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
@@ -229,7 +230,6 @@ function ChartSeriesEditorComponent({
             )}
           </Group>
         }
-        c="dark.2"
         labelPosition="right"
         mb={8}
         mt="sm"
@@ -677,7 +677,7 @@ export default function EditTimeChartForm({
         )}
       />
       <Flex align="center" gap="sm" mb="sm">
-        <Text c="gray.4" size="sm" className="text-nowrap">
+        <Text size="sm" className="text-nowrap">
           Chart Name
         </Text>
         <InputControlled
@@ -704,7 +704,7 @@ export default function EditTimeChartForm({
               },
             }}
           />
-          <Box p="md" bg="dark.6" mb="md">
+          <Box p="md" mb="md">
             <HDXMarkdownChart
               config={{
                 markdown: watch('markdown') || 'Preview',
@@ -715,7 +715,7 @@ export default function EditTimeChartForm({
       ) : (
         <>
           <Flex mb="md" align="center" gap="sm">
-            <Text c="gray.4" pe="md" size="sm">
+            <Text pe="md" size="sm">
               Data Source
             </Text>
             <SourceSelectControlled
@@ -758,7 +758,6 @@ export default function EditTimeChartForm({
                   <Divider mt="md" mb="sm" />
                   <Flex align="center" mt="sm">
                     <Text
-                      c="gray.4"
                       me="sm"
                       size="sm"
                       style={{
@@ -888,7 +887,7 @@ export default function EditTimeChartForm({
       {alert && (
         <Paper my="sm">
           <Stack gap="xs">
-            <Paper px="md" py="sm" bg="dark.6" radius="xs">
+            <Paper px="md" py="sm" radius="xs">
               <Group gap="xs" justify="space-between">
                 <Group gap="xs">
                   <Text size="sm" opacity={0.7}>
@@ -962,7 +961,7 @@ export default function EditTimeChartForm({
           {onClose != null && (
             <Button
               variant="subtle"
-              color="dark.2"
+              color="dark"
               onClick={onClose}
               disabled={isSaving}
             >
@@ -994,10 +993,9 @@ export default function EditTimeChartForm({
               data-testid="chart-run-query-button"
               variant="outline"
               type="submit"
-              color="green"
               onClick={onSubmit}
             >
-              <i className="bi bi-play"></i>
+              <IconPlayerPlay size={16} />
             </Button>
           )}
         </Flex>
@@ -1005,7 +1003,7 @@ export default function EditTimeChartForm({
       {!queryReady && activeTab !== 'markdown' ? (
         <Paper shadow="xs" p="xl">
           <Center mih={400}>
-            <Text size="sm" c="gray.4">
+            <Text size="sm">
               Please start by selecting a database, table, and timestamp column
               above and then click the play button to query data.
             </Text>

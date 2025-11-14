@@ -52,20 +52,15 @@ export const ColorSwatchInput = ({
           size="compact-xs"
           variant="light"
           color="gray"
-          bg="gray.8"
           onClick={() => setOpened(o => !o)}
         >
           {value ? (
             <Group gap="xs">
-              <Text size="xs" c="gray.5">
-                Color
-              </Text>
+              <Text size="xs">Color</Text>
               <ColorSwatch color={value} size={14} />
             </Group>
           ) : (
-            <Text size="xs" c="gray.5">
-              Choose color
-            </Text>
+            <Text size="xs">Choose color</Text>
           )}
         </Button>
       </Popover.Target>

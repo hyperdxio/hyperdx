@@ -64,12 +64,8 @@ export default function SlowestEventsTile({
   return (
     <ChartBox style={{ height }}>
       <Group justify="space-between" align="center" mb="sm">
-        <Text size="sm" c="gray.4">
-          {title}
-        </Text>
-        <Text size="xs" c="dark.2">
-          (Slower than {roundedP95}ms)
-        </Text>
+        <Text size="sm">{title}</Text>
+        <Text size="xs">(Slower than {roundedP95}ms)</Text>
       </Group>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">

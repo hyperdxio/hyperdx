@@ -12,7 +12,7 @@ export default function SearchPageActionBar({
       <Menu.Target>
         <Button
           variant="outline"
-          color="dark.2"
+          color="gray"
           px="xs"
           size="xs"
           style={{ flexShrink: 0 }}

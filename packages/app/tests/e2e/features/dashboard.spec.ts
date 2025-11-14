@@ -187,7 +187,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       const runButton = page
         .locator(
-          '[data-testid="search-submit-button"], button:has-text("Search"), i.bi-play',
+          '[data-testid="search-submit-button"], button:has-text("Search")',
         )
         .first();
       await expect(runButton).toBeVisible();

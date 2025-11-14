@@ -104,7 +104,7 @@ export const TextButton = ({
       className={classes.textButton}
       data-testid={dataTestId}
     >
-      <Text size="xxs" c="gray.6" lh={1} ms={ms}>
+      <Text size="xxs" lh={1} ms={ms}>
         {label}
       </Text>
     </UnstyledButton>
@@ -125,7 +125,7 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
         : `~${Math.round(percentage)}%`;
 
   return (
-    <Text size="xs" c="gray.3" className={isLoading ? 'effect-pulse' : ''}>
+    <Text size="xs" className={isLoading ? 'effect-pulse' : ''}>
       {formattedPercentage}
     </Text>
   );
@@ -154,7 +154,6 @@ export const FilterCheckbox = ({
         onClick={() => onChange?.(!value)}
         style={{ minWidth: 0 }}
         wrap="nowrap"
-        align="flex-start"
       >
         <Checkbox
           checked={!!value}
@@ -184,7 +183,11 @@ export const FilterCheckbox = ({
           >
             <Text
               size="xs"
-              c={value === 'excluded' ? 'red.4' : 'gray.3'}
+              c={
+                value === 'excluded'
+                  ? 'var(--color-text-danger)'
+                  : 'var(--color-text)'
+              }
               truncate="end"
               flex={1}
               title={label}
@@ -222,7 +225,7 @@ export const FilterCheckbox = ({
         />
       </div>
       {pinned && (
-        <Text size="xxs" c="gray.6">
+        <Text size="xxs">
           <i className="bi bi-pin-angle-fill"></i>
         </Text>
       )}
@@ -457,6 +460,7 @@ export const FilterGroup = ({
               component={UnstyledButton}
               flex="1"
               p="0"
+              pr="xxxs"
               data-testid="filter-group-control"
               classNames={{
                 chevron: 'm-0',
@@ -488,15 +492,8 @@ export const FilterGroup = ({
                     }
                   }}
                   styles={{ input: { transition: 'padding 0.2s' } }}
-                  rightSectionWidth={isExpanded ? 20 : 2}
-                  rightSection={
-                    <IconSearch
-                      size={15}
-                      stroke={2}
-                      className={`${isExpanded ? 'opacity-100' : 'opacity-0'}`}
-                      style={{ transition: 'opacity 0.4s 0.2s' }}
-                    />
-                  }
+                  rightSectionWidth={20}
+                  rightSection={<IconSearch size={12} stroke={2} />}
                   classNames={{
                     input: 'ps-0.5',
                   }}
@@ -581,7 +578,7 @@ export const FilterGroup = ({
               ))}
               {optionsLoading ? (
                 <Group m={6} gap="xs">
-                  <Loader size={12} color="gray.6" />
+                  <Loader size={12} color="gray" />
                   <Text c="dimmed" size="xs">
                     Loading...
                   </Text>
@@ -624,7 +621,7 @@ export const FilterGroup = ({
                   <div className="d-flex m-1">
                     {loadMoreLoading ? (
                       <Group m={6} gap="xs">
-                        <Loader size={12} color="gray.6" />
+                        <Loader size={12} color="gray" />
                         <Text c="dimmed" size="xs">
                           Loading more...
                         </Text>
@@ -961,15 +958,15 @@ const DBSearchPageFiltersComponent = ({
             placement="right"
           >
             <Tabs.List w="100%">
-              <Tabs.Tab value="results" size="xs" c="gray.4" h="24px">
+              <Tabs.Tab value="results" size="xs" h="24px">
                 <Text size="xs">Results Table</Text>
               </Tabs.Tab>
               {showDelta && (
-                <Tabs.Tab value="delta" size="xs" c="gray.4" h="24px">
+                <Tabs.Tab value="delta" size="xs" h="24px">
                   <Text size="xs">Event Deltas</Text>
                 </Tabs.Tab>
               )}
-              <Tabs.Tab value="pattern" size="xs" c="gray.4" h="24px">
+              <Tabs.Tab value="pattern" size="xs" h="24px">
                 <Text size="xs">Event Patterns</Text>
               </Tabs.Tab>
             </Tabs.List>
@@ -1014,7 +1011,7 @@ const DBSearchPageFiltersComponent = ({
                   withArrow
                   label="Denoise results will visually remove events matching common event patterns from the results table."
                 >
-                  <Text size="xs" c="gray.3" mt="-1px">
+                  <Text size="xs" mt="-1px">
                     <i className="bi bi-noise-reduction"></i> Denoise Results
                   </Text>
                 </Tooltip>
@@ -1052,9 +1049,7 @@ const DBSearchPageFiltersComponent = ({
             </Flex>
           ) : (
             shownFacets.length === 0 && (
-              <Text size="xxs" c="gray.6">
-                No filters available
-              </Text>
+              <Text size="xxs">No filters available</Text>
             )
           )}
           {/* Show facets even when loading to ensure pinned filters are visible while loading */}
@@ -1118,10 +1113,10 @@ const DBSearchPageFiltersComponent = ({
 
           {showMoreFields && (
             <div>
-              <Text size="xs" c="gray.6" fw="bold">
+              <Text size="xs" fw="bold">
                 Not seeing a filter?
               </Text>
-              <Text size="xxs" c="gray.6">
+              <Text size="xxs">
                 {`Try searching instead (e.g. column:foo)`}
               </Text>
             </div>

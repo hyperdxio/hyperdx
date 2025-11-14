@@ -101,7 +101,7 @@ export const Tags = React.memo(
               color="gray"
               style={{ cursor: 'pointer' }}
             >
-              <i className="bi bi-tags text-slate-300 fs-7" />
+              <i className="bi bi-tags fs-7" />
             </ActionIcon>
           )}
         </Popover.Target>
@@ -127,11 +127,10 @@ export const Tags = React.memo(
           />
           <ScrollArea viewportProps={{ style: { maxHeight: 200 } }}>
             {filtered.length === 0 && (
-              <div className="pt-3 px-4 fs-8 text-slate-400 text-center">
+              <div className="pt-3 px-4 fs-8 text-center">
                 {allowCreate ? (
                   <>
-                    Type and press <span className="text-slate-300">Enter</span>{' '}
-                    to create new tag
+                    Type and press <span>Enter</span> to create new tag
                   </>
                 ) : (
                   'No tags found'
@@ -171,9 +170,7 @@ export const Tags = React.memo(
             </Checkbox.Group>
           </ScrollArea>
           <div className="p-2 border-top border-dark d-flex justify-content-between align-items-center">
-            <div className="ms-2 fs-8 text-slate-400">
-              {values.length || 'None'} selected
-            </div>
+            <div className="ms-2 fs-8 ">{values.length || 'None'} selected</div>
             {values.length >= 1 && (
               <Button
                 variant="default"

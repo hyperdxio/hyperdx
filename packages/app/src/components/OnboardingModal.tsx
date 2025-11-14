@@ -366,7 +366,7 @@ export default function OnboardingModal({
             />
           )}
           {!IS_LOCAL_MODE && (
-            <Text size="xs" mt="md" c="gray.4">
+            <Text size="xs" mt="md">
               You can always add and edit connections later.
             </Text>
           )}
@@ -375,7 +375,6 @@ export default function OnboardingModal({
             data-testid="demo-server-button"
             variant="outline"
             w="100%"
-            color="gray.4"
             onClick={handleDemoServerClick}
           >
             Connect to Demo Server
@@ -386,7 +385,6 @@ export default function OnboardingModal({
         <>
           <Button
             variant="subtle"
-            color="gray.4"
             onClick={() => setStep('connection')}
             p="xs"
             mb="md"
@@ -403,7 +401,7 @@ export default function OnboardingModal({
               setStep(undefined);
             }}
           />
-          <Text size="xs" mt="lg" c="gray.4">
+          <Text size="xs" mt="lg">
             You can always add and edit sources later.
           </Text>
         </>

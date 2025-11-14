@@ -16,17 +16,17 @@ export const StacktraceFrame = ({
   return (
     <Group gap="xs" display="inline-flex">
       <div
-        className="text-slate-200 fs-8"
+        className=" fs-8"
         style={{
           opacity: isLoading ? 0.8 : 1,
           filter: isLoading ? 'blur(1px)' : 'none',
         }}
       >
         {filename}
-        <span className="text-slate-400">
+        <span>
           :{lineno}:{colno}
         </span>
-        <span className="text-slate-400">{' in '}</span>
+        <span>{' in '}</span>
         {functionName && (
           <span
             style={{

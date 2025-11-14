@@ -1,10 +1,13 @@
 import React from 'react';
 import {
+  ActionIcon,
   Button,
   MantineProvider,
+  MantineTheme,
   MantineThemeOverride,
   rem,
   Select,
+  Text,
 } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 
@@ -13,11 +16,11 @@ const makeTheme = ({
 }: {
   fontFamily?: string;
 }): MantineThemeOverride => ({
-  defaultRadius: 'xs',
   cursorType: 'pointer',
   fontFamily,
   primaryColor: 'green',
   primaryShade: 8,
+  autoContrast: true,
   white: '#fff',
   fontSizes: {
     xxs: '11px',
@@ -37,18 +40,18 @@ const makeTheme = ({
     xl: 'calc(2rem * var(--mantine-scale))',
   },
   colors: {
-    // https://mantine.dev/colors-generator/?color=09D99C
+    // https://uicolors.app/generate/00c28a
     green: [
-      '#e2fff8',
-      '#cefef0',
-      '#a0fbe0',
-      '#6df9cf',
-      '#09D99C', // Toned Down
-      '#2ff5b8',
-      '#1ef5b3',
-      '#09da9d',
+      '#eafff6',
+      '#cdfee7',
+      '#a0fad5',
+      '#63f2bf',
+      '#25e2a5',
       '#00c28a',
-      '#00a875',
+      '#00a475',
+      '#008362',
+      '#00674e',
+      '#005542',
     ],
     // https://mantine.dev/colors-generator/?color=A1A1AA
     // Customized with FAFAFA, D7D8DB, A1A1AA
@@ -75,7 +78,6 @@ const makeTheme = ({
       '#1A1B1E',
       '#141517',
       '#101113',
-      '#14171b',
     ],
   },
   headings: {
@@ -104,24 +106,99 @@ const makeTheme = ({
     Select: Select.extend({
       styles: {
         input: {
-          border: '1px solid var(--mantine-color-gray-7)',
+          border: '1px solid var(--color-border)',
         },
       },
     }),
     Input: {
       styles: {
         input: {
-          border: '1px solid var(--mantine-color-gray-7)',
+          backgroundColor: 'var(--color-bg-field)',
+          border: '1px solid var(--color-border)',
         },
       },
     },
     Card: {
+      styles: (_theme: MantineTheme, props: { variant?: string }) => {
+        if (props.variant === 'muted') {
+          return {
+            root: {
+              backgroundColor: 'var(--color-bg-muted)',
+              border: '1px solid var(--color-border)',
+            },
+          };
+        }
+        return {
+          root: {
+            backgroundColor: 'var(--color-bg-body)',
+          },
+        };
+      },
+    },
+    Divider: {
       styles: {
         root: {
-          backgroundColor: '#191B1F',
+          borderColor: 'var(--color-border)',
+          borderTopColor: 'var(--color-border)',
+          '--divider-color': 'var(--color-border)',
+          '--item-border-color': 'var(--color-border)',
         },
       },
     },
+    Accordion: {
+      styles: {
+        control: {
+          '--item-border-color': 'var(--color-border)',
+        },
+        item: {
+          borderColor: 'var(--color-border)',
+        },
+      },
+    },
+    UnstyledButton: {
+      styles: {
+        root: {
+          '--item-border-color': 'var(--color-border)',
+        },
+      },
+    },
+    Paper: {
+      classNames: (_theme: MantineTheme, props: { variant?: string }) => {
+        if (props.variant === 'muted') {
+          return {
+            root: 'paper-muted',
+          };
+        }
+        return {};
+      },
+      styles: (_theme: MantineTheme, props: { variant?: string }) => {
+        if (props.variant === 'muted') {
+          return {
+            root: {
+              backgroundColor: 'var(--color-bg-muted)',
+              border: '1px solid var(--color-border)',
+            },
+          };
+        }
+        return {
+          root: {
+            border: '1px solid var(--color-border)',
+          },
+        };
+      },
+    },
+    Text: Text.extend({
+      styles: (theme, props) => {
+        if (props.variant === 'danger') {
+          return {
+            root: {
+              color: 'var(--color-text-danger)',
+            },
+          };
+        }
+        return {};
+      },
+    }),
     Button: Button.extend({
       vars: (theme, props) => {
         if (props.size === 'xxs') {
@@ -137,20 +214,64 @@ const makeTheme = ({
         return { root: {} };
       },
     }),
+    ActionIcon: ActionIcon.extend({
+      defaultProps: {
+        variant: 'subtle',
+        color: 'gray',
+      },
+      styles: (theme, props) => {
+        // Subtle variant stays transparent
+        if (props.variant === 'subtle') {
+          return {
+            root: {
+              backgroundColor: 'transparent',
+              color: 'var(--color-text)',
+              '&:hover': {
+                backgroundColor: 'var(--color-bg-hover)',
+              },
+              '&:active': {
+                backgroundColor: 'var(--color-bg-muted)',
+              },
+            },
+          };
+        }
+
+        // Default variant
+        if (props.variant === 'default') {
+          return {
+            root: {
+              backgroundColor: 'var(--color-bg-hover)',
+              color: 'var(--color-text)',
+              border: 'none',
+              '&:hover': {
+                backgroundColor: 'var(--color-bg-muted)',
+              },
+              '&:active': {
+                backgroundColor: 'var(--color-bg-muted)',
+              },
+            },
+          };
+        }
+
+        return {};
+      },
+    }),
   },
 });
 
 export const ThemeWrapper = ({
   fontFamily,
+  colorScheme = 'dark',
   children,
 }: {
   fontFamily?: string;
+  colorScheme?: 'dark' | 'light';
   children: React.ReactNode;
 }) => {
   const theme = React.useMemo(() => makeTheme({ fontFamily }), [fontFamily]);
 
   return (
-    <MantineProvider forceColorScheme="dark" theme={theme}>
+    <MantineProvider forceColorScheme={colorScheme} theme={theme}>
       <Notifications zIndex={999999} />
       {children}
     </MantineProvider>

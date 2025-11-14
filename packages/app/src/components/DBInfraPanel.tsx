@@ -72,10 +72,8 @@ const InfraSubpanelGroup = ({
     <div data-testid={`infra-subpanel-${fieldPrefix}`}>
       <Group justify="space-between" align="center">
         <Group align="center">
-          <h4 className="text-slate-300 fs-6 m-0">{title}</h4>
+          <h4 className="fs-6 m-0">{title}</h4>
           <SegmentedControl
-            bg="dark.7"
-            color="dark.5"
             size="xs"
             data={[
               { label: '30m', value: '30m' },
@@ -88,8 +86,6 @@ const InfraSubpanelGroup = ({
         </Group>
         <Group align="center">
           <SegmentedControl
-            bg="dark.7"
-            color="dark.5"
             size="xs"
             data={[
               { label: 'SM', value: 'sm' },

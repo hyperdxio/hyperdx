@@ -119,14 +119,14 @@ function AIAssistant({
     return (
       <Box mb="sm">
         <Alert
-          color="dark.3"
+          color="dark"
           icon={<i className="bi bi-info-circle" />}
           variant="outline"
           withCloseButton
           onClose={() => setAlertDismissed(true)}
           p="xxs"
         >
-          <Text size="xs" c="dark.2" pt="2px">
+          <Text size="xs" pt="2px">
             New AI Assistant available, enable with configuring the{' '}
             <code>ANTHROPIC_API_KEY</code> environment variable on the HyperDX
             server.
@@ -223,7 +223,7 @@ function DBChartExplorerPage() {
   );
 
   return (
-    <Box data-testid="chart-explorer-page" p="sm" className="bg-hdx-dark">
+    <Box data-testid="chart-explorer-page" p="sm">
       <Head>
         <title>Chart Explorer - HyperDX</title>
       </Head>

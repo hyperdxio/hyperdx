@@ -146,19 +146,10 @@ const OnboardingChecklist = ({
   }
 
   return (
-    <Card
-      withBorder
-      p="xs"
-      mb="sm"
-      radius="md"
-      style={{
-        background: 'var(--mantine-color-dark-8)',
-        borderColor: 'var(--mantine-color-dark-4)',
-      }}
-    >
+    <Card withBorder p="xs" mb="sm" radius="md">
       <Group justify="space-between" align="center" mb={isCollapsed ? 0 : 'xs'}>
         <Group gap="xs" align="center">
-          <Text size="sm" fw="bold" c="gray.3">
+          <Text size="sm" fw="bold">
             Get Started
           </Text>
           <Badge
@@ -175,7 +166,7 @@ const OnboardingChecklist = ({
           onClick={() => setIsCollapsed(!isCollapsed)}
         >
           <i
-            className={`bi bi-chevron-${isCollapsed ? 'down' : 'up'} text-slate-400`}
+            className={`bi bi-chevron-${isCollapsed ? 'down' : 'up'} `}
             style={{ fontSize: 12 }}
           />
         </ActionIcon>
@@ -195,14 +186,14 @@ const OnboardingChecklist = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     border: step.isComplete
-                      ? '1px solid var(--mantine-color-green-6)'
-                      : 'none',
+                      ? '1px solid var(--color-text-success)'
+                      : '1px solid var(--color-border)',
                     backgroundColor: step.isComplete
                       ? 'transparent'
-                      : 'var(--mantine-color-dark-5)',
+                      : 'var(--color-bg-muted)',
                     color: step.isComplete
-                      ? 'var(--mantine-color-green-6)'
-                      : 'var(--mantine-color-gray-5)',
+                      ? 'var(--color-text-success)'
+                      : 'var(--color-text)',
                     flexShrink: 0,
                   }}
                 >
@@ -228,7 +219,6 @@ const OnboardingChecklist = ({
                   <Text
                     size="sm"
                     fw="500"
-                    c={step.isComplete ? 'gray.5' : 'gray.3'}
                     style={{
                       textDecoration: step.isComplete ? 'line-through' : 'none',
                       opacity: step.isComplete ? 0.8 : 1,
@@ -236,7 +226,7 @@ const OnboardingChecklist = ({
                   >
                     {step.title}
                   </Text>
-                  <Text size="xs" c="gray.6">
+                  <Text size="xs" c="dimmed">
                     {step.description}
                   </Text>
                 </div>
@@ -246,7 +236,7 @@ const OnboardingChecklist = ({
                     className="bi bi-arrow-right"
                     style={{
                       fontSize: 12,
-                      color: 'var(--mantine-color-gray-5)',
+                      color: 'var(--color-text-muted)',
                     }}
                   />
                 )}
@@ -267,7 +257,7 @@ const OnboardingChecklist = ({
                       borderRadius: 6,
                       cursor: 'pointer',
                       ':hover': {
-                        backgroundColor: 'var(--mantine-color-dark-7)',
+                        backgroundColor: 'var(--color-bg-muted)',
                       },
                     }}
                   >
@@ -288,7 +278,7 @@ const OnboardingChecklist = ({
                     borderRadius: 6,
                     cursor: 'pointer',
                     ':hover': {
-                      backgroundColor: 'var(--mantine-color-dark-7)',
+                      backgroundColor: 'var(--color-bg-hover)',
                     },
                   }}
                 >
