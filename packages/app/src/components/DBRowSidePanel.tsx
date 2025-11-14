@@ -14,7 +14,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box, Drawer, Stack } from '@mantine/core';
+import { Box, Drawer, Flex, Stack } from '@mantine/core';
 import { useClickOutside } from '@mantine/hooks';
 
 import DBRowSidePanelHeader, {
@@ -28,6 +28,7 @@ import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
+import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
 import ContextSubpanel from './ContextSidePanel';
 import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
@@ -70,6 +71,7 @@ enum Tab {
   Parsed = 'parsed',
   Debug = 'debug',
   Trace = 'trace',
+  ServiceMap = 'serviceMap',
   Context = 'context',
   Replay = 'replay',
   Infrastructure = 'infrastructure',
@@ -221,6 +223,8 @@ const DBRowSidePanel = ({
   const traceSourceId =
     source.kind === 'trace' ? source.id : source.traceSourceId;
 
+  const enableServiceMap = traceId && traceSourceId;
+
   const { rumSessionId, rumServiceName } = useSessionId({
     sourceId: traceSourceId,
     traceId,
@@ -303,6 +307,14 @@ const DBRowSidePanel = ({
             text: 'Trace',
             value: Tab.Trace,
           },
+          ...(enableServiceMap
+            ? [
+                {
+                  text: 'Service Map',
+                  value: Tab.ServiceMap,
+                },
+              ]
+            : []),
           {
             text: 'Surrounding Context',
             value: Tab.Context,
@@ -368,6 +380,26 @@ const DBRowSidePanel = ({
               initialRowHighlightHint={initialRowHighlightHint}
             />
           </Box>
+        </ErrorBoundary>
+      )}
+      {displayedTab === Tab.ServiceMap && enableServiceMap && (
+        <ErrorBoundary
+          onError={err => {
+            console.error(err);
+          }}
+          fallbackRender={() => (
+            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+              An error occurred while rendering this event.
+            </div>
+          )}
+        >
+          <Flex p="sm" flex={1}>
+            <ServiceMapSidePanel
+              traceId={traceId}
+              traceTableSourceId={traceSourceId}
+              dateRange={oneHourRange}
+            />
+          </Flex>
         </ErrorBoundary>
       )}
       {displayedTab === Tab.Parsed && (
