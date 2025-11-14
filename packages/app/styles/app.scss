@@ -661,18 +661,19 @@ body {
 }
 
 .effect-pulse {
-  animation: pulse 1s infinite;
+  animation: pulse 1.5s infinite ease-in-out;
+  filter: grayscale(0.8) opacity(0.5);
 }
 
 @keyframes pulse {
   0% {
-    opacity: 0.7;
+    opacity: 0.4;
   }
-  20% {
-    opacity: 1;
+  50% {
+    opacity: 0.8;
   }
   100% {
-    opacity: 0.7;
+    opacity: 0.4;
   }
 }
 
