@@ -1,3 +1,5 @@
+import type { Locator, Page } from '@playwright/test';
+
 import { expect, test } from '../utils/base-test';
 
 test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
@@ -154,6 +156,10 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
   }) => {
     // Verify initial state is "Running"
     const podsTable = page.getByTestId('k8s-pods-table');
+
+    // Wait for table to load
+    await expect(podsTable.locator('tbody tr').first()).toBeVisible();
+
     const runningTab = podsTable.getByRole('radio', { name: 'Running' });
     await expect(runningTab).toBeChecked();
 
@@ -167,5 +173,120 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
     // Verify it switched to "All" tab
     const allTab = podsTable.getByRole('radio', { name: 'All' });
     await expect(allTab).toBeChecked();
+  });
+
+  test.describe('Pods Table Sorting', () => {
+    const SORT_ICON_SELECTOR = 'i.bi-caret-down-fill, i.bi-caret-up-fill';
+
+    async function waitForTableLoad(page: Page): Promise<Locator> {
+      const podsTable = page.getByTestId('k8s-pods-table');
+      await expect(podsTable.locator('tbody tr').first()).toBeVisible();
+      return podsTable;
+    }
+
+    function getColumnHeader(podsTable: Locator, columnName: string): Locator {
+      return podsTable.locator('thead th').filter({ hasText: columnName });
+    }
+
+    function getSortIcon(header: Locator): Locator {
+      return header.locator(SORT_ICON_SELECTOR);
+    }
+
+    test('should sort by restarts column', async ({ page }) => {
+      const podsTable = await waitForTableLoad(page);
+      const restartsHeader = getColumnHeader(podsTable, 'Restarts');
+
+      await expect(restartsHeader.locator('i.bi-caret-down-fill')).toBeVisible({
+        timeout: 10000,
+      });
+
+      const firstRestartsBefore = await podsTable
+        .locator('tbody tr')
+        .first()
+        .locator('td')
+        .last()
+        .textContent();
+
+      await restartsHeader.click();
+      await page.waitForTimeout(500);
+
+      await expect(restartsHeader.locator('i.bi-caret-up-fill')).toBeVisible();
+
+      const firstRestartsAfter = await podsTable
+        .locator('tbody tr')
+        .first()
+        .locator('td')
+        .last()
+        .textContent();
+
+      expect(firstRestartsBefore).not.toBe(firstRestartsAfter);
+    });
+
+    test('should sort by status column', async ({ page }) => {
+      const podsTable = await waitForTableLoad(page);
+      const statusHeader = getColumnHeader(podsTable, 'Status');
+      const sortIcon = getSortIcon(statusHeader);
+
+      await expect(sortIcon).toHaveCount(0);
+
+      await statusHeader.click();
+      await page.waitForTimeout(500);
+
+      await expect(sortIcon).toBeVisible();
+    });
+
+    test('should sort by CPU/Limit column', async ({ page }) => {
+      const podsTable = await waitForTableLoad(page);
+      const cpuLimitHeader = getColumnHeader(podsTable, 'CPU/Limit');
+      const sortIcon = getSortIcon(cpuLimitHeader);
+
+      await cpuLimitHeader.click();
+      await page.waitForTimeout(500);
+
+      await expect(sortIcon).toBeVisible();
+
+      await cpuLimitHeader.click();
+      await page.waitForTimeout(500);
+
+      await expect(sortIcon).toBeVisible();
+    });
+
+    test('should sort by Memory/Limit column', async ({ page }) => {
+      const podsTable = await waitForTableLoad(page);
+      const memLimitHeader = getColumnHeader(podsTable, 'Mem/Limit');
+
+      await memLimitHeader.click();
+      await page.waitForTimeout(500);
+
+      await expect(getSortIcon(memLimitHeader)).toBeVisible();
+    });
+
+    test('should sort by Age column', async ({ page }) => {
+      const podsTable = await waitForTableLoad(page);
+      const ageHeader = getColumnHeader(podsTable, 'Age');
+
+      await ageHeader.click();
+      await page.waitForTimeout(500);
+
+      await expect(getSortIcon(ageHeader)).toBeVisible();
+    });
+
+    test('should maintain sort when switching phase filters', async ({
+      page,
+    }) => {
+      const podsTable = await waitForTableLoad(page);
+      const ageHeader = getColumnHeader(podsTable, 'Age');
+      const sortIcon = getSortIcon(ageHeader);
+
+      await ageHeader.click();
+      await page.waitForTimeout(500);
+
+      await expect(sortIcon).toBeVisible();
+
+      await podsTable.getByText('All', { exact: true }).click();
+      await page.waitForTimeout(500);
+
+      await expect(sortIcon).toBeVisible();
+    });
   });
 });
