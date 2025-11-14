@@ -14,7 +14,7 @@ import {
   SearchConditionLanguage,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
-import { TextInput } from '@mantine/core';
+import { Alert as MantineAlert, TextInput } from '@mantine/core';
 import {
   Accordion,
   Box,
@@ -100,6 +100,9 @@ const AlertForm = ({
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
 
+  const groupBy = watch('groupBy');
+  const thresholdType = watch('thresholdType');
+
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <Stack gap="xs">
@@ -161,6 +164,19 @@ const AlertForm = ({
           </Text>
           <AlertChannelForm control={control} type={watch('channel.type')} />
         </Paper>
+        {groupBy && thresholdType === AlertThresholdType.BELOW && (
+          <MantineAlert
+            icon={<i className="bi bi-info-circle-fill text-slate-400" />}
+            bg="dark.6"
+            py="xs"
+          >
+            <Text size="sm" opacity={0.7}>
+              Warning: Alerts with a &quot;Below (&lt;)&quot; threshold and a
+              &quot;grouped by&quot; value will not alert for periods with no
+              data for a group.
+            </Text>
+          </MantineAlert>
+        )}
       </Stack>
 
       <Accordion defaultValue={'chart'} mt="sm" mx={-16}>

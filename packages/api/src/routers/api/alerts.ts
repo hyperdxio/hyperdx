@@ -1,8 +1,10 @@
 import express from 'express';
 import _ from 'lodash';
+import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import { getRecentAlertHistories } from '@/controllers/alertHistory';
 import {
   createAlert,
   deleteAlert,
@@ -10,7 +12,6 @@ import {
   getAlertsEnhanced,
   updateAlert,
 } from '@/controllers/alerts';
-import AlertHistory from '@/models/alertHistory';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -26,18 +27,10 @@ router.get('/', async (req, res, next) => {
 
     const data = await Promise.all(
       alerts.map(async alert => {
-        const history = await AlertHistory.find(
-          {
-            alert: alert._id,
-          },
-          {
-            __v: 0,
-            _id: 0,
-            alert: 0,
-          },
-        )
-          .sort({ createdAt: -1 })
-          .limit(20);
+        const history = await getRecentAlertHistories({
+          alertId: new ObjectId(alert._id),
+          limit: 20,
+        });
 
         return {
           history,

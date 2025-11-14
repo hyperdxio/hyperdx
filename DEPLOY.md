@@ -2,7 +2,7 @@
 
 [HyperDX](https://hyperdx.io) helps engineers quickly figure out why production
 is broken by making it easy to search & visualize logs and traces on top of any
-Clickhouse cluster (imagine Kibana, for Clickhouse). You can learn more about
+ClickHouse cluster (imagine Kibana, for ClickHouse). You can learn more about
 HyperDX in our [README](/README.md).
 
 HyperDX can be deployed in a few different ways:
@@ -36,7 +36,7 @@ the URL your HyperDX instance is hosted on.
 ## All-in-one Docker Compose Stack
 
 The easiest way to get started with HyperDX from scratch is to use our
-all-in-one Docker Compose stack. This stack will start Clickhouse, an
+all-in-one Docker Compose stack. This stack will start ClickHouse, an
 OpenTelemetry collector, and HyperDX with a MongoDB instance.
 
 To get started, clone this repository and run the following command:
@@ -62,7 +62,7 @@ variable to a random string.
 
 HyperDX can also be deployed alongside your existing local development stack to
 help you debug issues locally. This mode will start an OpenTelemetry collector,
-Clickhouse, and HyperDX with a MongoDB in a single instance, without any
+ClickHouse, and HyperDX with a MongoDB in a single instance, without any
 authentication or configuration persistence.
 
 To get started, spin up the local mode container:
