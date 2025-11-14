@@ -104,13 +104,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 
-   &:hover {
+  &:hover {
     color: var(--color-text-success);
   }
 
   &:focus-visible {
     outline: none;
     background: var(--color-bg-muted);
+  }
+
+  i {
+    vertical-align: top;
   }
 }
 
