@@ -7,8 +7,10 @@ import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
 import TimelineChart from '@/TimelineChart';
 
+import { RowSidePanelContext } from '../DBRowSidePanel';
 import {
   DBTraceWaterfallChartContainer,
+  getAttributesFromData,
   SpanRow,
   useEventsAroundFocus,
 } from '../DBTraceWaterfallChart';
@@ -25,6 +27,9 @@ jest.mock('@/TimelineChart', () => {
 
 jest.mock('@/hooks/useOffsetPaginatedQuery');
 jest.mock('@/hooks/useRowWhere');
+jest.mock('../DBRowDataPanel', () => ({
+  getJSONColumnNames: jest.fn().mockReturnValue([]),
+}));
 
 const mockUseOffsetPaginatedQuery = useOffsetPaginatedQuery as jest.Mock;
 const mockUseRowWhere = useRowWhere as jest.Mock;
@@ -112,13 +117,15 @@ describe('DBTraceWaterfallChartContainer', () => {
     logTableSource: typeof mockLogTableSource | null = mockLogTableSource,
   ) => {
     return renderWithMantine(
-      <DBTraceWaterfallChartContainer
-        traceTableSource={mockTraceTableSource}
-        logTableSource={logTableSource}
-        traceId={mockTraceId}
-        dateRange={mockDateRange}
-        focusDate={mockFocusDate}
-      />,
+      <RowSidePanelContext.Provider value={{}}>
+        <DBTraceWaterfallChartContainer
+          traceTableSource={mockTraceTableSource}
+          logTableSource={logTableSource}
+          traceId={mockTraceId}
+          dateRange={mockDateRange}
+          focusDate={mockFocusDate}
+        />
+      </RowSidePanelContext.Provider>,
     );
   };
 
@@ -345,5 +352,154 @@ describe('useEventsAroundFocus', () => {
   it('does not fetch when disabled', () => {
     const result = testEventsAroundFocus({ enabled: false });
     expect(result.rows.length).toBe(0);
+  });
+});
+
+describe('getAttributesFromData', () => {
+  it('extracts attributes from data correctly', () => {
+    const data: Record<string, string | number | object>[] = [
+      {
+        Body: 'POST',
+        Timestamp: '2025-11-12T21:27:00.053000000Z',
+        SpanId: 'a51d12055f2058b9',
+        ServiceName: 'hdx-oss-dev-api',
+        method: 'POST',
+        "SpanAttributes['http.host']": 'localhost:8123',
+        Duration: 0.020954166,
+        ParentSpanId: '013cca18a6e626a6',
+        StatusCode: 'Unset',
+        SpanAttributes: {
+          'http.flavor': '1.1',
+          'http.host': 'localhost:8123',
+          'http.method': 'POST',
+        },
+        type: 'trace',
+      },
+      {
+        Body: 'POST',
+        Timestamp: '2025-11-12T21:27:00.053000000Z',
+        SpanId: 'a51d12055f2058b9',
+        ServiceName: 'hdx-oss-dev-api',
+        method: 'GET',
+        "SpanAttributes['http.host']": 'localhost:8123',
+        Duration: 0.020954166,
+        ParentSpanId: '013cca18a6e626a6',
+        StatusCode: 'Unset',
+        SpanAttributes: {
+          'http.flavor': '1.1',
+          'http.host': 'localhost:8123',
+          'http.method': 'POST',
+        },
+        type: 'trace',
+      },
+    ];
+
+    const meta = [
+      {
+        name: 'Body',
+        type: 'LowCardinality(String)',
+      },
+      {
+        name: 'Timestamp',
+        type: 'DateTime64(9)',
+      },
+      {
+        name: 'SpanId',
+        type: 'String',
+      },
+      {
+        name: 'ServiceName',
+        type: 'LowCardinality(String)',
+      },
+      {
+        name: 'method',
+        type: 'String',
+      },
+      {
+        name: "SpanAttributes['http.host']",
+        type: 'String',
+      },
+      {
+        name: 'Duration',
+        type: 'Float64',
+      },
+      {
+        name: 'ParentSpanId',
+        type: 'String',
+      },
+      {
+        name: 'StatusCode',
+        type: 'LowCardinality(String)',
+      },
+      {
+        name: 'SpanAttributes',
+        type: 'Map(LowCardinality(String), String)',
+      },
+    ];
+
+    const source: TSource = {
+      kind: SourceKind.Trace,
+      from: {
+        databaseName: 'default',
+        tableName: 'otel_traces',
+      },
+      timestampValueExpression: 'Timestamp',
+      connection: '68dd82484f54641b08667893',
+      name: 'Traces',
+      displayedTimestampValueExpression: 'Timestamp',
+      implicitColumnExpression: 'SpanName',
+      serviceNameExpression: 'ServiceName',
+      bodyExpression: 'SpanName',
+      eventAttributesExpression: 'SpanAttributes',
+      resourceAttributesExpression: 'ResourceAttributes',
+      defaultTableSelectExpression:
+        'Timestamp,ServiceName,StatusCode,round(Duration/1e6),SpanName',
+      traceIdExpression: 'TraceId',
+      spanIdExpression: 'SpanId',
+      durationExpression: 'Duration',
+      durationPrecision: 9,
+      parentSpanIdExpression: 'ParentSpanId',
+      spanNameExpression: 'SpanName',
+      spanKindExpression: 'SpanKind',
+      statusCodeExpression: 'StatusCode',
+      statusMessageExpression: 'StatusMessage',
+      sessionSourceId: '68dd82484f54641b0866789e',
+      logSourceId: '6900eed982d3b3dfeff12a29',
+      highlightedAttributeExpressions: [
+        {
+          sqlExpression: "SpanAttributes['http.method']",
+          alias: 'method',
+        },
+        {
+          sqlExpression: "SpanAttributes['http.host']",
+          luceneExpression: 'SpanAttributes.http.host',
+          alias: '',
+        },
+      ],
+      id: '68dd82484f54641b08667899',
+    };
+
+    const attributes = getAttributesFromData(source, data, meta);
+
+    expect(attributes).toHaveLength(3);
+    expect(attributes).toContainEqual({
+      sql: "SpanAttributes['http.method']",
+      displayedKey: 'method',
+      value: 'POST',
+      source,
+    });
+    expect(attributes).toContainEqual({
+      sql: "SpanAttributes['http.method']",
+      displayedKey: 'method',
+      value: 'GET',
+      source,
+    });
+    expect(attributes).toContainEqual({
+      sql: "SpanAttributes['http.host']",
+      displayedKey: "SpanAttributes['http.host']",
+      value: 'localhost:8123',
+      lucene: 'SpanAttributes.http.host',
+      source,
+    });
   });
 });

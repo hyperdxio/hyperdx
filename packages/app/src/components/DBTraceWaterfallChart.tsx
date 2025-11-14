@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import _ from 'lodash';
 import TimestampNano from 'timestamp-nano';
+import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfig,
   ChartConfigWithDateRange,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Divider, Text } from '@mantine/core';
+import { Divider, Flex, Text } from '@mantine/core';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -19,6 +20,10 @@ import {
   getSpanEventBody,
 } from '@/source';
 import TimelineChart from '@/TimelineChart';
+
+import { getJSONColumnNames } from './DBRowDataPanel';
+import { RowSidePanelContext } from './DBRowSidePanel';
+import EventTag from './EventTag';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
@@ -68,7 +73,7 @@ function getTableBody(tableModel: TSource) {
 }
 
 function getConfig(source: TSource, traceId: string) {
-  const alias = {
+  const alias: Record<string, string> = {
     Body: getTableBody(source),
     Timestamp: getDisplayedTimestampValueExpression(source),
     Duration: source.durationExpression
@@ -82,6 +87,17 @@ function getConfig(source: TSource, traceId: string) {
     SeverityText: source.severityTextExpression ?? '',
     SpanAttributes: source.eventAttributesExpression ?? '',
   };
+
+  // Aliases for trace attributes must be added here to ensure
+  // the returned `alias` object includes them and useRowWhere works.
+  if (source.highlightedAttributeExpressions) {
+    for (const expr of source.highlightedAttributeExpressions) {
+      if (expr.alias) {
+        alias[expr.alias] = expr.sqlExpression;
+      }
+    }
+  }
+
   const select = [
     {
       valueExpression: alias.Body,
@@ -104,6 +120,17 @@ function getConfig(source: TSource, traceId: string) {
         ]
       : []),
   ];
+
+  if (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) {
+    select.push(
+      ...(source.highlightedAttributeExpressions ?? []).map(
+        ({ sqlExpression, alias }) => ({
+          valueExpression: sqlExpression,
+          alias: alias || sqlExpression,
+        }),
+      ),
+    );
+  }
 
   if (source.kind === SourceKind.Trace) {
     select.push(
@@ -177,7 +204,7 @@ export function useEventsData({
       dateRange,
       dateRangeStartInclusive,
     };
-  }, [config, dateRange]);
+  }, [config, dateRange, dateRangeStartInclusive]);
   return useOffsetPaginatedQuery(query, { enabled });
 }
 
@@ -237,8 +264,149 @@ export function useEventsAroundFocus({
 
   return {
     rows,
+    meta,
     isFetching,
   };
+}
+
+export const getAttributesFromData = (
+  source: TSource,
+  data: Record<string, unknown>[],
+  meta: ResponseJSON['meta'],
+) => {
+  const attributeValuesByDisplayKey = new Map<string, Set<string>>();
+  const sqlExpressionsByDisplayKey = new Map<string, string>();
+  const luceneExpressionsByDisplayKey = new Map<string, string>();
+  const jsonColumns = getJSONColumnNames(meta);
+
+  for (const row of data) {
+    for (const {
+      sqlExpression,
+      luceneExpression,
+      alias,
+    } of source.highlightedAttributeExpressions ?? []) {
+      const displayName = alias || sqlExpression;
+
+      const isJsonExpression = jsonColumns.includes(
+        sqlExpression.split('.')[0],
+      );
+      const sqlExpressionWithJSONSupport = isJsonExpression
+        ? `toString(${sqlExpression})`
+        : sqlExpression;
+
+      sqlExpressionsByDisplayKey.set(displayName, sqlExpressionWithJSONSupport);
+      if (luceneExpression) {
+        luceneExpressionsByDisplayKey.set(displayName, luceneExpression);
+      }
+
+      const value = row[displayName];
+      if (value && typeof value === 'string') {
+        if (!attributeValuesByDisplayKey.has(displayName)) {
+          attributeValuesByDisplayKey.set(displayName, new Set());
+        }
+        attributeValuesByDisplayKey.get(displayName)!.add(value);
+      }
+    }
+  }
+
+  return Array.from(attributeValuesByDisplayKey.entries()).flatMap(
+    ([key, values]) =>
+      [...values].map(value => ({
+        displayedKey: key,
+        value,
+        sql: sqlExpressionsByDisplayKey.get(key)!,
+        lucene: luceneExpressionsByDisplayKey.get(key),
+        source,
+      })),
+  );
+};
+
+interface DBTraceAttributesProps {
+  traceSource: TSource;
+  traceEventData: Record<string, string | number>[];
+  traceEventMeta: ResponseJSON['meta'];
+  logSource?: TSource | null;
+  logEventData?: Record<string, string | number>[] | null;
+  logEventMeta?: ResponseJSON['meta'];
+}
+
+export function DBTraceAttributes({
+  traceSource,
+  traceEventData,
+  traceEventMeta,
+  logSource,
+  logEventData,
+  logEventMeta,
+}: DBTraceAttributesProps) {
+  const {
+    onPropertyAddClick,
+    generateSearchUrl,
+    source: contextSource,
+  } = useContext(RowSidePanelContext);
+
+  const attributeValues = useMemo(() => {
+    const attributes = getAttributesFromData(
+      traceSource,
+      traceEventData,
+      traceEventMeta,
+    );
+    if (logSource && logEventData && logEventMeta) {
+      attributes.push(
+        ...getAttributesFromData(logSource, logEventData, logEventMeta),
+      );
+    }
+    return attributes;
+  }, [
+    traceSource,
+    traceEventData,
+    traceEventMeta,
+    logSource,
+    logEventData,
+    logEventMeta,
+  ]);
+
+  const handleGenerateSearchUrl = useCallback(
+    (
+      query: string | undefined,
+      queryLanguage: 'sql' | 'lucene' | undefined,
+      source: TSource,
+    ) => {
+      return (
+        generateSearchUrl?.({
+          where: query || '',
+          whereLanguage: queryLanguage ?? 'lucene',
+          source,
+        }) || ''
+      );
+    },
+    [generateSearchUrl],
+  );
+
+  return (
+    <Flex wrap="wrap" gap="2px" mb="md">
+      {attributeValues.map(({ displayedKey, value, sql, lucene, source }) => (
+        <EventTag
+          displayedKey={displayedKey}
+          name={lucene ? lucene : sql}
+          nameLanguage={lucene ? 'lucene' : 'sql'}
+          value={value as string}
+          key={`${displayedKey}-${value}-${source.id}`}
+          {...(onPropertyAddClick && contextSource?.id === source.id
+            ? {
+                onPropertyAddClick,
+                sqlExpression: sql,
+              }
+            : {
+                onPropertyAddClick: undefined,
+                sqlExpression: undefined,
+              })}
+          generateSearchUrl={(query, queryLanguage) =>
+            handleGenerateSearchUrl(query, queryLanguage, source)
+          }
+        />
+      ))}
+    </Flex>
+  );
 }
 
 // TODO: Optimize with ts lookup tables
@@ -267,28 +435,36 @@ export function DBTraceWaterfallChartContainer({
 }) {
   const { size, startResize } = useResizable(30, 'bottom');
 
-  const { rows: traceRowsData, isFetching: traceIsFetching } =
-    useEventsAroundFocus({
-      tableSource: traceTableSource,
-      focusDate,
-      dateRange,
-      traceId,
-      enabled: true,
-    });
-  const { rows: logRowsData, isFetching: logIsFetching } = useEventsAroundFocus(
-    {
-      // search data if logTableModel exist
-      // search invalid date range if no logTableModel(react hook need execute no matter what)
-      tableSource: logTableSource ? logTableSource : traceTableSource,
-      focusDate,
-      dateRange: logTableSource ? dateRange : [dateRange[1], dateRange[0]], // different query to prevent cache
-      traceId,
-      enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
-    },
-  );
+  const {
+    rows: traceRowsData,
+    isFetching: traceIsFetching,
+    meta: traceRowsMeta,
+  } = useEventsAroundFocus({
+    tableSource: traceTableSource,
+    focusDate,
+    dateRange,
+    traceId,
+    enabled: true,
+  });
+  const {
+    rows: logRowsData,
+    isFetching: logIsFetching,
+    meta: logRowsMeta,
+  } = useEventsAroundFocus({
+    // search data if logTableModel exist
+    // search invalid date range if no logTableModel(react hook need execute no matter what)
+    tableSource: logTableSource ? logTableSource : traceTableSource,
+    focusDate,
+    dateRange: logTableSource ? dateRange : [dateRange[1], dateRange[0]], // different query to prevent cache
+    traceId,
+    enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
+  });
 
   const isFetching = traceIsFetching || logIsFetching;
-  const rows: any[] = [...traceRowsData, ...logRowsData];
+  const rows: any[] = useMemo(
+    () => [...traceRowsData, ...logRowsData],
+    [traceRowsData, logRowsData],
+  );
 
   rows.sort((a, b) => {
     const aDate = TimestampNano.fromString(a.Timestamp);
@@ -572,25 +748,35 @@ export function DBTraceWaterfallChartContainer({
             An unknown error occurred. <ContactSupportText />
           </div>
         ) : (
-          <TimelineChart
-            style={{
-              overflowY: 'auto',
-              maxHeight: `${heightPx}px`,
-            }}
-            scale={1}
-            setScale={() => {}}
-            rowHeight={22}
-            labelWidth={300}
-            onClick={ts => {
-              // onTimeClick(ts + startedAt);
-            }}
-            onEventClick={event => {
-              onClick?.({ id: event.id, type: event.type ?? '' });
-            }}
-            cursors={[]}
-            rows={timelineRows}
-            initialScrollRowIndex={initialScrollRowIndex}
-          />
+          <>
+            <DBTraceAttributes
+              traceSource={traceTableSource}
+              traceEventData={traceRowsData}
+              traceEventMeta={traceRowsMeta}
+              logSource={logTableSource}
+              logEventData={logRowsData}
+              logEventMeta={logRowsMeta}
+            />
+            <TimelineChart
+              style={{
+                overflowY: 'auto',
+                maxHeight: `${heightPx}px`,
+              }}
+              scale={1}
+              setScale={() => {}}
+              rowHeight={22}
+              labelWidth={300}
+              onClick={ts => {
+                // onTimeClick(ts + startedAt);
+              }}
+              onEventClick={event => {
+                onClick?.({ id: event.id, type: event.type ?? '' });
+              }}
+              cursors={[]}
+              rows={timelineRows}
+              initialScrollRowIndex={initialScrollRowIndex}
+            />
+          </>
         )}
       </div>
       <Divider

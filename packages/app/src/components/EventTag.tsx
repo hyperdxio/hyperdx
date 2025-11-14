@@ -1,19 +1,27 @@
 import { useState } from 'react';
 import Link from 'next/link';
+import SqlString from 'sqlstring';
 import { Button, Popover, Stack } from '@mantine/core';
 
 export default function EventTag({
   displayedKey,
   name,
+  nameLanguage = 'lucene',
   sqlExpression,
   value,
   onPropertyAddClick,
   generateSearchUrl,
 }: {
   displayedKey?: string;
-  name: string; // lucene property name ex. col.prop
+  /** Property name, in lucene or sql syntax (ex. col.prop or col['prop']) */
+  name: string;
+  /** The language of the property name, defaults to 'lucene' */
+  nameLanguage?: 'sql' | 'lucene';
   value: string;
-  generateSearchUrl?: (query?: string, timeRange?: [Date, Date]) => string;
+  generateSearchUrl?: (
+    query?: string,
+    queryLanguage?: 'sql' | 'lucene',
+  ) => string;
 } & (
   | {
       sqlExpression: undefined;
@@ -34,6 +42,11 @@ export default function EventTag({
       </div>
     );
   }
+
+  const searchCondition =
+    nameLanguage === 'sql'
+      ? SqlString.format('? = ?', [SqlString.raw(name), value])
+      : `${name}:${typeof value === 'string' ? `"${value}"` : value}`;
 
   return (
     <Popover
@@ -71,9 +84,7 @@ export default function EventTag({
           )}
           {generateSearchUrl && (
             <Link
-              href={generateSearchUrl(
-                `${name}:${typeof value === 'string' ? `"${value}"` : value}`,
-              )}
+              href={generateSearchUrl(searchCondition, nameLanguage)}
               passHref
               legacyBehavior
             >
