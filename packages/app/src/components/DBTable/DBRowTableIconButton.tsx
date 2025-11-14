@@ -51,8 +51,10 @@ export const DBRowTableIconButton: React.FC<DBRowTableIconButtonProps> = ({
     >
       <UnstyledButton
         onClick={handleClick}
+        component="div"
         className={baseClasses}
         tabIndex={tabIndex}
+        role="button"
       >
         {isActive ? <IconCheck size={iconSize} /> : children}
       </UnstyledButton>

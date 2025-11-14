@@ -327,6 +327,7 @@ export default function SQLInlineEditor({
           style={{
             whiteSpace: 'nowrap',
           }}
+          component="div"
         >
           <Tooltip label={tooltipText} disabled={!tooltipText}>
             <Flex align="center" gap={2}>

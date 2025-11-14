@@ -110,7 +110,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       if (config.mode === 'SQL') {
         const scopedContainer = formSelector ? container : page;
         const whereLabel = scopedContainer.locator(
-          `p.mantine-Text-root:has-text("${whereText}")`,
+          `div.mantine-Text-root:has-text("${whereText}")`,
         );
         await expect(whereLabel).toBeVisible();
       }
@@ -122,7 +122,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         ? (() => {
             const scopedContainer = formSelector ? container : page;
             const whereContainer = scopedContainer.locator(
-              `div:has(p.mantine-Text-root:has-text("${whereText}"))`,
+              `div:has(div.mantine-Text-root:has-text("${whereText}"))`,
             );
             return whereContainer.locator('.cm-editor').first();
           })()
