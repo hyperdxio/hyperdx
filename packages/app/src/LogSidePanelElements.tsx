@@ -3,9 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { format } from 'date-fns';
-import { CloseButton } from 'react-bootstrap';
 import { JSONTree } from 'react-json-tree';
-import { Alert, Button, Text, Tooltip } from '@mantine/core';
+import { Alert, Button, CloseButton, Kbd, Text, Tooltip } from '@mantine/core';
 import { ColumnDef, Row, Table } from '@tanstack/react-table';
 
 import HyperJson from './components/HyperJson';
@@ -39,7 +38,7 @@ export const CollapsibleSection = ({
         onClick={() => setCollapsed(!collapsed)}
       >
         <i className={`bi bi-chevron-${collapsed ? 'right' : 'down'} me-2`}></i>
-        <div className="fs-7 text-slate-200">{title}</div>
+        <div className="fs-7">{title}</div>
       </div>
       {collapsed ? null : <div className="mb-4">{children}</div>}
     </div>
@@ -73,7 +72,7 @@ export const StacktraceValue = ({
         borderRight: '1px solid #ffffff20',
       }}
     >
-      <div className="text-slate-400">{label}</div>
+      <div>{label}</div>
       <div className="fs-7">{value}</div>
     </div>
   );
@@ -138,10 +137,7 @@ export const StacktraceRow = ({
               withArrow
               color="gray"
             >
-              <i
-                className="bi bi-box-seam text-slate-400 me-2"
-                title="in_app: false"
-              />
+              <i className="bi bi-box-seam me-2" title="in_app: false" />
             </Tooltip>
           )}
           {augmentedFrame && (
@@ -207,11 +203,7 @@ export const stacktraceColumns: ColumnDef<StacktraceFrame>[] = [
  * Breadcrumbs
  */
 
-const Url = ({ url }: { url?: string }) => (
-  <span className="text-slate-300" title={url}>
-    {url}
-  </span>
-);
+const Url = ({ url }: { url?: string }) => <span title={url}>{url}</span>;
 
 const StatusChip = React.memo(({ status }: { status?: number }) => {
   if (!status) {
@@ -240,7 +232,7 @@ const LevelChip = React.memo(({ level }: { level?: string }) => {
     ? 'text-danger bg-danger'
     : level.includes('warn') || level.includes('warning')
       ? 'text-warning bg-warning'
-      : 'text-slate-300 bg-grey';
+      : 'bg-muted';
 
   return (
     <span
@@ -257,7 +249,7 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
     header: 'Category',
     size: 180,
     cell: ({ row }) => (
-      <span className="text-slate-300 d-flex align-items-center gap-2">
+      <span className="d-flex align-items-center gap-2">
         {row.original.category}
         {row.original.category === 'console' && (
           <LevelChip level={row.original.level} />
@@ -283,7 +275,7 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
         return (
           <div className="text-truncate">
             <span>{method} </span>
-            <span className="text-slate-300" title={url}>
+            <span title={url}>
               <Url url={url} />
             </span>
           </div>
@@ -295,11 +287,11 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
         const { from, to } = row.original.data;
         return (
           <div className="text-truncate">
-            <span className="text-slate-300" title={from}>
+            <span title={from}>
               <Url url={from} />
             </span>
             <span>{' → '}</span>
-            <span className="text-slate-300" title={to}>
+            <span title={to}>
               <Url url={to} />
             </span>
           </div>
@@ -310,10 +302,7 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
       if (row.original.category === 'console') {
         const { message } = row.original;
         return (
-          <pre
-            className="text-slate-300 mb-0 text-truncate fs-8"
-            title={message}
-          >
+          <pre className="mb-0 text-truncate fs-8" title={message}>
             {message}
           </pre>
         );
@@ -323,14 +312,14 @@ export const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
         return <div className="text-truncate">{row.original.message}</div>;
       }
 
-      return <span className="text-slate-500">Empty</span>;
+      return <span className="text-muted">Empty</span>;
     },
   },
   {
     header: 'Timestamp',
     size: 220,
     cell: ({ row }) => (
-      <span className="text-slate-500">
+      <span className="text-muted">
         <FormatTime value={row.original.timestamp * 1000} format="withMs" />
       </span>
     ),
@@ -371,7 +360,7 @@ export const headerColumns: ColumnDef<[string, string]>[] = [
     header: 'Header',
     size: 260,
     cell: ({ row }) => (
-      <div className="text-slate-300 text-truncate" title={row.original[0]}>
+      <div className="text-truncate" title={row.original[0]}>
         {row.original[0]}
       </div>
     ),
@@ -395,9 +384,7 @@ export const networkColumns: ColumnDef<{
     accessorKey: 'label',
     header: 'Label',
     size: 260,
-    cell: ({ row }) => (
-      <span className="text-slate-300">{row.original.label}</span>
-    ),
+    cell: ({ row }) => <span>{row.original.label}</span>,
   },
   {
     size: UNDEFINED_WIDTH,
@@ -475,9 +462,9 @@ export const NetworkBody = ({
           )}
         </pre>
       ) : body === '' ? (
-        <div className="text-slate-400 px-4 py-3">{emptyMessage}</div>
+        <div className="px-4 py-3">{emptyMessage}</div>
       ) : (
-        <div className="text-slate-400 px-4 py-3">{notCollectedMessage}</div>
+        <div className="px-4 py-3">{notCollectedMessage}</div>
       )}
     </>
   );
@@ -486,10 +473,6 @@ export const NetworkBody = ({
 /**
  * Keyboard shortcuts
  */
-export const Kbd = ({ children }: { children: string }) => (
-  <div className={styles.kbd}>{children}</div>
-);
-
 export const LogSidePanelKbdShortcuts = () => {
   const [isDismissed, setDismissed] = useLocalStorage<boolean>(
     'kbd-shortcuts-dismissed',
@@ -509,8 +492,8 @@ export const LogSidePanelKbdShortcuts = () => {
       <div className="d-flex justify-content-between align-items-center ">
         <div className="d-flex align-items-center gap-3">
           <div>
-            Use <Kbd>←</Kbd>
-            <Kbd>→</Kbd> arrow keys or <Kbd>k</Kbd>
+            Use <Kbd className="me-1">←</Kbd>
+            <Kbd>→</Kbd> arrow keys or <Kbd className="me-1">k</Kbd>
             <Kbd>j</Kbd> to move through events
           </div>
           <div className={styles.kbdDivider} />
@@ -518,11 +501,7 @@ export const LogSidePanelKbdShortcuts = () => {
             <Kbd>ESC</Kbd> to close
           </div>
         </div>
-        <CloseButton
-          variant="white"
-          aria-label="Hide"
-          onClick={handleDismiss}
-        />
+        <CloseButton aria-label="Hide" onClick={handleDismiss} />
       </div>
     </div>
   );
@@ -546,7 +525,7 @@ export const SourceMapsFtux = () => {
       mt="xs"
       onClose={() => setIsDismissed(true)}
     >
-      <Text size="xs" c="gray.4">
+      <Text size="xs">
         <Icon name="code-square" /> Some of the stack frames are pointing to
         minified files. Use hyperdx-cli to upload your source maps and see the
         original code.

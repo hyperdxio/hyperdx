@@ -1,15 +1,14 @@
-@import './variables';
-
 $button-height: 18px;
 
 .table {
   table-layout: fixed;
   border-spacing: 0;
   border-collapse: separate;
+  background: var(--color-bg-body);
 }
 
 .tableHead {
-  background: var(--mantine-color-dark-8);
+  background: var(--color-bg-body);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -20,7 +19,7 @@ $button-height: 18px;
   position: relative;
 
   &__selected {
-    background-color: var(--mantine-color-dark-5);
+    background-color: var(--color-bg-muted);
     font-weight: bold;
   }
 
@@ -29,7 +28,7 @@ $button-height: 18px;
   }
 
   &:hover .rowContentButton {
-    background-color: var(--mantine-color-dark-5);
+    background-color: var(--color-bg-muted);
   }
 
   &:has(.expandButton:hover) .rowButtons {
@@ -44,8 +43,7 @@ $button-height: 18px;
 .expandedRowContent {
   max-height: 400px;
   overflow: auto;
-  background-color: $slate-950;
-  padding: 12px;
+  background-color: var(--color-bg-muted);
 }
 
 .expandButton {
@@ -62,19 +60,19 @@ $button-height: 18px;
   min-height: $button-height;
 
   &:hover {
-    background-color: var(--mantine-color-dark-5);
+    background-color: var(--color-bg-muted);
   }
 
   &:focus,
   &:focus-visible {
-    background-color: var(--mantine-color-dark-5);
+    background-color: var(--color-bg-muted);
     outline: none;
   }
 
   &:active {
     outline: none;
     box-shadow: none;
-    background-color: var(--mantine-color-dark-5);
+    background-color: var(--color-bg-muted);
   }
 
   svg {
@@ -90,7 +88,7 @@ $button-height: 18px;
 .expandButtonSeparator {
   width: 1px;
   height: calc($button-height - 8px);
-  border-right: 1px solid var(--mantine-color-dark-4);
+  border-right: 1px solid var(--color-border);
   margin-left: 2px;
   margin-right: 2px;
   display: inline-block;
@@ -119,14 +117,14 @@ $button-height: 18px;
 
   &:focus,
   &:focus-visible {
-    background-color: var(--mantine-color-dark-5);
+    background-color: var(--color-bg-muted);
     outline: none;
   }
 
   &:active {
     outline: none;
     box-shadow: none;
-    background-color: var(--mantine-color-dark-5);
+    background-color: var(--color-bg-muted);
   }
 
   &.isWrapped {
@@ -159,8 +157,8 @@ $button-height: 18px;
 .iconActionButton {
   padding: 4px;
   border-radius: 4px;
-  background-color: var(--mantine-color-dark-4);
-  border: 1px solid var(--mantine-color-dark-3);
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
   width: 20px;
   height: 20px;
   display: flex;
@@ -174,7 +172,7 @@ $button-height: 18px;
   }
 
   &.copied {
-    color: var(--mantine-color-green-6);
+    color: var(--color-success);
   }
 }
 
@@ -192,11 +190,7 @@ $button-height: 18px;
 
   > span:hover {
     border-radius: 4px;
-    background-color: color-mix(
-      in srgb,
-      var(--mantine-color-dark-2) 30%,
-      transparent
-    );
+    background-color: var(--color-bg-highlighted);
   }
 
   &.chart {

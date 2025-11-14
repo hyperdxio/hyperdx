@@ -179,9 +179,9 @@ export const NetworkBody = ({
           )}
         </pre>
       ) : body === '' ? (
-        <div className="text-slate-400 px-4 py-3">{emptyMessage}</div>
+        <div className="px-4 py-3">{emptyMessage}</div>
       ) : (
-        <div className="text-slate-400 px-4 py-3">{notCollectedMessage}</div>
+        <div className="px-4 py-3">{notCollectedMessage}</div>
       )}
     </>
   );
@@ -232,7 +232,7 @@ export function NetworkPropertySubpanel({
             });
           }}
         >
-          <Button size="xs" color="gray.4" variant="light">
+          <Button size="xs" variant="light">
             <i className="bi bi-terminal-plus me-2" />
             Copy Request as Curl
           </Button>

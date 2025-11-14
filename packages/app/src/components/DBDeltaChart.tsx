@@ -166,7 +166,7 @@ const HDXBarChartTooltip = withErrorBoundary(
         <div className={styles.chartTooltip}>
           <div className={styles.chartTooltipContent}>
             {title && (
-              <Text size="xs" mb="xs" c="gray.4">
+              <Text size="xs" mb="xs">
                 {title}
               </Text>
             )}
@@ -212,7 +212,7 @@ function PropertyComparisonChart({
 
   return (
     <div style={{ width: 340, height: 120 }}>
-      <Text size="xs" c="gray.4" ta="center" title={name}>
+      <Text size="xs" ta="center" title={name}>
         {truncateMiddle(name, 32)}
       </Text>
       <ResponsiveContainer width="100%" height="100%">

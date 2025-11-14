@@ -1,0 +1,1016 @@
+/* stylelint-disable */
+// Custom layout utility classes to replace Bootstrap
+// 
+// WHY THIS FILE EXISTS:
+// This project migrated from Bootstrap to Mantine UI components, but Bootstrap utility
+// classes (d-flex, p-3, m-2, etc.) are used extensively throughout the codebase in 
+// hundreds of components. Rather than refactoring all components to use Mantine's prop-based
+// styling system (which would be a massive undertaking), we've recreated the most commonly 
+// used Bootstrap utilities here using Mantine's spacing variables.
+//
+// FUTURE CONSIDERATION:
+// As components are refactored, prefer using Mantine's native props:
+// - <Box p="md" /> instead of <div className="p-3" />
+// - <Flex gap="sm" /> instead of <div className="d-flex gap-2" />
+// - <Stack /> instead of <div className="d-flex flex-column" />
+//
+// This file provides classes like d-flex, flex-column, m-*, p-*, etc.
+
+// Display utilities
+.d-none {
+  display: none !important;
+}
+
+.d-inline {
+  display: inline !important;
+}
+
+.d-inline-block {
+  display: inline-block !important;
+}
+
+.d-block {
+  display: block !important;
+}
+
+.d-flex {
+  display: flex !important;
+}
+
+.d-inline-flex {
+  display: inline-flex !important;
+}
+
+// Flexbox utilities
+.flex-row {
+  flex-direction: row !important;
+}
+
+.flex-column {
+  flex-direction: column !important;
+}
+
+.flex-row-reverse {
+  flex-direction: row-reverse !important;
+}
+
+.flex-column-reverse {
+  flex-direction: column-reverse !important;
+}
+
+.flex-wrap {
+  flex-wrap: wrap !important;
+}
+
+.flex-nowrap {
+  flex-wrap: nowrap !important;
+}
+
+.flex-wrap-reverse {
+  flex-wrap: wrap-reverse !important;
+}
+
+.flex-fill {
+  flex: 1 1 auto !important;
+}
+
+.flex-grow-0 {
+  flex-grow: 0 !important;
+}
+
+.flex-grow-1 {
+  flex-grow: 1 !important;
+}
+
+.flex-shrink-0 {
+  flex-shrink: 0 !important;
+}
+
+.flex-shrink-1 {
+  flex-shrink: 1 !important;
+}
+
+// Justify content
+.justify-content-start {
+  justify-content: flex-start !important;
+}
+
+.justify-content-end {
+  justify-content: flex-end !important;
+}
+
+.justify-content-center {
+  justify-content: center !important;
+}
+
+.justify-content-between {
+  justify-content: space-between !important;
+}
+
+.justify-content-around {
+  justify-content: space-around !important;
+}
+
+.justify-content-evenly {
+  justify-content: space-evenly !important;
+}
+
+// Align items
+.align-items-start {
+  align-items: flex-start !important;
+}
+
+.align-items-end {
+  align-items: flex-end !important;
+}
+
+.align-items-center {
+  align-items: center !important;
+}
+
+.align-items-baseline {
+  align-items: baseline !important;
+}
+
+.align-items-stretch {
+  align-items: stretch !important;
+}
+
+// Align content
+.align-content-start {
+  align-content: flex-start !important;
+}
+
+.align-content-end {
+  align-content: flex-end !important;
+}
+
+.align-content-center {
+  align-content: center !important;
+}
+
+.align-content-between {
+  align-content: space-between !important;
+}
+
+.align-content-around {
+  align-content: space-around !important;
+}
+
+.align-content-stretch {
+  align-content: stretch !important;
+}
+
+// Align self
+.align-self-auto {
+  align-self: auto !important;
+}
+
+.align-self-start {
+  align-self: flex-start !important;
+}
+
+.align-self-end {
+  align-self: flex-end !important;
+}
+
+.align-self-center {
+  align-self: center !important;
+}
+
+.align-self-baseline {
+  align-self: baseline !important;
+}
+
+.align-self-stretch {
+  align-self: stretch !important;
+}
+
+// Gap utilities (using Mantine spacing)
+.gap-0 {
+  gap: 0 !important;
+}
+
+.gap-1 {
+  gap: var(--mantine-spacing-xs) !important;
+}
+
+.gap-2 {
+  gap: var(--mantine-spacing-sm) !important;
+}
+
+.gap-3 {
+  gap: var(--mantine-spacing-md) !important;
+}
+
+.gap-4 {
+  gap: var(--mantine-spacing-lg) !important;
+}
+
+.gap-5 {
+  gap: var(--mantine-spacing-xl) !important;
+}
+
+// Margin utilities (using Mantine spacing as base unit: 1rem)
+// Bootstrap scale: 0.25rem increments (m-1 = 0.25rem, m-2 = 0.5rem, etc.)
+.m-0 {
+  margin: 0 !important;
+}
+
+.m-0\.5 {
+  margin: calc(var(--mantine-spacing-md) * 0.125) !important; // 0.125rem
+}
+
+.m-1 {
+  margin: calc(var(--mantine-spacing-md) * 0.25) !important; // 0.25rem
+}
+
+.m-2 {
+  margin: calc(var(--mantine-spacing-md) * 0.5) !important; // 0.5rem
+}
+
+.m-3 {
+  margin: var(--mantine-spacing-md) !important; // 1rem
+}
+
+.m-4 {
+  margin: calc(var(--mantine-spacing-md) * 1.5) !important; // 1.5rem
+}
+
+.m-4\.5 {
+  margin: calc(var(--mantine-spacing-md) * 2) !important; // 2rem
+}
+
+.m-5 {
+  margin: calc(var(--mantine-spacing-md) * 3) !important; // 3rem
+}
+
+.m-auto {
+  margin: auto !important;
+}
+
+// Margin top
+.mt-0 {
+  margin-top: 0 !important;
+}
+
+.mt-0\.5 {
+  margin-top: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
+.mt-1 {
+  margin-top: calc(var(--mantine-spacing-md) * 0.25) !important;
+}
+
+.mt-2 {
+  margin-top: calc(var(--mantine-spacing-md) * 0.5) !important;
+}
+
+.mt-3 {
+  margin-top: var(--mantine-spacing-md) !important;
+}
+
+.mt-4 {
+  margin-top: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.mt-4\.5 {
+  margin-top: calc(var(--mantine-spacing-md) * 2) !important;
+}
+
+.mt-5 {
+  margin-top: calc(var(--mantine-spacing-md) * 3) !important;
+}
+
+.mt-auto {
+  margin-top: auto !important;
+}
+
+// Margin bottom
+.mb-0 {
+  margin-bottom: 0 !important;
+}
+
+.mb-0\.5 {
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
+.mb-1 {
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.25) !important;
+}
+
+.mb-2 {
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.5) !important;
+}
+
+.mb-3 {
+  margin-bottom: var(--mantine-spacing-md) !important;
+}
+
+.mb-4 {
+  margin-bottom: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.mb-4\.5 {
+  margin-bottom: calc(var(--mantine-spacing-md) * 2) !important;
+}
+
+.mb-5 {
+  margin-bottom: calc(var(--mantine-spacing-md) * 3) !important;
+}
+
+.mb-auto {
+  margin-bottom: auto !important;
+}
+
+// Margin start (left in LTR)
+.ms-0 {
+  margin-inline-start: 0 !important;
+}
+
+.ms-0\.5 {
+  margin-inline-start: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
+.ms-1 {
+  margin-inline-start: calc(var(--mantine-spacing-md) * 0.25) !important;
+}
+
+.ms-2 {
+  margin-inline-start: calc(var(--mantine-spacing-md) * 0.5) !important;
+}
+
+.ms-3 {
+  margin-inline-start: var(--mantine-spacing-md) !important;
+}
+
+.ms-4 {
+  margin-inline-start: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.ms-4\.5 {
+  margin-inline-start: calc(var(--mantine-spacing-md) * 2) !important;
+}
+
+.ms-5 {
+  margin-inline-start: calc(var(--mantine-spacing-md) * 3) !important;
+}
+
+.ms-auto {
+  margin-inline-start: auto !important;
+}
+
+// Margin end (right in LTR)
+.me-0 {
+  margin-inline-end: 0 !important;
+}
+
+.me-0\.5 {
+  margin-inline-end: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
+.me-1 {
+  margin-inline-end: calc(var(--mantine-spacing-md) * 0.25) !important;
+}
+
+.me-2 {
+  margin-inline-end: calc(var(--mantine-spacing-md) * 0.5) !important;
+}
+
+.me-3 {
+  margin-inline-end: var(--mantine-spacing-md) !important;
+}
+
+.me-4 {
+  margin-inline-end: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.me-4\.5 {
+  margin-inline-end: calc(var(--mantine-spacing-md) * 2) !important;
+}
+
+.me-5 {
+  margin-inline-end: calc(var(--mantine-spacing-md) * 3) !important;
+}
+
+.me-auto {
+  margin-inline-end: auto !important;
+}
+
+// Margin x-axis
+.mx-0 {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+.mx-0\.5 {
+  margin-left: calc(var(--mantine-spacing-md) * 0.125) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
+.mx-1 {
+  margin-left: calc(var(--mantine-spacing-md) * 0.25) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 0.25) !important;
+}
+
+.mx-2 {
+  margin-left: calc(var(--mantine-spacing-md) * 0.5) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 0.5) !important;
+}
+
+.mx-3 {
+  margin-left: var(--mantine-spacing-md) !important;
+  margin-right: var(--mantine-spacing-md) !important;
+}
+
+.mx-4 {
+  margin-left: calc(var(--mantine-spacing-md) * 1.5) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.mx-4\.5 {
+  margin-left: calc(var(--mantine-spacing-md) * 2) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 2) !important;
+}
+
+.mx-5 {
+  margin-left: calc(var(--mantine-spacing-md) * 3) !important;
+  margin-right: calc(var(--mantine-spacing-md) * 3) !important;
+}
+
+.mx-auto {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+// Margin y-axis
+.my-0 {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.my-0\.5 {
+  margin-top: calc(var(--mantine-spacing-md) * 0.125) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
+.my-1 {
+  margin-top: calc(var(--mantine-spacing-md) * 0.25) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.25) !important;
+}
+
+.my-2 {
+  margin-top: calc(var(--mantine-spacing-md) * 0.5) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 0.5) !important;
+}
+
+.my-3 {
+  margin-top: var(--mantine-spacing-md) !important;
+  margin-bottom: var(--mantine-spacing-md) !important;
+}
+
+.my-4 {
+  margin-top: calc(var(--mantine-spacing-md) * 1.5) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.my-4\.5 {
+  margin-top: calc(var(--mantine-spacing-md) * 2) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 2) !important;
+}
+
+.my-5 {
+  margin-top: calc(var(--mantine-spacing-md) * 3) !important;
+  margin-bottom: calc(var(--mantine-spacing-md) * 3) !important;
+}
+
+.my-auto {
+  margin-top: auto !important;
+  margin-bottom: auto !important;
+}
+
+// Padding utilities (using Mantine spacing as base unit: 1rem)
+// Bootstrap scale: 0.25rem increments (p-1 = 0.25rem, p-2 = 0.5rem, etc.)
+.p-0 {
+  padding: 0 !important;
+}
+
+.p-0\.5 {
+  padding: calc(var(--mantine-spacing-md) * 0.125) !important; // 0.125rem
+}
+
+.p-1 {
+  padding: calc(var(--mantine-spacing-md) * 0.25) !important; // 0.25rem
+}
+
+.p-2 {
+  padding: calc(var(--mantine-spacing-md) * 0.5) !important; // 0.5rem
+}
+
+.p-3 {
+  padding: var(--mantine-spacing-md) !important; // 1rem
+}
+
+.p-4 {
+  padding: calc(var(--mantine-spacing-md) * 1.5) !important; // 1.5rem
+}
+
+.p-4\.5 {
+  padding: calc(var(--mantine-spacing-md) * 2) !important; // 2rem
+}
+
+.p-5 {
+  padding: calc(var(--mantine-spacing-md) * 3) !important; // 3rem
+}
+
+// Padding bottom
+.pb-0 {
+    padding-bottom: 0!important
+}
+
+.pb-0\.5 {
+    padding-bottom: calc(var(--mantine-spacing-md) * 0.125)!important
+}
+
+.pb-1 {
+    padding-bottom: calc(var(--mantine-spacing-md) * 0.25)!important
+}
+
+.pb-2 {
+    padding-bottom: calc(var(--mantine-spacing-md) * 0.5)!important
+}
+
+.pb-3 {
+    padding-bottom: var(--mantine-spacing-md)!important
+}
+
+.pb-4 {
+    padding-bottom: calc(var(--mantine-spacing-md) * 1.5)!important
+}
+
+.pb-4\.5 {
+    padding-bottom: calc(var(--mantine-spacing-md) * 2)!important
+}
+
+.pb-5 {
+    padding-bottom: calc(var(--mantine-spacing-md) * 3)!important
+}
+
+// Padding top
+.pt-0 {
+  padding-top: 0 !important;
+}
+
+.pt-0\.5 {
+  padding-top: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
+.pt-1 {
+  padding-top: calc(var(--mantine-spacing-md) * 0.25) !important;
+}
+
+.pt-2 {
+  padding-top: calc(var(--mantine-spacing-md) * 0.5) !important;
+}
+
+.pt-3 {
+  padding-top: var(--mantine-spacing-md) !important;
+}
+
+.pt-4 {
+  padding-top: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.pt-4\.5 {
+  padding-top: calc(var(--mantine-spacing-md) * 2) !important;
+}
+
+.pt-5 {
+  padding-top: calc(var(--mantine-spacing-md) * 3) !important;
+}
+
+// Padding start (left in LTR)
+.ps-0 {
+  padding-inline-start: 0 !important;
+}
+
+.ps-0\.5 {
+  padding-inline-start: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
+.ps-1 {
+  padding-inline-start: calc(var(--mantine-spacing-md) * 0.25) !important;
+}
+
+.ps-2 {
+  padding-inline-start: calc(var(--mantine-spacing-md) * 0.5) !important;
+}
+
+.ps-3 {
+  padding-inline-start: var(--mantine-spacing-md) !important;
+}
+
+.ps-4 {
+  padding-inline-start: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.ps-4\.5 {
+  padding-inline-start: calc(var(--mantine-spacing-md) * 2) !important;
+}
+
+.ps-5 {
+  padding-inline-start: calc(var(--mantine-spacing-md) * 3) !important;
+}
+
+// Padding end (right in LTR)
+.pe-0 {
+  padding-inline-end: 0 !important;
+}
+
+.pe-0\.5 {
+  padding-inline-end: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
+.pe-1 {
+  padding-inline-end: calc(var(--mantine-spacing-md) * 0.25) !important;
+}
+
+.pe-2 {
+  padding-inline-end: calc(var(--mantine-spacing-md) * 0.5) !important;
+}
+
+.pe-3 {
+  padding-inline-end: var(--mantine-spacing-md) !important;
+}
+
+.pe-4 {
+  padding-inline-end: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.pe-4\.5 {
+  padding-inline-end: calc(var(--mantine-spacing-md) * 2) !important;
+}
+
+.pe-5 {
+  padding-inline-end: calc(var(--mantine-spacing-md) * 3) !important;
+}
+
+// Padding x-axis
+.px-0 {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.px-0\.5 {
+  padding-left: calc(var(--mantine-spacing-md) * 0.125) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
+.px-1 {
+  padding-left: calc(var(--mantine-spacing-md) * 0.25) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 0.25) !important;
+}
+
+.px-2 {
+  padding-left: calc(var(--mantine-spacing-md) * 0.5) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 0.5) !important;
+}
+
+.px-3 {
+  padding-left: var(--mantine-spacing-md) !important;
+  padding-right: var(--mantine-spacing-md) !important;
+}
+
+.px-4 {
+  padding-left: calc(var(--mantine-spacing-md) * 1.5) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.px-4\.5 {
+  padding-left: calc(var(--mantine-spacing-md) * 2) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 2) !important;
+}
+
+.px-5 {
+  padding-left: calc(var(--mantine-spacing-md) * 3) !important;
+  padding-right: calc(var(--mantine-spacing-md) * 3) !important;
+}
+
+// Padding y-axis
+.py-0 {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.py-0\.5 {
+  padding-top: calc(var(--mantine-spacing-md) * 0.125) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 0.125) !important;
+}
+
+.py-1 {
+  padding-top: calc(var(--mantine-spacing-md) * 0.25) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 0.25) !important;
+}
+
+.py-2 {
+  padding-top: calc(var(--mantine-spacing-md) * 0.5) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 0.5) !important;
+}
+
+.py-3 {
+  padding-top: var(--mantine-spacing-md) !important;
+  padding-bottom: var(--mantine-spacing-md) !important;
+}
+
+.py-4 {
+  padding-top: calc(var(--mantine-spacing-md) * 1.5) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 1.5) !important;
+}
+
+.py-4\.5 {
+  padding-top: calc(var(--mantine-spacing-md) * 2) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 2) !important;
+}
+
+.py-5 {
+  padding-top: calc(var(--mantine-spacing-md) * 3) !important;
+  padding-bottom: calc(var(--mantine-spacing-md) * 3) !important;
+}
+
+// Width utilities
+.w-25 {
+  width: 25% !important;
+}
+
+.w-50 {
+  width: 50% !important;
+}
+
+.w-75 {
+  width: 75% !important;
+}
+
+.w-100 {
+  width: 100% !important;
+}
+
+.w-auto {
+  width: auto !important;
+}
+
+// Height utilities
+.h-25 {
+  height: 25% !important;
+}
+
+.h-50 {
+  height: 50% !important;
+}
+
+.h-75 {
+  height: 75% !important;
+}
+
+.h-100 {
+  height: 100% !important;
+}
+
+.h-auto {
+  height: auto !important;
+}
+
+// Viewport height/width
+.vh-100 {
+  height: 100vh !important;
+}
+
+.vw-100 {
+  width: 100vw !important;
+}
+
+.min-vh-100 {
+  min-height: 100vh !important;
+}
+
+.min-vw-100 {
+  min-width: 100vw !important;
+}
+
+// Min/Max width
+.mw-100 {
+  max-width: 100% !important;
+}
+
+.min-w-0 {
+  min-width: 0 !important;
+}
+
+// Position utilities
+.position-static {
+  position: static !important;
+}
+
+.position-relative {
+  position: relative !important;
+}
+
+.position-absolute {
+  position: absolute !important;
+}
+
+.position-fixed {
+  position: fixed !important;
+}
+
+.position-sticky {
+  position: sticky !important;
+}
+
+// Position values
+.top-0 {
+  top: 0 !important;
+}
+
+.top-50 {
+  top: 50% !important;
+}
+
+.top-100 {
+  top: 100% !important;
+}
+
+.bottom-0 {
+  bottom: 0 !important;
+}
+
+.bottom-50 {
+  bottom: 50% !important;
+}
+
+.bottom-100 {
+  bottom: 100% !important;
+}
+
+.start-0 {
+  left: 0 !important;
+}
+
+.start-50 {
+  left: 50% !important;
+}
+
+.start-100 {
+  left: 100% !important;
+}
+
+.end-0 {
+  right: 0 !important;
+}
+
+.end-50 {
+  right: 50% !important;
+}
+
+.end-100 {
+  right: 100% !important;
+}
+
+// Fixed positioning helpers
+.fixed-top {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  left: 0 !important;
+  z-index: 1030 !important;
+}
+
+.fixed-bottom {
+  position: fixed !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  z-index: 1030 !important;
+}
+
+// Overflow utilities
+.overflow-auto {
+  overflow: auto !important;
+}
+
+.overflow-hidden {
+  overflow: hidden !important;
+}
+
+.overflow-visible {
+  overflow: visible !important;
+}
+
+.overflow-scroll {
+  overflow: scroll !important;
+}
+
+// Text utilities
+.text-nowrap {
+  white-space: nowrap !important;
+}
+
+.text-wrap {
+  white-space: normal !important;
+}
+
+// Pointer events
+.pe-none {
+  pointer-events: none !important;
+}
+
+.pe-auto {
+  pointer-events: auto !important;
+}
+
+// Cursor
+.cursor-pointer {
+  cursor: pointer !important;
+}
+
+// Visibility
+.visible {
+  visibility: visible !important;
+}
+
+.invisible {
+  visibility: hidden !important;
+}
+
+// Table utilities
+.table {
+  width: 100%;
+  margin-bottom: 1rem;
+  color: var(--color-text);
+  vertical-align: top;
+  border-color: var(--color-border);
+}
+
+// Text alignment
+.text-start {
+  text-align: left !important;
+}
+
+.text-center {
+  text-align: center !important;
+}
+
+.text-end {
+  text-align: right !important;
+}
+
+// Text wrapping
+.text-wrap {
+  white-space: normal !important;
+}
+
+.text-nowrap {
+  white-space: nowrap !important;
+}
+
+.text-truncate {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+// Font size utilities
+.fs-1 {
+  font-size: 2.5rem !important; // 40px
+}
+
+.fs-2 {
+  font-size: 2rem !important; // 32px
+}
+
+.fs-3 {
+  font-size: 1.75rem !important; // 28px
+}
+
+.fs-4 {
+  font-size: 1.5rem !important; // 24px
+}
+
+.fs-5 {
+  font-size: 1.25rem !important; // 20px
+}
+
+.fs-6 {
+  font-size: 1rem !important; // 16px (base)
+}
+
+.fs-7 {
+  font-size: 0.875rem !important; // 14px
+}
+
+.fs-8 {
+  font-size: 0.75rem !important; // 12px
+}
+
+.fs-9 {
+  font-size: 0.625rem !important; // 10px
+}

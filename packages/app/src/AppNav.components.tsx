@@ -33,10 +33,8 @@ export const AppNavContext = React.createContext<{
 
 export const AppNavCloudBanner = () => {
   return (
-    <div className="my-3 bg-hdx-dark rounded p-2 text-center">
-      <span className="text-slate-300 fs-8">
-        Ready to deploy on ClickHouse Cloud?
-      </span>
+    <div className="my-3 bg-muted rounded p-2 text-center">
+      <span className="fs-8">Ready to deploy on ClickHouse Cloud?</span>
       <div className="mt-2 mb-2">
         <Link
           href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started#deploy-with-clickhouse-cloud"
@@ -84,16 +82,9 @@ export const AppNavUserMenu = ({
       <Menu.Target>
         <Paper
           data-testid="user-menu-trigger"
-          m="sm"
-          mt={8}
-          px={8}
-          py={4}
-          radius="md"
-          {...(isCollapsed && {
-            p: 2,
-            bg: 'transparent',
+          className={cx(styles.userMenuTrigger, {
+            [styles.userMenuTriggerCollapsed]: isCollapsed,
           })}
-          className={styles.appNavMenu}
         >
           <Group gap="xs" wrap="nowrap" miw={0}>
             <Avatar size="sm" radius="xl" color="green">
@@ -141,7 +132,7 @@ export const AppNavUserMenu = ({
                     </Text>
                   </div>
                 </Tooltip>
-                <Icon name="chevron-right" className="fs-8 text-slate-400" />
+                <Icon name="chevron-right" className="fs-8 " />
               </>
             )}
           </Group>
@@ -213,21 +204,13 @@ export const AppNavHelpMenu = ({
   ] = useDisclosure(false);
 
   // const isTeamHasNoData = useIsTeamHasNoData();
-  const size = 28;
 
   return (
     <>
       <Paper
-        mb={8}
-        ml="sm"
-        withBorder
-        w={size}
-        h={size}
-        radius="xl"
-        {...(isCollapsed && {
-          ml: 'sm',
+        className={cx(styles.helpMenuTrigger, {
+          [styles.helpMenuTriggerCollapsed]: isCollapsed,
         })}
-        className={styles.appNavMenu}
       >
         <Menu
           withArrow
@@ -237,12 +220,7 @@ export const AppNavHelpMenu = ({
         >
           <Menu.Target>
             <UnstyledButton data-testid="help-menu-trigger" w="100%">
-              <Group
-                align="center"
-                justify="center"
-                h={size}
-                className="text-slate-200 "
-              >
+              <Group align="center" justify="center" h={28}>
                 <Icon name="question-lg" />
               </Group>
             </UnstyledButton>
@@ -251,7 +229,7 @@ export const AppNavHelpMenu = ({
             <Menu.Label>
               Help{' '}
               {version && (
-                <Text size="xs" c="gray.7" component="span">
+                <Text size="xs" component="span">
                   v{version}
                 </Text>
               )}
@@ -295,7 +273,7 @@ export const AppNavHelpMenu = ({
 export const AppNavLink = ({
   className,
   label,
-  iconName,
+  icon,
   href,
   isExpanded,
   onToggle,
@@ -303,7 +281,7 @@ export const AppNavLink = ({
 }: {
   className?: string;
   label: React.ReactNode;
-  iconName: string;
+  icon: React.ReactNode;
   href: string;
   isExpanded?: boolean;
   onToggle?: () => void;
@@ -320,37 +298,26 @@ export const AppNavLink = ({
         data-testid={testId}
         href={href}
         className={cx(
+          styles.listLink,
+          { [styles.listLinkActive]: pathname?.includes(href) },
           className,
-          'text-decoration-none d-flex justify-content-between align-items-center fs-7 text-muted-hover',
-          { 'fw-600 text-success': pathname?.includes(href) },
         )}
+        style={{ display: 'flex', alignItems: 'center' }}
       >
-        <span>
-          <i className={`bi ${iconName} pe-2 text-slate-300`} />{' '}
-          {!isCollapsed && (
-            <span>
-              {label}
-              {isBeta && (
-                <Badge
-                  size="xs"
-                  ms="xs"
-                  color="gray.4"
-                  autoContrast
-                  radius="sm"
-                  className="align-text-bottom"
-                >
-                  Beta
-                </Badge>
-              )}
-            </span>
-          )}
+        <span style={{ display: 'flex', alignItems: 'center' }}>
+          <span className={styles.linkIcon}>{icon}</span>
+          {!isCollapsed && <span>{label}</span>}
         </span>
       </Link>
+      {!isCollapsed && isBeta && (
+        <Badge size="xs" radius="sm" color="gray" style={{ marginRight: 8 }}>
+          Beta
+        </Badge>
+      )}
       {!isCollapsed && onToggle && (
         <ActionIcon
           data-testid={`${testId}-toggle`}
           variant="subtle"
-          color="dark.2"
           size="sm"
           onClick={onToggle}
         >

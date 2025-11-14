@@ -610,7 +610,7 @@ export default function SessionSubpanel({
                 {showRelativeTime ? (
                   <>
                     {formatmmss((focus?.ts ?? 0) - minTs)}
-                    <span className="fw-normal text-slate-300 ms-2">
+                    <span className="fw-normal ms-2">
                       {' / '}
                       {formatmmss(maxTs - minTs)}
                     </span>
@@ -625,7 +625,7 @@ export default function SessionSubpanel({
             <Tooltip label="Go 15 seconds back" color="gray">
               <ActionIcon
                 variant="filled"
-                color="gray.8"
+                color="gray"
                 size="md"
                 radius="xl"
                 onClick={skipBackward}
@@ -640,7 +640,7 @@ export default function SessionSubpanel({
             >
               <ActionIcon
                 variant="filled"
-                color="gray.8"
+                color="gray"
                 size="lg"
                 radius="xl"
                 onClick={togglePlayerState}
@@ -655,7 +655,7 @@ export default function SessionSubpanel({
             <Tooltip label="Skip 15 seconds" color="gray">
               <ActionIcon
                 variant="filled"
-                color="gray.8"
+                color="gray"
                 size="md"
                 radius="xl"
                 onClick={skipForward}
