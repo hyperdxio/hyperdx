@@ -57,7 +57,7 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconPlayerPlayFilled } from '@tabler/icons-react';
+import { IconPlayerPlay } from '@tabler/icons-react';
 import { useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
@@ -1538,7 +1538,7 @@ function DBSearchPage() {
             type="submit"
             color={formState.isDirty ? 'var(--color-text-success)' : 'gray'}
           >
-            <IconPlayerPlayFilled size={16} />
+            <IconPlayerPlay size={16} />
           </Button>
         </Flex>
       </form>

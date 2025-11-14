@@ -622,7 +622,7 @@ export default function SessionSubpanel({
             <Tooltip label="Go 15 seconds back" color="gray">
               <ActionIcon
                 variant="filled"
-                color="gray.8"
+                color="gray"
                 size="md"
                 radius="xl"
                 onClick={skipBackward}
@@ -637,7 +637,7 @@ export default function SessionSubpanel({
             >
               <ActionIcon
                 variant="filled"
-                color="gray.8"
+                color="gray"
                 size="lg"
                 radius="xl"
                 onClick={togglePlayerState}
@@ -652,7 +652,7 @@ export default function SessionSubpanel({
             <Tooltip label="Skip 15 seconds" color="gray">
               <ActionIcon
                 variant="filled"
-                color="gray.8"
+                color="gray"
                 size="md"
                 radius="xl"
                 onClick={skipForward}

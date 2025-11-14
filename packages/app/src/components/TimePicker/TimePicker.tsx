@@ -318,7 +318,7 @@ export const TimePicker = ({
               <Stack gap={0} p="xs">
                 {relativeTimeOptions.map((item, index) =>
                   item === 'divider' ? (
-                    <Divider key={index} my={4} color="gray.9" />
+                    <Divider key={index} my={4} />
                   ) : (
                     <Button
                       key={item[0]}

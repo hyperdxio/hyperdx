@@ -575,7 +575,7 @@ export const FilterGroup = ({
               ))}
               {optionsLoading ? (
                 <Group m={6} gap="xs">
-                  <Loader size={12} color="gray.6" />
+                  <Loader size={12} color="gray" />
                   <Text c="dimmed" size="xs">
                     Loading...
                   </Text>
@@ -618,7 +618,7 @@ export const FilterGroup = ({
                   <div className="d-flex m-1">
                     {loadMoreLoading ? (
                       <Group m={6} gap="xs">
-                        <Loader size={12} color="gray.6" />
+                        <Loader size={12} color="gray" />
                         <Text c="dimmed" size="xs">
                           Loading more...
                         </Text>

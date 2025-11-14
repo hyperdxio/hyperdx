@@ -36,7 +36,7 @@ import {
   Text,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconPlayerPlayFilled } from '@tabler/icons-react';
+import { IconPlayerPlay } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -490,7 +490,7 @@ export default function SessionsPage() {
                 }}
               />
               <Button variant="outline" type="submit" px="sm">
-                <IconPlayerPlayFilled size={16} />
+                <IconPlayerPlay size={16} />
               </Button>
             </Group>
           </Flex>

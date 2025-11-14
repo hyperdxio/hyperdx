@@ -24,7 +24,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconPlayerPlayFilled } from '@tabler/icons-react';
+import { IconPlayerPlay } from '@tabler/icons-react';
 
 import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
@@ -180,7 +180,7 @@ export function EndpointLatencyChart({
           <Button.Group>
             <Button
               variant="subtle"
-              color={latencyChartType === 'line' ? 'green' : 'dark.2'}
+              color={latencyChartType === 'line' ? 'green' : 'gray'}
               size="xs"
               title="Line Chart"
               onClick={() => setLatencyChartType('line')}
@@ -190,7 +190,7 @@ export function EndpointLatencyChart({
 
             <Button
               variant="subtle"
-              color={latencyChartType === 'histogram' ? 'green' : 'dark.2'}
+              color={latencyChartType === 'histogram' ? 'green' : 'gray'}
               size="xs"
               title="Histogram"
               onClick={() => setLatencyChartType('histogram')}
@@ -636,7 +636,7 @@ function DatabaseTab({
               <Button.Group>
                 <Button
                   variant="subtle"
-                  color={chartType === 'list' ? 'green' : 'dark.2'}
+                  color={chartType === 'list' ? 'green' : 'gray'}
                   size="xs"
                   title="List"
                   onClick={() => setChartType('list')}
@@ -646,7 +646,7 @@ function DatabaseTab({
 
                 <Button
                   variant="subtle"
-                  color={chartType === 'table' ? 'green' : 'dark.2'}
+                  color={chartType === 'table' ? 'green' : 'gray'}
                   size="xs"
                   title="Table"
                   onClick={() => setChartType('table')}
@@ -1003,7 +1003,7 @@ function ServicesDashboardPage() {
               </Button>
             </Tooltip>
             <Button variant="outline" type="submit" px="sm">
-              <IconPlayerPlayFilled size={16} />
+              <IconPlayerPlay size={16} />
             </Button>
           </Group>
         </Group>

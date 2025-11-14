@@ -470,7 +470,7 @@ export default function DOMPlayer({
         <ActionIcon
           onClick={() => setPlayerFullWidth(!playerFullWidth)}
           size="sm"
-          color="gray.7"
+          color="gray"
         >
           {playerFullWidth ? (
             <i className="bi bi-list"></i>

@@ -47,7 +47,7 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
-import { IconPlayerPlayFilled } from '@tabler/icons-react';
+import { IconPlayerPlay } from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
@@ -961,7 +961,7 @@ export default function EditTimeChartForm({
           {onClose != null && (
             <Button
               variant="subtle"
-              color="dark.2"
+              color="dark"
               onClick={onClose}
               disabled={isSaving}
             >
@@ -995,7 +995,7 @@ export default function EditTimeChartForm({
               type="submit"
               onClick={onSubmit}
             >
-              <IconPlayerPlayFilled size={16} />
+              <IconPlayerPlay size={16} />
             </Button>
           )}
         </Flex>

@@ -42,7 +42,7 @@ const PodDetailsProperty = React.memo(
     if (!value) return null;
     return (
       <div className="pe-4">
-        <Text size="xs" color="gray.6">
+        <Text size="xs" color="gray">
           {label}
         </Text>
         <Text size="sm">{value}</Text>

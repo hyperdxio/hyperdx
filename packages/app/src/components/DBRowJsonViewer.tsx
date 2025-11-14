@@ -76,7 +76,7 @@ function HyperJsonMenu() {
   return (
     <Group>
       <UnstyledButton
-        color="gray.0"
+        color="gray"
         onClick={() =>
           setJsonOptions({ ...jsonOptions, lineWrap: !jsonOptions.lineWrap })
         }

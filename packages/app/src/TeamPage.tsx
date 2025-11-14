@@ -550,7 +550,7 @@ function TeamMembersSection() {
                       </span>
                     </Table.Td>
                     <Table.Td>
-                      <Badge variant="dot" color="gray.6" fw="normal" tt="none">
+                      <Badge variant="dot" color="gray" fw="normal" tt="none">
                         Pending Invite
                       </Badge>
                       <CopyToClipboard text={invitation.url}>
@@ -1263,8 +1263,7 @@ function ApiKeysSection() {
             </Text>
             <Group justify="end">
               <Button
-                variant="outline"
-                color="gray.5"
+                variant="default"
                 className="mt-2 px-4 ms-2 float-end"
                 size="sm"
                 onClick={() => setRotateApiKeyConfirmationModalShow(false)}
@@ -1273,7 +1272,7 @@ function ApiKeysSection() {
               </Button>
               <Button
                 variant="outline"
-                color="red.6"
+                color="red"
                 className="mt-2 px-4 float-end"
                 size="sm"
                 onClick={onConfirmUpdateTeamApiKey}

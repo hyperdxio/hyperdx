@@ -17,7 +17,7 @@ export default function LogLevel({
           ? 'red'
           : levelClass === 'warn'
             ? 'yellow'
-            : 'gray.4'
+            : 'gray'
       }
       {...props}
     >

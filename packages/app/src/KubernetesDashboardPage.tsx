@@ -426,7 +426,7 @@ export const InfraPodsStatusTable = ({
                           >
                             <Text
                               span
-                              c={pod.cpuLimitUtilization ? undefined : 'gray.7'}
+                              c={pod.cpuLimitUtilization ? undefined : 'gray'}
                             >
                               {pod.cpuLimitUtilization
                                 ? formatNumber(
@@ -447,7 +447,7 @@ export const InfraPodsStatusTable = ({
                           >
                             <Text
                               span
-                              c={pod.memLimitUtilization ? undefined : 'gray.7'}
+                              c={pod.memLimitUtilization ? undefined : 'gray'}
                             >
                               {pod.memLimitUtilization
                                 ? formatNumber(
@@ -459,7 +459,7 @@ export const InfraPodsStatusTable = ({
                           </Tooltip>
                         </Table.Td>
                         <Table.Td>
-                          <Text span c={pod.uptime ? undefined : 'gray.7'}>
+                          <Text span c={pod.uptime ? undefined : 'gray'}>
                             {pod.uptime ? formatUptime(pod.uptime) : '–'}
                           </Text>
                         </Table.Td>
@@ -467,10 +467,10 @@ export const InfraPodsStatusTable = ({
                           <Text
                             color={
                               pod.restarts >= 10
-                                ? 'red.6'
+                                ? 'red'
                                 : pod.restarts >= 5
-                                  ? 'yellow.3'
-                                  : 'grey.7'
+                                  ? 'yellow'
+                                  : 'gray'
                             }
                           >
                             {pod.restarts}

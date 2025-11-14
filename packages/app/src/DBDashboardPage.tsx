@@ -45,7 +45,7 @@ import {
 } from '@mantine/core';
 import { useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconFilterEdit, IconPlayerPlayFilled } from '@tabler/icons-react';
+import { IconFilterEdit, IconPlayerPlay } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
@@ -1086,7 +1086,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           variant="outline"
           type="submit"
         >
-          <IconPlayerPlayFilled size={16} />
+          <IconPlayerPlay size={16} />
         </Button>
       </Flex>
       <DashboardFilters
@@ -1150,7 +1150,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         data-testid="add-new-tile-button"
         variant="outline"
         mt="sm"
-        color={dashboard?.tiles.length === 0 ? 'green' : 'dark.3'}
+        color={dashboard?.tiles.length === 0 ? 'green' : 'gray'}
         fw={400}
         onClick={onAddTile}
         w="100%"

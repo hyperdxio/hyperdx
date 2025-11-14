@@ -3,7 +3,7 @@ import cx from 'classnames';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { ScrollArea, Skeleton, Stack } from '@mantine/core';
 import { useThrottledCallback, useThrottledValue } from '@mantine/hooks';
-import { IconPlayerPlayFilled } from '@tabler/icons-react';
+import { IconPlayerPlay } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import useRowWhere from '@/hooks/useRowWhere';
@@ -79,7 +79,7 @@ const EventRow = React.forwardRef(
           </div>
         </div>
         <div className={styles.eventRowTimestamp} onClick={onTimeClick}>
-          <IconPlayerPlayFilled size={12} className="me-1" />
+          <IconPlayerPlay size={12} className="me-1" />
           {event.formattedTimestamp}
         </div>
       </div>

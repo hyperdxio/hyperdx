@@ -203,9 +203,9 @@ export const Table = ({
       >
         <thead
           style={{
-            background: 'inherit',
             position: 'sticky',
             top: 0,
+            background: 'var(--color-bg-body)',
           }}
         >
           {table.getHeaderGroups().map(headerGroup => (

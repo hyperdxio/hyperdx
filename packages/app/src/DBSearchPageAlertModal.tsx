@@ -167,7 +167,7 @@ const AlertForm = ({
         {groupBy && thresholdType === AlertThresholdType.BELOW && (
           <MantineAlert
             icon={<i className="bi bi-info-circle-fill " />}
-            bg="dark.6"
+            bg="dark"
             py="xs"
           >
             <Text size="sm" opacity={0.7}>
