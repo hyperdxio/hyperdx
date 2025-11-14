@@ -470,8 +470,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         key={savedSearch.id}
         tabIndex={0}
         className={cx(
-          styles.listLink,
-          savedSearch.id === query.savedSearchId && styles.listLinkActive,
+          styles.nestedLink,
+          savedSearch.id === query.savedSearchId && styles.nestedLinkActive,
         )}
         title={savedSearch.name}
         draggable
@@ -533,8 +533,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         href={`/dashboards/${dashboard.id}`}
         key={dashboard.id}
         tabIndex={0}
-        className={cx(styles.listLink, {
-          [styles.listLinkActive]: dashboard.id === query.dashboardId,
+        className={cx(styles.nestedLink, {
+          [styles.nestedLinkActive]: dashboard.id === query.dashboardId,
         })}
         draggable
         data-dashboardid={dashboard.id}
@@ -808,8 +808,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       <Link
                         href={`/clickhouse`}
                         tabIndex={0}
-                        className={cx(styles.listLink, {
-                          [styles.listLinkActive]:
+                        className={cx(styles.nestedLink, {
+                          [styles.nestedLinkActive]:
                             pathname.startsWith('/clickhouse'),
                         })}
                       >
@@ -818,8 +818,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       <Link
                         href={`/services`}
                         tabIndex={0}
-                        className={cx(styles.listLink, {
-                          [styles.listLinkActive]:
+                        className={cx(styles.nestedLink, {
+                          [styles.nestedLinkActive]:
                             pathname.startsWith('/services'),
                         })}
                       >
@@ -829,8 +829,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                         <Link
                           href={`/kubernetes`}
                           tabIndex={0}
-                          className={cx(styles.listLink, {
-                            [styles.listLinkActive]:
+                          className={cx(styles.nestedLink, {
+                            [styles.nestedLinkActive]:
                               pathname.startsWith('/kubernetes'),
                           })}
                           data-testid="k8s-dashboard-nav-link"

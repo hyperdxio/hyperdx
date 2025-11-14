@@ -35,7 +35,8 @@
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 1px;
-  margin-bottom: 6px;
+  margin-bottom: 2x;
+  margin-top: 6px;
   padding-left: 16px;
   width: 100%;
   display: flex;
@@ -52,15 +53,14 @@
   display: flex;
   justify-content: space-between;
   text-decoration: none;
-  color: var(--color-text-muted);
-  font-size: 13px;
+  color: var(--color-text);
+  font-size: 14px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   user-select: none;
   gap: 10px;
-  padding-left: 16px;
 
   &:hover {
     color: var(--color-text);
@@ -92,11 +92,35 @@
   text-overflow: ellipsis;
 }
 
+.nestedLink {
+  display: block;
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 12px;
+  padding-left: 16px;
+  transition: all 0.2s ease-in-out;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+   &:hover {
+    color: var(--color-text-success);
+  }
+
+  &:focus-visible {
+    outline: none;
+    background: var(--color-bg-muted);
+  }
+}
+
+.nestedLinkActive {
+  color: var(--color-text-success);
+  font-weight: 500;
+}
+
 .listLinkActive {
   color: var(--color-text-success);
   font-weight: 500;
-
- 
 }
 
 .kbd {
