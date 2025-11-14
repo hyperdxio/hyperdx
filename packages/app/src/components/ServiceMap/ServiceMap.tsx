@@ -15,6 +15,8 @@ import {
   NodeChange,
   Position,
   ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
 } from '@xyflow/react';
 
 import useServiceMap, { ServiceAggregation } from '@/hooks/useServiceMap';
@@ -74,6 +76,7 @@ interface ServiceMapPresentationProps {
   error: Error | null;
   dateRange: [Date, Date];
   source: TSource;
+  isSingleTrace?: boolean;
 }
 
 function ServiceMapPresentation({
@@ -82,9 +85,16 @@ function ServiceMapPresentation({
   error,
   dateRange,
   source,
+  isSingleTrace,
 }: ServiceMapPresentationProps) {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
+  const { fitView } = useReactFlow();
+
+  // Fit the data to the viewport whenever input service information changes
+  useEffect(() => {
+    fitView();
+  }, [fitView, services]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node>[]) =>
@@ -115,6 +125,7 @@ function ServiceMapPresentation({
           dateRange,
           source,
           maxErrorPercentage,
+          isSingleTrace,
         },
         position: { x: index * 150, y: 100 },
         type: 'service',
@@ -143,6 +154,7 @@ function ServiceMapPresentation({
                   source,
                   dateRange,
                   serviceName,
+                  isSingleTrace,
                 },
               };
             },
@@ -153,12 +165,23 @@ function ServiceMapPresentation({
 
     setNodes(nodeWithLayout);
     setEdges(edges);
-  }, [services, dateRange, source, maxErrorPercentage]);
+  }, [services, dateRange, source, maxErrorPercentage, isSingleTrace]);
 
   if (isLoading) {
     return (
-      <Center className={`${styles.graphContainer} h-100`}>
+      <Center className={`${styles.graphContainer} h-100 w-100`}>
         <Loader size="lg" />
+      </Center>
+    );
+  }
+
+  if (services && services.size === 0) {
+    return (
+      <Center className="w-100 h-100">
+        <Text size="sm" c="gray.5">
+          No services found. The Service Map shows links between services with
+          related Client- and Server-kind spans.
+        </Text>
       </Center>
     );
   }
@@ -222,6 +245,7 @@ interface ServiceMapProps {
   traceTableSource: TSource;
   dateRange: [Date, Date];
   samplingFactor?: number;
+  isSingleTrace?: boolean;
 }
 
 export default function ServiceMap({
@@ -229,6 +253,7 @@ export default function ServiceMap({
   traceTableSource,
   dateRange,
   samplingFactor = 1,
+  isSingleTrace,
 }: ServiceMapProps) {
   const {
     isLoading,
@@ -252,12 +277,15 @@ export default function ServiceMap({
   }, [error]);
 
   return (
-    <ServiceMapPresentation
-      services={services}
-      isLoading={isLoading}
-      error={error}
-      dateRange={dateRange}
-      source={traceTableSource}
-    />
+    <ReactFlowProvider>
+      <ServiceMapPresentation
+        services={services}
+        isLoading={isLoading}
+        error={error}
+        dateRange={dateRange}
+        source={traceTableSource}
+        isSingleTrace={isSingleTrace}
+      />
+    </ReactFlowProvider>
   );
 }

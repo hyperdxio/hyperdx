@@ -13,7 +13,10 @@ import {
   tcFromChartConfig,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
   ActionIcon,
@@ -189,7 +192,7 @@ export const FilterCheckbox = ({
               flex={1}
               title={label}
             >
-              {label}
+              {label || <span className="fst-italic">(empty)</span>}
             </Text>
             {percentage != null && (
               <FilterPercentage
@@ -904,6 +907,30 @@ const DBSearchPageFiltersComponent = ({
     [filterState],
   );
 
+  const setRootSpansOnly = useCallback(
+    (rootSpansOnly: boolean) => {
+      if (!source?.parentSpanIdExpression) return;
+
+      if (rootSpansOnly) {
+        setFilterValue(source.parentSpanIdExpression, '', 'only');
+      } else {
+        clearFilter(source.parentSpanIdExpression);
+      }
+    },
+    [setFilterValue, clearFilter, source],
+  );
+
+  const isRootSpansOnly = useMemo(() => {
+    if (!source?.parentSpanIdExpression || source.kind !== SourceKind.Trace)
+      return false;
+
+    const parentSpanIdFilter = filterState?.[source?.parentSpanIdExpression];
+    return (
+      parentSpanIdFilter?.included.size === 1 &&
+      parentSpanIdFilter?.included.has('')
+    );
+  }, [filterState, source]);
+
   return (
     <Box className={classes.filtersPanel} style={{ width: `${size}%` }}>
       <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
@@ -992,6 +1019,29 @@ const DBSearchPageFiltersComponent = ({
               onChange={() => setDenoiseResults(!denoiseResults)}
             />
           )}
+
+          {source?.kind === SourceKind.Trace &&
+            source.parentSpanIdExpression && (
+              <Checkbox
+                size={13 as any}
+                checked={isRootSpansOnly}
+                ms="6px"
+                label={
+                  <Tooltip
+                    openDelay={200}
+                    color="gray"
+                    position="right"
+                    withArrow
+                    label="Only show root spans (spans with no parent span)."
+                  >
+                    <Text size="xs" c="gray.3" mt="-1px">
+                      <i className="bi bi-diagram-3"></i> Root Spans Only
+                    </Text>
+                  </Tooltip>
+                }
+                onChange={event => setRootSpansOnly(event.target.checked)}
+              />
+            )}
 
           {isLoading || isFacetsLoading ? (
             <Flex align="center" justify="center">
