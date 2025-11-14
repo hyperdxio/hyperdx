@@ -77,6 +77,7 @@ function NewDashboardButton() {
         <Button
           data-testid="create-dashboard-button"
           variant="transparent"
+          color="var(--color-text)"
           py="0px"
           px="sm"
           fw={400}
@@ -91,6 +92,7 @@ function NewDashboardButton() {
     <Button
       data-testid="create-dashboard-button"
       variant="transparent"
+      color="var(--color-text)"
       py="0px"
       px="sm"
       fw={400}
