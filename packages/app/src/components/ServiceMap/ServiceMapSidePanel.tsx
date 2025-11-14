@@ -20,17 +20,10 @@ export default function ServiceMapSidePanel({
   return (
     <Stack w="100%">
       <Group gap={0}>
-        <Text size="sm" c="gray.2" ps="sm">
+        <Text size="sm" ps="sm">
           Service Map
         </Text>
-        <Badge
-          size="xs"
-          ms="xs"
-          color="gray.4"
-          autoContrast
-          radius="sm"
-          className="align-text-bottom"
-        >
+        <Badge size="xs" ms="xs" color="gray" autoContrast radius="sm">
           Beta
         </Badge>
       </Group>
