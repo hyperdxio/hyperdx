@@ -357,7 +357,7 @@ describe('useEventsAroundFocus', () => {
 
 describe('getAttributesFromData', () => {
   const createBasicSource = (
-    highlightedAttributeExpressions: any[] = [],
+    highlightedTraceAttributeExpressions: any[] = [],
   ): TSource => ({
     kind: SourceKind.Trace,
     from: {
@@ -367,7 +367,7 @@ describe('getAttributesFromData', () => {
     timestampValueExpression: 'Timestamp',
     connection: 'test-connection',
     name: 'Traces',
-    highlightedAttributeExpressions,
+    highlightedTraceAttributeExpressions,
     id: 'test-source-id',
   });
 
@@ -486,7 +486,7 @@ describe('getAttributesFromData', () => {
       statusMessageExpression: 'StatusMessage',
       sessionSourceId: '68dd82484f54641b0866789e',
       logSourceId: '6900eed982d3b3dfeff12a29',
-      highlightedAttributeExpressions: [
+      highlightedTraceAttributeExpressions: [
         {
           sqlExpression: "SpanAttributes['http.method']",
           alias: 'method',
@@ -532,14 +532,14 @@ describe('getAttributesFromData', () => {
     expect(attributes).toEqual([]);
   });
 
-  it('returns empty array when highlightedAttributeExpressions is undefined', () => {
+  it('returns empty array when highlightedTraceAttributeExpressions is undefined', () => {
     const source = createBasicSource();
     const data = [{ method: 'POST' }];
     const attributes = getAttributesFromData(source, data, basicMeta);
     expect(attributes).toEqual([]);
   });
 
-  it('returns empty array when highlightedAttributeExpressions is empty', () => {
+  it('returns empty array when highlightedTraceAttributeExpressions is empty', () => {
     const source = createBasicSource([]);
     const data = [{ method: 'POST' }];
     const attributes = getAttributesFromData(source, data, basicMeta);

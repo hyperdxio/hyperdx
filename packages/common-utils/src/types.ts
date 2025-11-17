@@ -578,7 +578,7 @@ const LogSourceAugmentation = {
   implicitColumnExpression: z.string().optional(),
   uniqueRowIdExpression: z.string().optional(),
   tableFilterExpression: z.string().optional(),
-  highlightedAttributeExpressions:
+  highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
 };
 
@@ -610,7 +610,7 @@ const TraceSourceAugmentation = {
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
-  highlightedAttributeExpressions:
+  highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
 };
 

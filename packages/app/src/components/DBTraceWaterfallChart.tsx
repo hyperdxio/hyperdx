@@ -90,8 +90,8 @@ function getConfig(source: TSource, traceId: string) {
 
   // Aliases for trace attributes must be added here to ensure
   // the returned `alias` object includes them and useRowWhere works.
-  if (source.highlightedAttributeExpressions) {
-    for (const expr of source.highlightedAttributeExpressions) {
+  if (source.highlightedTraceAttributeExpressions) {
+    for (const expr of source.highlightedTraceAttributeExpressions) {
       if (expr.alias) {
         alias[expr.alias] = expr.sqlExpression;
       }
@@ -123,7 +123,7 @@ function getConfig(source: TSource, traceId: string) {
 
   if (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) {
     select.push(
-      ...(source.highlightedAttributeExpressions ?? []).map(
+      ...(source.highlightedTraceAttributeExpressions ?? []).map(
         ({ sqlExpression, alias }) => ({
           valueExpression: sqlExpression,
           alias: alias || sqlExpression,
@@ -285,7 +285,7 @@ export const getAttributesFromData = (
         sqlExpression,
         luceneExpression,
         alias,
-      } of source.highlightedAttributeExpressions ?? []) {
+      } of source.highlightedTraceAttributeExpressions ?? []) {
         const displayName = alias || sqlExpression;
 
         const isJsonExpression = jsonColumns.includes(

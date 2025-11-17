@@ -66,7 +66,7 @@ export const Source = mongoose.model<ISource>(
       statusCodeExpression: String,
       statusMessageExpression: String,
       spanEventsValueExpression: String,
-      highlightedAttributeExpressions: {
+      highlightedTraceAttributeExpressions: {
         type: mongoose.Schema.Types.Array,
       },
 

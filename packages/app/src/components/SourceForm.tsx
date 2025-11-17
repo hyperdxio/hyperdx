@@ -162,7 +162,7 @@ function HighlightedAttributeExpressionsFormRow({
     remove: removeHighlightedAttribute,
   } = useFieldArray({
     control,
-    name: 'highlightedAttributeExpressions',
+    name: 'highlightedTraceAttributeExpressions',
   });
 
   return (
@@ -181,7 +181,7 @@ function HighlightedAttributeExpressionsFormRow({
                   connectionId,
                 }}
                 control={control}
-                name={`highlightedAttributeExpressions.${index}.sqlExpression`}
+                name={`highlightedTraceAttributeExpressions.${index}.sqlExpression`}
                 disableKeywordAutocomplete
                 placeholder="ResourceAttributes['http.host']"
               />
@@ -191,7 +191,7 @@ function HighlightedAttributeExpressionsFormRow({
                 <Text c="gray">AS</Text>
                 <SQLInlineEditorControlled
                   control={control}
-                  name={`highlightedAttributeExpressions.${index}.alias`}
+                  name={`highlightedTraceAttributeExpressions.${index}.alias`}
                   placeholder="Optional Alias"
                   disableKeywordAutocomplete
                 />
@@ -208,7 +208,7 @@ function HighlightedAttributeExpressionsFormRow({
             <Grid.Col span={3} pe={0}>
               <InputControlled
                 control={control}
-                name={`highlightedAttributeExpressions.${index}.luceneExpression`}
+                name={`highlightedTraceAttributeExpressions.${index}.luceneExpression`}
                 placeholder="ResourceAttributes.http.host (Optional) "
               />
             </Grid.Col>
