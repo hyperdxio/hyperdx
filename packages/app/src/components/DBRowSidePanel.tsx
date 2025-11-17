@@ -15,7 +15,6 @@ import { useHotkeys } from 'react-hotkeys-hook';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Drawer, Flex, Stack } from '@mantine/core';
-import { useClickOutside } from '@mantine/hooks';
 
 import DBRowSidePanelHeader, {
   BreadcrumbNavigationCallback,
@@ -527,12 +526,6 @@ export default function DBRowSidePanelErrorBoundary({
 
   useHotkeys(['esc'], _onClose, { enabled: subDrawerOpen === false });
 
-  const drawerRef = useClickOutside(() => {
-    if (!subDrawerOpen && !isChildModalOpen && rowId != null) {
-      _onClose();
-    }
-  }, ['mouseup', 'touchend']);
-
   return (
     <Drawer
       opened={rowId != null}
@@ -554,11 +547,7 @@ export default function DBRowSidePanelErrorBoundary({
       zIndex={drawerZIndex}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div
-          className={styles.panel}
-          ref={drawerRef}
-          data-testid="row-side-panel"
-        >
+        <div className={styles.panel} data-testid="row-side-panel">
           <Box className={styles.panelDragBar} onMouseDown={startResize} />
           <ErrorBoundary
             fallbackRender={error => (
