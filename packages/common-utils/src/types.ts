@@ -580,6 +580,8 @@ const LogSourceAugmentation = {
   tableFilterExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
+  highlightedRowAttributeExpressions:
+    HighlightedAttributeExpressionsSchema.optional(),
 };
 
 // Trace source form schema
@@ -611,6 +613,8 @@ const TraceSourceAugmentation = {
   spanEventsValueExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
+    HighlightedAttributeExpressionsSchema.optional(),
+  highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
 };
 

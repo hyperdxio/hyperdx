@@ -4,7 +4,9 @@ import { TSource } from '@hyperdx/common-utils/dist/types';
 import { getJSONColumnNames } from '@/components/DBRowDataPanel';
 
 export function getSelectExpressionsForHighlightedAttributes(
-  expressions: TSource['highlightedTraceAttributeExpressions'] = [],
+  expressions: TSource[
+    | 'highlightedRowAttributeExpressions'
+    | 'highlightedTraceAttributeExpressions'] = [],
 ) {
   return expressions.map(({ sqlExpression, alias }) => ({
     valueExpression: sqlExpression,
@@ -14,7 +16,9 @@ export function getSelectExpressionsForHighlightedAttributes(
 
 export function getHighlightedAttributesFromData(
   source: TSource,
-  attributes: TSource['highlightedTraceAttributeExpressions'] = [],
+  attributes: TSource[
+    | 'highlightedRowAttributeExpressions'
+    | 'highlightedTraceAttributeExpressions'] = [],
   data: Record<string, unknown>[],
   meta: ResponseJSON['meta'],
 ) {
