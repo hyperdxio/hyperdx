@@ -483,12 +483,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         {Array.isArray(savedSearch.alerts) && savedSearch.alerts.length > 0 ? (
           savedSearch.alerts.some(a => a.state === AlertState.ALERT) ? (
             <i
-              className="bi bi-bell float-end text-danger"
+              className="bi bi-bell float-end text-danger ms-1"
               title="Has Alerts and is in ALERT state"
             ></i>
           ) : (
             <i
-              className="bi bi-bell float-end"
+              className="bi bi-bell float-end ms-1"
               title="Has Alerts and is in OK state"
             ></i>
           )

@@ -1034,7 +1034,7 @@ const DBSearchPageFiltersComponent = ({
                     withArrow
                     label="Only show root spans (spans with no parent span)."
                   >
-                    <Text size="xs" c="gray.3" mt="-1px">
+                    <Text size="xs" mt="-1px">
                       <i className="bi bi-diagram-3"></i> Root Spans Only
                     </Text>
                   </Tooltip>
