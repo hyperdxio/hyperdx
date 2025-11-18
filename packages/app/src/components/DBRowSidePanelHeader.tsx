@@ -175,11 +175,11 @@ export default function DBRowSidePanelHeader({
   const maxBoxHeight = 120;
 
   const _generateSearchUrl = useCallback(
-    (query?: string, timeRange?: [Date, Date]) => {
+    (query?: string, queryLanguage?: 'sql' | 'lucene') => {
       return (
         generateSearchUrl?.({
           where: query,
-          whereLanguage: 'lucene',
+          whereLanguage: queryLanguage,
         }) ?? '/'
       );
     },

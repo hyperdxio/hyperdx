@@ -7,6 +7,7 @@ import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
 import TimelineChart from '@/TimelineChart';
 
+import { RowSidePanelContext } from '../DBRowSidePanel';
 import {
   DBTraceWaterfallChartContainer,
   SpanRow,
@@ -25,6 +26,9 @@ jest.mock('@/TimelineChart', () => {
 
 jest.mock('@/hooks/useOffsetPaginatedQuery');
 jest.mock('@/hooks/useRowWhere');
+jest.mock('../DBRowDataPanel', () => ({
+  getJSONColumnNames: jest.fn().mockReturnValue([]),
+}));
 
 const mockUseOffsetPaginatedQuery = useOffsetPaginatedQuery as jest.Mock;
 const mockUseRowWhere = useRowWhere as jest.Mock;
@@ -112,13 +116,15 @@ describe('DBTraceWaterfallChartContainer', () => {
     logTableSource: typeof mockLogTableSource | null = mockLogTableSource,
   ) => {
     return renderWithMantine(
-      <DBTraceWaterfallChartContainer
-        traceTableSource={mockTraceTableSource}
-        logTableSource={logTableSource}
-        traceId={mockTraceId}
-        dateRange={mockDateRange}
-        focusDate={mockFocusDate}
-      />,
+      <RowSidePanelContext.Provider value={{}}>
+        <DBTraceWaterfallChartContainer
+          traceTableSource={mockTraceTableSource}
+          logTableSource={logTableSource}
+          traceId={mockTraceId}
+          dateRange={mockDateRange}
+          focusDate={mockFocusDate}
+        />
+      </RowSidePanelContext.Provider>,
     );
   };
 
