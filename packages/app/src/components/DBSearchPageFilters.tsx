@@ -1,16 +1,7 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import cx from 'classnames';
 import {
   TableMetadata,
-  tcFromChartConfig,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -22,7 +13,6 @@ import {
   ActionIcon,
   Box,
   Button,
-  Center,
   Checkbox,
   Flex,
   Group,
@@ -39,7 +29,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconSearch } from '@tabler/icons-react';
 
-import { useExplainQuery } from '@/hooks/useExplainQuery';
 import {
   useAllFields,
   useGetKeyValues,
@@ -56,19 +45,141 @@ import { mergePath } from '@/utils';
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
 
-// This function will clean json string attributes specifically. It will turn a string like
-// 'toString(ResourceAttributes.`hdx`.`sdk`.`version`)' into 'ResourceAttributes.hdx.sdk.verion'.
-export function cleanedFacetName(key: string): string {
-  if (key.startsWith('toString')) {
-    return key
-      .slice('toString('.length, key.length - 1)
+// ============================================================================
+// Field Key Abstraction
+// ============================================================================
+// Handles the complexity of field keys in different contexts:
+// - Storage: Original format without toString() wrapper
+// - Query: With toString() wrapper for JSON columns
+// - Display: Cleaned format for UI
+
+/**
+ * Represents a field key that may need different formats in different contexts
+ */
+interface FieldKeyContext {
+  jsonColumns: string[];
+}
+
+/**
+ * Get the storage format (original key without toString wrapper)
+ * This is used for pinning, localStorage, and as the source of truth
+ */
+function toStorageFormat(key: string): string {
+  if (key.startsWith('toString(') && key.endsWith(')')) {
+    return key.slice(9, -1);
+  }
+  return key;
+}
+
+/**
+ * Get the query format (with toString wrapper for JSON columns)
+ * This is used when building ClickHouse queries
+ * NOTE: Currently applied in shownFacets transformation, could be moved to query layer
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function toQueryFormat(key: string, context: FieldKeyContext): string {
+  const storageKey = toStorageFormat(key); // Normalize first
+  const isJsonColumn = context.jsonColumns?.some(col =>
+    storageKey.startsWith(col),
+  );
+  return isJsonColumn ? `toString(${storageKey})` : storageKey;
+}
+
+/**
+ * Get the display format (cleaned for UI presentation)
+ * This is used for showing field names to users
+ */
+export function toDisplayFormat(key: string): string {
+  const storageKey = toStorageFormat(key);
+
+  // For toString wrapped keys, clean up the backticks and dots
+  if (storageKey.includes('.')) {
+    return storageKey
       .split('.')
       .map(str =>
         str.startsWith('`') && str.endsWith('`') ? str.slice(1, -1) : str,
       )
       .join('.');
   }
-  return key;
+
+  return storageKey;
+}
+
+// Parse map-type and JSON expressions into { isMapType, mapName, propertyName, fullKey }
+export function parseMapExpression(key: string) {
+  // Security Guard: Prevent ReDoS on massive strings
+  if (!key || key.length > 5000) return { isMapType: false, fullKey: key };
+
+  // 1. Handle toString(Map.Property)
+  // Regex: Start with "toString(", capture NON-dots (Map), ".", capture NON-parens (Props), ")"
+  const strMatch = key.match(/^toString\(([^.]+)\.([^)]+)\)$/);
+  if (strMatch) {
+    return {
+      isMapType: true,
+      mapName: strMatch[1],
+      // Simple global replace cleans backticks efficiently
+      propertyName: strMatch[2].replace(/`/g, ''),
+      fullKey: key,
+    };
+  }
+
+  // 2. Handle Map['Prop'] or Map[Prop]
+  const bracketIndex = key.indexOf('[');
+  if (bracketIndex > 0) {
+    const mapName = key.slice(0, bracketIndex);
+    const rawProps = key.slice(bracketIndex);
+
+    // Regex: Capture content inside brackets ([...]), ignoring optional quotes
+    // [^'"`\]]+ means "match anything that isn't a quote or closing bracket"
+    const matches = [...rawProps.matchAll(/\[['"`]?([^'"`\]]+)['"`]?\]/g)];
+
+    // integrity check: Ensure the regex matched the ENTIRE remainder of the string
+    // This prevents cases like Map['a']GARBAGE['b'] from passing
+    const matchedLength = matches.reduce((sum, m) => sum + m[0].length, 0);
+
+    if (matches.length > 0 && matchedLength === rawProps.length) {
+      return {
+        isMapType: true,
+        mapName,
+        propertyName: matches.map(m => m[1]).join('.'),
+        fullKey: key,
+      };
+    }
+  }
+
+  return { isMapType: false, fullKey: key };
+}
+
+// Group facets by map type
+export function groupFacetsByMapType(
+  facets: {
+    key: string;
+    value: string[];
+  }[],
+): {
+  mapGroups: Map<string, { key: string; value: string[] }[]>;
+  regularFacets: { key: string; value: string[] }[];
+} {
+  const mapGroups = new Map<string, { key: string; value: string[] }[]>();
+  const regularFacets: { key: string; value: string[] }[] = [];
+
+  for (const facet of facets) {
+    const parsed = parseMapExpression(facet.key);
+
+    if (parsed.isMapType && parsed.mapName) {
+      if (!mapGroups.has(parsed.mapName)) {
+        mapGroups.set(parsed.mapName, []);
+      }
+      const group = mapGroups.get(parsed.mapName);
+      if (group) {
+        group.push(facet);
+      }
+    } else {
+      regularFacets.push(facet);
+    }
+  }
+
+  return { mapGroups, regularFacets };
 }
 
 type FilterCheckboxProps = {
@@ -131,6 +242,8 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
   );
 };
 
+// Empty function to avoid re-creating onChange handlers
+// eslint-disable-next-line @typescript-eslint/no-empty-function
 const emptyFn = () => {};
 export const FilterCheckbox = ({
   value,
@@ -154,6 +267,7 @@ export const FilterCheckbox = ({
         onClick={() => onChange?.(!value)}
         style={{ minWidth: 0 }}
         wrap="nowrap"
+        align="flex-start"
       >
         <Checkbox
           checked={!!value}
@@ -259,6 +373,33 @@ export type FilterGroupProps = {
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
+const MIN_VAL_FOR_SEARCH_BAR = 5;
+// Minimal wrapper for collapsible map groups - just handles expand/collapse state
+const MapGroupAccordionItem = ({
+  mapName,
+  shouldExpandByDefault,
+  children,
+}: {
+  mapName: string;
+  shouldExpandByDefault: boolean;
+  children: (isExpanded: boolean) => React.ReactNode;
+}) => {
+  const [isExpanded, setExpanded] = useState(shouldExpandByDefault);
+
+  return (
+    <Accordion
+      variant="unstyled"
+      chevronPosition="left"
+      classNames={{ chevron: classes.chevron }}
+      value={isExpanded ? mapName : null}
+      onChange={v => setExpanded(v === mapName)}
+    >
+      <Accordion.Item value={mapName}>
+        <Stack gap={0}>{children(isExpanded)}</Stack>
+      </Accordion.Item>
+    </Accordion>
+  );
+};
 
 export const FilterGroup = ({
   name,
@@ -282,6 +423,15 @@ export const FilterGroup = ({
   isLive,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
+
+  // Get display name - show property name for map types, otherwise use display format
+  const displayName = useMemo(() => {
+    const parsed = parseMapExpression(name);
+    if (parsed.isMapType && parsed.propertyName) {
+      return parsed.propertyName;
+    }
+    return toDisplayFormat(name);
+  }, [name]);
   // "Show More" button when there's lots of options
   const [shouldShowMore, setShowMore] = useState(false);
   // Accordion expanded state
@@ -455,12 +605,11 @@ export const FilterGroup = ({
     >
       <Accordion.Item value={name} data-testid={dataTestId}>
         <Stack gap={0}>
-          <Center>
+          <Flex align="center" justify="space-between" gap="xs">
             <Accordion.Control
               component={UnstyledButton}
               flex="1"
               p="0"
-              pr="xxxs"
               data-testid="filter-group-control"
               classNames={{
                 chevron: 'm-0',
@@ -469,35 +618,21 @@ export const FilterGroup = ({
               className={displayedOptions.length ? '' : 'opacity-50'}
             >
               <Tooltip
-                openDelay={name.length > 26 ? 0 : 1500}
-                label={name}
+                openDelay={displayName.length > 26 ? 0 : 1500}
+                label={displayName}
                 position="top"
                 withArrow
                 fz="xxs"
                 color="gray"
               >
-                <TextInput
+                <Text
                   size="xs"
-                  flex="1"
-                  placeholder={name}
-                  value={search}
-                  data-testid={`filter-search-${name}`}
-                  onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                    setSearch(event.currentTarget.value)
-                  }
-                  onClick={e => {
-                    // Prevent accordion from opening when clicking on the input, unless it's closed.
-                    if (isExpanded) {
-                      e.stopPropagation();
-                    }
-                  }}
-                  styles={{ input: { transition: 'padding 0.2s' } }}
-                  rightSectionWidth={20}
-                  rightSection={<IconSearch size={12} stroke={2} />}
-                  classNames={{
-                    input: 'ps-0.5',
-                  }}
-                />
+                  fw={500}
+                  truncate="end"
+                  style={{ cursor: 'pointer' }}
+                >
+                  {displayName}
+                </Text>
               </Tooltip>
             </Accordion.Control>
             <Group gap="xxxs" wrap="nowrap">
@@ -541,7 +676,20 @@ export const FilterGroup = ({
                 />
               )}
             </Group>
-          </Center>
+          </Flex>
+          {isExpanded && options.length > MIN_VAL_FOR_SEARCH_BAR && (
+            <TextInput
+              size="xs"
+              placeholder="Search..."
+              value={search}
+              data-testid={`filter-search-${name}`}
+              onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                setSearch(event.currentTarget.value)
+              }
+              mt="xs"
+              leftSection={<IconSearch size={14} stroke={2} />}
+            />
+          )}
           <Accordion.Panel
             data-testid="filter-group-panel"
             classNames={{
@@ -670,18 +818,22 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
 } & FilterStateHook) => {
-  const setFilterValue: typeof _setFilterValue = (
-    property: string,
-    value: string,
-    action?: 'only' | 'exclude' | 'include' | undefined,
-  ) => {
-    return _setFilterValue(property, value, action);
-  };
+  const setFilterValue = useCallback<typeof _setFilterValue>(
+    (
+      property: string,
+      value: string,
+      action?: 'only' | 'exclude' | 'include' | undefined,
+    ) => {
+      return _setFilterValue(property, value, action);
+    },
+    [_setFilterValue],
+  );
   const {
     toggleFilterPin,
     toggleFieldPin,
     isFilterPinned,
     isFieldPinned,
+    getPinnedFields,
     pinnedFilters,
   } = usePinnedFilters(sourceId ?? null);
   const { size, startResize } = useResizable(16, 'left');
@@ -714,11 +866,24 @@ const DBSearchPageFiltersComponent = ({
   const [showMoreFields, setShowMoreFields] = useState(false);
 
   const keysToFetch = useMemo(() => {
+    const strings: string[] = [];
+
+    // Always include pinned fields, even if metadata hasn't loaded yet
+    const allPinnedFieldKeys = getPinnedFields();
+
+    // Normalize pinned fields: strip toString() wrapper and deduplicate
+    const normalizedPinnedKeys = Array.from(
+      new Set(allPinnedFieldKeys.map(key => toStorageFormat(key))),
+    );
+
+    strings.push(...normalizedPinnedKeys);
+
+    // If metadata hasn't loaded yet, just return pinned fields
     if (!data) {
-      return [];
+      return strings;
     }
 
-    const strings = data
+    const allFields = data
       .sort((a, b) => {
         // First show low cardinality fields
         const isLowCardinality = (type: string) =>
@@ -731,21 +896,34 @@ const DBSearchPageFiltersComponent = ({
       )
       .map(({ path, type }) => {
         return { type, path: mergePath(path, jsonColumns ?? []) };
-      })
-      .filter(
-        field =>
+      });
+
+    const additionalFields = allFields
+      .filter(field => {
+        const parsed = parseMapExpression(field.path);
+
+        return (
           showMoreFields ||
-          field.type.includes('LowCardinality') || // query only low cardinality fields by default
-          Object.keys(filterState).includes(field.path) || // keep selected fields
-          isFieldPinned(field.path), // keep pinned fields
-      )
+          field.type.includes('LowCardinality') ||
+          parsed.isMapType || // treat all map/JSON properties like low-cardinality fields
+          Object.keys(filterState).includes(field.path)
+        );
+      })
       .map(({ path }) => path)
       .filter(
         path =>
           !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
       );
+
+    // Add additional fields from metadata (avoiding duplicates)
+    for (const field of additionalFields) {
+      if (!strings.includes(field)) {
+        strings.push(field);
+      }
+    }
+
     return strings;
-  }, [data, jsonColumns, filterState, showMoreFields, isFieldPinned]);
+  }, [data, jsonColumns, filterState, showMoreFields, getPinnedFields]);
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -775,14 +953,27 @@ const DBSearchPageFiltersComponent = ({
   // Merge pinned filter values into the queried facets, so that pinned values are always available
   const facetsWithPinnedValues = useMemo(() => {
     const facetsMap = new Map((facets ?? []).map(f => [f.key, f.value]));
+
+    // Normalize pinned filter keys: group by storage format, merge values
+    const normalizedPinnedFilters: Record<string, string[]> = {};
+    for (const [key, values] of Object.entries(pinnedFilters)) {
+      const storageKey = toStorageFormat(key);
+      if (!normalizedPinnedFilters[storageKey]) {
+        normalizedPinnedFilters[storageKey] = [];
+      }
+      normalizedPinnedFilters[storageKey].push(...values);
+    }
+
+    const pinnedFilterKeys = Object.keys(normalizedPinnedFilters);
+
     const mergedKeys = new Set<string>([
       ...facetsMap.keys(),
-      ...Object.keys(pinnedFilters),
+      ...pinnedFilterKeys,
     ]);
 
     return Array.from(mergedKeys).map(key => {
       const queriedValues = facetsMap.get(key);
-      const pinnedValues = pinnedFilters[key];
+      const pinnedValues = normalizedPinnedFilters[key];
       const mergedValues = new Set<string>([
         ...(queriedValues ?? []),
         ...(pinnedValues ?? []),
@@ -827,22 +1018,27 @@ const DBSearchPageFiltersComponent = ({
         });
       }
     },
-    [chartConfig, setExtraFacets, dateRange],
+    [chartConfig, setExtraFacets, dateRange, metadata],
   );
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];
+
     for (const _facet of facetsWithPinnedValues ?? []) {
       const facet = structuredClone(_facet);
+      const originalKey = facet.key; // Store original key before transformation
+
       if (jsonColumns?.some(col => facet.key.startsWith(col))) {
         facet.key = `toString(${facet.key})`;
       }
 
-      // don't include empty facets, unless they are already selected
+      // don't include empty facets, unless they are already selected or pinned
+      // Note: Check pinned status against original key, not transformed key
       const filter = filterState[facet.key];
       const hasSelectedValues =
         filter && (filter.included.size > 0 || filter.excluded.size > 0);
-      if (facet.value?.length > 0 || hasSelectedValues) {
+      const isPinned = isFieldPinned(originalKey);
+      if (facet.value?.length > 0 || hasSelectedValues || isPinned) {
         const extraValues = extraFacets[facet.key];
         if (extraValues && extraValues.length > 0) {
           const allValues = facet.value.slice();
@@ -876,9 +1072,10 @@ const DBSearchPageFiltersComponent = ({
     });
 
     // prioritize facets that are pinned
+    // Note: Use storage format for pinned checks
     _facets.sort((a, b) => {
-      const aPinned = isFieldPinned(a.key);
-      const bPinned = isFieldPinned(b.key);
+      const aPinned = isFieldPinned(toStorageFormat(a.key));
+      const bPinned = isFieldPinned(toStorageFormat(b.key));
       return aPinned && !bPinned ? -1 : bPinned && !aPinned ? 1 : 0;
     });
 
@@ -898,6 +1095,62 @@ const DBSearchPageFiltersComponent = ({
     isFieldPinned,
     jsonColumns,
   ]);
+
+  const groupedFacets = useMemo(() => {
+    return groupFacetsByMapType(shownFacets);
+  }, [shownFacets]);
+
+  // Common props builder for FilterGroup to reduce duplication
+  const getFilterGroupProps = useCallback(
+    (facetKey: string) => {
+      // Always use storage format for pinning operations
+      const storageKey = toStorageFormat(facetKey);
+
+      return {
+        optionsLoading: isFacetsLoading,
+        selectedValues: filterState[facetKey] ?? {
+          included: new Set(),
+          excluded: new Set(),
+        },
+        onChange: (value: string) => setFilterValue(facetKey, value),
+        onClearClick: () => clearFilter(facetKey),
+        onOnlyClick: (value: string) => setFilterValue(facetKey, value, 'only'),
+        onExcludeClick: (value: string) =>
+          setFilterValue(facetKey, value, 'exclude'),
+        onPinClick: (value: string) => toggleFilterPin(storageKey, value),
+        isPinned: (value: string) => isFilterPinned(storageKey, value),
+        onFieldPinClick: () => toggleFieldPin(storageKey),
+        isFieldPinned: isFieldPinned(storageKey),
+        onLoadMore: () => loadMoreFilterValuesForKey(facetKey),
+        loadMoreLoading: loadMoreLoadingKeys.has(facetKey),
+        hasLoadedMore: Boolean(extraFacets[facetKey]),
+        isDefaultExpanded:
+          isFieldPrimary(tableMetadata, facetKey) ||
+          isFieldPinned(storageKey) ||
+          (filterState[facetKey] &&
+            (filterState[facetKey].included.size > 0 ||
+              filterState[facetKey].excluded.size > 0)),
+        chartConfig,
+        isLive,
+      };
+    },
+    [
+      isFacetsLoading,
+      filterState,
+      setFilterValue,
+      clearFilter,
+      toggleFilterPin,
+      isFilterPinned,
+      toggleFieldPin,
+      isFieldPinned,
+      loadMoreFilterValuesForKey,
+      loadMoreLoadingKeys,
+      extraFacets,
+      tableMetadata,
+      chartConfig,
+      isLive,
+    ],
+  );
 
   const showClearAllButton = useMemo(
     () =>
@@ -1053,48 +1306,106 @@ const DBSearchPageFiltersComponent = ({
             )
           )}
           {/* Show facets even when loading to ensure pinned filters are visible while loading */}
-          {shownFacets.map(facet => (
+          {/* Render map-type groups with collapsible headers */}
+          {Array.from(groupedFacets.mapGroups.entries()).map(
+            ([mapName, facets]) => {
+              const hasSelectedValues = facets.some(facet => {
+                const filter = filterState[facet.key];
+                return (
+                  filter &&
+                  (filter.included.size > 0 || filter.excluded.size > 0)
+                );
+              });
+
+              // Check if any nested property is pinned or has selected values
+              const shouldExpandByDefault =
+                hasSelectedValues ||
+                facets.some(facet => isFieldPinned(toStorageFormat(facet.key)));
+
+              return (
+                <MapGroupAccordionItem
+                  key={mapName}
+                  mapName={mapName}
+                  shouldExpandByDefault={shouldExpandByDefault}
+                >
+                  {isExpanded => (
+                    <>
+                      {/* Group header */}
+                      <Flex align="center" justify="space-between" gap="xs">
+                        <Accordion.Control
+                          component={UnstyledButton}
+                          flex="1"
+                          p="0"
+                          classNames={{
+                            chevron: 'm-0',
+                            label: 'p-0',
+                          }}
+                        >
+                          <Group gap="xs" wrap="nowrap">
+                            <Text
+                              size="xs"
+                              fw={500}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              {mapName}
+                            </Text>
+                            <Text size="xxs" c="dimmed" fw={400}>
+                              {`{${facets.length}}`}
+                            </Text>
+                          </Group>
+                        </Accordion.Control>
+                        <Group gap="xxxs" wrap="nowrap">
+                          {hasSelectedValues && (
+                            <TextButton
+                              label="Clear"
+                              onClick={() =>
+                                facets.forEach(f => clearFilter(f.key))
+                              }
+                            />
+                          )}
+                        </Group>
+                      </Flex>
+
+                      {/* Nested filters */}
+                      {isExpanded && (
+                        <Accordion.Panel
+                          classNames={{
+                            content: 'p-0 pt-2',
+                          }}
+                        >
+                          <Stack gap="sm" pl="xs">
+                            {facets.map(facet => (
+                              <FilterGroup
+                                key={facet.key}
+                                data-testid={`filter-group-${facet.key}`}
+                                name={facet.key}
+                                options={facet.value.map(value => ({
+                                  value,
+                                  label: value,
+                                }))}
+                                {...getFilterGroupProps(facet.key)}
+                              />
+                            ))}
+                          </Stack>
+                        </Accordion.Panel>
+                      )}
+                    </>
+                  )}
+                </MapGroupAccordionItem>
+              );
+            },
+          )}
+          {/* Render regular facets */}
+          {groupedFacets.regularFacets.map(facet => (
             <FilterGroup
               key={facet.key}
               data-testid={`filter-group-${facet.key}`}
-              name={cleanedFacetName(facet.key)}
+              name={facet.key}
               options={facet.value.map(value => ({
                 value,
                 label: value,
               }))}
-              optionsLoading={isFacetsLoading}
-              selectedValues={
-                filterState[facet.key]
-                  ? filterState[facet.key]
-                  : { included: new Set(), excluded: new Set() }
-              }
-              onChange={value => {
-                setFilterValue(facet.key, value);
-              }}
-              onClearClick={() => clearFilter(facet.key)}
-              onOnlyClick={value => {
-                setFilterValue(facet.key, value, 'only');
-              }}
-              onExcludeClick={value => {
-                setFilterValue(facet.key, value, 'exclude');
-              }}
-              onPinClick={value => toggleFilterPin(facet.key, value)}
-              isPinned={value => isFilterPinned(facet.key, value)}
-              onFieldPinClick={() => toggleFieldPin(facet.key)}
-              isFieldPinned={isFieldPinned(facet.key)}
-              onLoadMore={loadMoreFilterValuesForKey}
-              loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
-              hasLoadedMore={Boolean(extraFacets[facet.key])}
-              isDefaultExpanded={
-                // open by default if PK, or has selected values
-                isFieldPrimary(tableMetadata, facet.key) ||
-                isFieldPinned(facet.key) ||
-                (filterState[facet.key] &&
-                  (filterState[facet.key].included.size > 0 ||
-                    filterState[facet.key].excluded.size > 0))
-              }
-              chartConfig={chartConfig}
-              isLive={isLive}
+              {...getFilterGroupProps(facet.key)}
             />
           ))}
 

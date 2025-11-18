@@ -26,11 +26,6 @@
       color: var(--color-text-secondary);
       font-size: var(--mantine-font-size-xs);
 
-      &::placeholder {
-        color: var(--color-text-muted);
-        font-weight: bold;
-      }
-
       &:focus {
         border: none;
         outline: none;

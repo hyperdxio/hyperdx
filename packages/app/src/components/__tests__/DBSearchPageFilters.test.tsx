@@ -5,9 +5,11 @@ import userEvent from '@testing-library/user-event';
 import { useGetValuesDistribution } from '@/hooks/useMetadata';
 
 import {
-  cleanedFacetName,
   FilterGroup,
   type FilterGroupProps,
+  groupFacetsByMapType,
+  parseMapExpression,
+  toDisplayFormat,
 } from '../DBSearchPageFilters';
 
 jest.mock('@/hooks/useMetadata', () => ({
@@ -16,23 +18,23 @@ jest.mock('@/hooks/useMetadata', () => ({
     .mockReturnValue({ data: undefined, isFetching: false, error: undefined }),
 }));
 
-describe('cleanedFacetName', () => {
+describe('toDisplayFormat', () => {
   describe('basic functionality', () => {
     it('should return non-toString strings unchanged', () => {
-      expect(cleanedFacetName('simple.field')).toBe('simple.field');
-      expect(cleanedFacetName('column_name')).toBe('column_name');
-      expect(cleanedFacetName('ResourceAttributes.service.name')).toBe(
+      expect(toDisplayFormat('simple.field')).toBe('simple.field');
+      expect(toDisplayFormat('column_name')).toBe('column_name');
+      expect(toDisplayFormat('ResourceAttributes.service.name')).toBe(
         'ResourceAttributes.service.name',
       );
     });
 
     it('should handle empty strings', () => {
-      expect(cleanedFacetName('')).toBe('');
+      expect(toDisplayFormat('')).toBe('');
     });
 
     it('should handle strings that do not start with toString', () => {
-      expect(cleanedFacetName('notToString(field)')).toBe('notToString(field)');
-      expect(cleanedFacetName("JSONExtractString(data, 'field')")).toBe(
+      expect(toDisplayFormat('notToString(field)')).toBe('notToString(field)');
+      expect(toDisplayFormat("JSONExtractString(data, 'field')")).toBe(
         "JSONExtractString(data, 'field')",
       );
     });
@@ -41,33 +43,33 @@ describe('cleanedFacetName', () => {
   describe('JSON column cleaning', () => {
     it('should clean basic ResourceAttributes paths', () => {
       expect(
-        cleanedFacetName('toString(ResourceAttributes.`service`.`name`)'),
+        toDisplayFormat('toString(ResourceAttributes.`service`.`name`)'),
       ).toBe('ResourceAttributes.service.name');
 
       expect(
-        cleanedFacetName('toString(ResourceAttributes.`hdx`.`sdk`.`version`)'),
+        toDisplayFormat('toString(ResourceAttributes.`hdx`.`sdk`.`version`)'),
       ).toBe('ResourceAttributes.hdx.sdk.version');
     });
 
     it('should handle mixed quoted and unquoted ResourceAttributes', () => {
       expect(
-        cleanedFacetName('toString(ResourceAttributes.`service`.name)'),
+        toDisplayFormat('toString(ResourceAttributes.`service`.name)'),
       ).toBe('ResourceAttributes.service.name');
 
       expect(
-        cleanedFacetName('toString(ResourceAttributes.service.`name`)'),
+        toDisplayFormat('toString(ResourceAttributes.service.`name`)'),
       ).toBe('ResourceAttributes.service.name');
     });
 
     it('should handle deeply nested ResourceAttributes', () => {
       expect(
-        cleanedFacetName(
+        toDisplayFormat(
           'toString(ResourceAttributes.`telemetry`.`sdk`.`language`)',
         ),
       ).toBe('ResourceAttributes.telemetry.sdk.language');
 
       expect(
-        cleanedFacetName(
+        toDisplayFormat(
           'toString(ResourceAttributes.`cloud`.`provider`.`account`.`id`)',
         ),
       ).toBe('ResourceAttributes.cloud.provider.account.id');
@@ -75,41 +77,41 @@ describe('cleanedFacetName', () => {
 
     it('should handle ResourceAttributes with special characters', () => {
       expect(
-        cleanedFacetName('toString(ResourceAttributes.`service-name`)'),
+        toDisplayFormat('toString(ResourceAttributes.`service-name`)'),
       ).toBe('ResourceAttributes.service-name');
 
       expect(
-        cleanedFacetName('toString(ResourceAttributes.`service`.`version`)'),
+        toDisplayFormat('toString(ResourceAttributes.`service`.`version`)'),
       ).toBe('ResourceAttributes.service.version');
 
       expect(
-        cleanedFacetName('toString(ResourceAttributes.`k8s`.`pod`.`name`)'),
+        toDisplayFormat('toString(ResourceAttributes.`k8s`.`pod`.`name`)'),
       ).toBe('ResourceAttributes.k8s.pod.name');
     });
 
     it('should clean basic LogAttributes paths', () => {
-      expect(
-        cleanedFacetName('toString(LogAttributes.`severity`.`text`)'),
-      ).toBe('LogAttributes.severity.text');
+      expect(toDisplayFormat('toString(LogAttributes.`severity`.`text`)')).toBe(
+        'LogAttributes.severity.text',
+      );
 
-      expect(cleanedFacetName('toString(LogAttributes.`level`)')).toBe(
+      expect(toDisplayFormat('toString(LogAttributes.`level`)')).toBe(
         'LogAttributes.level',
       );
     });
 
     it('should handle deeply nested LogAttributes', () => {
       expect(
-        cleanedFacetName('toString(LogAttributes.`context`.`user`.`id`)'),
+        toDisplayFormat('toString(LogAttributes.`context`.`user`.`id`)'),
       ).toBe('LogAttributes.context.user.id');
 
       expect(
-        cleanedFacetName('toString(LogAttributes.`http`.`request`.`method`)'),
+        toDisplayFormat('toString(LogAttributes.`http`.`request`.`method`)'),
       ).toBe('LogAttributes.http.request.method');
     });
 
     it('should handle Map access in ResourceAttributes', () => {
       expect(
-        cleanedFacetName(
+        toDisplayFormat(
           "ResourceAttributes['http.request.headers.user-agent']",
         ),
       ).toBe("ResourceAttributes['http.request.headers.user-agent']");
@@ -119,21 +121,21 @@ describe('cleanedFacetName', () => {
   describe('edge cases with Attributes', () => {
     it('should handle attributes with spaces', () => {
       expect(
-        cleanedFacetName('toString(ResourceAttributes.`service name`)'),
+        toDisplayFormat('toString(ResourceAttributes.`service name`)'),
       ).toBe('ResourceAttributes.service name');
 
-      expect(cleanedFacetName('toString(LogAttributes.`error message`)')).toBe(
+      expect(toDisplayFormat('toString(LogAttributes.`error message`)')).toBe(
         'LogAttributes.error message',
       );
     });
 
     it('should handle attributes with numbers', () => {
       expect(
-        cleanedFacetName('toString(ResourceAttributes.`service`.`v2`)'),
+        toDisplayFormat('toString(ResourceAttributes.`service`.`v2`)'),
       ).toBe('ResourceAttributes.service.v2');
 
       expect(
-        cleanedFacetName('toString(LogAttributes.`error`.`code`.`404`)'),
+        toDisplayFormat('toString(LogAttributes.`error`.`code`.`404`)'),
       ).toBe('LogAttributes.error.code.404');
     });
   });
@@ -142,15 +144,15 @@ describe('cleanedFacetName', () => {
     // Common OTEL semantic conventions
     it('should handle service attributes', () => {
       expect(
-        cleanedFacetName('toString(ResourceAttributes.`service`.`name`)'),
+        toDisplayFormat('toString(ResourceAttributes.`service`.`name`)'),
       ).toBe('ResourceAttributes.service.name');
 
       expect(
-        cleanedFacetName('toString(ResourceAttributes.`service`.`version`)'),
+        toDisplayFormat('toString(ResourceAttributes.`service`.`version`)'),
       ).toBe('ResourceAttributes.service.version');
 
       expect(
-        cleanedFacetName(
+        toDisplayFormat(
           'toString(ResourceAttributes.`service`.`instance`.`id`)',
         ),
       ).toBe('ResourceAttributes.service.instance.id');
@@ -158,34 +160,34 @@ describe('cleanedFacetName', () => {
 
     it('should handle telemetry SDK attributes', () => {
       expect(
-        cleanedFacetName(
+        toDisplayFormat(
           'toString(ResourceAttributes.`telemetry`.`sdk`.`name`)',
         ),
       ).toBe('ResourceAttributes.telemetry.sdk.name');
 
       expect(
-        cleanedFacetName(
+        toDisplayFormat(
           'toString(ResourceAttributes.`telemetry`.`sdk`.`language`)',
         ),
       ).toBe('ResourceAttributes.telemetry.sdk.language');
 
       expect(
-        cleanedFacetName(
+        toDisplayFormat(
           'toString(ResourceAttributes.`telemetry`.`sdk`.`version`)',
         ),
       ).toBe('ResourceAttributes.telemetry.sdk.version');
     });
 
     it('should handle HTTP attributes', () => {
-      expect(cleanedFacetName('toString(LogAttributes.`http`.`method`)')).toBe(
+      expect(toDisplayFormat('toString(LogAttributes.`http`.`method`)')).toBe(
         'LogAttributes.http.method',
       );
 
       expect(
-        cleanedFacetName('toString(LogAttributes.`http`.`status_code`)'),
+        toDisplayFormat('toString(LogAttributes.`http`.`status_code`)'),
       ).toBe('LogAttributes.http.status_code');
 
-      expect(cleanedFacetName('toString(LogAttributes.`http`.`url`)')).toBe(
+      expect(toDisplayFormat('toString(LogAttributes.`http`.`url`)')).toBe(
         'LogAttributes.http.url',
       );
     });
@@ -408,12 +410,15 @@ describe('FilterGroup', () => {
           { value: 'apple123', label: 'apple123' },
           { value: 'apple456', label: 'apple456' },
           { value: 'banana', label: 'banana' },
+          { value: 'cherry', label: 'cherry' },
+          { value: 'date', label: 'date' },
+          { value: 'elderberry', label: 'elderberry' },
         ]}
       />,
     );
 
-    // Type in search box
-    const searchInput = screen.getByPlaceholderText('Test Filter');
+    // Type in search box (should appear because we have >5 items)
+    const searchInput = screen.getByTestId('filter-search-Test Filter');
     await userEvent.type(searchInput, 'apple');
 
     const labels = screen.getAllByText(/apple123|apple456/);
@@ -447,5 +452,364 @@ describe('FilterGroup', () => {
         'aria-hidden',
       ),
     ).toBe('false');
+  });
+});
+
+describe('parseMapExpression', () => {
+  describe('Map type expressions', () => {
+    it('should parse single-quoted map properties', () => {
+      const result = parseMapExpression("ResourceAttributes['host.name']");
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: 'host.name',
+        fullKey: "ResourceAttributes['host.name']",
+      });
+    });
+
+    it('should parse double-quoted map properties', () => {
+      const result = parseMapExpression('ResourceAttributes["host.name"]');
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: 'host.name',
+        fullKey: 'ResourceAttributes["host.name"]',
+      });
+    });
+
+    it('should parse nested map properties', () => {
+      const result = parseMapExpression(
+        "LogProperties['mymap']['mymap2']['property']",
+      );
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'LogProperties',
+        propertyName: 'mymap.mymap2.property',
+        fullKey: "LogProperties['mymap']['mymap2']['property']",
+      });
+    });
+
+    it('should handle mixed quotes in nested properties', () => {
+      const result = parseMapExpression(
+        'ResourceAttributes["service"]["name"]',
+      );
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: 'service.name',
+        fullKey: 'ResourceAttributes["service"]["name"]',
+      });
+    });
+
+    it('should handle properties with dots in the name', () => {
+      const result = parseMapExpression("ResourceAttributes['service.name']");
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: 'service.name',
+        fullKey: "ResourceAttributes['service.name']",
+      });
+    });
+  });
+
+  describe('JSON toString expressions', () => {
+    it('should parse toString with single nested property', () => {
+      const result = parseMapExpression(
+        'toString(ResourceAttributes.`service`)',
+      );
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: 'service',
+        fullKey: 'toString(ResourceAttributes.`service`)',
+      });
+    });
+
+    it('should parse toString with deeply nested properties', () => {
+      const result = parseMapExpression(
+        'toString(ResourceAttributes.`hdx`.`sdk`.`version`)',
+      );
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: 'hdx.sdk.version',
+        fullKey: 'toString(ResourceAttributes.`hdx`.`sdk`.`version`)',
+      });
+    });
+
+    it('should parse toString without backticks', () => {
+      const result = parseMapExpression('toString(ResourceAttributes.service)');
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: 'service',
+        fullKey: 'toString(ResourceAttributes.service)',
+      });
+    });
+
+    it('should parse toString with mixed backtick usage', () => {
+      const result = parseMapExpression(
+        'toString(ResourceAttributes.`service`.name.`version`)',
+      );
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: 'service.name.version',
+        fullKey: 'toString(ResourceAttributes.`service`.name.`version`)',
+      });
+    });
+  });
+
+  describe('Edge cases and malformed input', () => {
+    it('should return non-map type for regular field names', () => {
+      const result = parseMapExpression('simple_field');
+      expect(result).toEqual({
+        isMapType: false,
+        fullKey: 'simple_field',
+      });
+    });
+
+    it('should return non-map type for dotted field names', () => {
+      const result = parseMapExpression('service.name');
+      expect(result).toEqual({
+        isMapType: false,
+        fullKey: 'service.name',
+      });
+    });
+
+    it('should handle empty string', () => {
+      const result = parseMapExpression('');
+      expect(result).toEqual({
+        isMapType: false,
+        fullKey: '',
+      });
+    });
+
+    it('should handle malformed map expression with empty brackets', () => {
+      const result = parseMapExpression("ResourceAttributes['']");
+      // Empty brackets result in empty string which is filtered out by .filter(Boolean)
+      expect(result).toEqual({
+        isMapType: false,
+        fullKey: "ResourceAttributes['']",
+      });
+    });
+
+    it('should handle malformed map expression with unclosed bracket', () => {
+      const result = parseMapExpression("ResourceAttributes['property");
+      // Unclosed bracket still gets parsed, extracts "'property" (with leading quote)
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: "'property",
+        fullKey: "ResourceAttributes['property",
+      });
+    });
+
+    it('should handle malformed map expression with no opening bracket', () => {
+      const result = parseMapExpression("ResourceAttributesproperty']");
+      expect(result).toEqual({
+        isMapType: false,
+        fullKey: "ResourceAttributesproperty']",
+      });
+    });
+
+    it('should handle map expression without quotes', () => {
+      const result = parseMapExpression('ResourceAttributes[property]');
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: 'property',
+        fullKey: 'ResourceAttributes[property]',
+      });
+    });
+
+    it('should handle toString without closing parenthesis', () => {
+      const result = parseMapExpression('toString(ResourceAttributes.service');
+      expect(result).toEqual({
+        isMapType: false,
+        fullKey: 'toString(ResourceAttributes.service',
+      });
+    });
+
+    it('should handle toString without dot', () => {
+      const result = parseMapExpression('toString(ResourceAttributes)');
+      expect(result).toEqual({
+        isMapType: false,
+        fullKey: 'toString(ResourceAttributes)',
+      });
+    });
+
+    it('should handle single character in brackets', () => {
+      const result = parseMapExpression("ResourceAttributes['a']");
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: 'a',
+        fullKey: "ResourceAttributes['a']",
+      });
+    });
+
+    it('should handle mismatched quotes', () => {
+      const result = parseMapExpression('ResourceAttributes["property\']');
+      expect(result).toEqual({
+        isMapType: true,
+        mapName: 'ResourceAttributes',
+        propertyName: '"property\'',
+        fullKey: 'ResourceAttributes["property\']',
+      });
+    });
+  });
+});
+
+describe('groupFacetsByMapType', () => {
+  it('should separate map and regular facets', () => {
+    const facets = [
+      { key: "ResourceAttributes['host.name']", value: ['host1', 'host2'] },
+      { key: 'severity', value: ['info', 'error'] },
+      { key: "LogAttributes['user.id']", value: ['123', '456'] },
+      { key: 'level', value: ['1', '2'] },
+    ];
+
+    const result = groupFacetsByMapType(facets);
+
+    expect(result.regularFacets).toEqual([
+      { key: 'severity', value: ['info', 'error'] },
+      { key: 'level', value: ['1', '2'] },
+    ]);
+
+    expect(result.mapGroups.size).toBe(2);
+    expect(result.mapGroups.get('ResourceAttributes')).toEqual([
+      { key: "ResourceAttributes['host.name']", value: ['host1', 'host2'] },
+    ]);
+    expect(result.mapGroups.get('LogAttributes')).toEqual([
+      { key: "LogAttributes['user.id']", value: ['123', '456'] },
+    ]);
+  });
+
+  it('should group multiple properties from same map', () => {
+    const facets = [
+      { key: "ResourceAttributes['host.name']", value: ['host1'] },
+      { key: "ResourceAttributes['service.name']", value: ['api'] },
+      { key: "ResourceAttributes['os.type']", value: ['linux'] },
+    ];
+
+    const result = groupFacetsByMapType(facets);
+
+    expect(result.regularFacets).toEqual([]);
+    expect(result.mapGroups.size).toBe(1);
+    expect(result.mapGroups.get('ResourceAttributes')).toHaveLength(3);
+  });
+
+  it('should handle nested map properties', () => {
+    const facets = [
+      {
+        key: "LogProperties['nested']['deep']['property']",
+        value: ['value1'],
+      },
+      { key: "LogProperties['another']", value: ['value2'] },
+    ];
+
+    const result = groupFacetsByMapType(facets);
+
+    expect(result.mapGroups.get('LogProperties')).toHaveLength(2);
+  });
+
+  it('should handle toString expressions', () => {
+    const facets = [
+      {
+        key: 'toString(ResourceAttributes.`service`.`name`)',
+        value: ['api'],
+      },
+      { key: 'toString(ResourceAttributes.`host`)', value: ['localhost'] },
+    ];
+
+    const result = groupFacetsByMapType(facets);
+
+    expect(result.mapGroups.get('ResourceAttributes')).toHaveLength(2);
+  });
+
+  it('should handle mixed map types and regular fields', () => {
+    const facets = [
+      { key: 'severity', value: ['info'] },
+      { key: "ResourceAttributes['host']", value: ['host1'] },
+      { key: 'toString(LogAttributes.`user`)', value: ['user1'] },
+      { key: 'level', value: ['1'] },
+      { key: "SpanAttributes['trace.id']", value: ['trace1'] },
+    ];
+
+    const result = groupFacetsByMapType(facets);
+
+    expect(result.regularFacets).toHaveLength(2);
+    expect(result.mapGroups.size).toBe(3);
+    expect(result.mapGroups.has('ResourceAttributes')).toBe(true);
+    expect(result.mapGroups.has('LogAttributes')).toBe(true);
+    expect(result.mapGroups.has('SpanAttributes')).toBe(true);
+  });
+
+  it('should handle empty facets array', () => {
+    const result = groupFacetsByMapType([]);
+
+    expect(result.regularFacets).toEqual([]);
+    expect(result.mapGroups.size).toBe(0);
+  });
+
+  it('should handle all regular facets (no map types)', () => {
+    const facets = [
+      { key: 'severity', value: ['info'] },
+      { key: 'level', value: ['1'] },
+      { key: 'status', value: ['ok'] },
+    ];
+
+    const result = groupFacetsByMapType(facets);
+
+    expect(result.regularFacets).toHaveLength(3);
+    expect(result.mapGroups.size).toBe(0);
+  });
+
+  it('should handle all map facets (no regular fields)', () => {
+    const facets = [
+      { key: "ResourceAttributes['host']", value: ['host1'] },
+      { key: "ResourceAttributes['service']", value: ['api'] },
+      { key: "LogAttributes['user']", value: ['user1'] },
+    ];
+
+    const result = groupFacetsByMapType(facets);
+
+    expect(result.regularFacets).toEqual([]);
+    expect(result.mapGroups.size).toBe(2);
+  });
+
+  it('should preserve facet value arrays', () => {
+    const facets = [
+      {
+        key: "ResourceAttributes['host']",
+        value: ['host1', 'host2', 'host3'],
+      },
+    ];
+
+    const result = groupFacetsByMapType(facets);
+
+    expect(result.mapGroups.get('ResourceAttributes')?.[0].value).toEqual([
+      'host1',
+      'host2',
+      'host3',
+    ]);
+  });
+
+  it('should handle malformed map expressions', () => {
+    const facets = [
+      { key: "ResourceAttributes['unclosed", value: ['value1'] },
+      { key: 'ResourceAttributes]wrong[', value: ['value2'] },
+      { key: 'toString(NoProperty)', value: ['value3'] },
+    ];
+
+    const result = groupFacetsByMapType(facets);
+
+    // Unclosed bracket still gets parsed as map type
+    expect(result.mapGroups.get('ResourceAttributes')).toHaveLength(1);
+    // Other malformed expressions are treated as regular facets
+    expect(result.regularFacets).toHaveLength(2);
+    expect(result.regularFacets[0].key).toBe('ResourceAttributes]wrong[');
+    expect(result.regularFacets[1].key).toBe('toString(NoProperty)');
   });
 });
