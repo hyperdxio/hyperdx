@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import SqlString from 'sqlstring';
+import { SearchConditionLanguage } from '@hyperdx/common-utils/dist/types';
 import { Button, Popover, Stack } from '@mantine/core';
 
 export default function EventTag({
@@ -16,11 +17,11 @@ export default function EventTag({
   /** Property name, in lucene or sql syntax (ex. col.prop or col['prop']) */
   name: string;
   /** The language of the property name, defaults to 'lucene' */
-  nameLanguage?: 'sql' | 'lucene';
+  nameLanguage?: SearchConditionLanguage;
   value: string;
   generateSearchUrl?: (
     query?: string,
-    queryLanguage?: 'sql' | 'lucene',
+    queryLanguage?: SearchConditionLanguage,
   ) => string;
 } & (
   | {
