@@ -1,14 +1,13 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import _ from 'lodash';
 import TimestampNano from 'timestamp-nano';
-import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfig,
   ChartConfigWithDateRange,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Divider, Flex, Text } from '@mantine/core';
+import { Divider, Text } from '@mantine/core';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -20,10 +19,12 @@ import {
   getSpanEventBody,
 } from '@/source';
 import TimelineChart from '@/TimelineChart';
+import {
+  getHighlightedAttributesFromData,
+  getSelectExpressionsForHighlightedAttributes,
+} from '@/utils/highlightedAttributes';
 
-import { getJSONColumnNames } from './DBRowDataPanel';
-import { RowSidePanelContext } from './DBRowSidePanel';
-import EventTag from './EventTag';
+import { DBHighlightedAttributesList } from './DBHighlightedAttributesList';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
@@ -123,11 +124,8 @@ function getConfig(source: TSource, traceId: string) {
 
   if (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) {
     select.push(
-      ...(source.highlightedTraceAttributeExpressions ?? []).map(
-        ({ sqlExpression, alias }) => ({
-          valueExpression: sqlExpression,
-          alias: alias || sqlExpression,
-        }),
+      ...getSelectExpressionsForHighlightedAttributes(
+        source.highlightedTraceAttributeExpressions,
       ),
     );
   }
@@ -269,149 +267,6 @@ export function useEventsAroundFocus({
   };
 }
 
-export const getAttributesFromData = (
-  source: TSource,
-  data: Record<string, unknown>[],
-  meta: ResponseJSON['meta'],
-) => {
-  const attributeValuesByDisplayKey = new Map<string, Set<string>>();
-  const sqlExpressionsByDisplayKey = new Map<string, string>();
-  const luceneExpressionsByDisplayKey = new Map<string, string>();
-  const jsonColumns = getJSONColumnNames(meta);
-
-  try {
-    for (const row of data) {
-      for (const {
-        sqlExpression,
-        luceneExpression,
-        alias,
-      } of source.highlightedTraceAttributeExpressions ?? []) {
-        const displayName = alias || sqlExpression;
-
-        const isJsonExpression = jsonColumns.includes(
-          sqlExpression.split('.')[0],
-        );
-        const sqlExpressionWithJSONSupport = isJsonExpression
-          ? `toString(${sqlExpression})`
-          : sqlExpression;
-
-        sqlExpressionsByDisplayKey.set(
-          displayName,
-          sqlExpressionWithJSONSupport,
-        );
-        if (luceneExpression) {
-          luceneExpressionsByDisplayKey.set(displayName, luceneExpression);
-        }
-
-        const value = row[displayName];
-        if (value && typeof value === 'string') {
-          if (!attributeValuesByDisplayKey.has(displayName)) {
-            attributeValuesByDisplayKey.set(displayName, new Set());
-          }
-          attributeValuesByDisplayKey.get(displayName)!.add(value);
-        }
-      }
-    }
-  } catch (e) {
-    console.error('Error extracting attributes from data', e);
-  }
-
-  return Array.from(attributeValuesByDisplayKey.entries()).flatMap(
-    ([key, values]) =>
-      [...values].map(value => ({
-        displayedKey: key,
-        value,
-        sql: sqlExpressionsByDisplayKey.get(key)!,
-        lucene: luceneExpressionsByDisplayKey.get(key),
-        source,
-      })),
-  );
-};
-
-interface DBTraceAttributesProps {
-  traceSource: TSource;
-  traceEventData: Record<string, string | number>[];
-  traceEventMeta: ResponseJSON['meta'];
-  logSource?: TSource | null;
-  logEventData?: Record<string, string | number>[] | null;
-  logEventMeta?: ResponseJSON['meta'];
-}
-
-export function DBTraceAttributes({
-  traceSource,
-  traceEventData,
-  traceEventMeta,
-  logSource,
-  logEventData,
-  logEventMeta,
-}: DBTraceAttributesProps) {
-  const {
-    onPropertyAddClick,
-    generateSearchUrl,
-    source: contextSource,
-  } = useContext(RowSidePanelContext);
-
-  const attributeValues = useMemo(() => {
-    const attributes = getAttributesFromData(
-      traceSource,
-      traceEventData,
-      traceEventMeta,
-    );
-
-    if (logSource && logEventData && logEventMeta) {
-      attributes.push(
-        ...getAttributesFromData(logSource, logEventData, logEventMeta),
-      );
-    }
-
-    return attributes.sort(
-      (a, b) =>
-        a.displayedKey.localeCompare(b.displayedKey) ||
-        a.value.localeCompare(b.value),
-    );
-  }, [
-    traceSource,
-    traceEventData,
-    traceEventMeta,
-    logSource,
-    logEventData,
-    logEventMeta,
-  ]);
-
-  return (
-    <Flex wrap="wrap" gap="2px" mb="md">
-      {attributeValues.map(({ displayedKey, value, sql, lucene, source }) => (
-        <EventTag
-          displayedKey={displayedKey}
-          name={lucene ? lucene : sql}
-          nameLanguage={lucene ? 'lucene' : 'sql'}
-          value={value as string}
-          key={`${displayedKey}-${value}-${source.id}`}
-          {...(onPropertyAddClick && contextSource?.id === source.id
-            ? {
-                onPropertyAddClick,
-                sqlExpression: sql,
-              }
-            : {
-                onPropertyAddClick: undefined,
-                sqlExpression: undefined,
-              })}
-          generateSearchUrl={
-            generateSearchUrl
-              ? (query, queryLanguage) =>
-                  generateSearchUrl({
-                    where: query || '',
-                    whereLanguage: queryLanguage ?? 'lucene',
-                    source,
-                  })
-              : undefined
-          }
-        />
-      ))}
-    </Flex>
-  );
-}
-
 // TODO: Optimize with ts lookup tables
 export function DBTraceWaterfallChartContainer({
   traceTableSource,
@@ -479,6 +334,39 @@ export function DBTraceWaterfallChartContainer({
       return secDiff;
     }
   });
+
+  const highlightedAttributeValues = useMemo(() => {
+    const attributes = getHighlightedAttributesFromData(
+      traceTableSource,
+      traceTableSource.highlightedTraceAttributeExpressions,
+      traceRowsData,
+      traceRowsMeta,
+    );
+
+    if (logTableSource && logRowsData && logRowsMeta) {
+      attributes.push(
+        ...getHighlightedAttributesFromData(
+          logTableSource,
+          logTableSource.highlightedTraceAttributeExpressions,
+          logRowsData,
+          logRowsMeta,
+        ),
+      );
+    }
+
+    return attributes.sort(
+      (a, b) =>
+        a.displayedKey.localeCompare(b.displayedKey) ||
+        a.value.localeCompare(b.value),
+    );
+  }, [
+    traceTableSource,
+    traceRowsData,
+    traceRowsMeta,
+    logTableSource,
+    logRowsData,
+    logRowsMeta,
+  ]);
 
   useEffect(() => {
     if (initialRowHighlightHint && onClick && highlightedRowWhere == null) {
@@ -752,13 +640,8 @@ export function DBTraceWaterfallChartContainer({
           </div>
         ) : (
           <>
-            <DBTraceAttributes
-              traceSource={traceTableSource}
-              traceEventData={traceRowsData}
-              traceEventMeta={traceRowsMeta}
-              logSource={logTableSource}
-              logEventData={logRowsData}
-              logEventMeta={logRowsMeta}
+            <DBHighlightedAttributesList
+              attributes={highlightedAttributeValues}
             />
             <TimelineChart
               style={{
