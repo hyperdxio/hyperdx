@@ -25,8 +25,6 @@ import { CurlGenerator } from '@/utils/curlGenerator';
 
 interface NetworkPropertyPanelProps {
   eventAttributes: Record<string, any>;
-  onPropertyAddClick?: (key: string, value: string) => void;
-  generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
 }
 
 // https://github.com/reduxjs/redux-devtools/blob/f11383d294c1139081f119ef08aa1169bd2ad5ff/packages/react-json-tree/src/createStylingFromTheme.ts
@@ -189,8 +187,6 @@ export const NetworkBody = ({
 
 export function NetworkPropertySubpanel({
   eventAttributes,
-  onPropertyAddClick,
-  generateSearchUrl,
 }: NetworkPropertyPanelProps) {
   const requestHeaders = useMemo(
     () => parseHeaders('http.request.header.', eventAttributes),

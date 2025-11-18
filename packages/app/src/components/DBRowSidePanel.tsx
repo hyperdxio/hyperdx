@@ -46,9 +46,11 @@ export type RowSidePanelContextProps = {
   generateSearchUrl?: ({
     where,
     whereLanguage,
+    source,
   }: {
     where: SearchConfig['where'];
     whereLanguage: SearchConfig['whereLanguage'];
+    source?: TSource;
   }) => string;
   generateChartUrl?: (config: {
     aggFn: string;
@@ -61,6 +63,7 @@ export type RowSidePanelContextProps = {
   dbSqlRowTableConfig?: ChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
+  source?: TSource;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});

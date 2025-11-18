@@ -19,6 +19,12 @@ import {
   getSpanEventBody,
 } from '@/source';
 import TimelineChart from '@/TimelineChart';
+import {
+  getHighlightedAttributesFromData,
+  getSelectExpressionsForHighlightedAttributes,
+} from '@/utils/highlightedAttributes';
+
+import { DBHighlightedAttributesList } from './DBHighlightedAttributesList';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
@@ -68,7 +74,7 @@ function getTableBody(tableModel: TSource) {
 }
 
 function getConfig(source: TSource, traceId: string) {
-  const alias = {
+  const alias: Record<string, string> = {
     Body: getTableBody(source),
     Timestamp: getDisplayedTimestampValueExpression(source),
     Duration: source.durationExpression
@@ -82,6 +88,17 @@ function getConfig(source: TSource, traceId: string) {
     SeverityText: source.severityTextExpression ?? '',
     SpanAttributes: source.eventAttributesExpression ?? '',
   };
+
+  // Aliases for trace attributes must be added here to ensure
+  // the returned `alias` object includes them and useRowWhere works.
+  if (source.highlightedTraceAttributeExpressions) {
+    for (const expr of source.highlightedTraceAttributeExpressions) {
+      if (expr.alias) {
+        alias[expr.alias] = expr.sqlExpression;
+      }
+    }
+  }
+
   const select = [
     {
       valueExpression: alias.Body,
@@ -104,6 +121,14 @@ function getConfig(source: TSource, traceId: string) {
         ]
       : []),
   ];
+
+  if (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) {
+    select.push(
+      ...getSelectExpressionsForHighlightedAttributes(
+        source.highlightedTraceAttributeExpressions,
+      ),
+    );
+  }
 
   if (source.kind === SourceKind.Trace) {
     select.push(
@@ -177,7 +202,7 @@ export function useEventsData({
       dateRange,
       dateRangeStartInclusive,
     };
-  }, [config, dateRange]);
+  }, [config, dateRange, dateRangeStartInclusive]);
   return useOffsetPaginatedQuery(query, { enabled });
 }
 
@@ -237,6 +262,7 @@ export function useEventsAroundFocus({
 
   return {
     rows,
+    meta,
     isFetching,
   };
 }
@@ -267,28 +293,36 @@ export function DBTraceWaterfallChartContainer({
 }) {
   const { size, startResize } = useResizable(30, 'bottom');
 
-  const { rows: traceRowsData, isFetching: traceIsFetching } =
-    useEventsAroundFocus({
-      tableSource: traceTableSource,
-      focusDate,
-      dateRange,
-      traceId,
-      enabled: true,
-    });
-  const { rows: logRowsData, isFetching: logIsFetching } = useEventsAroundFocus(
-    {
-      // search data if logTableModel exist
-      // search invalid date range if no logTableModel(react hook need execute no matter what)
-      tableSource: logTableSource ? logTableSource : traceTableSource,
-      focusDate,
-      dateRange: logTableSource ? dateRange : [dateRange[1], dateRange[0]], // different query to prevent cache
-      traceId,
-      enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
-    },
-  );
+  const {
+    rows: traceRowsData,
+    isFetching: traceIsFetching,
+    meta: traceRowsMeta,
+  } = useEventsAroundFocus({
+    tableSource: traceTableSource,
+    focusDate,
+    dateRange,
+    traceId,
+    enabled: true,
+  });
+  const {
+    rows: logRowsData,
+    isFetching: logIsFetching,
+    meta: logRowsMeta,
+  } = useEventsAroundFocus({
+    // search data if logTableModel exist
+    // search invalid date range if no logTableModel(react hook need execute no matter what)
+    tableSource: logTableSource ? logTableSource : traceTableSource,
+    focusDate,
+    dateRange: logTableSource ? dateRange : [dateRange[1], dateRange[0]], // different query to prevent cache
+    traceId,
+    enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
+  });
 
   const isFetching = traceIsFetching || logIsFetching;
-  const rows: any[] = [...traceRowsData, ...logRowsData];
+  const rows: any[] = useMemo(
+    () => [...traceRowsData, ...logRowsData],
+    [traceRowsData, logRowsData],
+  );
 
   rows.sort((a, b) => {
     const aDate = TimestampNano.fromString(a.Timestamp);
@@ -300,6 +334,39 @@ export function DBTraceWaterfallChartContainer({
       return secDiff;
     }
   });
+
+  const highlightedAttributeValues = useMemo(() => {
+    const attributes = getHighlightedAttributesFromData(
+      traceTableSource,
+      traceTableSource.highlightedTraceAttributeExpressions,
+      traceRowsData,
+      traceRowsMeta,
+    );
+
+    if (logTableSource && logRowsData && logRowsMeta) {
+      attributes.push(
+        ...getHighlightedAttributesFromData(
+          logTableSource,
+          logTableSource.highlightedTraceAttributeExpressions,
+          logRowsData,
+          logRowsMeta,
+        ),
+      );
+    }
+
+    return attributes.sort(
+      (a, b) =>
+        a.displayedKey.localeCompare(b.displayedKey) ||
+        a.value.localeCompare(b.value),
+    );
+  }, [
+    traceTableSource,
+    traceRowsData,
+    traceRowsMeta,
+    logTableSource,
+    logRowsData,
+    logRowsMeta,
+  ]);
 
   useEffect(() => {
     if (initialRowHighlightHint && onClick && highlightedRowWhere == null) {
@@ -572,25 +639,30 @@ export function DBTraceWaterfallChartContainer({
             An unknown error occurred. <ContactSupportText />
           </div>
         ) : (
-          <TimelineChart
-            style={{
-              overflowY: 'auto',
-              maxHeight: `${heightPx}px`,
-            }}
-            scale={1}
-            setScale={() => {}}
-            rowHeight={22}
-            labelWidth={300}
-            onClick={ts => {
-              // onTimeClick(ts + startedAt);
-            }}
-            onEventClick={event => {
-              onClick?.({ id: event.id, type: event.type ?? '' });
-            }}
-            cursors={[]}
-            rows={timelineRows}
-            initialScrollRowIndex={initialScrollRowIndex}
-          />
+          <>
+            <DBHighlightedAttributesList
+              attributes={highlightedAttributeValues}
+            />
+            <TimelineChart
+              style={{
+                overflowY: 'auto',
+                maxHeight: `${heightPx}px`,
+              }}
+              scale={1}
+              setScale={() => {}}
+              rowHeight={22}
+              labelWidth={300}
+              onClick={ts => {
+                // onTimeClick(ts + startedAt);
+              }}
+              onEventClick={event => {
+                onClick?.({ id: event.id, type: event.type ?? '' });
+              }}
+              cursors={[]}
+              rows={timelineRows}
+              initialScrollRowIndex={initialScrollRowIndex}
+            />
+          </>
         )}
       </div>
       <Divider
