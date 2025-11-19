@@ -30,12 +30,13 @@ $horizontalPadding: 12px;
     }
 
     th {
-      color: red;
+      color: var(--color-text-danger);
       text-transform: uppercase;
       font-size: 9px;
       font-weight: 500;
       letter-spacing: 1px;
       padding: $normalVerticalPadding $horizontalPadding;
+      text-align: left;
     }
 
     td {
