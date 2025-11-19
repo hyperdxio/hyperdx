@@ -593,7 +593,6 @@ export default function TimelineChart({
                   eventStyles={{
                     borderRadius: 2,
                     fontSize: rowHeight * 0.5,
-                    border: '1px solid var(--color-border)',
                     backgroundColor: 'var(--color-bg-success)',
                     color: 'var(--color-text-inverted)',
                   }}

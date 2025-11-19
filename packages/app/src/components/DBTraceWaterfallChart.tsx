@@ -542,17 +542,19 @@ export function DBTraceWaterfallChartContainer({
             onClick?.({ id, type: type ?? '' });
           }}
         >
-          <div className="d-flex">
+          <div className="d-flex align-items-center" style={{ height: 24 }}>
             {Array.from({ length: result.level }).map((_, index) => (
               <div
                 key={index}
                 style={{
                   borderLeft: '1px solid var(--color-border)',
-                  marginLeft: 5,
+                  marginLeft: 7,
                   width: 8,
                   minWidth: 8,
                   maxWidth: 8,
                   flexGrow: 1,
+                  flexShrink: 0,
+                  height: '100%',
                 }}
               ></div>
             ))}
