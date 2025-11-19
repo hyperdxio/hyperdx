@@ -32,11 +32,11 @@
   }
 
   &.ok {
-    background-color: var(--color-success);
+    background-color: var(--color-bg-success);
   }
 
   &.alarm {
-    background-color: var(--color-danger);
+    background-color: var(--color-bg-danger);
   }
 }
 
