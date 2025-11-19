@@ -543,6 +543,13 @@ export function DBTraceWaterfallChartContainer({
     rootNodes.forEach(rootNode => traverse(rootNode, flattenedNodes));
   }
 
+  const unhiddenSpanCount = flattenedNodes.length;
+  const unhiddenErrorSpanCount = flattenedNodes.filter(
+    node =>
+      node.StatusCode === 'Error' ||
+      node.SeverityText?.toLowerCase() === 'error',
+  ).length;
+
   // TODO: Add duration filter?
   // TODO: Add backend filters for duration and collapsing?
 
@@ -582,6 +589,7 @@ export function DBTraceWaterfallChartContainer({
     // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
     const isError =
       result.StatusCode == 'Error' || result.SeverityText === 'error';
+    const status = result.StatusCode || result.SeverityText;
     const isWarn = result.SeverityText === 'warn';
     const isHighlighted = highlightedRowWhere === id;
 
@@ -668,7 +676,7 @@ export function DBTraceWaterfallChartContainer({
           id,
           start,
           end,
-          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''}`,
+          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}`,
           color: barColor({ isError, isWarn, isHighlighted }),
           body: <span style={{ color: '#FFFFFFEE' }}>{displayText}</span>,
           minWidthPerc: 1,
@@ -725,20 +733,30 @@ export function DBTraceWaterfallChartContainer({
           </Stack>
         </form>
       )}
-      <Group my="xs">
-        <Anchor
-          underline="always"
-          onClick={() => setIsFilterExpanded(prev => !prev)}
-          size="xs"
-        >
-          {isFilterExpanded ? 'Hide Filters' : 'Show Filters'}{' '}
-          {isFilterActive && '(active)'}
-        </Anchor>
-        {isFilterActive && (
-          <Anchor underline="always" onClick={onClearFilters} size="xs">
-            Clear Filters
+      <Group my="xs" justify="space-between">
+        {`${String(unhiddenSpanCount)} span${unhiddenSpanCount !== 1 ? 's' : ''}, ${unhiddenErrorSpanCount} error${
+          unhiddenErrorSpanCount !== 1 ? 's' : ''
+        }`}
+        <span>
+          <Anchor
+            underline="always"
+            onClick={() => setIsFilterExpanded(prev => !prev)}
+            size="xs"
+          >
+            {isFilterExpanded ? 'Hide Filters' : 'Show Filters'}{' '}
+            {isFilterActive && '(active)'}
           </Anchor>
-        )}
+          {isFilterActive && (
+            <Anchor
+              underline="always"
+              onClick={onClearFilters}
+              size="xs"
+              ms="xs"
+            >
+              Clear Filters
+            </Anchor>
+          )}
+        </span>
       </Group>
       <div
         style={{
