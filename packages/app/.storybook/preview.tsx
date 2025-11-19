@@ -23,7 +23,6 @@ export const parameters = {
     storySort: (a, b) =>
       a.title.localeCompare(b.title, undefined, { numeric: true }),
   },
-  backgrounds: { disable: true },
 };
 
 export const globalTypes = {
@@ -62,6 +61,7 @@ const preview: Preview = {
     msw: {
       handlers: [meHandler],
     },
+    backgrounds: { disable: true },
   },
 };
 
