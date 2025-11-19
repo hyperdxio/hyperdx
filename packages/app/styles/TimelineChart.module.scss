@@ -7,7 +7,8 @@
 }
 
 .timelineRowActive {
-  background-color: var(--color-bg-surface);
+  background-color: var(--color-bg-success-highlighted);
+  border-radius: var(--mantine-radius-xs);
 }
 
 .labelContainer {

@@ -604,7 +604,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         }}
       >
         <div style={{ width: navWidth }}>
-          <div className="p-3 d-flex flex-wrap justify-content-between align-items-center">
+          <div
+            className="p-3 d-flex flex-wrap justify-content-between align-items-center"
+            style={{ height: 58 }}
+          >
             <Link href="/search" className="text-decoration-none">
               {isCollapsed ? (
                 <div style={{ marginLeft: '-0.15rem' }}>

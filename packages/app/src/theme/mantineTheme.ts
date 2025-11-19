@@ -140,13 +140,27 @@ export const makeTheme = ({
       },
     },
     Accordion: {
-      styles: {
-        control: {
-          '--item-border-color': 'var(--color-border)',
-        },
-        item: {
-          borderColor: 'var(--color-border)',
-        },
+      styles: (_theme: MantineTheme, props: { variant?: string }) => {
+        const base = {
+          control: {
+            '--item-border-color': 'var(--color-border)',
+          },
+          item: {
+            borderColor: 'var(--color-border)',
+          },
+        };
+        if (props.variant === 'noPadding') {
+          return {
+            ...base,
+            content: {
+              paddingInline: 0,
+            },
+            control: {
+              paddingInlineStart: 0,
+            },
+          };
+        }
+        return base;
       },
     },
     UnstyledButton: {

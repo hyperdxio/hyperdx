@@ -3,6 +3,7 @@ export const semanticColors = [
   'color-bg-surface',
   'color-bg-muted',
   'color-bg-highlighted',
+  'color-bg-success-highlighted',
   'color-bg-sidebar',
   'color-bg-header',
   'color-bg-hover',
