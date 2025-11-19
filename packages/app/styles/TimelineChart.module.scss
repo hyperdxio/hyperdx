@@ -2,12 +2,12 @@
   cursor: pointer;
 
   &:hover {
-    background-color: var(--color-bg-success-highlighted);
+    background-color: var(--color-bg-highlighted);
   }
 }
 
 .timelineRowActive {
-  background-color: var(--color-bg-success-highlighted);
+  background-color: var(--color-bg-highlighted);
   border-radius: var(--mantine-radius-xs);
 }
 

@@ -166,7 +166,7 @@ function TimelineXAxis({
           width: 1,
           marginRight: -1,
           marginLeft: i === 0 ? 0 : `${percSpacing.toFixed(6)}%`,
-          background: 'var(--color-bg-surface)',
+          background: 'var(--color-border-muted)',
         }}
       >
         <div className="ms-2 fs-8.5">{renderMs(i * interval)}</div>
@@ -594,8 +594,8 @@ export default function TimelineChart({
                     borderRadius: 2,
                     fontSize: rowHeight * 0.5,
                     border: '1px solid var(--color-border)',
-                    backgroundColor: 'var(--color-bg-neutral)',
-                    color: 'var(--color-text)',
+                    backgroundColor: 'var(--color-bg-success)',
+                    color: 'var(--color-text-inverted)',
                   }}
                   scale={scale}
                   offset={offset}

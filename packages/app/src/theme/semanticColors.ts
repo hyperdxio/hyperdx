@@ -16,6 +16,7 @@ export const semanticColors = [
   'color-bg-warning',
   'color-bg-brand',
   'color-border',
+  'color-border-muted',
   'color-text',
   'color-text-inverted',
   'color-text-primary',

@@ -610,7 +610,7 @@ export function DBTraceWaterfallChartContainer({
           end,
           tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''}`,
           color: barColor({ isError, isWarn, isHighlighted }),
-          body: <span style={{ color: '#FFFFFFEE' }}>{displayText}</span>,
+          body: <span>{displayText}</span>,
           minWidthPerc: 1,
         },
       ],

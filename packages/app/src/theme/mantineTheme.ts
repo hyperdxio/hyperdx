@@ -222,6 +222,16 @@ export const makeTheme = ({
         return { root: {} };
       },
     }),
+    SegmentedControl: {
+      styles: {
+        root: {
+          background: 'var(--color-bg-field)',
+        },
+        indicator: {
+          background: 'var(--color-bg-field-highlighted)',
+        },
+      },
+    },
     ActionIcon: ActionIcon.extend({
       defaultProps: {
         variant: 'subtle',

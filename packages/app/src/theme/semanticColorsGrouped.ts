@@ -20,7 +20,7 @@ export const semanticColorsGrouped = {
     'color-bg-code',
     'color-bg-kbd',
   ],
-  borders: ['color-border', 'color-border-code'],
+  borders: ['color-border', 'color-border-code', 'color-border-muted'],
   text: [
     'color-text',
     'color-text-inverted',
