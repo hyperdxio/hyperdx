@@ -64,7 +64,13 @@ export default function EventTag({
     >
       <Popover.Target>
         {isLink ? (
-          <Tooltip label={value} withArrow maw={400} multiline>
+          <Tooltip
+            label={value}
+            withArrow
+            maw={400}
+            multiline
+            style={{ wordBreak: 'break-word' }}
+          >
             <a
               href={encodeURI(value)}
               target="_blank"
