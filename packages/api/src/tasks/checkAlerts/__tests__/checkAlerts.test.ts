@@ -57,7 +57,7 @@ beforeAll(async () => {
   alertProvider = await loadProvider();
 });
 
-describe.only('checkAlerts', () => {
+describe('checkAlerts', () => {
   describe('doesExceedThreshold', () => {
     it('should return true when value exceeds ABOVE threshold', () => {
       expect(doesExceedThreshold(AlertThresholdType.ABOVE, 10, 11)).toBe(true);
@@ -120,7 +120,7 @@ describe.only('checkAlerts', () => {
     });
   });
 
-  describe.only('Alert Templates', () => {
+  describe('Alert Templates', () => {
     const defaultSearchView: AlertMessageTemplateDefaultView = {
       alert: {
         thresholdType: AlertThresholdType.ABOVE,
@@ -226,7 +226,7 @@ describe.only('checkAlerts', () => {
       );
     });
 
-    it.only('formatValueToMatchThreshold', () => {
+    it('formatValueToMatchThreshold', () => {
       // Test with integer threshold - value should be formatted as integer
       expect(formatValueToMatchThreshold(1111.11111111, 1)).toBe('1111');
       expect(formatValueToMatchThreshold(5, 1)).toBe('5');
