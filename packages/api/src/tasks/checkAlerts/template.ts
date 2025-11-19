@@ -90,21 +90,28 @@ export const isAlertResolved = (state?: AlertState): boolean => {
 /**
  * Formats the value to match the decimal precision of the threshold.
  * This ensures consistent display of numbers in alert messages.
+ * Uses Intl.NumberFormat for better precision handling with large numbers.
  */
 export const formatValueToMatchThreshold = (
   value: number,
   threshold: number,
 ): string => {
-  const thresholdStr = threshold.toString();
-  const decimalIndex = thresholdStr.indexOf('.');
+  // Format threshold with NumberFormat to get its string representation
+  const thresholdFormatted = new Intl.NumberFormat('en-US', {
+    maximumSignificantDigits: 21,
+    useGrouping: false,
+  }).format(threshold);
 
-  if (decimalIndex === -1) {
-    // No decimals in threshold, format value as integer (0 decimal places)
-    return value.toFixed(0);
-  }
+  // Count decimal places in the formatted threshold
+  const decimalIndex = thresholdFormatted.indexOf('.');
+  const decimalPlaces =
+    decimalIndex === -1 ? 0 : thresholdFormatted.length - decimalIndex - 1;
 
-  const decimalPlaces = thresholdStr.length - decimalIndex - 1;
-  return value.toFixed(decimalPlaces);
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: decimalPlaces,
+    maximumFractionDigits: decimalPlaces,
+    useGrouping: false,
+  }).format(value);
 };
 
 export const notifyChannel = async ({
@@ -359,6 +366,7 @@ export const buildAlertMessageTemplateTitle = ({
         `Tile with id ${alert.tileId} not found in dashboard ${dashboard.name}`,
       );
     }
+    console.log(tile.config.numberFormat);
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     const baseTitle = template
       ? handlebars.compile(template)(view)
