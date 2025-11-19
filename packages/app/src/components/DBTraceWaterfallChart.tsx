@@ -614,6 +614,7 @@ export function DBTraceWaterfallChartContainer({
           color: barColor({ isError, isWarn, isHighlighted }),
           body: <span>{displayText}</span>,
           minWidthPerc: 1,
+          isError,
         },
       ],
     };

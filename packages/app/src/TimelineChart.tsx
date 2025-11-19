@@ -18,6 +18,7 @@ type TimelineEventT = {
   color: string;
   body: React.ReactNode;
   minWidthPerc?: number;
+  isError?: boolean;
 };
 
 const NewTimelineRow = memo(
@@ -84,7 +85,9 @@ const NewTimelineRow = memo(
                   minWidth: `${percWidth.toFixed(6)}%`,
                   width: `${percWidth.toFixed(6)}%`,
                   marginLeft: `${percMarginLeft.toFixed(6)}%`,
-                  ...eventStyles,
+                  ...(typeof eventStyles === 'function'
+                    ? eventStyles(e)
+                    : eventStyles),
                 }}
               >
                 <div style={{ margin: 'auto' }} className="px-2">
@@ -179,10 +182,11 @@ function TimelineXAxis({
       style={{
         position: 'sticky',
         top: 0,
-        height: 4,
+        height: 24,
         paddingTop: 4,
         zIndex: 200,
         pointerEvents: 'none',
+        background: 'var(--color-bg-body)',
       }}
     >
       <div className={`${cx('d-flex align-items-center')}`}>
@@ -242,8 +246,8 @@ function TimelineCursor({
               >
                 <div>
                   <span
-                    className="p-2 rounded"
-                    style={{ background: 'rgba(0,0,0,0.75)' }}
+                    className="p-2 rounded border"
+                    style={{ background: 'var(--color-bg-surface)' }}
                   >
                     {overlay}
                   </span>
@@ -325,7 +329,7 @@ function TimelineMouseCursor({
       overlay={renderMs(Math.max(cursorTime, 0))}
       height={height}
       labelWidth={labelWidth}
-      color="#ffffff88"
+      color="var(--color-bg-neutral)"
     />
   ) : null;
 }
@@ -590,12 +594,14 @@ export default function TimelineChart({
                   events={row.events}
                   height={rowHeight}
                   maxVal={maxVal}
-                  eventStyles={{
+                  eventStyles={(event: TimelineEventT) => ({
                     borderRadius: 2,
                     fontSize: rowHeight * 0.5,
-                    backgroundColor: 'var(--color-bg-success)',
+                    backgroundColor: event.isError
+                      ? 'var(--color-bg-danger)'
+                      : 'var(--color-bg-inverted)',
                     color: 'var(--color-text-inverted)',
-                  }}
+                  })}
                   scale={scale}
                   offset={offset}
                 />
