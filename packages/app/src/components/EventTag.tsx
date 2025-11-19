@@ -5,14 +5,7 @@ import { SearchConditionLanguage } from '@hyperdx/common-utils/dist/types';
 import { Button, Popover, Stack, Tooltip } from '@mantine/core';
 import { IconLink } from '@tabler/icons-react';
 
-function isLinkableUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+import { isLinkableUrl } from '@/utils/highlightedAttributes';
 
 export default function EventTag({
   displayedKey,
@@ -73,7 +66,7 @@ export default function EventTag({
         {isLink ? (
           <Tooltip label={value} withArrow maw={400} multiline>
             <a
-              href={value}
+              href={encodeURI(value)}
               target="_blank"
               rel="noopener noreferrer"
               className="d-flex flex-row align-items-center bg-highlighted px-2 py-0.5 me-1 my-1 cursor-pointer"

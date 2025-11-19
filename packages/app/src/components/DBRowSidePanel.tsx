@@ -199,8 +199,8 @@ const DBRowSidePanel = ({
       attributeExpressions.push(...source.highlightedRowAttributeExpressions);
     }
 
-    // Add service name expression to all sources, to maintain compatibility behavior
-    // prior to the addition of highlightedRowAttributeExpressions
+    // Add service name expression to all sources, to maintain compatibility with
+    // the behavior prior to the addition of highlightedRowAttributeExpressions
     if (source.serviceNameExpression) {
       attributeExpressions.push({
         sqlExpression: source.serviceNameExpression,
