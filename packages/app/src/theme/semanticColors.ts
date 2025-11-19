@@ -44,4 +44,5 @@ export const semanticColors = [
   'color-json-object',
   'color-json-array',
   'color-json-punctuation',
+  'color-bg-modal',
 ];
