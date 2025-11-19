@@ -42,6 +42,7 @@ import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
+  formatValueToMatchThreshold,
   getDefaultExternalAction,
   isAlertResolved,
   renderAlertTemplate,
@@ -225,6 +226,45 @@ describe('checkAlerts', () => {
       );
     });
 
+    it('formatValueToMatchThreshold', () => {
+      // Test with integer threshold - value should be formatted as integer
+      expect(formatValueToMatchThreshold(1111.11111111, 1)).toBe('1111');
+      expect(formatValueToMatchThreshold(5, 1)).toBe('5');
+      expect(formatValueToMatchThreshold(5.9, 1)).toBe('6');
+
+      // Test with single decimal threshold - value should have 1 decimal place
+      expect(formatValueToMatchThreshold(1111.11111111, 1.5)).toBe('1111.1');
+      expect(formatValueToMatchThreshold(5.555, 1.5)).toBe('5.6');
+
+      // Test with multiple decimal places in threshold
+      expect(formatValueToMatchThreshold(1.1234, 0.1234)).toBe('1.1234');
+      expect(formatValueToMatchThreshold(5.123456789, 0.1234)).toBe('5.1235');
+      expect(formatValueToMatchThreshold(10, 0.12)).toBe('10.00');
+
+      // Test with very long decimal threshold
+      expect(formatValueToMatchThreshold(1111.11111111, 0.123456)).toBe(
+        '1111.111111',
+      );
+
+      // Test edge cases
+      expect(formatValueToMatchThreshold(0, 1)).toBe('0');
+      expect(formatValueToMatchThreshold(0.5, 1)).toBe('1');
+      expect(formatValueToMatchThreshold(0.123456, 0.1234)).toBe('0.1235');
+
+      // Test negative values
+      expect(formatValueToMatchThreshold(-5.555, 1.5)).toBe('-5.6');
+      expect(formatValueToMatchThreshold(-1111.11111111, 1)).toBe('-1111');
+
+      // Test when value is already an integer and threshold is integer
+      expect(formatValueToMatchThreshold(100, 50)).toBe('100');
+      expect(formatValueToMatchThreshold(0, 0)).toBe('0');
+
+      // Test rounding behavior
+      expect(formatValueToMatchThreshold(1.5, 0.1)).toBe('1.5');
+      expect(formatValueToMatchThreshold(1.55, 0.1)).toBe('1.6');
+      expect(formatValueToMatchThreshold(1.449, 0.1)).toBe('1.4');
+    });
+
     it('buildAlertMessageTemplateTitle', () => {
       expect(
         buildAlertMessageTemplateTitle({
@@ -277,6 +317,62 @@ describe('checkAlerts', () => {
         }),
       ).toMatchInlineSnapshot(
         `"✅ Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 5 exceeds 1"`,
+      );
+    });
+
+    it('buildAlertMessageTemplateTitle formats value to match threshold precision', () => {
+      // Test with decimal threshold - value should be formatted to match
+      const decimalChartView: AlertMessageTemplateDefaultView = {
+        ...defaultChartView,
+        alert: {
+          ...defaultChartView.alert,
+          threshold: 1.5,
+        },
+        value: 1111.11111111,
+      };
+
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: decimalChartView,
+        }),
+      ).toMatchInlineSnapshot(
+        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 1111.1 exceeds 1.5"`,
+      );
+
+      // Test with multiple decimal places
+      const multiDecimalChartView: AlertMessageTemplateDefaultView = {
+        ...defaultChartView,
+        alert: {
+          ...defaultChartView.alert,
+          threshold: 0.1234,
+        },
+        value: 1.123456789,
+      };
+
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: multiDecimalChartView,
+        }),
+      ).toMatchInlineSnapshot(
+        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 1.1235 exceeds 0.1234"`,
+      );
+
+      // Test with integer value and decimal threshold
+      const integerValueView: AlertMessageTemplateDefaultView = {
+        ...defaultChartView,
+        alert: {
+          ...defaultChartView.alert,
+          threshold: 0.12,
+        },
+        value: 10,
+      };
+
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: integerValueView,
+        }),
+      ).toMatchInlineSnapshot(
+        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 10.00 exceeds 0.12"`,
       );
     });
 
