@@ -10,7 +10,7 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Anchor, Divider, Group, Stack, Text } from '@mantine/core';
+import { Anchor, Box, Divider, Group, Text } from '@mantine/core';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -543,12 +543,15 @@ export function DBTraceWaterfallChartContainer({
     rootNodes.forEach(rootNode => traverse(rootNode, flattenedNodes));
   }
 
-  const unhiddenSpanCount = flattenedNodes.length;
-  const unhiddenErrorSpanCount = flattenedNodes.filter(
+  const spanCount = flattenedNodes.length;
+  const errorCount = flattenedNodes.filter(
     node =>
       node.StatusCode === 'Error' ||
       node.SeverityText?.toLowerCase() === 'error',
   ).length;
+
+  const spanCountString = `${spanCount} span${spanCount !== 1 ? 's' : ''}`;
+  const errorCountString = `${errorCount} error${errorCount !== 1 ? 's' : ''}`;
 
   // TODO: Add duration filter?
   // TODO: Add backend filters for duration and collapsing?
@@ -695,25 +698,30 @@ export function DBTraceWaterfallChartContainer({
     <>
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
-          <Stack mb="xs" gap="xs">
-            <Group>
-              <Text size="xs">Spans filter</Text>
-              <SearchInputV2
-                tableConnection={tcFromSource(traceTableSource)}
-                placeholder={
-                  'Search trace spans w/ Lucene ex. StatusCode:"Error"'
-                }
-                language="lucene"
-                name="traceWhere"
-                control={control}
-                size="xs"
-                enableHotkey
-                onSubmit={handleSubmit(onSubmitFilters)}
-                data-testid="trace-search-input"
-              />
-            </Group>
+          <Box
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'auto 1fr',
+              alignItems: 'center',
+              gap: '12px',
+            }}
+          >
+            <Text size="xs">Spans filter</Text>
+            <SearchInputV2
+              tableConnection={tcFromSource(traceTableSource)}
+              placeholder={
+                'Search trace spans w/ Lucene ex. StatusCode:"Error"'
+              }
+              language="lucene"
+              name="traceWhere"
+              control={control}
+              size="xs"
+              onSubmit={handleSubmit(onSubmitFilters)}
+              data-testid="trace-search-input"
+            />
+
             {logTableSource && (
-              <Group>
+              <>
                 <Text size="xs">Logs filter</Text>
                 <SearchInputV2
                   tableConnection={tcFromSource(logTableSource)}
@@ -724,19 +732,21 @@ export function DBTraceWaterfallChartContainer({
                   name="logWhere"
                   control={control}
                   size="xs"
-                  enableHotkey
                   onSubmit={handleSubmit(onSubmitFilters)}
                   data-testid="log-search-input"
                 />
-              </Group>
+              </>
             )}
-          </Stack>
+          </Box>
         </form>
       )}
       <Group my="xs" justify="space-between">
-        {`${String(unhiddenSpanCount)} span${unhiddenSpanCount !== 1 ? 's' : ''}, ${unhiddenErrorSpanCount} error${
-          unhiddenErrorSpanCount !== 1 ? 's' : ''
-        }`}
+        <Text size="xs">
+          {spanCountString},{' '}
+          <span className={errorCount ? 'text-danger' : ''}>
+            {errorCountString}
+          </span>
+        </Text>
         <span>
           <Anchor
             underline="always"
