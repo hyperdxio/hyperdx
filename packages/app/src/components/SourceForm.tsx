@@ -151,7 +151,16 @@ function FormRow({
 function HighlightedAttributeExpressionsFormRow({
   control,
   watch,
-}: TableModelProps) {
+  name,
+  label,
+  helpText,
+}: TableModelProps & {
+  name:
+    | 'highlightedTraceAttributeExpressions'
+    | 'highlightedRowAttributeExpressions';
+  label: string;
+  helpText?: string;
+}) {
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
@@ -162,14 +171,11 @@ function HighlightedAttributeExpressionsFormRow({
     remove: removeHighlightedAttribute,
   } = useFieldArray({
     control,
-    name: 'highlightedTraceAttributeExpressions',
+    name,
   });
 
   return (
-    <FormRow
-      label={'Highlighted Attributes'}
-      helpText="Expressions defining trace-level attributes which are displayed in the search side panel."
-    >
+    <FormRow label={label} helpText={helpText}>
       <Grid columns={5}>
         {highlightedAttributes.map((field, index) => (
           <React.Fragment key={field.id}>
@@ -181,7 +187,7 @@ function HighlightedAttributeExpressionsFormRow({
                   connectionId,
                 }}
                 control={control}
-                name={`highlightedTraceAttributeExpressions.${index}.sqlExpression`}
+                name={`${name}.${index}.sqlExpression`}
                 disableKeywordAutocomplete
                 placeholder="ResourceAttributes['http.host']"
               />
@@ -191,7 +197,7 @@ function HighlightedAttributeExpressionsFormRow({
                 <Text c="gray">AS</Text>
                 <SQLInlineEditorControlled
                   control={control}
-                  name={`highlightedTraceAttributeExpressions.${index}.alias`}
+                  name={`${name}.${index}.alias`}
                   placeholder="Optional Alias"
                   disableKeywordAutocomplete
                 />
@@ -208,7 +214,7 @@ function HighlightedAttributeExpressionsFormRow({
             <Grid.Col span={3} pe={0}>
               <InputControlled
                 control={control}
-                name={`highlightedTraceAttributeExpressions.${index}.luceneExpression`}
+                name={`${name}.${index}.luceneExpression`}
                 placeholder="ResourceAttributes.http.host (Optional) "
               />
             </Grid.Col>
@@ -489,7 +495,18 @@ export function LogTableModelForm(props: TableModelProps) {
           />
         </FormRow>
         <Divider />
-        <HighlightedAttributeExpressionsFormRow {...props} />
+        <HighlightedAttributeExpressionsFormRow
+          {...props}
+          name="highlightedRowAttributeExpressions"
+          label="Highlighted Attributes"
+          helpText="Expressions defining row-level attributes which are displayed in the search side panel."
+        />
+        <HighlightedAttributeExpressionsFormRow
+          {...props}
+          name="highlightedTraceAttributeExpressions"
+          label="Highlighted Trace Attributes"
+          helpText="Expressions defining trace-level attributes which are displayed in the search side panel."
+        />
       </Stack>
     </>
   );
@@ -758,7 +775,18 @@ export function TraceTableModelForm(props: TableModelProps) {
         />
       </FormRow>
       <Divider />
-      <HighlightedAttributeExpressionsFormRow {...props} />
+      <HighlightedAttributeExpressionsFormRow
+        {...props}
+        name="highlightedRowAttributeExpressions"
+        label="Highlighted Attributes"
+        helpText="Expressions defining row-level attributes which are displayed in the search side panel."
+      />
+      <HighlightedAttributeExpressionsFormRow
+        {...props}
+        name="highlightedTraceAttributeExpressions"
+        label="Highlighted Trace Attributes"
+        helpText="Expressions defining trace-level attributes which are displayed in the search side panel."
+      />
     </Stack>
   );
 }
