@@ -39,7 +39,7 @@ export function DBHighlightedAttributesList({
           displayedKey={displayedKey}
           name={lucene ? lucene : sql}
           nameLanguage={lucene ? 'lucene' : 'sql'}
-          value={value as string}
+          value={value}
           key={`${displayedKey}-${value}-${source.id}`}
           {...(onPropertyAddClick && contextSource?.id === source.id
             ? {

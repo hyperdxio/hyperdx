@@ -69,6 +69,9 @@ export const Source = mongoose.model<ISource>(
       highlightedTraceAttributeExpressions: {
         type: mongoose.Schema.Types.Array,
       },
+      highlightedRowAttributeExpressions: {
+        type: mongoose.Schema.Types.Array,
+      },
 
       metricTables: {
         type: {

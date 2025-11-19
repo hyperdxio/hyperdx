@@ -165,7 +165,6 @@ export function RowOverviewPanel({
         <Box px="32px" pt="md">
           <DBRowSidePanelHeader
             date={new Date(firstRow?.__hdx_timestamp ?? 0)}
-            tags={{}}
             mainContent={mainContent}
             mainContentHeader={mainContentColumn}
             severityText={firstRow?.__hdx_severity_text}

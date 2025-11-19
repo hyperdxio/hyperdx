@@ -1,6 +1,9 @@
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 
-import { getHighlightedAttributesFromData } from '../highlightedAttributes';
+import {
+  getHighlightedAttributesFromData,
+  isLinkableUrl,
+} from '../highlightedAttributes';
 
 describe('getHighlightedAttributesFromData', () => {
   const createBasicSource = (
@@ -475,6 +478,286 @@ describe('getHighlightedAttributesFromData', () => {
     expect(attributes).toHaveLength(2);
     attributes.forEach(attr => {
       expect(attr.source).toBe(source);
+    });
+  });
+
+  it('extracts highlightedRowAttributeExpressions correctly', () => {
+    const source: TSource = {
+      ...createBasicSource(),
+      highlightedRowAttributeExpressions: [
+        {
+          sqlExpression: 'status',
+          alias: 'status',
+        },
+        {
+          sqlExpression: 'endpoint',
+          luceneExpression: 'http.endpoint',
+          alias: 'endpoint',
+        },
+      ],
+    };
+
+    const data = [
+      { status: '200', endpoint: '/api/users' },
+      { status: '404', endpoint: '/api/posts' },
+      { status: '200', endpoint: '/api/comments' },
+    ];
+
+    const meta = [
+      { name: 'status', type: 'String' },
+      { name: 'endpoint', type: 'String' },
+    ];
+
+    const attributes = getHighlightedAttributesFromData(
+      source,
+      source.highlightedRowAttributeExpressions,
+      data,
+      meta,
+    );
+
+    expect(attributes).toHaveLength(5);
+    expect(attributes).toContainEqual({
+      sql: 'status',
+      displayedKey: 'status',
+      value: '200',
+      source,
+    });
+    expect(attributes).toContainEqual({
+      sql: 'status',
+      displayedKey: 'status',
+      value: '404',
+      source,
+    });
+    expect(attributes).toContainEqual({
+      sql: 'endpoint',
+      displayedKey: 'endpoint',
+      value: '/api/users',
+      lucene: 'http.endpoint',
+      source,
+    });
+    expect(attributes).toContainEqual({
+      sql: 'endpoint',
+      displayedKey: 'endpoint',
+      value: '/api/posts',
+      lucene: 'http.endpoint',
+      source,
+    });
+    expect(attributes).toContainEqual({
+      sql: 'endpoint',
+      displayedKey: 'endpoint',
+      value: '/api/comments',
+      lucene: 'http.endpoint',
+      source,
+    });
+  });
+});
+
+describe('isLinkableUrl', () => {
+  describe('valid http and https URLs', () => {
+    it('returns true for simple http URL', () => {
+      expect(isLinkableUrl('http://example.com')).toBe(true);
+    });
+
+    it('returns true for simple https URL', () => {
+      expect(isLinkableUrl('https://example.com')).toBe(true);
+    });
+
+    it('returns true for http URL with path', () => {
+      expect(isLinkableUrl('http://example.com/path/to/resource')).toBe(true);
+    });
+
+    it('returns true for https URL with path', () => {
+      expect(isLinkableUrl('https://example.com/path/to/resource')).toBe(true);
+    });
+
+    it('returns true for URL with query parameters', () => {
+      expect(isLinkableUrl('https://example.com/search?q=test&page=1')).toBe(
+        true,
+      );
+    });
+
+    it('returns true for URL with hash fragment', () => {
+      expect(isLinkableUrl('https://example.com/page#section')).toBe(true);
+    });
+
+    it('returns true for URL with port number', () => {
+      expect(isLinkableUrl('https://example.com:8080/api')).toBe(true);
+    });
+
+    it('returns true for URL with authentication', () => {
+      expect(isLinkableUrl('https://user:pass@example.com/resource')).toBe(
+        true,
+      );
+    });
+
+    it('returns true for localhost URL', () => {
+      expect(isLinkableUrl('http://localhost:3000/api')).toBe(true);
+    });
+
+    it('returns true for IP address URL', () => {
+      expect(isLinkableUrl('http://192.168.1.1:8080/admin')).toBe(true);
+    });
+
+    it('returns true for URL with subdomain', () => {
+      expect(isLinkableUrl('https://api.staging.example.com/v1')).toBe(true);
+    });
+  });
+
+  describe('XSS prevention - javascript protocol', () => {
+    it('returns false for javascript: protocol', () => {
+      expect(isLinkableUrl('javascript:alert("XSS")')).toBe(false);
+    });
+
+    it('returns false for javascript: protocol with void', () => {
+      expect(isLinkableUrl('javascript:void(0)')).toBe(false);
+    });
+
+    it('returns false for javascript: protocol with encoded payload', () => {
+      expect(isLinkableUrl('javascript:eval(atob("YWxlcnQoJ1hTUycp"))')).toBe(
+        false,
+      );
+    });
+
+    it('returns false for javascript: protocol with newline bypass attempt', () => {
+      expect(isLinkableUrl('javascript://example.com%0Aalert(1)')).toBe(false);
+    });
+
+    it('returns false for javascript: with mixed case', () => {
+      expect(isLinkableUrl('JaVaScRiPt:alert(1)')).toBe(false);
+    });
+  });
+
+  describe('XSS prevention - data protocol', () => {
+    it('returns false for data: protocol with HTML', () => {
+      expect(
+        isLinkableUrl('data:text/html,<script>alert("XSS")</script>'),
+      ).toBe(false);
+    });
+
+    it('returns false for data: protocol with base64 encoded script', () => {
+      expect(
+        isLinkableUrl(
+          'data:text/html;base64,PHNjcmlwdD5hbGVydCgnWFNTJyk8L3NjcmlwdD4=',
+        ),
+      ).toBe(false);
+    });
+
+    it('returns false for data: protocol with SVG', () => {
+      expect(
+        isLinkableUrl('data:image/svg+xml,<svg onload=alert("XSS")></svg>'),
+      ).toBe(false);
+    });
+  });
+
+  describe('XSS prevention - other dangerous protocols', () => {
+    it('returns false for vbscript: protocol', () => {
+      expect(isLinkableUrl('vbscript:msgbox("XSS")')).toBe(false);
+    });
+
+    it('returns false for file: protocol', () => {
+      expect(isLinkableUrl('file:///etc/passwd')).toBe(false);
+    });
+
+    it('returns false for file: protocol on Windows', () => {
+      expect(isLinkableUrl('file:///C:/Windows/System32/config/sam')).toBe(
+        false,
+      );
+    });
+
+    it('returns false for about: protocol', () => {
+      expect(isLinkableUrl('about:blank')).toBe(false);
+    });
+  });
+
+  describe('non-http/https protocols', () => {
+    it('returns false for ftp: protocol', () => {
+      expect(isLinkableUrl('ftp://ftp.example.com/file.zip')).toBe(false);
+    });
+
+    it('returns false for mailto: protocol', () => {
+      expect(isLinkableUrl('mailto:test@example.com')).toBe(false);
+    });
+
+    it('returns false for tel: protocol', () => {
+      expect(isLinkableUrl('tel:+1234567890')).toBe(false);
+    });
+
+    it('returns false for ssh: protocol', () => {
+      expect(isLinkableUrl('ssh://user@host:22/path')).toBe(false);
+    });
+
+    it('returns false for ws: protocol', () => {
+      expect(isLinkableUrl('ws://example.com/socket')).toBe(false);
+    });
+
+    it('returns false for wss: protocol', () => {
+      expect(isLinkableUrl('wss://example.com/socket')).toBe(false);
+    });
+  });
+
+  describe('malformed URLs', () => {
+    it('returns false for plain text', () => {
+      expect(isLinkableUrl('not a url')).toBe(false);
+    });
+
+    it('returns false for empty string', () => {
+      expect(isLinkableUrl('')).toBe(false);
+    });
+
+    it('returns false for URL without protocol', () => {
+      expect(isLinkableUrl('example.com')).toBe(false);
+    });
+
+    it('returns false for protocol without domain', () => {
+      expect(isLinkableUrl('http://')).toBe(false);
+    });
+
+    it('returns false for missing protocol', () => {
+      expect(isLinkableUrl('://example.com')).toBe(false);
+    });
+
+    it('returns false for HTML script tag', () => {
+      expect(isLinkableUrl('<script>alert("XSS")</script>')).toBe(false);
+    });
+
+    it('returns false for script tag embedded in URL-like string', () => {
+      expect(isLinkableUrl('http://<script>alert("XSS")</script>')).toBe(false);
+    });
+
+    it('returns false for relative URL', () => {
+      expect(isLinkableUrl('/path/to/resource')).toBe(false);
+    });
+
+    it('returns false for protocol-relative URL', () => {
+      expect(isLinkableUrl('//example.com/path')).toBe(false);
+    });
+
+    it('returns false for URL with only whitespace', () => {
+      expect(isLinkableUrl('   ')).toBe(false);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('returns false for null input', () => {
+      // @ts-expect-error explicitly testing invalid input
+      expect(isLinkableUrl(null)).toBe(false);
+    });
+
+    it('returns false for undefined input', () => {
+      // @ts-expect-error explicitly testing invalid input
+      expect(isLinkableUrl(undefined)).toBe(false);
+    });
+
+    it('returns true for URL with unusual but valid characters', () => {
+      expect(isLinkableUrl('https://example.com/path-with_special~chars')).toBe(
+        true,
+      );
+    });
+
+    it('returns true for URL with encoded characters', () => {
+      expect(isLinkableUrl('https://example.com/path%20with%20spaces')).toBe(
+        true,
+      );
     });
   });
 });
