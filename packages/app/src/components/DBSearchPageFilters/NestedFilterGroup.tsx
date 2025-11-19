@@ -116,7 +116,7 @@ export const NestedFilterGroup = ({
           <Accordion.Panel
             data-testid="nested-filter-group-panel"
             classNames={{
-              content: 'pl-3 pt-1',
+              content: 'pl-3 pt-1 pb-0',
             }}
           >
             <div className={classes.filterGroupPanel}>
