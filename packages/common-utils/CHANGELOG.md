@@ -1,5 +1,18 @@
 # @hyperdx/common-utils
 
+## 0.8.0
+
+### Minor Changes
+
+- f612bf3c: feat: add support for alert auto-resolve
+
+### Patch Changes
+
+- f612bf3c: feat: support incident.io integration
+- f612bf3c: fix: handle group-by alert histories
+- c4915d45: feat: Add custom trace-level attributes above trace waterfall
+- 6e628bcd: feat: Support field:(<term>...) Lucene searches
+
 ## 0.7.2
 
 ### Patch Changes

@@ -1,5 +1,29 @@
 # @hyperdx/api
 
+## 2.8.0
+
+### Minor Changes
+
+- f612bf3c: feat: add support for alert auto-resolve
+- 840d7307: feat: adjust alert template title and body to reflect alert state
+- 94a669d3: Add metrics to task execution
+
+### Patch Changes
+
+- 99cb17c6: Add ability to edit and test webhook integrations
+- 78aff336: fix: Group alert histories by evaluation time
+- f612bf3c: feat: support incident.io integration
+- f612bf3c: fix: handle group-by alert histories
+- c4915d45: feat: Add custom trace-level attributes above trace waterfall
+- a75ce3be: Fix check alert to actually honor concurrent evaluation.
+- 44caf197: Zero-fill empty alert periods
+- Updated dependencies [f612bf3c]
+- Updated dependencies [f612bf3c]
+- Updated dependencies [f612bf3c]
+- Updated dependencies [c4915d45]
+- Updated dependencies [6e628bcd]
+  - @hyperdx/common-utils@0.8.0
+
 ## 2.7.1
 
 ### Patch Changes
