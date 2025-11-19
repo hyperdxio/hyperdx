@@ -366,7 +366,6 @@ export const buildAlertMessageTemplateTitle = ({
         `Tile with id ${alert.tileId} not found in dashboard ${dashboard.name}`,
       );
     }
-    console.log(tile.config.numberFormat);
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     const baseTitle = template
       ? handlebars.compile(template)(view)
