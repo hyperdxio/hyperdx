@@ -1,3 +1,4 @@
+import React from 'react';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 
@@ -12,7 +13,10 @@ export const ThemeWrapper = ({
   colorScheme?: 'dark' | 'light';
   children: React.ReactNode;
 }) => {
-  const theme = fontFamily ? makeTheme({ fontFamily }) : defaultTheme;
+  const theme = React.useMemo(
+    () => (fontFamily ? makeTheme({ fontFamily }) : defaultTheme),
+    [fontFamily],
+  );
   return (
     <MantineProvider forceColorScheme={colorScheme} theme={theme}>
       <Notifications zIndex={999999} />
