@@ -77,6 +77,7 @@ export const RootValueExpressionSchema = z
     aggCondition: SearchConditionSchema,
     aggConditionLanguage: SearchConditionLanguageSchema,
     valueExpression: z.string(),
+    valueExpressionLanguage: z.undefined().optional(),
     isDelta: z.boolean().optional(),
   })
   .or(
@@ -86,6 +87,7 @@ export const RootValueExpressionSchema = z
       aggCondition: SearchConditionSchema,
       aggConditionLanguage: SearchConditionLanguageSchema,
       valueExpression: z.string(),
+      valueExpressionLanguage: z.undefined().optional(),
       isDelta: z.boolean().optional(),
     }),
   )
@@ -95,7 +97,20 @@ export const RootValueExpressionSchema = z
       aggCondition: z.string().optional(),
       aggConditionLanguage: SearchConditionLanguageSchema,
       valueExpression: z.string(),
+      valueExpressionLanguage: z.undefined().optional(),
       metricType: z.nativeEnum(MetricsDataType).optional(),
+      isDelta: z.boolean().optional(),
+    }),
+  )
+  // valueExpression may be a lucene condition which will be rendered
+  // as SQL if valueExpressionLanguage is 'lucene'.
+  .or(
+    z.object({
+      aggFn: z.string().optional(),
+      aggCondition: z.string().optional(),
+      aggConditionLanguage: SearchConditionLanguageSchema.optional(),
+      valueExpression: z.string(),
+      valueExpressionLanguage: SearchConditionLanguageSchema,
       isDelta: z.boolean().optional(),
     }),
   );
