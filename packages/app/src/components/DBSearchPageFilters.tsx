@@ -1,16 +1,7 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import cx from 'classnames';
 import {
   TableMetadata,
-  tcFromChartConfig,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -39,7 +30,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconSearch } from '@tabler/icons-react';
 
-import { useExplainQuery } from '@/hooks/useExplainQuery';
 import {
   useAllFields,
   useGetKeyValues,
@@ -52,6 +42,9 @@ import useResizable from '@/hooks/useResizable';
 import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
+
+import { NestedFilterGroup } from './DBSearchPageFilters/NestedFilterGroup';
+import { groupFacetsByBaseName } from './DBSearchPageFilters/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
@@ -160,7 +153,7 @@ export const FilterCheckbox = ({
           size={13 as any}
           onChange={
             // taken care by the onClick in the group, triggering here will double fire
-            emptyFn
+            () => {}
           }
           indeterminate={value === 'excluded'}
           data-testid={`filter-checkbox-input-${label}`}
@@ -256,6 +249,7 @@ export type FilterGroupProps = {
   'data-testid'?: string;
   chartConfig: ChartConfigWithDateRange;
   isLive?: boolean;
+  distributionKey?: string; // Optional key to use for distribution queries, defaults to name
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
@@ -280,6 +274,7 @@ export const FilterGroup = ({
   'data-testid': dataTestId,
   chartConfig,
   isLive,
+  distributionKey,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   // "Show More" button when there's lots of options
@@ -322,7 +317,7 @@ export const FilterGroup = ({
   } = useGetValuesDistribution(
     {
       chartConfig: { ...chartConfig, dateRange },
-      key: name,
+      key: distributionKey || name,
       limit: 100, // The 100 most common values are enough to find any values that are present in at least 1% of rows
     },
     {
@@ -476,28 +471,9 @@ export const FilterGroup = ({
                 fz="xxs"
                 color="gray"
               >
-                <TextInput
-                  size="xs"
-                  flex="1"
-                  placeholder={name}
-                  value={search}
-                  data-testid={`filter-search-${name}`}
-                  onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                    setSearch(event.currentTarget.value)
-                  }
-                  onClick={e => {
-                    // Prevent accordion from opening when clicking on the input, unless it's closed.
-                    if (isExpanded) {
-                      e.stopPropagation();
-                    }
-                  }}
-                  styles={{ input: { transition: 'padding 0.2s' } }}
-                  rightSectionWidth={20}
-                  rightSection={<IconSearch size={12} stroke={2} />}
-                  classNames={{
-                    input: 'ps-0.5',
-                  }}
-                />
+                <Text size="xs" fw="500">
+                  {name}
+                </Text>
               </Tooltip>
             </Accordion.Control>
             <Group gap="xxxs" wrap="nowrap">
@@ -549,6 +525,25 @@ export const FilterGroup = ({
             }}
           >
             <Stack gap={0}>
+              {/* Show search bar if expanded and there are more than 5 values */}
+              {isExpanded && augmentedOptions.length > 5 && (
+                <div className="px-2 pb-2">
+                  <TextInput
+                    size="xs"
+                    placeholder="Search values..."
+                    value={search}
+                    data-testid={`filter-search-${name}`}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                      setSearch(event.currentTarget.value)
+                    }
+                    rightSectionWidth={20}
+                    rightSection={<IconSearch size={12} stroke={2} />}
+                    classNames={{
+                      input: 'ps-0.5',
+                    }}
+                  />
+                </div>
+              )}
               {displayedOptions.map(option => (
                 <FilterCheckbox
                   key={option.value}
@@ -1053,50 +1048,122 @@ const DBSearchPageFiltersComponent = ({
             )
           )}
           {/* Show facets even when loading to ensure pinned filters are visible while loading */}
-          {shownFacets.map(facet => (
-            <FilterGroup
-              key={facet.key}
-              data-testid={`filter-group-${facet.key}`}
-              name={cleanedFacetName(facet.key)}
-              options={facet.value.map(value => ({
-                value,
-                label: value,
-              }))}
-              optionsLoading={isFacetsLoading}
-              selectedValues={
-                filterState[facet.key]
-                  ? filterState[facet.key]
-                  : { included: new Set(), excluded: new Set() }
-              }
-              onChange={value => {
-                setFilterValue(facet.key, value);
-              }}
-              onClearClick={() => clearFilter(facet.key)}
-              onOnlyClick={value => {
-                setFilterValue(facet.key, value, 'only');
-              }}
-              onExcludeClick={value => {
-                setFilterValue(facet.key, value, 'exclude');
-              }}
-              onPinClick={value => toggleFilterPin(facet.key, value)}
-              isPinned={value => isFilterPinned(facet.key, value)}
-              onFieldPinClick={() => toggleFieldPin(facet.key)}
-              isFieldPinned={isFieldPinned(facet.key)}
-              onLoadMore={loadMoreFilterValuesForKey}
-              loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
-              hasLoadedMore={Boolean(extraFacets[facet.key])}
-              isDefaultExpanded={
-                // open by default if PK, or has selected values
-                isFieldPrimary(tableMetadata, facet.key) ||
-                isFieldPinned(facet.key) ||
-                (filterState[facet.key] &&
-                  (filterState[facet.key].included.size > 0 ||
-                    filterState[facet.key].excluded.size > 0))
-              }
-              chartConfig={chartConfig}
-              isLive={isLive}
-            />
-          ))}
+          {(() => {
+            const { grouped, nonGrouped } = groupFacetsByBaseName(shownFacets);
+
+            return (
+              <>
+                {/* Render grouped facets as nested filter groups */}
+                {grouped.map(group => (
+                  <NestedFilterGroup
+                    key={group.key}
+                    data-testid={`nested-filter-group-${group.key}`}
+                    name={group.key}
+                    childFilters={group.children}
+                    selectedValues={group.children.reduce(
+                      (acc, child) => {
+                        acc[child.key] = filterState[child.key]
+                          ? filterState[child.key]
+                          : { included: new Set(), excluded: new Set() };
+                        return acc;
+                      },
+                      {} as Record<
+                        string,
+                        { included: Set<string>; excluded: Set<string> }
+                      >,
+                    )}
+                    onChange={(key, value) => {
+                      setFilterValue(key, value);
+                    }}
+                    onClearClick={key => clearFilter(key)}
+                    onOnlyClick={(key, value) => {
+                      setFilterValue(key, value, 'only');
+                    }}
+                    onExcludeClick={(key, value) => {
+                      setFilterValue(key, value, 'exclude');
+                    }}
+                    onPinClick={(key, value) => toggleFilterPin(key, value)}
+                    isPinned={(key, value) => isFilterPinned(key, value)}
+                    onFieldPinClick={key => toggleFieldPin(key)}
+                    isFieldPinned={key => isFieldPinned(key)}
+                    onLoadMore={loadMoreFilterValuesForKey}
+                    loadMoreLoading={group.children.reduce(
+                      (acc, child) => {
+                        acc[child.key] = loadMoreLoadingKeys.has(child.key);
+                        return acc;
+                      },
+                      {} as Record<string, boolean>,
+                    )}
+                    hasLoadedMore={group.children.reduce(
+                      (acc, child) => {
+                        acc[child.key] = Boolean(extraFacets[child.key]);
+                        return acc;
+                      },
+                      {} as Record<string, boolean>,
+                    )}
+                    isDefaultExpanded={
+                      // open by default if has selected values or pinned children
+                      group.children.some(
+                        child =>
+                          (filterState[child.key] &&
+                            (filterState[child.key].included.size > 0 ||
+                              filterState[child.key].excluded.size > 0)) ||
+                          isFieldPinned(child.key),
+                      )
+                    }
+                    chartConfig={chartConfig}
+                    isLive={isLive}
+                  />
+                ))}
+
+                {/* Render non-grouped facets as regular filter groups */}
+                {nonGrouped.map(facet => (
+                  <FilterGroup
+                    key={facet.key}
+                    data-testid={`filter-group-${facet.key}`}
+                    name={cleanedFacetName(facet.key)}
+                    options={facet.value.map(value => ({
+                      value,
+                      label: value,
+                    }))}
+                    optionsLoading={isFacetsLoading}
+                    selectedValues={
+                      filterState[facet.key]
+                        ? filterState[facet.key]
+                        : { included: new Set(), excluded: new Set() }
+                    }
+                    onChange={value => {
+                      setFilterValue(facet.key, value);
+                    }}
+                    onClearClick={() => clearFilter(facet.key)}
+                    onOnlyClick={value => {
+                      setFilterValue(facet.key, value, 'only');
+                    }}
+                    onExcludeClick={value => {
+                      setFilterValue(facet.key, value, 'exclude');
+                    }}
+                    onPinClick={value => toggleFilterPin(facet.key, value)}
+                    isPinned={value => isFilterPinned(facet.key, value)}
+                    onFieldPinClick={() => toggleFieldPin(facet.key)}
+                    isFieldPinned={isFieldPinned(facet.key)}
+                    onLoadMore={loadMoreFilterValuesForKey}
+                    loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
+                    hasLoadedMore={Boolean(extraFacets[facet.key])}
+                    isDefaultExpanded={
+                      // open by default if PK, or has selected values
+                      isFieldPrimary(tableMetadata, facet.key) ||
+                      isFieldPinned(facet.key) ||
+                      (filterState[facet.key] &&
+                        (filterState[facet.key].included.size > 0 ||
+                          filterState[facet.key].excluded.size > 0))
+                    }
+                    chartConfig={chartConfig}
+                    isLive={isLive}
+                  />
+                ))}
+              </>
+            );
+          })()}
 
           <Button
             color="gray"
