@@ -404,7 +404,18 @@ async function renderSelectList(
 
       let expr: ChSql;
       if (select.aggFn == null) {
-        expr = chSql`${{ UNSAFE_RAW_SQL: select.valueExpression }}`;
+        expr =
+          select.valueExpressionLanguage === 'lucene'
+            ? await renderWhereExpression({
+                condition: select.valueExpression,
+                from: chartConfig.from,
+                language: 'lucene',
+                implicitColumnExpression: chartConfig.implicitColumnExpression,
+                metadata,
+                connectionId: chartConfig.connection,
+                with: chartConfig.with,
+              })
+            : chSql`${{ UNSAFE_RAW_SQL: select.valueExpression }}`;
       } else if (select.aggFn === 'quantile') {
         expr = aggFnExpr({
           fn: select.aggFn,

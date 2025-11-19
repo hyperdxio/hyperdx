@@ -21,6 +21,7 @@ import DBRowSidePanelHeader, {
   BreadcrumbPath,
 } from '@/components/DBRowSidePanelHeader';
 import useResizable from '@/hooks/useResizable';
+import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
@@ -518,14 +519,19 @@ export default function DBRowSidePanelErrorBoundary({
     parseAsStringEnum<Tab>(Object.values(Tab)),
   );
 
+  const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
+
   const _onClose = useCallback(() => {
     // Reset tab to undefined when unmounting, so that when we open the drawer again, it doesn't open to the last tab
     // (which might not be valid, ex session replay)
     if (!isNestedPanel) {
       setQueryTab(null);
     }
+    // Clear waterfall search state on close, so that filters don't
+    // persist when reopening another trace.
+    clearTraceWaterfallSearchState();
     onClose();
-  }, [setQueryTab, isNestedPanel, onClose]);
+  }, [setQueryTab, isNestedPanel, onClose, clearTraceWaterfallSearchState]);
 
   useHotkeys(['esc'], _onClose, { enabled: subDrawerOpen === false });
 
