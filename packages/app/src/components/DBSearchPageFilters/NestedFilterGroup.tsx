@@ -8,7 +8,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 
-import { FilterGroup, TextButton } from '../DBSearchPageFilters';
+import { FilterGroup } from '../DBSearchPageFilters';
 
 import classes from '../../../styles/SearchPage.module.scss';
 
@@ -35,8 +35,6 @@ export type NestedFilterGroupProps = {
   chartConfig: any; // Using any to avoid importing ChartConfigWithDateRange
   isLive?: boolean;
 };
-
-const emptyFn = () => {};
 
 export const NestedFilterGroup = ({
   name,
@@ -68,8 +66,6 @@ export const NestedFilterGroup = ({
       ),
     [selectedValues],
   );
-
-  const hasSelectedValues = totalFiltersSize > 0;
 
   return (
     <Accordion
