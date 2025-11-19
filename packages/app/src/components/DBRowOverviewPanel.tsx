@@ -245,7 +245,7 @@ export function RowOverviewPanel({
                 Top Level Attributes
               </Text>
             </Accordion.Control>
-            <Accordion.Panel px="none">
+            <Accordion.Panel>
               <Box px="md">
                 <DBRowJsonViewer
                   data={topLevelAttributes}
