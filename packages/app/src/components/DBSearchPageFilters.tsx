@@ -833,11 +833,12 @@ const DBSearchPageFiltersComponent = ({
         facet.key = `toString(${facet.key})`;
       }
 
-      // don't include empty facets, unless they are already selected
+      // don't include empty facets, unless they are already selected or pinned
       const filter = filterState[facet.key];
       const hasSelectedValues =
         filter && (filter.included.size > 0 || filter.excluded.size > 0);
-      if (facet.value?.length > 0 || hasSelectedValues) {
+      const isPinned = isFieldPinned(facet.key);
+      if (facet.value?.length > 0 || hasSelectedValues || isPinned) {
         const extraValues = extraFacets[facet.key];
         if (extraValues && extraValues.length > 0) {
           const allValues = facet.value.slice();
