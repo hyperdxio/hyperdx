@@ -124,7 +124,6 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
   );
 };
 
-const emptyFn = () => {};
 export const FilterCheckbox = ({
   value,
   label,
@@ -151,10 +150,9 @@ export const FilterCheckbox = ({
         <Checkbox
           checked={!!value}
           size={13 as any}
-          onChange={
-            // taken care by the onClick in the group, triggering here will double fire
-            () => {}
-          }
+          onChange={() => {
+            // taken care by the onClick in the group
+          }}
           indeterminate={value === 'excluded'}
           data-testid={`filter-checkbox-input-${label}`}
         />
@@ -665,18 +663,22 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
 } & FilterStateHook) => {
-  const setFilterValue: typeof _setFilterValue = (
-    property: string,
-    value: string,
-    action?: 'only' | 'exclude' | 'include' | undefined,
-  ) => {
-    return _setFilterValue(property, value, action);
-  };
+  const setFilterValue = useCallback(
+    (
+      property: string,
+      value: string,
+      action?: 'only' | 'exclude' | 'include' | undefined,
+    ) => {
+      return _setFilterValue(property, value, action);
+    },
+    [_setFilterValue],
+  );
   const {
     toggleFilterPin,
     toggleFieldPin,
     isFilterPinned,
     isFieldPinned,
+    getPinnedFields,
     pinnedFilters,
   } = usePinnedFilters(sourceId ?? null);
   const { size, startResize } = useResizable(16, 'left');
@@ -773,6 +775,7 @@ const DBSearchPageFiltersComponent = ({
     const mergedKeys = new Set<string>([
       ...facetsMap.keys(),
       ...Object.keys(pinnedFilters),
+      ...getPinnedFields(),
     ]);
 
     return Array.from(mergedKeys).map(key => {
@@ -785,7 +788,7 @@ const DBSearchPageFiltersComponent = ({
 
       return { key, value: Array.from(mergedValues) };
     });
-  }, [facets, pinnedFilters]);
+  }, [facets, pinnedFilters, getPinnedFields]);
 
   const metadata = useMetadataWithSettings();
   const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
@@ -822,7 +825,7 @@ const DBSearchPageFiltersComponent = ({
         });
       }
     },
-    [chartConfig, setExtraFacets, dateRange],
+    [chartConfig, setExtraFacets, dateRange, metadata],
   );
 
   const shownFacets = useMemo(() => {
