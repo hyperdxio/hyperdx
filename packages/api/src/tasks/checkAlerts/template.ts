@@ -87,6 +87,33 @@ export const isAlertResolved = (state?: AlertState): boolean => {
   return state === AlertState.OK;
 };
 
+/**
+ * Formats the value to match the decimal precision of the threshold.
+ * This ensures consistent display of numbers in alert messages.
+ * Uses Intl.NumberFormat for better precision handling with large numbers.
+ */
+export const formatValueToMatchThreshold = (
+  value: number,
+  threshold: number,
+): string => {
+  // Format threshold with NumberFormat to get its string representation
+  const thresholdFormatted = new Intl.NumberFormat('en-US', {
+    maximumSignificantDigits: 21,
+    useGrouping: false,
+  }).format(threshold);
+
+  // Count decimal places in the formatted threshold
+  const decimalIndex = thresholdFormatted.indexOf('.');
+  const decimalPlaces =
+    decimalIndex === -1 ? 0 : thresholdFormatted.length - decimalIndex - 1;
+
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: decimalPlaces,
+    maximumFractionDigits: decimalPlaces,
+    useGrouping: false,
+  }).format(value);
+};
+
 export const notifyChannel = async ({
   channel,
   message,
@@ -339,9 +366,10 @@ export const buildAlertMessageTemplateTitle = ({
         `Tile with id ${alert.tileId} not found in dashboard ${dashboard.name}`,
       );
     }
+    const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     const baseTitle = template
       ? handlebars.compile(template)(view)
-      : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${value} ${
+      : `Alert for "${tile.config.name}" in "${dashboard.name}" - ${formattedValue} ${
           doesExceedThreshold(alert.thresholdType, alert.threshold, value)
             ? alert.thresholdType === AlertThresholdType.ABOVE
               ? 'exceeds'
@@ -614,8 +642,9 @@ ${truncatedResults}
     if (dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
     }
+    const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     rawTemplateBody = `${group ? `Group: "${group}"` : ''}
-${value} ${
+${formattedValue} ${
       doesExceedThreshold(alert.thresholdType, alert.threshold, value)
         ? alert.thresholdType === AlertThresholdType.ABOVE
           ? 'exceeds'
