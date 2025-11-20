@@ -111,6 +111,7 @@
     "@storybook/addon-interactions": "^8.1.5",
     "@storybook/addon-links": "^8.1.5",
     "@storybook/addon-styling-webpack": "^1.0.0",
+    "@storybook/addon-themes": "^10.0.8",
     "@storybook/blocks": "^8.1.5",
     "@storybook/nextjs": "^8.1.5",
     "@storybook/react": "^8.1.5",

@@ -162,7 +162,7 @@ export function RowOverviewPanel({
   return (
     <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
       {!hideHeader && (
-        <Box px="32px" pt="md">
+        <Box px="sm" pt="md">
           <DBRowSidePanelHeader
             date={new Date(firstRow?.__hdx_timestamp ?? 0)}
             mainContent={mainContent}
@@ -182,6 +182,7 @@ export function RowOverviewPanel({
           'topLevelAttributes',
         ]}
         multiple
+        variant="noPadding"
       >
         {isHttpRequest && (
           <Accordion.Item value="network">
