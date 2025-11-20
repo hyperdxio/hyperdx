@@ -18,9 +18,41 @@ import type { AlertsPageItem } from './types';
 
 import styles from '../styles/AlertsPage.module.scss';
 
-function AlertHistoryCard({ history }: { history: AlertHistory }) {
+function AlertHistoryCard({
+  history,
+  alertUrl,
+}: {
+  history: AlertHistory;
+  alertUrl: string;
+}) {
   const start = new Date(history.createdAt.toString());
   const today = React.useMemo(() => new Date(), []);
+
+  const href = React.useMemo(() => {
+    if (!alertUrl || !history.lastValues?.[0]?.startTime) return null;
+
+    // Create time window from alert creation to last recorded value
+    const to = new Date(history.createdAt).getTime();
+    const from = new Date(history.lastValues[0].startTime).getTime();
+
+    // Construct URL with time range parameters
+    const url = new URL(alertUrl, window.location.origin);
+    url.searchParams.set('from', from.toString());
+    url.searchParams.set('to', to.toString());
+    url.searchParams.set('isLive', 'false');
+
+    return url.pathname + url.search;
+  }, [history, alertUrl]);
+
+  const content = (
+    <div
+      className={cx(
+        styles.historyCard,
+        history.state === AlertState.OK ? styles.ok : styles.alarm,
+        href && styles.clickable,
+      )}
+    />
+  );
 
   return (
     <Tooltip
@@ -28,19 +60,26 @@ function AlertHistoryCard({ history }: { history: AlertHistory }) {
       color="dark"
       withArrow
     >
-      <div
-        className={cx(
-          styles.historyCard,
-          history.state === AlertState.OK ? styles.ok : styles.alarm,
-        )}
-      />
+      {href ? (
+        <a href={href} className={styles.historyCardLink}>
+          {content}
+        </a>
+      ) : (
+        content
+      )}
     </Tooltip>
   );
 }
 
 const HISTORY_ITEMS = 18;
 
-function AlertHistoryCardList({ history }: { history: AlertHistory[] }) {
+function AlertHistoryCardList({
+  history,
+  alertUrl,
+}: {
+  history: AlertHistory[];
+  alertUrl: string;
+}) {
   const items = React.useMemo(() => {
     if (history.length < HISTORY_ITEMS) {
       return history;
@@ -66,7 +105,7 @@ function AlertHistoryCardList({ history }: { history: AlertHistory[] }) {
         .slice()
         .reverse()
         .map((history, index) => (
-          <AlertHistoryCard key={index} history={history} />
+          <AlertHistoryCard key={index} history={history} alertUrl={alertUrl} />
         ))}
     </div>
   );
@@ -192,7 +231,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
       </Group>
 
       <Group>
-        <AlertHistoryCardList history={alert.history} />
+        <AlertHistoryCardList history={alert.history} alertUrl={alertUrl} />
       </Group>
     </div>
   );
