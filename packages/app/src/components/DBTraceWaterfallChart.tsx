@@ -609,17 +609,19 @@ export function DBTraceWaterfallChartContainer({
             onClick?.({ id, type: type ?? '' });
           }}
         >
-          <div className="d-flex">
+          <div className="d-flex align-items-center" style={{ height: 24 }}>
             {Array.from({ length: result.level }).map((_, index) => (
               <div
                 key={index}
                 style={{
                   borderLeft: '1px solid var(--color-border)',
-                  marginLeft: 5,
+                  marginLeft: 7,
                   width: 8,
                   minWidth: 8,
                   maxWidth: 8,
                   flexGrow: 1,
+                  flexShrink: 0,
+                  height: '100%',
                 }}
               ></div>
             ))}
@@ -681,8 +683,9 @@ export function DBTraceWaterfallChartContainer({
           end,
           tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}`,
           color: barColor({ isError, isWarn, isHighlighted }),
-          body: <span style={{ color: '#FFFFFFEE' }}>{displayText}</span>,
+          body: <span>{displayText}</span>,
           minWidthPerc: 1,
+          isError,
         },
       ],
     };

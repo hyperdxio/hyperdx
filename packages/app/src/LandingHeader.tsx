@@ -30,7 +30,7 @@ export default function LandingHeader({
           right: 0,
           background: 'var(--color-bg-body)',
           backdropFilter: 'blur(12px)',
-          border: '1px solid var(--color-border)',
+          borderBottom: '1px solid var(--color-border)',
           zIndex: 100,
         }}
       >
@@ -47,12 +47,13 @@ export default function LandingHeader({
               color="white"
             />
 
-            <Group gap="md" visibleFrom="lg" style={{ fontSize: 14 }}>
+            <Group gap="lg" visibleFrom="lg">
               <Anchor
                 href="https://hyperdx.io"
                 c={activeKey === 'cloud' ? 'green' : 'gray'}
                 underline="never"
                 style={{ fontWeight: activeKey === 'cloud' ? 600 : 400 }}
+                size="sm"
               >
                 HyperDX Cloud
               </Anchor>
@@ -61,6 +62,7 @@ export default function LandingHeader({
                 c={activeKey === 'docs' ? 'green' : 'gray'}
                 underline="never"
                 style={{ fontWeight: activeKey === 'docs' ? 600 : 400 }}
+                size="sm"
               >
                 Docs
               </Anchor>
@@ -70,6 +72,7 @@ export default function LandingHeader({
                   c={activeKey === '/login' ? 'green' : 'gray'}
                   underline="never"
                   style={{ fontWeight: activeKey === '/login' ? 600 : 400 }}
+                  size="sm"
                 >
                   Login
                 </Anchor>
