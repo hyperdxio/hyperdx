@@ -1,10 +1,13 @@
 import { dateParser, parseTimeRangeInput } from '../utils';
 
 describe('dateParser', () => {
+  let mockDate: Date;
+
   beforeEach(() => {
     // Mock current date to ensure consistent test results
     jest.useFakeTimers();
-    jest.setSystemTime(new Date('2025-01-15T22:00'));
+    mockDate = new Date('2025-01-15T22:00:00');
+    jest.setSystemTime(mockDate);
   });
 
   afterEach(() => {
@@ -43,6 +46,21 @@ describe('dateParser', () => {
 
   it('parses non-future month name/date with current year', () => {
     expect(dateParser('Jan 15')).toEqual(new Date('2025-01-15T12:00:00'));
+  });
+
+  it('clamps slightly future dates to now (within 1 day) - no year specified', () => {
+    // Input: 23:00. Now: 22:00. Should clamp to now (22:00)
+    const result = dateParser('Jan 15 23:00:00');
+    expect(result?.getTime()).toEqual(mockDate.getTime());
+    expect(result?.getFullYear()).toEqual(2025);
+  });
+
+  it('clamps slightly future dates to now (within 1 day) - year specified', () => {
+    // Explicit year should be preserved even if in future, but clamped to now
+    const result = dateParser('2025-01-15 23:00:00');
+    expect(result?.getTime()).toEqual(mockDate.getTime());
+    // Verify it didn't shift to 2024
+    expect(result?.getFullYear()).toEqual(2025);
   });
 });
 

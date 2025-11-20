@@ -6,10 +6,6 @@ function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
     return null;
   }
 
-  if (parsed.isCertain('year')) {
-    return parsed.date();
-  }
-
   const now = new Date();
   if (
     !(
@@ -28,9 +24,21 @@ function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
     now.setMilliseconds(parsed.get('millisecond') || 0);
   }
 
+  // if today is June 2024 and a user types "Dec 25", the parser (chrono-node) defaults to Dec 25, 2024 (future).
+  // The logic assumes that for search, the user almost certainly meant the most recent Dec 25 (i.e., Dec 25, 2023),
+  // so it shifts the year back.
+  // if the parsed date is within the current day but in a future time, return the "now" date
   const parsedDate = parsed.date();
-  if (parsedDate > now) {
-    parsedDate.setFullYear(parsedDate.getFullYear() - 1);
+  const currentNow = new Date();
+
+  if (parsedDate.getTime() > currentNow.getTime() + ms('1d')) {
+    // For dates significantly in the future (>1 day), only shift year if year was inferred
+    if (!parsed.isCertain('year')) {
+      parsedDate.setFullYear(parsedDate.getFullYear() - 1);
+    }
+  } else if (parsedDate > currentNow) {
+    // For dates slightly in the future (within 1 day), clamp to now
+    return currentNow;
   }
   return parsedDate;
 }
