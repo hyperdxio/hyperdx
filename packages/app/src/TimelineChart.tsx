@@ -36,7 +36,9 @@ const NewTimelineRow = memo(
     height: number;
     scale: number;
     offset: number;
-    eventStyles?: any;
+    eventStyles?:
+      | React.CSSProperties
+      | ((event: TimelineEventT) => React.CSSProperties);
     onEventHover?: Function;
     onEventClick?: (event: any) => any;
   }) {
