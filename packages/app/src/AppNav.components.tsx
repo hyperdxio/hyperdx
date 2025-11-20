@@ -293,7 +293,7 @@ export const AppNavLink = ({
   const testId = `nav-link-${href.replace(/^\//, '').replace(/\//g, '-') || 'home'}`;
 
   return (
-    <Group justify="space-between" px="md" py="6px">
+    <Group justify="space-between" px="md" py="6px" h="34px">
       <Link
         data-testid={testId}
         href={href}

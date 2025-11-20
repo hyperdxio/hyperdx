@@ -16,16 +16,40 @@ import '../styles/app.scss';
 import { meHandler } from '../src/mocks/handlers';
 import { ThemeWrapper } from '../src/ThemeWrapper';
 
+export const parameters = {
+  layout: 'fullscreen',
+  options: {
+    showPanel: false,
+    storySort: (a, b) =>
+      a.title.localeCompare(b.title, undefined, { numeric: true }),
+  },
+};
+
+export const globalTypes = {
+  theme: {
+    name: 'Theme',
+    description: 'Mantine color scheme',
+    defaultValue: 'light',
+    toolbar: {
+      icon: 'mirror',
+      items: [
+        { value: 'light', title: 'Light' },
+        { value: 'dark', title: 'Dark' },
+      ],
+    },
+  },
+};
+
 initialize();
 
 const queryClient = new QueryClient();
 
 const preview: Preview = {
   decorators: [
-    Story => (
+    (Story, context) => (
       <QueryClientProvider client={queryClient}>
         <QueryParamProvider adapter={NextAdapter}>
-          <ThemeWrapper>
+          <ThemeWrapper colorScheme={context.globals.theme || 'light'}>
             <Story />
           </ThemeWrapper>
         </QueryParamProvider>
@@ -37,6 +61,7 @@ const preview: Preview = {
     msw: {
       handlers: [meHandler],
     },
+    backgrounds: { disable: true },
   },
 };
 

@@ -182,6 +182,7 @@ export default function DBTracePanel({
             <Button
               ms="sm"
               variant="outline"
+              color="gray"
               onClick={() => setShowTraceIdInput(false)}
               size="xs"
             >
