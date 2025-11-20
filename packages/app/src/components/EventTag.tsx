@@ -37,7 +37,8 @@ export default function EventTag({
     }
 )) {
   const [opened, setOpened] = useState(false);
-  const hasActions = !!onPropertyAddClick || !!generateSearchUrl;
+  const isLink = isLinkableUrl(value);
+  const hasActions = !!onPropertyAddClick || !!generateSearchUrl || isLink;
 
   if (!hasActions) {
     return (
@@ -46,8 +47,6 @@ export default function EventTag({
       </div>
     );
   }
-
-  const isLink = isLinkableUrl(value);
 
   const searchCondition =
     nameLanguage === 'sql'
