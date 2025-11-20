@@ -62,6 +62,43 @@ describe('dateParser', () => {
     // Verify it didn't shift to 2024
     expect(result?.getFullYear()).toEqual(2025);
   });
+
+  it('shifts year back for dates more than 1 day in future with inferred year', () => {
+    // mocked time is 2025-01-15 22:00
+    // Jan 17 is more than 1 day in future, should shift to 2024
+    const result = dateParser('Jan 17 12:00:00');
+    expect(result).toEqual(new Date('2024-01-17T12:00:00'));
+  });
+
+  it('does NOT shift year back for dates more than 1 day in future with explicit year', () => {
+    // mocked time is 2025-01-15 22:00
+    // Jan 17, 2025 is more than 1 day in future, but year is explicit
+    const result = dateParser('2025-01-17 12:00:00');
+    expect(result).toEqual(new Date('2025-01-17T12:00:00'));
+    expect(result?.getFullYear()).toEqual(2025);
+  });
+
+  it('handles dates in the past correctly', () => {
+    // mocked time is 2025-01-15 22:00
+    const result = dateParser('Jan 10 12:00:00');
+    expect(result).toEqual(new Date('2025-01-10T12:00:00'));
+    expect(result?.getFullYear()).toEqual(2025);
+  });
+
+  it('handles edge case: exactly 1 day in the future', () => {
+    // mocked time is 2025-01-15 22:00:00
+    // Exactly 24 hours later: 2025-01-16 22:00:00
+    // Should be clamped since it's <= 1 day from now
+    const result = dateParser('Jan 16 22:00:00');
+    expect(result?.getTime()).toEqual(mockDate.getTime());
+  });
+
+  it('handles edge case: just over 1 day in the future', () => {
+    // mocked time is 2025-01-15 22:00:00
+    // 24 hours + 1 second later should shift year
+    const result = dateParser('Jan 16 22:00:01');
+    expect(result).toEqual(new Date('2024-01-16T22:00:01'));
+  });
 });
 
 describe('parseTimeRangeInput', () => {

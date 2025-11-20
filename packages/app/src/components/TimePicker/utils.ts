@@ -7,6 +7,11 @@ function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
   }
 
   const now = new Date();
+  const parsedDate = parsed.date();
+
+  // If all of the time components have been inferred, set the time components of now
+  // to match the parsed time components. This ensures that the comparison later on uses
+  // the same point in time when only worrying about dates.
   if (
     !(
       parsed.isCertain('hour') ||
@@ -15,31 +20,27 @@ function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
       parsed.isCertain('millisecond')
     )
   ) {
-    // If all of the time components have been inferred, set the time components of now
-    // to match the parsed time components. This ensures that the comparison later on uses
-    // the same point in time when only worrying about dates.
     now.setHours(parsed.get('hour') || 0);
     now.setMinutes(parsed.get('minute') || 0);
     now.setSeconds(parsed.get('second') || 0);
     now.setMilliseconds(parsed.get('millisecond') || 0);
   }
 
-  // if today is June 2024 and a user types "Dec 25", the parser (chrono-node) defaults to Dec 25, 2024 (future).
-  // The logic assumes that for search, the user almost certainly meant the most recent Dec 25 (i.e., Dec 25, 2023),
-  // so it shifts the year back.
-  // if the parsed date is within the current day but in a future time, return the "now" date
-  const parsedDate = parsed.date();
-  const currentNow = new Date();
-
-  if (parsedDate.getTime() > currentNow.getTime() + ms('1d')) {
-    // For dates significantly in the future (>1 day), only shift year if year was inferred
-    if (!parsed.isCertain('year')) {
+  // Handle future dates:
+  // - If slightly in the future (within 1 day), clamp to now
+  // - If significantly in the future (>1 day) AND year was inferred, shift year back
+  //   (e.g., "Dec 25" typed in June defaults to Dec 25 this year, but user likely meant last Dec 25)
+  if (parsedDate > now) {
+    const oneDayFromNow = now.getTime() + ms('1d');
+    if (parsedDate.getTime() <= oneDayFromNow) {
+      // Slightly in the future: clamp to now
+      return now;
+    } else if (!parsed.isCertain('year')) {
+      // Significantly in the future with inferred year: shift year back
       parsedDate.setFullYear(parsedDate.getFullYear() - 1);
     }
-  } else if (parsedDate > currentNow) {
-    // For dates slightly in the future (within 1 day), clamp to now
-    return currentNow;
   }
+
   return parsedDate;
 }
 
