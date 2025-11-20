@@ -2343,14 +2343,14 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: '🚨 Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1',
+          text: '🚨 Alert for "CPU" in "My Dashboard" - 6 exceeds 1',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "CPU" in "My Dashboard" - 6 exceeds 1>*`,
                   '',
-                  '6.25 exceeds 1',
+                  '6 exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
                   '',
                 ].join('\n'),
