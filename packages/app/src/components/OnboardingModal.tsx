@@ -38,6 +38,7 @@ async function addOtelDemoSources({
   traceSourceDatabaseName,
   traceSourceName,
   traceSourceTableName,
+  traceSourceHighlightedTraceAttributes,
 }: {
   connectionId: string;
   createSourceMutation: ReturnType<typeof useCreateSource>;
@@ -59,6 +60,7 @@ async function addOtelDemoSources({
   traceSourceDatabaseName: string;
   traceSourceName: string;
   traceSourceTableName: string;
+  traceSourceHighlightedTraceAttributes?: TSource['highlightedTraceAttributeExpressions'];
 }) {
   const hasLogSource =
     logSourceDatabaseName && logSourceName && logSourceTableName;
@@ -116,6 +118,8 @@ async function addOtelDemoSources({
       statusCodeExpression: 'StatusCode',
       statusMessageExpression: 'StatusMessage',
       spanEventsValueExpression: 'Events',
+      highlightedTraceAttributeExpressions:
+        traceSourceHighlightedTraceAttributes,
     },
   });
   let metricsSource: TSource | undefined;
@@ -300,6 +304,13 @@ export default function OnboardingModal({
         traceSourceDatabaseName: 'otel_clickpy',
         traceSourceName: 'ClickPy Traces',
         traceSourceTableName: 'otel_traces',
+        traceSourceHighlightedTraceAttributes: [
+          {
+            sqlExpression:
+              "if((SpanAttributes['http.route']) LIKE '%dashboard%', concat('https://clickpy.clickhouse.com', path(SpanAttributes['http.target'])), '')",
+            alias: 'clickpy_link',
+          },
+        ],
 
         updateSourceMutation,
       });
