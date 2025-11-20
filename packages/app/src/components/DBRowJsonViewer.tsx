@@ -33,6 +33,8 @@ function buildJSONExtractStringQuery(
   return `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
 }
 
+import { TSource } from '@hyperdx/common-utils/dist/types';
+
 import { RowSidePanelContext } from './DBRowSidePanel';
 
 function filterObjectRecursively(obj: any, filter: string): any {
@@ -134,9 +136,11 @@ function HyperJsonMenu() {
 export function DBRowJsonViewer({
   data,
   jsonColumns = [],
+  source,
 }: {
   data: any;
   jsonColumns?: string[];
+  source?: TSource;
 }) {
   const {
     onPropertyAddClick,
@@ -261,6 +265,7 @@ export function DBRowJsonViewer({
               generateSearchUrl({
                 where: defaultWhere,
                 whereLanguage: 'sql',
+                source,
               }),
             );
           },

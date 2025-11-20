@@ -203,7 +203,11 @@ export function RowDataPanel({
   return (
     <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
       <Box mx="md" my="sm">
-        <DBRowJsonViewer data={firstRow} jsonColumns={jsonColumns} />
+        <DBRowJsonViewer
+          data={firstRow}
+          jsonColumns={jsonColumns}
+          source={source}
+        />
       </Box>
     </div>
   );

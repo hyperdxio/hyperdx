@@ -86,6 +86,7 @@ export function RowOverviewPanel({
         generateSearchUrl?.({
           where: query,
           whereLanguage: queryLanguage,
+          source,
         }) ?? '/'
       );
     },
@@ -249,6 +250,7 @@ export function RowOverviewPanel({
                 <DBRowJsonViewer
                   data={topLevelAttributes}
                   jsonColumns={jsonColumns}
+                  source={source}
                 />
               </Box>
             </Accordion.Panel>
@@ -266,6 +268,7 @@ export function RowOverviewPanel({
               <DBRowJsonViewer
                 data={filteredEventAttributes}
                 jsonColumns={jsonColumns}
+                source={source}
               />
             </Box>
           </Accordion.Panel>
