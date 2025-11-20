@@ -6,11 +6,12 @@ function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
     return null;
   }
 
-  if (parsed.isCertain('year')) {
-    return parsed.date();
-  }
-
   const now = new Date();
+  const parsedDate = parsed.date();
+
+  // If all of the time components have been inferred, set the time components of now
+  // to match the parsed time components. This ensures that the comparison later on uses
+  // the same point in time when only worrying about dates.
   if (
     !(
       parsed.isCertain('hour') ||
@@ -19,19 +20,27 @@ function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
       parsed.isCertain('millisecond')
     )
   ) {
-    // If all of the time components have been inferred, set the time components of now
-    // to match the parsed time components. This ensures that the comparison later on uses
-    // the same point in time when only worrying about dates.
     now.setHours(parsed.get('hour') || 0);
     now.setMinutes(parsed.get('minute') || 0);
     now.setSeconds(parsed.get('second') || 0);
     now.setMilliseconds(parsed.get('millisecond') || 0);
   }
 
-  const parsedDate = parsed.date();
+  // Handle future dates:
+  // - If slightly in the future (within 1 day), clamp to now
+  // - If significantly in the future (>1 day) AND year was inferred, shift year back
+  //   (e.g., "Dec 25" typed in June defaults to Dec 25 this year, but user likely meant last Dec 25)
   if (parsedDate > now) {
-    parsedDate.setFullYear(parsedDate.getFullYear() - 1);
+    const oneDayFromNow = now.getTime() + ms('1d');
+    if (parsedDate.getTime() <= oneDayFromNow) {
+      // Slightly in the future: clamp to now
+      return now;
+    } else if (!parsed.isCertain('year')) {
+      // Significantly in the future with inferred year: shift year back
+      parsedDate.setFullYear(parsedDate.getFullYear() - 1);
+    }
   }
+
   return parsedDate;
 }
 
