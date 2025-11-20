@@ -499,13 +499,13 @@ export function LogTableModelForm(props: TableModelProps) {
           {...props}
           name="highlightedRowAttributeExpressions"
           label="Highlighted Attributes"
-          helpText="Expressions defining row-level attributes which are displayed in the search side panel."
+          helpText="Expressions defining row-level attributes which are displayed in the row side panel for the selected row."
         />
         <HighlightedAttributeExpressionsFormRow
           {...props}
           name="highlightedTraceAttributeExpressions"
           label="Highlighted Trace Attributes"
-          helpText="Expressions defining trace-level attributes which are displayed in the search side panel."
+          helpText="Expressions defining trace-level attributes which are displayed in the trace view for the selected trace."
         />
       </Stack>
     </>
@@ -779,13 +779,13 @@ export function TraceTableModelForm(props: TableModelProps) {
         {...props}
         name="highlightedRowAttributeExpressions"
         label="Highlighted Attributes"
-        helpText="Expressions defining row-level attributes which are displayed in the search side panel."
+        helpText="Expressions defining row-level attributes which are displayed in the row side panel for the selected row"
       />
       <HighlightedAttributeExpressionsFormRow
         {...props}
         name="highlightedTraceAttributeExpressions"
         label="Highlighted Trace Attributes"
-        helpText="Expressions defining trace-level attributes which are displayed in the search side panel."
+        helpText="Expressions defining trace-level attributes which are displayed in the trace view for the selected trace."
       />
     </Stack>
   );
