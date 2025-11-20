@@ -742,76 +742,78 @@ export const RawLogTable = memo(
         )}
         <table className={cx('w-100', styles.table)} id={tableId}>
           <thead className={styles.tableHead}>
-            {table.getHeaderGroups().map(headerGroup => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header, headerIndex) => {
-                  const isLast = headerIndex === headerGroup.headers.length - 1;
-                  return (
-                    <TableHeader
-                      key={header.id}
-                      header={header}
-                      isLast={isLast}
-                      lastItemButtons={
-                        <Group gap={8} mr={8}>
-                          {tableId &&
-                            Object.keys(columnSizeStorage).length > 0 && (
+            {displayedColumns.length > 0 &&
+              table.getHeaderGroups().map(headerGroup => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header, headerIndex) => {
+                    const isLast =
+                      headerIndex === headerGroup.headers.length - 1;
+                    return (
+                      <TableHeader
+                        key={header.id}
+                        header={header}
+                        isLast={isLast}
+                        lastItemButtons={
+                          <Group gap={8} mr={8}>
+                            {tableId &&
+                              Object.keys(columnSizeStorage).length > 0 && (
+                                <UnstyledButton
+                                  onClick={() => setColumnSizeStorage({})}
+                                  title="Reset Column Widths"
+                                >
+                                  <MantineTooltip label="Reset Column Widths">
+                                    <IconRotateClockwise size={16} />
+                                  </MantineTooltip>
+                                </UnstyledButton>
+                              )}
+                            {config && (
                               <UnstyledButton
-                                onClick={() => setColumnSizeStorage({})}
-                                title="Reset Column Widths"
+                                onClick={() => handleSqlModalOpen(true)}
+                                title="Show generated SQL"
+                                tabIndex={0}
                               >
-                                <MantineTooltip label="Reset Column Widths">
-                                  <IconRotateClockwise size={16} />
+                                <MantineTooltip label="Show generated SQL">
+                                  <IconCode size={16} />
                                 </MantineTooltip>
                               </UnstyledButton>
                             )}
-                          {config && (
                             <UnstyledButton
-                              onClick={() => handleSqlModalOpen(true)}
-                              title="Show generated SQL"
-                              tabIndex={0}
+                              onClick={() => setWrapLinesEnabled(prev => !prev)}
+                              title="Wrap lines"
                             >
-                              <MantineTooltip label="Show generated SQL">
-                                <IconCode size={16} />
+                              <MantineTooltip label="Wrap lines">
+                                <IconTextWrap size={16} />
                               </MantineTooltip>
                             </UnstyledButton>
-                          )}
-                          <UnstyledButton
-                            onClick={() => setWrapLinesEnabled(prev => !prev)}
-                            title="Wrap lines"
-                          >
-                            <MantineTooltip label="Wrap lines">
-                              <IconTextWrap size={16} />
-                            </MantineTooltip>
-                          </UnstyledButton>
 
-                          <CsvExportButton
-                            data={csvData}
-                            filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
-                            className="fs-6 text-muted-hover "
-                          >
-                            <MantineTooltip
-                              label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+                            <CsvExportButton
+                              data={csvData}
+                              filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
+                              className="fs-6 text-muted-hover "
                             >
-                              <IconDownload size={16} />
-                            </MantineTooltip>
-                          </CsvExportButton>
-                          {onSettingsClick != null && (
-                            <UnstyledButton
-                              onClick={() => onSettingsClick()}
-                              title="Settings"
-                            >
-                              <MantineTooltip label="Settings">
-                                <IconSettings size={16} />
+                              <MantineTooltip
+                                label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+                              >
+                                <IconDownload size={16} />
                               </MantineTooltip>
-                            </UnstyledButton>
-                          )}
-                        </Group>
-                      }
-                    />
-                  );
-                })}
-              </tr>
-            ))}
+                            </CsvExportButton>
+                            {onSettingsClick != null && (
+                              <UnstyledButton
+                                onClick={() => onSettingsClick()}
+                                title="Settings"
+                              >
+                                <MantineTooltip label="Settings">
+                                  <IconSettings size={16} />
+                                </MantineTooltip>
+                              </UnstyledButton>
+                            )}
+                          </Group>
+                        }
+                      />
+                    );
+                  })}
+                </tr>
+              ))}
           </thead>
           <tbody>
             {paddingTop > 0 && (
