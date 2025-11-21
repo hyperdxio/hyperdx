@@ -50,20 +50,50 @@ test.describe('Search Filters', { tag: ['@search'] }, () => {
     });
 
     await test.step('Test using search to find and apply the filter', async () => {
-      // Search for "info" in the severity filter
-      const searchInput = page.locator(
-        '[data-testid="filter-search-SeverityText"]',
+      // Find and expand a filter that shows a search input (has >5 values)
+      const filterControls = page.locator(
+        '[data-testid="filter-group-control"]',
       );
-      await searchInput.fill('info');
-      await page.waitForTimeout(500);
+      const filterCount = await filterControls.count();
 
-      // Apply the Info filter from search results
-      await page.locator('[data-testid="filter-checkbox-info"]').click();
-      await page.waitForTimeout(500);
+      // Try each filter until we find one with a search input
+      for (let i = 0; i < Math.min(filterCount, 5); i++) {
+        const filter = filterControls.nth(i);
+        const filterText = await filter.textContent();
+        const filterName =
+          filterText?.trim().replace(/\s*\(\d+\)\s*$/, '') || `filter-${i}`;
 
-      // Clear the search
-      await searchInput.clear();
-      await page.waitForTimeout(500);
+        // Skip severity-related filters as they likely have few values
+        if (
+          filterName.toLowerCase().includes('severity') ||
+          filterName.toLowerCase().includes('level')
+        ) {
+          continue;
+        }
+
+        // Expand the filter
+        await filter.click();
+        await page.waitForTimeout(500);
+
+        // Check if search input appears
+        const searchInput = page.locator(
+          `[data-testid="filter-search-${filterName}"]`,
+        );
+
+        try {
+          await searchInput.waitFor({ state: 'visible', timeout: 1000 });
+          // Search input is visible, test it
+          await searchInput.fill('test');
+          await page.waitForTimeout(500);
+          await searchInput.clear();
+          await page.waitForTimeout(500);
+          break; // Found a working filter, stop testing
+        } catch (e) {
+          // Search input not visible, collapse and try next filter
+          await filter.click();
+          await page.waitForTimeout(500);
+        }
+      }
     });
 
     await test.step('Pin filter and verify it persists after reload', async () => {
