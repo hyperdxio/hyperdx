@@ -8,6 +8,7 @@ import {
 import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 
 import AutocompleteInput from '@/AutocompleteInput';
+import { useDebounce } from '@/utils';
 
 import {
   ILanguageFormatter,
@@ -60,6 +61,7 @@ export default function SearchInputV2({
 
   const ref = useRef<HTMLTextAreaElement>(null);
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
+  const debouncedValue = useDebounce(value, 300);
 
   const autoCompleteOptions = useAutoCompleteOptions(
     luceneLanguageFormatter,
@@ -71,10 +73,10 @@ export default function SearchInputV2({
   );
 
   useEffect(() => {
-    genEnglishExplanation(value).then(q => {
+    genEnglishExplanation(debouncedValue).then(q => {
       setParsedEnglishQuery(q);
     });
-  }, [value]);
+  }, [debouncedValue]);
 
   useHotkeys(
     '/',
