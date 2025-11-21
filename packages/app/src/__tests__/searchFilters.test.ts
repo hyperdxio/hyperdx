@@ -52,6 +52,19 @@ describe('searchFilters', () => {
         { type: 'sql', condition: "a NOT IN ('c')" },
       ]);
     });
+
+    it('should wrap keys with toString() when specified', () => {
+      const filters = {
+        'json.key': {
+          included: new Set<string>(['value']),
+          excluded: new Set<string>(['other value']),
+        },
+      };
+      expect(filtersToQuery(filters, { stringifyKeys: true })).toEqual([
+        { type: 'sql', condition: "toString(json.key) IN ('value')" },
+        { type: 'sql', condition: "toString(json.key) NOT IN ('other value')" },
+      ]);
+    });
   });
 
   describe('parseQuery', () => {

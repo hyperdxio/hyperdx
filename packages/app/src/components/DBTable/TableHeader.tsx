@@ -3,11 +3,13 @@ import { Button, Group, Text } from '@mantine/core';
 import {
   IconArrowDown,
   IconArrowUp,
-  IconDotsVertical,
+  IconGripVertical,
 } from '@tabler/icons-react';
 import { flexRender, Header } from '@tanstack/react-table';
 
 import { UNDEFINED_WIDTH } from '@/tableUtils';
+
+import styles from '../Table.module.scss';
 
 export default function TableHeader({
   isLast,
@@ -20,7 +22,7 @@ export default function TableHeader({
 }) {
   return (
     <th
-      className="overflow-hidden bg-hdx-dark"
+      className="overflow-hidden"
       key={header.id}
       colSpan={header.colSpan}
       style={{
@@ -47,7 +49,7 @@ export default function TableHeader({
           >
             <>
               {header.isPlaceholder ? null : (
-                <Text truncate="end" size="xs" flex="1" c="white">
+                <Text truncate="end" size="xs" flex="1">
                   {flexRender(
                     header.column.columnDef.header,
                     header.getContext(),
@@ -83,11 +85,11 @@ export default function TableHeader({
               onMouseDown={header.getResizeHandler()}
               onTouchStart={header.getResizeHandler()}
               className={cx(
-                `resizer text-gray-600 cursor-col-resize`,
+                `resizer ${styles.cursorColResize}`,
                 header.column.getIsResizing() && 'isResizing',
               )}
             >
-              <IconDotsVertical size={12} />
+              <IconGripVertical size={12} />
             </div>
           )}
           {isLast && (

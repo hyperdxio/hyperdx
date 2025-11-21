@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   type Alert,
   AlertIntervalSchema,
@@ -14,7 +14,7 @@ import {
   SearchConditionLanguage,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
-import { TextInput } from '@mantine/core';
+import { Alert as MantineAlert, TextInput } from '@mantine/core';
 import {
   Accordion,
   Box,
@@ -56,7 +56,7 @@ const SavedSearchAlertFormSchema = z
   .passthrough();
 
 const CHANNEL_ICONS = {
-  webhook: <i className="bi bi-slack fs-7 text-slate-400" />,
+  webhook: <i className="bi bi-slack fs-7 " />,
 };
 
 const AlertForm = ({
@@ -100,10 +100,13 @@ const AlertForm = ({
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
 
+  const groupBy = watch('groupBy');
+  const thresholdType = watch('thresholdType');
+
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <Stack gap="xs">
-        <Paper px="md" py="sm" bg="dark.6" radius="xs">
+        <Paper px="md" py="sm" radius="xs">
           <Text size="xxs" opacity={0.5}>
             Trigger
           </Text>
@@ -155,12 +158,25 @@ const AlertForm = ({
             size="xs"
           />
         </Paper>
-        <Paper px="md" py="sm" bg="dark.6" radius="xs">
+        <Paper px="md" py="sm" radius="xs">
           <Text size="xxs" opacity={0.5} mb={4}>
             Send to
           </Text>
           <AlertChannelForm control={control} type={watch('channel.type')} />
         </Paper>
+        {groupBy && thresholdType === AlertThresholdType.BELOW && (
+          <MantineAlert
+            icon={<i className="bi bi-info-circle-fill " />}
+            bg="dark"
+            py="xs"
+          >
+            <Text size="sm" opacity={0.7}>
+              Warning: Alerts with a &quot;Below (&lt;)&quot; threshold and a
+              &quot;grouped by&quot; value will not alert for periods with no
+              data for a group.
+            </Text>
+          </MantineAlert>
+        )}
       </Stack>
 
       <Accordion defaultValue={'chart'} mt="sm" mx={-16}>
@@ -186,7 +202,7 @@ const AlertForm = ({
       </Accordion>
 
       {defaultValues?.createdBy && (
-        <Paper px="md" py="sm" bg="dark.6" radius="xs" mt="sm">
+        <Paper px="md" py="sm" radius="xs" mt="sm">
           <Text size="xxs" opacity={0.5} mb={4}>
             Created by
           </Text>
@@ -374,7 +390,7 @@ export const DBSearchPageAlertModal = ({
         />
         <Stack gap={0} mb="md">
           <Group>
-            <Text c="dark.1" size="sm">
+            <Text size="sm">
               Alerts for <strong>{savedSearch?.name}</strong>
             </Text>
             {!id && (
@@ -387,9 +403,7 @@ export const DBSearchPageAlertModal = ({
               />
             )}
           </Group>
-          <Text c="dark.2" size="xxs">
-            {savedSearch?.where}
-          </Text>
+          <Text size="xxs">{savedSearch?.where}</Text>
         </Stack>
 
         <Tabs value={activeIndex} onChange={setTab} mb="xs">
@@ -403,10 +417,7 @@ export const DBSearchPageAlertModal = ({
             ))}
             <Tabs.Tab value="stage">
               <Group gap={4}>
-                <i
-                  className="bi bi-plus fs-5 text-slate-400"
-                  style={{ marginLeft: -8 }}
-                />
+                <i className="bi bi-plus fs-5 " style={{ marginLeft: -8 }} />
                 New Alert
               </Group>
             </Tabs.Tab>

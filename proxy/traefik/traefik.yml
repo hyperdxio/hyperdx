@@ -1,0 +1,8 @@
+entryPoints:
+  web:
+    address: ':4040'
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic/config.yml
+    watch: true

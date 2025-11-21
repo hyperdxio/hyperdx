@@ -74,6 +74,17 @@ export default function DBSqlRowTableWithSideBar({
     setRowId(null);
     setRowSource(null);
   }, [setRowId, setRowSource]);
+  const renderRowDetails = useCallback(
+    (r: { [key: string]: unknown }) => {
+      if (!sourceData) {
+        return <div className="p-3 text-muted">Loading...</div>;
+      }
+      return (
+        <RowOverviewPanelWrapper source={sourceData} rowId={r.id as string} />
+      );
+    },
+    [sourceData],
+  );
 
   return (
     <RowSidePanelContext.Provider value={context ?? {}}>
@@ -97,17 +108,7 @@ export default function DBSqlRowTableWithSideBar({
         onSortingChange={onSortingChange}
         denoiseResults={denoiseResults}
         initialSortBy={initialSortBy}
-        renderRowDetails={r => {
-          if (!sourceData) {
-            return <div className="p-3 text-muted">Loading...</div>;
-          }
-          return (
-            <RowOverviewPanelWrapper
-              source={sourceData}
-              rowId={r.id as string}
-            />
-          );
-        }}
+        renderRowDetails={renderRowDetails}
         onScroll={onScroll}
         onError={onError}
         onExpandedRowsChange={onExpandedRowsChange}
@@ -137,7 +138,7 @@ function RowOverviewPanelWrapper({
 
   return (
     <div className="position-relative">
-      <div className="bg-body px-3 pt-2 position-relative">
+      <div className="px-3 pt-2 position-relative">
         <TabBar
           className="fs-8"
           items={[
@@ -154,7 +155,7 @@ function RowOverviewPanelWrapper({
           onClick={setActiveTab}
         />
       </div>
-      <div className="bg-body">
+      <div>
         {activeTab === InlineTab.Overview && (
           <div className="inline-overview-panel">
             <RowOverviewPanel source={source} rowId={rowId} />

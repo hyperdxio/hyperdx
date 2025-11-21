@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { Flex, Text, UnstyledButton } from '@mantine/core';
+import { IconGripVertical } from '@tabler/icons-react';
 import {
   flexRender,
   getCoreRowModel,
@@ -195,17 +196,16 @@ export const Table = ({
   );
 
   return (
-    <div
-      className="overflow-auto h-100 fs-8 bg-inherit dark:bg-dark"
-      ref={tableContainerRef}
-    >
-      <table className="w-100 bg-inherit" style={{ tableLayout: 'fixed' }}>
+    <div className="overflow-auto h-100 fs-8" ref={tableContainerRef}>
+      <table
+        className="w-100"
+        style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}
+      >
         <thead
-          className="bg-inherit"
           style={{
-            background: 'inherit',
             position: 'sticky',
             top: 0,
+            background: 'var(--color-bg-body)',
           }}
         >
           {table.getHeaderGroups().map(headerGroup => (
@@ -228,7 +228,7 @@ export const Table = ({
                             <CsvExportButton
                               data={csvData}
                               filename="HyperDX_table_results"
-                              className="fs-8 text-muted-hover ms-2"
+                              className="fs-8 ms-2"
                               title="Download table as CSV"
                             >
                               <i className="bi bi-download" />
@@ -254,7 +254,7 @@ export const Table = ({
             return (
               <tr
                 key={virtualRow.key}
-                className="bg-default-dark-grey-hover"
+                className="bg-muted-hover"
                 data-index={virtualRow.index}
                 ref={rowVirtualizer.measureElement}
               >

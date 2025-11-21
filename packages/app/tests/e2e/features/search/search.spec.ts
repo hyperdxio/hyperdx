@@ -150,7 +150,7 @@ test.describe('Search', { tag: '@search' }, () => {
         );
         await page.waitForTimeout(1000);
 
-        const sidePanel = page.locator('nav[class*="EZDrawer__container"]');
+        const sidePanel = page.locator('[data-testid="row-side-panel"]');
         await expect(sidePanel).toBeVisible();
       });
 
@@ -257,6 +257,92 @@ test.describe('Search', { tag: '@search' }, () => {
         const rows = searchResultsTable.locator('tr');
         const rowCount = await rows.count();
         expect(rowCount).toBeGreaterThan(0);
+      });
+    });
+
+    test('Histogram drag-to-zoom preserves custom SELECT columns', async ({
+      page,
+    }) => {
+      const CUSTOM_SELECT =
+        'Timestamp, ServiceName, Body as message, SeverityText';
+
+      await test.step('Perform initial search', async () => {
+        await expect(page.locator('[data-testid="search-form"]')).toBeVisible();
+        await page.locator('[data-testid="search-submit-button"]').click();
+        await page.waitForLoadState('networkidle');
+      });
+
+      await test.step('Setup custom SELECT columns', async () => {
+        // The SELECT field is the first CodeMirror editor (index 0)
+        const selectEditor = page.locator('.cm-content').first();
+        await expect(selectEditor).toBeVisible();
+
+        // Select all and replace with custom columns
+        await selectEditor.click({ clickCount: 3 });
+        await page.keyboard.type(CUSTOM_SELECT);
+      });
+
+      await test.step('Search with custom columns and wait for histogram', async () => {
+        await page.locator('[data-testid="search-submit-button"]').click();
+        await page.waitForLoadState('networkidle');
+
+        // Wait for histogram to render with data
+        await expect(
+          page.locator('.recharts-responsive-container').first(),
+        ).toBeVisible();
+      });
+
+      await test.step('Drag on histogram to select time range', async () => {
+        const chartSurface = page.locator('.recharts-surface').first();
+        await expect(chartSurface).toBeVisible();
+
+        const box = await chartSurface.boundingBox();
+        expect(box).toBeTruthy();
+
+        // Drag from 25% to 75% of chart width to zoom into a time range
+        const startX = box!.x + box!.width * 0.25;
+        const endX = box!.x + box!.width * 0.75;
+        const y = box!.y + box!.height / 2;
+
+        await page.mouse.move(startX, y);
+        await page.mouse.down();
+        await page.mouse.move(endX, y, { steps: 10 });
+        await page.mouse.up();
+
+        // Wait for the zoom operation to complete
+        await page.waitForLoadState('networkidle');
+      });
+
+      await test.step('Verify custom SELECT columns are preserved', async () => {
+        // Check URL parameters
+        const url = page.url();
+        expect(url, 'URL should contain select parameter').toContain('select=');
+        expect(url, 'URL should contain alias "message"').toContain('message');
+
+        // Verify SELECT editor content
+        const selectEditor = page.locator('.cm-content').first();
+        await expect(selectEditor).toBeVisible();
+        const selectValue = await selectEditor.textContent();
+
+        expect(selectValue, 'SELECT should contain alias').toContain(
+          'Body as message',
+        );
+        expect(selectValue, 'SELECT should contain SeverityText').toContain(
+          'SeverityText',
+        );
+      });
+
+      await test.step('Verify search results are still displayed', async () => {
+        const searchResultsTable = page.locator(
+          '[data-testid="search-results-table"]',
+        );
+        await expect(
+          searchResultsTable,
+          'Search results table should be visible',
+        ).toBeVisible();
+
+        const rowCount = await searchResultsTable.locator('tr').count();
+        expect(rowCount, 'Should have search results').toBeGreaterThan(0);
       });
     });
   });

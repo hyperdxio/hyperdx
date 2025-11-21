@@ -45,10 +45,16 @@ dev-int:
 	npx nx run @hyperdx/api:dev:int $(FILE)
 	docker compose -p int -f ./docker-compose.ci.yml down
 
+.PHONY: dev-int-common-utils
+dev-int-common-utils:
+	docker compose -p int -f ./docker-compose.ci.yml up -d
+	npx nx run @hyperdx/common-utils:dev:int $(FILE)
+	docker compose -p int -f ./docker-compose.ci.yml down
+
 .PHONY: ci-int
 ci-int:
 	docker compose -p int -f ./docker-compose.ci.yml up -d
-	npx nx run @hyperdx/api:ci:int
+	npx nx run-many -t ci:int --parallel=false
 	docker compose -p int -f ./docker-compose.ci.yml down
 
 .PHONY: dev-unit
@@ -87,6 +93,7 @@ version:
 build-otel-collector:
 	docker build ./docker/otel-collector \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--target prod
 
 .PHONY: build-local
@@ -99,6 +106,7 @@ build-local:
 		--build-context app=./packages/app \
 		--build-arg CODE_VERSION=${CODE_VERSION} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${NEXT_LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--target all-in-one-noauth
 
 .PHONY: build-all-in-one
@@ -111,6 +119,7 @@ build-all-in-one:
 		--build-context app=./packages/app \
 		--build-arg CODE_VERSION=${CODE_VERSION} \
 		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--target all-in-one-auth
 
 .PHONY: build-app
@@ -127,6 +136,7 @@ build-app:
 build-otel-collector-nightly:
 	docker build ./docker/otel-collector \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target prod
 
 .PHONY: build-app-nightly
@@ -149,6 +159,7 @@ build-local-nightly:
 		--build-context app=./packages/app \
 		--build-arg CODE_VERSION=${CODE_VERSION} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		-t ${NEXT_LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target all-in-one-noauth
 
 .PHONY: build-all-in-one-nightly
@@ -161,6 +172,7 @@ build-all-in-one-nightly:
 		--build-context app=./packages/app \
 		--build-arg CODE_VERSION=${CODE_VERSION} \
 		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		-t ${NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target all-in-one-auth
 
 # Release targets (with multi-platform build and push)
@@ -176,6 +188,9 @@ release-otel-collector:
 			-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 			-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
 			-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_LATEST_TAG} \
+			-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+			-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
+			-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_LATEST_TAG} \
 			--target prod \
 			--push \
 			--cache-from=type=gha \
@@ -200,6 +215,9 @@ release-local:
 			-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 			-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
 			-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_LATEST_TAG} \
+			-t ${NEXT_LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+			-t ${NEXT_LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
+			-t ${NEXT_LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_LATEST_TAG} \
 			--target all-in-one-noauth \
 			--push \
 			--cache-from=type=gha \
@@ -224,6 +242,9 @@ release-all-in-one:
 			-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 			-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
 			-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_LATEST_TAG} \
+			-t ${NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+			-t ${NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
+			-t ${NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_LATEST_TAG} \
 			--target all-in-one-auth \
 			--push \
 			--cache-from=type=gha \
@@ -257,6 +278,7 @@ release-otel-collector-nightly:
 	@echo "Building and pushing nightly tag ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}..."; \
 	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target prod \
 		--push \
 		--cache-from=type=gha \
@@ -289,6 +311,7 @@ release-local-nightly:
 		--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
 		--platform ${BUILD_PLATFORMS} \
 		-t ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		-t ${NEXT_LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target all-in-one-noauth \
 		--push \
 		--cache-from=type=gha \
@@ -306,6 +329,7 @@ release-all-in-one-nightly:
 		--build-arg CODE_VERSION=${IMAGE_NIGHTLY_TAG} \
 		--platform ${BUILD_PLATFORMS} \
 		-t ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		-t ${NEXT_ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target all-in-one-auth \
 		--push \
 		--cache-from=type=gha \

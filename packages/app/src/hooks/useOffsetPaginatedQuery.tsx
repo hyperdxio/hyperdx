@@ -6,12 +6,12 @@ import {
   ClickHouseQueryError,
   ColumnMetaType,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
-import { ChatConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
-} from '@hyperdx/common-utils/dist/utils';
+} from '@hyperdx/common-utils/dist/core/utils';
+import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import {
   QueryClient,
   QueryFunction,
@@ -23,34 +23,24 @@ import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
 import { getMetadata } from '@/metadata';
 import { omit } from '@/utils';
+import {
+  generateTimeWindowsAscending,
+  generateTimeWindowsDescending,
+  TimeWindow,
+} from '@/utils/searchWindows';
 
 type TQueryKey = readonly [
   string,
-  ChatConfigWithOptTimestamp,
+  ChartConfigWithOptTimestamp,
   number | undefined,
 ];
 function queryKeyFn(
   prefix: string,
-  config: ChatConfigWithOptTimestamp,
+  config: ChartConfigWithOptTimestamp,
   queryTimeout?: number,
 ): TQueryKey {
   return [prefix, config, queryTimeout];
 }
-
-// Time window configuration - progressive bucketing strategy
-const TIME_WINDOWS_MS = [
-  6 * 60 * 60 * 1000, // 6h
-  6 * 60 * 60 * 1000, // 6h
-  12 * 60 * 60 * 1000, // 12h
-  24 * 60 * 60 * 1000, // 24h
-];
-
-type TimeWindow = {
-  startTime: Date;
-  endTime: Date;
-  windowIndex: number;
-  direction: 'ASC' | 'DESC';
-};
 
 type TPageParam = {
   windowIndex: number;
@@ -69,68 +59,9 @@ type TData = {
   pageParams: TPageParam[];
 };
 
-// Generate time windows from date range using progressive bucketing, starting at the end of the date range
-function generateTimeWindowsDescending(
-  startDate: Date,
-  endDate: Date,
-): TimeWindow[] {
-  const windows: TimeWindow[] = [];
-  let currentEnd = new Date(endDate);
-  let windowIndex = 0;
-
-  while (currentEnd > startDate) {
-    const windowSize =
-      TIME_WINDOWS_MS[windowIndex] ||
-      TIME_WINDOWS_MS[TIME_WINDOWS_MS.length - 1]; // use largest window size
-    const windowStart = new Date(
-      Math.max(currentEnd.getTime() - windowSize, startDate.getTime()),
-    );
-
-    windows.push({
-      endTime: new Date(currentEnd),
-      startTime: windowStart,
-      windowIndex,
-      direction: 'DESC',
-    });
-
-    currentEnd = windowStart;
-    windowIndex++;
-  }
-
-  return windows;
-}
-
-// Generate time windows from date range using progressive bucketing, starting at the beginning of the date range
-function generateTimeWindowsAscending(startDate: Date, endDate: Date) {
-  const windows: TimeWindow[] = [];
-  let currentStart = new Date(startDate);
-  let windowIndex = 0;
-
-  while (currentStart < endDate) {
-    const windowSize =
-      TIME_WINDOWS_MS[windowIndex] ||
-      TIME_WINDOWS_MS[TIME_WINDOWS_MS.length - 1]; // use largest window size
-    const windowEnd = new Date(
-      Math.min(currentStart.getTime() + windowSize, endDate.getTime()),
-    );
-
-    windows.push({
-      startTime: new Date(currentStart),
-      endTime: windowEnd,
-      windowIndex,
-      direction: 'ASC',
-    });
-
-    currentStart = windowEnd;
-    windowIndex++;
-  }
-
-  return windows;
-}
-
 // Get time window from page param
 function getTimeWindowFromPageParam(
-  config: ChatConfigWithOptTimestamp,
+  config: ChartConfigWithOptTimestamp,
   pageParam: TPageParam,
 ): TimeWindow {
   const [startDate, endDate] = config.dateRange;
@@ -148,7 +79,7 @@ function getTimeWindowFromPageParam(
 function getNextPageParam(
   lastPage: TQueryFnData | null,
   allPages: TQueryFnData[],
-  config: ChatConfigWithOptTimestamp,
+  config: ChartConfigWithOptTimestamp,
 ): TPageParam | undefined {
   if (lastPage == null) {
     return undefined;
@@ -428,7 +359,7 @@ function flattenData(data: TData | undefined): TQueryFnData | null {
 }
 
 export default function useOffsetPaginatedQuery(
-  config: ChatConfigWithOptTimestamp,
+  config: ChartConfigWithOptTimestamp,
   {
     isLive,
     enabled = true,

@@ -2,13 +2,16 @@ import { useMemo } from 'react';
 import { Control, useController } from 'react-hook-form';
 import { Select, SelectProps } from 'react-hook-form-mantine';
 import { Label, ReferenceArea, ReferenceLine } from 'recharts';
-import type { AlertChannelType } from '@hyperdx/common-utils/dist/types';
+import {
+  type AlertChannelType,
+  WebhookService,
+} from '@hyperdx/common-utils/dist/types';
 import { Button, ComboboxData, Group, Modal } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
 import api from '@/api';
 
-import { CreateWebhookForm } from '../TeamPage';
+import { WebhookForm } from '../components/TeamSettings/WebhookForm';
 
 type Webhook = {
   _id: string;
@@ -19,8 +22,9 @@ const WebhookChannelForm = <T extends object>(
   props: Partial<SelectProps<T>>,
 ) => {
   const { data: webhooks, refetch: refetchWebhooks } = api.useWebhooks([
-    'slack',
-    'generic',
+    WebhookService.Slack,
+    WebhookService.Generic,
+    WebhookService.IncidentIO,
   ]);
   const [opened, { open, close }] = useDisclosure(false);
 
@@ -88,7 +92,7 @@ const WebhookChannelForm = <T extends object>(
         zIndex={9999}
         size="lg"
       >
-        <CreateWebhookForm onClose={close} onSuccess={handleWebhookCreated} />
+        <WebhookForm onClose={close} onSuccess={handleWebhookCreated} />
       </Modal>
     </div>
   );

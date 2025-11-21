@@ -6,36 +6,48 @@ import {
   useState,
 } from 'react';
 
-const MIN_PANEL_WIDTH_PERCENT = 10;
-const MAX_PANEL_OFFSET = 25;
+const MIN_PANEL_PERCENT = 10;
+const MAX_PANEL_OFFSET_PX = 25;
 
-type ResizeDirection = 'left' | 'right';
+type ResizeDirection = 'left' | 'right' | 'top' | 'bottom';
 
 function useResizable(
-  initialWidthPercent: number,
+  initialSizePercent: number,
   direction: ResizeDirection = 'right',
 ) {
-  const [widthPercent, setWidthPercent] = useState(initialWidthPercent);
+  const [sizePercentage, setSizePercentage] = useState(initialSizePercent);
+
+  // Track drag start
   const startPosRef = useRef(0);
-  const startWidthRef = useRef(0);
+  const startSizeRef = useRef(0);
+
+  const isVertical = direction === 'top' || direction === 'bottom';
+  const axis: 'clientX' | 'clientY' = isVertical ? 'clientY' : 'clientX';
+
+  // For right/bottom, positive drag increases size; for left/top, it decreases.
+  const directionMultiplier =
+    direction === 'right' || direction === 'top' ? -1 : 1;
 
   const handleResize = useCallback(
     (e: globalThis.MouseEvent) => {
-      const delta = e.clientX - startPosRef.current;
-      const deltaPercent = (delta / window.innerWidth) * 100;
-      const directionMultiplier = direction === 'right' ? -1 : 1;
+      const containerSize = isVertical ? window.innerHeight : window.innerWidth;
+      const delta = e[axis] - startPosRef.current;
+      const deltaPercent = (delta / containerSize) * 100;
 
-      const newWidth =
-        startWidthRef.current + deltaPercent * directionMultiplier;
-      const maxWidth =
-        ((document.body.offsetWidth - MAX_PANEL_OFFSET) / window.innerWidth) *
-        100;
+      const offsetWidth = isVertical
+        ? window.innerHeight
+        : document.body.offsetWidth;
+      // Clamp to min and max
+      const maxPercent =
+        ((offsetWidth - MAX_PANEL_OFFSET_PX) / containerSize) * 100;
 
-      setWidthPercent(
-        Math.min(Math.max(MIN_PANEL_WIDTH_PERCENT, newWidth), maxWidth),
-      );
+      const minPercent = MIN_PANEL_PERCENT;
+
+      const newSize = startSizeRef.current + deltaPercent * directionMultiplier;
+
+      setSizePercentage(Math.min(Math.max(minPercent, newSize), maxPercent));
     },
-    [direction],
+    [isVertical, axis, directionMultiplier],
   );
 
   const endResize = useCallback(() => {
@@ -46,12 +58,12 @@ function useResizable(
   const startResize = useCallback(
     (e: ReactMouseEvent<HTMLElement>) => {
       e.preventDefault();
-      startPosRef.current = e.clientX;
-      startWidthRef.current = widthPercent;
+      startPosRef.current = e[axis];
+      startSizeRef.current = sizePercentage;
       document.addEventListener('mousemove', handleResize);
       document.addEventListener('mouseup', endResize);
     },
-    [widthPercent, handleResize, endResize],
+    [axis, sizePercentage, handleResize, endResize],
   );
 
   useEffect(() => {
@@ -61,7 +73,10 @@ function useResizable(
     };
   }, [handleResize, endResize]);
 
-  return { width: widthPercent, startResize };
+  return {
+    size: sizePercentage,
+    startResize,
+  };
 }
 
 export default useResizable;

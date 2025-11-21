@@ -1,15 +1,17 @@
 import * as chrono from 'chrono-node';
+import ms from 'ms';
 
 function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
   if (!parsed) {
     return null;
   }
 
-  if (parsed.isCertain('year')) {
-    return parsed.date();
-  }
-
   const now = new Date();
+  const parsedDate = parsed.date();
+
+  // If all of the time components have been inferred, set the time components of now
+  // to match the parsed time components. This ensures that the comparison later on uses
+  // the same point in time when only worrying about dates.
   if (
     !(
       parsed.isCertain('hour') ||
@@ -18,19 +20,27 @@ function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
       parsed.isCertain('millisecond')
     )
   ) {
-    // If all of the time components have been inferred, set the time components of now
-    // to match the parsed time components. This ensures that the comparison later on uses
-    // the same point in time when only worrying about dates.
     now.setHours(parsed.get('hour') || 0);
     now.setMinutes(parsed.get('minute') || 0);
     now.setSeconds(parsed.get('second') || 0);
     now.setMilliseconds(parsed.get('millisecond') || 0);
   }
 
-  const parsedDate = parsed.date();
+  // Handle future dates:
+  // - If slightly in the future (within 1 day), clamp to now
+  // - If significantly in the future (>1 day) AND year was inferred, shift year back
+  //   (e.g., "Dec 25" typed in June defaults to Dec 25 this year, but user likely meant last Dec 25)
   if (parsedDate > now) {
-    parsedDate.setFullYear(parsedDate.getFullYear() - 1);
+    const oneDayFromNow = now.getTime() + ms('1d');
+    if (parsedDate.getTime() <= oneDayFromNow) {
+      // Slightly in the future: clamp to now
+      return now;
+    } else if (!parsed.isCertain('year')) {
+      // Significantly in the future with inferred year: shift year back
+      parsedDate.setFullYear(parsedDate.getFullYear() - 1);
+    }
   }
+
   return parsedDate;
 }
 
@@ -60,29 +70,43 @@ export function parseTimeRangeInput(
   }
 }
 
-export const LIVE_TAIL_TIME_QUERY = 'Live Tail';
+export const LIVE_TAIL_TIME_QUERY = 'Live Tail' as const;
+export const LIVE_TAIL_DURATION_MS = ms('15m');
 
-export const RELATIVE_TIME_OPTIONS: ([string, string] | 'divider')[] = [
+export const RELATIVE_TIME_OPTIONS: (
+  | [label: string, duration: number, relativeSupport?: boolean]
+  | 'divider'
+)[] = [
   // ['Last 15 seconds', '15s'],
   // ['Last 30 seconds', '30s'],
   // 'divider',
-  ['Last 1 minute', '1m'],
-  ['Last 5 minutes', '5m'],
-  ['Last 15 minutes', '15m'],
-  ['Last 30 minutes', '30m'],
-  ['Last 45 minutes', '45m'],
+  ['Last 1 minute', ms('1m'), true],
+  ['Last 5 minutes', ms('5m'), true],
+  ['Last 15 minutes', ms('15m'), true],
+  ['Last 30 minutes', ms('30m'), true],
+  ['Last 45 minutes', ms('45m'), true],
   'divider',
-  ['Last 1 hour', '1h'],
-  ['Last 3 hours', '3h'],
-  ['Last 6 hours', '6h'],
-  ['Last 12 hours', '12h'],
+  ['Last 1 hour', ms('1h'), true],
+  ['Last 3 hours', ms('3h')],
+  ['Last 6 hours', ms('6h')],
+  ['Last 12 hours', ms('12h')],
   'divider',
-  ['Last 1 days', '1d'],
-  ['Last 2 days', '2d'],
-  ['Last 7 days', '7d'],
-  ['Last 14 days', '14d'],
-  ['Last 30 days', '30d'],
+  ['Last 1 days', ms('1d')],
+  ['Last 2 days', ms('2d')],
+  ['Last 7 days', ms('7d')],
+  ['Last 14 days', ms('14d')],
+  ['Last 30 days', ms('30d')],
 ];
+
+export function getRelativeTimeOptionLabel(value: number) {
+  if (value === LIVE_TAIL_DURATION_MS) {
+    return LIVE_TAIL_TIME_QUERY;
+  }
+  const option = RELATIVE_TIME_OPTIONS.find(
+    option => option !== 'divider' && option[1] === value,
+  ) as [string, number, boolean] | undefined;
+  return option ? option[0] : undefined;
+}
 
 export const DURATION_OPTIONS = [
   '30s',

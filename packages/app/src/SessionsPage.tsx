@@ -15,7 +15,7 @@ import {
   useQueryParams,
   withDefault,
 } from 'use-query-params';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   DateRange,
   SearchCondition,
@@ -36,6 +36,7 @@ import {
   Text,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconPlayerPlay } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -52,6 +53,8 @@ import SessionSidePanel from './SessionSidePanel';
 import { useSource, useSources } from './source';
 import { FormatTime } from './useFormatTime';
 import { formatDistanceToNowStrictShort } from './utils';
+
+import styles from '../styles/SessionsPage.module.scss';
 
 function SessionCard({
   email,
@@ -84,14 +87,11 @@ function SessionCard({
   return (
     <div
       data-testid={`session-card-${sessionId}`}
-      className="bg-hdx-dark rounded p-3 d-flex align-items-center justify-content-between text-white-hover-success-trigger"
+      className={`bg-muted rounded p-3 d-flex align-items-center justify-content-between ${styles.sessionCard}`}
       onClick={onClick}
       role="button"
     >
-      <div
-        style={{ width: '50%', maxWidth: 500 }}
-        className="child-hover-trigger"
-      >
+      <div style={{ width: '50%', maxWidth: 500 }} className={styles.emailText}>
         {email || `Anonymous Session ${sessionId}`}
       </div>
       <div>
@@ -296,7 +296,8 @@ export default function SessionsPage() {
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(values => {
-      setAppliedConfig(values);
+      const { source, ...rest } = values;
+      setAppliedConfig({ sessionSource: source, ...rest });
     })();
   }, [handleSubmit, setAppliedConfig, onSearch, displayedTimeInputValue]);
 
@@ -470,6 +471,7 @@ export default function SessionsPage() {
                   <SearchInputV2
                     tableConnection={tcFromSource(traceTrace)}
                     control={control}
+                    onSubmit={onSubmit}
                     name="where"
                     onLanguageChange={lang =>
                       setValue('whereLanguage', lang, {
@@ -490,7 +492,7 @@ export default function SessionsPage() {
                 }}
               />
               <Button variant="outline" type="submit" px="sm">
-                <i className="bi bi-play"></i>
+                <IconPlayerPlay size={16} />
               </Button>
             </Group>
           </Flex>
@@ -509,7 +511,7 @@ export default function SessionsPage() {
           <>
             {sessionSource && sessionSource.kind !== SourceKind.Session && (
               <Alert
-                icon={<i className="bi bi-info-circle-fill text-slate-400" />}
+                icon={<i className="bi bi-info-circle-fill " />}
                 color="gray"
                 py="xs"
                 mt="md"
@@ -543,7 +545,7 @@ function SessionSetupInstructions() {
   return (
     <>
       <Stack w={500} mx="auto" mt="xl" gap="xxs">
-        <i className="bi bi-laptop text-slate-600 fs-1"></i>
+        <i className="bi bi-laptop text-muted fs-1"></i>
         <Text c="gray" fw={500} size="xs">
           Instructions
         </Text>

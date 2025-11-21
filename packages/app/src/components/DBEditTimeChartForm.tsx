@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { omit } from 'lodash';
 import {
   Control,
   Controller,
@@ -18,7 +19,7 @@ import {
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
@@ -46,6 +47,7 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
+import { IconPlayerPlay } from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
@@ -228,7 +230,6 @@ function ChartSeriesEditorComponent({
             )}
           </Group>
         }
-        c="dark.2"
         labelPosition="right"
         mb={8}
         mt="sm"
@@ -385,6 +386,10 @@ export type SavedChartConfigWithSelectArray = Omit<
   select: Exclude<SavedChartConfig['select'], string>;
 };
 
+type SavedChartConfigWithSeries = SavedChartConfig & {
+  series: SavedChartConfigWithSelectArray['select'];
+};
+
 export default function EditTimeChartForm({
   dashboardId,
   chartConfig,
@@ -414,10 +419,20 @@ export default function EditTimeChartForm({
   'data-testid'?: string;
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
 }) {
+  // useFieldArray only supports array type fields, and select can be either a string or array.
+  // To solve for this, we maintain an extra form field called 'series' which is always an array.
+  const configWithSeries: SavedChartConfigWithSeries = useMemo(
+    () => ({
+      ...chartConfig,
+      series: Array.isArray(chartConfig.select) ? chartConfig.select : [],
+    }),
+    [chartConfig],
+  );
+
   const { control, watch, setValue, handleSubmit, register } =
-    useForm<SavedChartConfig>({
-      defaultValues: chartConfig,
-      values: chartConfig,
+    useForm<SavedChartConfigWithSeries>({
+      defaultValues: configWithSeries,
+      values: configWithSeries,
       resolver: zodResolver(zSavedChartConfig),
     });
 
@@ -427,8 +442,8 @@ export default function EditTimeChartForm({
     remove: removeSeries,
     swap: swapSeries,
   } = useFieldArray({
-    control: control as Control<SavedChartConfigWithSelectArray>,
-    name: 'select',
+    control: control as Control<SavedChartConfigWithSeries>,
+    name: 'series',
   });
 
   const select = watch('select');
@@ -492,11 +507,18 @@ export default function EditTimeChartForm({
 
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
-      setChartConfig(form);
+      // Merge the series and select fields back together, and prevent the series field from being submitted
+      const config = {
+        ...omit(form, ['series']),
+        select:
+          form.displayType === DisplayType.Search ? form.select : form.series,
+      };
+
+      setChartConfig(config);
       if (tableSource != null) {
-        const isSelectEmpty = !form.select || form.select.length === 0; // select is string or array
+        const isSelectEmpty = !config.select || config.select.length === 0; // select is string or array
         const newConfig = {
-          ...form,
+          ...config,
           from: tableSource.from,
           timestampValueExpression: tableSource.timestampValueExpression,
           dateRange,
@@ -505,7 +527,7 @@ export default function EditTimeChartForm({
           metricTables: tableSource.metricTables,
           select: isSelectEmpty
             ? tableSource.defaultTableSelectExpression || ''
-            : form.select,
+            : config.select,
         };
         setQueriedConfig(
           // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
@@ -525,12 +547,15 @@ export default function EditTimeChartForm({
   }, [onSubmit, submitRef]);
 
   const handleSave = useCallback(
-    (v: SavedChartConfig) => {
+    (v: SavedChartConfigWithSeries) => {
       // If the chart type is search, we need to ensure the select is a string
       if (displayType === DisplayType.Search && typeof v.select !== 'string') {
         v.select = '';
+      } else if (displayType !== DisplayType.Search) {
+        v.select = v.series;
       }
-      onSave?.(v);
+      // Avoid saving the series field. Series should be persisted in the select field.
+      onSave?.(omit(v, ['series']));
     },
     [onSave, displayType],
   );
@@ -543,17 +568,20 @@ export default function EditTimeChartForm({
     if (name === 'displayType' && type === 'change') {
       if (_.displayType === DisplayType.Search && typeof select !== 'string') {
         setValue('select', '');
+        setValue('series', []);
       }
       if (_.displayType !== DisplayType.Search && typeof select === 'string') {
-        setValue('where', '');
-        setValue('select', [
+        const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
           {
             aggFn: 'count',
             aggCondition: '',
             aggConditionLanguage: 'lucene',
             valueExpression: '',
           },
-        ]);
+        ];
+        setValue('where', '');
+        setValue('select', defaultSeries);
+        setValue('series', defaultSeries);
       }
       onSubmit();
     }
@@ -649,7 +677,7 @@ export default function EditTimeChartForm({
         )}
       />
       <Flex align="center" gap="sm" mb="sm">
-        <Text c="gray.4" size="sm" className="text-nowrap">
+        <Text size="sm" className="text-nowrap">
           Chart Name
         </Text>
         <InputControlled
@@ -676,7 +704,7 @@ export default function EditTimeChartForm({
               },
             }}
           />
-          <Box p="md" bg="dark.6" mb="md">
+          <Box p="md" mb="md">
             <HDXMarkdownChart
               config={{
                 markdown: watch('markdown') || 'Preview',
@@ -687,7 +715,7 @@ export default function EditTimeChartForm({
       ) : (
         <>
           <Flex mb="md" align="center" gap="sm">
-            <Text c="gray.4" pe="md" size="sm">
+            <Text pe="md" size="sm">
               Data Source
             </Text>
             <SourceSelectControlled
@@ -711,7 +739,7 @@ export default function EditTimeChartForm({
                   index={index}
                   key={field.id}
                   parentRef={parentRef}
-                  namePrefix={`select.${index}.`}
+                  namePrefix={`series.${index}.`}
                   onRemoveSeries={removeSeries}
                   length={fields.length}
                   onSwapSeries={swapSeries}
@@ -730,7 +758,6 @@ export default function EditTimeChartForm({
                   <Divider mt="md" mb="sm" />
                   <Flex align="center" mt="sm">
                     <Text
-                      c="gray.4"
                       me="sm"
                       size="sm"
                       style={{
@@ -773,7 +800,7 @@ export default function EditTimeChartForm({
                       Add Series
                     </Button>
                   )}
-                  {select.length == 2 && displayType !== DisplayType.Number && (
+                  {fields.length == 2 && displayType !== DisplayType.Number && (
                     <Switch
                       label="As Ratio"
                       size="sm"
@@ -860,7 +887,7 @@ export default function EditTimeChartForm({
       {alert && (
         <Paper my="sm">
           <Stack gap="xs">
-            <Paper px="md" py="sm" bg="dark.6" radius="xs">
+            <Paper px="md" py="sm" radius="xs">
               <Group gap="xs" justify="space-between">
                 <Group gap="xs">
                   <Text size="sm" opacity={0.7}>
@@ -934,7 +961,7 @@ export default function EditTimeChartForm({
           {onClose != null && (
             <Button
               variant="subtle"
-              color="dark.2"
+              color="dark"
               onClick={onClose}
               disabled={isSaving}
             >
@@ -966,10 +993,9 @@ export default function EditTimeChartForm({
               data-testid="chart-run-query-button"
               variant="outline"
               type="submit"
-              color="green"
               onClick={onSubmit}
             >
-              <i className="bi bi-play"></i>
+              <IconPlayerPlay size={16} />
             </Button>
           )}
         </Flex>
@@ -977,7 +1003,7 @@ export default function EditTimeChartForm({
       {!queryReady && activeTab !== 'markdown' ? (
         <Paper shadow="xs" p="xl">
           <Center mih={400}>
-            <Text size="sm" c="gray.4">
+            <Text size="sm">
               Please start by selecting a database, table, and timestamp column
               above and then click the play button to query data.
             </Text>

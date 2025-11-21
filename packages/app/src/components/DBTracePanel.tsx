@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
+  Badge,
   Button,
   Center,
   Divider,
@@ -18,6 +19,7 @@ import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallCha
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
 
+import ServiceMap from './ServiceMap/ServiceMap';
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { SourceSelectControlled } from './SourceSelect';
@@ -125,14 +127,13 @@ export default function DBTracePanel({
     <div data-testid={dataTestId}>
       <Flex align="center" justify="space-between" mb="sm">
         <Flex align="center">
-          <Text c="dark.2" size="xs" me="xs">
+          <Text size="xs" me="xs">
             {parentSourceData?.traceIdExpression}:{' '}
             {traceId || 'No trace id found for event'}
           </Text>
           {traceId != null && (
             <Button
               variant="subtle"
-              color="gray.4"
               size="xs"
               onClick={() => setShowTraceIdInput(v => !v)}
             >
@@ -141,7 +142,7 @@ export default function DBTracePanel({
           )}
         </Flex>
         <Group gap="sm">
-          <Text size="sm" c="gray.4">
+          <Text size="sm">
             {parentSourceData?.kind === SourceKind.Log
               ? 'Trace Source'
               : 'Correlated Log Source'}
@@ -151,9 +152,7 @@ export default function DBTracePanel({
       </Flex>
       {(showTraceIdInput || !traceId) && parentSourceId != null && (
         <Stack gap="xs">
-          <Text c="gray.4" size="xs">
-            Trace ID Expression
-          </Text>
+          <Text size="xs">Trace ID Expression</Text>
           <Flex>
             <SQLInlineEditorControlled
               tableConnection={tcFromSource(parentSourceData)}
@@ -183,7 +182,7 @@ export default function DBTracePanel({
             <Button
               ms="sm"
               variant="outline"
-              color="gray.4"
+              color="gray"
               onClick={() => setShowTraceIdInput(false)}
               size="xs"
             >
@@ -207,8 +206,7 @@ export default function DBTracePanel({
       )}
       {traceSourceData != null && eventRowWhere != null && (
         <>
-          <Divider my="md" />
-          <Text size="sm" c="dark.2" my="sm">
+          <Text size="sm" my="sm">
             Event Details
           </Text>
           <TabBar
@@ -251,9 +249,7 @@ export default function DBTracePanel({
       {traceSourceData != null && !eventRowWhere && (
         <Paper shadow="xs" p="xl" mt="md">
           <Center mih={100}>
-            <Text size="sm" c="gray.4">
-              Please select a span above to view details.
-            </Text>
+            <Text size="sm">Please select a span above to view details.</Text>
           </Center>
         </Paper>
       )}

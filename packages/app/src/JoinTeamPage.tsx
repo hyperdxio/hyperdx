@@ -1,7 +1,6 @@
 import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
-import { Button, Form } from 'react-bootstrap';
-import { Paper } from '@mantine/core';
+import { Button, Paper, Text, TextInput } from '@mantine/core';
 
 export default function JoinTeam() {
   const router = useRouter();
@@ -17,32 +16,30 @@ export default function JoinTeam() {
           </div>
           <Paper p="xl" withBorder>
             <div className="text-center">
-              <Form
+              <form
                 className="text-start"
                 action={`/api/team/setup/${token}`}
                 method="POST"
               >
-                <Form.Label
-                  htmlFor="password"
-                  className="text-start text-muted fs-7 mb-1"
-                >
-                  Password
-                </Form.Label>
-                <Form.Control
+                <TextInput
                   id="password"
                   name="password"
                   type="password"
-                  className="border-0"
+                  label="Password"
+                  styles={{
+                    label: {
+                      fontSize: '0.875rem',
+                      color: 'var(--color-text-muted)',
+                      marginBottom: 4,
+                    },
+                  }}
                 />
                 {err != null && (
-                  <div
-                    className="text-danger mt-2"
-                    data-test-id="auth-error-msg"
-                  >
+                  <Text c="red" mt="sm" data-test-id="auth-error-msg">
                     {err === 'invalid'
                       ? 'Password is invalid'
                       : 'Unknown error occurred, please try again later.'}
-                  </div>
+                  </Text>
                 )}
                 <div className="text-center mt-4">
                   <Button
@@ -54,7 +51,7 @@ export default function JoinTeam() {
                     Setup a password
                   </Button>
                 </div>
-              </Form>
+              </form>
             </div>
           </Paper>
         </div>

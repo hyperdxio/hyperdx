@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import produce from 'immer';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
-import { renderChartConfig } from '@hyperdx/common-utils/dist/renderChartConfig';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   DateRange,
   SearchCondition,

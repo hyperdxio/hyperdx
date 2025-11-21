@@ -1,8 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
-import Drawer from 'react-modern-drawer';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
-import { Grid, Group, Text } from '@mantine/core';
+import { Drawer, Grid, Group, Text } from '@mantine/core';
 
 import { INTEGER_NUMBER_FORMAT, MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartBox } from '@/components/ChartBox';
@@ -14,7 +13,6 @@ import { getExpressions } from '@/serviceDashboard';
 import { useSource } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
-import 'react-modern-drawer/dist/index.css';
 import styles from '@/../styles/LogSidePanel.module.scss';
 
 export default function ServiceDashboardDbQuerySidePanel({
@@ -64,12 +62,17 @@ export default function ServiceDashboardDbQuerySidePanel({
 
   return (
     <Drawer
-      duration={0}
-      open
+      opened
       onClose={onClose}
-      direction="right"
-      size={'80vw'}
+      position="right"
+      size="80vw"
+      withCloseButton={false}
       zIndex={drawerZIndex}
+      styles={{
+        body: {
+          padding: 0,
+        },
+      }}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel}>
@@ -92,9 +95,7 @@ export default function ServiceDashboardDbQuerySidePanel({
               <Grid.Col span={6}>
                 <ChartBox style={{ height: 350 }}>
                   <Group justify="space-between" align="center" mb="sm">
-                    <Text size="sm" c="gray.4">
-                      Total Query Time
-                    </Text>
+                    <Text size="sm">Total Query Time</Text>
                   </Group>
                   {source && (
                     <DBTimeChart
@@ -122,9 +123,7 @@ export default function ServiceDashboardDbQuerySidePanel({
               <Grid.Col span={6}>
                 <ChartBox style={{ height: 350 }}>
                   <Group justify="space-between" align="center" mb="sm">
-                    <Text size="sm" c="gray.4">
-                      Query Throughput
-                    </Text>
+                    <Text size="sm">Query Throughput</Text>
                   </Group>
                   {source && (
                     <DBTimeChart

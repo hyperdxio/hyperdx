@@ -2,6 +2,7 @@ import { memo, RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import { Tooltip } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { color } from '@uiw/react-codemirror';
 
 import useResizable from './hooks/useResizable';
 import { useDrag, usePrevious } from './utils';
@@ -17,6 +18,7 @@ type TimelineEventT = {
   color: string;
   body: React.ReactNode;
   minWidthPerc?: number;
+  isError?: boolean;
 };
 
 const NewTimelineRow = memo(
@@ -34,7 +36,9 @@ const NewTimelineRow = memo(
     height: number;
     scale: number;
     offset: number;
-    eventStyles?: any;
+    eventStyles?:
+      | React.CSSProperties
+      | ((event: TimelineEventT) => React.CSSProperties);
     onEventHover?: Function;
     onEventClick?: (event: any) => any;
   }) {
@@ -83,7 +87,9 @@ const NewTimelineRow = memo(
                   minWidth: `${percWidth.toFixed(6)}%`,
                   width: `${percWidth.toFixed(6)}%`,
                   marginLeft: `${percMarginLeft.toFixed(6)}%`,
-                  ...eventStyles,
+                  ...(typeof eventStyles === 'function'
+                    ? eventStyles(e)
+                    : eventStyles),
                 }}
               >
                 <div style={{ margin: 'auto' }} className="px-2">
@@ -165,12 +171,10 @@ function TimelineXAxis({
           width: 1,
           marginRight: -1,
           marginLeft: i === 0 ? 0 : `${percSpacing.toFixed(6)}%`,
-          background: 'rgba(255, 255, 255, 0.08)',
+          background: 'var(--color-border-muted)',
         }}
       >
-        <div className="ms-2 text-slate-400 fs-8.5">
-          {renderMs(i * interval)}
-        </div>
+        <div className="ms-2 fs-8.5">{renderMs(i * interval)}</div>
       </div>,
     );
   }
@@ -180,10 +184,11 @@ function TimelineXAxis({
       style={{
         position: 'sticky',
         top: 0,
-        height: 4,
+        height: 24,
         paddingTop: 4,
         zIndex: 200,
         pointerEvents: 'none',
+        background: 'var(--color-bg-body)',
       }}
     >
       <div className={`${cx('d-flex align-items-center')}`}>
@@ -243,8 +248,8 @@ function TimelineCursor({
               >
                 <div>
                   <span
-                    className="p-2 rounded"
-                    style={{ background: 'rgba(0,0,0,0.75)' }}
+                    className="p-2 rounded border"
+                    style={{ background: 'var(--color-bg-surface)' }}
                   >
                     {overlay}
                   </span>
@@ -326,7 +331,7 @@ function TimelineMouseCursor({
       overlay={renderMs(Math.max(cursorTime, 0))}
       height={height}
       labelWidth={labelWidth}
-      color="#ffffff88"
+      color="var(--color-bg-neutral)"
     />
   ) : null;
 }
@@ -338,6 +343,7 @@ type Row = {
   style?: any;
   type?: string;
   className?: string;
+  isActive?: boolean;
 };
 
 export default function TimelineChart({
@@ -377,7 +383,7 @@ export default function TimelineChart({
   const prevScale = usePrevious(scale);
 
   const initialWidthPercent = (initialLabelWidth / window.innerWidth) * 100;
-  const { width: labelWidthPercent, startResize } = useResizable(
+  const { size: labelWidthPercent, startResize } = useResizable(
     initialWidthPercent,
     'left',
   );
@@ -560,6 +566,7 @@ export default function TimelineChart({
                   'd-flex align-items-center overflow-hidden',
                   row.className,
                   styles.timelineRow,
+                  row.isActive && styles.timelineRowActive,
                 )}`}
                 style={{
                   // position: 'absolute',
@@ -582,19 +589,21 @@ export default function TimelineChart({
                   <div
                     className={resizeStyles.resizeHandle}
                     onMouseDown={startResize}
-                    style={{ backgroundColor: '#3a3a44' }}
+                    style={{ backgroundColor: 'var(--color-bg-neutral)' }}
                   />
                 </div>
                 <NewTimelineRow
                   events={row.events}
                   height={rowHeight}
                   maxVal={maxVal}
-                  eventStyles={{
-                    boxShadow: '0px 0px 4px rgba(0, 0, 0, 0.5)',
+                  eventStyles={(event: TimelineEventT) => ({
                     borderRadius: 2,
                     fontSize: rowHeight * 0.5,
-                    border: '1px solid #FFFFFF10',
-                  }}
+                    backgroundColor: event.isError
+                      ? 'var(--color-bg-danger)'
+                      : 'var(--color-bg-inverted)',
+                    color: 'var(--color-text-inverted)',
+                  })}
                   scale={scale}
                   offset={offset}
                 />

@@ -23,7 +23,10 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
           };
         }
 
-        return filtersToQuery(filterValues);
+        return filtersToQuery(
+          filterValues,
+          { stringifyKeys: false }, // Don't wrap keys with toString(), to preserve exact key names in URL query parameters
+        );
       });
     },
     [setFilterQueries],
@@ -42,7 +45,12 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
 
       return {
         valuesForExistingFilters,
-        queriesForExistingFilters: filtersToQuery(valuesForExistingFilters),
+        queriesForExistingFilters: filtersToQuery(
+          valuesForExistingFilters,
+          // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
+          // All keys can be stringified, since filter select values are stringified as well.
+          { stringifyKeys: true },
+        ),
       };
     }, [filterQueries, filters]);
 

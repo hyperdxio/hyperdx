@@ -20,6 +20,7 @@ import {
   SegmentedControl,
   Tabs,
   Text,
+  Tooltip,
 } from '@mantine/core';
 import ReactCodeMirror from '@uiw/react-codemirror';
 
@@ -33,6 +34,7 @@ import DBHeatmapChart from './components/DBHeatmapChart';
 import { DBSqlRowTable } from './components/DBRowTable';
 import DBTableChart from './components/DBTableChart';
 import OnboardingModal from './components/OnboardingModal';
+import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useConnections } from './connection';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
 
@@ -57,7 +59,7 @@ function InfrastructureTab({
     <Grid mt="md">
       <Grid.Col span={6}>
         <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" c="gray.4" mb="sm">
+          <Text size="sm" mb="sm">
             CPU Usage (Cores)
           </Text>
           <DBTimeChart
@@ -84,7 +86,7 @@ function InfrastructureTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" c="gray.4" mb="sm">
+          <Text size="sm" mb="sm">
             Memory Usage
           </Text>
           <DBTimeChart
@@ -110,7 +112,7 @@ function InfrastructureTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" c="gray.4" mb="sm">
+          <Text size="sm" mb="sm">
             Disk
           </Text>
           <DBTimeChart
@@ -144,7 +146,7 @@ function InfrastructureTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" c="gray.4" mb="sm">
+          <Text size="sm" mb="sm">
             S3 Requests
           </Text>
           <DBTimeChart
@@ -196,10 +198,10 @@ function InfrastructureTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" c="gray.4" mb="xs">
+          <Text size="sm" mb="xs">
             Network
           </Text>
-          <Text size="xs" c="gray.4" mb="sm">
+          <Text size="xs" mb="sm">
             Network activity for the entire machine, not only Clickhouse.
           </Text>
           <DBTimeChart
@@ -247,7 +249,7 @@ function InsertsTab({
       <Grid.Col span={12}>
         <ChartBox style={{ minHeight: 400 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
+            <Text size="sm">
               Insert{' '}
               {insertsBy === 'queries'
                 ? 'Queries'
@@ -321,9 +323,7 @@ function InsertsTab({
       <Grid.Col span={12}>
         <ChartBox style={{ minHeight: 200, height: 200 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Max Active Parts per Partition
-            </Text>
+            <Text size="sm">Max Active Parts per Partition</Text>
           </Group>
           <DBTimeChart
             config={{
@@ -353,10 +353,10 @@ function InsertsTab({
       </Grid.Col>
       <Grid.Col span={12}>
         <ChartBox style={{ height: 400 }}>
-          <Text size="sm" c="gray.4" mb="sm">
+          <Text size="sm" mb="sm">
             Active Parts Per Partition
           </Text>
-          <Text size="xs" c="gray.4" mb="md">
+          <Text size="xs" mb="md">
             Recommended to stay under 300, ClickHouse will automatically
             throttle inserts after 1,000 parts per partition and stop inserts at
             3,000 parts per partition.
@@ -457,6 +457,15 @@ function ClickhousePage() {
     // showRelativeInterval: isLive,
   });
 
+  // For future use if Live button is added
+  const [isLive, setIsLive] = useState(false);
+
+  const { manualRefreshCooloff, refresh } = useDashboardRefresh({
+    searchedTimeRange,
+    onTimeRangeSelect,
+    isLive,
+  });
+
   const filters = useMemo(() => {
     const { latencyMin, latencyMax } = latencyFilter;
     return [
@@ -488,30 +497,42 @@ function ClickhousePage() {
       <OnboardingModal requireSource={false} />
       <Group justify="space-between">
         <Group>
-          <Text c="gray.4" size="xl">
-            Clickhouse Dashboard
-          </Text>
+          <Text size="xl">Clickhouse Dashboard</Text>
           <ConnectionSelectControlled
             control={control}
             name="connection"
             size="xs"
           />
         </Group>
-        <form
-          onSubmit={e => {
-            e.preventDefault();
-            onSearch(displayedTimeInputValue);
-            return false;
-          }}
-        >
-          <TimePicker
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={range => {
-              onSearch(range);
+        <Group gap="xs">
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              onSearch(displayedTimeInputValue);
+              return false;
             }}
-          />
-        </form>
+          >
+            <TimePicker
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onSearch}
+            />
+          </form>
+          <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+            <Button
+              onClick={refresh}
+              loading={manualRefreshCooloff}
+              disabled={manualRefreshCooloff}
+              color="gray"
+              variant="outline"
+              title="Refresh dashboard"
+              aria-label="Refresh dashboard"
+              px="xs"
+            >
+              <i className="bi bi-arrow-clockwise fs-5"></i>
+            </Button>
+          </Tooltip>
+        </Group>
       </Group>
       <Tabs
         mt="md"
@@ -532,7 +553,7 @@ function ClickhousePage() {
             {/* <Grid.Col span={12}>
           <ChartBox style={{ minHeight: 300, height: 300 }}>
             <Group justify="space-between" align="center" mb="md">
-              <Text size="sm" c="gray.4" ms="xs">
+              <Text size="sm"  ms="xs">
                 Select P95 Query Latency
               </Text>
               <SegmentedControl
@@ -575,14 +596,13 @@ function ClickhousePage() {
             <Grid.Col span={12}>
               <ChartBox style={{ height: 250 }}>
                 <Flex justify="space-between" align="center">
-                  <Text size="sm" c="gray.4" ms="xs">
+                  <Text size="sm" ms="xs">
                     Query Latency
                   </Text>
                   {latencyFilter.latencyMin != null ||
                   latencyFilter.latencyMax != null ? (
                     <Button
                       size="xs"
-                      color="gray.4"
                       variant="subtle"
                       onClick={() => {
                         // Clears the min/max latency filters that are used to filter the query results
@@ -632,7 +652,7 @@ function ClickhousePage() {
             </Grid.Col>
             <Grid.Col span={12}>
               <ChartBox style={{ height: 400 }}>
-                <Text size="sm" c="gray.4" mb="md">
+                <Text size="sm" mb="md">
                   Query Count by Table
                 </Text>
 
@@ -673,7 +693,7 @@ function ClickhousePage() {
             </Grid.Col>
             <Grid.Col span={12}>
               <ChartBox style={{ height: 400 }}>
-                <Text size="sm" c="gray.4" mb="md">
+                <Text size="sm" mb="md">
                   Most Time Consuming Query Patterns
                 </Text>
                 <DBTableChart
@@ -731,7 +751,7 @@ function ClickhousePage() {
             </Grid.Col>
             <Grid.Col span={12}>
               <ChartBox style={{ height: 400 }}>
-                <Text size="sm" c="gray.4" mb="md">
+                <Text size="sm" mb="md">
                   Slowest Queries
                 </Text>
                 <DBSqlRowTable

@@ -4,7 +4,7 @@ import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import ReactDOM from 'react-dom';
 import { useForm } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   DateRange,
@@ -353,7 +353,7 @@ export default function SessionSubpanel({
       select: commonSelect,
       from: traceSource.from,
       dateRange: [start, end],
-      whereLanguage: 'lucene',
+      whereLanguage,
       where: searchedQuery,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
@@ -376,7 +376,7 @@ export default function SessionSubpanel({
       traceSource.connection,
       start,
       end,
-      // whereLanguage,
+      whereLanguage,
       searchedQuery,
       tab,
       highlightedEventsFilter,
@@ -402,7 +402,7 @@ export default function SessionSubpanel({
       select: commonSelect,
       from: traceSource.from,
       dateRange: [start, end],
-      whereLanguage: 'lucene',
+      whereLanguage,
       where: searchedQuery,
       timestampValueExpression: traceSource.timestampValueExpression,
       implicitColumnExpression: traceSource.implicitColumnExpression,
@@ -425,6 +425,7 @@ export default function SessionSubpanel({
       traceSource.connection,
       start,
       end,
+      whereLanguage,
       searchedQuery,
       tab,
       highlightedEventsFilter,
@@ -495,6 +496,7 @@ export default function SessionSubpanel({
                 language="sql"
                 size="xs"
                 enableHotkey
+                onSubmit={handleSubmit(handleWhereSubmit)}
               />
             ) : (
               <SearchInputV2
@@ -505,6 +507,7 @@ export default function SessionSubpanel({
                 size="xs"
                 placeholder="Search your events w/ Lucene ex. column:foo"
                 enableHotkey
+                onSubmit={handleSubmit(handleWhereSubmit)}
               />
             )}
           </form>
@@ -607,7 +610,7 @@ export default function SessionSubpanel({
                 {showRelativeTime ? (
                   <>
                     {formatmmss((focus?.ts ?? 0) - minTs)}
-                    <span className="fw-normal text-slate-300 ms-2">
+                    <span className="fw-normal ms-2">
                       {' / '}
                       {formatmmss(maxTs - minTs)}
                     </span>
@@ -622,7 +625,7 @@ export default function SessionSubpanel({
             <Tooltip label="Go 15 seconds back" color="gray">
               <ActionIcon
                 variant="filled"
-                color="gray.8"
+                color="gray"
                 size="md"
                 radius="xl"
                 onClick={skipBackward}
@@ -637,7 +640,7 @@ export default function SessionSubpanel({
             >
               <ActionIcon
                 variant="filled"
-                color="gray.8"
+                color="gray"
                 size="lg"
                 radius="xl"
                 onClick={togglePlayerState}
@@ -652,7 +655,7 @@ export default function SessionSubpanel({
             <Tooltip label="Skip 15 seconds" color="gray">
               <ActionIcon
                 variant="filled"
-                color="gray.8"
+                color="gray"
                 size="md"
                 radius="xl"
                 onClick={skipForward}

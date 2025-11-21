@@ -1,6 +1,6 @@
 import { ClickhouseClient } from '../clickhouse/node';
-import { Metadata, MetadataCache } from '../metadata';
-import * as renderChartConfigModule from '../renderChartConfig';
+import { Metadata, MetadataCache } from '../core/metadata';
+import * as renderChartConfigModule from '../core/renderChartConfig';
 import { ChartConfigWithDateRange } from '../types';
 
 // Mock ClickhouseClient
@@ -14,7 +14,7 @@ const mockCache = {
   set: jest.fn(),
 } as any;
 
-jest.mock('../renderChartConfig', () => ({
+jest.mock('../core/renderChartConfig', () => ({
   renderChartConfig: jest
     .fn()
     .mockResolvedValue({ sql: 'SELECT 1', params: {} }),
@@ -198,7 +198,7 @@ describe('Metadata', () => {
 
       // Setup the cache to return the mock data
       mockCache.getOrFetch.mockImplementation((key, queryFn) => {
-        if (key === 'test_db.test_table.metadata') {
+        if (key === 'test_connection.test_db.test_table.metadata') {
           return Promise.resolve(mockTableMetadata);
         }
         return queryFn();
@@ -212,7 +212,7 @@ describe('Metadata', () => {
 
       // Verify the cache was called with the right key
       expect(mockCache.getOrFetch).toHaveBeenCalledWith(
-        'test_db.test_table.metadata',
+        'test_connection.test_db.test_table.metadata',
         expect.any(Function),
       );
 
@@ -250,22 +250,6 @@ describe('Metadata', () => {
               },
             ],
           }),
-      });
-
-      // Mock getColumns to return columns including materialized ones
-      mockCache.getOrFetch.mockImplementation((key, queryFn) => {
-        if (key.includes('.columns')) {
-          return Promise.resolve([
-            { name: 'regular_column', type: 'String', default_type: '' },
-            {
-              name: 'materialized_column',
-              type: 'String',
-              default_type: 'MATERIALIZED',
-            },
-            { name: 'default_column', type: 'String', default_type: 'DEFAULT' },
-          ]);
-        }
-        return queryFn();
       });
     });
 
@@ -355,71 +339,155 @@ describe('Metadata', () => {
       expect(result).toEqual([{ key: 'column1', value: ['value1', 'value2'] }]);
     });
 
-    it('should include materialized fields when selecting all columns', async () => {
+    it('should return an empty list when no keys are provided', async () => {
       const renderChartConfigSpy = jest.spyOn(
         renderChartConfigModule,
         'renderChartConfig',
       );
 
-      await metadata.getKeyValues({
+      const results = await metadata.getKeyValues({
         chartConfig: mockChartConfig,
-        keys: ['column1'],
+        keys: [],
         limit: 10,
       });
 
-      // Verify that renderChartConfig was called with the expanded select list
-      // that includes all columns by name (including materialized ones)
-      expect(renderChartConfigSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          with: [
-            expect.objectContaining({
-              name: 'sampledData',
-              chartConfig: expect.objectContaining({
-                // Should expand to all column names instead of using '*'
-                select:
-                  '`regular_column`, `materialized_column`, `default_column`',
-              }),
-            }),
-          ],
-        }),
-        metadata,
+      expect(results).toEqual([]);
+      expect(renderChartConfigSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getValuesDistribution', () => {
+    const mockChartConfig: ChartConfigWithDateRange = {
+      from: {
+        databaseName: 'test_db',
+        tableName: 'test_table',
+      },
+      select: '',
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: '',
+      connection: 'test_connection',
+      dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+    };
+
+    beforeEach(() => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                __hdx_value: 'info',
+                __hdx_percentage: '85.9',
+              },
+              {
+                __hdx_value: 'debug',
+                __hdx_percentage: '3.0',
+              },
+              {
+                __hdx_value: 'warn',
+                __hdx_percentage: '6.5',
+              },
+              {
+                __hdx_value: 'error',
+                __hdx_percentage: '4.1',
+              },
+            ],
+          }),
+      });
+    });
+
+    it('should fetch and return values distribution for severity', async () => {
+      const result = await metadata.getValuesDistribution({
+        chartConfig: mockChartConfig,
+        key: 'severity',
+      });
+
+      expect(result).toEqual(
+        new Map([
+          ['info', Number(85.9)],
+          ['debug', Number(3.0)],
+          ['warn', Number(6.5)],
+          ['error', Number(4.1)],
+        ]),
       );
     });
 
-    it('should fallback to * when no columns are found', async () => {
-      // Mock getColumns to return empty array
-      mockCache.getOrFetch.mockImplementation((key, queryFn) => {
-        if (key.includes('.columns')) {
-          return Promise.resolve([]);
-        }
-        return queryFn();
-      });
+    it('should include alias CTEs when provided in the config', async () => {
+      const configWithAliases = {
+        ...mockChartConfig,
+        with: [
+          {
+            name: 'service',
+            sql: {
+              sql: 'ServiceName',
+              params: {},
+            },
+          },
+          {
+            name: 'severity',
+            sql: {
+              sql: 'SeverityText',
+              params: {},
+            },
+          },
+        ],
+        where: "severity = 'info'",
+      };
 
       const renderChartConfigSpy = jest.spyOn(
         renderChartConfigModule,
         'renderChartConfig',
       );
 
-      await metadata.getKeyValues({
-        chartConfig: mockChartConfig,
-        keys: ['column1'],
-        limit: 10,
+      await metadata.getValuesDistribution({
+        chartConfig: configWithAliases,
+        key: 'severity',
       });
 
-      // Should fallback to '*' when no columns are found
-      expect(renderChartConfigSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          with: [
-            expect.objectContaining({
-              name: 'sampledData',
-              chartConfig: expect.objectContaining({
-                select: '*',
-              }),
-            }),
-          ],
-        }),
-        metadata,
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      expect(actualConfig.with).toContainEqual({
+        name: 'service',
+        sql: {
+          sql: 'ServiceName',
+          params: {},
+        },
+      });
+      expect(actualConfig.with).toContainEqual({
+        name: 'severity',
+        sql: {
+          sql: 'SeverityText',
+          params: {},
+        },
+      });
+      expect(actualConfig.where).toBe("severity = 'info'");
+    });
+
+    it('should include filters from the config in the query', async () => {
+      const configWithFilters: ChartConfigWithDateRange = {
+        ...mockChartConfig,
+        filters: [
+          {
+            type: 'sql',
+            condition: "ServiceName IN ('clickhouse')",
+          },
+        ],
+      };
+
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
       );
+
+      await metadata.getValuesDistribution({
+        chartConfig: configWithFilters,
+        key: 'severity',
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      expect(actualConfig.filters).toContainEqual({
+        type: 'sql',
+        condition: "ServiceName IN ('clickhouse')",
+      });
     });
   });
 });

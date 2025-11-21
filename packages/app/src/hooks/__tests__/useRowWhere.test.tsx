@@ -173,7 +173,9 @@ describe('processRowToWhereClause', () => {
     const row = { dynamic_field: '"quoted_value"' };
     const result = processRowToWhereClause(row, columnMap);
 
-    expect(result).toBe("toString(dynamic_field)='quoted_value'");
+    expect(result).toBe(
+      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('\\\"quoted_value\\\"', 'Dynamic')), toJSONString('\\\"quoted_value\\\"'))",
+    );
   });
 
   it('should handle Dynamic columns with escaped values', () => {
@@ -192,7 +194,47 @@ describe('processRowToWhereClause', () => {
     const row = { dynamic_field: '{\\"took\\":7, not a valid json' };
     const result = processRowToWhereClause(row, columnMap);
     expect(result).toBe(
-      'toString(dynamic_field)=\'{\\"took\\":7, not a valid json\'',
+      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('{\\\\\\\"took\\\\\\\":7, not a valid json', 'Dynamic')), toJSONString('{\\\\\\\"took\\\\\\\":7, not a valid json'))",
+    );
+  });
+
+  it('should handle Dynamic columns with nested values', () => {
+    const columnMap = new Map([
+      [
+        'dynamic_field',
+        {
+          name: 'dynamic_field',
+          type: 'Dynamic',
+          valueExpr: 'dynamic_field',
+          jsType: JSDataType.Dynamic,
+        },
+      ],
+    ]);
+
+    const row = { dynamic_field: "{'foo': {'bar': 'baz'}}" };
+    const result = processRowToWhereClause(row, columnMap);
+    expect(result).toBe(
+      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('{\\'foo\\': {\\'bar\\': \\'baz\\'}}', 'Dynamic')), toJSONString('{\\'foo\\': {\\'bar\\': \\'baz\\'}}'))",
+    );
+  });
+
+  it('should handle Dynamic columns with array values', () => {
+    const columnMap = new Map([
+      [
+        'dynamic_field',
+        {
+          name: 'dynamic_field',
+          type: 'Dynamic',
+          valueExpr: 'dynamic_field',
+          jsType: JSDataType.Dynamic,
+        },
+      ],
+    ]);
+
+    const row = { dynamic_field: "['foo', 'bar']" };
+    const result = processRowToWhereClause(row, columnMap);
+    expect(result).toBe(
+      "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('[\\'foo\\', \\'bar\\']', 'Dynamic')), toJSONString('[\\'foo\\', \\'bar\\']'))",
     );
   });
 

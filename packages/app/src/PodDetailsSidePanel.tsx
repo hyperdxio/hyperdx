@@ -1,13 +1,13 @@
 import * as React from 'react';
 import Link from 'next/link';
-import Drawer from 'react-modern-drawer';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
   Box,
   Card,
+  Drawer,
   Flex,
   Grid,
   ScrollArea,
@@ -42,12 +42,10 @@ const PodDetailsProperty = React.memo(
     if (!value) return null;
     return (
       <div className="pe-4">
-        <Text size="xs" color="gray.6">
+        <Text size="xs" color="gray">
           {label}
         </Text>
-        <Text size="sm" color="gray.3">
-          {value}
-        </Text>
+        <Text size="sm">{value}</Text>
       </div>
     );
   },
@@ -342,14 +340,18 @@ export default function PodDetailsSidePanel({
 
   return (
     <Drawer
-      enableOverlay={rowId == null}
-      overlayOpacity={0.1}
-      duration={0}
-      open={!!podName}
+      opened={!!podName}
       onClose={handleClose}
-      direction="right"
+      position="right"
       size={isNested ? '70vw' : '80vw'}
+      withCloseButton={false}
       zIndex={drawerZIndex}
+      styles={{
+        body: {
+          padding: 0,
+          height: '100vh',
+        },
+      }}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
         <div className={styles.panel} data-testid="k8s-pod-details-panel">

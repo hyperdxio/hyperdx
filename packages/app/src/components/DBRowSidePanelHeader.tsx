@@ -17,11 +17,14 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 
-import EventTag from '@/components/EventTag';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import { formatDistanceToNowStrictShort } from '@/utils';
 
+import {
+  DBHighlightedAttributesList,
+  HighlightedAttribute,
+} from './DBHighlightedAttributesList';
 import { RowSidePanelContext } from './DBRowSidePanel';
 import LogLevel from './LogLevel';
 
@@ -89,7 +92,7 @@ function BreadcrumbNavigation({
             onClick={() => handleBreadcrumbItemClick(index)}
             style={{ textDecoration: 'none' }}
           >
-            <Text size="sm" c="blue.4" style={{ cursor: 'pointer' }}>
+            <Text size="sm" c="blue" style={{ cursor: 'pointer' }}>
               {index === 0 ? 'Original Event' : crumb.label}
             </Text>
           </UnstyledButton>
@@ -99,7 +102,7 @@ function BreadcrumbNavigation({
 
     // Add current level
     items.push(
-      <Text key="current" size="sm" c="gray.2">
+      <Text key="current" size="sm">
         Selected Event
       </Text>,
     );
@@ -119,7 +122,7 @@ function BreadcrumbNavigation({
 }
 
 export default function DBRowSidePanelHeader({
-  tags,
+  attributes = [],
   mainContent = '',
   mainContentHeader,
   date,
@@ -130,7 +133,7 @@ export default function DBRowSidePanelHeader({
   date: Date;
   mainContent?: string;
   mainContentHeader?: string;
-  tags: Record<string, string>;
+  attributes?: HighlightedAttribute[];
   severityText?: string;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
@@ -175,11 +178,11 @@ export default function DBRowSidePanelHeader({
   const maxBoxHeight = 120;
 
   const _generateSearchUrl = useCallback(
-    (query?: string, timeRange?: [Date, Date]) => {
+    (query?: string, queryLanguage?: 'sql' | 'lucene') => {
       return (
         generateSearchUrl?.({
           where: query,
-          whereLanguage: 'lucene',
+          whereLanguage: queryLanguage,
         }) ?? '/'
       );
     },
@@ -198,12 +201,12 @@ export default function DBRowSidePanelHeader({
       <Flex>
         {severityText && <LogLevel level={severityText} />}
         {severityText && isValidDate(date) && (
-          <Text size="xs" mx="xs" c="gray.4">
+          <Text size="xs" mx="xs">
             &middot;
           </Text>
         )}
         {isValidDate(date) && (
-          <Text c="gray.4" size="xs">
+          <Text size="xs">
             <FormatTime value={date} /> &middot;{' '}
             {formatDistanceToNowStrictShort(date)} ago
           </Text>
@@ -211,7 +214,6 @@ export default function DBRowSidePanelHeader({
       </Flex>
       {mainContent ? (
         <Paper
-          bg="dark.7"
           p="xs"
           mt="sm"
           style={{
@@ -222,15 +224,12 @@ export default function DBRowSidePanelHeader({
           ref={headerRef}
         >
           <Flex justify="space-between" mb="xs">
-            <Text size="xs" c="gray.4">
-              {mainContentHeader}
-            </Text>
+            <Text size="xs">{mainContentHeader}</Text>
             {/* Toggles expanded sidebar header*/}
             {headerHeight >= maxBoxHeight && (
               <Button
                 size="compact-xs"
                 variant="subtle"
-                color="gray.3"
                 onClick={() =>
                   setUserPreference({
                     ...userPreferences,
@@ -262,41 +261,15 @@ export default function DBRowSidePanelHeader({
           )}
         </Paper>
       ) : (
-        <Paper bg="dark.7" p="xs" mt="sm">
-          <Text size="xs" c="gray.4" mb="xs">
+        <Paper p="xs" mt="sm">
+          <Text size="xs" mb="xs">
             [Empty]
           </Text>
         </Paper>
       )}
-      <Flex mt="sm">
-        {Object.entries(tags).map(([sqlKey, value]) => {
-          // Convert SQL syntax to Lucene syntax
-          // SQL: column['property.foo'] -> Lucene: column.property.foo
-          // or SQL: column -> Lucene: column
-          const luceneKey = sqlKey.replace(/\['([^']+)'\]/g, '.$1');
-
-          return (
-            <EventTag
-              {...(onPropertyAddClick
-                ? {
-                    onPropertyAddClick,
-                    sqlExpression: sqlKey,
-                  }
-                : {
-                    onPropertyAddClick: undefined,
-                    sqlExpression: undefined,
-                  })}
-              generateSearchUrl={
-                generateSearchUrl ? _generateSearchUrl : undefined
-              }
-              displayedKey={luceneKey}
-              name={luceneKey}
-              value={value}
-              key={sqlKey}
-            />
-          );
-        })}
-      </Flex>
+      <Box mt="xs">
+        <DBHighlightedAttributesList attributes={attributes} />
+      </Box>
     </>
   );
 }

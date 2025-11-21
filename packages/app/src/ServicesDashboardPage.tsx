@@ -7,7 +7,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/metadata';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   DisplayType,
   Filter,
@@ -22,7 +22,9 @@ import {
   SegmentedControl,
   Tabs,
   Text,
+  Tooltip,
 } from '@mantine/core';
+import { IconPlayerPlay } from '@tabler/icons-react';
 
 import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
@@ -43,6 +45,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { useJsonColumns } from '@/hooks/useMetadata';
 import { withAppNav } from '@/layout';
 import SearchInputV2 from '@/SearchInputV2';
@@ -172,14 +175,12 @@ export function EndpointLatencyChart({
   return (
     <ChartBox style={{ height: 350 }}>
       <Group justify="space-between" align="center" mb="sm">
-        <Text size="sm" c="gray.4">
-          Request Latency
-        </Text>
+        <Text size="sm">Request Latency</Text>
         <Box>
           <Button.Group>
             <Button
               variant="subtle"
-              color={latencyChartType === 'line' ? 'green' : 'dark.2'}
+              color={latencyChartType === 'line' ? 'green' : 'gray'}
               size="xs"
               title="Line Chart"
               onClick={() => setLatencyChartType('line')}
@@ -189,7 +190,7 @@ export function EndpointLatencyChart({
 
             <Button
               variant="subtle"
-              color={latencyChartType === 'histogram' ? 'green' : 'dark.2'}
+              color={latencyChartType === 'histogram' ? 'green' : 'gray'}
               size="xs"
               title="Histogram"
               onClick={() => setLatencyChartType('histogram')}
@@ -300,9 +301,7 @@ function HttpTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Request Error Rate
-            </Text>
+            <Text size="sm">Request Error Rate</Text>
             <SegmentedControl
               size="xs"
               value={reqChartType}
@@ -352,9 +351,7 @@ function HttpTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Request Throughput
-            </Text>
+            <Text size="sm">Request Throughput</Text>
           </Group>
           {source && (
             <DBTimeChart
@@ -387,9 +384,7 @@ function HttpTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350, overflow: 'auto' }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              20 Top Most Time Consuming Endpoints
-            </Text>
+            <Text size="sm">20 Top Most Time Consuming Endpoints</Text>
           </Group>
 
           {source && (
@@ -464,7 +459,7 @@ function HttpTab({
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
+            <Text size="sm">
               Top 20{' '}
               {topEndpointsChartType === 'time'
                 ? 'Most Time Consuming'
@@ -567,9 +562,7 @@ function DatabaseTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Total Time Consumed per Query
-            </Text>
+            <Text size="sm">Total Time Consumed per Query</Text>
           </Group>
           {source && (
             <DBTimeChart
@@ -602,9 +595,7 @@ function DatabaseTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Throughput per Query
-            </Text>
+            <Text size="sm">Throughput per Query</Text>
           </Group>
           {source && (
             <DBTimeChart
@@ -640,14 +631,12 @@ function DatabaseTab({
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350, overflow: 'auto' }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Top 20 Most Time Consuming Queries
-            </Text>
+            <Text size="sm">Top 20 Most Time Consuming Queries</Text>
             <Box>
               <Button.Group>
                 <Button
                   variant="subtle"
-                  color={chartType === 'list' ? 'green' : 'dark.2'}
+                  color={chartType === 'list' ? 'green' : 'gray'}
                   size="xs"
                   title="List"
                   onClick={() => setChartType('list')}
@@ -657,7 +646,7 @@ function DatabaseTab({
 
                 <Button
                   variant="subtle"
-                  color={chartType === 'table' ? 'green' : 'dark.2'}
+                  color={chartType === 'table' ? 'green' : 'gray'}
                   size="xs"
                   title="Table"
                   onClick={() => setChartType('table')}
@@ -813,9 +802,7 @@ function ErrorsTab({
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Error Events per Service
-            </Text>
+            <Text size="sm">Error Events per Service</Text>
           </Group>
           {source && (
             <DBTimeChart
@@ -895,10 +882,19 @@ function ServicesDashboardPage() {
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
 
-  const { searchedTimeRange, onSearch } = useNewTimeQuery({
+  const { searchedTimeRange, onSearch, onTimeRangeSelect } = useNewTimeQuery({
     initialDisplayValue: DEFAULT_INTERVAL,
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
+  });
+
+  // For future use if Live button is added
+  const [isLive, setIsLive] = useState(false);
+
+  const { manualRefreshCooloff, refresh } = useDashboardRefresh({
+    searchedTimeRange,
+    onTimeRangeSelect,
+    isLive,
   });
 
   const onSubmit = useCallback(() => {
@@ -984,18 +980,31 @@ function ServicesDashboardPage() {
                   language="lucene"
                   placeholder="Search your events w/ Lucene ex. column:foo"
                   enableHotkey
+                  onSubmit={onSubmit}
                 />
               }
             />
             <TimePicker
               inputValue={displayedTimeInputValue}
               setInputValue={setDisplayedTimeInputValue}
-              onSearch={range => {
-                onSearch(range);
-              }}
+              onSearch={onSearch}
             />
+            <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+              <Button
+                onClick={refresh}
+                loading={manualRefreshCooloff}
+                disabled={manualRefreshCooloff}
+                color="gray"
+                variant="outline"
+                title="Refresh dashboard"
+                aria-label="Refresh dashboard"
+                px="xs"
+              >
+                <i className="bi bi-arrow-clockwise fs-5"></i>
+              </Button>
+            </Tooltip>
             <Button variant="outline" type="submit" px="sm">
-              <i className="bi bi-play"></i>
+              <IconPlayerPlay size={16} />
             </Button>
           </Group>
         </Group>

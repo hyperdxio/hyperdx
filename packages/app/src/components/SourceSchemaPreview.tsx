@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
-import { Modal, Paper, Tabs, TextProps, Tooltip } from '@mantine/core';
+import { Modal, Paper, Tabs, Text, TextProps, Tooltip } from '@mantine/core';
 import { IconCode } from '@tabler/icons-react';
 
 import { useTableMetadata } from '@/hooks/useMetadata';
@@ -32,16 +32,18 @@ const SourceSchemaInfoIcon = ({
     <Tooltip
       label={tooltipText}
       color="dark"
-      c="white"
       position="right"
       onClick={() => isEnabled && onClick()}
     >
       {variant === 'text' ? (
-        <span
+        <Text
+          fw={500}
+          size="xs"
+          className="text-sucess-hover"
           style={{ cursor: isEnabled ? 'pointer' : 'default', ...iconStyles }}
         >
           Schema
-        </span>
+        </Text>
       ) : (
         <IconCode size={16} />
       )}
@@ -67,7 +69,13 @@ const TableSchemaPreview = ({
   });
 
   return (
-    <Paper flex="auto" shadow="none" radius="sm" style={{ overflow: 'hidden' }}>
+    <Paper
+      flex="auto"
+      shadow="none"
+      radius="sm"
+      p="xs"
+      style={{ overflow: 'hidden' }}
+    >
       {isLoading ? (
         <div className="spin-animate d-inline-block">
           <i className="bi bi-arrow-repeat" />
@@ -76,6 +84,7 @@ const TableSchemaPreview = ({
         <SQLPreview
           data={data?.create_table_query ?? 'Schema is not available'}
           enableCopy={!!data?.create_table_query}
+          copyButtonSize="xs"
         />
       )}
     </Paper>

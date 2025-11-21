@@ -1,0 +1,179 @@
+// Custom utility classes for HyperDX
+// These are HyperDX-specific utilities using semantic color tokens
+// Layout utilities (spacing, display, flexbox, etc.) are in _bootstrap-utilities.scss
+
+// Background utilities
+.bg-surface {
+  background-color: var(--color-bg-surface) !important;
+}
+
+.bg-body {
+  background-color: var(--color-bg-body) !important;
+}
+
+.bg-muted {
+  background-color: var(--color-bg-muted);
+}
+
+.bg-muted-hover {
+  &:hover {
+    background-color: var(--color-bg-muted);
+  }
+}
+
+.bg-highlighted {
+  background-color: var(--color-bg-highlighted);
+}
+
+.bg-highlighted-hover {
+  &:hover {
+    background-color: var(--color-bg-highlighted);
+  }
+}
+
+.bg-danger-transparent {
+  background-color: color-mix(
+    in srgb,
+    var(--mantine-color-red-5) 15%,
+    transparent
+  );
+}
+
+// Border utilities
+.border {
+  border: 1px solid var(--color-border) !important;
+}
+
+.border-top {
+  border-top: 1px solid var(--color-border) !important;
+}
+
+.border-bottom {
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+.border-start {
+  border-left: 1px solid var(--color-border) !important;
+}
+
+.border-end {
+  border-right: 1px solid var(--color-border) !important;
+}
+
+.border-dark {
+  border-color: var(--color-border) !important;
+}
+
+.border-0 {
+  border: 0 !important;
+}
+
+// Rounded utilities
+.rounded {
+  border-radius: var(--mantine-radius-default) !important;
+}
+
+.rounded-sm {
+  border-radius: var(--mantine-radius-sm) !important;
+}
+
+.rounded-lg {
+  border-radius: var(--mantine-radius-lg) !important;
+}
+
+.rounded-0 {
+  border-radius: 0 !important;
+}
+
+// Text color utilities
+.text-muted {
+  color: var(--color-text-muted) !important;
+}
+
+.text-muted-hover {
+  color: var(--color-text-muted);
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--color-text-muted-hover);
+  }
+}
+
+.text-light {
+  color: var(--color-text) !important;
+}
+
+.text-success {
+  color: var(--color-text-success) !important;
+}
+
+.text-success-hover {
+  color: var(--color-text-success);
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--color-text-success-hover);
+  }
+}
+
+.text-link {
+  color: var(--color-text-primary) !important;
+}
+
+.text-danger {
+  color: var(--color-text-danger) !important;
+}
+
+.text-warning {
+  color: var(--color-text-warning) !important;
+}
+
+// Font size utilities
+.fs-8 {
+  font-size: var(--mantine-font-size-xs) !important;
+}
+
+.fs-7 {
+  font-size: var(--mantine-font-size-sm) !important;
+}
+
+// Font weight utilities
+.fw-normal {
+  font-weight: 400 !important;
+}
+
+.fw-bold {
+  font-weight: 700 !important;
+}
+
+.fw-500 {
+  font-weight: 500 !important;
+}
+
+.fw-600 {
+  font-weight: 600 !important;
+}
+
+.cursor-default {
+  cursor: default;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.cursor-grab {
+  cursor: grab;
+}
+
+.cursor-col-resize {
+  cursor: col-resize;
+}
+
+.cursor-zoom-in {
+  cursor: zoom-in !important;
+}
+
+.cursor-crosshair {
+  cursor: crosshair !important;
+}

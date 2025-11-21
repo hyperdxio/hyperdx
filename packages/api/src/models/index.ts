@@ -22,12 +22,12 @@ mongoose.connection.on('disconnected', () => {
   logger.info('Lost connection to MongoDB server');
 });
 
-mongoose.connection.on('error', () => {
-  logger.error('Could not connect to MongoDB');
+mongoose.connection.on('error', err => {
+  logger.error({ err }, 'Could not connect to MongoDB');
 });
 
 mongoose.connection.on('reconnected', () => {
-  logger.error('Reconnected to MongoDB');
+  logger.warn('Reconnected to MongoDB');
 });
 
 mongoose.connection.on('reconnectFailed', () => {

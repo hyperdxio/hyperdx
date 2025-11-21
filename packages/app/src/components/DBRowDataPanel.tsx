@@ -1,12 +1,27 @@
 import { useMemo } from 'react';
+import { flatten } from 'flat';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
+import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 
 import { DBRowJsonViewer } from './DBRowJsonViewer';
+
+export enum ROW_DATA_ALIASES {
+  TIMESTAMP = '__hdx_timestamp',
+  BODY = '__hdx_body',
+  TRACE_ID = '__hdx_trace_id',
+  SPAN_ID = '__hdx_span_id',
+  SEVERITY_TEXT = '__hdx_severity_text',
+  SERVICE_NAME = '__hdx_service_name',
+  RESOURCE_ATTRIBUTES = '__hdx_resource_attributes',
+  EVENT_ATTRIBUTES = '__hdx_event_attributes',
+  EVENTS_EXCEPTION_ATTRIBUTES = '__hdx_events_exception_attributes',
+  SPAN_EVENTS = '__hdx_span_events',
+}
 
 export function useRowData({
   source,
@@ -23,7 +38,14 @@ export function useRowData({
   const severityTextExpr =
     source.severityTextExpression || source.statusCodeExpression;
 
-  return useQueriedChartConfig(
+  const selectHighlightedRowAttributes =
+    source.kind === SourceKind.Trace || source.kind === SourceKind.Log
+      ? getSelectExpressionsForHighlightedAttributes(
+          source.highlightedRowAttributeExpressions,
+        )
+      : [];
+
+  const queryResult = useQueriedChartConfig(
     {
       connection: source.connection,
       select: [
@@ -32,13 +54,13 @@ export function useRowData({
         },
         {
           valueExpression: getDisplayedTimestampValueExpression(source),
-          alias: '__hdx_timestamp',
+          alias: ROW_DATA_ALIASES.TIMESTAMP,
         },
         ...(eventBodyExpr
           ? [
               {
                 valueExpression: eventBodyExpr,
-                alias: '__hdx_body',
+                alias: ROW_DATA_ALIASES.BODY,
               },
             ]
           : []),
@@ -46,7 +68,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: searchedTraceIdExpr,
-                alias: '__hdx_trace_id',
+                alias: ROW_DATA_ALIASES.TRACE_ID,
               },
             ]
           : []),
@@ -54,7 +76,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: searchedSpanIdExpr,
-                alias: '__hdx_span_id',
+                alias: ROW_DATA_ALIASES.SPAN_ID,
               },
             ]
           : []),
@@ -62,7 +84,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: severityTextExpr,
-                alias: '__hdx_severity_text',
+                alias: ROW_DATA_ALIASES.SEVERITY_TEXT,
               },
             ]
           : []),
@@ -70,7 +92,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: source.serviceNameExpression,
-                alias: '__hdx_service_name',
+                alias: ROW_DATA_ALIASES.SERVICE_NAME,
               },
             ]
           : []),
@@ -78,7 +100,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: source.resourceAttributesExpression,
-                alias: '__hdx_resource_attributes',
+                alias: ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES,
               },
             ]
           : []),
@@ -86,7 +108,7 @@ export function useRowData({
           ? [
               {
                 valueExpression: source.eventAttributesExpression,
-                alias: '__hdx_event_attributes',
+                alias: ROW_DATA_ALIASES.EVENT_ATTRIBUTES,
               },
             ]
           : []),
@@ -94,14 +116,15 @@ export function useRowData({
           ? [
               {
                 valueExpression: `${source.spanEventsValueExpression}.Attributes[indexOf(${source.spanEventsValueExpression}.Name, 'exception')]`,
-                alias: '__hdx_events_exception_attributes',
+                alias: ROW_DATA_ALIASES.EVENTS_EXCEPTION_ATTRIBUTES,
               },
               {
                 valueExpression: source.spanEventsValueExpression,
-                alias: '__hdx_span_events',
+                alias: ROW_DATA_ALIASES.SPAN_EVENTS,
               },
             ]
           : []),
+        ...selectHighlightedRowAttributes,
       ],
       where: rowId ?? '0=1',
       from: source.from,
@@ -112,10 +135,48 @@ export function useRowData({
       enabled: rowId != null,
     },
   );
+
+  // Normalize resource and event attributes to always use flat keys for both JSON and Map columns
+  const normalizedData = useMemo(() => {
+    if (!queryResult.data?.data?.[0]) {
+      return queryResult.data;
+    }
+
+    const row = queryResult.data.data[0];
+    const normalizedRow = { ...row };
+
+    if (row[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES]) {
+      normalizedRow[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES] = flatten(
+        row[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES],
+      );
+    }
+
+    if (row[ROW_DATA_ALIASES.EVENT_ATTRIBUTES]) {
+      normalizedRow[ROW_DATA_ALIASES.EVENT_ATTRIBUTES] = flatten(
+        row[ROW_DATA_ALIASES.EVENT_ATTRIBUTES],
+      );
+    }
+
+    return {
+      ...queryResult.data,
+      data: [normalizedRow],
+    };
+  }, [queryResult.data]);
+
+  return {
+    ...queryResult,
+    data: normalizedData,
+  };
 }
 
 export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {
-  return meta?.filter(m => m.type === 'JSON').map(m => m.name) ?? [];
+  return (
+    meta
+      // The type could either be just 'JSON' or it could be 'JSON(<parameters>)'
+      // this is a basic way to match both cases
+      ?.filter(m => m.type === 'JSON' || m.type.startsWith('JSON('))
+      .map(m => m.name) ?? []
+  );
 }
 
 export function RowDataPanel({
@@ -140,7 +201,7 @@ export function RowDataPanel({
   const jsonColumns = getJSONColumnNames(data?.meta);
 
   return (
-    <div className="flex-grow-1 bg-body overflow-auto" data-testid={dataTestId}>
+    <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
       <Box mx="md" my="sm">
         <DBRowJsonViewer data={firstRow} jsonColumns={jsonColumns} />
       </Box>

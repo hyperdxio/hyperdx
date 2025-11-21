@@ -1,19 +1,31 @@
 import { useState } from 'react';
 import Link from 'next/link';
-import { Button, Popover, Stack } from '@mantine/core';
+import SqlString from 'sqlstring';
+import { SearchConditionLanguage } from '@hyperdx/common-utils/dist/types';
+import { Button, Popover, Stack, Tooltip } from '@mantine/core';
+import { IconLink } from '@tabler/icons-react';
+
+import { isLinkableUrl } from '@/utils/highlightedAttributes';
 
 export default function EventTag({
   displayedKey,
   name,
+  nameLanguage = 'lucene',
   sqlExpression,
   value,
   onPropertyAddClick,
   generateSearchUrl,
 }: {
   displayedKey?: string;
-  name: string; // lucene property name ex. col.prop
+  /** Property name, in lucene or sql syntax (ex. col.prop or col['prop']) */
+  name: string;
+  /** The language of the property name, defaults to 'lucene' */
+  nameLanguage?: SearchConditionLanguage;
   value: string;
-  generateSearchUrl?: (query?: string, timeRange?: [Date, Date]) => string;
+  generateSearchUrl?: (
+    query?: string,
+    queryLanguage?: SearchConditionLanguage,
+  ) => string;
 } & (
   | {
       sqlExpression: undefined;
@@ -25,15 +37,21 @@ export default function EventTag({
     }
 )) {
   const [opened, setOpened] = useState(false);
-  const hasActions = !!onPropertyAddClick || !!generateSearchUrl;
+  const isLink = isLinkableUrl(value);
+  const hasActions = !!onPropertyAddClick || !!generateSearchUrl || isLink;
 
   if (!hasActions) {
     return (
-      <div key={name} className="bg-hdx-dark px-2 py-0.5 me-1 my-1">
+      <div key={name} className="bg-highlighted px-2 py-0.5 me-1 my-1">
         {displayedKey || name}: {value}
       </div>
     );
   }
+
+  const searchCondition =
+    nameLanguage === 'sql'
+      ? SqlString.format('? = ?', [SqlString.raw(name), value])
+      : `${name}:${typeof value === 'string' ? `"${value}"` : value}`;
 
   return (
     <Popover
@@ -44,13 +62,32 @@ export default function EventTag({
       onChange={setOpened}
     >
       <Popover.Target>
-        <div
-          key={name}
-          className="text-muted-hover bg-hdx-dark px-2 py-0.5 me-1 my-1 cursor-pointer"
-          onClick={() => setOpened(!opened)}
-        >
-          {displayedKey || name}: {value}
-        </div>
+        {isLink ? (
+          <Tooltip
+            label={value}
+            withArrow
+            maw={400}
+            multiline
+            style={{ wordBreak: 'break-word' }}
+          >
+            <a
+              href={encodeURI(value)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="d-flex flex-row align-items-center bg-highlighted px-2 py-0.5 me-1 my-1 cursor-pointer"
+            >
+              {displayedKey || name}
+              <IconLink size={14} className="ms-1" />
+            </a>
+          </Tooltip>
+        ) : (
+          <div
+            className="bg-highlighted px-2 py-0.5 me-1 my-1 cursor-pointer"
+            onClick={() => setOpened(!opened)}
+          >
+            {displayedKey || name}: {value}
+          </div>
+        )}
       </Popover.Target>
       <Popover.Dropdown p={2}>
         <Stack gap={0} justify="stretch">
@@ -71,9 +108,7 @@ export default function EventTag({
           )}
           {generateSearchUrl && (
             <Link
-              href={generateSearchUrl(
-                `${name}:${typeof value === 'string' ? `"${value}"` : value}`,
-              )}
+              href={generateSearchUrl(searchCondition, nameLanguage)}
               passHref
               legacyBehavior
             >

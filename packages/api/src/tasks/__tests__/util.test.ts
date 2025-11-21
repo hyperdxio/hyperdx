@@ -1,4 +1,5 @@
 import {
+  calcAlertDateRange,
   escapeJsonString,
   roundDownTo,
   roundDownToXMinutes,
@@ -333,6 +334,194 @@ describe('util', () => {
 
     it('should handle unicode characters', () => {
       expect(escapeJsonString('foo\u0000bar')).toBe('foo\\u0000bar');
+    });
+  });
+
+  describe('calcAlertDateRange', () => {
+    const now = Date.now();
+    const oneMinuteMs = 60 * 1000;
+    const oneHourMs = 60 * oneMinuteMs;
+
+    it('should return unchanged dates when range is within limits', () => {
+      const startTime = now - 10 * oneMinuteMs; // 10 minutes ago
+      const endTime = now;
+      const windowSizeInMins = 5;
+
+      const [start, end] = calcAlertDateRange(
+        startTime,
+        endTime,
+        windowSizeInMins,
+      );
+
+      expect(start.getTime()).toBe(startTime);
+      expect(end.getTime()).toBe(endTime);
+    });
+
+    it('should truncate start time when too many windows (> 50)', () => {
+      const windowSizeInMins = 1;
+      const maxWindows = 50;
+      const tooManyWindowsMs =
+        (maxWindows + 10) * windowSizeInMins * oneMinuteMs; // 60 minutes
+      const startTime = now - tooManyWindowsMs;
+      const endTime = now;
+
+      const [start, end] = calcAlertDateRange(
+        startTime,
+        endTime,
+        windowSizeInMins,
+      );
+
+      // Should truncate to exactly 50 windows
+      const expectedStartTime =
+        endTime - maxWindows * windowSizeInMins * oneMinuteMs;
+      expect(start.getTime()).toBe(expectedStartTime);
+      expect(end.getTime()).toBe(endTime);
+    });
+
+    it('should truncate start time when time range exceeds 6 hours for short windows (< 15 mins)', () => {
+      const windowSizeInMins = 10;
+      const maxLookbackTime = 6 * oneHourMs; // 6 hours for windows < 15 minutes
+      const tooLongRangeMs = maxLookbackTime + oneHourMs; // 7 hours
+      const startTime = now - tooLongRangeMs;
+      const endTime = now;
+
+      const [start, end] = calcAlertDateRange(
+        startTime,
+        endTime,
+        windowSizeInMins,
+      );
+
+      const expectedStartTime = endTime - maxLookbackTime;
+      expect(start.getTime()).toBeGreaterThan(startTime);
+      expect(start.getTime()).toBe(expectedStartTime);
+      expect(end.getTime()).toBe(endTime);
+    });
+
+    it('should truncate start time when time range exceeds 24 hours for long windows (>= 15 mins)', () => {
+      const windowSizeInMins = 30;
+      const maxLookbackTime = 24 * oneHourMs; // 24 hours for windows >= 15 minutes
+      const tooLongRangeMs = maxLookbackTime + 2 * oneHourMs; // 26 hours
+      const startTime = now - tooLongRangeMs;
+      const endTime = now;
+
+      const [start, end] = calcAlertDateRange(
+        startTime,
+        endTime,
+        windowSizeInMins,
+      );
+
+      const expectedStartTime = endTime - maxLookbackTime;
+      expect(start.getTime()).toBe(expectedStartTime);
+      expect(end.getTime()).toBe(endTime);
+    });
+
+    it('should apply the more restrictive truncation when both limits are exceeded', () => {
+      const windowSizeInMins = 1;
+      const maxWindows = 50;
+      const maxLookbackTime = 6 * oneHourMs; // 6 hours for 1-minute windows
+
+      // Create a range that exceeds both limits
+      const excessiveRangeMs = Math.max(
+        (maxWindows + 100) * windowSizeInMins * oneMinuteMs, // 150 windows
+        maxLookbackTime + 2 * oneHourMs, // 8 hours
+      );
+      const startTime = now - excessiveRangeMs;
+      const endTime = now;
+
+      const [start, end] = calcAlertDateRange(
+        startTime,
+        endTime,
+        windowSizeInMins,
+      );
+
+      // Should use the more restrictive limit (maxWindows in this case)
+      const expectedStartTime =
+        endTime - maxWindows * windowSizeInMins * oneMinuteMs;
+      expect(start.getTime()).toBe(expectedStartTime);
+      expect(end.getTime()).toBe(endTime);
+    });
+
+    it('should handle very large window sizes correctly', () => {
+      const windowSizeInMins = 120; // 2 hours
+      const maxLookbackTime = 24 * oneHourMs; // 24 hours for large windows
+      const normalRange = 12 * oneHourMs; // 12 hours - within limit
+      const startTime = now - normalRange;
+      const endTime = now;
+
+      const [start, end] = calcAlertDateRange(
+        startTime,
+        endTime,
+        windowSizeInMins,
+      );
+
+      // Should remain unchanged since within limits
+      expect(start.getTime()).toBe(startTime);
+      expect(end.getTime()).toBe(endTime);
+    });
+
+    it('should handle exactly 50 windows without truncation', () => {
+      const windowSizeInMins = 5;
+      const maxWindows = 50;
+      const exactlyMaxWindowsMs = maxWindows * windowSizeInMins * oneMinuteMs; // 250 minutes
+      const startTime = now - exactlyMaxWindowsMs;
+      const endTime = now;
+
+      const [start, end] = calcAlertDateRange(
+        startTime,
+        endTime,
+        windowSizeInMins,
+      );
+
+      // Should remain unchanged since exactly at the limit
+      expect(start.getTime()).toBe(startTime);
+      expect(end.getTime()).toBe(endTime);
+    });
+
+    it('should handle fractional windows correctly', () => {
+      const windowSizeInMins = 7;
+      const partialWindowsMs = 7.5 * windowSizeInMins * oneMinuteMs; // 7.5 windows
+      const startTime = now - partialWindowsMs;
+      const endTime = now;
+
+      const [start, end] = calcAlertDateRange(
+        startTime,
+        endTime,
+        windowSizeInMins,
+      );
+
+      // Should remain unchanged since well within limits
+      expect(start.getTime()).toBe(startTime);
+      expect(end.getTime()).toBe(endTime);
+    });
+
+    it('should handle zero time range', () => {
+      const startTime = now;
+      const endTime = now;
+      const windowSizeInMins = 5;
+
+      const [start, end] = calcAlertDateRange(
+        startTime,
+        endTime,
+        windowSizeInMins,
+      );
+
+      expect(start.getTime()).toBe(startTime);
+      expect(end.getTime()).toBe(endTime);
+    });
+
+    it('should return Date objects', () => {
+      const startTime = now - 10 * oneMinuteMs;
+      const endTime = now;
+      const windowSizeInMins = 5;
+
+      const [start, end] = calcAlertDateRange(
+        startTime,
+        endTime,
+        windowSizeInMins,
+      );
+
+      expect(start).toBeInstanceOf(Date);
+      expect(end).toBeInstanceOf(Date);
     });
   });
 });

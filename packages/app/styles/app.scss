@@ -1,7 +1,12 @@
 /* stylelint-disable */
+@import './_semantic-colors';
 
-@import './variables';
-@import '~bootstrap/scss/bootstrap';
+// Bootstrap utilities only (d-flex, flex-column, m-*, p-*, etc.)
+@import './_bootstrap-utilities';
+
+// Custom utilities (bg-surface, border-dark, etc.)
+@import './_utilities';
+
 @import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css');
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500;700&display=swap');
@@ -21,147 +26,6 @@
   font-family: 'IBM Plex Mono', monospace;
 }
 
-html,
-body,
-html[class~='dark'] body {
-  background-color: $body-bg;
-}
-.bg-body {
-  background-color: $body-bg;
-}
-.bg-hdx-dark {
-  background-color: $bg-hdx-dark;
-}
-
-.bg-grey {
-  background-color: $bg-grey;
-}
-
-.bg-light-grey {
-  background-color: #37414d;
-}
-.bg-light-grey-hover {
-  background-color: #37414d;
-  &:hover {
-    background-color: #4e5c6d;
-  }
-}
-
-.bg-inherit {
-  background-color: inherit;
-}
-
-.bg-dark-grey {
-  background-color: $bg-dark-grey;
-}
-.bg-default-dark-grey-hover {
-  &:hover {
-    background-color: $bg-dark-grey;
-  }
-}
-
-.border-grey-top {
-  border-top: 1px solid #393939;
-}
-.border-grey-bottom {
-  border-bottom: 1px solid #393939;
-}
-.border-grey {
-  border-color: #393939 !important;
-}
-.border-grey-gradient {
-  box-shadow: 0 0 0 1px rgb(82 82 82 / 60%);
-}
-
-.fw-500 {
-  font-weight: 500;
-}
-.fw-600 {
-  font-weight: 600;
-}
-
-.text-success {
-  color: var(--mantine-color-green-3) !important;
-}
-
-// Darker than text-muted
-.text-gray-600 {
-  color: $gray-600;
-}
-
-.text-slate-700 {
-  color: $slate-700;
-}
-
-.text-slate-600 {
-  color: $slate-600;
-}
-
-.text-slate-500 {
-  color: $slate-500;
-}
-
-.text-slate-400 {
-  color: $slate-400;
-}
-
-.text-slate-300 {
-  color: $slate-300;
-}
-
-.text-slate-200 {
-  color: $slate-200;
-}
-
-.text-muted-hover {
-  color: $text-muted;
-  transition: color 0.2s ease;
-  &:hover {
-    color: #fff;
-  }
-}
-
-.text-muted-hover-black {
-  color: $text-muted;
-  transition: color 0.2s ease;
-  &:hover {
-    color: black;
-  }
-}
-
-.text-white-hover {
-  color: $white;
-  transition: color 0.2s ease;
-  &:hover {
-    color: $text-muted;
-  }
-}
-
-.text-white-hover-green {
-  color: $white;
-  transition: color 0.2s ease;
-  &:hover {
-    color: $green;
-  }
-}
-
-.text-purple-hover {
-  color: $text-purple;
-  transition: color 0.2s ease;
-  &:hover {
-    color: darken($text-purple, 5);
-  }
-}
-
-.text-white-hover-success-trigger {
-  transition: color 0.2s ease;
-  .child-hover-trigger {
-    color: $white;
-  }
-  &:hover .child-hover-trigger {
-    color: $green;
-  }
-}
 
 :root {
   --mantine-webkit-font-smoothing: inherit;
@@ -171,7 +35,7 @@ html[class~='dark'] body {
 
 body {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: $font-size-base * 0.875;
+  font-size: var(--mantine-font-size-sm);
 }
 
 .accordion-button,
@@ -183,206 +47,12 @@ body {
   }
 }
 
-.cursor-default {
-  cursor: default;
-}
-
-.cursor-pointer {
-  cursor: pointer;
-}
-
-.cursor-grab {
-  cursor: grab;
-}
-
-.cursor-col-resize {
-  cursor: col-resize;
-}
-
-.cursor-zoom-in {
-  cursor: zoom-in !important;
-}
-
-.cursor-crosshair {
-  cursor: crosshair !important;
-}
-
 .nav-link.active {
   font-weight: 500;
 }
 
-.btn-brand-primary {
-  // @include button-variant(#fff, #8256d0, #ffffff00);
-  @include button-variant($purple, #ffffff00, white);
-  background-image: linear-gradient(
-    89.91deg,
-    $purple 0.06%,
-    #245ab2 99.9%
-  ) !important;
-  border: 0;
-  font-weight: 500;
-  box-shadow: 0px 0px 10px 0px #8256d0b2;
-
-  transition: opacity 0.2s;
-
-  &:hover {
-    opacity: 0.9;
-    border: 0;
-  }
-  &:focus {
-    box-shadow: none;
-  }
-}
-.btn-outline-brand-primary {
-  // @include button-outline-variant(white, white, #8256d0, #8256d0);
-  position: relative;
-
-  $border: 2px;
-  color: #fff;
-  background: $body-bg;
-  background-clip: padding-box; /* !importanté */
-  border: solid $border transparent; /* !importanté */
-
-  &:hover {
-    color: $text-muted;
-    &:before {
-      background: $purple;
-    }
-  }
-
-  &:before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    margin: -$border; /* !importanté */
-    border-radius: inherit; /* !importanté */
-    background: linear-gradient(89.91deg, $purple 0.06%, #245ab2 99.9%);
-    z-index: -1;
-  }
-
-  .btn-check:focus + &,
-  &:focus {
-    box-shadow: 0 0 0 $btn-focus-width rgba($purple, 0.5);
-  }
-}
-.btn-dark {
-  background: #151515af;
-  &:hover {
-    background: #4d4d4d;
-  }
-}
-
-.outline-green-gradient {
-  position: relative;
-
-  $border: 1px;
-  background-clip: padding-box; /* !importanté */
-  border: solid $border transparent; /* !importanté */
-
-  &:before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    margin: -$border; /* !importanté */
-    border-radius: inherit; /* !importanté */
-    background: linear-gradient(
-      300.9deg,
-      rgba(255, 255, 255, 0.1) 0%,
-      rgba(0, 202, 51, 0.144) 100%
-    );
-    z-index: -1;
-  }
-}
-
-.primary-text {
-  background: linear-gradient(91.75deg, $purple 2.76%, #317bf5 93.09%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.fs-0 {
-  @include font-size(3rem);
-  @include rfs(3.5rem, line-height);
-  // @include font-size(3rem);
-  // font-size: 48px;
-}
-
-.bg-purple {
-  background-color: $bg-purple;
-}
-.bg-purple-active {
-  background-color: $bg-purple-active;
-}
-.bg-warning-transparent {
-  background-color: rgba($yellow, 0.15);
-}
-.bg-danger-transparent {
-  background-color: rgba($red, 0.15);
-}
-
-.transition-width {
-  transition: width 0.2s ease-in-out;
-}
-
-.transition-height {
-  transition: height 0.2s ease-in-out;
-}
-
-.min-height-65vh {
-  min-height: 65vh;
-}
-
-.gradient-divider {
-  height: 1px;
-  background: radial-gradient(
-    50% 243.6% at 50% 50%,
-    #3788f6 0%,
-    rgba(130, 86, 208, 0) 100%
-  );
-  opacity: 0.6;
-  transform: matrix(1, 0, 0, -1, 0, 0);
-}
-
-.opacity-90 {
-  opacity: 0.9;
-}
-
-.rotate-90 {
-  transform: rotate(90deg);
-}
-
-.rounded-10 {
-  border-radius: 25px;
-}
-
-/* Overwrite boostrap table */
-.table > :not(:first-child) {
-  border-top: none;
-}
-.table th {
-  font-weight: 500;
-}
-.table-dark {
-  --bs-table-bg: transparent;
-  --bs-table-striped-bg: #2c3034;
-  --bs-table-striped-color: #fff;
-  --bs-table-active-bg: #373b3e;
-  --bs-table-active-color: #fff;
-  --bs-table-hover-bg: #323539;
-  --bs-table-hover-color: #fff;
-  color: #fff;
-  border-color: #373b3e;
-}
 
 /* Custom Components */
-
 .player-skipping-overlay {
   position: absolute;
   z-index: 10;
@@ -403,7 +73,7 @@ body {
     width: 15px;
     height: 15px;
     background-color: rgba(#fff, 0.5);
-    border: 2px solid rgba($gray-100, 0.75);
+    border: 2px solid var(--color-border);
     border-radius: 50%;
     position: absolute;
     pointer-events: none; // Make sure the rrweb mouse doesn't obscure elements below it for the inspector
@@ -470,18 +140,6 @@ body {
   }
 }
 
-.TimelineEventTooltip {
-  .tooltip {
-    z-index: 9999 !important;
-  }
-  .tooltip-inner {
-    max-width: 300px;
-    background: $bg-purple-active;
-  }
-  .tooltip-arrow::before {
-    border-top-color: $bg-purple-active;
-  }
-}
 
 @keyframes animatedglow {
   0% {
@@ -509,14 +167,7 @@ body {
 
 .ds-table.table-hover {
   tr.data-row:hover {
-    background-color: #151515af;
-  }
-}
-
-// Backend logs debugger UI
-.LogEvent {
-  code {
-    color: $text-muted;
+    background-color: var(--color-bg-muted);
   }
 }
 
@@ -529,86 +180,21 @@ body {
   }
 }
 
-.ds-select {
-  &.w-auto {
-    .ds-react-select__menu {
-      width: auto;
-    }
-  }
-  &.text-nowrap {
-    .ds-react-select__option {
-      text-wrap: nowrap;
-    }
-  }
-
-  &.input-bg .ds-react-select__control {
-    background: $input-bg;
-  }
-
-  .ds-react-select__control {
-    // background: $bg-dark;
-    background: transparent;
-    border: 1px solid #212223;
-    // @apply bg-white dark:bg-neutral-700 border-2 border-neutral-300 dark:border-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-500;
-  }
-
-  .ds-react-select__control--is-focused {
-    // @apply border-neutral-500 hover:border-neutral-500 dark:border-neutral-400 dark:hover:border-neutral-400 shadow-none;
-  }
-
-  .ds-react-select__menu {
-    background: $bg-hdx-dark;
-    border: 1px solid $text-muted;
-    // @apply bg-neutral-100 dark:bg-neutral-700 border-2 border-neutral-300 dark:border-neutral-600;
-  }
-
-  .ds-react-select__option {
-    color: $text-light;
-    // background: $bg-dark;
-    // @apply text-neutral-600 dark:text-neutral-200 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-700 dark:hover:bg-neutral-800;
-  }
-  .ds-react-select__option--is-focused {
-    background: $gray-900;
-  }
-  .ds-react-select__multi-value {
-    background: $gray-900;
-
-    .ds-react-select__multi-value__label {
-      color: $text-light;
-    }
-  }
-
-  .ds-react-select__indicator-separator {
-    width: 0;
-  }
-  .ds-react-select__indicator {
-    color: $text-muted;
-  }
-
-  .ds-react-select__input-container,
-  .ds-react-select__placeholder,
-  .ds-react-select__single-value {
-    // @apply text-neutral-600 dark:text-neutral-200;
-    color: $text-muted;
-    // background: $bg-dark;
-    background: transparent;
-  }
-}
-
 // React Grid for Dashboarding
 .react-grid-item.react-grid-placeholder {
   // Override the default placeholder color from red
-  background: rgba(#A1A1AA, 0.05) !important;
-  border: 1px solid rgba(#FAFAFA, 0.4) !important;
-  opacity: 1 !important;
+  background: var(--color-bg-muted) !important;
+  border: 1px solid var(--color-border) !important;
+  opacity: 0.4 !important;
 }
 .react-grid-item > .react-resizable-handle::after {
-  // border-color: rgba($green, 0.4) !important;
-  border-color: rgba(#FAFAFA, 0.8) !important;
-  right: -4px;
+  border-color: var(--color-text) !important;
+  right: -4px ;
   bottom: -4px;
   width: 4px;
   height: 4px;
+  border-right: 2px solid var(--color-text) !important;
+  border-bottom: 2px solid var(--color-text) !important;
 }
 
 // Nextra Overrides
@@ -634,30 +220,6 @@ body {
 }
 .recharts-tooltip-cursor {
   fill: rgba(204, 204, 204, 0.2) !important;
-}
-
-.white-text-gradient {
-  background: linear-gradient(180deg, #ffffff 0%, #c1c1c1 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  text-fill-color: transparent;
-}
-// For the landing green->purple bg gradient card
-.fancy-card-bg {
-  background:
-    radial-gradient(
-        79.84% 219.18% at 89.97% 87.4%,
-        rgba(80, 250, 219, 0.06) 0%,
-        rgba(164, 42, 238, 0.051) 100%
-      )
-      /* warning: gradient uses a rotation that is not supported by CSS and may not behave as expected */,
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.075) 0%,
-      rgba(255, 255, 255, 0.045) 100%
-    );
-  border-radius: 4px;
 }
 
 .effect-pulse {
@@ -715,11 +277,7 @@ body {
   pointer-events: none;
 }
 
-html.hdx-theme-light {
-  filter: invert(1) hue-rotate(180deg) brightness(1.05);
-}
-
-html.hdx-theme-light .hdx-background-image {
+[data-mantine-color-scheme='light'] .hdx-background-image {
   display: none;
 }
 
@@ -732,6 +290,13 @@ a.mantine-focus-auto:hover {
   &:focus-visible {
     outline: none;
   }
+}
+
+// Global cursor pointer for interactive elements
+button,
+a,
+[role='button'] {
+  cursor: pointer;
 }
 
 .u-select {

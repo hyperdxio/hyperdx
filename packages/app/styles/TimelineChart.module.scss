@@ -2,8 +2,13 @@
   cursor: pointer;
 
   &:hover {
-    background-color: #aaaaff07;
+    background-color: var(--color-bg-highlighted);
   }
+}
+
+.timelineRowActive {
+  background-color: var(--color-bg-highlighted);
+  border-radius: var(--mantine-radius-xs);
 }
 
 .labelContainer {

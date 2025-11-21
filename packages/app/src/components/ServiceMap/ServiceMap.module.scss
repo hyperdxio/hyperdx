@@ -1,0 +1,40 @@
+.container {
+  display: flex;
+  flex: 1;
+  min-height: 100px;
+  width: 100%;
+}
+
+.toolbar {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  color: #111;
+
+  .linkButton {
+    font-size: small;
+  }
+}
+
+.serviceNode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+
+  .body {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+
+    .circle {
+      width: 40px;
+      height: 40px;
+      background-color: #f0f0f0;
+      border: 1px solid #ccc;
+      border-radius: 50%;
+    }
+  }
+}

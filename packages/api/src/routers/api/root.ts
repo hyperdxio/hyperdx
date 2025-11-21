@@ -90,7 +90,10 @@ router.post(
         password,
         async (err: Error, user: any) => {
           if (err) {
-            logger.error(serializeError(err));
+            logger.error(
+              { err: serializeError(err) },
+              'User registration error',
+            );
             return res.status(400).json({ error: 'invalid' });
           }
 
@@ -107,7 +110,8 @@ router.post(
             await setupTeamDefaults(team._id.toString());
           } catch (error) {
             logger.error(
-              `Failed to setup team defaults: ${serializeError(error)}`,
+              { err: serializeError(error) },
+              'Failed to setup team defaults',
             );
             // Continue with registration even if setup defaults fails
           }
@@ -118,7 +122,8 @@ router.post(
             }
 
             logger.error(
-              `Password login for user failed, user or team not found ${req?.user?._id}`,
+              { userId: req?.user?._id },
+              'Password login for user failed, user or team not found',
             );
             return res.status(400).json({ error: 'invalid' });
           });
@@ -167,7 +172,7 @@ router.post('/team/setup/:token', async (req, res, next) => {
       password, // TODO: validate password
       async (err: Error, user: any) => {
         if (err) {
-          logger.error(serializeError(err));
+          logger.error({ err: serializeError(err) }, 'Team setup error');
           return res.redirect(
             `${config.FRONTEND_URL}/join-team?token=${token}&err=500`,
           );
@@ -196,7 +201,7 @@ router.get('/ext/silence-alert/:token', async (req, res) => {
     await silenceAlertByToken(token);
   } catch (e) {
     isError = true;
-    logger.error(e);
+    logger.error({ err: e }, 'Failed to silence alert');
   }
 
   // TODO: Create a template for utility pages

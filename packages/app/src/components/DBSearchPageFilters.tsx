@@ -12,8 +12,11 @@ import {
   TableMetadata,
   tcFromChartConfig,
   tcFromSource,
-} from '@hyperdx/common-utils/dist/metadata';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+} from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  ChartConfigWithDateRange,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
   ActionIcon,
@@ -40,6 +43,7 @@ import { useExplainQuery } from '@/hooks/useExplainQuery';
 import {
   useAllFields,
   useGetKeyValues,
+  useGetValuesDistribution,
   useJsonColumns,
   useTableMetadata,
 } from '@/hooks/useMetadata';
@@ -76,6 +80,8 @@ type FilterCheckboxProps = {
   onClickExclude?: VoidFunction;
   onClickPin: VoidFunction;
   className?: string;
+  percentage?: number;
+  isPercentageLoading?: boolean;
 };
 
 export const TextButton = ({
@@ -98,10 +104,30 @@ export const TextButton = ({
       className={classes.textButton}
       data-testid={dataTestId}
     >
-      <Text size="xxs" c="gray.6" lh={1} ms={ms}>
+      <Text size="xxs" lh={1} ms={ms}>
         {label}
       </Text>
     </UnstyledButton>
+  );
+};
+
+type FilterPercentageProps = {
+  percentage: number;
+  isLoading?: boolean;
+};
+
+const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
+  const formattedPercentage =
+    percentage < 1
+      ? `<1%`
+      : percentage >= 99.5
+        ? `>99%`
+        : `~${Math.round(percentage)}%`;
+
+  return (
+    <Text size="xs" className={isLoading ? 'effect-pulse' : ''}>
+      {formattedPercentage}
+    </Text>
   );
 };
 
@@ -115,6 +141,8 @@ export const FilterCheckbox = ({
   onClickExclude,
   onClickPin,
   className,
+  percentage,
+  isPercentageLoading,
 }: FilterCheckboxProps) => {
   return (
     <div
@@ -126,7 +154,6 @@ export const FilterCheckbox = ({
         onClick={() => onChange?.(!value)}
         style={{ minWidth: 0 }}
         wrap="nowrap"
-        align="flex-start"
       >
         <Checkbox
           checked={!!value}
@@ -146,15 +173,34 @@ export const FilterCheckbox = ({
           fz="xxs"
           color="gray"
         >
-          <Text
-            size="xs"
-            c={value === 'excluded' ? 'red.4' : 'gray.3'}
-            truncate="end"
+          <Group
             w="100%"
-            title={label}
+            gap="xs"
+            wrap="nowrap"
+            justify="space-between"
+            pe={'11px'}
+            miw={0}
           >
-            {label}
-          </Text>
+            <Text
+              size="xs"
+              c={
+                value === 'excluded'
+                  ? 'var(--color-text-danger)'
+                  : 'var(--color-text)'
+              }
+              truncate="end"
+              flex={1}
+              title={label}
+            >
+              {label || <span className="fst-italic">(empty)</span>}
+            </Text>
+            {percentage != null && (
+              <FilterPercentage
+                percentage={percentage}
+                isLoading={isPercentageLoading}
+              />
+            )}
+          </Group>
         </Tooltip>
       </Group>
       <div className={classes.filterActions}>
@@ -179,7 +225,7 @@ export const FilterCheckbox = ({
         />
       </div>
       {pinned && (
-        <Text size="xxs" c="gray.6">
+        <Text size="xxs">
           <i className="bi bi-pin-angle-fill"></i>
         </Text>
       )}
@@ -208,6 +254,8 @@ export type FilterGroupProps = {
   hasLoadedMore: boolean;
   isDefaultExpanded?: boolean;
   'data-testid'?: string;
+  chartConfig: ChartConfigWithDateRange;
+  isLive?: boolean;
 };
 
 const MAX_FILTER_GROUP_ITEMS = 10;
@@ -230,6 +278,8 @@ export const FilterGroup = ({
   hasLoadedMore,
   isDefaultExpanded,
   'data-testid': dataTestId,
+  chartConfig,
+  isLive,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   // "Show More" button when there's lots of options
@@ -238,12 +288,59 @@ export const FilterGroup = ({
   const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
   // Track recently moved items for highlight animation
   const [recentlyMoved, setRecentlyMoved] = useState<Set<string>>(new Set());
+  // Show what percentage of the data has each value
+  const [showDistributions, setShowDistributions] = useState(false);
+  // For live searches, don't refresh percentages when date range changes
+  const [dateRange, setDateRange] = useState<[Date, Date]>(
+    chartConfig.dateRange,
+  );
+
+  const toggleShowDistributions = () => {
+    if (!showDistributions) {
+      setExpanded(true);
+      setDateRange(chartConfig.dateRange);
+    }
+    setShowDistributions(prev => !prev);
+  };
+
+  useEffect(() => {
+    if (!isLive) {
+      setDateRange(chartConfig.dateRange);
+    }
+  }, [chartConfig.dateRange, isLive]);
 
   useEffect(() => {
     if (isDefaultExpanded) {
       setExpanded(true);
     }
   }, [isDefaultExpanded]);
+
+  const {
+    data: distributionData,
+    isFetching: isFetchingDistribution,
+    error: distributionError,
+  } = useGetValuesDistribution(
+    {
+      chartConfig: { ...chartConfig, dateRange },
+      key: name,
+      limit: 100, // The 100 most common values are enough to find any values that are present in at least 1% of rows
+    },
+    {
+      enabled: showDistributions,
+    },
+  );
+
+  useEffect(() => {
+    if (distributionError) {
+      notifications.show({
+        color: 'red',
+        title: 'Error loading filter distribution',
+        message: distributionError?.message,
+        autoClose: 5000,
+      });
+      setShowDistributions(false);
+    }
+  }, [distributionError]);
 
   const totalFiltersSize =
     selectedValues.included.size + selectedValues.excluded.size;
@@ -292,6 +389,13 @@ export const FilterGroup = ({
       if (aExcluded && !bExcluded) return -1;
       if (!aExcluded && bExcluded) return 1;
 
+      // Then sort by estimated percentage of rows with this value, if available
+      const aPercentage = distributionData?.get(a.value) ?? 0;
+      const bPercentage = distributionData?.get(b.value) ?? 0;
+      if (aPercentage !== bPercentage) {
+        return bPercentage - aPercentage;
+      }
+
       // Finally sort alphabetically/numerically
       return a.value.localeCompare(b.value, undefined, { numeric: true });
     });
@@ -310,6 +414,7 @@ export const FilterGroup = ({
     augmentedOptions,
     selectedValues,
     totalFiltersSize,
+    distributionData,
   ]);
 
   // Simple highlight animation when checkbox is checked
@@ -355,6 +460,7 @@ export const FilterGroup = ({
               component={UnstyledButton}
               flex="1"
               p="0"
+              pr="xxxs"
               data-testid="filter-group-control"
               classNames={{
                 chevron: 'm-0',
@@ -386,15 +492,8 @@ export const FilterGroup = ({
                     }
                   }}
                   styles={{ input: { transition: 'padding 0.2s' } }}
-                  rightSectionWidth={isExpanded ? 20 : 2}
-                  rightSection={
-                    <IconSearch
-                      size={15}
-                      stroke={2}
-                      className={`${isExpanded ? 'opacity-100' : 'opacity-0'}`}
-                      style={{ transition: 'opacity 0.4s 0.2s' }}
-                    />
-                  }
+                  rightSectionWidth={20}
+                  rightSection={<IconSearch size={12} stroke={2} />}
                   classNames={{
                     input: 'ps-0.5',
                   }}
@@ -402,6 +501,22 @@ export const FilterGroup = ({
               </Tooltip>
             </Accordion.Control>
             <Group gap="xxxs" wrap="nowrap">
+              <ActionIcon
+                size="xs"
+                variant="subtle"
+                color="gray"
+                onClick={toggleShowDistributions}
+                title={
+                  showDistributions ? 'Hide distribution' : 'Show distribution'
+                }
+                data-testid={`toggle-distribution-button-${name}`}
+                aria-checked={showDistributions}
+                role="checkbox"
+              >
+                <i
+                  className={`bi ${isFetchingDistribution ? 'spinner-border spinner-border-sm' : showDistributions ? 'bi-bar-chart-line-fill' : 'bi-bar-chart-line'}`}
+                />
+              </ActionIcon>
               {onFieldPinClick && (
                 <ActionIcon
                   size="xs"
@@ -409,6 +524,7 @@ export const FilterGroup = ({
                   color="gray"
                   onClick={onFieldPinClick}
                   title={isFieldPinned ? 'Unpin field' : 'Pin field'}
+                  me={'4px'}
                 >
                   <i
                     className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
@@ -452,11 +568,17 @@ export const FilterGroup = ({
                   onClickOnly={() => onOnlyClick(option.value)}
                   onClickExclude={() => onExcludeClick(option.value)}
                   onClickPin={() => onPinClick(option.value)}
+                  isPercentageLoading={isFetchingDistribution}
+                  percentage={
+                    showDistributions && distributionData
+                      ? (distributionData.get(option.value) ?? 0)
+                      : undefined
+                  }
                 />
               ))}
               {optionsLoading ? (
                 <Group m={6} gap="xs">
-                  <Loader size={12} color="gray.6" />
+                  <Loader size={12} color="gray" />
                   <Text c="dimmed" size="xs">
                     Loading...
                   </Text>
@@ -499,7 +621,7 @@ export const FilterGroup = ({
                   <div className="d-flex m-1">
                     {loadMoreLoading ? (
                       <Group m={6} gap="xs">
-                        <Loader size={12} color="gray.6" />
+                        <Loader size={12} color="gray" />
                         <Text c="dimmed" size="xs">
                           Loading more...
                         </Text>
@@ -555,9 +677,14 @@ const DBSearchPageFiltersComponent = ({
   ) => {
     return _setFilterValue(property, value, action);
   };
-  const { toggleFilterPin, toggleFieldPin, isFilterPinned, isFieldPinned } =
-    usePinnedFilters(sourceId ?? null);
-  const { width, startResize } = useResizable(16, 'left');
+  const {
+    toggleFilterPin,
+    toggleFieldPin,
+    isFilterPinned,
+    isFieldPinned,
+    pinnedFilters,
+  } = usePinnedFilters(sourceId ?? null);
+  const { size, startResize } = useResizable(16, 'left');
 
   const { data: jsonColumns } = useJsonColumns({
     databaseName: chartConfig.from.databaseName,
@@ -618,7 +745,7 @@ const DBSearchPageFiltersComponent = ({
           !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
       );
     return strings;
-  }, [data, jsonColumns, filterState, showMoreFields]);
+  }, [data, jsonColumns, filterState, showMoreFields, isFieldPinned]);
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -644,6 +771,26 @@ const DBSearchPageFiltersComponent = ({
     limit: keyLimit,
     keys: keysToFetch,
   });
+
+  // Merge pinned filter values into the queried facets, so that pinned values are always available
+  const facetsWithPinnedValues = useMemo(() => {
+    const facetsMap = new Map((facets ?? []).map(f => [f.key, f.value]));
+    const mergedKeys = new Set<string>([
+      ...facetsMap.keys(),
+      ...Object.keys(pinnedFilters),
+    ]);
+
+    return Array.from(mergedKeys).map(key => {
+      const queriedValues = facetsMap.get(key);
+      const pinnedValues = pinnedFilters[key];
+      const mergedValues = new Set<string>([
+        ...(queriedValues ?? []),
+        ...(pinnedValues ?? []),
+      ]);
+
+      return { key, value: Array.from(mergedValues) };
+    });
+  }, [facets, pinnedFilters]);
 
   const metadata = useMetadataWithSettings();
   const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
@@ -685,7 +832,7 @@ const DBSearchPageFiltersComponent = ({
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: string[] }[] = [];
-    for (const _facet of facets ?? []) {
+    for (const _facet of facetsWithPinnedValues ?? []) {
       const facet = structuredClone(_facet);
       if (jsonColumns?.some(col => facet.key.startsWith(col))) {
         facet.key = `toString(${facet.key})`;
@@ -744,7 +891,7 @@ const DBSearchPageFiltersComponent = ({
 
     return _facets;
   }, [
-    facets,
+    facetsWithPinnedValues,
     filterState,
     tableMetadata,
     extraFacets,
@@ -760,8 +907,32 @@ const DBSearchPageFiltersComponent = ({
     [filterState],
   );
 
+  const setRootSpansOnly = useCallback(
+    (rootSpansOnly: boolean) => {
+      if (!source?.parentSpanIdExpression) return;
+
+      if (rootSpansOnly) {
+        setFilterValue(source.parentSpanIdExpression, '', 'only');
+      } else {
+        clearFilter(source.parentSpanIdExpression);
+      }
+    },
+    [setFilterValue, clearFilter, source],
+  );
+
+  const isRootSpansOnly = useMemo(() => {
+    if (!source?.parentSpanIdExpression || source.kind !== SourceKind.Trace)
+      return false;
+
+    const parentSpanIdFilter = filterState?.[source?.parentSpanIdExpression];
+    return (
+      parentSpanIdFilter?.included.size === 1 &&
+      parentSpanIdFilter?.included.has('')
+    );
+  }, [filterState, source]);
+
   return (
-    <Box className={classes.filtersPanel} style={{ width: `${width}%` }}>
+    <Box className={classes.filtersPanel} style={{ width: `${size}%` }}>
       <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
       <ScrollArea
         h="100%"
@@ -787,15 +958,15 @@ const DBSearchPageFiltersComponent = ({
             placement="right"
           >
             <Tabs.List w="100%">
-              <Tabs.Tab value="results" size="xs" c="gray.4" h="24px">
+              <Tabs.Tab value="results" size="xs" h="24px">
                 <Text size="xs">Results Table</Text>
               </Tabs.Tab>
               {showDelta && (
-                <Tabs.Tab value="delta" size="xs" c="gray.4" h="24px">
+                <Tabs.Tab value="delta" size="xs" h="24px">
                   <Text size="xs">Event Deltas</Text>
                 </Tabs.Tab>
               )}
-              <Tabs.Tab value="pattern" size="xs" c="gray.4" h="24px">
+              <Tabs.Tab value="pattern" size="xs" h="24px">
                 <Text size="xs">Event Patterns</Text>
               </Tabs.Tab>
             </Tabs.List>
@@ -840,7 +1011,7 @@ const DBSearchPageFiltersComponent = ({
                   withArrow
                   label="Denoise results will visually remove events matching common event patterns from the results table."
                 >
-                  <Text size="xs" c="gray.3" mt="-1px">
+                  <Text size="xs" mt="-1px">
                     <i className="bi bi-noise-reduction"></i> Denoise Results
                   </Text>
                 </Tooltip>
@@ -849,17 +1020,39 @@ const DBSearchPageFiltersComponent = ({
             />
           )}
 
+          {source?.kind === SourceKind.Trace &&
+            source.parentSpanIdExpression && (
+              <Checkbox
+                size={13 as any}
+                checked={isRootSpansOnly}
+                ms="6px"
+                label={
+                  <Tooltip
+                    openDelay={200}
+                    color="gray"
+                    position="right"
+                    withArrow
+                    label="Only show root spans (spans with no parent span)."
+                  >
+                    <Text size="xs" mt="-1px">
+                      <i className="bi bi-diagram-3"></i> Root Spans Only
+                    </Text>
+                  </Tooltip>
+                }
+                onChange={event => setRootSpansOnly(event.target.checked)}
+              />
+            )}
+
           {isLoading || isFacetsLoading ? (
             <Flex align="center" justify="center">
               <Loader size="xs" color="gray" />
             </Flex>
           ) : (
             shownFacets.length === 0 && (
-              <Text size="xxs" c="gray.6">
-                No filters available
-              </Text>
+              <Text size="xxs">No filters available</Text>
             )
           )}
+          {/* Show facets even when loading to ensure pinned filters are visible while loading */}
           {shownFacets.map(facet => (
             <FilterGroup
               key={facet.key}
@@ -900,6 +1093,8 @@ const DBSearchPageFiltersComponent = ({
                   (filterState[facet.key].included.size > 0 ||
                     filterState[facet.key].excluded.size > 0))
               }
+              chartConfig={chartConfig}
+              isLive={isLive}
             />
           ))}
 
@@ -918,10 +1113,10 @@ const DBSearchPageFiltersComponent = ({
 
           {showMoreFields && (
             <div>
-              <Text size="xs" c="gray.6" fw="bold">
+              <Text size="xs" fw="bold">
                 Not seeing a filter?
               </Text>
-              <Text size="xxs" c="gray.6">
+              <Text size="xxs">
                 {`Try searching instead (e.g. column:foo)`}
               </Text>
             </div>

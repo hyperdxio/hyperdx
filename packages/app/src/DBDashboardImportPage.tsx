@@ -3,16 +3,16 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { filter } from 'lodash';
-import { Container } from 'react-bootstrap';
 import { Controller, useForm } from 'react-hook-form';
 import { StringParam, useQueryParam } from 'use-query-params';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
 import { DashboardTemplateSchema } from '@hyperdx/common-utils/dist/types';
-import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/utils';
 import {
   Button,
   Collapse,
+  Container,
   Group,
   Input,
   Stack,
@@ -110,21 +110,21 @@ function FileSelection({
                 <Dropzone.Accept>
                   <IconUpload
                     size={52}
-                    color="var(--mantine-color-green-4)"
+                    color="var(--color-text-success)"
                     stroke={1.5}
                   />
                 </Dropzone.Accept>
                 <Dropzone.Reject>
                   <IconX
                     size={52}
-                    color="var(--mantine-color-red-6)"
+                    color="var(--color-text-danger)"
                     stroke={1.5}
                   />
                 </Dropzone.Reject>
                 <Dropzone.Idle>
                   <IconFile
                     size={52}
-                    color="var(--mantine-color-dimmed)"
+                    color="var(--color-text-muted)"
                     stroke={1.5}
                   />
                 </Dropzone.Idle>

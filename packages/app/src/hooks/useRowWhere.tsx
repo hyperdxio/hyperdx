@@ -65,26 +65,23 @@ export function processRowToWhereClause(
           // Handle case for json element, ex: json.c
 
           // Currently we can't distinguish null or 'null'
-          if (value === 'null') {
+          if (value == null || value === 'null') {
             return SqlString.format(`isNull(??)`, [valueExpr]);
           }
           if (value.length > 1000 || column.length > 1000) {
             console.warn('Search value/object key too large.');
           }
           // TODO: update when JSON type have new version
-          // will not work for array/object dyanmic data
 
-          // escaped strings needs raw, becuase sqlString will add another layer of escaping
-          // data other than array/object will alwayas return with dobule quote(because of CH)
-          // remove dobule qoute to search correctly
-          return SqlString.format(`toString(?)='?'`, [
-            SqlString.raw(valueExpr),
-            SqlString.raw(
-              value[0] === '"' && value[value.length - 1] === '"'
-                ? value.slice(1, -1)
-                : value,
-            ),
-          ]);
+          // escaped strings needs raw, because sqlString will add another layer of escaping
+          // data other than array/object will always return with double quote(because of CH)
+          // remove double quote to search correctly.
+          // The coalesce is to handle the case when JSONExtract returns null due to the value being a string.
+          return SqlString.format(
+            "toJSONString(?) = coalesce(toJSONString(JSONExtract(?, 'Dynamic')), toJSONString(?))",
+            [SqlString.raw(valueExpr), value, value],
+          );
+
         default:
           // Handle nullish values
           if (value == null) {
@@ -143,7 +140,12 @@ export default function useRowWhere({
   );
 
   return useCallback(
-    (row: Record<string, any>) => processRowToWhereClause(row, columnMap),
+    (row: Record<string, any>) => {
+      // Filter out synthetic columns that aren't in the database schema
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { __hyperdx_id, ...dbRow } = row;
+      return processRowToWhereClause(dbRow, columnMap);
+    },
     [columnMap],
   );
 }

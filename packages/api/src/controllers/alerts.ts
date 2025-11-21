@@ -18,6 +18,7 @@ import logger from '@/utils/logger';
 import { alertSchema } from '@/utils/zod';
 
 export type AlertInput = {
+  id?: string;
   source?: AlertSource;
   channel: AlertChannel;
   interval: AlertInterval;

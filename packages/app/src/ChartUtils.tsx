@@ -1,6 +1,5 @@
 import { useMemo, useRef } from 'react';
 import { add } from 'date-fns';
-import Select from 'react-select';
 import { z } from 'zod';
 import {
   filterColumnMetaByType,
@@ -197,33 +196,6 @@ export function seriesToUrlSearchQueryParam({
   });
 }
 
-export function TableSelect({
-  table,
-  setTableAndAggFn,
-}: {
-  setTableAndAggFn: (table: SourceTable, fn: AggFn) => void;
-  table: string;
-}) {
-  return (
-    <Select
-      options={TABLES}
-      className="ds-select w-auto text-nowrap"
-      value={TABLES.find(v => v.value === table)}
-      onChange={opt => {
-        const val = opt?.value ?? 'logs';
-        if (val === 'logs') {
-          setTableAndAggFn('logs', 'count');
-        } else if (val === 'metrics') {
-          // TODO: This should set rate if metric field is a sum
-          // or we should just reset the field if changing tables
-          setTableAndAggFn('metrics', 'max');
-        }
-      }}
-      classNamePrefix="ds-react-select"
-    />
-  );
-}
-
 export function TableToggle({
   table,
   setTableAndAggFn,
@@ -385,6 +357,113 @@ export function timeBucketByGranularity(
   return buckets;
 }
 
+export const isAggregateFunction = (value: string) => {
+  const fns = [
+    // Basic aggregates
+    'count',
+    'countIf',
+    'countDistinct',
+    'sum',
+    'sumIf',
+    'avg',
+    'avgIf',
+    'min',
+    'max',
+    'any',
+    'anyLast',
+    'groupArray',
+    'groupArrayInsertAt',
+    'groupArrayMovingAvg',
+    'groupArraySample',
+    'groupUniqArray',
+    'groupUniqArrayIf',
+    'groupArrayIntersect',
+    'groupArrayIntersectIf',
+    'groupArrayReduce',
+    'groupBitmap',
+    'groupBitmapIf',
+    'groupBitmapOr',
+    'groupBitmapXor',
+
+    // Quantiles
+    'quantile',
+    'quantileIf',
+    'quantileExact',
+    'quantileExactWeighted',
+    'quantileTiming',
+    'quantileTimingWeighted',
+    'quantileTDigest',
+    'quantileTDigestWeighted',
+    'quantileBFloat16',
+    'quantileBFloat16Weighted',
+    'quantiles',
+    'median',
+    'medianExact',
+    'medianTDigest',
+    'medianBFloat16',
+
+    // Statistical functions
+    'stddevPop',
+    'stddevPopIf',
+    'stddevSamp',
+    'stddevSampIf',
+    'varPop',
+    'varPopIf',
+    'varSamp',
+    'varSampIf',
+    'covarPop',
+    'covarSamp',
+    'corr',
+
+    // Combinators
+    'uniq',
+    'uniqExact',
+    'uniqCombined',
+    'uniqCombined64',
+    'uniqHLL12',
+    'uniqTheta',
+
+    // Bit operations
+    'groupBitAnd',
+    'groupBitOr',
+    'groupBitXor',
+
+    // Map and tuple
+    'groupArrayMap',
+    'groupArrayTuple',
+    'groupArraySorted',
+    'topK',
+    'topKIf',
+    'topKWeighted',
+
+    // Aggregate combinators
+    'argMin',
+    'argMax',
+    'minMap',
+    'maxMap',
+
+    // Specialized aggregates
+    'runningDifference',
+    'retention',
+    'sequenceCount',
+    'sequenceMatch',
+    'histogram',
+    'simpleLinearRegression',
+    'stochasticLinearRegression',
+    'categoricalInformationValue',
+    'sumMap',
+    'sumMapFiltered',
+    'sumWithOverflow',
+    'entropy',
+    'skewPop',
+    'skewSamp',
+    'kurtPop',
+    'kurtSamp',
+  ];
+
+  return fns.some(fn => value.includes(fn + '('));
+};
+
 export const INTEGER_NUMBER_FORMAT: NumberFormat = {
   factor: 1,
   output: 'number',
@@ -493,7 +572,11 @@ export function formatResponseForTimeChart({
     const ts = date.getTime() / 1000;
 
     for (const valueColumn of valueColumns) {
-      const tsBucket = tsBucketMap.get(ts) ?? {};
+      let tsBucket = tsBucketMap.get(ts);
+      if (tsBucket == null) {
+        tsBucket = { [timestampColumn.name]: ts };
+        tsBucketMap.set(ts, tsBucket);
+      }
 
       const keyName = [
         // Simplify the display name if there's only one series and a group by
@@ -507,11 +590,8 @@ export function formatResponseForTimeChart({
       const value =
         typeof rawValue === 'number' ? rawValue : Number.parseFloat(rawValue);
 
-      tsBucketMap.set(ts, {
-        ...tsBucket,
-        [timestampColumn.name]: ts,
-        [keyName]: value,
-      });
+      // Mutate the existing bucket object to avoid repeated large object copies
+      tsBucket[keyName] = value;
 
       let color: string | undefined = undefined;
       if (

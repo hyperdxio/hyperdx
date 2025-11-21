@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { add, Duration, format, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
@@ -15,15 +15,16 @@ import {
   Select,
   Space,
   Stack,
+  Switch,
   Text,
   TextInput,
+  Tooltip,
 } from '@mantine/core';
 import { DateInput, DateInputProps } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
+import { IconBolt, IconCalendarFilled } from '@tabler/icons-react';
 
 import { useUserPreferences } from '@/useUserPreferences';
-
-import { Icon } from '../Icon';
 
 import { TimePickerMode } from './types';
 import { useTimePickerForm } from './useTimePickerForm';
@@ -31,6 +32,8 @@ import {
   dateParser,
   DURATION_OPTIONS,
   DURATIONS,
+  LIVE_TAIL_DURATION_MS,
+  LIVE_TAIL_TIME_QUERY,
   parseTimeRangeInput,
   RELATIVE_TIME_OPTIONS,
 } from './utils';
@@ -42,7 +45,6 @@ const modeAtom = atomWithStorage<TimePickerMode>(
 
 const DATE_INPUT_PLACEHOLDER = 'YYY-MM-DD HH:mm:ss';
 const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
-const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 
 const DateInputCmp = (props: DateInputProps) => (
   <DateInput
@@ -71,14 +73,20 @@ export const TimePicker = ({
   inputValue: value,
   setInputValue: onChange,
   onSearch,
+  onRelativeSearch,
   onSubmit,
   showLive = false,
+  isLiveMode = false,
+  defaultRelativeTimeMode = false,
 }: {
   inputValue: string;
   setInputValue: (str: string) => any;
-  onSearch: (rangeStr: string) => void;
+  onRelativeSearch?: (rangeMs: number) => void;
+  onSearch: (range: string) => void;
   onSubmit?: (rangeStr: string) => void;
   showLive?: boolean;
+  isLiveMode?: boolean;
+  defaultRelativeTimeMode?: boolean;
 }) => {
   const {
     userPreferences: { timeFormat },
@@ -92,7 +100,9 @@ export const TimePicker = ({
 
   const relativeTimeOptions = React.useMemo(() => {
     return [
-      ...(showLive ? [['Live Tail', LIVE_TAIL_TIME_QUERY], 'divider'] : []),
+      ...((showLive
+        ? [[LIVE_TAIL_TIME_QUERY, LIVE_TAIL_DURATION_MS], 'divider' as const]
+        : []) satisfies typeof RELATIVE_TIME_OPTIONS),
       ...RELATIVE_TIME_OPTIONS,
     ];
   }, [showLive]);
@@ -124,6 +134,15 @@ export const TimePicker = ({
     // only run when dateRange changes or opened state changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange, opened, mode]);
+
+  const handleRelativeSearch = React.useCallback(
+    (label: string, value: number) => {
+      onChange(label);
+      onRelativeSearch?.(value);
+      close();
+    },
+    [close, onChange, onRelativeSearch],
+  );
 
   const handleSearch = React.useCallback(
     (value: string | [Date | null, Date | null]) => {
@@ -180,12 +199,21 @@ export const TimePicker = ({
     [form.values, handleSearch],
   );
 
-  const isLiveMode = value === LIVE_TAIL_TIME_QUERY;
+  const [isRelative, setIsRelative] = useState(defaultRelativeTimeMode);
+  // Must be state to ensure rerenders occur when ref changes
+  const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);
+  const dateComponentPopoverProps = useMemo(
+    () => ({
+      portalProps: {
+        target: containerRef ?? undefined,
+      },
+    }),
+    [containerRef],
+  );
 
   return (
     <Popover
       position="bottom-start"
-      closeOnClickOutside={false}
       closeOnEscape
       opened={opened}
       onClose={close}
@@ -195,24 +223,21 @@ export const TimePicker = ({
           data-testid="time-picker-input"
           leftSection={
             isLiveMode ? (
-              <Icon
-                name="lightning-charge-fill"
-                className="fs-8 text-success"
-              />
+              <IconBolt size={16} className="text-success" />
             ) : (
-              <Icon name="calendar-fill" className="fs-8" />
+              <IconCalendarFilled size={16} />
             )
           }
           styles={{
             input: {
               color: isLiveMode
-                ? 'var(--mantine-color-green-5)'
-                : 'var(--mantine-color-gray-1)',
+                ? 'var(--color-text-success)'
+                : 'var(--color-text)',
             },
           }}
           rightSection={
             opened && (
-              <Text size="xxs" bg="gray.8" px={4}>
+              <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
                 d
               </Text>
             )
@@ -235,8 +260,34 @@ export const TimePicker = ({
           }}
         />
       </Popover.Target>
-      <Popover.Dropdown p={0}>
+      <Popover.Dropdown
+        p={0}
+        data-testid="time-picker-popover"
+        ref={setContainerRef}
+      >
         <Group justify="space-between" gap={4} px="xs" py={4}>
+          <Group gap={4}>
+            {typeof onRelativeSearch === 'function' && (
+              <Tooltip
+                label="Set how far back Live Tail begins streaming logs."
+                refProp="rootRef"
+              >
+                <Switch
+                  data-testid="time-picker-relative-switch"
+                  size="xs"
+                  checked={isRelative}
+                  onChange={e => setIsRelative(e.currentTarget.checked)}
+                  label="Relative Time"
+                  labelPosition="right"
+                  styles={{
+                    label: {
+                      paddingLeft: '5px',
+                    },
+                  }}
+                />
+              </Tooltip>
+            )}
+          </Group>
           <Group gap={4}>
             <Button
               data-testid="time-picker-1h-back"
@@ -244,7 +295,7 @@ export const TimePicker = ({
               color="gray"
               variant="light"
               onClick={handleMove.bind(null, { hours: -1 })}
-              disabled={isLiveMode}
+              disabled={isLiveMode || isRelative}
             >
               1h back
             </Button>
@@ -254,12 +305,10 @@ export const TimePicker = ({
               color="gray"
               variant="light"
               onClick={handleMove.bind(null, { hours: 1 })}
-              disabled={isLiveMode}
+              disabled={isLiveMode || isRelative}
             >
               1h forward
             </Button>
-          </Group>
-          <Group gap={4}>
             <CloseButton data-testid="time-picker-close" onClick={close} />
           </Group>
         </Group>
@@ -269,11 +318,22 @@ export const TimePicker = ({
               <Stack gap={0} p="xs">
                 {relativeTimeOptions.map((item, index) =>
                   item === 'divider' ? (
-                    <Divider key={index} my={4} color="gray.9" />
+                    <Divider key={index} my={4} />
                   ) : (
                     <Button
-                      key={item[1]}
-                      onClick={() => handleSearch(item[0])}
+                      key={item[0]}
+                      disabled={
+                        isRelative &&
+                        !item[2] &&
+                        item[0] !== LIVE_TAIL_TIME_QUERY
+                      }
+                      onClick={() => {
+                        if (isRelative || item[0] === LIVE_TAIL_TIME_QUERY) {
+                          handleRelativeSearch?.(item[0], item[1]);
+                        } else {
+                          handleSearch(item[0]);
+                        }
+                      }}
                       w="100%"
                       size="compact-xs"
                       color="gray"
@@ -297,6 +357,7 @@ export const TimePicker = ({
                 mb="xs"
                 data={[TimePickerMode.Range, TimePickerMode.Around]}
                 value={mode}
+                disabled={isRelative}
                 onChange={newMode => {
                   const value = newMode as TimePickerMode;
                   setMode(value);
@@ -341,14 +402,18 @@ export const TimePicker = ({
                 <>
                   <H>Start time</H>
                   <DateInputCmp
+                    disabled={isRelative}
+                    popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     mb="xs"
                     {...form.getInputProps('startDate')}
                   />
                   <H>End time</H>
                   <DateInputCmp
+                    popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     minDate={form.values.startDate ?? undefined}
+                    disabled={isRelative}
                     {...form.getInputProps('endDate')}
                   />
                 </>
@@ -356,6 +421,8 @@ export const TimePicker = ({
                 <>
                   <H>Time</H>
                   <DateInputCmp
+                    disabled={isRelative}
+                    popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     mb="xs"
                     {...form.getInputProps('startDate')}
@@ -364,15 +431,17 @@ export const TimePicker = ({
                   <Select
                     placeholder="Pick value"
                     data={DURATION_OPTIONS}
+                    comboboxProps={dateComponentPopoverProps}
                     searchable
                     size="xs"
+                    disabled={isRelative}
                     variant="filled"
                     {...form.getInputProps('duration')}
                   />
                 </>
               )}
             </Stack>
-            <Text size="xxs" lh={1.2} c="gray.7">
+            <Text size="xxs" lh={1.2}>
               You can use natural language to select dates (e.g. yesterday, last
               monday at 5pm)
             </Text>
@@ -381,13 +450,13 @@ export const TimePicker = ({
               justify="flex-end"
               mt={8}
               pt={8}
-              style={{ borderTop: '1px solid #282828' }}
+              style={{ borderTop: '1px solid var(--color-border)' }}
             >
               <Button
                 data-testid="time-picker-apply"
                 size="compact-sm"
                 variant="light"
-                disabled={!form.isValid()}
+                disabled={!form.isValid() || isRelative}
                 onClick={handleApply}
               >
                 Apply

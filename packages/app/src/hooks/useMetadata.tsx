@@ -9,7 +9,7 @@ import {
   Field,
   TableConnection,
   TableMetadata,
-} from '@hyperdx/common-utils/dist/metadata';
+} from '@hyperdx/common-utils/dist/core/metadata';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
@@ -206,6 +206,36 @@ export function useMultipleGetKeyValues(
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     enabled: !!keys.length,
     placeholderData: keepPreviousData,
+    ...options,
+  });
+}
+
+export function useGetValuesDistribution(
+  {
+    chartConfig,
+    key,
+    limit,
+  }: {
+    chartConfig: ChartConfigWithDateRange;
+    key: string;
+    limit: number;
+  },
+  options?: Omit<UseQueryOptions<Map<string, number>, Error>, 'queryKey'>,
+) {
+  const metadata = useMetadataWithSettings();
+  return useQuery<Map<string, number>>({
+    queryKey: ['useMetadata.useGetValuesDistribution', chartConfig, key],
+    queryFn: async () => {
+      return await metadata.getValuesDistribution({
+        chartConfig,
+        key,
+        limit,
+      });
+    },
+    staleTime: Infinity,
+    enabled: !!key,
+    placeholderData: keepPreviousData,
+    retry: false,
     ...options,
   });
 }

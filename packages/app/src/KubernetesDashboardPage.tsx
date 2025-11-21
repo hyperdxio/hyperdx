@@ -1,32 +1,21 @@
 import * as React from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import Head from 'next/head';
 import Link from 'next/link';
 import cx from 'classnames';
 import sub from 'date-fns/sub';
-import {
-  parseAsFloat,
-  parseAsStringEnum,
-  useQueryState,
-  useQueryStates,
-} from 'nuqs';
+import { useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
-import { StringParam, useQueryParam, withDefault } from 'use-query-params';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
-  SearchConditionLanguage,
-  SourceKind,
-  TSource,
-} from '@hyperdx/common-utils/dist/types';
-import {
-  Anchor,
+  Alert,
   Badge,
   Box,
+  Button,
   Card,
   Flex,
   Grid,
   Group,
-  Loader,
-  ScrollArea,
   SegmentedControl,
   Skeleton,
   Table,
@@ -34,35 +23,35 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { TimePicker } from '@/components/TimePicker';
+import { useVirtualList } from '@/hooks/useVirtualList';
 
-import { ConnectionSelectControlled } from './components/ConnectionSelect';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
 import { KubernetesFilters } from './components/KubernetesFilters';
 import OnboardingModal from './components/OnboardingModal';
+import SourceSchemaPreview from './components/SourceSchemaPreview';
+import { SourceSelectControlled } from './components/SourceSelect';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
+import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import {
   convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import { useConnections } from './connection';
 import { withAppNav } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
-import { getEventBody, useSource, useSources } from './source';
+import { useSources } from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
-
-import 'react-modern-drawer/dist/index.css';
-
-const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
 const getKubePhaseNumber = (phase: string) => {
   switch (phase) {
@@ -94,7 +83,7 @@ const Th = React.memo<{
       {children}
       {!!sort && (
         <i
-          className={`ps-1 text-slate-400 fs-8.5 bi bi-caret-${
+          className={`ps-1 fs-8.5 bi bi-caret-${
             sort === 'asc' ? 'up-fill' : 'down-fill'
           }`}
         />
@@ -102,6 +91,8 @@ const Th = React.memo<{
     </Table.Th>
   );
 });
+
+const TABLE_FETCH_LIMIT = 10000;
 
 type InfraPodsStatusTableColumn =
   | 'restarts'
@@ -149,6 +140,13 @@ export const InfraPodsStatusTable = ({
   where: string;
 }) => {
   const [phaseFilter, setPhaseFilter] = React.useState('running');
+
+  // Auto-switch to "All" when search filters are applied
+  useEffect(() => {
+    if (where) {
+      setPhaseFilter('all');
+    }
+  }, [where]);
   const [sortState, setSortState] = React.useState<{
     column: InfraPodsStatusTableColumn;
     order: 'asc' | 'desc';
@@ -158,8 +156,8 @@ export const InfraPodsStatusTable = ({
   });
 
   const groupBy = ['k8s.pod.name', 'k8s.namespace.name', 'k8s.node.name'];
-  const { data, isError, isLoading } = useQueriedChartConfig(
-    convertV1ChartConfigToV2(
+  const { data, isError, isLoading } = useQueriedChartConfig({
+    ...convertV1ChartConfigToV2(
       {
         series: [
           {
@@ -241,7 +239,8 @@ export const InfraPodsStatusTable = ({
         metric: metricSource,
       },
     ),
-  );
+    limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
+  });
 
   // TODO: Use useTable
   const podsList = React.useMemo(() => {
@@ -249,30 +248,34 @@ export const InfraPodsStatusTable = ({
       return [];
     }
 
-    return data.data
-      .map((row: any) => {
-        return {
-          id: makeId(),
-          name: row["arrayElement(ResourceAttributes, 'k8s.pod.name')"],
-          namespace:
-            row["arrayElement(ResourceAttributes, 'k8s.namespace.name')"],
-          node: row["arrayElement(ResourceAttributes, 'k8s.node.name')"],
-          restarts: row['last_value(k8s.container.restarts)'],
-          uptime: row['undefined(k8s.pod.uptime)'],
-          cpuAvg: row['avg(k8s.pod.cpu.utilization)'],
-          cpuLimitUtilization: row['avg(k8s.pod.cpu_limit_utilization)'],
-          memAvg: row['avg(k8s.pod.memory.usage)'],
-          memLimitUtilization: row['avg(k8s.pod.memory_limit_utilization)'],
-          phase: row['last_value(k8s.pod.phase)'],
-        };
-      })
-      .filter(pod => {
-        if (phaseFilter === 'all') {
-          return true;
-        }
-        return pod.phase === getKubePhaseNumber(phaseFilter);
-      });
+    // Filter first to reduce the number of objects we create
+    const phaseFilteredData = data.data.filter((row: any) => {
+      if (phaseFilter === 'all') {
+        return true;
+      }
+      return (
+        row['last_value(k8s.pod.phase)'] === getKubePhaseNumber(phaseFilter)
+      );
+    });
+
+    // Transform only the filtered data
+    return phaseFilteredData.map((row: any, index: number) => ({
+      id: `pod-${index}`, // Use index-based ID instead of random makeId()
+      name: row["arrayElement(ResourceAttributes, 'k8s.pod.name')"],
+      namespace: row["arrayElement(ResourceAttributes, 'k8s.namespace.name')"],
+      node: row["arrayElement(ResourceAttributes, 'k8s.node.name')"],
+      restarts: row['last_value(k8s.container.restarts)'],
+      uptime: row['undefined(k8s.pod.uptime)'],
+      cpuAvg: row['avg(k8s.pod.cpu.utilization)'],
+      cpuLimitUtilization: row['avg(k8s.pod.cpu_limit_utilization)'],
+      memAvg: row['avg(k8s.pod.memory.usage)'],
+      memLimitUtilization: row['avg(k8s.pod.memory_limit_utilization)'],
+      phase: row['last_value(k8s.pod.phase)'],
+    }));
   }, [data, phaseFilter]);
+
+  // Check if we're hitting the fetch limit (indicating there might be more data)
+  const isAtFetchLimit = data?.data && data.data.length >= TABLE_FETCH_LIMIT;
 
   const getLink = React.useCallback((podName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -289,6 +292,32 @@ export const InfraPodsStatusTable = ({
     },
     sort: sortState.column === column ? sortState.order : null,
   });
+
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: podsList.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: useCallback(() => 40, []),
+    overscan: 10,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
+
+  const [paddingTop, paddingBottom] = useMemo(
+    () =>
+      virtualItems.length > 0
+        ? [
+            Math.max(
+              0,
+              virtualItems[0].start - rowVirtualizer.options.scrollMargin,
+            ),
+            Math.max(0, totalSize - virtualItems[virtualItems.length - 1].end),
+          ]
+        : [0, 0],
+    [virtualItems, rowVirtualizer.options.scrollMargin, totalSize],
+  );
 
   return (
     <Card p="md" data-testid="k8s-pods-table">
@@ -309,22 +338,30 @@ export const InfraPodsStatusTable = ({
           />
         </Group>
       </Card.Section>
+      {isAtFetchLimit && !isLoading && !isError && podsList.length > 0 && (
+        <Card.Section px="md" py="xs">
+          <Alert variant="light" color="blue">
+            Showing first {TABLE_FETCH_LIMIT.toLocaleString()} pods. Use the
+            filters above to narrow your search.
+          </Alert>
+        </Card.Section>
+      )}
       <Card.Section>
-        <ScrollArea
-          viewportProps={{
-            style: { maxHeight: 300 },
+        <div
+          ref={tableContainerRef}
+          style={{
+            height: '300px',
+            overflow: 'auto',
           }}
         >
           {isLoading ? (
             <TableLoading />
           ) : isError ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               Unable to load pod metrics
             </div>
           ) : podsList.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
-              No pods found
-            </div>
+            <div className="p-4 text-center text-muted fs-8">No pods found</div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
               <Table.Thead className="muted-thead">
@@ -350,88 +387,111 @@ export const InfraPodsStatusTable = ({
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {podsList.map(pod => (
-                  <Link key={pod.id} href={getLink(pod.name)} legacyBehavior>
-                    <Table.Tr className="cursor-pointer">
-                      <Table.Td>{pod.name}</Table.Td>
-                      <Table.Td
-                        data-testid={`k8s-pods-table-namespace-${pod.id}`}
+                {paddingTop > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={8}
+                      style={{ height: `${paddingTop}px` }}
+                    />
+                  </Table.Tr>
+                )}
+                {virtualItems.map(virtualRow => {
+                  const pod = podsList[virtualRow.index];
+                  return (
+                    <Link key={pod.id} href={getLink(pod.name)} legacyBehavior>
+                      <Table.Tr
+                        className="cursor-pointer"
+                        ref={rowVirtualizer.measureElement}
+                        data-index={virtualRow.index}
                       >
-                        {pod.namespace}
-                      </Table.Td>
-                      <Table.Td>{pod.node}</Table.Td>
-                      <Table.Td>
-                        <FormatPodStatus status={pod.phase} />
-                      </Table.Td>
-                      <Table.Td>
-                        <Tooltip
-                          color="gray"
-                          label={
-                            formatNumber(
-                              pod.cpuAvg,
-                              K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                            ) + ' avg'
-                          }
+                        <Table.Td>{pod.name}</Table.Td>
+                        <Table.Td
+                          data-testid={`k8s-pods-table-namespace-${pod.id}`}
                         >
-                          <Text
-                            span
-                            c={pod.cpuLimitUtilization ? undefined : 'gray.7'}
+                          {pod.namespace}
+                        </Table.Td>
+                        <Table.Td>{pod.node}</Table.Td>
+                        <Table.Td>
+                          <FormatPodStatus status={pod.phase} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Tooltip
+                            color="gray"
+                            label={
+                              formatNumber(
+                                pod.cpuAvg,
+                                K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                              ) + ' avg'
+                            }
                           >
-                            {pod.cpuLimitUtilization
-                              ? formatNumber(
-                                  pod.cpuLimitUtilization,
-                                  K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                                )
-                              : '-'}
-                          </Text>
-                        </Tooltip>
-                      </Table.Td>
-                      <Table.Td>
-                        <Tooltip
-                          color="gray"
-                          label={
-                            formatNumber(pod.memAvg, K8S_MEM_NUMBER_FORMAT) +
-                            ' avg'
-                          }
-                        >
-                          <Text
-                            span
-                            c={pod.memLimitUtilization ? undefined : 'gray.7'}
+                            <Text
+                              span
+                              c={pod.cpuLimitUtilization ? undefined : 'gray'}
+                            >
+                              {pod.cpuLimitUtilization
+                                ? formatNumber(
+                                    pod.cpuLimitUtilization,
+                                    K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                                  )
+                                : '-'}
+                            </Text>
+                          </Tooltip>
+                        </Table.Td>
+                        <Table.Td>
+                          <Tooltip
+                            color="gray"
+                            label={
+                              formatNumber(pod.memAvg, K8S_MEM_NUMBER_FORMAT) +
+                              ' avg'
+                            }
                           >
-                            {pod.memLimitUtilization
-                              ? formatNumber(
-                                  pod.memLimitUtilization,
-                                  K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                                )
-                              : '-'}
+                            <Text
+                              span
+                              c={pod.memLimitUtilization ? undefined : 'gray'}
+                            >
+                              {pod.memLimitUtilization
+                                ? formatNumber(
+                                    pod.memLimitUtilization,
+                                    K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                                  )
+                                : '-'}
+                            </Text>
+                          </Tooltip>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text span c={pod.uptime ? undefined : 'gray'}>
+                            {pod.uptime ? formatUptime(pod.uptime) : '–'}
                           </Text>
-                        </Tooltip>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text span c={pod.uptime ? undefined : 'gray.7'}>
-                          {pod.uptime ? formatUptime(pod.uptime) : '–'}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text
-                          color={
-                            pod.restarts >= 10
-                              ? 'red.6'
-                              : pod.restarts >= 5
-                                ? 'yellow.3'
-                                : 'grey.7'
-                          }
-                        >
-                          {pod.restarts}
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  </Link>
-                ))}
+                        </Table.Td>
+                        <Table.Td>
+                          <Text
+                            color={
+                              pod.restarts >= 10
+                                ? 'red'
+                                : pod.restarts >= 5
+                                  ? 'yellow'
+                                  : 'gray'
+                            }
+                          >
+                            {pod.restarts}
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    </Link>
+                  );
+                })}
+                {paddingBottom > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={8}
+                      style={{ height: `${paddingBottom}px` }}
+                    />
+                  </Table.Tr>
+                )}
               </Table.Tbody>
             </Table>
           )}
-        </ScrollArea>
+        </div>
       </Card.Section>
     </Card>
   );
@@ -448,8 +508,8 @@ const NodesTable = ({
 }) => {
   const groupBy = ['k8s.node.name'];
 
-  const { data, isError, isLoading } = useQueriedChartConfig(
-    convertV1ChartConfigToV2(
+  const { data, isError, isLoading } = useQueriedChartConfig({
+    ...convertV1ChartConfigToV2(
       {
         series: [
           {
@@ -492,7 +552,8 @@ const NodesTable = ({
         metric: metricSource,
       },
     ),
-  );
+    limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
+  });
 
   const getLink = React.useCallback((nodeName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -516,25 +577,35 @@ const NodesTable = ({
     });
   }, [data]);
 
+  const {
+    containerRef: nodesContainerRef,
+    rowVirtualizer: nodesRowVirtualizer,
+    virtualItems: nodeVirtualItems,
+    paddingTop: nodesPaddingTop,
+    paddingBottom: nodesPaddingBottom,
+  } = useVirtualList(nodesList.length, 40, 10);
+
   return (
     <Card p="md" data-testid="k8s-nodes-table">
       <Card.Section p="md" py="xs" withBorder>
         Nodes
       </Card.Section>
       <Card.Section>
-        <ScrollArea
-          viewportProps={{
-            style: { maxHeight: 300 },
+        <div
+          ref={nodesContainerRef}
+          style={{
+            height: '300px',
+            overflow: 'auto',
           }}
         >
           {isLoading ? (
             <TableLoading />
           ) : isError ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               Unable to load nodes
             </div>
           ) : nodesList.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               No nodes found
             </div>
           ) : (
@@ -548,58 +619,80 @@ const NodesTable = ({
                   <Table.Th style={{ width: 130 }}>Uptime</Table.Th>
                 </Table.Tr>
               </Table.Thead>
-
               <Table.Tbody>
-                {nodesList.map(node => (
-                  <Link
-                    key={node.name}
-                    href={getLink(node.name)}
-                    legacyBehavior
-                  >
-                    <Table.Tr className="cursor-pointer">
-                      <Table.Td>{node.name || 'N/A'}</Table.Td>
-                      <Table.Td>
-                        {node.ready === 1 ? (
-                          <Badge
-                            variant="light"
-                            color="green"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Ready
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="light"
-                            color="red"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Not Ready
-                          </Badge>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(
-                          node.cpuAvg,
-                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
-                      </Table.Td>
-                      <Table.Td>
-                        {node.uptime ? formatUptime(node.uptime) : '–'}
-                      </Table.Td>
-                    </Table.Tr>
-                  </Link>
-                ))}
+                {nodesPaddingTop > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={5}
+                      style={{ height: `${nodesPaddingTop}px` }}
+                    />
+                  </Table.Tr>
+                )}
+                {nodeVirtualItems.map(virtualRow => {
+                  const node = nodesList[virtualRow.index];
+                  return (
+                    <Link
+                      key={node.name}
+                      href={getLink(node.name)}
+                      legacyBehavior
+                    >
+                      <Table.Tr
+                        className="cursor-pointer"
+                        ref={nodesRowVirtualizer.measureElement}
+                        data-index={virtualRow.index}
+                      >
+                        <Table.Td>{node.name || 'N/A'}</Table.Td>
+                        <Table.Td>
+                          {node.ready === 1 ? (
+                            <Badge
+                              variant="light"
+                              color="green"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Ready
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="light"
+                              color="red"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Not Ready
+                            </Badge>
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(
+                            node.cpuAvg,
+                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(node.memAvg, K8S_MEM_NUMBER_FORMAT)}
+                        </Table.Td>
+                        <Table.Td>
+                          {node.uptime ? formatUptime(node.uptime) : '–'}
+                        </Table.Td>
+                      </Table.Tr>
+                    </Link>
+                  );
+                })}
+                {nodesPaddingBottom > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={5}
+                      style={{ height: `${nodesPaddingBottom}px` }}
+                    />
+                  </Table.Tr>
+                )}
               </Table.Tbody>
             </Table>
           )}
-        </ScrollArea>
+        </div>
       </Card.Section>
     </Card>
   );
@@ -616,8 +709,8 @@ const NamespacesTable = ({
 }) => {
   const groupBy = ['k8s.namespace.name'];
 
-  const { data, isError, isLoading } = useQueriedChartConfig(
-    convertV1ChartConfigToV2(
+  const { data, isError, isLoading } = useQueriedChartConfig({
+    ...convertV1ChartConfigToV2(
       {
         series: [
           {
@@ -657,7 +750,8 @@ const NamespacesTable = ({
         metric: metricSource,
       },
     ),
-  );
+    limit: { limit: TABLE_FETCH_LIMIT, offset: 0 },
+  });
 
   const namespacesList = React.useMemo(() => {
     if (!data) {
@@ -674,6 +768,14 @@ const NamespacesTable = ({
     });
   }, [data]);
 
+  const {
+    containerRef: namespacesContainerRef,
+    rowVirtualizer: namespacesRowVirtualizer,
+    virtualItems: namespaceVirtualItems,
+    paddingTop: namespacesPaddingTop,
+    paddingBottom: namespacesPaddingBottom,
+  } = useVirtualList(namespacesList.length, 40, 10);
+
   const getLink = React.useCallback((namespaceName: string) => {
     const searchParams = new URLSearchParams(window.location.search);
     searchParams.set('namespaceName', `${namespaceName}`);
@@ -686,19 +788,21 @@ const NamespacesTable = ({
         Namespaces
       </Card.Section>
       <Card.Section>
-        <ScrollArea
-          viewportProps={{
-            style: { maxHeight: 300 },
+        <div
+          ref={namespacesContainerRef}
+          style={{
+            height: '300px',
+            overflow: 'auto',
           }}
         >
           {isLoading ? (
             <TableLoading />
           ) : isError ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               Unable to load namespaces
             </div>
           ) : namespacesList.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               No namespaces found
             </div>
           ) : (
@@ -712,53 +816,79 @@ const NamespacesTable = ({
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {namespacesList.map(namespace => (
-                  <Link
-                    key={namespace.name}
-                    href={getLink(namespace.name)}
-                    legacyBehavior
-                  >
-                    <Table.Tr className="cursor-pointer">
-                      <Table.Td>{namespace.name || 'N/A'}</Table.Td>
-                      <Table.Td>
-                        {namespace.phase === 1 ? (
-                          <Badge
-                            variant="light"
-                            color="green"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Ready
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="light"
-                            color="red"
-                            fw="normal"
-                            tt="none"
-                            size="md"
-                          >
-                            Terminating
-                          </Badge>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(
-                          namespace.cpuAvg,
-                          K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {formatNumber(namespace.memAvg, K8S_MEM_NUMBER_FORMAT)}
-                      </Table.Td>
-                    </Table.Tr>
-                  </Link>
-                ))}
+                {namespacesPaddingTop > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={4}
+                      style={{ height: `${namespacesPaddingTop}px` }}
+                    />
+                  </Table.Tr>
+                )}
+                {namespaceVirtualItems.map(virtualRow => {
+                  const namespace = namespacesList[virtualRow.index];
+                  return (
+                    <Link
+                      key={namespace.name}
+                      href={getLink(namespace.name)}
+                      legacyBehavior
+                    >
+                      <Table.Tr
+                        className="cursor-pointer"
+                        ref={namespacesRowVirtualizer.measureElement}
+                        data-index={virtualRow.index}
+                      >
+                        <Table.Td>{namespace.name || 'N/A'}</Table.Td>
+                        <Table.Td>
+                          {namespace.phase === 1 ? (
+                            <Badge
+                              variant="light"
+                              color="green"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Ready
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="light"
+                              color="red"
+                              fw="normal"
+                              tt="none"
+                              size="md"
+                            >
+                              Terminating
+                            </Badge>
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(
+                            namespace.cpuAvg,
+                            K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {formatNumber(
+                            namespace.memAvg,
+                            K8S_MEM_NUMBER_FORMAT,
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    </Link>
+                  );
+                })}
+                {namespacesPaddingBottom > 0 && (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={4}
+                      style={{ height: `${namespacesPaddingBottom}px` }}
+                    />
+                  </Table.Tr>
+                )}
               </Table.Tbody>
             </Table>
           )}
-        </ScrollArea>
+        </div>
       </Card.Section>
     </Card>
   );
@@ -768,56 +898,210 @@ const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
 const CHART_HEIGHT = 300;
 
+const findSource = (
+  sources: TSource[] | undefined,
+  filters: {
+    kind?: SourceKind;
+    connection?: string;
+    id?: string;
+  },
+) => {
+  if (!sources) return undefined;
+
+  const { kind, connection, id } = filters;
+  return sources.find(
+    s =>
+      (kind === undefined || s.kind === kind) &&
+      (id === undefined || s.id === id) &&
+      (connection === undefined || s.connection === connection),
+  );
+};
+
+export const resolveSourceIds = (
+  _logSourceId: string | null | undefined,
+  _metricSourceId: string | null | undefined,
+  sources: TSource[] | undefined,
+) => {
+  if ((_logSourceId && _metricSourceId) || !sources) {
+    return {
+      logSourceId: _logSourceId ?? undefined,
+      metricSourceId: _metricSourceId ?? undefined,
+    };
+  }
+
+  // Find a default metric source that matches the existing log source
+  if (_logSourceId && !_metricSourceId) {
+    const { connection, metricSourceId: correlatedMetricSourceId } =
+      findSource(sources, { id: _logSourceId }) ?? {};
+    const metricSourceId =
+      (correlatedMetricSourceId &&
+        findSource(sources, { id: correlatedMetricSourceId })?.id) ??
+      (connection &&
+        findSource(sources, { connection, kind: SourceKind.Metric })?.id);
+    return { logSourceId: _logSourceId, metricSourceId };
+  }
+
+  // Find a default log source that matches the existing metric source
+  if (!_logSourceId && _metricSourceId) {
+    const { connection, logSourceId: correlatedLogSourceId } =
+      findSource(sources, { id: _metricSourceId }) ?? {};
+    const logSourceId =
+      (correlatedLogSourceId &&
+        findSource(sources, { id: correlatedLogSourceId })?.id) ??
+      (connection &&
+        findSource(sources, { connection, kind: SourceKind.Log })?.id);
+    return { logSourceId, metricSourceId: _metricSourceId };
+  }
+
+  // Find any two correlated log and metric sources
+  const logSourceWithMetricSource = sources.find(
+    s =>
+      s.kind === SourceKind.Log &&
+      s.metricSourceId &&
+      findSource(sources, { id: s.metricSourceId }),
+  );
+
+  if (logSourceWithMetricSource) {
+    return {
+      logSourceId: logSourceWithMetricSource.id,
+      metricSourceId: logSourceWithMetricSource.metricSourceId,
+    };
+  }
+
+  // Find a Log and Metric source from the same connection
+  const connections = Array.from(new Set(sources.map(s => s.connection)));
+  const connectionWithBothSourceKinds = connections.find(
+    connection =>
+      findSource(sources, { connection, kind: SourceKind.Log }) &&
+      findSource(sources, { connection, kind: SourceKind.Metric }),
+  );
+  const logSource = connectionWithBothSourceKinds
+    ? findSource(sources, {
+        connection: connectionWithBothSourceKinds,
+        kind: SourceKind.Log,
+      })
+    : undefined;
+  const metricSource = connectionWithBothSourceKinds
+    ? findSource(sources, {
+        connection: connectionWithBothSourceKinds,
+        kind: SourceKind.Metric,
+      })
+    : undefined;
+
+  return { logSourceId: logSource?.id, metricSourceId: metricSource?.id };
+};
+
 function KubernetesDashboardPage() {
-  const { data: connections } = useConnections();
-  const [_connection, setConnection] = useQueryState('connection');
+  const { data: sources } = useSources();
 
-  const connection = _connection ?? connections?.[0]?.id ?? '';
+  const [_logSourceId, setLogSourceId] = useQueryState('logSource');
+  const [_metricSourceId, setMetricSourceId] = useQueryState('metricSource');
 
-  // TODO: Let users select log + metric sources
-  const { data: sources, isLoading: isLoadingSources } = useSources();
-  const logSource = sources?.find(
-    s => s.kind === SourceKind.Log && s.connection === connection,
+  const { logSourceId, metricSourceId } = useMemo(
+    () => resolveSourceIds(_logSourceId, _metricSourceId, sources),
+    [_logSourceId, _metricSourceId, sources],
   );
-  const metricSource = sources?.find(
-    s => s.kind === SourceKind.Metric && s.connection === connection,
-  );
+
+  const logSource = sources?.find(s => s.id === logSourceId);
+  const metricSource = sources?.find(s => s.id === metricSourceId);
 
   const { control, watch } = useForm({
     values: {
-      connection,
+      logSourceId,
+      metricSourceId,
     },
   });
 
+  useEffect(() => {
+    if (logSourceId && logSourceId !== _logSourceId) {
+      setLogSourceId(logSourceId);
+    }
+  }, [logSourceId, _logSourceId, setLogSourceId]);
+
+  useEffect(() => {
+    if (metricSourceId && metricSourceId !== _metricSourceId) {
+      setMetricSourceId(metricSourceId);
+    }
+  }, [metricSourceId, _metricSourceId, setMetricSourceId]);
+
   watch((data, { name, type }) => {
-    if (name === 'connection' && type === 'change') {
-      setConnection(data.connection ?? null);
+    if (name === 'logSourceId' && type === 'change') {
+      setLogSourceId(data.logSourceId ?? null);
+
+      // Default to the log source's correlated metric source
+      if (data.logSourceId && sources) {
+        const logSource = findSource(sources, { id: data.logSourceId });
+        const correlatedMetricSource = logSource?.metricSourceId
+          ? findSource(sources, { id: logSource.metricSourceId })
+          : undefined;
+        if (
+          correlatedMetricSource &&
+          correlatedMetricSource.id !== data.metricSourceId
+        ) {
+          setMetricSourceId(correlatedMetricSource.id);
+          notifications.show({
+            id: `${correlatedMetricSource.id}-auto-correlated-metric-source`,
+            title: 'Updated Metrics Source',
+            message: `Using correlated metrics source: ${correlatedMetricSource.name}`,
+          });
+        } else if (logSource && !correlatedMetricSource) {
+          notifications.show({
+            id: `${logSource.id}-not-correlated`,
+            title: 'Warning',
+            message: `The selected logs source is not correlated with a metrics source. Source correlations can be configured in Team Settings.`,
+            color: 'yellow',
+          });
+        }
+      }
+    } else if (name === 'metricSourceId' && type === 'change') {
+      setMetricSourceId(data.metricSourceId ?? null);
+      const metricSource = data.metricSourceId
+        ? findSource(sources, { id: data.metricSourceId })
+        : undefined;
+      if (
+        metricSource &&
+        data.logSourceId &&
+        metricSource.logSourceId !== data.logSourceId
+      ) {
+        notifications.show({
+          id: `${metricSource.id}-not-correlated`,
+          title: 'Warning',
+          message: `The selected metrics source is not correlated with the selected logs source. Source correlations can be configured in Team Settings.`,
+          color: 'yellow',
+        });
+      }
     }
   });
 
-  const [activeTab, setActiveTab] = useQueryParam(
-    'tab',
-    withDefault(StringParam, 'pods'),
-    { updateType: 'replaceIn' },
-  );
+  const [activeTab, setActiveTab] = useQueryState('tab', {
+    defaultValue: 'pods',
+  });
 
-  const [searchQuery, setSearchQuery] = useQueryParam(
-    'q',
-    withDefault(StringParam, ''),
-    { updateType: 'replaceIn' },
-  );
+  const [searchQuery, setSearchQuery] = useQueryState('q', {
+    defaultValue: '',
+  });
 
   const {
     searchedTimeRange: dateRange,
     displayedTimeInputValue,
     setDisplayedTimeInputValue,
     onSearch,
+    onTimeRangeSelect,
   } = useTimeQuery({
     defaultValue: 'Past 1h',
     defaultTimeRange: [
       defaultTimeRange?.[0]?.getTime() ?? -1,
       defaultTimeRange?.[1]?.getTime() ?? -1,
     ],
+  });
+
+  // For future use if Live button is added
+  const [isLive, setIsLive] = React.useState(false);
+
+  const { manualRefreshCooloff, refresh } = useDashboardRefresh({
+    searchedTimeRange: dateRange,
+    onTimeRangeSelect,
+    isLive,
   });
 
   const whereClause = searchQuery;
@@ -856,34 +1140,60 @@ function KubernetesDashboardPage() {
       )}
       <Group justify="space-between">
         <Group>
-          <Text c="gray.4" size="xl">
-            Kubernetes Dashboard
-          </Text>
-          <ConnectionSelectControlled
-            data-testid="kubernetes-connection-select"
+          <Text size="xl">Kubernetes Dashboard</Text>
+          <SourceSelectControlled
+            name="logSourceId"
             control={control}
-            name="connection"
+            allowedSourceKinds={[SourceKind.Log]}
             size="xs"
+            allowDeselect={false}
+            sourceSchemaPreview={
+              <SourceSchemaPreview source={logSource} variant="text" />
+            }
+          />
+          <SourceSelectControlled
+            name="metricSourceId"
+            control={control}
+            allowedSourceKinds={[SourceKind.Metric]}
+            size="xs"
+            allowDeselect={false}
+            sourceSchemaPreview={
+              <SourceSchemaPreview source={metricSource} variant="text" />
+            }
           />
         </Group>
 
-        <form
-          data-testid="kubernetes-time-form"
-          onSubmit={e => {
-            e.preventDefault();
-            onSearch(displayedTimeInputValue);
-            return false;
-          }}
-        >
-          <TimePicker
-            data-testid="kubernetes-time-picker"
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={range => {
-              onSearch(range);
+        <Group gap="xs">
+          <form
+            data-testid="kubernetes-time-form"
+            onSubmit={e => {
+              e.preventDefault();
+              onSearch(displayedTimeInputValue);
+              return false;
             }}
-          />
-        </form>
+          >
+            <TimePicker
+              data-testid="kubernetes-time-picker"
+              inputValue={displayedTimeInputValue}
+              setInputValue={setDisplayedTimeInputValue}
+              onSearch={onSearch}
+            />
+          </form>
+          <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+            <Button
+              onClick={refresh}
+              loading={manualRefreshCooloff}
+              disabled={manualRefreshCooloff}
+              color="gray"
+              variant="outline"
+              title="Refresh dashboard"
+              aria-label="Refresh dashboard"
+              px="xs"
+            >
+              <i className="bi bi-arrow-clockwise fs-5"></i>
+            </Button>
+          </Tooltip>
+        </Group>
       </Group>
       {metricSource && (
         <KubernetesFilters

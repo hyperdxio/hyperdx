@@ -1,5 +1,66 @@
 # @hyperdx/api
 
+## 2.8.0
+
+### Minor Changes
+
+- f612bf3c: feat: add support for alert auto-resolve
+- 840d7307: feat: adjust alert template title and body to reflect alert state
+- 94a669d3: Add metrics to task execution
+
+### Patch Changes
+
+- 99cb17c6: Add ability to edit and test webhook integrations
+- 78aff336: fix: Group alert histories by evaluation time
+- f612bf3c: feat: support incident.io integration
+- f612bf3c: fix: handle group-by alert histories
+- c4915d45: feat: Add custom trace-level attributes above trace waterfall
+- a75ce3be: Fix check alert to actually honor concurrent evaluation.
+- 44caf197: Zero-fill empty alert periods
+- Updated dependencies [f612bf3c]
+- Updated dependencies [f612bf3c]
+- Updated dependencies [f612bf3c]
+- Updated dependencies [c4915d45]
+- Updated dependencies [6e628bcd]
+  - @hyperdx/common-utils@0.8.0
+
+## 2.7.1
+
+### Patch Changes
+
+- 24b5477d: feat: allow specifying webhook request headers
+- c6ad250f: Enable auto-provisioning for no-auth mode
+- 778092d3: fix: set a max size for alert timeranges
+- Updated dependencies [2162a690]
+- Updated dependencies [8190ee8f]
+  - @hyperdx/common-utils@0.7.2
+
+## 2.7.0
+
+### Minor Changes
+
+- f4c35239: Allows defining the ClickHouse request timeout value from the command line on the check-alert task
+- 348a4044: migration: migrate to Pino for standardized and faster logging
+- c90a93e6: Updated the cron package to pick up a fix for stalled cron tasks.
+
+### Patch Changes
+
+- c428d984: fix: Set team and connection attributes on span instead of trace
+- 43e32aaf: fix: handle metrics semantic convention upgrade (feature gate)
+- 131a1c1e: revert: api esbuild
+- e032af55: Add new logging pararmeter for otel collector
+- Updated dependencies [35c42222]
+- Updated dependencies [b68a4c9b]
+- Updated dependencies [5efa2ffa]
+- Updated dependencies [43e32aaf]
+- Updated dependencies [3c8f3b54]
+- Updated dependencies [65872831]
+- Updated dependencies [b46ae2f2]
+- Updated dependencies [2f49f9be]
+- Updated dependencies [daffcf35]
+- Updated dependencies [5210bb86]
+  - @hyperdx/common-utils@0.7.1
+
 ## 2.6.0
 
 ### Minor Changes

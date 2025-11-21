@@ -1,0 +1,134 @@
+/* Dark Mode (default) */
+[data-mantine-color-scheme='dark'] {
+  /* Backgrounds */
+  --color-bg-body: var(--mantine-color-dark-9);
+  --color-bg-surface: var(--mantine-color-dark-5);
+  --color-bg-inverted: var(--mantine-color-dark-1);
+  --color-bg-muted: var(--mantine-color-dark-7);
+  --color-bg-highlighted: rgb(55 58 64 / 70%);
+  --color-bg-sidebar: var(--mantine-color-dark-9);
+  --color-bg-header: var(--mantine-color-dark-9);
+  --color-bg-hover: var(--mantine-color-dark-6);
+  --color-bg-active: var(--mantine-color-dark-5);
+  --color-bg-field: var(--mantine-color-dark-6);
+  --color-bg-field-highlighted: var(--mantine-color-dark-3);
+  --color-bg-neutral: var(--mantine-color-dark-4);
+  --color-bg-success: var(--mantine-color-green-5);
+  --color-bg-danger: var(--mantine-color-red-4);
+  --color-bg-warning: var(--mantine-color-orange-5);
+  --color-bg-brand: #4ffa7a;
+
+  /* Borders & Dividers */
+  --color-border: var(--mantine-color-dark-5);
+  --color-border-muted: rgb(255 255 255 / 8%);
+
+  /* Text */
+  --color-text: var(--mantine-color-dark-0);
+  --color-text-inverted: var(--mantine-color-dark-9);
+  --color-text-primary: var(--mantine-color-green-4);
+  --color-text-primary-hover: var(--mantine-color-green-3);
+  --color-text-secondary: var(--mantine-color-dark-2);
+  --color-text-muted: var(--mantine-color-dark-2);
+  --color-text-muted-hover: var(--mantine-color-dark-1);
+  --color-text-success: var(--mantine-color-green-4);
+  --color-text-success-hover: var(--mantine-color-green-3);
+  --color-text-danger: var(--mantine-color-red-3);
+
+  /* Icons */
+  --color-icon-primary: var(--mantine-color-dark-1);
+  --color-icon-muted: var(--mantine-color-dark-4);
+
+  /* Overlay & Backdrop */
+  --color-overlay: rgb(0 0 0 / 50%);
+  --color-backdrop: rgb(0 0 0 / 30%);
+
+  /* States */
+  --color-state-hover: var(--mantine-color-dark-6);
+  --color-state-selected: var(--mantine-color-dark-5);
+  --color-state-focus: var(--mantine-color-dark-4);
+
+  /* Code / Misc UI */
+  --color-bg-code: var(--mantine-color-dark-8);
+  --color-border-code: var(--mantine-color-dark-6);
+  --color-bg-kbd: var(--mantine-color-dark-9);
+
+  /* JSON Syntax Highlighting */
+  --color-json-string: var(--mantine-color-green-3);
+  --color-json-number: var(--mantine-color-orange-3);
+  --color-json-boolean: var(--mantine-color-orange-3);
+  --color-json-key: var(--mantine-color-violet-3);
+  --color-json-object: var(--mantine-color-green-3);
+  --color-json-array: var(--mantine-color-green-3);
+  --color-json-punctuation: var(--mantine-color-dark-4);
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body) !important;
+}
+
+/* Light Mode */
+[data-mantine-color-scheme='light'] {
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body);
+
+  /* Backgrounds - inverted (dark becomes light) */
+  --color-bg-body: var(--mantine-color-white);
+  --color-bg-surface: var(--mantine-color-white);
+  --color-bg-inverted: var(--mantine-color-dark-3);
+  --color-bg-muted: #f6f6fa;
+  --color-bg-highlighted: rgb(230 232 237 / 70%);
+  --color-bg-sidebar: var(--mantine-color-white);
+  --color-bg-header: var(--mantine-color-gray-1);
+  --color-bg-modal: var(--mantine-color-white);
+  --color-bg-hover: var(--mantine-color-gray-3);
+  --color-bg-active: var(--mantine-color-gray-4);
+  --color-bg-field: #ececf5;
+  --color-bg-field-highlighted: var(--mantine-color-white);
+  --color-bg-neutral: var(--mantine-color-gray-5);
+  --color-bg-success: var(--mantine-color-green-8);
+  --color-bg-danger: var(--mantine-color-red-8);
+  --color-bg-warning: var(--mantine-color-orange-8);
+  --color-bg-brand: var(--mantine-color-green-8);
+
+  /* Borders & Dividers - inverted */
+  --color-border: var(--mantine-color-gray-1);
+  --color-border-muted: rgb(0 0 0 / 5%);
+
+  /* Text - inverted */
+  --color-text: var(--mantine-color-dark-9);
+  --color-text-inverted: var(--mantine-color-white);
+  --color-text-primary: var(--mantine-color-green-8);
+  --color-text-primary-hover: var(--mantine-color-green-9);
+  --color-text-secondary: var(--mantine-color-gray-5);
+  --color-text-muted: var(--mantine-color-dark-6);
+  --color-text-muted-hover: var(--mantine-color-dark-9);
+  --color-text-success: var(--mantine-color-green-8);
+  --color-text-success-hover: var(--mantine-color-green-9);
+  --color-text-danger: var(--mantine-color-red-8);
+
+  /* Icons - inverted */
+  --color-icon-primary: var(--mantine-color-dark-8);
+  --color-icon-muted: var(--mantine-color-dark-5);
+
+  /* Overlay & Backdrop */
+  --color-overlay: rgb(0 0 0 / 30%);
+  --color-backdrop: rgb(0 0 0 / 10%);
+
+  /* States - inverted */
+  --color-state-hover: var(--mantine-color-dark-3);
+  --color-state-selected: var(--mantine-color-dark-4);
+  --color-state-focus: var(--mantine-color-dark-5);
+
+  /* Code / Misc UI - inverted */
+  --color-bg-code: var(--mantine-color-dark-1);
+  --color-border-code: var(--mantine-color-dark-3);
+  --color-bg-kbd: var(--mantine-color-dark-0);
+
+  /* JSON Syntax Highlighting */
+  --color-json-string: var(--mantine-color-green-9);
+  --color-json-number: var(--mantine-color-orange-7);
+  --color-json-boolean: var(--mantine-color-orange-7);
+  --color-json-key: var(--mantine-color-violet-9);
+  --color-json-object: var(--mantine-color-green-7);
+  --color-json-array: var(--mantine-color-green-7);
+  --color-json-punctuation: var(--mantine-color-dark-5);
+}

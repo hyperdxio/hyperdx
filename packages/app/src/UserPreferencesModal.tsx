@@ -63,7 +63,7 @@ const SettingContainer = ({
       <div style={{ flex: 1 }}>
         {label}
         {description && (
-          <Text c="gray.6" size="xs" mt={2}>
+          <Text size="xs" mt={2}>
             {description}
           </Text>
         )}
@@ -87,7 +87,7 @@ export const UserPreferencesModal = ({
       title={
         <>
           <span>Preferences</span>
-          <Text size="xs" c="gray.6" mt={6}>
+          <Text size="xs" mt={6}>
             Customize your experience
           </Text>
         </>
