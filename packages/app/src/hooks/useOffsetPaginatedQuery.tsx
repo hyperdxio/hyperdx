@@ -101,7 +101,9 @@ function getNextPageParam(
   );
 
   // If we have results in the current window, continue paginating within it
-  if (lastPage.data.length > 0) {
+  // But only if we got a full page (indicating there might be more results)
+  const requestedLimit = config.limit?.limit ?? 200; // Default limit is 200
+  if (lastPage.data.length > 0 && lastPage.data.length >= requestedLimit) {
     return {
       windowIndex: currentWindow.windowIndex,
       offset: currentWindowResults,
