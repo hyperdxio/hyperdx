@@ -12,8 +12,6 @@ module.exports = {
   testEnvironment: 'jsdom',
   roots: ['<rootDir>/src'],
   globalSetup: '<rootDir>/global-setup.js',
-  roots: ['<rootDir>/src'],
-  globalSetup: '<rootDir>/global-setup.js',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$',
   transformIgnorePatterns: ['/node_modules/'],
