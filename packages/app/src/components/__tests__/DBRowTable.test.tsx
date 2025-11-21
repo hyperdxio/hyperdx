@@ -18,6 +18,11 @@ describe('RawLogTable', () => {
         isLoading: false,
         error: null,
       } as any);
+
+    // Suppress console errors for expected errors in tests. Keeps the test output clean.
+    jest.spyOn(console, 'error').mockImplementation(() => {
+      /* noop */
+    });
   });
 
   it('should render no results message when no results found', async () => {

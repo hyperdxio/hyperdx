@@ -69,6 +69,7 @@ describe.skip('useTimeQuery tests', () => {
     jest.resetAllMocks();
     locationMock = new LocationMock('https://www.hyperdx.io/');
     testRouter = new TestRouter(locationMock);
+    // @ts-ignore - this is a mock
     window.location = locationMock;
 
     (useRouter as jest.Mock).mockReturnValue(testRouter);
@@ -77,6 +78,7 @@ describe.skip('useTimeQuery tests', () => {
   });
 
   afterAll(() => {
+    // @ts-ignore - this is a mock
     window.location = savedLocation;
   });
 
