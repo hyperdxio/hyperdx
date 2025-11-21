@@ -14,7 +14,7 @@ export default defineConfig({
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 1,
   /* Use multiple workers on CI for faster execution */
-  workers: undefined,
+  workers: process.env.CI ? 2 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
     ['html'],
@@ -33,8 +33,8 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
 
-  /* Global test timeout - increased from default 30s to 60s to reduce flaky test failures */
-  timeout: 60 * 1000,
+  /* Global test timeout - CI needs more time than local */
+  timeout: 45 * 1000,
 
   /* Configure projects for different test environments */
   projects: [
