@@ -7,6 +7,8 @@ import { Accordion, Box, Flex, Text } from '@mantine/core';
 import { getEventBody } from '@/source';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 
+import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+
 import { getJSONColumnNames, useRowData } from './DBRowDataPanel';
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
@@ -20,15 +22,23 @@ const EMPTY_OBJ = {};
 export function RowOverviewPanel({
   source,
   rowId,
+  rowData: propRowData,
   hideHeader = false,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
+  rowData?: ResponseJSON<any>;
   hideHeader?: boolean;
   'data-testid'?: string;
 }) {
-  const { data } = useRowData({ source, rowId });
+  // Only fetch data if not provided via props
+  const shouldFetch = propRowData == null;
+  const { data: fetchedData } = useRowData({
+    source,
+    rowId: shouldFetch ? rowId : null,
+  });
+  const data = propRowData ?? fetchedData;
   const { onPropertyAddClick, generateSearchUrl } =
     useContext(RowSidePanelContext);
 

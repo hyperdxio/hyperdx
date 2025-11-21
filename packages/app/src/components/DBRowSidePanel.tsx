@@ -377,6 +377,7 @@ const DBRowSidePanel = ({
             data-testid="side-panel-tab-overview"
             source={source}
             rowId={rowId}
+            rowData={rowData}
             hideHeader={true}
           />
         </ErrorBoundary>
@@ -440,6 +441,7 @@ const DBRowSidePanel = ({
             data-testid="side-panel-tab-parsed"
             source={source}
             rowId={rowId}
+            rowData={rowData}
           />
         </ErrorBoundary>
       )}

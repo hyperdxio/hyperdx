@@ -182,13 +182,22 @@ export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {
 export function RowDataPanel({
   source,
   rowId,
+  rowData: propRowData,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
+  rowData?: ResponseJSON<any>;
   'data-testid'?: string;
 }) {
-  const { data, isLoading, isError } = useRowData({ source, rowId });
+  // Only fetch data if not provided via props
+  const shouldFetch = propRowData == null;
+  const {
+    data: fetchedData,
+    isLoading,
+    isError,
+  } = useRowData({ source, rowId: shouldFetch ? rowId : null });
+  const data = propRowData ?? fetchedData;
 
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };
