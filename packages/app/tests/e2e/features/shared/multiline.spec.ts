@@ -33,15 +33,13 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
   ) => {
     await editor.click();
 
-    // Type first line
-    await editor.pressSequentially(lines[0]);
+    // Type first line using page.keyboard (more reliable than locator-based typing)
+    await page.keyboard.type(lines[0], { delay: 10 });
 
     // Add remaining lines with Shift+Enter
     for (let i = 1; i < lines.length; i++) {
       await page.keyboard.press('Shift+Enter');
-      await editor.pressSequentially(lines[i]);
-      // Small wait to let editor stabilize between actions
-      await page.waitForTimeout(50);
+      await page.keyboard.type(lines[i], { delay: 10 });
     }
 
     // Verify content
@@ -61,10 +59,10 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     const initialBox = await editor.boundingBox();
     const initialHeight = initialBox?.height || 0;
 
-    // Add more content
+    // Add more content using page.keyboard (more reliable)
     for (const line of additionalLines) {
-      await editor.press('Shift+Enter');
-      await editor.pressSequentially(line);
+      await page.keyboard.press('Shift+Enter');
+      await page.keyboard.type(line, { delay: 10 });
     }
 
     // Wait for potential height changes to take effect
@@ -168,19 +166,27 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     // SQL-specific max height test
     if (config.mode === 'SQL') {
       await test.step('Test max height with scroll overflow', async () => {
-        // Ensure editor is focused before starting
+        // Ensure editor is focused
         await editor.click();
-        await page.waitForTimeout(100);
 
+        // Build content that will cause overflow, then type it using keyboard
+        // Using page.keyboard is more reliable than locator.press in loops
+        const lines = [];
         for (let i = 0; i < 10; i++) {
-          await editor.press('Shift+Enter');
-          await editor.pressSequentially(`AND field_${i} = "value_${i}"`);
-          // Add small wait to let CodeMirror process the input
-          await page.waitForTimeout(50);
+          lines.push(`AND field_${i} = "value_${i}"`);
         }
 
-        // Wait for layout to stabilize after all the input
-        await page.waitForTimeout(200);
+        // Type each line with Shift+Enter between them
+        for (const line of lines) {
+          await page.keyboard.press('Shift+Enter');
+          await page.keyboard.type(line, { delay: 10 });
+        }
+
+        // Verify content was actually added by checking line count
+        const numLines = await editor.evaluate(
+          node => node.querySelectorAll('.cm-line').length,
+        );
+        expect(numLines).toBeGreaterThan(10); // Should have more than 10 lines now
 
         const editorBox = await editor.boundingBox();
         const maxHeight = 150;
@@ -201,7 +207,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         // Clear and start fresh
         await editor.focus();
         await page.keyboard.press('Control+a');
-        await editor.pressSequentially('level:info');
+        await page.keyboard.type('level:info', { delay: 10 });
 
         const initialBox = await editor.boundingBox();
         const initialHeight = initialBox?.height || 0;
@@ -217,9 +223,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
 
         for (const line of extensiveLines) {
           await page.keyboard.press('Shift+Enter');
-          await editor.pressSequentially(line);
-          // Small wait to let editor stabilize
-          await page.waitForTimeout(50);
+          await page.keyboard.type(line, { delay: 10 });
         }
 
         await page.waitForTimeout(300);
