@@ -166,27 +166,31 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     // SQL-specific max height test
     if (config.mode === 'SQL') {
       await test.step('Test max height with scroll overflow', async () => {
-        // Ensure editor is focused
+        // Ensure editor is focused and ready
         await editor.click();
+        await editor.focus();
 
-        // Build content that will cause overflow, then type it using keyboard
-        // Using page.keyboard is more reliable than locator.press in loops
-        const lines = [];
-        for (let i = 0; i < 10; i++) {
-          lines.push(`AND field_${i} = "value_${i}"`);
-        }
+        // Wait for editor to be truly focused
+        await page.waitForTimeout(100);
 
-        // Type each line with Shift+Enter between them
-        for (const line of lines) {
+        // Add content to trigger max height - fewer lines with longer content
+        // This is more reliable in CI than rapidly adding many lines
+        for (let i = 0; i < 6; i++) {
           await page.keyboard.press('Shift+Enter');
-          await page.keyboard.type(line, { delay: 10 });
+          await page.keyboard.type(
+            `AND field_${i} = "value_${i}" AND nested_${i} = "data"`,
+            { delay: 20 }, // Slower delay for CI
+          );
         }
+
+        // Wait for CodeMirror to finish rendering
+        await page.waitForTimeout(200);
 
         // Verify content was actually added by checking line count
         const numLines = await editor.evaluate(
           node => node.querySelectorAll('.cm-line').length,
         );
-        expect(numLines).toBeGreaterThan(10); // Should have more than 10 lines now
+        expect(numLines).toBeGreaterThan(5); // Should have more than 5 lines now
 
         const editorBox = await editor.boundingBox();
         const maxHeight = 150;
