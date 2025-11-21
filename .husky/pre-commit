@@ -1,12 +1,15 @@
 #!/usr/bin/env sh
+set -e
+
 . "$(dirname -- "$0")/_/husky.sh"
 
-# Generate API documentation
+# Run lint-staged first to validate staged files
+npx lint-staged
+
+# Generate API documentation after validation passes
 echo "🔧 Generating API documentation..."
-cd packages/api && yarn run docgen && cd ../..
+(cd packages/api && yarn run docgen) || exit 1
 
 # Stage the generated openapi.json (git will only commit if it changed)
 git add packages/api/openapi.json
 echo "✅ API documentation generated and staged"
-
-npx lint-staged
