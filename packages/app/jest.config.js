@@ -5,6 +5,7 @@ module.exports = {
   roots: ['<rootDir>/src'],
   transform: {
     '^.+\\.(ts|tsx)$': 'ts-jest',
+    '^.+\\.(js|jsx)$': 'ts-jest',
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$',
@@ -12,6 +13,8 @@ module.exports = {
   moduleNameMapper: {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^ky-universal$': '<rootDir>/src/__mocks__/ky-universal.ts',
+    '^ky$': '<rootDir>/src/__mocks__/ky-universal.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.tsx'],
   // Prettier 3 not supported yet

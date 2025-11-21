@@ -4303,6 +4303,7 @@ __metadata:
     "@testing-library/react": "npm:^16.3.0"
     "@testing-library/user-event": "npm:^14.5.2"
     "@types/crypto-js": "npm:^4"
+    "@types/flat": "npm:^5.0.5"
     "@types/identity-obj-proxy": "npm:^3"
     "@types/intercom-web": "npm:^2.8.18"
     "@types/jest": "npm:^29.5.14"
@@ -4328,7 +4329,7 @@ __metadata:
     date-fns: "npm:^2.28.0"
     date-fns-tz: "npm:^2.0.0"
     eslint-config-next: "npm:^14.2.29"
-    flat: "npm:^6.0.1"
+    flat: "npm:^5.0.2"
     fuse.js: "npm:^6.6.2"
     http-proxy-middleware: "npm:^3.0.5"
     identity-obj-proxy: "npm:^3.0.0"
@@ -9717,6 +9718,13 @@ __metadata:
     "@types/qs": "npm:*"
     "@types/serve-static": "npm:*"
   checksum: 10c0/12e562c4571da50c7d239e117e688dc434db1bac8be55613294762f84fd77fbd0658ccd553c7d3ab02408f385bc93980992369dd30e2ecd2c68c358e6af8fabf
+  languageName: node
+  linkType: hard
+
+"@types/flat@npm:^5.0.5":
+  version: 5.0.5
+  resolution: "@types/flat@npm:5.0.5"
+  checksum: 10c0/9a8f14e09e9fba68d4e7452c21cebae3bf05ab6d0fa1eb94ad85274e1f87c04a0721582e47c62565f24ccafbe25819e9ab3eaba818b41320d10b373d477980b2
   languageName: node
   linkType: hard
 
@@ -16534,15 +16542,6 @@ __metadata:
   bin:
     flat: cli.js
   checksum: 10c0/f178b13482f0cd80c7fede05f4d10585b1f2fdebf26e12edc138e32d3150c6ea6482b7f12813a1091143bad52bb6d3596bca51a162257a21163c0ff438baa5fe
-  languageName: node
-  linkType: hard
-
-"flat@npm:^6.0.1":
-  version: 6.0.1
-  resolution: "flat@npm:6.0.1"
-  bin:
-    flat: cli.js
-  checksum: 10c0/9dc0dbe6e2acc012512a53130d9ba1c82c1a596cdca91b23d11716348361c4a68928409bb4433c4493a17595c3efd0cab9f09e23dd3f9962a58af225c3efc23a
   languageName: node
   linkType: hard
 
