@@ -5,7 +5,7 @@ import swaggerJsdoc from 'swagger-jsdoc';
 import { swaggerOptions } from '../src/utils/swagger';
 
 const specs = swaggerJsdoc(swaggerOptions);
-const outputPath = path.resolve(__dirname, '../../public/openapi.json');
+const outputPath = path.resolve(__dirname, '../openapi.json');
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 fs.writeFileSync(outputPath, JSON.stringify(specs, null, 2));
 
