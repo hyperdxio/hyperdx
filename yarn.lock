@@ -4551,7 +4551,7 @@ __metadata:
     supertest: "npm:^6.3.1"
     swagger-jsdoc: "npm:^6.2.8"
     swagger-ui-express: "npm:^5.0.1"
-    ts-jest: "npm:^29.4.5"
+    ts-jest: "npm:^28.0.5"
     ts-node: "npm:^10.8.1"
     tsc-alias: "npm:^1.8.8"
     tsconfig-paths: "npm:^4.2.0"
