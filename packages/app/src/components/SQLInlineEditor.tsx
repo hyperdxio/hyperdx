@@ -32,6 +32,7 @@ import CodeMirror, {
 
 import { useMultipleAllFields } from '@/hooks/useMetadata';
 import { useQueryHistory } from '@/utils';
+import { useDebounce } from '@/utils';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
 
@@ -272,6 +273,9 @@ export default function SQLInlineEditor({
 
   const compartmentRef = useRef<Compartment>(new Compartment());
 
+  // Debounce the value to avoid updating autocomplete on every keystroke
+  const debouncedValue = useDebounce(value, 300);
+
   const updateAutocompleteColumns = useCallback(
     (viewRef: EditorView) => {
       const currentText = viewRef.state.doc.toString();
@@ -312,7 +316,8 @@ export default function SQLInlineEditor({
       updateAutocompleteColumns(ref.current.view);
     }
     // Otherwise we'll update the columns in `onCreateEditor` hook
-  }, [updateAutocompleteColumns]);
+    // We use debouncedValue to avoid expensive reconfiguration on every keystroke
+  }, [updateAutocompleteColumns, debouncedValue]);
 
   useHotkeys(
     '/',
