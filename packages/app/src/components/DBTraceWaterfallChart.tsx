@@ -465,7 +465,8 @@ export function DBTraceWaterfallChartContainer({
     );
   }, [traceRowsData]);
   const rootNodes: Node[] = [];
-  const nodesMap = new Map();
+  const nodesMap = new Map(); // Maps result.id (or placeholder id) -> Node
+  const spanIdMap = new Map(); // Maps SpanId -> result.id of FIRST node with that SpanId
 
   for (const result of rows ?? []) {
     const { type, SpanId, ParentSpanId } = result;
@@ -480,11 +481,26 @@ export function DBTraceWaterfallChartContainer({
     const curNode = {
       ...result,
       children: [],
-      // In case we were created already previously, inherit the children built so far
-      ...nodesMap.get(nodeSpanId),
     };
-    if (type === SourceKind.Trace && !nodesMap.has(nodeSpanId)) {
-      nodesMap.set(nodeSpanId, curNode);
+
+    if (type === SourceKind.Trace) {
+      // Check if this is the first node with this SpanId
+      if (!spanIdMap.has(nodeSpanId)) {
+        // First occurrence - this becomes the canonical node for this SpanId
+        spanIdMap.set(nodeSpanId, result.id);
+
+        // Check if there's a placeholder parent waiting for this SpanId
+        const placeholderId = `placeholder-${nodeSpanId}`;
+        const placeholder = nodesMap.get(placeholderId);
+        if (placeholder) {
+          // Inherit children from placeholder
+          curNode.children = placeholder.children || [];
+          // Remove placeholder
+          nodesMap.delete(placeholderId);
+        }
+      }
+      // Always add to nodesMap with unique result.id
+      nodesMap.set(result.id, curNode);
     }
 
     // root if: is trace event, and (has no parent or parent id is not valid)
@@ -495,11 +511,23 @@ export function DBTraceWaterfallChartContainer({
     if (isRootNode) {
       rootNodes.push(curNode);
     } else {
-      const parentNode = nodesMap.get(nodeParentSpanId) ?? {
-        children: [],
-      };
+      // Look up parent by SpanId
+      const parentResultId = spanIdMap.get(nodeParentSpanId);
+      let parentNode = parentResultId
+        ? nodesMap.get(parentResultId)
+        : undefined;
+
+      if (!parentNode) {
+        // Parent doesn't exist yet, create placeholder
+        const placeholderId = `placeholder-${nodeParentSpanId}`;
+        parentNode = nodesMap.get(placeholderId);
+        if (!parentNode) {
+          parentNode = { children: [] } as any;
+          nodesMap.set(placeholderId, parentNode);
+        }
+      }
+
       parentNode.children.push(curNode);
-      nodesMap.set(nodeParentSpanId, parentNode);
     }
   }
 
