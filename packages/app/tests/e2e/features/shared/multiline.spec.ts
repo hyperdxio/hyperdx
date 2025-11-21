@@ -34,12 +34,14 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     await editor.click();
 
     // Type first line
-    await editor.type(lines[0]);
+    await editor.pressSequentially(lines[0]);
 
     // Add remaining lines with Shift+Enter
     for (let i = 1; i < lines.length; i++) {
       await page.keyboard.press('Shift+Enter');
-      await editor.type(lines[i]);
+      await editor.pressSequentially(lines[i]);
+      // Small wait to let editor stabilize between actions
+      await page.waitForTimeout(50);
     }
 
     // Verify content
@@ -166,10 +168,19 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     // SQL-specific max height test
     if (config.mode === 'SQL') {
       await test.step('Test max height with scroll overflow', async () => {
+        // Ensure editor is focused before starting
+        await editor.click();
+        await page.waitForTimeout(100);
+
         for (let i = 0; i < 10; i++) {
           await editor.press('Shift+Enter');
-          await editor.type(`AND field_${i} = "value_${i}"`);
+          await editor.pressSequentially(`AND field_${i} = "value_${i}"`);
+          // Add small wait to let CodeMirror process the input
+          await page.waitForTimeout(50);
         }
+
+        // Wait for layout to stabilize after all the input
+        await page.waitForTimeout(200);
 
         const editorBox = await editor.boundingBox();
         const maxHeight = 150;
@@ -190,7 +201,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         // Clear and start fresh
         await editor.focus();
         await page.keyboard.press('Control+a');
-        await editor.type('level:info');
+        await editor.pressSequentially('level:info');
 
         const initialBox = await editor.boundingBox();
         const initialHeight = initialBox?.height || 0;
@@ -206,7 +217,9 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
 
         for (const line of extensiveLines) {
           await page.keyboard.press('Shift+Enter');
-          await editor.type(line);
+          await editor.pressSequentially(line);
+          // Small wait to let editor stabilize
+          await page.waitForTimeout(50);
         }
 
         await page.waitForTimeout(300);
