@@ -1,5 +1,12 @@
 # @hyperdx/common-utils
 
+## 0.8.1
+
+### Patch Changes
+
+- 59422a1a: feat: Add custom attributes for individual rows
+- 770276a1: feat: Add search to trace waterfall
+
 ## 0.8.0
 
 ### Minor Changes

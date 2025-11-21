@@ -1,5 +1,25 @@
 # @hyperdx/app
 
+## 2.8.1
+
+### Patch Changes
+
+- 562dd7ea: Fix minor UI issues and enhance styling across various components
+- 237a2677: style: Fix missing AlertHistory colors
+- bacefac9: fix: Fix session page source change on submit
+- 07392d23: feat: Add clickpy_link to clickpy trace source attributes
+- f868c3ca: Add back selection ui on histogram
+- 70fe682b: Add clickable alert timeline chips
+- 770276a1: feat: Add waterfall span/error count summary, span tooltip status
+- 59422a1a: feat: Add custom attributes for individual rows
+- 5b7d646f: fix: date/timepicker issue with dates in the future
+- c8ec7fa9: fix: Hide table header when no columns are displayed
+- 770276a1: feat: Add search to trace waterfall
+- a9f10c5f: feat: Add highlighted attributes to overview panel
+- Updated dependencies [59422a1a]
+- Updated dependencies [770276a1]
+  - @hyperdx/common-utils@0.8.1
+
 ## 2.8.0
 
 ### Minor Changes
