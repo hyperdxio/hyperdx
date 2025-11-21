@@ -827,6 +827,17 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       >
                         Services
                       </Link>
+                      <Link
+                        href={`/llm`}
+                        tabIndex={0}
+                        className={cx(styles.nestedLink, {
+                          [styles.nestedLinkActive]:
+                            pathname.startsWith('/llm'),
+                        })}
+                        data-testid="llm-dashboard-nav-link"
+                      >
+                        LLM Observability
+                      </Link>
                       {IS_K8S_DASHBOARD_ENABLED && (
                         <Link
                           href={`/kubernetes`}

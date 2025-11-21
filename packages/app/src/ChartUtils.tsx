@@ -486,6 +486,14 @@ export const MS_NUMBER_FORMAT: NumberFormat = {
   unit: 'ms',
 };
 
+export const CURRENCY_NUMBER_FORMAT: NumberFormat = {
+  factor: 1,
+  output: 'number',
+  mantissa: 4,
+  thousandSeparated: true,
+  unit: '$',
+};
+
 export const ERROR_RATE_PERCENTAGE_NUMBER_FORMAT: NumberFormat = {
   output: 'percent',
   mantissa: 0,

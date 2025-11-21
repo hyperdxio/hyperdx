@@ -319,6 +319,7 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
       logger.info(prompt);
 
       const result = await generateObject({
+        experimental_telemetry: { isEnabled: true },
         model,
         schema: z.object({
           displayType: z.enum([DisplayType.Line, DisplayType.Table]),
