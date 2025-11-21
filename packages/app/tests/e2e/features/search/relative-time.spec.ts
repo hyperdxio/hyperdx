@@ -288,6 +288,10 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
         const timePickerInput = page.locator(
           '[data-testid="time-picker-input"]',
         );
+        // Wait for the UI to update with the URL state
+        await expect(timePickerInput).toHaveValue('Last 30 minutes', {
+          timeout: 5000,
+        });
         const inputValue = await timePickerInput.inputValue();
         expect(inputValue).toBe('Last 30 minutes');
       });
@@ -314,6 +318,14 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
       });
 
       await test.step('Open time picker and verify relative toggle is on', async () => {
+        // Wait for the time picker to be ready with the URL state
+        const timePickerInput = page.locator(
+          '[data-testid="time-picker-input"]',
+        );
+        await expect(timePickerInput).toHaveValue('Last 30 minutes', {
+          timeout: 5000,
+        });
+
         await page.click('[data-testid="time-picker-input"]');
         await page.waitForSelector('[data-testid="time-picker-popover"]', {
           state: 'visible',
