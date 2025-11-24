@@ -1,19 +1,25 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
+import SqlString from 'sqlstring';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   ChartConfigWithDateRange,
   DisplayType,
+  Filter,
 } from '@hyperdx/common-utils/dist/types';
-import { Button, Code, Group, Modal, Text } from '@mantine/core';
+import { Button, Code, Group, Modal, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconArrowsDiagonal } from '@tabler/icons-react';
+import { IconArrowsDiagonal, IconSearch } from '@tabler/icons-react';
 
-import { formatResponseForTimeChart, useTimeChartSettings } from '@/ChartUtils';
+import {
+  ChartKeyJoiner,
+  formatResponseForTimeChart,
+  useTimeChartSettings,
+} from '@/ChartUtils';
 import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -21,7 +27,113 @@ import { useSource } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
 
-// TODO: Support clicking in to view matched events
+type ActiveClickPayload = {
+  x: number;
+  y: number;
+  activeLabel: string;
+  xPerc: number;
+  yPerc: number;
+  activePayload?: { value?: number; dataKey?: string; name?: string }[];
+};
+
+function ActiveTimeTooltip({
+  activeClickPayload,
+  buildQParams,
+  onDismiss,
+}: {
+  activeClickPayload: ActiveClickPayload | undefined;
+  buildQParams: (key?: string, value?: number) => URLSearchParams | null;
+  onDismiss: () => void;
+}) {
+  if (
+    activeClickPayload == null ||
+    !activeClickPayload.activePayload ||
+    activeClickPayload.activePayload.length === 0
+  ) {
+    return null;
+  }
+
+  // Filter out null/zero values early so length check is accurate
+  const validPayloads = activeClickPayload.activePayload
+    .filter(p => p.value != null && p.value !== 0)
+    .sort((a, b) => b.value! - a.value!); // Sort by value descending (highest first)
+
+  return (
+    <>
+      {/* Backdrop to dismiss menu */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 4,
+        }}
+        onClick={onDismiss}
+      />
+      <div
+        className="bg-muted px-3 py-2 rounded fs-8 shadow"
+        style={{
+          zIndex: 5,
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          visibility: 'visible',
+          maxHeight: '190px',
+          overflowY: 'auto',
+          transform: `translate(${
+            activeClickPayload.xPerc > 0.5
+              ? (activeClickPayload?.x ?? 0) - 130
+              : (activeClickPayload?.x ?? 0) + 4
+          }px, ${activeClickPayload?.y ?? 0}px)`,
+        }}
+      >
+        {validPayloads.length <= 1 ? (
+          // Fallback scenario if limited data is available
+          <Link
+            data-testid="chart-view-events-link"
+            href={`/search?${buildQParams(
+              validPayloads?.[0]?.dataKey,
+              validPayloads?.[0]?.value,
+            )?.toString()}`}
+            onClick={onDismiss}
+          >
+            <Group gap="xs">
+              <IconSearch size={16} />
+              View Events
+            </Group>
+          </Link>
+        ) : (
+          <Stack>
+            <Text c="gray.5" size="xs">
+              View Events for:
+            </Text>
+            {validPayloads.map((payload, idx) => {
+              const seriesQParams = buildQParams(
+                payload.dataKey,
+                payload.value,
+              );
+              return (
+                <Link
+                  key={idx}
+                  data-testid={`chart-view-events-link-${payload.dataKey}`}
+                  href={`/search?${seriesQParams?.toString()}`}
+                  onClick={onDismiss}
+                >
+                  <Group gap="xs">
+                    <IconSearch size={12} />
+                    {payload.name}
+                  </Group>
+                </Link>
+              );
+            })}
+          </Stack>
+        )}
+      </div>
+    </>
+  );
+}
 
 function DBTimeChartComponent({
   config,
@@ -80,33 +192,44 @@ function DBTimeChartComponent({
     isLoading || !data?.isComplete || isPlaceholderData;
   const { data: source } = useSource({ id: sourceId });
 
-  const { graphResults, timestampColumn, groupKeys, lineNames, lineColors } =
-    useMemo(() => {
-      const defaultResponse = {
-        graphResults: [],
-        timestampColumn: undefined,
-        groupKeys: [],
-        lineNames: [],
-        lineColors: [],
-      };
+  const {
+    graphResults,
+    timestampColumn,
+    groupKeys,
+    lineNames,
+    lineColors,
+    groupColumns,
+    valueColumns,
+    isSingleValueColumn,
+  } = useMemo(() => {
+    const defaultResponse = {
+      graphResults: [],
+      timestampColumn: undefined,
+      groupKeys: [],
+      lineNames: [],
+      lineColors: [],
+      groupColumns: [],
+      valueColumns: [],
+      isSingleValueColumn: true,
+    };
 
-      if (data == null || !isSuccess) {
-        return defaultResponse;
-      }
+    if (data == null || !isSuccess) {
+      return defaultResponse;
+    }
 
-      try {
-        return formatResponseForTimeChart({
-          res: data,
-          dateRange,
-          granularity,
-          generateEmptyBuckets: fillNulls !== false,
-          source,
-        });
-      } catch (e) {
-        console.error(e);
-        return defaultResponse;
-      }
-    }, [data, dateRange, granularity, isSuccess, fillNulls, source]);
+    try {
+      return formatResponseForTimeChart({
+        res: data,
+        dateRange,
+        granularity,
+        generateEmptyBuckets: fillNulls !== false,
+        source,
+      });
+    } catch (e) {
+      console.error(e);
+      return defaultResponse;
+    }
+  }, [data, dateRange, granularity, isSuccess, fillNulls, source]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType
   const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
@@ -128,14 +251,7 @@ function DBTimeChartComponent({
   };
 
   const [activeClickPayload, setActiveClickPayload] = useState<
-    | {
-        x: number;
-        y: number;
-        activeLabel: string;
-        xPerc: number;
-        yPerc: number;
-      }
-    | undefined
+    ActiveClickPayload | undefined
   >(undefined);
 
   const clickedActiveLabelDate = useMemo(() => {
@@ -259,35 +375,11 @@ function DBTimeChartComponent({
           top: 0,
         }}
       >
-        {activeClickPayload != null &&
-        qparams != null &&
-        // only View Events for single series
-        (!Array.isArray(config.select) || config.select.length === 1) ? (
-          <div
-            className="bg-muted px-3 py-2 rounded fs-8"
-            style={{
-              zIndex: 5,
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              visibility: 'visible',
-              transform: `translate(${
-                activeClickPayload.xPerc > 0.5
-                  ? (activeClickPayload?.x ?? 0) - 130
-                  : (activeClickPayload?.x ?? 0) + 4
-              }px, ${activeClickPayload?.y ?? 0}px)`,
-            }}
-          >
-            <Link
-              data-testid="chart-view-events-link"
-              href={`/search?${qparams?.toString()}`}
-              className="text-white-hover text-decoration-none"
-              onClick={() => setActiveClickPayload(undefined)}
-            >
-              <i className="bi bi-search me-1"></i> View Events
-            </Link>
-          </div>
-        ) : null}
+        <ActiveTimeTooltip
+          activeClickPayload={activeClickPayload}
+          buildQParams={buildQParams}
+          onDismiss={() => setActiveClickPayload(undefined)}
+        />
         {/* {totalGroups > groupKeys.length ? (
                 <div
                   className="bg-muted px-3 py-2 rounded fs-8"
@@ -348,7 +440,7 @@ function DBTimeChartComponent({
           displayType={displayType}
           graphResults={graphResults}
           groupKeys={groupKeys}
-          isClickActive={false}
+          isClickActive={activeClickPayload}
           isLoading={isLoadingOrPlaceholder}
           lineColors={lineColors}
           lineNames={lineNames}

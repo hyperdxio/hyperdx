@@ -677,6 +677,9 @@ export function formatResponseForTimeChart({
     groupKeys: sortedLineDataMap.map(l => l.dataKey),
     lineNames: sortedLineDataMap.map(l => l.displayName),
     lineColors: sortedLineDataMap.map(l => l.color),
+    groupColumns: groupColumns.map(g => g.name),
+    valueColumns: valueColumns.map(v => v.name),
+    isSingleValueColumn,
   };
 }
 

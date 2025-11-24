@@ -448,6 +448,7 @@ export const MemoChart = memo(function MemoChart({
               activeLabel: state.activeLabel,
               xPerc: state.chartX / sizeRef.current[0],
               yPerc: state.chartY / sizeRef.current[1],
+              activePayload: state.activePayload,
             });
           } else {
             // We clicked on the chart but outside of a line
@@ -498,13 +499,15 @@ export const MemoChart = memo(function MemoChart({
           tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
         />
         {lines}
-        <Tooltip
-          content={<HDXLineChartTooltip numberFormat={numberFormat} />}
-          wrapperStyle={{
-            zIndex: 1,
-          }}
-          allowEscapeViewBox={{ y: true }}
-        />
+        {isClickActive == null && (
+          <Tooltip
+            content={<HDXLineChartTooltip numberFormat={numberFormat} />}
+            wrapperStyle={{
+              zIndex: 1,
+            }}
+            allowEscapeViewBox={{ y: true }}
+          />
+        )}
         {referenceLines}
         {highlightStart && highlightEnd ? (
           <ReferenceArea
