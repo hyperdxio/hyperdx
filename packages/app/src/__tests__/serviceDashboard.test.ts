@@ -80,7 +80,7 @@ describe('Service Dashboard', () => {
     it('should throw an error if an empty list of fields is passed', () => {
       expect(() => {
         makeCoalescedFieldsAccessQuery([], false);
-      }).toThrowError(
+      }).toThrow(
         'Empty fields array passed while trying to build a coalesced field access query',
       );
     });
@@ -88,7 +88,7 @@ describe('Service Dashboard', () => {
     it('should throw an error if more than 100 fields are passed', () => {
       expect(() => {
         makeCoalescedFieldsAccessQuery(Array(101).fill('field'), false);
-      }).toThrowError(
+      }).toThrow(
         'Too many fields (101) passed while trying to build a coalesced field access query. Maximum allowed is 100',
       );
     });
