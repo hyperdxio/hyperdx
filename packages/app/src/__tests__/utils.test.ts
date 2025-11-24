@@ -531,6 +531,6 @@ describe('useQueryHistory', () => {
     act(() => {
       setQueryHistory('   '); // empty after trim
     });
-    expect(mockSetItem).not.toBeCalled();
+    expect(mockSetItem).not.toHaveBeenCalled();
   });
 });
