@@ -10,7 +10,7 @@ const HDXMarkdownChart = memo(
     };
   }) => {
     return (
-      <div className="HDXMarkdownChart">
+      <div className="hdx-markdown">
         <ReactMarkdown>{markdown ?? ''}</ReactMarkdown>
       </div>
     );
