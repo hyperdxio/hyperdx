@@ -14,12 +14,8 @@ export const swaggerOptions = {
     },
     servers: [
       {
-        url: 'https://api.hyperdx.io',
-        description: 'Production API server',
-      },
-      {
         url: '/',
-        description: 'Current server',
+        description: 'Your HyperDX instance (http://<host>:<port>)',
       },
     ],
     tags: [

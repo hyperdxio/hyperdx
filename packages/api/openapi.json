@@ -7,12 +7,8 @@
   },
   "servers": [
     {
-      "url": "https://api.hyperdx.io",
-      "description": "Production API server"
-    },
-    {
       "url": "/",
-      "description": "Current server"
+      "description": "Your HyperDX instance (http://<host>:<port>)"
     }
   ],
   "tags": [
@@ -67,18 +63,12 @@
           },
           "thresholdType": {
             "type": "string",
-            "enum": [
-              "above",
-              "below"
-            ],
+            "enum": ["above", "below"],
             "example": "above"
           },
           "source": {
             "type": "string",
-            "enum": [
-              "tile",
-              "search"
-            ],
+            "enum": ["tile", "search"],
             "example": "tile"
           },
           "state": {
@@ -162,18 +152,12 @@
           },
           "source": {
             "type": "string",
-            "enum": [
-              "tile",
-              "search"
-            ],
+            "enum": ["tile", "search"],
             "example": "tile"
           },
           "thresholdType": {
             "type": "string",
-            "enum": [
-              "above",
-              "below"
-            ],
+            "enum": ["above", "below"],
             "example": "above"
           },
           "channel": {
@@ -212,18 +196,12 @@
           },
           "thresholdType": {
             "type": "string",
-            "enum": [
-              "above",
-              "below"
-            ],
+            "enum": ["above", "below"],
             "example": "above"
           },
           "source": {
             "type": "string",
-            "enum": [
-              "tile",
-              "search"
-            ],
+            "enum": ["tile", "search"],
             "example": "tile"
           },
           "dashboardId": {
@@ -282,12 +260,7 @@
       },
       "ChartSeries": {
         "type": "object",
-        "required": [
-          "sourceId",
-          "aggFn",
-          "where",
-          "groupBy"
-        ],
+        "required": ["sourceId", "aggFn", "where", "groupBy"],
         "properties": {
           "sourceId": {
             "type": "string",
@@ -322,10 +295,7 @@
           "whereLanguage": {
             "type": "string",
             "description": "Query language used in the where clause",
-            "enum": [
-              "lucene",
-              "sql"
-            ],
+            "enum": ["lucene", "sql"],
             "example": "lucene"
           },
           "groupBy": {
@@ -334,10 +304,7 @@
             "items": {
               "type": "string"
             },
-            "example": [
-              "service",
-              "host"
-            ]
+            "example": ["service", "host"]
           },
           "metricName": {
             "type": "string",
@@ -347,11 +314,7 @@
           "metricDataType": {
             "type": "string",
             "description": "Type of metric data",
-            "enum": [
-              "sum",
-              "gauge",
-              "histogram"
-            ],
+            "enum": ["sum", "gauge", "histogram"],
             "example": "gauge"
           },
           "type": {
@@ -368,21 +331,14 @@
           },
           "dataSource": {
             "type": "string",
-            "enum": [
-              "events",
-              "metrics"
-            ],
+            "enum": ["events", "metrics"],
             "example": "events"
           }
         }
       },
       "SeriesQueryRequest": {
         "type": "object",
-        "required": [
-          "series",
-          "startTime",
-          "endTime"
-        ],
+        "required": ["series", "startTime", "endTime"],
         "properties": {
           "series": {
             "type": "array",
@@ -428,10 +384,7 @@
           "seriesReturnType": {
             "type": "string",
             "description": "Format of the returned data",
-            "enum": [
-              "ratio",
-              "column"
-            ],
+            "enum": ["ratio", "column"],
             "example": "column"
           }
         }
@@ -460,10 +413,7 @@
             "items": {
               "type": "string"
             },
-            "example": [
-              "api",
-              "prod-host-1"
-            ]
+            "example": ["api", "prod-host-1"]
           }
         }
       },
@@ -539,18 +489,13 @@
             "items": {
               "type": "string"
             },
-            "example": [
-              "production",
-              "monitoring"
-            ]
+            "example": ["production", "monitoring"]
           }
         }
       },
       "CreateDashboardRequest": {
         "type": "object",
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "properties": {
           "name": {
             "type": "string",
@@ -567,9 +512,7 @@
             "items": {
               "type": "string"
             },
-            "example": [
-              "development"
-            ]
+            "example": ["development"]
           }
         }
       },
@@ -591,10 +534,7 @@
             "items": {
               "type": "string"
             },
-            "example": [
-              "production",
-              "updated"
-            ]
+            "example": ["production", "updated"]
           }
         }
       },
@@ -630,9 +570,7 @@
         "summary": "Get Alert",
         "description": "Retrieves a specific alert by ID",
         "operationId": "getAlert",
-        "tags": [
-          "Alerts"
-        ],
+        "tags": ["Alerts"],
         "parameters": [
           {
             "name": "id",
@@ -708,9 +646,7 @@
         "summary": "Update Alert",
         "description": "Updates an existing alert",
         "operationId": "updateAlert",
-        "tags": [
-          "Alerts"
-        ],
+        "tags": ["Alerts"],
         "parameters": [
           {
             "name": "id",
@@ -799,9 +735,7 @@
         "summary": "Delete Alert",
         "description": "Deletes an alert",
         "operationId": "deleteAlert",
-        "tags": [
-          "Alerts"
-        ],
+        "tags": ["Alerts"],
         "parameters": [
           {
             "name": "id",
@@ -854,9 +788,7 @@
         "summary": "List Alerts",
         "description": "Retrieves a list of all alerts for the authenticated team",
         "operationId": "listAlerts",
-        "tags": [
-          "Alerts"
-        ],
+        "tags": ["Alerts"],
         "responses": {
           "200": {
             "description": "Successfully retrieved alerts",
@@ -915,9 +847,7 @@
         "summary": "Create Alert",
         "description": "Creates a new alert",
         "operationId": "createAlert",
-        "tags": [
-          "Alerts"
-        ],
+        "tags": ["Alerts"],
         "requestBody": {
           "required": true,
           "content": {
@@ -986,9 +916,7 @@
         "summary": "Query Chart Series Data",
         "description": "Retrieves time series data based on configured series parameters",
         "operationId": "queryChartSeries",
-        "tags": [
-          "Charts"
-        ],
+        "tags": ["Charts"],
         "requestBody": {
           "required": true,
           "content": {
@@ -1024,18 +952,14 @@
                         "sourceId": "65f5e4a3b9e77c001a123456",
                         "aggFn": "count",
                         "where": "SeverityText:error",
-                        "groupBy": [
-                          "service"
-                        ]
+                        "groupBy": ["service"]
                       },
                       {
                         "sourceId": "65f5e4a3b9e77c001a123456",
                         "aggFn": "avg",
                         "field": "duration",
                         "where": "SeverityText:error",
-                        "groupBy": [
-                          "service"
-                        ]
+                        "groupBy": ["service"]
                       }
                     ]
                   }
@@ -1121,23 +1045,17 @@
                         {
                           "ts_bucket": 1647014400000,
                           "series_0.data": 15,
-                          "group": [
-                            "api"
-                          ]
+                          "group": ["api"]
                         },
                         {
                           "ts_bucket": 1647014400000,
                           "series_0.data": 8,
-                          "group": [
-                            "frontend"
-                          ]
+                          "group": ["frontend"]
                         },
                         {
                           "ts_bucket": 1647018000000,
                           "series_0.data": 22,
-                          "group": [
-                            "api"
-                          ]
+                          "group": ["api"]
                         }
                       ]
                     }
@@ -1235,9 +1153,7 @@
         "summary": "List Dashboards",
         "description": "Retrieves a list of all dashboards for the authenticated team",
         "operationId": "listDashboards",
-        "tags": [
-          "Dashboards"
-        ],
+        "tags": ["Dashboards"],
         "responses": {
           "200": {
             "description": "Successfully retrieved dashboards",
@@ -1258,9 +1174,7 @@
         "summary": "Create Dashboard",
         "description": "Creates a new dashboard",
         "operationId": "createDashboard",
-        "tags": [
-          "Dashboards"
-        ],
+        "tags": ["Dashboards"],
         "requestBody": {
           "required": true,
           "content": {
@@ -1292,10 +1206,7 @@
                         ]
                       }
                     ],
-                    "tags": [
-                      "api",
-                      "monitoring"
-                    ]
+                    "tags": ["api", "monitoring"]
                   }
                 },
                 "complexDashboard": {
@@ -1333,18 +1244,13 @@
                             "dataSource": "events",
                             "aggFn": "count",
                             "where": "level:error",
-                            "groupBy": [
-                              "errorType"
-                            ],
+                            "groupBy": ["errorType"],
                             "sortOrder": "desc"
                           }
                         ]
                       }
                     ],
-                    "tags": [
-                      "service-health",
-                      "production"
-                    ]
+                    "tags": ["service-health", "production"]
                   }
                 }
               }
@@ -1386,10 +1292,7 @@
                             ]
                           }
                         ],
-                        "tags": [
-                          "api",
-                          "monitoring"
-                        ]
+                        "tags": ["api", "monitoring"]
                       }
                     }
                   }
@@ -1431,9 +1334,7 @@
         "summary": "Get Dashboard",
         "description": "Retrieves a specific dashboard by ID",
         "operationId": "getDashboard",
-        "tags": [
-          "Dashboards"
-        ],
+        "tags": ["Dashboards"],
         "parameters": [
           {
             "name": "id",
@@ -1501,10 +1402,7 @@
                             ]
                           }
                         ],
-                        "tags": [
-                          "infrastructure",
-                          "monitoring"
-                        ]
+                        "tags": ["infrastructure", "monitoring"]
                       }
                     }
                   }
@@ -1544,9 +1442,7 @@
         "summary": "Update Dashboard",
         "description": "Updates an existing dashboard",
         "operationId": "updateDashboard",
-        "tags": [
-          "Dashboards"
-        ],
+        "tags": ["Dashboards"],
         "parameters": [
           {
             "name": "id",
@@ -1607,10 +1503,7 @@
                         ]
                       }
                     ],
-                    "tags": [
-                      "production",
-                      "updated"
-                    ]
+                    "tags": ["production", "updated"]
                   }
                 }
               }
@@ -1669,10 +1562,7 @@
                             ]
                           }
                         ],
-                        "tags": [
-                          "production",
-                          "updated"
-                        ]
+                        "tags": ["production", "updated"]
                       }
                     }
                   }
@@ -1725,9 +1615,7 @@
         "summary": "Delete Dashboard",
         "description": "Deletes a dashboard",
         "operationId": "deleteDashboard",
-        "tags": [
-          "Dashboards"
-        ],
+        "tags": ["Dashboards"],
         "parameters": [
           {
             "name": "id",
