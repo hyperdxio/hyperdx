@@ -4653,7 +4653,7 @@ __metadata:
     nextra: "npm:2.0.1"
     nextra-theme-docs: "npm:^2.0.2"
     numbro: "npm:^2.4.0"
-    nuqs: "npm:^1.17.0"
+    nuqs: "npm:1.17.0"
     object-hash: "npm:^3.0.0"
     postcss: "npm:^8.4.38"
     postcss-preset-mantine: "npm:^1.15.0"
@@ -23703,14 +23703,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nuqs@npm:^1.17.0":
-  version: 1.20.0
-  resolution: "nuqs@npm:1.20.0"
+"nuqs@npm:1.17.0":
+  version: 1.17.0
+  resolution: "nuqs@npm:1.17.0"
   dependencies:
     mitt: "npm:^3.0.1"
   peerDependencies:
     next: ">=13.4 <14.0.2 || ^14.0.3"
-  checksum: 10c0/8e1b67a96c6fda21023924db03b31f3eecf387097ee23685f35fbd1118ff202d1f8f3efd5e1e45bb5736e701a13da0d6cefc98cbe813315dc6462c2e38e2c93f
+  checksum: 10c0/98e26518fdeda9518defe8abb34fd722f9fbc6d62dc7713dbc7bf365b5afc4c7c934088d7c7ed528621c222017841411241f0cfe97c615a3e7fb4d80354e8349
   languageName: node
   linkType: hard
 

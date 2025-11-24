@@ -72,7 +72,7 @@
     "nextra": "2.0.1",
     "nextra-theme-docs": "^2.0.2",
     "numbro": "^2.4.0",
-    "nuqs": "^1.17.0",
+    "nuqs": "1.17.0",
     "object-hash": "^3.0.0",
     "react": "18.3.1",
     "react-copy-to-clipboard": "^5.1.0",
