@@ -68,11 +68,7 @@ import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { parseAsStringWithNewLines } from './utils/queryParsers';
 import api from './api';
-import {
-  AGG_FNS,
-  buildEventsSearchUrl,
-  DEFAULT_CHART_CONFIG,
-} from './ChartUtils';
+import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
@@ -327,116 +323,14 @@ const Tile = forwardRef(
               <Box p="xs" h="100%">
                 <DBTableChart
                   config={queriedConfig}
-                  getRowSearchLink={row => {
-                    if (!source?.id || !source?.logSourceId) {
-                      return null;
-                    }
-
-                    // Extract group-by column names and build filters from row values
-                    const groupFilters: Array<{ column: string; value: any }> =
-                      [];
-
-                    if (
-                      queriedConfig.groupBy &&
-                      typeof queriedConfig.groupBy === 'string'
-                    ) {
-                      // String GROUP BY: "col1, col2"
-                      const groupColumns = queriedConfig.groupBy
-                        .split(',')
-                        .map(v => v.trim());
-                      groupColumns.forEach(col => {
-                        if (row[col] != null) {
-                          groupFilters.push({ column: col, value: row[col] });
-                        }
-                      });
-                    } else if (Array.isArray(queriedConfig.groupBy)) {
-                      // Array GROUP BY: [{ valueExpression: "col1" }, ...]
-                      queriedConfig.groupBy.forEach(groupBy => {
-                        const col =
-                          typeof groupBy === 'string'
-                            ? groupBy
-                            : groupBy.valueExpression;
-                        if (row[col] != null) {
-                          groupFilters.push({ column: col, value: row[col] });
-                        }
-                      });
-                    }
-
-                    // Build value range filter from the first select column
-                    let valueRangeFilter:
-                      | { expression: string; value: number }
-                      | undefined;
-
-                    if (
-                      Array.isArray(queriedConfig.select) &&
-                      queriedConfig.select.length > 0
-                    ) {
-                      const firstSelect = queriedConfig.select[0];
-                      const aggFn =
-                        typeof firstSelect === 'string'
-                          ? undefined
-                          : firstSelect.aggFn;
-
-                      // Only add value range filter if the aggregation is attributable
-                      const isAttributable =
-                        AGG_FNS.find(fn => fn.value === aggFn)
-                          ?.isAttributable !== false;
-
-                      if (isAttributable) {
-                        const valueExpression =
-                          typeof firstSelect === 'string'
-                            ? firstSelect
-                            : firstSelect.valueExpression;
-
-                        // Collect group column names to exclude them
-                        const groupColumnNames = new Set<string>();
-                        if (
-                          queriedConfig.groupBy &&
-                          typeof queriedConfig.groupBy === 'string'
-                        ) {
-                          queriedConfig.groupBy
-                            .split(',')
-                            .map(v => v.trim())
-                            .forEach(col => groupColumnNames.add(col));
-                        } else if (Array.isArray(queriedConfig.groupBy)) {
-                          queriedConfig.groupBy.forEach(groupBy => {
-                            const col =
-                              typeof groupBy === 'string'
-                                ? groupBy
-                                : groupBy.valueExpression;
-                            groupColumnNames.add(col);
-                          });
-                        }
-
-                        // Find the first value column (non-group column) in the row
-                        const valueColumnKey = Object.keys(row).find(
-                          key => !groupColumnNames.has(key),
-                        );
-
-                        if (valueColumnKey) {
-                          const rowValue = row[valueColumnKey];
-
-                          if (
-                            rowValue != null &&
-                            typeof rowValue === 'number'
-                          ) {
-                            valueRangeFilter = {
-                              expression: valueExpression,
-                              value: rowValue,
-                            };
-                          }
-                        }
-                      }
-                    }
-
-                    return buildEventsSearchUrl({
+                  getRowSearchLink={row =>
+                    buildTableRowSearchUrl({
+                      row,
                       source,
                       config: queriedConfig,
                       dateRange: dateRange,
-                      groupFilters,
-                      valueRangeFilter,
-                    });
-                  }}
+                    })
+                  }
                 />
               </Box>
             )}

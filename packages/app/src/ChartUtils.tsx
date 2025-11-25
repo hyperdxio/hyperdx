@@ -937,3 +937,98 @@ export function buildEventsSearchUrl({
 
   return `/search?${new URLSearchParams(params).toString()}`;
 }
+
+/**
+ * Build search URL from a table row click
+ * Extracts group filters and value range filter from the row data
+ */
+export function buildTableRowSearchUrl({
+  row,
+  source,
+  config,
+  dateRange,
+}: {
+  row: Record<string, any>;
+  source: TSource | undefined;
+  config: ChartConfigWithDateRange;
+  dateRange: [Date, Date];
+}): string | null {
+  if (!source?.id || !source?.logSourceId) {
+    return null;
+  }
+
+  // Extract group-by column names and build filters from row values
+  const groupFilters: Array<{ column: string; value: any }> = [];
+
+  if (config.groupBy && typeof config.groupBy === 'string') {
+    // String GROUP BY: "col1, col2"
+    const groupColumns = config.groupBy.split(',').map(v => v.trim());
+    groupColumns.forEach(col => {
+      if (row[col] != null) {
+        groupFilters.push({ column: col, value: row[col] });
+      }
+    });
+  } else if (Array.isArray(config.groupBy)) {
+    // Array GROUP BY: [{ valueExpression: "col1" }, ...]
+    config.groupBy.forEach(groupBy => {
+      const col =
+        typeof groupBy === 'string' ? groupBy : groupBy.valueExpression;
+      if (row[col] != null) {
+        groupFilters.push({ column: col, value: row[col] });
+      }
+    });
+  }
+
+  // Build value range filter from the first select column
+  let valueRangeFilter: { expression: string; value: number } | undefined;
+
+  const firstSelect = config.select?.[0];
+  if (firstSelect) {
+    const aggFn =
+      typeof firstSelect === 'string' ? undefined : firstSelect.aggFn;
+    const isAttributable =
+      AGG_FNS.find(fn => fn.value === aggFn)?.isAttributable !== false;
+
+    if (isAttributable) {
+      const valueExpression =
+        typeof firstSelect === 'string'
+          ? firstSelect
+          : firstSelect.valueExpression;
+
+      // Extract group column names to exclude them from value columns
+      const groupColumns = (() => {
+        if (!config.groupBy) return [];
+        if (typeof config.groupBy === 'string') {
+          return config.groupBy.split(',').map(v => v.trim());
+        }
+        return config.groupBy.map(g =>
+          typeof g === 'string' ? g : g.valueExpression,
+        );
+      })();
+
+      const groupColumnSet = new Set(groupColumns);
+
+      // Find the first value column (non-group column)
+      const valueColumn = Object.keys(row).find(
+        key => !groupColumnSet.has(key),
+      );
+
+      const rowValue = valueColumn ? row[valueColumn] : undefined;
+
+      if (rowValue != null && typeof rowValue === 'number') {
+        valueRangeFilter = {
+          expression: valueExpression,
+          value: rowValue,
+        };
+      }
+    }
+  }
+
+  return buildEventsSearchUrl({
+    source,
+    config,
+    dateRange,
+    groupFilters,
+    valueRangeFilter,
+  });
+}
