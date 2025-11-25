@@ -2,7 +2,10 @@ import { useState } from 'react';
 import Link from 'next/link';
 import SqlString from 'sqlstring';
 import { SearchConditionLanguage } from '@hyperdx/common-utils/dist/types';
-import { Button, Popover, Stack } from '@mantine/core';
+import { Button, Popover, Stack, Tooltip } from '@mantine/core';
+import { IconLink } from '@tabler/icons-react';
+
+import { isLinkableUrl } from '@/utils/highlightedAttributes';
 
 export default function EventTag({
   displayedKey,
@@ -34,7 +37,8 @@ export default function EventTag({
     }
 )) {
   const [opened, setOpened] = useState(false);
-  const hasActions = !!onPropertyAddClick || !!generateSearchUrl;
+  const isLink = isLinkableUrl(value);
+  const hasActions = !!onPropertyAddClick || !!generateSearchUrl || isLink;
 
   if (!hasActions) {
     return (
@@ -58,13 +62,32 @@ export default function EventTag({
       onChange={setOpened}
     >
       <Popover.Target>
-        <div
-          key={name}
-          className="bg-highlighted px-2 py-0.5 me-1 my-1 cursor-pointer"
-          onClick={() => setOpened(!opened)}
-        >
-          {displayedKey || name}: {value}
-        </div>
+        {isLink ? (
+          <Tooltip
+            label={value}
+            withArrow
+            maw={400}
+            multiline
+            style={{ wordBreak: 'break-word' }}
+          >
+            <a
+              href={encodeURI(value)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="d-flex flex-row align-items-center bg-highlighted px-2 py-0.5 me-1 my-1 cursor-pointer"
+            >
+              {displayedKey || name}
+              <IconLink size={14} className="ms-1" />
+            </a>
+          </Tooltip>
+        ) : (
+          <div
+            className="bg-highlighted px-2 py-0.5 me-1 my-1 cursor-pointer"
+            onClick={() => setOpened(!opened)}
+          >
+            {displayedKey || name}: {value}
+          </div>
+        )}
       </Popover.Target>
       <Popover.Dropdown p={2}>
         <Stack gap={0} justify="stretch">

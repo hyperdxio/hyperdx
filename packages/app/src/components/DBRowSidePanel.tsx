@@ -12,7 +12,7 @@ import { isString } from 'lodash';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Drawer, Flex, Stack } from '@mantine/core';
 
@@ -21,10 +21,12 @@ import DBRowSidePanelHeader, {
   BreadcrumbPath,
 } from '@/components/DBRowSidePanelHeader';
 import useResizable from '@/hooks/useResizable';
+import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
+import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
@@ -187,15 +189,34 @@ const DBRowSidePanel = ({
       : undefined;
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
-  const serviceName = normalizedRow?.['__hdx_service_name'];
 
-  const tags = useMemo(() => {
-    const tags: Record<string, string> = {};
-    if (serviceName && source.serviceNameExpression) {
-      tags[source.serviceNameExpression] = serviceName;
+  const highlightedAttributeValues = useMemo(() => {
+    const attributeExpressions: TSource['highlightedRowAttributeExpressions'] =
+      [];
+    if (
+      (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) &&
+      source.highlightedRowAttributeExpressions
+    ) {
+      attributeExpressions.push(...source.highlightedRowAttributeExpressions);
     }
-    return tags;
-  }, [serviceName, source.serviceNameExpression]);
+
+    // Add service name expression to all sources, to maintain compatibility with
+    // the behavior prior to the addition of highlightedRowAttributeExpressions
+    if (source.serviceNameExpression) {
+      attributeExpressions.push({
+        sqlExpression: source.serviceNameExpression,
+      });
+    }
+
+    return rowData
+      ? getHighlightedAttributesFromData(
+          source,
+          attributeExpressions,
+          rowData.data || [],
+          rowData.meta || [],
+        )
+      : [];
+  }, [source, rowData]);
 
   const oneHourRange = useMemo(() => {
     return [
@@ -274,7 +295,7 @@ const DBRowSidePanel = ({
       <Box p="sm">
         <DBRowSidePanelHeader
           date={timestampDate}
-          tags={tags}
+          attributes={highlightedAttributeValues}
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
           severityText={severityText}
@@ -518,14 +539,19 @@ export default function DBRowSidePanelErrorBoundary({
     parseAsStringEnum<Tab>(Object.values(Tab)),
   );
 
+  const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
+
   const _onClose = useCallback(() => {
     // Reset tab to undefined when unmounting, so that when we open the drawer again, it doesn't open to the last tab
     // (which might not be valid, ex session replay)
     if (!isNestedPanel) {
       setQueryTab(null);
     }
+    // Clear waterfall search state on close, so that filters don't
+    // persist when reopening another trace.
+    clearTraceWaterfallSearchState();
     onClose();
-  }, [setQueryTab, isNestedPanel, onClose]);
+  }, [setQueryTab, isNestedPanel, onClose, clearTraceWaterfallSearchState]);
 
   useHotkeys(['esc'], _onClose, { enabled: subDrawerOpen === false });
 

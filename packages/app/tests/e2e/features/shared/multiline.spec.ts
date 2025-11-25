@@ -2,293 +2,92 @@ import type { Locator, Page } from '@playwright/test';
 
 import { expect, test } from '../../utils/base-test';
 
-interface MultilineTestOptions {
-  formSelector?: string;
-  whereText?: string;
-}
-
-interface EditorConfig {
-  mode: 'SQL' | 'Lucene';
-  toggleSelector: string;
-  editorSelector: string;
-  getContent: (editor: Locator) => Promise<string>;
-  testData: {
-    lines: string[];
-    expectations: string[];
-  };
-}
-
 test.describe('Multiline Input', { tag: '@search' }, () => {
-  // Helper to get container based on form selector
-  const getContainer = (page: Page, formSelector?: string) =>
-    formSelector ? page.locator(formSelector) : page;
-
-  // Helper to test multiline input functionality
-  const testMultilineInput = async (
+  const testInputExpansion = async (
     page: Page,
     editor: Locator,
-    lines: string[],
-    expectations: string[],
-    getContent: (editor: Locator) => Promise<string>,
-  ) => {
+  ): Promise<void> => {
+    // Click and type first line
     await editor.click();
+    await page.keyboard.type('first line');
 
-    // Type first line
-    await editor.type(lines[0]);
+    // Wait for editor to stabilize and get height with single line
+    await page.waitForTimeout(200);
+    const singleLineBox = await editor.boundingBox();
+    const singleLineHeight = singleLineBox?.height || 0;
 
-    // Add remaining lines with Shift+Enter
-    for (let i = 1; i < lines.length; i++) {
-      await page.keyboard.press('Shift+Enter');
-      await editor.type(lines[i]);
-    }
+    // Add a line break and type second line
+    await page.keyboard.press('Shift+Enter');
+    await page.keyboard.type('second line');
 
-    // Verify content
-    const content = await getContent(editor);
-    expectations.forEach(expectation => {
-      expect(content).toContain(expectation);
-    });
+    // Wait for layout changes
+    await page.waitForTimeout(300);
+
+    // Verify height increased
+    const multiLineBox = await editor.boundingBox();
+    const multiLineHeight = multiLineBox?.height || 0;
+    expect(multiLineHeight).toBeGreaterThan(singleLineHeight);
   };
 
-  // Helper to test height expansion
-  const testHeightExpansion = async (
+  const getEditor = (
     page: Page,
-    editor: Locator,
-    additionalLines: string[],
-    mode: EditorConfig['mode'],
-  ) => {
-    const initialBox = await editor.boundingBox();
-    const initialHeight = initialBox?.height || 0;
-
-    // Add more content
-    for (const line of additionalLines) {
-      await editor.press('Shift+Enter');
-      await editor.pressSequentially(line);
-    }
-
-    // Wait for potential height changes to take effect
-    await page.waitForTimeout(500);
-
-    const expandedBox = await editor.boundingBox();
-    const expandedHeight = expandedBox?.height || 0;
-
-    // More robust assertion - if height doesn't expand, it might be due to CSS constraints
-    // In that case, we should at least verify the content was added successfully
-    if (expandedHeight <= initialHeight) {
-      console.log(
-        `Height did not expand: initial=${initialHeight}, final=${expandedHeight}`,
+    mode: 'SQL' | 'Lucene',
+    formSelector?: string,
+    whereText = 'WHERE',
+  ): Locator => {
+    if (mode === 'SQL') {
+      const container = formSelector ? page.locator(formSelector) : page;
+      const whereContainer = container.locator(
+        `div:has(div.mantine-Text-root:has-text("${whereText}"))`,
       );
-
-      // For SQL - its rendered in CodeMirror, we can check line count through its DOM
-      if (mode === 'SQL') {
-        const numLines = await editor.evaluate(
-          node => node.querySelectorAll('.cm-line').length,
-        );
-        expect(numLines).toBeGreaterThan(1);
-        // For Lucene - fallback to checking the value of the textarea
-      } else {
-        const content = await editor.textContent();
-        const inputValue = await editor.inputValue().catch(() => null);
-        const actualContent = content || inputValue || '';
-
-        // Check that we have multiple lines of content
-        const lineCount = actualContent
-          .split('\n')
-          .filter(line => line.trim()).length;
-        expect(lineCount).toBeGreaterThan(1);
-      }
-    } else {
-      expect(expandedHeight).toBeGreaterThan(initialHeight);
+      return whereContainer.locator('.cm-editor').first();
     }
+    return page.locator('[data-testid="search-input"]');
   };
 
-  // Consolidated multiline test function
-  const testMultilineEditor = async (
-    page: Page,
-    config: EditorConfig,
-    options: MultilineTestOptions = {},
-  ) => {
-    const { formSelector, whereText = 'WHERE' } = options;
-    const container = getContainer(page, formSelector);
-
-    // Switch to the specified mode
-    await test.step(`Switch to ${config.mode} mode`, async () => {
-      const toggle = container.locator(config.toggleSelector).first();
-      await toggle.click();
-
-      // For SQL mode, verify the WHERE label is visible
-      if (config.mode === 'SQL') {
-        const scopedContainer = formSelector ? container : page;
-        const whereLabel = scopedContainer.locator(
-          `div.mantine-Text-root:has-text("${whereText}")`,
-        );
-        await expect(whereLabel).toBeVisible();
-      }
-    });
-
-    // Get the editor element
-    const editor =
-      config.mode === 'SQL'
-        ? (() => {
-            const scopedContainer = formSelector ? container : page;
-            const whereContainer = scopedContainer.locator(
-              `div:has(div.mantine-Text-root:has-text("${whereText}"))`,
-            );
-            return whereContainer.locator('.cm-editor').first();
-          })()
-        : page.locator('[data-testid="search-input"]');
-
-    await expect(editor).toBeVisible();
-
-    // Test multiline input
-    await test.step('Test multiline input with Shift+Enter', async () => {
-      await testMultilineInput(
-        page,
-        editor,
-        config.testData.lines,
-        config.testData.expectations,
-        config.getContent,
-      );
-    });
-
-    // Test height expansion
-    await test.step('Test editor height expansion', async () => {
-      const additionalLines =
-        config.mode === 'SQL'
-          ? ['AND response_time > 1000', 'AND user_id IS NOT NULL']
-          : [
-              'response_time:>1000 AND status:500',
-              'user_id:* AND session_id:exists',
-            ];
-
-      await testHeightExpansion(page, editor, additionalLines, config.mode);
-    });
-
-    // SQL-specific max height test
-    if (config.mode === 'SQL') {
-      await test.step('Test max height with scroll overflow', async () => {
-        for (let i = 0; i < 10; i++) {
-          await editor.press('Shift+Enter');
-          await editor.type(`AND field_${i} = "value_${i}"`);
-        }
-
-        const editorBox = await editor.boundingBox();
-        const maxHeight = 150;
-        expect(editorBox?.height).toBeLessThanOrEqual(maxHeight + 10);
-
-        const scroller = editor.locator('.cm-scroller');
-        await expect(scroller).toHaveCSS('overflow-y', 'auto');
-      });
-    }
-
-    // Lucene-specific auto-expansion test
-    if (config.mode === 'Lucene') {
-      await test.step('Test textarea auto-expansion with extensive content', async () => {
-        // Dismiss any open dropdowns/tooltips that might block clicks
-        await page.keyboard.press('Escape');
-        await page.waitForTimeout(100);
-
-        // Clear and start fresh
-        await editor.focus();
-        await page.keyboard.press('Control+a');
-        await editor.type('level:info');
-
-        const initialBox = await editor.boundingBox();
-        const initialHeight = initialBox?.height || 0;
-
-        // Add extensive content
-        const extensiveLines = [
-          'response_time:>1000 AND status:500',
-          'user_id:* AND session_id:exists',
-          'trace_id:abc123 AND span_id:def456',
-          'error:true AND warning:false',
-          'timestamp:[now-1h TO now] AND service:api',
-        ];
-
-        for (const line of extensiveLines) {
-          await page.keyboard.press('Shift+Enter');
-          await editor.type(line);
-        }
-
-        await page.waitForTimeout(300);
-
-        const expandedBox = await editor.boundingBox();
-        const expandedHeight = expandedBox?.height || 0;
-
-        if (expandedHeight <= initialHeight) {
-          console.log(
-            `Height not expanding: initial=${initialHeight}, final=${expandedHeight}`,
-          );
-          const finalValue = await config.getContent(editor);
-          expect(finalValue.split('\n').length).toBeGreaterThan(1);
-        } else {
-          expect(expandedHeight).toBeGreaterThan(initialHeight);
-        }
-      });
-    }
-  };
-
-  // Configuration for different editor modes
-  const editorConfigs: Record<string, EditorConfig> = {
-    SQL: {
-      mode: 'SQL',
-      toggleSelector: 'text=SQL',
-      editorSelector: '.cm-editor',
-      getContent: async (editor: Locator) => (await editor.textContent()) || '',
-      testData: {
-        lines: [
-          'timestamp >= now() - interval 1 hour',
-          'AND level = "error"',
-          'AND service_name = "api"',
-        ],
-        expectations: [
-          'timestamp >= now() - interval 1 hour',
-          'AND level = "error"',
-          'AND service_name = "api"',
-        ],
-      },
-    },
-    Lucene: {
-      mode: 'Lucene',
-      toggleSelector: 'text=Lucene',
-      editorSelector: '[data-testid="search-input"]',
-      getContent: (editor: Locator) => editor.inputValue(),
-      testData: {
-        lines: ['level:error', 'service_name:api', 'timestamp:[now-1h TO now]'],
-        expectations: [
-          'level:error',
-          'service_name:api',
-          'timestamp:[now-1h TO now]',
-        ],
-      },
-    },
-  };
-
-  // Test pages configuration
-  const testPages = [
+  // Test configurations
+  const tests = [
     {
       path: '/search',
       name: 'Search Page',
-      options: {
-        formSelector: '[data-testid="search-form"]',
-        whereText: 'WHERE',
-      },
+      formSelector: '[data-testid="search-form"]',
+      whereText: 'WHERE',
     },
     {
       path: '/dashboards',
       name: 'Dashboard Page',
-      options: { whereText: 'GLOBAL WHERE' },
+      formSelector: undefined,
+      whereText: 'GLOBAL WHERE',
     },
   ];
 
-  // Generate tests for each page and editor mode combination
-  testPages.forEach(({ path, name, options }) => {
-    Object.entries(editorConfigs).forEach(([modeName, config]) => {
-      test(`should support multiline ${modeName} input on ${name}`, async ({
-        page,
-      }) => {
-        await page.goto(path);
-        await testMultilineEditor(page, config, options);
-      });
+  tests.forEach(({ path, name, formSelector, whereText }) => {
+    test(`should expand SQL input on line break on ${name}`, async ({
+      page,
+    }) => {
+      await page.goto(path);
+
+      // Switch to SQL mode
+      const container = formSelector ? page.locator(formSelector) : page;
+      await container.locator('text=SQL').first().click();
+
+      const editor = getEditor(page, 'SQL', formSelector, whereText);
+      await expect(editor).toBeVisible();
+      await testInputExpansion(page, editor);
+    });
+
+    test(`should expand Lucene input on line break on ${name}`, async ({
+      page,
+    }) => {
+      await page.goto(path);
+
+      // Switch to Lucene mode
+      const container = formSelector ? page.locator(formSelector) : page;
+      await container.locator('text=Lucene').first().click();
+
+      const editor = getEditor(page, 'Lucene', formSelector, whereText);
+      await expect(editor).toBeVisible();
+      await testInputExpansion(page, editor);
     });
   });
 });

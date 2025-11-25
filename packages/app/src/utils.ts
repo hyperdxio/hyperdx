@@ -217,7 +217,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
   useEffect(() => {
     const handleCustomStorageChange = (event: Event) => {
       if (
-        event instanceof CustomEvent<CustomStorageChangeDetail> &&
+        event instanceof CustomEvent &&
         event.detail.key === key &&
         event.detail.instanceId !== instanceId
       ) {

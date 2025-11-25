@@ -17,11 +17,14 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 
-import EventTag from '@/components/EventTag';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import { formatDistanceToNowStrictShort } from '@/utils';
 
+import {
+  DBHighlightedAttributesList,
+  HighlightedAttribute,
+} from './DBHighlightedAttributesList';
 import { RowSidePanelContext } from './DBRowSidePanel';
 import LogLevel from './LogLevel';
 
@@ -119,7 +122,7 @@ function BreadcrumbNavigation({
 }
 
 export default function DBRowSidePanelHeader({
-  tags,
+  attributes = [],
   mainContent = '',
   mainContentHeader,
   date,
@@ -130,7 +133,7 @@ export default function DBRowSidePanelHeader({
   date: Date;
   mainContent?: string;
   mainContentHeader?: string;
-  tags: Record<string, string>;
+  attributes?: HighlightedAttribute[];
   severityText?: string;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
@@ -264,35 +267,9 @@ export default function DBRowSidePanelHeader({
           </Text>
         </Paper>
       )}
-      <Flex mt="sm">
-        {Object.entries(tags).map(([sqlKey, value]) => {
-          // Convert SQL syntax to Lucene syntax
-          // SQL: column['property.foo'] -> Lucene: column.property.foo
-          // or SQL: column -> Lucene: column
-          const luceneKey = sqlKey.replace(/\['([^']+)'\]/g, '.$1');
-
-          return (
-            <EventTag
-              {...(onPropertyAddClick
-                ? {
-                    onPropertyAddClick,
-                    sqlExpression: sqlKey,
-                  }
-                : {
-                    onPropertyAddClick: undefined,
-                    sqlExpression: undefined,
-                  })}
-              generateSearchUrl={
-                generateSearchUrl ? _generateSearchUrl : undefined
-              }
-              displayedKey={luceneKey}
-              name={luceneKey}
-              value={value}
-              key={sqlKey}
-            />
-          );
-        })}
-      </Flex>
+      <Box mt="xs">
+        <DBHighlightedAttributesList attributes={attributes} />
+      </Box>
     </>
   );
 }
