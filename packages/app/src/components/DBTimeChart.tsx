@@ -1,26 +1,20 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
-import { add } from 'date-fns';
-import SqlString from 'sqlstring';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   ChartConfigWithDateRange,
   DisplayType,
-  Filter,
 } from '@hyperdx/common-utils/dist/types';
 import { Button, Code, Group, Modal, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
 import { IconArrowsDiagonal, IconSearch } from '@tabler/icons-react';
 
 import {
-  ChartKeyJoiner,
+  buildChartViewEventsParams,
   formatResponseForTimeChart,
   useTimeChartSettings,
 } from '@/ChartUtils';
-import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useSource } from '@/source';
@@ -113,12 +107,12 @@ function ActiveTimeTooltip({
               const seriesQParams = buildQParams(
                 payload.dataKey,
                 payload.value,
-              );
+              )?.toString();
               return (
                 <Link
                   key={idx}
                   data-testid={`chart-view-events-link-${payload.dataKey}`}
-                  href={`/search?${seriesQParams?.toString()}`}
+                  href={`/search${seriesQParams ? `?${seriesQParams}` : ''}`}
                   onClick={onDismiss}
                 >
                   <Group gap="xs">
@@ -254,55 +248,51 @@ function DBTimeChartComponent({
     ActiveClickPayload | undefined
   >(undefined);
 
+  // Wrap the setter to only allow setting if source is available
+  const setActiveClickPayloadIfSourceAvailable = useCallback(
+    (payload: ActiveClickPayload | undefined) => {
+      if (source == null) {
+        return; // Don't set if no source
+      }
+      setActiveClickPayload(payload);
+    },
+    [source],
+  );
+
   const clickedActiveLabelDate = useMemo(() => {
     return activeClickPayload?.activeLabel != null
       ? new Date(Number.parseInt(activeClickPayload.activeLabel) * 1000)
       : undefined;
   }, [activeClickPayload]);
 
-  const qparams = useMemo(() => {
-    if (clickedActiveLabelDate == null || !source?.id == null) {
-      return null;
-    }
-    const isMetricChart = isMetricChartConfig(config);
-    if (isMetricChart && source?.logSourceId == null) {
-      notifications.show({
-        color: 'yellow',
-        message: 'No log source is associated with the selected metric source.',
+  const buildQParams = useCallback(
+    (seriesKey?: string, seriesValue?: number) => {
+      if (clickedActiveLabelDate == null || source == null) {
+        return null;
+      }
+
+      return buildChartViewEventsParams({
+        clickedDate: clickedActiveLabelDate,
+        config,
+        granularity,
+        source,
+        groupColumns: groupColumns ?? [],
+        valueColumns: valueColumns ?? [],
+        isSingleValueColumn: isSingleValueColumn ?? true,
+        seriesKey,
+        seriesValue,
       });
-      return null;
-    }
-    const from = clickedActiveLabelDate.getTime();
-    const to = add(clickedActiveLabelDate, {
-      seconds: convertGranularityToSeconds(granularity),
-    }).getTime();
-    let where = config.where;
-    let whereLanguage = config.whereLanguage || 'lucene';
-    if (
-      where.length === 0 &&
-      Array.isArray(config.select) &&
-      config.select.length === 1
-    ) {
-      where = config.select[0].aggCondition ?? '';
-      whereLanguage = config.select[0].aggConditionLanguage ?? 'lucene';
-    }
-    const params: Record<string, string> = {
-      source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
-      where: where,
-      whereLanguage: whereLanguage,
-      filters: JSON.stringify(config.filters ?? []),
-      isLive: 'false',
-      from: from.toString(),
-      to: to.toString(),
-    };
-    // Include the select parameter if provided to preserve custom columns
-    // eventTableSelect is used for charts that override select (like histograms with count)
-    // to preserve the original table's select expression
-    if (config.eventTableSelect) {
-      params.select = config.eventTableSelect;
-    }
-    return new URLSearchParams(params);
-  }, [clickedActiveLabelDate, config, granularity, source]);
+    },
+    [
+      clickedActiveLabelDate,
+      config,
+      granularity,
+      source,
+      groupColumns,
+      valueColumns,
+      isSingleValueColumn,
+    ],
+  );
 
   return isLoading && !data ? (
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
@@ -448,7 +438,7 @@ function DBTimeChartComponent({
           numberFormat={config.numberFormat}
           onTimeRangeSelect={onTimeRangeSelect}
           referenceLines={referenceLines}
-          setIsClickActive={setActiveClickPayload}
+          setIsClickActive={setActiveClickPayloadIfSourceAvailable}
           showLegend={showLegend}
           timestampKey={timestampColumn?.name}
         />

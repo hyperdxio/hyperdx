@@ -1,5 +1,7 @@
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { add } from 'date-fns';
+import { cond } from 'lodash';
+import SqlString from 'sqlstring';
 import { z } from 'zod';
 import {
   filterColumnMetaByType,
@@ -7,10 +9,12 @@ import {
   JSDataType,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   AggregateFunction as AggFnV2,
   ChartConfigWithDateRange,
   DisplayType,
+  Filter,
   MetricsDataType as MetricsDataTypeV2,
   SavedChartConfig,
   SourceKind,
@@ -18,6 +22,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { SegmentedControl, Select as MSelect } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 
 import { getMetricNameSql } from './otelSemanticConventions';
 import {
@@ -44,18 +49,22 @@ export const TABLES = [
 ];
 
 export const AGG_FNS = [
-  { value: 'count' as const, label: 'Count of Events' },
-  { value: 'sum' as const, label: 'Sum' },
-  { value: 'p99' as const, label: '99th Percentile' },
-  { value: 'p95' as const, label: '95th Percentile' },
-  { value: 'p90' as const, label: '90th Percentile' },
-  { value: 'p50' as const, label: 'Median' },
-  { value: 'avg' as const, label: 'Average' },
-  { value: 'max' as const, label: 'Maximum' },
-  { value: 'min' as const, label: 'Minimum' },
-  { value: 'count_distinct' as const, label: 'Count Distinct' },
-  { value: 'any' as const, label: 'Any' },
-  { value: 'none' as const, label: 'None' },
+  { value: 'count' as const, label: 'Count of Events', isAttributable: false },
+  { value: 'sum' as const, label: 'Sum', isAttributable: false },
+  { value: 'p99' as const, label: '99th Percentile', isAttributable: true },
+  { value: 'p95' as const, label: '95th Percentile', isAttributable: true },
+  { value: 'p90' as const, label: '90th Percentile', isAttributable: true },
+  { value: 'p50' as const, label: 'Median', isAttributable: true },
+  { value: 'avg' as const, label: 'Average', isAttributable: true },
+  { value: 'max' as const, label: 'Maximum', isAttributable: true },
+  { value: 'min' as const, label: 'Minimum', isAttributable: true },
+  {
+    value: 'count_distinct' as const,
+    label: 'Count Distinct',
+    isAttributable: false,
+  },
+  { value: 'any' as const, label: 'Any', isAttributable: true },
+  { value: 'none' as const, label: 'None', isAttributable: true },
 ];
 
 export const getMetricAggFns = (
@@ -267,6 +276,8 @@ export function convertDateRangeToGranularityString(
 
   return Granularity.ThirtyDay;
 }
+
+const ChartKeyJoiner = ' · ';
 
 export function convertGranularityToSeconds(granularity: SQLInterval): number {
   const [num, unit] = granularity.split(' ');
@@ -582,7 +593,7 @@ export function formatResponseForTimeChart({
         // Simplify the display name if there's only one series and a group by
         ...(isSingleValueColumn && hasGroupColumns ? [] : [valueColumn.name]),
         ...groupColumns.map(g => row[g.name]),
-      ].join(' · ');
+      ].join(ChartKeyJoiner);
 
       // UInt64 are returned as strings, we'll convert to number
       // and accept a bit of floating point error
@@ -823,3 +834,164 @@ export const convertV1ChartConfigToV2 = (
   }
   throw new Error(`unsupported table in v2: ${firstSeries.table}`);
 };
+
+/**
+ * Build query parameters for viewing events from a specific chart data point
+ */
+export function buildChartViewEventsParams({
+  clickedDate,
+  config,
+  granularity,
+  source,
+  groupColumns,
+  valueColumns,
+  isSingleValueColumn,
+  seriesKey,
+  seriesValue,
+  threshold = 0.05,
+}: {
+  clickedDate: Date;
+  config: ChartConfigWithDateRange;
+  granularity: string;
+  source: TSource;
+  groupColumns: string[];
+  valueColumns: string[];
+  isSingleValueColumn: boolean;
+  seriesKey?: string;
+  seriesValue?: number;
+  // The +/- threshold for considering values as equal
+  threshold?: number;
+}): URLSearchParams | null {
+  if (!source?.id) {
+    return null;
+  }
+
+  const isMetricChart = isMetricChartConfig(config);
+  if (isMetricChart && source?.logSourceId == null) {
+    notifications.show({
+      color: 'yellow',
+      message: 'No log source is associated with the selected metric source.',
+    });
+    return null;
+  }
+
+  let where = config.where;
+  let whereLanguage = config.whereLanguage || 'lucene';
+  if (
+    where.length === 0 &&
+    Array.isArray(config.select) &&
+    config.select.length === 1
+  ) {
+    where = config.select[0].aggCondition ?? '';
+    whereLanguage = config.select[0].aggConditionLanguage ?? 'lucene';
+  }
+
+  // Parse the series key to extract group values
+  // The series key format depends on whether it includes the value column name
+  // - If single value column with groups: "groupValue1 · groupValue2"
+  // - Otherwise: "valueColumnName · groupValue1 · groupValue2"
+  const seriesKeys = seriesKey?.split(ChartKeyJoiner);
+
+  const additionalFilters: Filter[] = [];
+  // Add group by column filters
+  if (seriesKeys?.length && groupColumns != null && groupColumns.length) {
+    // Determine if the first part is a value column name
+    const startsWithValueColumn =
+      !isSingleValueColumn ||
+      (groupColumns.length === 0 && valueColumns.length > 0);
+    const groupValues = startsWithValueColumn
+      ? seriesKeys.slice(1)
+      : seriesKeys;
+
+    // Build SQL condition for all group filters
+    const groupConditions: string[] = [];
+    groupValues.forEach((value, index) => {
+      if (groupColumns[index] != null) {
+        // Use SqlString.format for proper SQL escaping with column names
+        const condition = SqlString.format('?? = ?', [
+          groupColumns[index],
+          value,
+        ]);
+        groupConditions.push(condition);
+      }
+    });
+
+    if (groupConditions.length > 0) {
+      additionalFilters.push({
+        type: 'sql',
+        condition: groupConditions.join(' AND '),
+      });
+    }
+  }
+
+  // Add Y-axis value range filter (±5%) - only when there's a groupBy
+  // This filters for the aggregated value within a specific group
+  if (
+    seriesValue &&
+    groupColumns != null &&
+    groupColumns.length > 0 &&
+    Array.isArray(config.select) &&
+    config.select.length > 0
+  ) {
+    // Determine which value column to filter on
+    let valueExpression: string | undefined;
+
+    if (isSingleValueColumn && config.select.length === 1) {
+      // Single value column - use the first select
+      valueExpression = config.select[0].valueExpression;
+    } else if (seriesKeys?.length && valueColumns.length > 0) {
+      // Multiple value columns - need to determine which one from the series key
+      const firstPart = seriesKeys[0];
+
+      // Find which value column this corresponds to
+      const valueColumnIndex = valueColumns.findIndex(col => col === firstPart);
+      if (valueColumnIndex >= 0 && valueColumnIndex < config.select.length) {
+        valueExpression = config.select[valueColumnIndex].valueExpression;
+      }
+    }
+
+    // Build range condition (±threshold)
+    // Only add if the valueExpression is not an aggregation like count(*)
+    const aggFn = config.select[0].aggFn;
+    if (
+      valueExpression != null &&
+      AGG_FNS.find(fn => fn.value === aggFn)?.isAttributable !== false
+    ) {
+      const lowerBound = seriesValue * (1 - threshold);
+      const upperBound = seriesValue * (1 + threshold);
+
+      // Build condition with valueExpression as raw string and escape the numbers
+      const condition = `${valueExpression} BETWEEN ${SqlString.escape(lowerBound)} AND ${SqlString.escape(upperBound)}`;
+
+      additionalFilters.push({
+        type: 'sql',
+        condition: condition,
+      });
+    }
+  }
+
+  // Get the time range bucket
+  const from = clickedDate.getTime();
+  const to = add(clickedDate, {
+    seconds: convertGranularityToSeconds(granularity),
+  }).getTime();
+
+  const params: Record<string, string> = {
+    source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
+    where: where,
+    whereLanguage: whereLanguage,
+    filters: JSON.stringify([...(config.filters ?? []), ...additionalFilters]),
+    isLive: 'false',
+    from: from.toString(),
+    to: to.toString(),
+  };
+
+  // Include the select parameter if provided to preserve custom columns
+  // eventTableSelect is used for charts that override select (like histograms with count)
+  // to preserve the original table's select expression
+  if (config.eventTableSelect) {
+    params.select = config.eventTableSelect;
+  }
+
+  return new URLSearchParams(params);
+}
