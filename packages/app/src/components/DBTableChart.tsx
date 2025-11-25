@@ -21,7 +21,7 @@ export default function DBTableChart({
   queryKeyPrefix,
 }: {
   config: ChartConfigWithOptTimestamp;
-  getRowSearchLink?: (row: any) => string;
+  getRowSearchLink?: (row: any) => string | null;
   queryKeyPrefix?: string;
   enabled?: boolean;
 }) {

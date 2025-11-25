@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
+import { add } from 'date-fns';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
@@ -11,7 +12,9 @@ import { useDisclosure } from '@mantine/hooks';
 import { IconArrowsDiagonal, IconSearch } from '@tabler/icons-react';
 
 import {
-  buildChartViewEventsParams,
+  buildEventsSearchUrl,
+  ChartKeyJoiner,
+  convertGranularityToSeconds,
   formatResponseForTimeChart,
   useTimeChartSettings,
 } from '@/ChartUtils';
@@ -32,11 +35,11 @@ type ActiveClickPayload = {
 
 function ActiveTimeTooltip({
   activeClickPayload,
-  buildQParams,
+  buildSearchUrl,
   onDismiss,
 }: {
   activeClickPayload: ActiveClickPayload | undefined;
-  buildQParams: (key?: string, value?: number) => URLSearchParams | null;
+  buildSearchUrl: (key?: string, value?: number) => string | null;
   onDismiss: () => void;
 }) {
   if (
@@ -87,10 +90,12 @@ function ActiveTimeTooltip({
           // Fallback scenario if limited data is available
           <Link
             data-testid="chart-view-events-link"
-            href={`/search?${buildQParams(
-              validPayloads?.[0]?.dataKey,
-              validPayloads?.[0]?.value,
-            )?.toString()}`}
+            href={
+              buildSearchUrl(
+                validPayloads?.[0]?.dataKey,
+                validPayloads?.[0]?.value,
+              ) ?? '/search'
+            }
             onClick={onDismiss}
           >
             <Group gap="xs">
@@ -104,15 +109,12 @@ function ActiveTimeTooltip({
               View Events for:
             </Text>
             {validPayloads.map((payload, idx) => {
-              const seriesQParams = buildQParams(
-                payload.dataKey,
-                payload.value,
-              )?.toString();
+              const seriesUrl = buildSearchUrl(payload.dataKey, payload.value);
               return (
                 <Link
                   key={idx}
                   data-testid={`chart-view-events-link-${payload.dataKey}`}
-                  href={`/search${seriesQParams ? `?${seriesQParams}` : ''}`}
+                  href={seriesUrl ?? '/search'}
                   onClick={onDismiss}
                 >
                   <Group gap="xs">
@@ -265,22 +267,89 @@ function DBTimeChartComponent({
       : undefined;
   }, [activeClickPayload]);
 
-  const buildQParams = useCallback(
+  const buildSearchUrl = useCallback(
     (seriesKey?: string, seriesValue?: number) => {
       if (clickedActiveLabelDate == null || source == null) {
         return null;
       }
 
-      return buildChartViewEventsParams({
-        clickedDate: clickedActiveLabelDate,
-        config,
-        granularity,
+      // Parse the series key to extract group values
+      const seriesKeys = seriesKey?.split(ChartKeyJoiner);
+      const groupFilters: Array<{ column: string; value: any }> = [];
+
+      if (seriesKeys?.length && groupColumns?.length) {
+        // Determine if the first part is a value column name
+        const startsWithValueColumn =
+          !(isSingleValueColumn ?? true) ||
+          ((groupColumns?.length ?? 0) === 0 &&
+            (valueColumns?.length ?? 0) > 0);
+        const groupValues = startsWithValueColumn
+          ? seriesKeys.slice(1)
+          : seriesKeys;
+
+        // Build group filters
+        groupValues.forEach((value, index) => {
+          if (groupColumns[index] != null) {
+            groupFilters.push({
+              column: groupColumns[index],
+              value,
+            });
+          }
+        });
+      }
+
+      // Build value range filter for Y-axis if provided
+      let valueRangeFilter:
+        | {
+            expression: string;
+            value: number;
+          }
+        | undefined;
+
+      if (
+        seriesValue &&
+        Array.isArray(config.select) &&
+        config.select.length > 0
+      ) {
+        // Determine which value column to filter on
+        let valueExpression: string | undefined;
+
+        if ((isSingleValueColumn ?? true) && config.select.length === 1) {
+          valueExpression = config.select[0].valueExpression;
+        } else if (seriesKeys?.length && (valueColumns?.length ?? 0) > 0) {
+          const firstPart = seriesKeys[0];
+          const valueColumnIndex = valueColumns?.findIndex(
+            col => col === firstPart,
+          );
+          if (
+            valueColumnIndex != null &&
+            valueColumnIndex >= 0 &&
+            valueColumnIndex < config.select.length
+          ) {
+            valueExpression = config.select[valueColumnIndex].valueExpression;
+          }
+        }
+
+        if (valueExpression) {
+          valueRangeFilter = {
+            expression: valueExpression,
+            value: seriesValue,
+          };
+        }
+      }
+
+      // Calculate time range from clicked date and granularity
+      const from = clickedActiveLabelDate;
+      const to = add(clickedActiveLabelDate, {
+        seconds: convertGranularityToSeconds(granularity),
+      });
+
+      return buildEventsSearchUrl({
         source,
-        groupColumns: groupColumns ?? [],
-        valueColumns: valueColumns ?? [],
-        isSingleValueColumn: isSingleValueColumn ?? true,
-        seriesKey,
-        seriesValue,
+        config,
+        dateRange: [from, to],
+        groupFilters,
+        valueRangeFilter,
       });
     },
     [
@@ -367,7 +436,7 @@ function DBTimeChartComponent({
       >
         <ActiveTimeTooltip
           activeClickPayload={activeClickPayload}
-          buildQParams={buildQParams}
+          buildSearchUrl={buildSearchUrl}
           onDismiss={() => setActiveClickPayload(undefined)}
         />
         {/* {totalGroups > groupKeys.length ? (

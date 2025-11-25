@@ -276,7 +276,7 @@ export function convertDateRangeToGranularityString(
   return Granularity.ThirtyDay;
 }
 
-const ChartKeyJoiner = ' · ';
+export const ChartKeyJoiner = ' · ';
 
 export function convertGranularityToSeconds(granularity: SQLInterval): number {
   const [num, unit] = granularity.split(' ');
@@ -471,7 +471,9 @@ export const isAggregateFunction = (value: string) => {
     'kurtSamp',
   ];
 
-  return fns.some(fn => value.includes(fn + '('));
+  // Make case-insensitive since ClickHouse function names are case-insensitive
+  const lowerValue = value.toLowerCase();
+  return fns.some(fn => lowerValue.includes(fn.toLowerCase() + '('));
 };
 
 export const INTEGER_NUMBER_FORMAT: NumberFormat = {
@@ -835,32 +837,22 @@ export const convertV1ChartConfigToV2 = (
 };
 
 /**
- * Build query parameters for viewing events from a specific chart data point
+ * Build search URL for viewing events based on group-by values
+ * Used by both chart clicks and table row clicks
  */
-export function buildChartViewEventsParams({
-  clickedDate,
-  config,
-  granularity,
+export function buildEventsSearchUrl({
   source,
-  groupColumns,
-  valueColumns,
-  isSingleValueColumn,
-  seriesKey,
-  seriesValue,
-  threshold = 0.05,
+  config,
+  dateRange,
+  groupFilters,
+  valueRangeFilter,
 }: {
-  clickedDate: Date;
-  config: ChartConfigWithDateRange;
-  granularity: string;
   source: TSource;
-  groupColumns: string[];
-  valueColumns: string[];
-  isSingleValueColumn: boolean;
-  seriesKey?: string;
-  seriesValue?: number;
-  // The +/- threshold for considering values as equal
-  threshold?: number;
-}): URLSearchParams | null {
+  config: ChartConfigWithDateRange;
+  dateRange: [Date, Date];
+  groupFilters?: Array<{ column: string; value: any }>;
+  valueRangeFilter?: { expression: string; value: number; threshold?: number };
+}): string | null {
   if (!source?.id) {
     return null;
   }
@@ -885,32 +877,14 @@ export function buildChartViewEventsParams({
     whereLanguage = config.select[0].aggConditionLanguage ?? 'lucene';
   }
 
-  // Parse the series key to extract group values
-  // The series key format depends on whether it includes the value column name
-  // - If single value column with groups: "groupValue1 · groupValue2"
-  // - Otherwise: "valueColumnName · groupValue1 · groupValue2"
-  const seriesKeys = seriesKey?.split(ChartKeyJoiner);
-
   const additionalFilters: Filter[] = [];
-  // Add group by column filters
-  if (seriesKeys?.length && groupColumns != null && groupColumns.length) {
-    // Determine if the first part is a value column name
-    const startsWithValueColumn =
-      !isSingleValueColumn ||
-      (groupColumns.length === 0 && valueColumns.length > 0);
-    const groupValues = startsWithValueColumn
-      ? seriesKeys.slice(1)
-      : seriesKeys;
 
-    // Build SQL condition for all group filters
+  // Add group-by column filters
+  if (groupFilters && groupFilters.length > 0) {
     const groupConditions: string[] = [];
-    groupValues.forEach((value, index) => {
-      if (groupColumns[index] != null) {
-        // Use SqlString.format for proper SQL escaping with column names
-        const condition = SqlString.format('?? = ?', [
-          groupColumns[index],
-          value,
-        ]);
+    groupFilters.forEach(({ column, value }) => {
+      if (column && value != null) {
+        const condition = SqlString.format('?? = ?', [column, value]);
         groupConditions.push(condition);
       }
     });
@@ -923,62 +897,26 @@ export function buildChartViewEventsParams({
     }
   }
 
-  // Add Y-axis value range filter (±5%) - only when there's a groupBy
-  // This filters for the aggregated value within a specific group
-  if (
-    seriesValue &&
-    groupColumns != null &&
-    groupColumns.length > 0 &&
-    Array.isArray(config.select) &&
-    config.select.length > 0
-  ) {
-    // Determine which value column to filter on
-    let valueExpression: string | undefined;
-    let selectIndex = 0;
+  // Add Y-axis value range filter (±threshold) for charts
+  if (valueRangeFilter) {
+    const { expression, value, threshold = 0.05 } = valueRangeFilter;
+    const hasAggregateFunction = isAggregateFunction(expression);
 
-    if (isSingleValueColumn && config.select.length === 1) {
-      // Single value column - use the first select
-      valueExpression = config.select[0].valueExpression;
-      selectIndex = 0;
-    } else if (seriesKeys?.length && valueColumns.length > 0) {
-      // Multiple value columns - need to determine which one from the series key
-      const firstPart = seriesKeys[0];
-
-      // Find which value column this corresponds to
-      const valueColumnIndex = valueColumns.findIndex(col => col === firstPart);
-      if (valueColumnIndex >= 0 && valueColumnIndex < config.select.length) {
-        valueExpression = config.select[valueColumnIndex].valueExpression;
-        selectIndex = valueColumnIndex;
-      }
-    }
-
-    // Build range condition (±threshold)
-    // Only add if the valueExpression is not an aggregation like count(*), countIf(...) / count(), etc.
-    const aggFn = config.select[selectIndex]?.aggFn;
-    const isAggregateExpression = isAggregateFunction(valueExpression ?? '');
-    if (
-      valueExpression != null &&
-      !isAggregateExpression &&
-      AGG_FNS.find(fn => fn.value === aggFn)?.isAttributable !== false
-    ) {
-      const lowerBound = seriesValue * (1 - threshold);
-      const upperBound = seriesValue * (1 + threshold);
-
-      // Build condition with valueExpression as raw string and escape the numbers
-      const condition = `${valueExpression} BETWEEN ${SqlString.escape(lowerBound)} AND ${SqlString.escape(upperBound)}`;
+    if (!hasAggregateFunction) {
+      const lowerBound = value * (1 - threshold);
+      const upperBound = value * (1 + threshold);
+      const condition = `${expression} BETWEEN ${SqlString.escape(lowerBound)} AND ${SqlString.escape(upperBound)}`;
 
       additionalFilters.push({
         type: 'sql',
-        condition: condition,
+        condition,
       });
     }
   }
 
-  // Get the time range bucket
-  const from = clickedDate.getTime();
-  const to = add(clickedDate, {
-    seconds: convertGranularityToSeconds(granularity),
-  }).getTime();
+  // Get the time range
+  const from = dateRange[0].getTime();
+  const to = dateRange[1].getTime();
 
   const params: Record<string, string> = {
     source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
@@ -997,5 +935,5 @@ export function buildChartViewEventsParams({
     params.select = config.eventTableSelect;
   }
 
-  return new URLSearchParams(params);
+  return `/search?${new URLSearchParams(params).toString()}`;
 }

@@ -86,6 +86,11 @@ export const parseQuery = (
     const [key, values] = filter.condition.split(
       isExclude ? ' NOT IN ' : ' IN ',
     );
+
+    if (!key || !values) {
+      continue;
+    }
+
     const keyStr = key.trim();
     const valuesStr = values
       .replace('(', '')
