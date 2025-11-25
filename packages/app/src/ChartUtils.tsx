@@ -905,7 +905,7 @@ export function buildEventsSearchUrl({
     if (!hasAggregateFunction) {
       const lowerBound = value * (1 - threshold);
       const upperBound = value * (1 + threshold);
-      const condition = `${expression} BETWEEN ${SqlString.escape(lowerBound)} AND ${SqlString.escape(upperBound)}`;
+      const condition = `${SqlString.escapeId(expression)} BETWEEN ${SqlString.escape(lowerBound)} AND ${SqlString.escape(upperBound)}`;
 
       additionalFilters.push({
         type: 'sql',
@@ -939,6 +939,24 @@ export function buildEventsSearchUrl({
 }
 
 /**
+ * Extract group column names from chart config's groupBy field
+ * Handles both string format ("col1, col2") and array format ([{ valueExpression: "col1" }, ...])
+ */
+function extractGroupColumns(
+  groupBy: ChartConfigWithDateRange['groupBy'],
+): string[] {
+  if (!groupBy) return [];
+
+  if (typeof groupBy === 'string') {
+    // String GROUP BY: "col1, col2"
+    return groupBy.split(',').map(v => v.trim());
+  }
+
+  // Array GROUP BY: [{ valueExpression: "col1" }, ...] or ["col1", ...]
+  return groupBy.map(g => (typeof g === 'string' ? g : g.valueExpression));
+}
+
+/**
  * Build search URL from a table row click
  * Extracts group filters and value range filter from the row data
  */
@@ -953,31 +971,19 @@ export function buildTableRowSearchUrl({
   config: ChartConfigWithDateRange;
   dateRange: [Date, Date];
 }): string | null {
-  if (!source?.id || !source?.logSourceId) {
+  if (!source?.id) {
     return null;
   }
 
   // Extract group-by column names and build filters from row values
   const groupFilters: Array<{ column: string; value: any }> = [];
+  const groupColumns = extractGroupColumns(config.groupBy);
 
-  if (config.groupBy && typeof config.groupBy === 'string') {
-    // String GROUP BY: "col1, col2"
-    const groupColumns = config.groupBy.split(',').map(v => v.trim());
-    groupColumns.forEach(col => {
-      if (row[col] != null) {
-        groupFilters.push({ column: col, value: row[col] });
-      }
-    });
-  } else if (Array.isArray(config.groupBy)) {
-    // Array GROUP BY: [{ valueExpression: "col1" }, ...]
-    config.groupBy.forEach(groupBy => {
-      const col =
-        typeof groupBy === 'string' ? groupBy : groupBy.valueExpression;
-      if (row[col] != null) {
-        groupFilters.push({ column: col, value: row[col] });
-      }
-    });
-  }
+  groupColumns.forEach(col => {
+    if (row[col] != null) {
+      groupFilters.push({ column: col, value: row[col] });
+    }
+  });
 
   // Build value range filter from the first select column
   let valueRangeFilter: { expression: string; value: number } | undefined;
@@ -996,17 +1002,7 @@ export function buildTableRowSearchUrl({
           : firstSelect.valueExpression;
 
       // Extract group column names to exclude them from value columns
-      const groupColumns = (() => {
-        if (!config.groupBy) return [];
-        if (typeof config.groupBy === 'string') {
-          return config.groupBy.split(',').map(v => v.trim());
-        }
-        return config.groupBy.map(g =>
-          typeof g === 'string' ? g : g.valueExpression,
-        );
-      })();
-
-      const groupColumnSet = new Set(groupColumns);
+      const groupColumnSet = new Set(extractGroupColumns(config.groupBy));
 
       // Find the first value column (non-group column)
       const valueColumn = Object.keys(row).find(
