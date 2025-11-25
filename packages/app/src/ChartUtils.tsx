@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { add } from 'date-fns';
-import { cond } from 'lodash';
 import SqlString from 'sqlstring';
 import { z } from 'zod';
 import {
@@ -935,10 +934,12 @@ export function buildChartViewEventsParams({
   ) {
     // Determine which value column to filter on
     let valueExpression: string | undefined;
+    let selectIndex = 0;
 
     if (isSingleValueColumn && config.select.length === 1) {
       // Single value column - use the first select
       valueExpression = config.select[0].valueExpression;
+      selectIndex = 0;
     } else if (seriesKeys?.length && valueColumns.length > 0) {
       // Multiple value columns - need to determine which one from the series key
       const firstPart = seriesKeys[0];
@@ -947,14 +948,17 @@ export function buildChartViewEventsParams({
       const valueColumnIndex = valueColumns.findIndex(col => col === firstPart);
       if (valueColumnIndex >= 0 && valueColumnIndex < config.select.length) {
         valueExpression = config.select[valueColumnIndex].valueExpression;
+        selectIndex = valueColumnIndex;
       }
     }
 
     // Build range condition (±threshold)
-    // Only add if the valueExpression is not an aggregation like count(*)
-    const aggFn = config.select[0].aggFn;
+    // Only add if the valueExpression is not an aggregation like count(*), countIf(...) / count(), etc.
+    const aggFn = config.select[selectIndex]?.aggFn;
+    const isAggregateExpression = isAggregateFunction(valueExpression ?? '');
     if (
       valueExpression != null &&
+      !isAggregateExpression &&
       AGG_FNS.find(fn => fn.value === aggFn)?.isAttributable !== false
     ) {
       const lowerBound = seriesValue * (1 - threshold);
