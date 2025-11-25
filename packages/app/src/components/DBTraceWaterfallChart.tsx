@@ -1,24 +1,35 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import _ from 'lodash';
+import _, { omit } from 'lodash';
+import { useForm } from 'react-hook-form';
 import TimestampNano from 'timestamp-nano';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfig,
   ChartConfigWithDateRange,
+  SelectList,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Divider, Text } from '@mantine/core';
+import { Anchor, Box, Divider, Group, Text } from '@mantine/core';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useResizable from '@/hooks/useResizable';
 import useRowWhere from '@/hooks/useRowWhere';
+import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
+import SearchInputV2 from '@/SearchInputV2';
 import {
   getDisplayedTimestampValueExpression,
   getDurationSecondsExpression,
   getSpanEventBody,
 } from '@/source';
 import TimelineChart from '@/TimelineChart';
+import {
+  getHighlightedAttributesFromData,
+  getSelectExpressionsForHighlightedAttributes,
+} from '@/utils/highlightedAttributes';
+
+import { DBHighlightedAttributesList } from './DBHighlightedAttributesList';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
@@ -35,6 +46,7 @@ export type SpanRow = {
   HyperDXEventType: 'span';
   type?: string;
   SpanAttributes?: Record<string, any>;
+  __hdx_hidden?: boolean | 1 | 0;
 };
 
 function textColor(condition: { isError: boolean; isWarn: boolean }): string {
@@ -67,8 +79,12 @@ function getTableBody(tableModel: TSource) {
   }
 }
 
-function getConfig(source: TSource, traceId: string) {
-  const alias = {
+function getConfig(
+  source: TSource,
+  traceId: string,
+  hiddenRowExpression?: string,
+) {
+  const alias: Record<string, string> = {
     Body: getTableBody(source),
     Timestamp: getDisplayedTimestampValueExpression(source),
     Duration: source.durationExpression
@@ -82,7 +98,18 @@ function getConfig(source: TSource, traceId: string) {
     SeverityText: source.severityTextExpression ?? '',
     SpanAttributes: source.eventAttributesExpression ?? '',
   };
-  const select = [
+
+  // Aliases for trace attributes must be added here to ensure
+  // the returned `alias` object includes them and useRowWhere works.
+  if (source.highlightedTraceAttributeExpressions) {
+    for (const expr of source.highlightedTraceAttributeExpressions) {
+      if (expr.alias) {
+        alias[expr.alias] = expr.sqlExpression;
+      }
+    }
+  }
+
+  const select: SelectList = [
     {
       valueExpression: alias.Body,
       alias: 'Body',
@@ -103,7 +130,28 @@ function getConfig(source: TSource, traceId: string) {
           },
         ]
       : []),
+    ...(hiddenRowExpression
+      ? [
+          {
+            valueExpression: hiddenRowExpression,
+            valueExpressionLanguage: 'lucene' as const,
+            alias: '__hdx_hidden',
+          },
+        ]
+      : []),
   ];
+
+  if (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) {
+    select.push(
+      ...getSelectExpressionsForHighlightedAttributes(
+        source.highlightedTraceAttributeExpressions,
+      ),
+    );
+  }
+
+  if (hiddenRowExpression) {
+    alias['__hdx_hidden'] = hiddenRowExpression;
+  }
 
   if (source.kind === SourceKind.Trace) {
     select.push(
@@ -177,7 +225,7 @@ export function useEventsData({
       dateRange,
       dateRangeStartInclusive,
     };
-  }, [config, dateRange]);
+  }, [config, dateRange, dateRangeStartInclusive]);
   return useOffsetPaginatedQuery(query, { enabled });
 }
 
@@ -187,17 +235,20 @@ export function useEventsAroundFocus({
   dateRange,
   traceId,
   enabled,
+  hiddenRowExpression,
 }: {
   tableSource: TSource;
   focusDate: Date;
   dateRange: [Date, Date];
   traceId: string;
   enabled: boolean;
+  /** A lucene expression that identifies rows to be hidden. Hidden rows will be returned with a `__hdx_hidden: true` column. */
+  hiddenRowExpression?: string;
 }) {
   let isFetching = false;
   const { config, alias, type } = useMemo(
-    () => getConfig(tableSource, traceId),
-    [tableSource, traceId],
+    () => getConfig(tableSource, traceId, hiddenRowExpression),
+    [tableSource, traceId, hiddenRowExpression],
   );
 
   const { data: beforeSpanData, isFetching: isBeforeSpanFetching } =
@@ -225,18 +276,23 @@ export function useEventsAroundFocus({
       ...(beforeSpanData?.data ?? []),
       ...(afterSpanData?.data ?? []),
     ].map(cd => {
-      const { SpanAttributes, ...rowData } = cd;
       return {
-        ...cd, // Keep all fields available for display
-        SpanId: cd?.SpanId, // for typing
-        id: rowWhere(rowData), // But only use fields except SpanAttributes for identification
+        // Keep all fields available for display
+        ...cd,
+        // Added for typing
+        SpanId: cd?.SpanId,
+        __hdx_hidden: cd?.__hdx_hidden,
         type,
+        // Omit SpanAttributes and __hdx_hidden from rowWhere id generation.
+        // SpanAttributes can be large objects, and __hdx_hidden may be a lucene expression.
+        id: rowWhere(omit(cd, ['SpanAttributes', '__hdx_hidden'])),
       };
     });
   }, [afterSpanData, beforeSpanData]);
 
   return {
     rows,
+    meta,
     isFetching,
   };
 }
@@ -267,28 +323,63 @@ export function DBTraceWaterfallChartContainer({
 }) {
   const { size, startResize } = useResizable(30, 'bottom');
 
-  const { rows: traceRowsData, isFetching: traceIsFetching } =
-    useEventsAroundFocus({
-      tableSource: traceTableSource,
-      focusDate,
-      dateRange,
-      traceId,
-      enabled: true,
-    });
-  const { rows: logRowsData, isFetching: logIsFetching } = useEventsAroundFocus(
-    {
-      // search data if logTableModel exist
-      // search invalid date range if no logTableModel(react hook need execute no matter what)
-      tableSource: logTableSource ? logTableSource : traceTableSource,
-      focusDate,
-      dateRange: logTableSource ? dateRange : [dateRange[1], dateRange[0]], // different query to prevent cache
-      traceId,
-      enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
+  const {
+    traceWhere,
+    logWhere,
+    clear: clearFilters,
+    isFilterActive,
+    isFilterExpanded,
+    setIsFilterExpanded,
+    onSubmit: onSubmitFilters,
+  } = useWaterfallSearchState({
+    hasLogSource: !!logTableSource,
+  });
+
+  const { control, handleSubmit, setValue } = useForm({
+    defaultValues: {
+      traceWhere: traceWhere ?? '',
+      logWhere: logWhere ?? '',
     },
-  );
+  });
+
+  const onClearFilters = useCallback(() => {
+    setValue('traceWhere', '');
+    setValue('logWhere', '');
+    clearFilters();
+  }, [clearFilters, setValue]);
+
+  const {
+    rows: traceRowsData,
+    isFetching: traceIsFetching,
+    meta: traceRowsMeta,
+  } = useEventsAroundFocus({
+    tableSource: traceTableSource,
+    focusDate,
+    dateRange,
+    traceId,
+    hiddenRowExpression: traceWhere ? `NOT (${traceWhere})` : undefined,
+    enabled: true,
+  });
+  const {
+    rows: logRowsData,
+    isFetching: logIsFetching,
+    meta: logRowsMeta,
+  } = useEventsAroundFocus({
+    // search data if logTableModel exist
+    // search invalid date range if no logTableModel(react hook need execute no matter what)
+    tableSource: logTableSource ? logTableSource : traceTableSource,
+    focusDate,
+    dateRange: logTableSource ? dateRange : [dateRange[1], dateRange[0]], // different query to prevent cache
+    traceId,
+    hiddenRowExpression: logWhere ? `NOT (${logWhere})` : undefined,
+    enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
+  });
 
   const isFetching = traceIsFetching || logIsFetching;
-  const rows: any[] = [...traceRowsData, ...logRowsData];
+  const rows: any[] = useMemo(
+    () => [...traceRowsData, ...logRowsData],
+    [traceRowsData, logRowsData],
+  );
 
   rows.sort((a, b) => {
     const aDate = TimestampNano.fromString(a.Timestamp);
@@ -300,6 +391,45 @@ export function DBTraceWaterfallChartContainer({
       return secDiff;
     }
   });
+
+  const highlightedAttributeValues = useMemo(() => {
+    const visibleTraceRowsData = traceRowsData?.filter(
+      row => !row.__hdx_hidden,
+    );
+
+    const attributes = getHighlightedAttributesFromData(
+      traceTableSource,
+      traceTableSource.highlightedTraceAttributeExpressions,
+      visibleTraceRowsData,
+      traceRowsMeta,
+    );
+
+    if (logTableSource && logRowsData && logRowsMeta) {
+      const visibleLogRowsData = logRowsData?.filter(row => !row.__hdx_hidden);
+
+      attributes.push(
+        ...getHighlightedAttributesFromData(
+          logTableSource,
+          logTableSource.highlightedTraceAttributeExpressions,
+          visibleLogRowsData,
+          logRowsMeta,
+        ),
+      );
+    }
+
+    return attributes.sort(
+      (a, b) =>
+        a.displayedKey.localeCompare(b.displayedKey) ||
+        a.value.localeCompare(b.value),
+    );
+  }, [
+    traceTableSource,
+    traceRowsData,
+    traceRowsMeta,
+    logTableSource,
+    logRowsData,
+    logRowsMeta,
+  ]);
 
   useEffect(() => {
     if (initialRowHighlightHint && onClick && highlightedRowWhere == null) {
@@ -327,7 +457,7 @@ export function DBTraceWaterfallChartContainer({
 
   // Parse out a DAG of spans
   type Node = SpanRow & { id: string; parentId: string; children: SpanRow[] };
-  const validSpanID = useMemo(() => {
+  const validSpanIDs = useMemo(() => {
     return new Set(
       traceRowsData // only spans in traces can define valid span ids
         ?.filter(row => _.isString(row.SpanId) && row.SpanId.length > 0)
@@ -335,7 +465,8 @@ export function DBTraceWaterfallChartContainer({
     );
   }, [traceRowsData]);
   const rootNodes: Node[] = [];
-  const nodesMap = new Map();
+  const nodesMap = new Map(); // Maps result.id (or placeholder id) -> Node
+  const spanIdMap = new Map(); // Maps SpanId -> result.id of FIRST node with that SpanId
 
   for (const result of rows ?? []) {
     const { type, SpanId, ParentSpanId } = result;
@@ -350,26 +481,53 @@ export function DBTraceWaterfallChartContainer({
     const curNode = {
       ...result,
       children: [],
-      // In case we were created already previously, inherit the children built so far
-      ...nodesMap.get(nodeSpanId),
     };
-    if (type === SourceKind.Trace && !nodesMap.has(nodeSpanId)) {
-      nodesMap.set(nodeSpanId, curNode);
+
+    if (type === SourceKind.Trace) {
+      // Check if this is the first node with this SpanId
+      if (!spanIdMap.has(nodeSpanId)) {
+        // First occurrence - this becomes the canonical node for this SpanId
+        spanIdMap.set(nodeSpanId, result.id);
+
+        // Check if there's a placeholder parent waiting for this SpanId
+        const placeholderId = `placeholder-${nodeSpanId}`;
+        const placeholder = nodesMap.get(placeholderId);
+        if (placeholder) {
+          // Inherit children from placeholder
+          curNode.children = placeholder.children || [];
+          // Remove placeholder
+          nodesMap.delete(placeholderId);
+        }
+      }
+      // Always add to nodesMap with unique result.id
+      nodesMap.set(result.id, curNode);
     }
 
     // root if: is trace event, and (has no parent or parent id is not valid)
     const isRootNode =
       type === SourceKind.Trace &&
-      (!nodeParentSpanId || !validSpanID.has(nodeParentSpanId));
+      (!nodeParentSpanId || !validSpanIDs.has(nodeParentSpanId));
 
     if (isRootNode) {
       rootNodes.push(curNode);
     } else {
-      const parentNode = nodesMap.get(nodeParentSpanId) ?? {
-        children: [],
-      };
+      // Look up parent by SpanId
+      const parentResultId = spanIdMap.get(nodeParentSpanId);
+      let parentNode = parentResultId
+        ? nodesMap.get(parentResultId)
+        : undefined;
+
+      if (!parentNode) {
+        // Parent doesn't exist yet, create placeholder
+        const placeholderId = `placeholder-${nodeParentSpanId}`;
+        parentNode = nodesMap.get(placeholderId);
+        if (!parentNode) {
+          parentNode = { children: [] } as any;
+          nodesMap.set(placeholderId, parentNode);
+        }
+      }
+
       parentNode.children.push(curNode);
-      nodesMap.set(nodeParentSpanId, parentNode);
     }
   }
 
@@ -393,10 +551,14 @@ export function DBTraceWaterfallChartContainer({
   type NodeWithLevel = Node & { level: number };
   // flatten the rootnode dag into an array via in-order traversal
   const traverse = (node: Node, arr: NodeWithLevel[], level = 0) => {
-    arr.push({
-      level,
-      ...node,
-    });
+    // Filter out hidden nodes, but still traverse their (non-hidden) descendants
+    if (!node.__hdx_hidden) {
+      arr.push({
+        level,
+        ...node,
+      });
+    }
+
     // Filter out collapsed nodes
     if (collapsedIds.has(node.id)) {
       return;
@@ -409,16 +571,18 @@ export function DBTraceWaterfallChartContainer({
     rootNodes.forEach(rootNode => traverse(rootNode, flattenedNodes));
   }
 
+  const spanCount = flattenedNodes.length;
+  const errorCount = flattenedNodes.filter(
+    node =>
+      node.StatusCode === 'Error' ||
+      node.SeverityText?.toLowerCase() === 'error',
+  ).length;
+
+  const spanCountString = `${spanCount} span${spanCount !== 1 ? 's' : ''}`;
+  const errorCountString = `${errorCount} error${errorCount !== 1 ? 's' : ''}`;
+
   // TODO: Add duration filter?
   // TODO: Add backend filters for duration and collapsing?
-
-  // if (rows != null && flattenedNodes.length < rows.length) {
-  //   console.error('Root nodes did not cover all events', rootNodes.length);
-  //   flattenedNodes.length = 0;
-  //   flattenedNodes.push(
-  //     ...(rows?.map(data => ({ ...data, children: [] })) ?? []),
-  //   );
-  // }
 
   // All units in ms!
   const foundMinOffset =
@@ -427,9 +591,6 @@ export function DBTraceWaterfallChartContainer({
     }, Number.MAX_SAFE_INTEGER) ?? 0;
   const minOffset =
     foundMinOffset === Number.MAX_SAFE_INTEGER ? 0 : foundMinOffset;
-
-  // console.log(highlightedRowWhere);
-  // console.log('f', flattenedNodes, collapsedIds);
 
   const timelineRows = flattenedNodes.map((result, i) => {
     const tookMs = (result.Duration || 0) * 1000;
@@ -459,6 +620,7 @@ export function DBTraceWaterfallChartContainer({
     // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
     const isError =
       result.StatusCode == 'Error' || result.SeverityText === 'error';
+    const status = result.StatusCode || result.SeverityText;
     const isWarn = result.SeverityText === 'warn';
     const isHighlighted = highlightedRowWhere === id;
 
@@ -475,17 +637,19 @@ export function DBTraceWaterfallChartContainer({
             onClick?.({ id, type: type ?? '' });
           }}
         >
-          <div className="d-flex">
+          <div className="d-flex align-items-center" style={{ height: 24 }}>
             {Array.from({ length: result.level }).map((_, index) => (
               <div
                 key={index}
                 style={{
                   borderLeft: '1px solid var(--color-border)',
-                  marginLeft: 5,
+                  marginLeft: 7,
                   width: 8,
                   minWidth: 8,
                   maxWidth: 8,
                   flexGrow: 1,
+                  flexShrink: 0,
+                  height: '100%',
                 }}
               ></div>
             ))}
@@ -505,9 +669,13 @@ export function DBTraceWaterfallChartContainer({
                 }`}
               />{' '}
             </Text>
-            <Text span size="xxs" me="xs" pt="2px">
-              {result.children.length > 0 ? `(${result.children.length})` : ''}
-            </Text>
+            {!isFilterActive && (
+              <Text span size="xxs" me="xs" pt="2px">
+                {result.children.length > 0
+                  ? `(${result.children.length})`
+                  : ''}
+              </Text>
+            )}
             <Text
               size="xxs"
               truncate="end"
@@ -541,10 +709,11 @@ export function DBTraceWaterfallChartContainer({
           id,
           start,
           end,
-          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''}`,
+          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}`,
           color: barColor({ isError, isWarn, isHighlighted }),
-          body: <span style={{ color: '#FFFFFFEE' }}>{displayText}</span>,
+          body: <span>{displayText}</span>,
           minWidthPerc: 1,
+          isError,
         },
       ],
     };
@@ -558,6 +727,78 @@ export function DBTraceWaterfallChartContainer({
 
   return (
     <>
+      {isFilterExpanded && (
+        <form onSubmit={handleSubmit(onSubmitFilters)}>
+          <Box
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'auto 1fr',
+              alignItems: 'center',
+              gap: '12px',
+            }}
+          >
+            <Text size="xs">Spans filter</Text>
+            <SearchInputV2
+              tableConnection={tcFromSource(traceTableSource)}
+              placeholder={
+                'Search trace spans w/ Lucene ex. StatusCode:"Error"'
+              }
+              language="lucene"
+              name="traceWhere"
+              control={control}
+              size="xs"
+              onSubmit={handleSubmit(onSubmitFilters)}
+              data-testid="trace-search-input"
+            />
+
+            {logTableSource && (
+              <>
+                <Text size="xs">Logs filter</Text>
+                <SearchInputV2
+                  tableConnection={tcFromSource(logTableSource)}
+                  placeholder={
+                    'Search trace logs w/ Lucene ex. SeverityText:"error"'
+                  }
+                  language="lucene"
+                  name="logWhere"
+                  control={control}
+                  size="xs"
+                  onSubmit={handleSubmit(onSubmitFilters)}
+                  data-testid="log-search-input"
+                />
+              </>
+            )}
+          </Box>
+        </form>
+      )}
+      <Group my="xs" justify="space-between">
+        <Text size="xs">
+          {spanCountString},{' '}
+          <span className={errorCount ? 'text-danger' : ''}>
+            {errorCountString}
+          </span>
+        </Text>
+        <span>
+          <Anchor
+            underline="always"
+            onClick={() => setIsFilterExpanded(prev => !prev)}
+            size="xs"
+          >
+            {isFilterExpanded ? 'Hide Filters' : 'Show Filters'}{' '}
+            {isFilterActive && '(active)'}
+          </Anchor>
+          {isFilterActive && (
+            <Anchor
+              underline="always"
+              onClick={onClearFilters}
+              size="xs"
+              ms="xs"
+            >
+              Clear Filters
+            </Anchor>
+          )}
+        </span>
+      </Group>
       <div
         style={{
           position: 'relative',
@@ -571,26 +812,33 @@ export function DBTraceWaterfallChartContainer({
           <div>
             An unknown error occurred. <ContactSupportText />
           </div>
+        ) : flattenedNodes.length === 0 ? (
+          <div className="my-3">No matching spans or logs found</div>
         ) : (
-          <TimelineChart
-            style={{
-              overflowY: 'auto',
-              maxHeight: `${heightPx}px`,
-            }}
-            scale={1}
-            setScale={() => {}}
-            rowHeight={22}
-            labelWidth={300}
-            onClick={ts => {
-              // onTimeClick(ts + startedAt);
-            }}
-            onEventClick={event => {
-              onClick?.({ id: event.id, type: event.type ?? '' });
-            }}
-            cursors={[]}
-            rows={timelineRows}
-            initialScrollRowIndex={initialScrollRowIndex}
-          />
+          <>
+            <DBHighlightedAttributesList
+              attributes={highlightedAttributeValues}
+            />
+            <TimelineChart
+              style={{
+                overflowY: 'auto',
+                maxHeight: `${heightPx}px`,
+              }}
+              scale={1}
+              setScale={() => {}}
+              rowHeight={22}
+              labelWidth={300}
+              onClick={ts => {
+                // onTimeClick(ts + startedAt);
+              }}
+              onEventClick={event => {
+                onClick?.({ id: event.id, type: event.type ?? '' });
+              }}
+              cursors={[]}
+              rows={timelineRows}
+              initialScrollRowIndex={initialScrollRowIndex}
+            />
+          </>
         )}
       </div>
       <Divider

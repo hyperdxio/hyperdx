@@ -2,16 +2,17 @@ import { useCallback, useContext, useMemo } from 'react';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
-import { Accordion, Box, Divider, Flex, Text } from '@mantine/core';
+import { Accordion, Box, Flex, Text } from '@mantine/core';
 
 import { getEventBody } from '@/source';
+import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 
 import { getJSONColumnNames, useRowData } from './DBRowDataPanel';
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
 import DBRowSidePanelHeader from './DBRowSidePanelHeader';
 import EventTag from './EventTag';
-import { ExceptionSubpanel, parseEvents } from './ExceptionSubpanel';
+import { ExceptionSubpanel } from './ExceptionSubpanel';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 import { SpanEventsSubpanel } from './SpanEventsSubpanel';
 
@@ -27,9 +28,25 @@ export function RowOverviewPanel({
   hideHeader?: boolean;
   'data-testid'?: string;
 }) {
-  const { data, isLoading, isError } = useRowData({ source, rowId });
+  const { data } = useRowData({ source, rowId });
   const { onPropertyAddClick, generateSearchUrl } =
     useContext(RowSidePanelContext);
+
+  const highlightedAttributeValues = useMemo(() => {
+    const attributeExpressions =
+      source.kind === SourceKind.Trace || source.kind === SourceKind.Log
+        ? (source.highlightedRowAttributeExpressions ?? [])
+        : [];
+
+    return data
+      ? getHighlightedAttributesFromData(
+          source,
+          attributeExpressions,
+          data.data || [],
+          data.meta || [],
+        )
+      : [];
+  }, [source, data]);
 
   const jsonColumns = getJSONColumnNames(data?.meta);
 
@@ -81,11 +98,11 @@ export function RowOverviewPanel({
       : {};
 
   const _generateSearchUrl = useCallback(
-    (query?: string, timeRange?: [Date, Date]) => {
+    (query?: string, queryLanguage?: 'sql' | 'lucene') => {
       return (
         generateSearchUrl?.({
           where: query,
-          whereLanguage: 'lucene',
+          whereLanguage: queryLanguage,
         }) ?? '/'
       );
     },
@@ -162,10 +179,10 @@ export function RowOverviewPanel({
   return (
     <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
       {!hideHeader && (
-        <Box px="32px" pt="md">
+        <Box px="sm" pt="md">
           <DBRowSidePanelHeader
+            attributes={highlightedAttributeValues}
             date={new Date(firstRow?.__hdx_timestamp ?? 0)}
-            tags={{}}
             mainContent={mainContent}
             mainContentHeader={mainContentColumn}
             severityText={firstRow?.__hdx_severity_text}
@@ -183,6 +200,7 @@ export function RowOverviewPanel({
           'topLevelAttributes',
         ]}
         multiple
+        variant="noPadding"
       >
         {isHttpRequest && (
           <Accordion.Item value="network">
@@ -195,8 +213,6 @@ export function RowOverviewPanel({
               <Box px="md">
                 <NetworkPropertySubpanel
                   eventAttributes={flattenedEventAttributes}
-                  onPropertyAddClick={onPropertyAddClick}
-                  generateSearchUrl={_generateSearchUrl}
                 />
               </Box>
             </Accordion.Panel>

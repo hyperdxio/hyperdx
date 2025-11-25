@@ -296,7 +296,8 @@ export default function SessionsPage() {
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(values => {
-      setAppliedConfig(values);
+      const { source, ...rest } = values;
+      setAppliedConfig({ sessionSource: source, ...rest });
     })();
   }, [handleSubmit, setAppliedConfig, onSearch, displayedTimeInputValue]);
 

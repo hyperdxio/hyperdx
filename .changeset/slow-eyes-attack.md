@@ -1,7 +1,6 @@
 ---
 "@hyperdx/common-utils": patch
-"@hyperdx/api": patch
 "@hyperdx/app": patch
 ---
 
-feat: support incident.io integration
+feat: Add custom attributes for individual rows

@@ -23,7 +23,7 @@
   background-color: var(--color-bg-muted);
   border-radius: 2px;
   margin: 0 1px;
-  cursor: pointer;
+  cursor: default;
   transition: opacity 0.1s ease-in;
 
   &:hover {
@@ -32,11 +32,15 @@
   }
 
   &.ok {
-    background-color: var(--color-success);
+    background-color: var(--color-bg-success);
   }
 
   &.alarm {
-    background-color: var(--color-danger);
+    background-color: var(--color-bg-danger);
+  }
+
+  &.clickable {
+    cursor: pointer;
   }
 }
 

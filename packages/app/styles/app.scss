@@ -298,3 +298,47 @@ a,
 [role='button'] {
   cursor: pointer;
 }
+
+.u-select {
+  border: 1px solid #50fa7b;
+  background: #50fa7a0d !important;
+  color: #2E224788;
+}
+
+.hdx-markdown {
+  h1, h2, h3, h4, h5, h6, p {
+    margin-top: 0;
+    margin-bottom: 1rem;
+  }
+  ol, ul {
+   padding-left: 2rem;
+  }
+  th {
+    font-weight: 600;
+  }
+  h1 {
+    font-size: 2rem;
+  }
+  h2 {
+    font-size: 1.8rem;
+  }
+  h3 {
+    font-size: 1.6rem;
+  }
+  h4 {
+    font-size: 1.4rem;
+  }
+  // Remove margin on first and last child elements
+  > :first-child {
+    margin-top: 0;
+  }
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  code {
+    font-size: 0.875em;
+    color: var(--color-json-string);
+    word-wrap: break-word;
+  }
+}

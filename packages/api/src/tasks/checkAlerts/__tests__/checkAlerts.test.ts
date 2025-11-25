@@ -42,6 +42,7 @@ import {
   AlertMessageTemplateDefaultView,
   buildAlertMessageTemplateHdxLink,
   buildAlertMessageTemplateTitle,
+  formatValueToMatchThreshold,
   getDefaultExternalAction,
   isAlertResolved,
   renderAlertTemplate,
@@ -225,6 +226,93 @@ describe('checkAlerts', () => {
       );
     });
 
+    it('formatValueToMatchThreshold', () => {
+      // Test with integer threshold - value should be formatted as integer
+      expect(formatValueToMatchThreshold(1111.11111111, 1)).toBe('1111');
+      expect(formatValueToMatchThreshold(5, 1)).toBe('5');
+      expect(formatValueToMatchThreshold(5.9, 1)).toBe('6');
+
+      // Test scientific notation threshold - value should be formatted as integer
+      expect(formatValueToMatchThreshold(0.00001, 0.0000001)).toBe('0.0000100');
+
+      // Test with single decimal threshold - value should have 1 decimal place
+      expect(formatValueToMatchThreshold(1111.11111111, 1.5)).toBe('1111.1');
+      expect(formatValueToMatchThreshold(5.555, 1.5)).toBe('5.6');
+
+      // Test with multiple decimal places in threshold
+      expect(formatValueToMatchThreshold(1.1234, 0.1234)).toBe('1.1234');
+      expect(formatValueToMatchThreshold(5.123456789, 0.1234)).toBe('5.1235');
+      expect(formatValueToMatchThreshold(10, 0.12)).toBe('10.00');
+
+      // Test with very long decimal threshold
+      expect(formatValueToMatchThreshold(1111.11111111, 0.123456)).toBe(
+        '1111.111111',
+      );
+
+      // Test edge cases
+      expect(formatValueToMatchThreshold(0, 1)).toBe('0');
+      expect(formatValueToMatchThreshold(0.5, 1)).toBe('1');
+      expect(formatValueToMatchThreshold(0.123456, 0.1234)).toBe('0.1235');
+
+      // Test negative values
+      expect(formatValueToMatchThreshold(-5.555, 1.5)).toBe('-5.6');
+      expect(formatValueToMatchThreshold(-1111.11111111, 1)).toBe('-1111');
+
+      // Test when value is already an integer and threshold is integer
+      expect(formatValueToMatchThreshold(100, 50)).toBe('100');
+      expect(formatValueToMatchThreshold(0, 0)).toBe('0');
+
+      // Test rounding behavior
+      expect(formatValueToMatchThreshold(1.5, 0.1)).toBe('1.5');
+      expect(formatValueToMatchThreshold(1.55, 0.1)).toBe('1.6');
+      expect(formatValueToMatchThreshold(1.449, 0.1)).toBe('1.4');
+
+      // Test very large numbers (main benefit of NumberFormat over toFixed)
+      expect(formatValueToMatchThreshold(9999999999999.5, 1)).toBe(
+        '10000000000000',
+      );
+      expect(formatValueToMatchThreshold(1234567890123.456, 0.1)).toBe(
+        '1234567890123.5',
+      );
+      expect(formatValueToMatchThreshold(999999999999999, 1)).toBe(
+        '999999999999999',
+      );
+
+      // Test that thousand separators are NOT added
+      expect(formatValueToMatchThreshold(123456.789, 1)).toBe('123457');
+      expect(formatValueToMatchThreshold(1000000.5, 0.1)).toBe('1000000.5');
+
+      // Test precision at JavaScript's safe integer boundary
+      expect(formatValueToMatchThreshold(9007199254740991, 1)).toBe(
+        '9007199254740991',
+      );
+
+      // Test very small numbers in different notations
+      expect(formatValueToMatchThreshold(0.000000001, 0.0000000001)).toBe(
+        '0.0000000010',
+      );
+      expect(formatValueToMatchThreshold(1.23e-8, 1e-9)).toBe('0.000000012');
+
+      // Test mixed magnitude (large value with small precision threshold)
+      expect(formatValueToMatchThreshold(1000000.123456, 0.0001)).toBe(
+        '1000000.1235',
+      );
+      expect(formatValueToMatchThreshold(99999.999999, 0.01)).toBe('100000.00');
+
+      // Test threshold with trailing zeros vs without
+      expect(formatValueToMatchThreshold(5.5, 1.0)).toBe('6'); // 1.0 should be treated as integer
+      expect(formatValueToMatchThreshold(5.55, 0.1)).toBe('5.6'); // 0.10 has 1 decimal place
+
+      // Test edge case: very small threshold, large value
+      expect(formatValueToMatchThreshold(1234567.89, 0.000001)).toBe(
+        '1234567.890000',
+      );
+
+      // Test rounding at different magnitudes
+      expect(formatValueToMatchThreshold(999.9999, 0.001)).toBe('1000.000');
+      expect(formatValueToMatchThreshold(0.9999, 0.001)).toBe('1.000');
+    });
+
     it('buildAlertMessageTemplateTitle', () => {
       expect(
         buildAlertMessageTemplateTitle({
@@ -277,6 +365,62 @@ describe('checkAlerts', () => {
         }),
       ).toMatchInlineSnapshot(
         `"✅ Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 5 exceeds 1"`,
+      );
+    });
+
+    it('buildAlertMessageTemplateTitle formats value to match threshold precision', () => {
+      // Test with decimal threshold - value should be formatted to match
+      const decimalChartView: AlertMessageTemplateDefaultView = {
+        ...defaultChartView,
+        alert: {
+          ...defaultChartView.alert,
+          threshold: 1.5,
+        },
+        value: 1111.11111111,
+      };
+
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: decimalChartView,
+        }),
+      ).toMatchInlineSnapshot(
+        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 1111.1 exceeds 1.5"`,
+      );
+
+      // Test with multiple decimal places
+      const multiDecimalChartView: AlertMessageTemplateDefaultView = {
+        ...defaultChartView,
+        alert: {
+          ...defaultChartView.alert,
+          threshold: 0.1234,
+        },
+        value: 1.123456789,
+      };
+
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: multiDecimalChartView,
+        }),
+      ).toMatchInlineSnapshot(
+        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 1.1235 exceeds 0.1234"`,
+      );
+
+      // Test with integer value and decimal threshold
+      const integerValueView: AlertMessageTemplateDefaultView = {
+        ...defaultChartView,
+        alert: {
+          ...defaultChartView.alert,
+          threshold: 0.12,
+        },
+        value: 10,
+      };
+
+      expect(
+        buildAlertMessageTemplateTitle({
+          view: integerValueView,
+        }),
+      ).toMatchInlineSnapshot(
+        `"🚨 Alert for \\"Test Chart\\" in \\"My Dashboard\\" - 10.00 exceeds 0.12"`,
       );
     });
 
@@ -2199,14 +2343,14 @@ describe('checkAlerts', () => {
         1,
         'https://hooks.slack.com/services/123',
         {
-          text: '🚨 Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1',
+          text: '🚨 Alert for "CPU" in "My Dashboard" - 6 exceeds 1',
           blocks: [
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "CPU" in "My Dashboard" - 6.25 exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "CPU" in "My Dashboard" - 6 exceeds 1>*`,
                   '',
-                  '6.25 exceeds 1',
+                  '6 exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
                   '',
                 ].join('\n'),
