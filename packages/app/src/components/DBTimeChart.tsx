@@ -12,6 +12,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { IconArrowsDiagonal, IconSearch } from '@tabler/icons-react';
 
 import {
+  AGG_FNS,
   buildEventsSearchUrl,
   ChartKeyJoiner,
   convertGranularityToSeconds,
@@ -315,18 +316,43 @@ function DBTimeChartComponent({
         let valueExpression: string | undefined;
 
         if ((isSingleValueColumn ?? true) && config.select.length === 1) {
-          valueExpression = config.select[0].valueExpression;
+          const firstSelect = config.select[0];
+          const aggFn =
+            typeof firstSelect === 'string' ? undefined : firstSelect.aggFn;
+          // Only add value range filter if the aggregation is attributable
+          const isAttributable =
+            AGG_FNS.find(fn => fn.value === aggFn)?.isAttributable !== false;
+
+          if (isAttributable) {
+            valueExpression =
+              typeof firstSelect === 'string'
+                ? firstSelect
+                : firstSelect.valueExpression;
+          }
         } else if (seriesKeys?.length && (valueColumns?.length ?? 0) > 0) {
           const firstPart = seriesKeys[0];
           const valueColumnIndex = valueColumns?.findIndex(
             col => col === firstPart,
           );
+
           if (
             valueColumnIndex != null &&
             valueColumnIndex >= 0 &&
             valueColumnIndex < config.select.length
           ) {
-            valueExpression = config.select[valueColumnIndex].valueExpression;
+            const selectItem = config.select[valueColumnIndex];
+            const aggFn =
+              typeof selectItem === 'string' ? undefined : selectItem.aggFn;
+            // Only add value range filter if the aggregation is attributable
+            const isAttributable =
+              AGG_FNS.find(fn => fn.value === aggFn)?.isAttributable !== false;
+
+            if (isAttributable) {
+              valueExpression =
+                typeof selectItem === 'string'
+                  ? selectItem
+                  : selectItem.valueExpression;
+            }
           }
         }
 

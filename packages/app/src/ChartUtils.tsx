@@ -50,20 +50,20 @@ export const TABLES = [
 export const AGG_FNS = [
   { value: 'count' as const, label: 'Count of Events', isAttributable: false },
   { value: 'sum' as const, label: 'Sum', isAttributable: false },
-  { value: 'p99' as const, label: '99th Percentile', isAttributable: true },
-  { value: 'p95' as const, label: '95th Percentile', isAttributable: true },
-  { value: 'p90' as const, label: '90th Percentile', isAttributable: true },
-  { value: 'p50' as const, label: 'Median', isAttributable: true },
-  { value: 'avg' as const, label: 'Average', isAttributable: true },
-  { value: 'max' as const, label: 'Maximum', isAttributable: true },
-  { value: 'min' as const, label: 'Minimum', isAttributable: true },
+  { value: 'p99' as const, label: '99th Percentile' },
+  { value: 'p95' as const, label: '95th Percentile' },
+  { value: 'p90' as const, label: '90th Percentile' },
+  { value: 'p50' as const, label: 'Median' },
+  { value: 'avg' as const, label: 'Average' },
+  { value: 'max' as const, label: 'Maximum' },
+  { value: 'min' as const, label: 'Minimum' },
   {
     value: 'count_distinct' as const,
     label: 'Count Distinct',
     isAttributable: false,
   },
-  { value: 'any' as const, label: 'Any', isAttributable: true },
-  { value: 'none' as const, label: 'None', isAttributable: true },
+  { value: 'any' as const, label: 'Any' },
+  { value: 'none' as const, label: 'None' },
 ];
 
 export const getMetricAggFns = (

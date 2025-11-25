@@ -68,7 +68,11 @@ import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { parseAsStringWithNewLines } from './utils/queryParsers';
 import api from './api';
-import { buildEventsSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
+import {
+  AGG_FNS,
+  buildEventsSearchUrl,
+  DEFAULT_CHART_CONFIG,
+} from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
@@ -368,44 +372,59 @@ const Tile = forwardRef(
                       queriedConfig.select.length > 0
                     ) {
                       const firstSelect = queriedConfig.select[0];
-                      const valueExpression =
+                      const aggFn =
                         typeof firstSelect === 'string'
-                          ? firstSelect
-                          : firstSelect.valueExpression;
+                          ? undefined
+                          : firstSelect.aggFn;
 
-                      // Collect group column names to exclude them
-                      const groupColumnNames = new Set<string>();
-                      if (
-                        queriedConfig.groupBy &&
-                        typeof queriedConfig.groupBy === 'string'
-                      ) {
-                        queriedConfig.groupBy
-                          .split(',')
-                          .map(v => v.trim())
-                          .forEach(col => groupColumnNames.add(col));
-                      } else if (Array.isArray(queriedConfig.groupBy)) {
-                        queriedConfig.groupBy.forEach(groupBy => {
-                          const col =
-                            typeof groupBy === 'string'
-                              ? groupBy
-                              : groupBy.valueExpression;
-                          groupColumnNames.add(col);
-                        });
-                      }
+                      // Only add value range filter if the aggregation is attributable
+                      const isAttributable =
+                        AGG_FNS.find(fn => fn.value === aggFn)
+                          ?.isAttributable !== false;
 
-                      // Find the first value column (non-group column) in the row
-                      const valueColumnKey = Object.keys(row).find(
-                        key => !groupColumnNames.has(key),
-                      );
+                      if (isAttributable) {
+                        const valueExpression =
+                          typeof firstSelect === 'string'
+                            ? firstSelect
+                            : firstSelect.valueExpression;
 
-                      if (valueColumnKey) {
-                        const rowValue = row[valueColumnKey];
+                        // Collect group column names to exclude them
+                        const groupColumnNames = new Set<string>();
+                        if (
+                          queriedConfig.groupBy &&
+                          typeof queriedConfig.groupBy === 'string'
+                        ) {
+                          queriedConfig.groupBy
+                            .split(',')
+                            .map(v => v.trim())
+                            .forEach(col => groupColumnNames.add(col));
+                        } else if (Array.isArray(queriedConfig.groupBy)) {
+                          queriedConfig.groupBy.forEach(groupBy => {
+                            const col =
+                              typeof groupBy === 'string'
+                                ? groupBy
+                                : groupBy.valueExpression;
+                            groupColumnNames.add(col);
+                          });
+                        }
 
-                        if (rowValue != null && typeof rowValue === 'number') {
-                          valueRangeFilter = {
-                            expression: valueExpression,
-                            value: rowValue,
-                          };
+                        // Find the first value column (non-group column) in the row
+                        const valueColumnKey = Object.keys(row).find(
+                          key => !groupColumnNames.has(key),
+                        );
+
+                        if (valueColumnKey) {
+                          const rowValue = row[valueColumnKey];
+
+                          if (
+                            rowValue != null &&
+                            typeof rowValue === 'number'
+                          ) {
+                            valueRangeFilter = {
+                              expression: valueExpression,
+                              value: rowValue,
+                            };
+                          }
                         }
                       }
                     }
