@@ -1,15 +1,5 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import Link from 'next/link';
+import { memo, useCallback, useId, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
-import { add } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
   Area,
@@ -18,10 +8,7 @@ import {
   BarChart,
   BarProps,
   CartesianGrid,
-  Label,
   Legend,
-  Line,
-  LineChart,
   ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
@@ -32,10 +19,12 @@ import {
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconCaretDownFilled, IconCaretUpFilled } from '@tabler/icons-react';
 
 import type { NumberFormat } from '@/types';
-import { COLORS, formatNumber, getColorProps, truncateMiddle } from '@/utils';
+import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 
+import { LineData } from './ChartUtils';
 import { FormatTime, useFormatTime } from './useFormatTime';
 
 import styles from '../styles/HDXLineChart.module.scss';
@@ -53,8 +42,50 @@ type TooltipPayload = {
   opacity?: number;
 };
 
+const percentFormatter = new Intl.NumberFormat('en-US', {
+  style: 'percent',
+  maximumFractionDigits: 2,
+});
+
+const calculatePercentChange = (current: number, previous: number) => {
+  if (previous === 0) {
+    return current === 0 ? 0 : undefined;
+  }
+  return (current - previous) / previous;
+};
+
+const PercentChange = ({
+  current,
+  previous,
+}: {
+  current: number;
+  previous: number;
+}) => {
+  const percentChange = calculatePercentChange(current, previous);
+  if (percentChange == undefined) {
+    return null;
+  }
+
+  const Icon = percentChange > 0 ? IconCaretUpFilled : IconCaretDownFilled;
+
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 0 }}>
+      (<Icon size={12} />
+      {percentFormatter.format(Math.abs(percentChange))})
+    </span>
+  );
+};
+
 export const TooltipItem = memo(
-  ({ p, numberFormat }: { p: TooltipPayload; numberFormat?: NumberFormat }) => {
+  ({
+    p,
+    previous,
+    numberFormat,
+  }: {
+    p: TooltipPayload;
+    previous?: TooltipPayload;
+    numberFormat?: NumberFormat;
+  }) => {
     return (
       <div className="d-flex gap-2 items-center justify-center">
         <div>
@@ -74,32 +105,72 @@ export const TooltipItem = memo(
           <span style={{ color: p.color }}>
             {truncateMiddle(p.name ?? p.dataKey, 50)}
           </span>
-          : {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
+          : {numberFormat ? formatNumber(p.value, numberFormat) : p.value}{' '}
+          {previous && (
+            <PercentChange current={p.value} previous={previous?.value} />
+          )}
         </div>
       </div>
     );
   },
 );
 
+type HDXLineChartTooltipProps = {
+  lineDataMap: { [keyName: string]: LineData };
+  previousPeriodOffset?: number;
+  numberFormat?: NumberFormat;
+} & Record<string, any>;
+
 const HDXLineChartTooltip = withErrorBoundary(
-  memo((props: any) => {
-    const { active, payload, label, numberFormat } = props;
+  memo((props: HDXLineChartTooltipProps) => {
+    const {
+      active,
+      payload,
+      label,
+      numberFormat,
+      lineDataMap,
+      previousPeriodOffset,
+    } = props;
+    const typedPayload = payload as TooltipPayload[];
+
+    const payloadByKey = useMemo(
+      () => new Map(typedPayload.map(p => [p.dataKey, p])),
+      [typedPayload],
+    );
+
     if (active && payload && payload.length) {
       return (
         <div className={styles.chartTooltip}>
           <div className={styles.chartTooltipHeader}>
             <FormatTime value={label * 1000} />
+            {previousPeriodOffset != null && (
+              <>
+                {' (vs '}
+                <FormatTime value={label * 1000 - previousPeriodOffset} />
+                {')'}
+              </>
+            )}
           </div>
           <div className={styles.chartTooltipContent}>
             {payload
-              .sort((a: any, b: any) => b.value - a.value)
-              .map((p: any) => (
-                <TooltipItem
-                  key={p.dataKey}
-                  p={p}
-                  numberFormat={numberFormat}
-                />
-              ))}
+              .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
+              .map((p: TooltipPayload) => {
+                const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
+                const isPreviousPeriod = previousKey === p.dataKey;
+                const previousPayload =
+                  !isPreviousPeriod && previousKey
+                    ? payloadByKey.get(previousKey)
+                    : undefined;
+
+                return (
+                  <TooltipItem
+                    key={p.dataKey}
+                    p={p}
+                    numberFormat={numberFormat}
+                    previous={previousPayload}
+                  />
+                );
+              })}
           </div>
         </div>
       );
@@ -180,14 +251,38 @@ function ExpandableLegendItem({ entry, expanded }: any) {
 
 export const LegendRenderer = memo<{
   payload?: {
+    dataKey: string;
     value: string;
     color: string;
   }[];
+  lineDataMap: { [key: string]: LineData };
 }>(props => {
-  const payload = props.payload ?? [];
+  const { payload = [], lineDataMap } = props;
 
-  const shownItems = payload.slice(0, MAX_LEGEND_ITEMS);
-  const restItems = payload.slice(MAX_LEGEND_ITEMS);
+  const sortedLegendItems = useMemo(() => {
+    // Order items such that current and previous period lines are consecutive
+    const currentPeriodKeyIndex = new Map<string, number>();
+    payload.forEach((line, index) => {
+      const currentPeriodKey =
+        lineDataMap[line.dataKey]?.currentPeriodKey || '';
+      if (!currentPeriodKeyIndex.has(currentPeriodKey)) {
+        currentPeriodKeyIndex.set(currentPeriodKey, index);
+      }
+    });
+
+    return payload.sort((a, b) => {
+      const keyA = lineDataMap[a.dataKey]?.currentPeriodKey ?? '';
+      const keyB = lineDataMap[b.dataKey]?.currentPeriodKey ?? '';
+
+      const indexA = currentPeriodKeyIndex.get(keyA) ?? 0;
+      const indexB = currentPeriodKeyIndex.get(keyB) ?? 0;
+
+      return indexB - indexA || a.dataKey.localeCompare(b.dataKey);
+    });
+  }, [payload, lineDataMap]);
+
+  const shownItems = sortedLegendItems.slice(0, MAX_LEGEND_ITEMS);
+  const restItems = sortedLegendItems.slice(MAX_LEGEND_ITEMS);
 
   return (
     <div className={styles.legend}>
@@ -228,9 +323,7 @@ export const MemoChart = memo(function MemoChart({
   setIsClickActive,
   isClickActive,
   dateRange,
-  groupKeys,
-  lineNames,
-  lineColors,
+  lineData,
   referenceLines,
   logReferenceTimestamp,
   displayType = DisplayType.Line,
@@ -239,14 +332,13 @@ export const MemoChart = memo(function MemoChart({
   timestampKey = 'ts_bucket',
   onTimeRangeSelect,
   showLegend = true,
+  previousPeriodOffset,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
   isClickActive: any;
   dateRange: [Date, Date] | Readonly<[Date, Date]>;
-  groupKeys: string[];
-  lineNames: string[];
-  lineColors: Array<string | undefined>;
+  lineData: LineData[];
   referenceLines?: React.ReactNode;
   displayType?: DisplayType;
   numberFormat?: NumberFormat;
@@ -255,6 +347,7 @@ export const MemoChart = memo(function MemoChart({
   timestampKey?: string;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   showLegend?: boolean;
+  previousPeriodOffset?: number;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -265,25 +358,13 @@ export const MemoChart = memo(function MemoChart({
     displayType === DisplayType.StackedBar ? BarChart : AreaChart; // LineChart;
 
   const lines = useMemo(() => {
-    const limitedGroupKeys = groupKeys.slice(0, HARD_LINES_LIMIT);
-
-    // Check if any group is missing from any row
-    const isContinuousGroup = graphResults.reduce((acc, row) => {
-      limitedGroupKeys.forEach(key => {
-        acc[key] = row[key] != null ? acc[key] : false;
-      });
-      return acc;
-    }, {});
+    const limitedGroupKeys = lineData
+      .map(ld => ld.dataKey)
+      .slice(0, HARD_LINES_LIMIT);
 
     return limitedGroupKeys.map((key, i) => {
-      const {
-        color: _color,
-        opacity,
-        strokeDasharray,
-        strokeWidth,
-      } = getColorProps(i, lineNames[i] ?? key);
-
-      const color = lineColors[i] ?? _color;
+      const color = lineData[i]?.color;
+      const strokeDasharray = lineData[i]?.isDashed ? '4 3' : '0';
 
       const StackedBarWithOverlap = (props: BarProps) => {
         const { x, y, width, height, fill } = props;
@@ -304,9 +385,9 @@ export const MemoChart = memo(function MemoChart({
           key={key}
           type="monotone"
           dataKey={key}
-          name={lineNames[i] ?? key}
+          name={lineData[i]?.displayName ?? key}
           fill={color}
-          opacity={opacity}
+          opacity={1}
           stackId="1"
           isAnimationActive={false}
           shape={<StackedBarWithOverlap dataKey={key} />}
@@ -319,24 +400,17 @@ export const MemoChart = memo(function MemoChart({
           stroke={color}
           fillOpacity={1}
           {...(isHovered
-            ? { fill: 'none' }
+            ? { fill: 'none', strokeDasharray }
             : {
                 fill: `url(#time-chart-lin-grad-${id}-${color.replace('#', '').toLowerCase()})`,
+                strokeDasharray,
               })}
-          name={lineNames[i] ?? key}
+          name={lineData[i]?.displayName ?? key}
           isAnimationActive={false}
         />
       );
     });
-  }, [
-    groupKeys,
-    graphResults,
-    displayType,
-    lineNames,
-    lineColors,
-    id,
-    isHovered,
-  ]);
+  }, [lineData, displayType, id, isHovered]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
 
@@ -370,6 +444,14 @@ export const MemoChart = memo(function MemoChart({
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
   const mouseDownPosRef = useRef<number | null>(null);
+
+  const lineDataMap = useMemo(() => {
+    const map: { [key: string]: LineData } = {};
+    lineData.forEach(ld => {
+      map[ld.dataKey] = ld;
+    });
+    return map;
+  }, [lineData]);
 
   return (
     <ResponsiveContainer
@@ -525,10 +607,17 @@ export const MemoChart = memo(function MemoChart({
         {lines}
         {isClickActive == null && (
           <Tooltip
-            content={<HDXLineChartTooltip numberFormat={numberFormat} />}
+            content={
+              <HDXLineChartTooltip
+                numberFormat={numberFormat}
+                lineDataMap={lineDataMap}
+                previousPeriodOffset={previousPeriodOffset}
+              />
+            }
             wrapperStyle={{
               zIndex: 400,
             }}
+            allowEscapeViewBox={{ y: true }}
           />
         )}
         {referenceLines}
@@ -544,7 +633,7 @@ export const MemoChart = memo(function MemoChart({
           <Legend
             iconSize={10}
             verticalAlign="bottom"
-            content={<LegendRenderer />}
+            content={<LegendRenderer lineDataMap={lineDataMap} />}
             offset={-100}
           />
         )}

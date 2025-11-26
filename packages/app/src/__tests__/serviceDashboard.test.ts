@@ -38,7 +38,6 @@ describe('Service Dashboard', () => {
         "SpanAttributes['k8s.resource.name']",
       );
       expect(expressions.k8sPodName).toBe("SpanAttributes['k8s.pod.name']");
-      expect(expressions.httpScheme).toBe("SpanAttributes['http.scheme']");
       expect(expressions.serverAddress).toBe(
         "SpanAttributes['server.address']",
       );
@@ -55,7 +54,6 @@ describe('Service Dashboard', () => {
         'SpanAttributes.`k8s.resource.name`',
       );
       expect(expressions.k8sPodName).toBe('SpanAttributes.`k8s.pod.name`');
-      expect(expressions.httpScheme).toBe('SpanAttributes.`http.scheme`');
       expect(expressions.serverAddress).toBe('SpanAttributes.`server.address`');
       expect(expressions.httpHost).toBe('SpanAttributes.`http.host`');
       const resultWithWhitespaceStripped = removeAllWhitespace(

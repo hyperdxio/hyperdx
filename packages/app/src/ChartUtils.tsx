@@ -3,6 +3,7 @@ import { add } from 'date-fns';
 import SqlString from 'sqlstring';
 import { z } from 'zod';
 import {
+  ColumnMetaType,
   filterColumnMetaByType,
   inferTimestampColumn,
   JSDataType,
@@ -20,7 +21,7 @@ import {
   SQLInterval,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { SegmentedControl, Select as MSelect } from '@mantine/core';
+import { SegmentedControl } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import { getMetricNameSql } from './otelSemanticConventions';
@@ -33,7 +34,7 @@ import {
   TimeChartSeries,
 } from './types';
 import { NumberFormat } from './types';
-import { logLevelColor, logLevelColorOrder } from './utils';
+import { getColorProps, logLevelColor, logLevelColorOrder } from './utils';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
@@ -532,56 +533,109 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
-// Input: { ts, value1, value2, groupBy1, groupBy2 },
-// Output: { ts, [value1Name, groupBy1, groupBy2]: value1, [...]: value2 }
-export function formatResponseForTimeChart({
-  res,
-  dateRange,
-  granularity,
-  generateEmptyBuckets = true,
-  source,
-}: {
-  dateRange: [Date, Date];
-  granularity?: SQLInterval;
-  res: ResponseJSON<Record<string, any>>;
-  generateEmptyBuckets?: boolean;
-  source?: TSource;
-}) {
-  const meta = res.meta;
-  const data = res.data;
+export function getPreviousPeriodOffset(dateRange: [Date, Date]): number {
+  const [start, end] = dateRange;
+  return end.getTime() - start.getTime();
+}
 
+export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
+  const [start, end] = currentRange;
+  const offset = getPreviousPeriodOffset(currentRange);
+  return [new Date(start.getTime() - offset), new Date(end.getTime() - offset)];
+}
+
+export interface LineData {
+  dataKey: string;
+  currentPeriodKey: string;
+  previousPeriodKey: string;
+  displayName: string;
+  color: string;
+  isDashed?: boolean;
+}
+
+interface LineDataWithOptionalColor extends Omit<LineData, 'color'> {
+  color?: string;
+}
+
+function setLineColors(
+  sortedLineData: LineDataWithOptionalColor[],
+): LineData[] {
+  // Ensure that the current and previous period lines are the same color
+  const lineColorByCurrentPeriodKey = new Map<string, string>();
+
+  let colorIndex = 0;
+  return sortedLineData.map(line => {
+    const currentPeriodKey = line.currentPeriodKey;
+    if (lineColorByCurrentPeriodKey.has(currentPeriodKey)) {
+      line.color = lineColorByCurrentPeriodKey.get(currentPeriodKey);
+    } else if (!line.color) {
+      line.color = getColorProps(
+        colorIndex++,
+        line.displayName ?? line.dataKey,
+      );
+      lineColorByCurrentPeriodKey.set(currentPeriodKey, line.color);
+    } else {
+      lineColorByCurrentPeriodKey.set(currentPeriodKey, line.color);
+    }
+
+    return line as LineData;
+  });
+}
+
+function firstGroupColumnIsLogLevel(
+  source: TSource | undefined,
+  groupColumns: ColumnMetaType[],
+) {
+  return (
+    source &&
+    groupColumns.length === 1 &&
+    groupColumns[0].name ===
+      (source.kind === SourceKind.Log
+        ? source.severityTextExpression
+        : source.statusCodeExpression)
+  );
+}
+
+function addResponseToFormattedData({
+  response,
+  lineDataMap,
+  tsBucketMap,
+  source,
+  currentPeriodDateRange,
+  isPreviousPeriod,
+}: {
+  tsBucketMap: Map<number, Record<string, any>>;
+  lineDataMap: { [keyName: string]: LineDataWithOptionalColor };
+  response: ResponseJSON<Record<string, any>>;
+  source?: TSource;
+  isPreviousPeriod: boolean;
+  currentPeriodDateRange: [Date, Date];
+}) {
+  const { meta, data } = response;
   if (meta == null) {
     throw new Error('No meta data found in response');
   }
 
   const timestampColumn = inferTimestampColumn(meta);
-  const valueColumns = inferValueColumns(meta) ?? [];
-  const groupColumns = inferGroupColumns(meta) ?? [];
-
   if (timestampColumn == null) {
     throw new Error(
       `No timestamp column found with meta: ${JSON.stringify(meta)}`,
     );
   }
 
-  // Timestamp -> { tsCol, line1, line2, ...}
-  const tsBucketMap: Map<number, Record<string, any>> = new Map();
-  const lineDataMap: {
-    [keyName: string]: {
-      dataKey: string;
-      displayName: string;
-      maxValue: number;
-      minValue: number;
-      color: string | undefined;
-    };
-  } = {};
-
+  const valueColumns = inferValueColumns(meta) ?? [];
+  const groupColumns = inferGroupColumns(meta) ?? [];
   const isSingleValueColumn = valueColumns.length === 1;
   const hasGroupColumns = groupColumns.length > 0;
 
   for (const row of data) {
     const date = new Date(row[timestampColumn.name]);
-    const ts = date.getTime() / 1000;
+
+    // Previous period data needs to be shifted forward to align with current period
+    const offset = isPreviousPeriod
+      ? getPreviousPeriodOffset(currentPeriodDateRange)
+      : 0;
+    const ts = Math.round((date.getTime() + offset) / 1000);
 
     for (const valueColumn of valueColumns) {
       let tsBucket = tsBucketMap.get(ts);
@@ -590,11 +644,13 @@ export function formatResponseForTimeChart({
         tsBucketMap.set(ts, tsBucket);
       }
 
-      const keyName = [
+      const currentPeriodKey = [
         // Simplify the display name if there's only one series and a group by
         ...(isSingleValueColumn && hasGroupColumns ? [] : [valueColumn.name]),
         ...groupColumns.map(g => row[g.name]),
       ].join(ChartKeyJoiner);
+      const previousPeriodKey = `${currentPeriodKey} (previous)`;
+      const keyName = isPreviousPeriod ? previousPeriodKey : currentPeriodKey;
 
       // UInt64 are returned as strings, we'll convert to number
       // and accept a bit of floating point error
@@ -605,36 +661,85 @@ export function formatResponseForTimeChart({
       // Mutate the existing bucket object to avoid repeated large object copies
       tsBucket[keyName] = value;
 
+      // Special handling for log level / trace severity colors
       let color: string | undefined = undefined;
-      if (
-        source &&
-        groupColumns.length === 1 &&
-        groupColumns[0].name ===
-          (source.kind === SourceKind.Log
-            ? source.severityTextExpression
-            : source.statusCodeExpression)
-      ) {
+      if (firstGroupColumnIsLogLevel(source, groupColumns)) {
         color = logLevelColor(row[groupColumns[0].name]);
       }
-      // TODO: Set name and color correctly
+
       lineDataMap[keyName] = {
         dataKey: keyName,
+        currentPeriodKey,
+        previousPeriodKey,
         displayName: keyName,
         color,
-        maxValue: Math.max(
-          lineDataMap[keyName]?.maxValue ?? Number.NEGATIVE_INFINITY,
-          value,
-        ),
-        minValue: Math.min(
-          lineDataMap[keyName]?.minValue ?? Number.POSITIVE_INFINITY,
-          value,
-        ),
+        isDashed: isPreviousPeriod,
       };
     }
   }
+}
 
-  // TODO: Custom sort and truncate top N lines
-  const sortedLineDataMap = Object.values(lineDataMap).sort((a, b) => {
+// Input: { ts, value1, value2, groupBy1, groupBy2 },
+// Output: { ts, [value1Name, groupBy1, groupBy2]: value1, [...]: value2 }
+export function formatResponseForTimeChart({
+  currentPeriodResponse,
+  previousPeriodResponse,
+  dateRange,
+  granularity,
+  generateEmptyBuckets = true,
+  source,
+}: {
+  dateRange: [Date, Date];
+  granularity?: SQLInterval;
+  currentPeriodResponse: ResponseJSON<Record<string, any>>;
+  previousPeriodResponse?: ResponseJSON<Record<string, any>>;
+  generateEmptyBuckets?: boolean;
+  source?: TSource;
+}) {
+  const meta = currentPeriodResponse.meta;
+
+  if (meta == null) {
+    throw new Error('No meta data found in response');
+  }
+
+  const timestampColumn = inferTimestampColumn(meta);
+  const valueColumns = inferValueColumns(meta) ?? [];
+  const groupColumns = inferGroupColumns(meta) ?? [];
+  const isSingleValueColumn = valueColumns.length === 1;
+
+  if (timestampColumn == null) {
+    throw new Error(
+      `No timestamp column found with meta: ${JSON.stringify(meta)}`,
+    );
+  }
+
+  // Timestamp -> { tsCol, line1, line2, ...}
+  const tsBucketMap: Map<number, Record<string, any>> = new Map();
+  const lineDataMap: {
+    [keyName: string]: LineDataWithOptionalColor;
+  } = {};
+
+  addResponseToFormattedData({
+    response: currentPeriodResponse,
+    lineDataMap,
+    tsBucketMap,
+    source,
+    isPreviousPeriod: false,
+    currentPeriodDateRange: dateRange,
+  });
+
+  if (previousPeriodResponse != null) {
+    addResponseToFormattedData({
+      response: previousPeriodResponse,
+      lineDataMap,
+      tsBucketMap,
+      source,
+      isPreviousPeriod: true,
+      currentPeriodDateRange: dateRange,
+    });
+  }
+
+  const sortedLineData = Object.values(lineDataMap).sort((a, b) => {
     return (
       logLevelColorOrder.findIndex(color => color === a.color) -
       logLevelColorOrder.findIndex(color => color === b.color)
@@ -642,7 +747,6 @@ export function formatResponseForTimeChart({
   });
 
   if (generateEmptyBuckets && granularity != null) {
-    // Zero fill TODO: Make this an option
     const generatedTsBuckets = timeBucketByGranularity(
       dateRange[0],
       dateRange[1],
@@ -658,13 +762,13 @@ export function formatResponseForTimeChart({
           [timestampColumn.name]: ts,
         };
 
-        for (const line of sortedLineDataMap) {
+        for (const line of sortedLineData) {
           tsBucket[line.dataKey] = 0;
         }
 
         tsBucketMap.set(ts, tsBucket);
       } else {
-        for (const line of sortedLineDataMap) {
+        for (const line of sortedLineData) {
           if (tsBucket[line.dataKey] == null) {
             tsBucket[line.dataKey] = 0;
           }
@@ -681,14 +785,12 @@ export function formatResponseForTimeChart({
     (a, b) => a[timestampColumn.name] - b[timestampColumn.name],
   );
 
-  // TODO: Return line color and names
+  const sortedLineDataWithColors = setLineColors(sortedLineData);
+
   return {
-    // dateRange: [minDate, maxDate],
     graphResults,
     timestampColumn,
-    groupKeys: sortedLineDataMap.map(l => l.dataKey),
-    lineNames: sortedLineDataMap.map(l => l.displayName),
-    lineColors: sortedLineDataMap.map(l => l.color),
+    lineData: sortedLineDataWithColors,
     groupColumns: groupColumns.map(g => g.name),
     valueColumns: valueColumns.map(v => v.name),
     isSingleValueColumn,

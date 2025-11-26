@@ -389,6 +389,7 @@ export const _ChartConfigSchema = z.object({
   seriesReturnType: z.enum(['ratio', 'column']).optional(),
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
+  compareToPreviousPeriod: z.boolean().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.

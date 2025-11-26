@@ -1,12 +1,4 @@
-import {
-  memo,
-  RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { omit } from 'lodash';
 import {
   Control,
@@ -26,11 +18,9 @@ import {
   DateRange,
   DisplayType,
   Filter,
-  MetricsDataType,
   SavedChartConfig,
   SelectList,
   SourceKind,
-  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -49,7 +39,11 @@ import {
 } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
-import { AGG_FNS, buildTableRowSearchUrl } from '@/ChartUtils';
+import {
+  AGG_FNS,
+  buildTableRowSearchUrl,
+  getPreviousDateRange,
+} from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBTableChart from '@/components/DBTableChart';
@@ -62,6 +56,7 @@ import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
+import { FormatTime } from '@/useFormatTime';
 import { getMetricTableName, optionsToSelectData } from '@/utils';
 import {
   ALERT_CHANNEL_OPTIONS,
@@ -80,6 +75,7 @@ import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
 import {
   CheckBoxControlled,
   InputControlled,
+  SwitchControlled,
   TextInputControlled,
 } from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
@@ -451,6 +447,7 @@ export default function EditTimeChartForm({
   const whereLanguage = watch('whereLanguage');
   const alert = watch('alert');
   const seriesReturnType = watch('seriesReturnType');
+  const compareToPreviousPeriod = watch('compareToPreviousPeriod');
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -601,7 +598,23 @@ export default function EditTimeChartForm({
     });
   }, [dateRange]);
 
+  // Trigger a search when "compare to previous period" changes
+  useEffect(() => {
+    setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
+      if (config == null) {
+        return config;
+      }
+
+      return {
+        ...config,
+        compareToPreviousPeriod,
+      };
+    });
+  }, [compareToPreviousPeriod]);
+
   const queryReady = isQueryReady(queriedConfig);
+
+  const previousDateRange = getPreviousDateRange(dateRange);
 
   const sampleEventsConfig = useMemo(
     () =>
@@ -690,7 +703,6 @@ export default function EditTimeChartForm({
         />
       </Flex>
       <Divider my="md" />
-
       {activeTab === 'markdown' ? (
         <div>
           <Textarea
@@ -883,7 +895,6 @@ export default function EditTimeChartForm({
           )}
         </>
       )}
-
       {alert && (
         <Paper my="sm">
           <Stack gap="xs">
@@ -945,7 +956,6 @@ export default function EditTimeChartForm({
           </Stack>
         </Paper>
       )}
-
       <Flex justify="space-between" mt="sm">
         <Flex gap="sm">
           {onSave != null && (
@@ -1000,6 +1010,28 @@ export default function EditTimeChartForm({
           )}
         </Flex>
       </Flex>
+      {activeTab === 'time' && (
+        <Group justify="end" mb="xs">
+          <SwitchControlled
+            control={control}
+            name="compareToPreviousPeriod"
+            label={
+              <>
+                Compare to Previous Period{' '}
+                {!dashboardId && (
+                  <>
+                    (
+                    <FormatTime value={previousDateRange?.[0]} format="short" />
+                    {' - '}
+                    <FormatTime value={previousDateRange?.[1]} format="short" />
+                    )
+                  </>
+                )}
+              </>
+            }
+          />
+        </Group>
+      )}
       {!queryReady && activeTab !== 'markdown' ? (
         <Paper shadow="xs" p="xl">
           <Center mih={400}>
