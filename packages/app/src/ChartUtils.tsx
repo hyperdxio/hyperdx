@@ -278,6 +278,7 @@ export function convertDateRangeToGranularityString(
 }
 
 export const ChartKeyJoiner = ' · ';
+export const PreviousPeriodSuffix = ' (previous)';
 
 export function convertGranularityToSeconds(granularity: SQLInterval): number {
   const [num, unit] = granularity.split(' ');
@@ -649,7 +650,7 @@ function addResponseToFormattedData({
         ...(isSingleValueColumn && hasGroupColumns ? [] : [valueColumn.name]),
         ...groupColumns.map(g => row[g.name]),
       ].join(ChartKeyJoiner);
-      const previousPeriodKey = `${currentPeriodKey} (previous)`;
+      const previousPeriodKey = `${currentPeriodKey}${PreviousPeriodSuffix}`;
       const keyName = isPreviousPeriod ? previousPeriodKey : currentPeriodKey;
 
       // UInt64 are returned as strings, we'll convert to number

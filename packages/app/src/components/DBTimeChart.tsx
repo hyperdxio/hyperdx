@@ -35,6 +35,7 @@ import {
   formatResponseForTimeChart,
   getPreviousDateRange,
   getPreviousPeriodOffset,
+  PreviousPeriodSuffix,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
@@ -70,9 +71,16 @@ function ActiveTimeTooltip({
     return null;
   }
 
-  // Filter out null/zero values early so length check is accurate
+  // Filter out null/zero values and previous period series early so length check is accurate
   const validPayloads = activeClickPayload
-    .activePayload!.filter(p => p.value != null && p.value !== 0)
+    .activePayload!.filter(
+      p =>
+        p.value != null &&
+        p.value !== 0 &&
+        // Exclude previous period series
+        // TODO: it would be cool to support this in the future
+        !p.dataKey?.endsWith(PreviousPeriodSuffix),
+    )
     .sort((a, b) => b.value! - a.value!); // Sort by value descending (highest first)
 
   return (
