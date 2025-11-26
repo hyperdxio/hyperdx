@@ -19,6 +19,7 @@ import {
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconCaretDownFilled, IconCaretUpFilled } from '@tabler/icons-react';
 
 import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
@@ -43,7 +44,6 @@ type TooltipPayload = {
 
 const percentFormatter = new Intl.NumberFormat('en-US', {
   style: 'percent',
-  signDisplay: 'always',
   maximumFractionDigits: 2,
 });
 
@@ -66,12 +66,13 @@ const PercentChange = ({
     return null;
   }
 
-  const color =
-    percentChange > 0
-      ? 'var(--color-text-success)'
-      : 'var(--color-text-danger)';
+  const Icon = percentChange > 0 ? IconCaretUpFilled : IconCaretDownFilled;
+
   return (
-    <span style={{ color }}>({percentFormatter.format(percentChange)})</span>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 0 }}>
+      (<Icon size={12} />
+      {percentFormatter.format(Math.abs(percentChange))})
+    </span>
   );
 };
 
