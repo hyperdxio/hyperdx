@@ -1014,7 +1014,7 @@ export function buildEventsSearchUrl({
   const to = dateRange[1].getTime();
 
   const params: Record<string, string> = {
-    source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
+    source: source?.id ?? '',
     where: where,
     whereLanguage: whereLanguage,
     filters: JSON.stringify([...(config.filters ?? []), ...additionalFilters]),
@@ -1022,6 +1022,14 @@ export function buildEventsSearchUrl({
     from: from.toString(),
     to: to.toString(),
   };
+
+  // If its a metric chart, we don't can't pass the where and filters
+  if (isMetricChart) {
+    params.where = '';
+    params.whereLanguage = 'lucene';
+    params.filters = JSON.stringify([]);
+    params.source = source?.logSourceId ?? '';
+  }
 
   // Include the select parameter if provided to preserve custom columns
   // eventTableSelect is used for charts that override select (like histograms with count)
