@@ -7,7 +7,16 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
-import { Button, Code, Group, Modal, Stack, Text } from '@mantine/core';
+import {
+  Button,
+  Code,
+  Group,
+  Modal,
+  Popover,
+  Portal,
+  Stack,
+  Text,
+} from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconArrowsDiagonal, IconSearch } from '@tabler/icons-react';
 
@@ -43,91 +52,123 @@ function ActiveTimeTooltip({
   buildSearchUrl: (key?: string, value?: number) => string | null;
   onDismiss: () => void;
 }) {
-  if (
-    activeClickPayload == null ||
-    !activeClickPayload.activePayload ||
-    activeClickPayload.activePayload.length === 0
-  ) {
+  const isOpen =
+    activeClickPayload != null &&
+    activeClickPayload.activePayload != null &&
+    activeClickPayload.activePayload.length > 0;
+
+  if (!isOpen) {
     return null;
   }
 
   // Filter out null/zero values early so length check is accurate
-  const validPayloads = activeClickPayload.activePayload
-    .filter(p => p.value != null && p.value !== 0)
+  const validPayloads = activeClickPayload
+    .activePayload!.filter(p => p.value != null && p.value !== 0)
     .sort((a, b) => b.value! - a.value!); // Sort by value descending (highest first)
 
   return (
     <>
-      {/* Backdrop to dismiss menu */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 4,
+      {/* Backdrop to capture clicks and prevent propagation to chart */}
+      <Portal>
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 199, // Just below Mantine Popover default (200)
+          }}
+          onClick={e => {
+            e.stopPropagation();
+            e.preventDefault();
+            onDismiss();
+          }}
+          onMouseDown={e => {
+            e.stopPropagation();
+          }}
+        />
+      </Portal>
+
+      <Popover
+        opened={isOpen}
+        onChange={opened => {
+          if (!opened) {
+            onDismiss();
+          }
         }}
-        onClick={onDismiss}
-      />
-      <div
-        className="bg-muted px-3 py-2 rounded fs-8 shadow"
-        style={{
-          zIndex: 5,
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          visibility: 'visible',
-          maxHeight: '190px',
-          overflowY: 'auto',
-          transform: `translate(${
-            activeClickPayload.xPerc > 0.5
-              ? (activeClickPayload?.x ?? 0) - 130
-              : (activeClickPayload?.x ?? 0) + 4
-          }px, ${activeClickPayload?.y ?? 0}px)`,
-        }}
+        position="bottom-start"
+        offset={4}
+        withinPortal
+        closeOnEscape
+        withArrow
+        shadow="md"
       >
-        {validPayloads.length <= 1 ? (
-          // Fallback scenario if limited data is available
-          <Link
-            data-testid="chart-view-events-link"
-            href={
-              buildSearchUrl(
-                validPayloads?.[0]?.dataKey,
-                validPayloads?.[0]?.value,
-              ) ?? '/search'
-            }
-            onClick={onDismiss}
-          >
-            <Group gap="xs">
-              <IconSearch size={16} />
-              View Events
-            </Group>
-          </Link>
-        ) : (
-          <Stack>
-            <Text c="gray.5" size="xs">
-              View Events for:
-            </Text>
-            {validPayloads.map((payload, idx) => {
-              const seriesUrl = buildSearchUrl(payload.dataKey, payload.value);
-              return (
-                <Link
-                  key={idx}
-                  data-testid={`chart-view-events-link-${payload.dataKey}`}
-                  href={seriesUrl ?? '/search'}
-                  onClick={onDismiss}
-                >
-                  <Group gap="xs">
-                    <IconSearch size={12} />
-                    {payload.name}
-                  </Group>
-                </Link>
-              );
-            })}
-          </Stack>
-        )}
-      </div>
+        <Popover.Target>
+          <div
+            style={{
+              position: 'absolute',
+              left: activeClickPayload.x ?? 0,
+              top: activeClickPayload.y ?? 0,
+              width: 1,
+              height: 1,
+              pointerEvents: 'none',
+            }}
+          />
+        </Popover.Target>
+        <Popover.Dropdown
+          p="xs"
+          maw={300}
+          onClick={e => e.stopPropagation()}
+          onMouseDown={e => e.stopPropagation()}
+        >
+          {validPayloads.length <= 1 ? (
+            // Fallback scenario if limited data is available
+            <Link
+              data-testid="chart-view-events-link"
+              href={
+                buildSearchUrl(
+                  validPayloads?.[0]?.dataKey,
+                  validPayloads?.[0]?.value,
+                ) ?? '/search'
+              }
+              onClick={onDismiss}
+            >
+              <Group gap="xs">
+                <IconSearch size={16} />
+                View Events
+              </Group>
+            </Link>
+          ) : (
+            <Stack gap="xs" style={{ maxHeight: '170px', overflowY: 'auto' }}>
+              <Text c="gray.5" size="xs">
+                View Events for:
+              </Text>
+              {validPayloads.map((payload, idx) => {
+                const seriesUrl = buildSearchUrl(
+                  payload.dataKey,
+                  payload.value,
+                );
+                return (
+                  <Link
+                    key={idx}
+                    data-testid={`chart-view-events-link-${payload.dataKey}`}
+                    href={seriesUrl ?? '/search'}
+                    onClick={onDismiss}
+                  >
+                    <Group gap="xs">
+                      <IconSearch size={12} />
+                      <Text size="xs" truncate flex="1">
+                        {payload.name}
+                      </Text>
+                    </Group>
+                  </Link>
+                );
+              })}
+            </Stack>
+          )}
+        </Popover.Dropdown>
+      </Popover>
     </>
   );
 }

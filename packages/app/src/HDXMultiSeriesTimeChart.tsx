@@ -503,9 +503,8 @@ export const MemoChart = memo(function MemoChart({
           <Tooltip
             content={<HDXLineChartTooltip numberFormat={numberFormat} />}
             wrapperStyle={{
-              zIndex: 1,
+              zIndex: 400,
             }}
-            allowEscapeViewBox={{ y: true }}
           />
         )}
         {referenceLines}
