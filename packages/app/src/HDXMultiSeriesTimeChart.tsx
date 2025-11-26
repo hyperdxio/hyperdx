@@ -168,14 +168,38 @@ function ExpandableLegendItem({ entry, expanded }: any) {
 
 export const LegendRenderer = memo<{
   payload?: {
+    dataKey: string;
     value: string;
     color: string;
   }[];
+  lineDataMap: { [key: string]: LineData };
 }>(props => {
-  const payload = props.payload ?? [];
+  const { payload = [], lineDataMap } = props;
 
-  const shownItems = payload.slice(0, MAX_LEGEND_ITEMS);
-  const restItems = payload.slice(MAX_LEGEND_ITEMS);
+  const sortedLegendItems = useMemo(() => {
+    // Order items such that current and previous period lines are consecutive
+    const currentPeriodKeyIndex = new Map<string, number>();
+    payload.forEach((line, index) => {
+      const currentPeriodKey =
+        lineDataMap[line.dataKey]?.currentPeriodKey || '';
+      if (!currentPeriodKeyIndex.has(currentPeriodKey)) {
+        currentPeriodKeyIndex.set(currentPeriodKey, index);
+      }
+    });
+
+    return payload.sort((a, b) => {
+      const keyA = lineDataMap[a.dataKey]?.currentPeriodKey ?? '';
+      const keyB = lineDataMap[b.dataKey]?.currentPeriodKey ?? '';
+
+      const indexA = currentPeriodKeyIndex.get(keyA) ?? 0;
+      const indexB = currentPeriodKeyIndex.get(keyB) ?? 0;
+
+      return indexB - indexA || a.dataKey.localeCompare(b.dataKey);
+    });
+  }, [payload, lineDataMap]);
+
+  const shownItems = sortedLegendItems.slice(0, MAX_LEGEND_ITEMS);
+  const restItems = sortedLegendItems.slice(MAX_LEGEND_ITEMS);
 
   return (
     <div className={styles.legend}>
@@ -335,6 +359,14 @@ export const MemoChart = memo(function MemoChart({
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
 
+  const lineDataMap = useMemo(() => {
+    const map: { [key: string]: LineData } = {};
+    lineData.forEach(ld => {
+      map[ld.dataKey] = ld;
+    });
+    return map;
+  }, [lineData]);
+
   return (
     <ResponsiveContainer
       width="100%"
@@ -483,7 +515,7 @@ export const MemoChart = memo(function MemoChart({
           <Legend
             iconSize={10}
             verticalAlign="bottom"
-            content={<LegendRenderer />}
+            content={<LegendRenderer lineDataMap={lineDataMap} />}
             offset={-100}
           />
         )}
