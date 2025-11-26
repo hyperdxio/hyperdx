@@ -881,20 +881,12 @@ export function buildEventsSearchUrl({
 
   // Add group-by column filters
   if (groupFilters && groupFilters.length > 0) {
-    const groupConditions: string[] = [];
     groupFilters.forEach(({ column, value }) => {
       if (column && value != null) {
-        const condition = SqlString.format('?? = ?', [column, value]);
-        groupConditions.push(condition);
+        const condition = `${column} IN (${SqlString.escape(value)})`;
+        additionalFilters.push({ type: 'sql', condition });
       }
     });
-
-    if (groupConditions.length > 0) {
-      additionalFilters.push({
-        type: 'sql',
-        condition: groupConditions.join(' AND '),
-      });
-    }
   }
 
   // Add Y-axis value range filter (±threshold) for charts
@@ -905,7 +897,7 @@ export function buildEventsSearchUrl({
     if (!hasAggregateFunction) {
       const lowerBound = value * (1 - threshold);
       const upperBound = value * (1 + threshold);
-      const condition = `${SqlString.escapeId(expression)} BETWEEN ${SqlString.escape(lowerBound)} AND ${SqlString.escape(upperBound)}`;
+      const condition = `${expression} BETWEEN ${SqlString.escape(lowerBound)} AND ${SqlString.escape(upperBound)}`;
 
       additionalFilters.push({
         type: 'sql',

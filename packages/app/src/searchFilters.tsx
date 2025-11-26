@@ -8,6 +8,7 @@ export type FilterState = {
   [key: string]: {
     included: Set<string>;
     excluded: Set<string>;
+    range?: { min: number; max: number }; // For BETWEEN conditions
   };
 };
 
@@ -17,7 +18,10 @@ export const filtersToQuery = (
 ): Filter[] => {
   return Object.entries(filters)
     .filter(
-      ([_, values]) => values.included.size > 0 || values.excluded.size > 0,
+      ([_, values]) =>
+        values.included.size > 0 ||
+        values.excluded.size > 0 ||
+        values.range != null,
     )
     .flatMap(([key, values]) => {
       const conditions = [];
@@ -37,6 +41,12 @@ export const filtersToQuery = (
           condition: `${actualKey} NOT IN (${Array.from(values.excluded)
             .map(v => `'${v}'`)
             .join(', ')})`,
+        });
+      }
+      if (values.range != null) {
+        conditions.push({
+          type: 'sql' as const,
+          condition: `${actualKey} BETWEEN ${values.range.min} AND ${values.range.max}`,
         });
       }
       return conditions;
@@ -65,6 +75,10 @@ export const areFiltersEqual = (a: FilterState, b: FilterState) => {
     for (const value of a[key].excluded) {
       if (!b[key].excluded.has(value)) return false;
     }
+
+    // Check range
+    if (a[key].range?.min !== b[key].range?.min) return false;
+    if (a[key].range?.max !== b[key].range?.max) return false;
   }
 
   return true;
@@ -77,16 +91,47 @@ export const parseQuery = (
 } => {
   const state = new Map<
     string,
-    { included: Set<string>; excluded: Set<string> }
+    {
+      included: Set<string>;
+      excluded: Set<string>;
+      range?: { min: number; max: number };
+    }
   >();
   for (const filter of q) {
     if (filter.type !== 'sql') continue;
 
+    // Check for BETWEEN condition
+    if (filter.condition.includes(' BETWEEN ')) {
+      const betweenMatch = filter.condition.match(
+        /^(.+?)\s+BETWEEN\s+(.+?)\s+AND\s+(.+?)$/i,
+      );
+      if (betweenMatch) {
+        const [, key, minVal, maxVal] = betweenMatch;
+        const keyStr = key.trim();
+        const min = parseFloat(minVal.trim());
+        const max = parseFloat(maxVal.trim());
+
+        if (!state.has(keyStr)) {
+          state.set(keyStr, {
+            included: new Set(),
+            excluded: new Set(),
+            range: { min, max },
+          });
+        } else {
+          const existing = state.get(keyStr)!;
+          existing.range = { min, max };
+        }
+        continue;
+      }
+    }
+
+    // Handle IN/NOT IN conditions
     const isExclude = filter.condition.includes('NOT IN');
     const [key, values] = filter.condition.split(
       isExclude ? ' NOT IN ' : ' IN ',
     );
 
+    // Skip if key or values is not present
     if (!key || !values) {
       continue;
     }
@@ -193,6 +238,22 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
+  const setFilterRange = React.useCallback(
+    (property: string, range: { min: number; max: number }) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          if (!draft[property]) {
+            draft[property] = { included: new Set(), excluded: new Set() };
+          }
+          draft[property].range = range;
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
   const clearFilter = React.useCallback(
     (property: string) => {
       setFilters(prevFilters => {
@@ -215,6 +276,7 @@ export const useSearchPageFilterState = ({
     filters,
     setFilters,
     setFilterValue,
+    setFilterRange,
     clearFilter,
     clearAllFilters,
   };
