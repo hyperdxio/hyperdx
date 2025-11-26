@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { format as fnsFormat, formatDistanceToNowStrict } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { MutableRefObject } from 'react';
 import { TSource } from '@hyperdx/common-utils/dist/types';
@@ -410,12 +409,6 @@ export const COLORS = [
   '#ffa600', // Yellow
 ];
 
-const STROKE_DASHARRAYS = ['0', '4 3', '5 5'];
-
-const STROKE_WIDTHS = [1.25];
-
-const STROKE_OPACITIES = [1];
-
 export function hashCode(str: string) {
   let hash = 0,
     i,
@@ -473,28 +466,11 @@ const getLevelColor = (logLevel?: string) => {
       : '#20c997'; // green;
 };
 
-export const getColorProps = (
-  index: number,
-  level: string,
-): {
-  color: string;
-  strokeDasharray: string;
-  opacity: number;
-  strokeWidth: number;
-} => {
+export const getColorProps = (index: number, level: string): string => {
   const logLevel = getLogLevelClass(level);
   const colorOverride = getLevelColor(logLevel);
 
-  // How many same colored lines we already have
-  const colorStep = Math.floor(index / COLORS.length);
-
-  return {
-    color: colorOverride ?? COLORS[index % COLORS.length],
-    strokeDasharray:
-      STROKE_DASHARRAYS[Math.min(STROKE_DASHARRAYS.length, colorStep)],
-    opacity: STROKE_OPACITIES[Math.min(STROKE_OPACITIES.length, colorStep)],
-    strokeWidth: STROKE_WIDTHS[Math.min(STROKE_WIDTHS.length, colorStep)],
-  };
+  return colorOverride ?? COLORS[index % COLORS.length];
 };
 
 export const truncateMiddle = (str: string, maxLen = 10) => {
