@@ -1,12 +1,4 @@
-import {
-  memo,
-  RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { omit } from 'lodash';
 import {
   Control,
@@ -26,11 +18,9 @@ import {
   DateRange,
   DisplayType,
   Filter,
-  MetricsDataType,
   SavedChartConfig,
   SelectList,
   SourceKind,
-  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -453,6 +443,7 @@ export default function EditTimeChartForm({
   const whereLanguage = watch('whereLanguage');
   const alert = watch('alert');
   const seriesReturnType = watch('seriesReturnType');
+  const compareToPreviousPeriod = watch('compareToPreviousPeriod');
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -602,6 +593,20 @@ export default function EditTimeChartForm({
       };
     });
   }, [dateRange]);
+
+  // Trigger a search when "compare to previous period" changes
+  useEffect(() => {
+    setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
+      if (config == null) {
+        return config;
+      }
+
+      return {
+        ...config,
+        compareToPreviousPeriod,
+      };
+    });
+  }, [compareToPreviousPeriod]);
 
   const queryReady = isQueryReady(queriedConfig);
 
@@ -1008,7 +1013,7 @@ export default function EditTimeChartForm({
             name="compareToPreviousPeriod"
             label={
               <>
-                Compare to previous period{' '}
+                Compare to Previous Period{' '}
                 {!dashboardId && (
                   <>
                     (

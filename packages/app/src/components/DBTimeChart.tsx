@@ -19,7 +19,11 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconArrowsDiagonal } from '@tabler/icons-react';
+import {
+  IconArrowsDiagonal,
+  IconChartBar,
+  IconChartLine,
+} from '@tabler/icons-react';
 
 import {
   formatResponseForTimeChart,
@@ -374,7 +378,7 @@ function DBTimeChartComponent({
               visibility: 'visible',
             }}
           >
-            <Tooltip label="Display as line chart">
+            <Tooltip label="Display as Line Chart">
               <ActionIcon
                 size="xs"
                 me={2}
@@ -384,15 +388,15 @@ function DBTimeChartComponent({
                 })}
                 onClick={() => handleSetDisplayType(DisplayType.Line)}
               >
-                <i className="bi bi-graph-up"></i>
+                <IconChartLine />
               </ActionIcon>
             </Tooltip>
 
             <Tooltip
               label={
                 config.compareToPreviousPeriod
-                  ? 'Bar chart is disabled when comparing to previous period'
-                  : 'Display as bar chart'
+                  ? 'Bar Chart Unavailable When Comparing to Previous Period'
+                  : 'Display as Bar Chart'
               }
             >
               <ActionIcon
@@ -404,7 +408,7 @@ function DBTimeChartComponent({
                 disabled={config.compareToPreviousPeriod}
                 onClick={() => handleSetDisplayType(DisplayType.StackedBar)}
               >
-                <i className="bi bi-bar-chart"></i>
+                <IconChartBar />
               </ActionIcon>
             </Tooltip>
           </div>
