@@ -338,7 +338,7 @@ describe('FilterGroup', () => {
     // Check that zebra is marked as excluded
     const excludedCheckbox = options[1];
     expect(excludedCheckbox).toHaveAttribute('data-indeterminate', 'true');
-    expect(labels[1]).toHaveStyle({ color: expect.stringContaining('red') });
+    expect(labels[1]).toHaveStyle({ color: 'var(--color-text-danger)' });
   });
 
   it('should handle more than MAX_FILTER_GROUP_ITEMS', async () => {

@@ -41,6 +41,11 @@
     "release": "npx changeset tag && npx changeset publish"
   },
   "lint-staged": {
+    "packages/api/src/routers/external-api/**/*.ts": [
+      "prettier --write --ignore-unknown",
+      "eslint --fix --quiet",
+      "sh -c 'cd packages/api && yarn run docgen && git add openapi.json'"
+    ],
     "**/*.{ts,tsx}": [
       "prettier --write --ignore-unknown",
       "eslint --fix --quiet"
