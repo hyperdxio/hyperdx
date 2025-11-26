@@ -1,3 +1,4 @@
+import { c } from 'nuqs/dist/serializer-RqlbYgUW';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 
 import { formatResponseForTimeChart } from '@/ChartUtils';
@@ -24,7 +25,7 @@ describe('ChartUtils', () => {
 
       expect(() =>
         formatResponseForTimeChart({
-          res,
+          currentPeriodResponse: res,
           dateRange: [new Date(), new Date()],
           granularity: '1 minute',
           generateEmptyBuckets: false,
@@ -50,7 +51,7 @@ describe('ChartUtils', () => {
       };
 
       const actual = formatResponseForTimeChart({
-        res,
+        currentPeriodResponse: res,
         dateRange: [new Date(), new Date()],
         granularity: '1 minute',
         generateEmptyBuckets: false,
@@ -90,7 +91,7 @@ describe('ChartUtils', () => {
       };
 
       const actual = formatResponseForTimeChart({
-        res,
+        currentPeriodResponse: res,
         dateRange: [new Date(), new Date()],
         granularity: '1 minute',
         generateEmptyBuckets: false,
@@ -115,7 +116,9 @@ describe('ChartUtils', () => {
         {
           color: '#20c997',
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          currentPeriodKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          isDashed: false,
         },
       ]);
     });
@@ -169,7 +172,7 @@ describe('ChartUtils', () => {
       };
 
       const actual = formatResponseForTimeChart({
-        res,
+        currentPeriodResponse: res,
         dateRange: [new Date(), new Date()],
         granularity: '1 minute',
         generateEmptyBuckets: false,
@@ -200,22 +203,32 @@ describe('ChartUtils', () => {
         {
           color: '#20c997',
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
+          currentPeriodKey:
+            'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
+          isDashed: false,
         },
         {
           color: '#8250dc',
           dataKey: 'max · checkout',
+          currentPeriodKey: 'max · checkout',
           displayName: 'max · checkout',
+          isDashed: false,
         },
         {
           color: '#cdad7a',
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
+          currentPeriodKey:
+            'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
+          isDashed: false,
         },
         {
           color: '#0d6efd',
           dataKey: 'max · shipping',
+          currentPeriodKey: 'max · shipping',
           displayName: 'max · shipping',
+          isDashed: false,
         },
       ]);
     });
@@ -261,7 +274,7 @@ describe('ChartUtils', () => {
       } as TSource;
 
       const actual = formatResponseForTimeChart({
-        res,
+        currentPeriodResponse: res,
         dateRange: [new Date(), new Date()],
         granularity: '1 minute',
         generateEmptyBuckets: false,
@@ -272,17 +285,23 @@ describe('ChartUtils', () => {
         {
           color: '#20c997',
           dataKey: 'info',
+          currentPeriodKey: 'info',
           displayName: 'info',
+          isDashed: false,
         },
         {
           color: '#20c997',
           dataKey: 'debug',
+          currentPeriodKey: 'debug',
           displayName: 'debug',
+          isDashed: false,
         },
         {
           color: '#F81358',
           dataKey: 'error',
+          currentPeriodKey: 'error',
           displayName: 'error',
+          isDashed: false,
         },
       ]);
     });
@@ -330,7 +349,7 @@ describe('ChartUtils', () => {
       };
 
       const actual = formatResponseForTimeChart({
-        res,
+        currentPeriodResponse: res,
         dateRange: [new Date(1764159780000), new Date(1764159900000)],
         granularity: '1 minute',
         generateEmptyBuckets: true,
@@ -367,22 +386,125 @@ describe('ChartUtils', () => {
         {
           color: '#20c997',
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
+          currentPeriodKey:
+            'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
+          isDashed: false,
         },
         {
           color: '#8250dc',
           dataKey: 'max · checkout',
+          currentPeriodKey: 'max · checkout',
           displayName: 'max · checkout',
+          isDashed: false,
         },
         {
           color: '#cdad7a',
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
+          currentPeriodKey:
+            'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
+          isDashed: false,
         },
         {
           color: '#0d6efd',
           dataKey: 'max · shipping',
+          currentPeriodKey: 'max · shipping',
           displayName: 'max · shipping',
+          isDashed: false,
+        },
+      ]);
+    });
+
+    it('should plot previous period data when provided, shifted to align with current period', () => {
+      const currentPeriodResponse = {
+        data: [
+          {
+            'AVG(toFloat64OrDefault(toString(Duration)))': 167783540.53459233,
+            __hdx_time_bucket: '2025-11-26T11:12:00Z',
+          },
+          {
+            'AVG(toFloat64OrDefault(toString(Duration)))': 182291463.92714182,
+            __hdx_time_bucket: '2025-11-26T11:13:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'AVG(toFloat64OrDefault(toString(Duration)))',
+            type: 'Float64',
+          },
+          {
+            name: '__hdx_time_bucket',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const previousPeriodResponse = {
+        data: [
+          {
+            'AVG(toFloat64OrDefault(toString(Duration)))': 123.45,
+            __hdx_time_bucket: '2025-11-26T11:10:00Z',
+          },
+          {
+            'AVG(toFloat64OrDefault(toString(Duration)))': 678.9,
+            __hdx_time_bucket: '2025-11-26T11:11:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'AVG(toFloat64OrDefault(toString(Duration)))',
+            type: 'Float64',
+          },
+          {
+            name: '__hdx_time_bucket',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse,
+        previousPeriodResponse,
+        dateRange: [
+          new Date('2025-11-26T11:12:00Z'),
+          new Date('2025-11-26T11:14:00Z'),
+        ],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+
+      expect(actual.graphResults).toEqual([
+        {
+          __hdx_time_bucket: 1764155520,
+          'AVG(toFloat64OrDefault(toString(Duration)))': 167783540.53459233,
+          'AVG(toFloat64OrDefault(toString(Duration))) (previous)': 123.45,
+        },
+        {
+          __hdx_time_bucket: 1764155580,
+          'AVG(toFloat64OrDefault(toString(Duration)))': 182291463.92714182,
+          'AVG(toFloat64OrDefault(toString(Duration))) (previous)': 678.9,
+        },
+      ]);
+
+      expect(actual.timestampColumn).toEqual({
+        name: '__hdx_time_bucket',
+        type: 'DateTime',
+      });
+      expect(actual.lineData).toEqual([
+        {
+          color: '#20c997',
+          currentPeriodKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          dataKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          displayName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          isDashed: false,
+        },
+        {
+          color: '#20c997',
+          currentPeriodKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
+          displayName: 'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
+          isDashed: true,
         },
       ]);
     });

@@ -521,10 +521,23 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
+function getPreviousPeriodOffset(dateRange: [Date, Date]): number {
+  const [start, end] = dateRange;
+  return end.getTime() - start.getTime();
+}
+
+export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
+  const [start, end] = currentRange;
+  const offset = getPreviousPeriodOffset(currentRange);
+  return [new Date(start.getTime() - offset), new Date(end.getTime() - offset)];
+}
+
 export interface LineData {
   dataKey: string;
+  currentPeriodKey: string;
   displayName: string;
   color: string;
+  isDashed?: boolean;
 }
 
 interface LineDataWithOptionalColor extends Omit<LineData, 'color'> {
@@ -534,10 +547,24 @@ interface LineDataWithOptionalColor extends Omit<LineData, 'color'> {
 function setLineColors(
   sortedLineData: LineDataWithOptionalColor[],
 ): LineData[] {
-  return sortedLineData.map((line, i) => {
-    if (!line.color) {
-      line.color = getColorProps(i, line.displayName ?? line.dataKey);
+  // Ensure that the current and previous period lines are the same color
+  const lineColorByCurrentPeriodKey = new Map<string, string>();
+
+  let colorIndex = 0;
+  return sortedLineData.map(line => {
+    const currentPeriodKey = line.currentPeriodKey;
+    if (lineColorByCurrentPeriodKey.has(currentPeriodKey)) {
+      line.color = lineColorByCurrentPeriodKey.get(currentPeriodKey);
+    } else if (!line.color) {
+      line.color = getColorProps(
+        colorIndex++,
+        line.displayName ?? line.dataKey,
+      );
+      lineColorByCurrentPeriodKey.set(currentPeriodKey, line.color);
+    } else {
+      lineColorByCurrentPeriodKey.set(currentPeriodKey, line.color);
     }
+
     return line as LineData;
   });
 }
@@ -556,50 +583,46 @@ function firstGroupColumnIsLogLevel(
   );
 }
 
-// Input: { ts, value1, value2, groupBy1, groupBy2 },
-// Output: { ts, [value1Name, groupBy1, groupBy2]: value1, [...]: value2 }
-export function formatResponseForTimeChart({
-  res,
-  dateRange,
-  granularity,
-  generateEmptyBuckets = true,
+function addResponseToFormattedData({
+  response,
+  lineDataMap,
+  tsBucketMap,
   source,
+  currentPeriodDateRange,
+  isPreviousPeriod,
 }: {
-  dateRange: [Date, Date];
-  granularity?: SQLInterval;
-  res: ResponseJSON<Record<string, any>>;
-  generateEmptyBuckets?: boolean;
+  tsBucketMap: Map<number, Record<string, any>>;
+  lineDataMap: { [keyName: string]: LineDataWithOptionalColor };
+  response: ResponseJSON<Record<string, any>>;
   source?: TSource;
+  isPreviousPeriod: boolean;
+  currentPeriodDateRange: [Date, Date];
 }) {
-  const meta = res.meta;
-  const data = res.data;
-
+  const { meta, data } = response;
   if (meta == null) {
     throw new Error('No meta data found in response');
   }
 
   const timestampColumn = inferTimestampColumn(meta);
-  const valueColumns = inferValueColumns(meta) ?? [];
-  const groupColumns = inferGroupColumns(meta) ?? [];
-
   if (timestampColumn == null) {
     throw new Error(
       `No timestamp column found with meta: ${JSON.stringify(meta)}`,
     );
   }
 
-  // Timestamp -> { tsCol, line1, line2, ...}
-  const tsBucketMap: Map<number, Record<string, any>> = new Map();
-  const lineDataMap: {
-    [keyName: string]: LineDataWithOptionalColor;
-  } = {};
-
+  const valueColumns = inferValueColumns(meta) ?? [];
+  const groupColumns = inferGroupColumns(meta) ?? [];
   const isSingleValueColumn = valueColumns.length === 1;
   const hasGroupColumns = groupColumns.length > 0;
 
   for (const row of data) {
     const date = new Date(row[timestampColumn.name]);
-    const ts = date.getTime() / 1000;
+
+    // Previous period data needs to be shifted forward to align with current period
+    const offset = isPreviousPeriod
+      ? getPreviousPeriodOffset(currentPeriodDateRange)
+      : 0;
+    const ts = Math.round((date.getTime() + offset) / 1000);
 
     for (const valueColumn of valueColumns) {
       let tsBucket = tsBucketMap.get(ts);
@@ -608,11 +631,13 @@ export function formatResponseForTimeChart({
         tsBucketMap.set(ts, tsBucket);
       }
 
-      const keyName = [
+      const currentPeriodKey = [
         // Simplify the display name if there's only one series and a group by
         ...(isSingleValueColumn && hasGroupColumns ? [] : [valueColumn.name]),
         ...groupColumns.map(g => row[g.name]),
       ].join(' · ');
+      const previousPeriodKey = `${currentPeriodKey} (previous)`;
+      const keyName = isPreviousPeriod ? previousPeriodKey : currentPeriodKey;
 
       // UInt64 are returned as strings, we'll convert to number
       // and accept a bit of floating point error
@@ -631,13 +656,72 @@ export function formatResponseForTimeChart({
 
       lineDataMap[keyName] = {
         dataKey: keyName,
+        currentPeriodKey,
         displayName: keyName,
         color,
+        isDashed: isPreviousPeriod,
       };
     }
   }
+}
 
-  // TODO: Custom sort and truncate top N lines
+// Input: { ts, value1, value2, groupBy1, groupBy2 },
+// Output: { ts, [value1Name, groupBy1, groupBy2]: value1, [...]: value2 }
+export function formatResponseForTimeChart({
+  currentPeriodResponse,
+  previousPeriodResponse,
+  dateRange,
+  granularity,
+  generateEmptyBuckets = true,
+  source,
+}: {
+  dateRange: [Date, Date];
+  granularity?: SQLInterval;
+  currentPeriodResponse: ResponseJSON<Record<string, any>>;
+  previousPeriodResponse?: ResponseJSON<Record<string, any>>;
+  generateEmptyBuckets?: boolean;
+  source?: TSource;
+}) {
+  const meta = currentPeriodResponse.meta;
+
+  if (meta == null) {
+    throw new Error('No meta data found in response');
+  }
+
+  const timestampColumn = inferTimestampColumn(meta);
+
+  if (timestampColumn == null) {
+    throw new Error(
+      `No timestamp column found with meta: ${JSON.stringify(meta)}`,
+    );
+  }
+
+  // Timestamp -> { tsCol, line1, line2, ...}
+  const tsBucketMap: Map<number, Record<string, any>> = new Map();
+  const lineDataMap: {
+    [keyName: string]: LineDataWithOptionalColor;
+  } = {};
+
+  addResponseToFormattedData({
+    response: currentPeriodResponse,
+    lineDataMap,
+    tsBucketMap,
+    source,
+    isPreviousPeriod: false,
+    currentPeriodDateRange: dateRange,
+  });
+
+  if (previousPeriodResponse != null) {
+    addResponseToFormattedData({
+      response: previousPeriodResponse,
+      lineDataMap,
+      tsBucketMap,
+      source,
+      isPreviousPeriod: true,
+      currentPeriodDateRange: dateRange,
+    });
+  }
+
   const sortedLineData = Object.values(lineDataMap).sort((a, b) => {
     return (
       logLevelColorOrder.findIndex(color => color === a.color) -
@@ -646,7 +730,6 @@ export function formatResponseForTimeChart({
   });
 
   if (generateEmptyBuckets && granularity != null) {
-    // Zero fill TODO: Make this an option
     const generatedTsBuckets = timeBucketByGranularity(
       dateRange[0],
       dateRange[1],

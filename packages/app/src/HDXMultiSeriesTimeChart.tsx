@@ -255,6 +255,7 @@ export const MemoChart = memo(function MemoChart({
 
     return limitedGroupKeys.map((key, i) => {
       const color = lineData[i]?.color;
+      const strokeDasharray = lineData[i]?.isDashed ? '4 3' : '0';
 
       const StackedBarWithOverlap = (props: BarProps) => {
         const { x, y, width, height, fill } = props;
@@ -290,9 +291,10 @@ export const MemoChart = memo(function MemoChart({
           stroke={color}
           fillOpacity={1}
           {...(isHovered
-            ? { fill: 'none' }
+            ? { fill: 'none', strokeDasharray }
             : {
                 fill: `url(#time-chart-lin-grad-${id}-${color.replace('#', '').toLowerCase()})`,
+                strokeDasharray,
               })}
           name={lineData[i]?.displayName ?? key}
           isAnimationActive={false}

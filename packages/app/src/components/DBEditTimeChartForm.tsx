@@ -49,7 +49,7 @@ import {
 } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
-import { AGG_FNS } from '@/ChartUtils';
+import { AGG_FNS, getPreviousDateRange } from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBTableChart from '@/components/DBTableChart';
@@ -62,6 +62,7 @@ import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
+import { FormatTime } from '@/useFormatTime';
 import { getMetricTableName, optionsToSelectData } from '@/utils';
 import {
   ALERT_CHANNEL_OPTIONS,
@@ -80,6 +81,7 @@ import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
 import {
   CheckBoxControlled,
   InputControlled,
+  SwitchControlled,
   TextInputControlled,
 } from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
@@ -603,6 +605,8 @@ export default function EditTimeChartForm({
 
   const queryReady = isQueryReady(queriedConfig);
 
+  const previousDateRange = getPreviousDateRange(dateRange);
+
   const sampleEventsConfig = useMemo(
     () =>
       tableSource != null && queriedConfig != null && queryReady
@@ -690,7 +694,6 @@ export default function EditTimeChartForm({
         />
       </Flex>
       <Divider my="md" />
-
       {activeTab === 'markdown' ? (
         <div>
           <Textarea
@@ -883,7 +886,6 @@ export default function EditTimeChartForm({
           )}
         </>
       )}
-
       {alert && (
         <Paper my="sm">
           <Stack gap="xs">
@@ -945,7 +947,6 @@ export default function EditTimeChartForm({
           </Stack>
         </Paper>
       )}
-
       <Flex justify="space-between" mt="sm">
         <Flex gap="sm">
           {onSave != null && (
@@ -1000,6 +1001,28 @@ export default function EditTimeChartForm({
           )}
         </Flex>
       </Flex>
+      {activeTab === 'time' && (
+        <Group justify="end" mb="xs">
+          <SwitchControlled
+            control={control}
+            name="compareToPreviousPeriod"
+            label={
+              <>
+                Compare to previous period{' '}
+                {!dashboardId && (
+                  <>
+                    (
+                    <FormatTime value={previousDateRange?.[0]} format="short" />
+                    {' - '}
+                    <FormatTime value={previousDateRange?.[1]} format="short" />
+                    )
+                  </>
+                )}
+              </>
+            }
+          />
+        </Group>
+      )}
       {!queryReady && activeTab !== 'markdown' ? (
         <Paper shadow="xs" p="xl">
           <Center mih={400}>
