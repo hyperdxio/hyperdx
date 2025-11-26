@@ -12,22 +12,24 @@ import { isString } from 'lodash';
 import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box, Drawer, Stack } from '@mantine/core';
-import { useClickOutside } from '@mantine/hooks';
+import { Box, Drawer, Flex, Stack } from '@mantine/core';
 
 import DBRowSidePanelHeader, {
   BreadcrumbNavigationCallback,
   BreadcrumbPath,
 } from '@/components/DBRowSidePanelHeader';
 import useResizable from '@/hooks/useResizable';
+import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
+import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
+import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
 import ContextSubpanel from './ContextSidePanel';
 import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
@@ -46,9 +48,11 @@ export type RowSidePanelContextProps = {
   generateSearchUrl?: ({
     where,
     whereLanguage,
+    source,
   }: {
     where: SearchConfig['where'];
     whereLanguage: SearchConfig['whereLanguage'];
+    source?: TSource;
   }) => string;
   generateChartUrl?: (config: {
     aggFn: string;
@@ -61,6 +65,7 @@ export type RowSidePanelContextProps = {
   dbSqlRowTableConfig?: ChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
+  source?: TSource;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
@@ -70,6 +75,7 @@ enum Tab {
   Parsed = 'parsed',
   Debug = 'debug',
   Trace = 'trace',
+  ServiceMap = 'serviceMap',
   Context = 'context',
   Replay = 'replay',
   Infrastructure = 'infrastructure',
@@ -183,15 +189,34 @@ const DBRowSidePanel = ({
       : undefined;
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
-  const serviceName = normalizedRow?.['__hdx_service_name'];
 
-  const tags = useMemo(() => {
-    const tags: Record<string, string> = {};
-    if (serviceName && source.serviceNameExpression) {
-      tags[source.serviceNameExpression] = serviceName;
+  const highlightedAttributeValues = useMemo(() => {
+    const attributeExpressions: TSource['highlightedRowAttributeExpressions'] =
+      [];
+    if (
+      (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) &&
+      source.highlightedRowAttributeExpressions
+    ) {
+      attributeExpressions.push(...source.highlightedRowAttributeExpressions);
     }
-    return tags;
-  }, [serviceName, source.serviceNameExpression]);
+
+    // Add service name expression to all sources, to maintain compatibility with
+    // the behavior prior to the addition of highlightedRowAttributeExpressions
+    if (source.serviceNameExpression) {
+      attributeExpressions.push({
+        sqlExpression: source.serviceNameExpression,
+      });
+    }
+
+    return rowData
+      ? getHighlightedAttributesFromData(
+          source,
+          attributeExpressions,
+          rowData.data || [],
+          rowData.meta || [],
+        )
+      : [];
+  }, [source, rowData]);
 
   const oneHourRange = useMemo(() => {
     return [
@@ -220,6 +245,8 @@ const DBRowSidePanel = ({
 
   const traceSourceId =
     source.kind === 'trace' ? source.id : source.traceSourceId;
+
+  const enableServiceMap = traceId && traceSourceId;
 
   const { rumSessionId, rumServiceName } = useSessionId({
     sourceId: traceSourceId,
@@ -268,7 +295,7 @@ const DBRowSidePanel = ({
       <Box p="sm">
         <DBRowSidePanelHeader
           date={timestampDate}
-          tags={tags}
+          attributes={highlightedAttributeValues}
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
           severityText={severityText}
@@ -303,6 +330,14 @@ const DBRowSidePanel = ({
             text: 'Trace',
             value: Tab.Trace,
           },
+          ...(enableServiceMap
+            ? [
+                {
+                  text: 'Service Map',
+                  value: Tab.ServiceMap,
+                },
+              ]
+            : []),
           {
             text: 'Surrounding Context',
             value: Tab.Context,
@@ -368,6 +403,26 @@ const DBRowSidePanel = ({
               initialRowHighlightHint={initialRowHighlightHint}
             />
           </Box>
+        </ErrorBoundary>
+      )}
+      {displayedTab === Tab.ServiceMap && enableServiceMap && (
+        <ErrorBoundary
+          onError={err => {
+            console.error(err);
+          }}
+          fallbackRender={() => (
+            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+              An error occurred while rendering this event.
+            </div>
+          )}
+        >
+          <Flex p="sm" flex={1}>
+            <ServiceMapSidePanel
+              traceId={traceId}
+              traceTableSourceId={traceSourceId}
+              dateRange={oneHourRange}
+            />
+          </Flex>
         </ErrorBoundary>
       )}
       {displayedTab === Tab.Parsed && (
@@ -484,22 +539,21 @@ export default function DBRowSidePanelErrorBoundary({
     parseAsStringEnum<Tab>(Object.values(Tab)),
   );
 
+  const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
+
   const _onClose = useCallback(() => {
     // Reset tab to undefined when unmounting, so that when we open the drawer again, it doesn't open to the last tab
     // (which might not be valid, ex session replay)
     if (!isNestedPanel) {
       setQueryTab(null);
     }
+    // Clear waterfall search state on close, so that filters don't
+    // persist when reopening another trace.
+    clearTraceWaterfallSearchState();
     onClose();
-  }, [setQueryTab, isNestedPanel, onClose]);
+  }, [setQueryTab, isNestedPanel, onClose, clearTraceWaterfallSearchState]);
 
   useHotkeys(['esc'], _onClose, { enabled: subDrawerOpen === false });
-
-  const drawerRef = useClickOutside(() => {
-    if (!subDrawerOpen && !isChildModalOpen && rowId != null) {
-      _onClose();
-    }
-  }, ['mouseup', 'touchend']);
 
   return (
     <Drawer
@@ -522,11 +576,7 @@ export default function DBRowSidePanelErrorBoundary({
       zIndex={drawerZIndex}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div
-          className={styles.panel}
-          ref={drawerRef}
-          data-testid="row-side-panel"
-        >
+        <div className={styles.panel} data-testid="row-side-panel">
           <Box className={styles.panelDragBar} onMouseDown={startResize} />
           <ErrorBoundary
             fallbackRender={error => (
@@ -535,7 +585,7 @@ export default function DBRowSidePanelErrorBoundary({
                   An error occurred while rendering this event.
                 </div>
 
-                <div className="px-2 py-1 m-2 fs-7 font-monospace bg-dark-grey p-4">
+                <div className="px-2 py-1 m-2 fs-7 font-monospace bg-body p-4">
                   {error?.error?.message}
                 </div>
               </Stack>

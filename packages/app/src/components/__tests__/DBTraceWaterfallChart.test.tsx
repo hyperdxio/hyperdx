@@ -7,6 +7,7 @@ import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
 import TimelineChart from '@/TimelineChart';
 
+import { RowSidePanelContext } from '../DBRowSidePanel';
 import {
   DBTraceWaterfallChartContainer,
   SpanRow,
@@ -25,6 +26,22 @@ jest.mock('@/TimelineChart', () => {
 
 jest.mock('@/hooks/useOffsetPaginatedQuery');
 jest.mock('@/hooks/useRowWhere');
+jest.mock('../DBRowDataPanel', () => ({
+  getJSONColumnNames: jest.fn().mockReturnValue([]),
+}));
+
+jest.mock('@/hooks/useWaterfallSearchState', () => ({
+  __esModule: true,
+  default: () => ({
+    traceWhere: '',
+    logWhere: '',
+    clear: jest.fn(),
+    isFilterActive: false,
+    isFilterExpanded: false,
+    setIsFilterExpanded: jest.fn(),
+    onSubmit: jest.fn(),
+  }),
+}));
 
 const mockUseOffsetPaginatedQuery = useOffsetPaginatedQuery as jest.Mock;
 const mockUseRowWhere = useRowWhere as jest.Mock;
@@ -112,13 +129,15 @@ describe('DBTraceWaterfallChartContainer', () => {
     logTableSource: typeof mockLogTableSource | null = mockLogTableSource,
   ) => {
     return renderWithMantine(
-      <DBTraceWaterfallChartContainer
-        traceTableSource={mockTraceTableSource}
-        logTableSource={logTableSource}
-        traceId={mockTraceId}
-        dateRange={mockDateRange}
-        focusDate={mockFocusDate}
-      />,
+      <RowSidePanelContext.Provider value={{}}>
+        <DBTraceWaterfallChartContainer
+          traceTableSource={mockTraceTableSource}
+          logTableSource={logTableSource}
+          traceId={mockTraceId}
+          dateRange={mockDateRange}
+          focusDate={mockFocusDate}
+        />
+      </RowSidePanelContext.Provider>,
     );
   };
 
@@ -184,17 +203,19 @@ describe('DBTraceWaterfallChartContainer', () => {
     expect(MockTimelineChart.latestProps.rows[1]).toBeTruthy(); // Log row
   });
 
-  it('renders correctly with empty data', async () => {
+  it('renders empty state when no data is available', async () => {
     mockUseOffsetPaginatedQuery.mockReturnValue({
       data: emptyData,
       isFetching: false,
     });
 
     renderComponent();
-    await waitForLoading();
 
-    // Verify empty rows are passed to the chart
-    expect(MockTimelineChart.latestProps.rows.length).toBe(0);
+    await waitFor(() => {
+      expect(
+        screen.getByText('No matching spans or logs found'),
+      ).toBeInTheDocument();
+    });
   });
 
   it('renders HTTP spans with URL information', async () => {

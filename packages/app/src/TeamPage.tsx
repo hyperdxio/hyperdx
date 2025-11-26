@@ -1,7 +1,6 @@
 import { Fragment, useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { HTTPError } from 'ky';
-import { Button as BSButton, Modal as BSModal } from 'react-bootstrap';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
@@ -18,7 +17,7 @@ import {
   Group,
   InputLabel,
   Loader,
-  Modal as MModal,
+  Modal,
   Stack,
   Table,
   Text,
@@ -72,7 +71,7 @@ function InviteTeamMemberForm({
           placeholder="you@company.com"
           withAsterisk={false}
         />
-        <div className="text-slate-300 fs-8">
+        <div className="fs-8">
           The invite link will automatically expire after 30 days.
         </div>
         <Button variant="light" type="submit" disabled={!email || isSubmitting}>
@@ -93,11 +92,9 @@ function ConnectionsSection() {
 
   return (
     <Box id="connections">
-      <Text size="md" c="gray.4">
-        Connections
-      </Text>
+      <Text size="md">Connections</Text>
       <Divider my="md" />
-      <Card>
+      <Card variant="muted">
         <Stack mb="md">
           {connections?.map(c => (
             <Box key={c.id}>
@@ -119,7 +116,6 @@ function ConnectionsSection() {
                 {editedConnectionId !== c.id && (
                   <Button
                     variant="subtle"
-                    color="gray.4"
                     onClick={() => setEditedConnectionId(c.id)}
                     size="sm"
                   >
@@ -129,7 +125,6 @@ function ConnectionsSection() {
                 {editedConnectionId === c.id && (
                   <Button
                     variant="subtle"
-                    color="gray.4"
                     onClick={() => setEditedConnectionId(null)}
                     size="sm"
                   >
@@ -156,7 +151,6 @@ function ConnectionsSection() {
           (IS_LOCAL_MODE ? (connections?.length ?? 0) < 1 : true) && (
             <Button
               variant="outline"
-              color="gray.4"
               onClick={() => setIsCreatingConnection(true)}
             >
               Add Connection
@@ -193,11 +187,9 @@ function SourcesSection() {
 
   return (
     <Box id="sources">
-      <Text size="md" c="gray.4">
-        Sources
-      </Text>
+      <Text size="md">Sources</Text>
       <Divider my="md" />
-      <Card>
+      <Card variant="muted">
         <Stack>
           {sources?.map(s => (
             <>
@@ -227,7 +219,6 @@ function SourcesSection() {
                 {editedSourceId !== s.id && (
                   <Button
                     variant="subtle"
-                    color="gray.4"
                     onClick={() => setEditedSourceId(s.id)}
                     size="sm"
                   >
@@ -237,7 +228,6 @@ function SourcesSection() {
                 {editedSourceId === s.id && (
                   <Button
                     variant="subtle"
-                    color="gray.4"
                     onClick={() => setEditedSourceId(null)}
                     size="sm"
                   >
@@ -264,11 +254,7 @@ function SourcesSection() {
             />
           )}
           {!IS_LOCAL_MODE && !isCreatingSource && (
-            <Button
-              variant="outline"
-              onClick={() => setIsCreatingSource(true)}
-              color="gray.4"
-            >
+            <Button variant="default" onClick={() => setIsCreatingSource(true)}>
               Add Source
             </Button>
           )}
@@ -467,15 +453,13 @@ function TeamMembersSection() {
 
   return (
     <Box id="team_members">
-      <Text size="md" c="gray.4">
-        Team
-      </Text>
+      <Text size="md">Team</Text>
       <Divider my="md" />
 
       <Card>
         <Card.Section withBorder py="sm" px="lg">
           <Group align="center" justify="space-between">
-            <div className="text-slate-300 fs-7">Team Members</div>
+            <div className="fs-7">Team Members</div>
             <Button
               variant="light"
               leftSection={<i className="bi bi-person-plus-fill" />}
@@ -506,7 +490,7 @@ function TeamMembersSection() {
                       <Group mt={4} fz="xs">
                         <div>{member.email}</div>
                         {member.hasPasswordAuth && (
-                          <div className="text-slate-300">
+                          <div>
                             <i className="bi bi-lock-fill" /> Password Auth
                           </div>
                         )}
@@ -566,7 +550,7 @@ function TeamMembersSection() {
                       </span>
                     </Table.Td>
                     <Table.Td>
-                      <Badge variant="dot" color="gray.6" fw="normal" tt="none">
+                      <Badge variant="dot" color="gray" fw="normal" tt="none">
                         Pending Invite
                       </Badge>
                       <CopyToClipboard text={invitation.url}>
@@ -602,7 +586,7 @@ function TeamMembersSection() {
         </Card.Section>
       </Card>
 
-      <MModal
+      <Modal
         centered
         onClose={() => setTeamInviteModalShow(false)}
         opened={teamInviteModalShow}
@@ -612,58 +596,56 @@ function TeamMembersSection() {
           onSubmit={onSubmitTeamInviteForm}
           isSubmitting={saveTeamInvitation.isPending}
         />
-      </MModal>
+      </Modal>
 
-      <BSModal
-        aria-labelledby="contained-modal-title-vcenter"
+      <Modal
         centered
-        onHide={() =>
+        onClose={() =>
           setDeleteTeamMemberConfirmationModalData({
             mode: null,
             id: null,
             email: null,
           })
         }
-        show={deleteTeamMemberConfirmationModalData.id != null}
+        opened={deleteTeamMemberConfirmationModalData.id != null}
         size="lg"
+        title="Delete Team Member"
       >
-        <BSModal.Body className="bg-grey rounded">
-          <h3 className="text-muted">Delete Team Member</h3>
-          <p className="text-muted">
+        <Stack>
+          <Text>
             Deleting this team member (
             {deleteTeamMemberConfirmationModalData.email}) will revoke their
             access to the team&apos;s resources and services. This action is not
             reversible.
-          </p>
-          <BSButton
-            variant="outline-secondary"
-            className="mt-2 px-4 ms-2 float-end"
-            size="sm"
-            onClick={() =>
-              setDeleteTeamMemberConfirmationModalData({
-                mode: null,
-                id: null,
-                email: null,
-              })
-            }
-          >
-            Cancel
-          </BSButton>
-          <BSButton
-            variant="outline-danger"
-            className="mt-2 px-4 float-end"
-            size="sm"
-            onClick={() =>
-              deleteTeamMemberConfirmationModalData.id &&
-              onConfirmDeleteTeamMember(
-                deleteTeamMemberConfirmationModalData.id,
-              )
-            }
-          >
-            Confirm
-          </BSButton>
-        </BSModal.Body>
-      </BSModal>
+          </Text>
+          <Group justify="flex-end" gap="xs">
+            <Button
+              variant="default"
+              onClick={() =>
+                setDeleteTeamMemberConfirmationModalData({
+                  mode: null,
+                  id: null,
+                  email: null,
+                })
+              }
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              color="red"
+              onClick={() =>
+                deleteTeamMemberConfirmationModalData.id &&
+                onConfirmDeleteTeamMember(
+                  deleteTeamMemberConfirmationModalData.id,
+                )
+              }
+            >
+              Confirm
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Box>
   );
 }
@@ -741,11 +723,9 @@ function IntegrationsSection() {
 
   return (
     <Box id="integrations">
-      <Text size="md" c="gray.4">
-        Integrations
-      </Text>
+      <Text size="md">Integrations</Text>
       <Divider my="md" />
-      <Card>
+      <Card variant="muted">
         <Text mb="xs">Webhooks</Text>
 
         <Stack>
@@ -770,7 +750,6 @@ function IntegrationsSection() {
                     <>
                       <Button
                         variant="subtle"
-                        color="gray.4"
                         onClick={() => setEditedWebhookId(webhook._id)}
                         size="compact-xs"
                         leftSection={<IconPencil size={14} />}
@@ -787,7 +766,6 @@ function IntegrationsSection() {
                   {editedWebhookId === webhook._id && (
                     <Button
                       variant="subtle"
-                      color="gray.4"
                       onClick={() => setEditedWebhookId(null)}
                       size="compact-xs"
                     >
@@ -812,7 +790,7 @@ function IntegrationsSection() {
         </Stack>
 
         {!isAddWebhookModalOpen ? (
-          <Button variant="outline" color="gray.4" onClick={openWebhookModal}>
+          <Button variant="outline" onClick={openWebhookModal}>
             Add Webhook
           </Button>
         ) : (
@@ -866,11 +844,9 @@ function TeamNameSection() {
   );
   return (
     <Box id="team_name">
-      <Text size="md" c="gray.4">
-        Team Name
-      </Text>
+      <Text size="md">Team Name</Text>
       <Divider my="md" />
-      <Card>
+      <Card variant="muted">
         {isEditingTeamName ? (
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <Group gap="xs">
@@ -912,12 +888,12 @@ function TeamNameSection() {
           </form>
         ) : (
           <Group gap="lg">
-            <div className="text-slate-300 fs-7">{team.name}</div>
+            <div className="fs-7">{team.name}</div>
             {hasAdminAccess && (
               <Button
                 size="xs"
                 variant="default"
-                leftSection={<i className="bi bi-pencil text-slate-300" />}
+                leftSection={<i className="bi bi-pencil " />}
                 onClick={() => {
                   setIsEditingTeamName(true);
                 }}
@@ -1022,12 +998,10 @@ function ClickhouseSettingForm({
   return (
     <Stack gap="xs" mb="md">
       <Group gap="xs">
-        <InputLabel c="gray.3" size="md">
-          {label}
-        </InputLabel>
+        <InputLabel size="md">{label}</InputLabel>
         {tooltip && (
           <Tooltip label={tooltip}>
-            <Text c="gray.5" size="sm" style={{ cursor: 'help' }}>
+            <Text size="sm" style={{ cursor: 'help' }}>
               <i className="bi bi-question-circle" />
             </Text>
           </Tooltip>
@@ -1113,7 +1087,7 @@ function ClickhouseSettingForm({
             <Button
               size="xs"
               variant="default"
-              leftSection={<i className="bi bi-pencil text-slate-300" />}
+              leftSection={<i className="bi bi-pencil " />}
               onClick={() => setIsEditing(true)}
             >
               Change
@@ -1136,11 +1110,9 @@ function TeamQueryConfigSection() {
 
   return (
     <Box id="team_name">
-      <Text size="md" c="gray.4">
-        ClickHouse Client Settings
-      </Text>
+      <Text size="md">ClickHouse Client Settings</Text>
       <Divider my="md" />
-      <Card>
+      <Card variant="muted">
         <Stack>
           <ClickhouseSettingForm
             settingKey="searchRowLimit"
@@ -1202,7 +1174,7 @@ const APIKeyCopyButton = ({
         variant={copied ? 'light' : 'default'}
         color="gray"
         rightSection={
-          <div className="text-slate-300 ms-2 text-nowrap">
+          <div className="ms-2 text-nowrap">
             {copied ? (
               <i className="bi bi-check-lg me-2" />
             ) : (
@@ -1254,14 +1226,10 @@ function ApiKeysSection() {
 
   return (
     <Box id="api_keys">
-      <Text size="md" c="gray.4">
-        API Keys
-      </Text>
+      <Text size="md">API Keys</Text>
       <Divider my="md" />
-      <Card>
-        <Text c="gray.3" mb="md">
-          Ingestion API Key
-        </Text>
+      <Card variant="muted" mb="md">
+        <Text mb="md">Ingestion API Key</Text>
         <Group gap="xs">
           {team?.apiKey && (
             <APIKeyCopyButton value={team.apiKey} dataTestId="api-key" />
@@ -1276,7 +1244,7 @@ function ApiKeysSection() {
             </Button>
           )}
         </Group>
-        <MModal
+        <Modal
           aria-labelledby="contained-modal-title-vcenter"
           centered
           onClose={() => setRotateApiKeyConfirmationModalShow(false)}
@@ -1288,15 +1256,14 @@ function ApiKeysSection() {
             </Text>
           }
         >
-          <MModal.Body>
+          <Modal.Body>
             <Text size="md">
               Rotating the API key will invalidate your existing API key and
               generate a new one for you. This action is <b>not reversible</b>.
             </Text>
             <Group justify="end">
               <Button
-                variant="outline"
-                color="gray.5"
+                variant="default"
                 className="mt-2 px-4 ms-2 float-end"
                 size="sm"
                 onClick={() => setRotateApiKeyConfirmationModalShow(false)}
@@ -1305,7 +1272,7 @@ function ApiKeysSection() {
               </Button>
               <Button
                 variant="outline"
-                color="red.6"
+                color="red"
                 className="mt-2 px-4 float-end"
                 size="sm"
                 onClick={onConfirmUpdateTeamApiKey}
@@ -1313,15 +1280,13 @@ function ApiKeysSection() {
                 Confirm
               </Button>
             </Group>
-          </MModal.Body>
-        </MModal>
+          </Modal.Body>
+        </Modal>
       </Card>
       {!isLoadingMe && me != null && (
-        <Card>
+        <Card variant="muted">
           <Card.Section p="md">
-            <Text c="gray.3" mb="md">
-              Personal API Access Key
-            </Text>
+            <Text mb="md">Personal API Access Key</Text>
             <APIKeyCopyButton value={me.accessKey} dataTestId="api-key" />
           </Card.Section>
         </Card>

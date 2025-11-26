@@ -6,6 +6,7 @@ import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
+import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 
@@ -36,6 +37,13 @@ export function useRowData({
 
   const severityTextExpr =
     source.severityTextExpression || source.statusCodeExpression;
+
+  const selectHighlightedRowAttributes =
+    source.kind === SourceKind.Trace || source.kind === SourceKind.Log
+      ? getSelectExpressionsForHighlightedAttributes(
+          source.highlightedRowAttributeExpressions,
+        )
+      : [];
 
   const queryResult = useQueriedChartConfig(
     {
@@ -116,6 +124,7 @@ export function useRowData({
               },
             ]
           : []),
+        ...selectHighlightedRowAttributes,
       ],
       where: rowId ?? '0=1',
       from: source.from,
@@ -192,7 +201,7 @@ export function RowDataPanel({
   const jsonColumns = getJSONColumnNames(data?.meta);
 
   return (
-    <div className="flex-grow-1 bg-body overflow-auto" data-testid={dataTestId}>
+    <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
       <Box mx="md" my="sm">
         <DBRowJsonViewer data={firstRow} jsonColumns={jsonColumns} />
       </Box>

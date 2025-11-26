@@ -31,16 +31,13 @@ export default function Logo({
   };
 
   return (
-    <div
-      className="align-items-center d-flex"
-      style={{
-        color: 'white',
-        userSelect: 'none',
-      }}
-    >
+    <div className="align-items-center d-flex">
       <div
         className="me-2"
-        style={{ marginBottom: configs[size].iconMarginBottom }}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+        }}
       >
         <Icon size={configs[size].iconSize} />
       </div>

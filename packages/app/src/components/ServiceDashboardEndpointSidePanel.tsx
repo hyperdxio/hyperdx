@@ -100,9 +100,7 @@ export default function ServiceDashboardEndpointSidePanel({
               <Grid.Col span={6}>
                 <ChartBox style={{ height: 350 }}>
                   <Group justify="space-between" align="center" mb="sm">
-                    <Text size="sm" c="gray.4">
-                      Request Error Rate
-                    </Text>
+                    <Text size="sm">Request Error Rate</Text>
                   </Group>
                   {source && (
                     <DBTimeChart
@@ -117,13 +115,7 @@ export default function ServiceDashboardEndpointSidePanel({
                           },
                         ],
                         numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
-                        filters: [
-                          ...endpointFilters,
-                          {
-                            type: 'sql',
-                            condition: `${expressions.httpScheme} = 'http'`,
-                          },
-                        ],
+                        filters: endpointFilters,
                         dateRange: searchedTimeRange,
                       }}
                       showDisplaySwitcher={false}
@@ -134,9 +126,7 @@ export default function ServiceDashboardEndpointSidePanel({
               <Grid.Col span={6}>
                 <ChartBox style={{ height: 350 }}>
                   <Group justify="space-between" align="center" mb="sm">
-                    <Text size="sm" c="gray.4">
-                      Request Throughput
-                    </Text>
+                    <Text size="sm">Request Throughput</Text>
                   </Group>
                   {source && (
                     <DBTimeChart

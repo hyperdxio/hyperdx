@@ -77,6 +77,7 @@ export const RootValueExpressionSchema = z
     aggCondition: SearchConditionSchema,
     aggConditionLanguage: SearchConditionLanguageSchema,
     valueExpression: z.string(),
+    valueExpressionLanguage: z.undefined().optional(),
     isDelta: z.boolean().optional(),
   })
   .or(
@@ -86,6 +87,7 @@ export const RootValueExpressionSchema = z
       aggCondition: SearchConditionSchema,
       aggConditionLanguage: SearchConditionLanguageSchema,
       valueExpression: z.string(),
+      valueExpressionLanguage: z.undefined().optional(),
       isDelta: z.boolean().optional(),
     }),
   )
@@ -95,7 +97,20 @@ export const RootValueExpressionSchema = z
       aggCondition: z.string().optional(),
       aggConditionLanguage: SearchConditionLanguageSchema,
       valueExpression: z.string(),
+      valueExpressionLanguage: z.undefined().optional(),
       metricType: z.nativeEnum(MetricsDataType).optional(),
+      isDelta: z.boolean().optional(),
+    }),
+  )
+  // valueExpression may be a lucene condition which will be rendered
+  // as SQL if valueExpressionLanguage is 'lucene'.
+  .or(
+    z.object({
+      aggFn: z.string().optional(),
+      aggCondition: z.string().optional(),
+      aggConditionLanguage: SearchConditionLanguageSchema.optional(),
+      valueExpression: z.string(),
+      valueExpressionLanguage: SearchConditionLanguageSchema,
       isDelta: z.boolean().optional(),
     }),
   );
@@ -548,6 +563,14 @@ const RequiredTimestampColumnSchema = z
   .string()
   .min(1, 'Timestamp Column is required');
 
+const HighlightedAttributeExpressionsSchema = z.array(
+  z.object({
+    sqlExpression: z.string().min(1, 'Attribute SQL Expression is required'),
+    luceneExpression: z.string().optional(),
+    alias: z.string().optional(),
+  }),
+);
+
 // Log source form schema
 const LogSourceAugmentation = {
   kind: z.literal(SourceKind.Log),
@@ -570,6 +593,10 @@ const LogSourceAugmentation = {
   implicitColumnExpression: z.string().optional(),
   uniqueRowIdExpression: z.string().optional(),
   tableFilterExpression: z.string().optional(),
+  highlightedTraceAttributeExpressions:
+    HighlightedAttributeExpressionsSchema.optional(),
+  highlightedRowAttributeExpressions:
+    HighlightedAttributeExpressionsSchema.optional(),
 };
 
 // Trace source form schema
@@ -600,6 +627,10 @@ const TraceSourceAugmentation = {
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
+  highlightedTraceAttributeExpressions:
+    HighlightedAttributeExpressionsSchema.optional(),
+  highlightedRowAttributeExpressions:
+    HighlightedAttributeExpressionsSchema.optional(),
 };
 
 // Session source form schema

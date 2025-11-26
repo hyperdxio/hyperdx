@@ -24,6 +24,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
+import { IconPlayerPlay } from '@tabler/icons-react';
 
 import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
@@ -174,14 +175,12 @@ export function EndpointLatencyChart({
   return (
     <ChartBox style={{ height: 350 }}>
       <Group justify="space-between" align="center" mb="sm">
-        <Text size="sm" c="gray.4">
-          Request Latency
-        </Text>
+        <Text size="sm">Request Latency</Text>
         <Box>
           <Button.Group>
             <Button
               variant="subtle"
-              color={latencyChartType === 'line' ? 'green' : 'dark.2'}
+              color={latencyChartType === 'line' ? 'green' : 'gray'}
               size="xs"
               title="Line Chart"
               onClick={() => setLatencyChartType('line')}
@@ -191,7 +190,7 @@ export function EndpointLatencyChart({
 
             <Button
               variant="subtle"
-              color={latencyChartType === 'histogram' ? 'green' : 'dark.2'}
+              color={latencyChartType === 'histogram' ? 'green' : 'gray'}
               size="xs"
               title="Histogram"
               onClick={() => setLatencyChartType('histogram')}
@@ -302,9 +301,7 @@ function HttpTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Request Error Rate
-            </Text>
+            <Text size="sm">Request Error Rate</Text>
             <SegmentedControl
               size="xs"
               value={reqChartType}
@@ -333,13 +330,7 @@ function HttpTab({
                   },
                 ],
                 numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
-                filters: [
-                  {
-                    type: 'sql',
-                    condition: `${expressions.httpScheme} = 'http'`,
-                  },
-                  ...getScopedFilters(source, appliedConfig),
-                ],
+                filters: getScopedFilters(source, appliedConfig),
                 groupBy:
                   reqChartType === 'overall'
                     ? undefined
@@ -354,9 +345,7 @@ function HttpTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Request Throughput
-            </Text>
+            <Text size="sm">Request Throughput</Text>
           </Group>
           {source && (
             <DBTimeChart
@@ -389,9 +378,7 @@ function HttpTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350, overflow: 'auto' }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              20 Top Most Time Consuming Endpoints
-            </Text>
+            <Text size="sm">20 Top Most Time Consuming Endpoints</Text>
           </Group>
 
           {source && (
@@ -466,7 +453,7 @@ function HttpTab({
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
+            <Text size="sm">
               Top 20{' '}
               {topEndpointsChartType === 'time'
                 ? 'Most Time Consuming'
@@ -569,9 +556,7 @@ function DatabaseTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Total Time Consumed per Query
-            </Text>
+            <Text size="sm">Total Time Consumed per Query</Text>
           </Group>
           {source && (
             <DBTimeChart
@@ -604,9 +589,7 @@ function DatabaseTab({
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Throughput per Query
-            </Text>
+            <Text size="sm">Throughput per Query</Text>
           </Group>
           {source && (
             <DBTimeChart
@@ -642,14 +625,12 @@ function DatabaseTab({
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350, overflow: 'auto' }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Top 20 Most Time Consuming Queries
-            </Text>
+            <Text size="sm">Top 20 Most Time Consuming Queries</Text>
             <Box>
               <Button.Group>
                 <Button
                   variant="subtle"
-                  color={chartType === 'list' ? 'green' : 'dark.2'}
+                  color={chartType === 'list' ? 'green' : 'gray'}
                   size="xs"
                   title="List"
                   onClick={() => setChartType('list')}
@@ -659,7 +640,7 @@ function DatabaseTab({
 
                 <Button
                   variant="subtle"
-                  color={chartType === 'table' ? 'green' : 'dark.2'}
+                  color={chartType === 'table' ? 'green' : 'gray'}
                   size="xs"
                   title="Table"
                   onClick={() => setChartType('table')}
@@ -815,9 +796,7 @@ function ErrorsTab({
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350 }}>
           <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm" c="gray.4">
-              Error Events per Service
-            </Text>
+            <Text size="sm">Error Events per Service</Text>
           </Group>
           {source && (
             <DBTimeChart
@@ -995,6 +974,7 @@ function ServicesDashboardPage() {
                   language="lucene"
                   placeholder="Search your events w/ Lucene ex. column:foo"
                   enableHotkey
+                  onSubmit={onSubmit}
                 />
               }
             />
@@ -1018,7 +998,7 @@ function ServicesDashboardPage() {
               </Button>
             </Tooltip>
             <Button variant="outline" type="submit" px="sm">
-              <i className="bi bi-play"></i>
+              <IconPlayerPlay size={16} />
             </Button>
           </Group>
         </Group>

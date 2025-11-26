@@ -14,12 +14,8 @@ export const swaggerOptions = {
     },
     servers: [
       {
-        url: 'https://api.hyperdx.io',
-        description: 'Production API server',
-      },
-      {
         url: '/',
-        description: 'Current server',
+        description: 'Your HyperDX instance (http://<host>:<port>)',
       },
     ],
     tags: [
@@ -64,7 +60,7 @@ export function setupSwagger(app: Application) {
   });
 
   // Optionally save the spec to a file
-  const outputPath = path.resolve(__dirname, '../../../public/openapi.json');
+  const outputPath = path.resolve(__dirname, '../../openapi.json');
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, JSON.stringify(specs, null, 2));
 }

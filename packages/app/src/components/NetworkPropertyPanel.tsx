@@ -25,8 +25,6 @@ import { CurlGenerator } from '@/utils/curlGenerator';
 
 interface NetworkPropertyPanelProps {
   eventAttributes: Record<string, any>;
-  onPropertyAddClick?: (key: string, value: string) => void;
-  generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
 }
 
 // https://github.com/reduxjs/redux-devtools/blob/f11383d294c1139081f119ef08aa1169bd2ad5ff/packages/react-json-tree/src/createStylingFromTheme.ts
@@ -179,9 +177,9 @@ export const NetworkBody = ({
           )}
         </pre>
       ) : body === '' ? (
-        <div className="text-slate-400 px-4 py-3">{emptyMessage}</div>
+        <div className="px-4 py-3">{emptyMessage}</div>
       ) : (
-        <div className="text-slate-400 px-4 py-3">{notCollectedMessage}</div>
+        <div className="px-4 py-3">{notCollectedMessage}</div>
       )}
     </>
   );
@@ -189,8 +187,6 @@ export const NetworkBody = ({
 
 export function NetworkPropertySubpanel({
   eventAttributes,
-  onPropertyAddClick,
-  generateSearchUrl,
 }: NetworkPropertyPanelProps) {
   const requestHeaders = useMemo(
     () => parseHeaders('http.request.header.', eventAttributes),
@@ -232,7 +228,7 @@ export function NetworkPropertySubpanel({
             });
           }}
         >
-          <Button size="xs" color="gray.4" variant="light">
+          <Button size="xs" variant="light">
             <i className="bi bi-terminal-plus me-2" />
             Copy Request as Curl
           </Button>

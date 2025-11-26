@@ -34,6 +34,7 @@ import {
   DisplayType,
   Filter,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -57,7 +58,8 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
+import { IconPlayerPlay } from '@tabler/icons-react';
+import { useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
@@ -177,12 +179,12 @@ function SearchNumRows({
 
   const numRows = data?.[0]?.rows;
   return (
-    <Text size="xs" c="gray.4" mb={4}>
+    <Text size="xs" mb={4}>
       {isLoading
         ? 'Scanned Rows ...'
         : error || !numRows
           ? ''
-          : `Scanned Rows: ${numRows}`}
+          : `Scanned Rows: ${Number.parseInt(numRows)?.toLocaleString()}`}
     </Text>
   );
 }
@@ -307,44 +309,36 @@ function SaveSearchModal({
         <Stack>
           {chartConfig != null ? (
             <Card withBorder>
-              <Text c="gray.4" size="xs" mb="xs">
+              <Text size="xs" mb="xs">
                 SELECT
               </Text>
-              <Text
-                mb="sm"
-                size="xs"
-                c="gray.2"
-              >{`${chartConfig.select}`}</Text>
-              <Text c="gray.4" size="xs" mb="xs">
+              <Text mb="sm" size="xs">{`${chartConfig.select}`}</Text>
+              <Text size="xs" mb="xs">
                 FROM
               </Text>
-              <Text mb="sm" size="xs" c="gray.2">
+              <Text mb="sm" size="xs">
                 {chartConfig?.from.databaseName}.{chartConfig?.from.tableName}
               </Text>
-              <Text c="gray.4" size="xs" mb="xs">
+              <Text size="xs" mb="xs">
                 WHERE
               </Text>
               {chartConfig.where ? (
-                <Text size="xs" c="gray.2">
-                  {chartConfig.where}
-                </Text>
+                <Text size="xs">{chartConfig.where}</Text>
               ) : (
-                <Text size="xxs" c="gray.4" fs="italic">
+                <Text size="xxs" fs="italic">
                   None
                 </Text>
               )}
-              <Text c="gray.4" size="xs" mb="xs" mt="sm">
+              <Text size="xs" mb="xs" mt="sm">
                 ORDER BY
               </Text>
-              <Text size="xs" c="gray.2">
-                {chartConfig.orderBy}
-              </Text>
+              <Text size="xs">{chartConfig.orderBy}</Text>
             </Card>
           ) : (
-            <Text c="gray.4">Loading Chart Config...</Text>
+            <Text>Loading Chart Config...</Text>
           )}
           <Box>
-            <Text c="gray.4" size="xs" mb="xs">
+            <Text size="xs" mb="xs">
               Name
             </Text>
             <InputControlled
@@ -355,7 +349,7 @@ function SaveSearchModal({
             />
           </Box>
           <Box mb="sm">
-            <Text c="gray.4" size="xs" mb="xs">
+            <Text size="xs" mb="xs">
               Tags
             </Text>
             <Group gap="xs" align="center" mb="xs">
@@ -1098,21 +1092,32 @@ function DBSearchPage() {
     ({
       where,
       whereLanguage,
+      source,
     }: {
       where: SearchConfig['where'];
       whereLanguage: SearchConfig['whereLanguage'];
+      source?: TSource;
     }) => {
       const qParams = new URLSearchParams({
-        where: where || searchedConfig.where || '',
         whereLanguage: whereLanguage || 'sql',
         from: searchedTimeRange[0].getTime().toString(),
         to: searchedTimeRange[1].getTime().toString(),
-        select: searchedConfig.select || '',
-        source: searchedSource?.id || '',
-        filters: JSON.stringify(searchedConfig.filters ?? []),
         isLive: 'false',
         liveInterval: interval.toString(),
       });
+
+      // When generating a search based on a different source,
+      // filters and select for the current source are not preserved.
+      if (source && source.id !== searchedSource?.id) {
+        qParams.append('where', where || '');
+        qParams.append('source', source.id);
+      } else {
+        qParams.append('select', searchedConfig.select || '');
+        qParams.append('where', where || searchedConfig.where || '');
+        qParams.append('filters', JSON.stringify(searchedConfig.filters ?? []));
+        qParams.append('source', searchedSource?.id || '');
+      }
+
       return `/search?${qParams.toString()}`;
     },
     [
@@ -1147,10 +1152,7 @@ function DBSearchPage() {
     }
   }, [isReady, queryReady, isChartConfigLoading, onSearch]);
 
-  const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig, {
-    placeholderData: keepPreviousData,
-    queryKey: ['aliasMap', dbSqlRowTableConfig, 'withPlaceholder'],
-  });
+  const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
   const aliasWith = useMemo(
     () =>
@@ -1315,7 +1317,6 @@ function DBSearchPage() {
                 <ActionIcon
                   data-testid="source-settings-menu"
                   variant="subtle"
-                  color="dark.2"
                   size="sm"
                   title="Edit Source"
                 >
@@ -1384,9 +1385,7 @@ function DBSearchPage() {
               {!savedSearchId ? (
                 <Button
                   data-testid="save-search-button"
-                  variant="outline"
-                  color="dark.2"
-                  px="xs"
+                  variant="default"
                   size="xs"
                   onClick={onSaveSearch}
                   style={{ flexShrink: 0 }}
@@ -1396,9 +1395,7 @@ function DBSearchPage() {
               ) : (
                 <Button
                   data-testid="update-search-button"
-                  variant="outline"
-                  color="dark.2"
-                  px="xs"
+                  variant="default"
                   size="xs"
                   onClick={() => {
                     setSaveSearchModalState('update');
@@ -1411,9 +1408,7 @@ function DBSearchPage() {
               {!IS_LOCAL_MODE && (
                 <Button
                   data-testid="alerts-button"
-                  variant="outline"
-                  color="dark.2"
-                  px="xs"
+                  variant="default"
                   size="xs"
                   onClick={openAlertModal}
                   style={{ flexShrink: 0 }}
@@ -1430,8 +1425,7 @@ function DBSearchPage() {
                   >
                     <Button
                       data-testid="tags-button"
-                      variant="outline"
-                      color="dark.2"
+                      variant="default"
                       px="xs"
                       size="xs"
                       style={{ flexShrink: 0 }}
@@ -1554,9 +1548,9 @@ function DBSearchPage() {
             data-testid="search-submit-button"
             variant="outline"
             type="submit"
-            color={formState.isDirty ? 'green' : 'gray.4'}
+            color={formState.isDirty ? 'var(--color-text-success)' : 'gray'}
           >
-            <i className="bi bi-play"></i>
+            <IconPlayerPlay size={16} />
           </Button>
         </Flex>
       </form>
@@ -1573,12 +1567,12 @@ function DBSearchPage() {
       <Flex
         direction="column"
         style={{ overflow: 'hidden', height: '100%' }}
-        className="bg-hdx-dark"
+        className="bg-body"
       >
         {!queryReady ? (
           <Paper shadow="xs" p="xl" h="100%">
             <Center mih={100} h="100%">
-              <Text size="sm" c="gray.4">
+              <Text size="sm">
                 Please start by selecting a database, table, and timestamp
                 column above to view data.
               </Text>
@@ -1847,6 +1841,7 @@ function DBSearchPage() {
                             dbSqlRowTableConfig,
                             isChildModalOpen: isDrawerChildModalOpen,
                             setChildModalOpen: setDrawerChildModalOpen,
+                            source: searchedSource,
                           }}
                           config={dbSqlRowTableConfig}
                           sourceId={searchedConfig.source}

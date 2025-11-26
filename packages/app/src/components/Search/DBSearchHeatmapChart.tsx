@@ -124,7 +124,7 @@ export function DBSearchHeatmapChart({
       ) : (
         <Paper shadow="xs" p="xl" h="100%">
           <Center mih={100} h="100%">
-            <Text size="sm" c="gray.4">
+            <Text size="sm">
               Please highlight an outlier range in the heatmap to view the delta
               chart.
             </Text>

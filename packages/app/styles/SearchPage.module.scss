@@ -1,5 +1,3 @@
-@import './variables';
-
 /* stylelint-disable selector-pseudo-class-no-unknown */
 .filtersPanel {
   position: relative;
@@ -8,11 +6,11 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: #00000030;
+  background-color: var(--color-bg-sidebar);
   word-break: break-all;
   flex-shrink: 0;
   flex-grow: 0;
-  border-right: 1px solid var(--mantine-color-dark-6);
+  border-right: 1px solid var(--color-border);
   overflow: hidden;
   z-index: 3; // higher z-index to be above other elements
 
@@ -25,12 +23,11 @@
       height: 20px;
       min-height: 20px;
       background-color: transparent;
-      border: none !important;
-      color: var(--mantine-color-gray-3);
+      color: var(--color-text-secondary);
       font-size: var(--mantine-font-size-xs);
 
       &::placeholder {
-        color: var(--mantine-color-gray-6);
+        color: var(--color-text-muted);
         font-weight: bold;
       }
 
@@ -48,11 +45,11 @@
 
   &:hover {
     cursor: pointer;
-    color: $slate-300 !important;
+    color: var(--color-text-muted) !important;
   }
 
   &:active {
-    color: $slate-500 !important;
+    color: var(--color-text-muted) !important;
   }
 }
 
@@ -83,20 +80,20 @@
     align-items: center;
     padding: 0 4px;
     gap: 4px;
-    background-color: $slate-950;
+    background-color: var(--color-bg-body);
 
     .textButton {
       padding: 2px 4px;
       border-radius: 3px;
 
       &:hover {
-        background-color: $slate-800;
-        color: $slate-200;
+        background-color: var(--color-bg-muted);
+        color: var(--color-text-secondary);
       }
 
       &:active {
-        background-color: $slate-700;
-        color: $slate-100;
+        background-color: var(--color-bg-muted);
+        color: var(--color-text);
       }
     }
   }
@@ -106,7 +103,7 @@
       opacity: 1;
     }
 
-    background-color: $slate-950;
+    background-color: var(--color-bg-surface);
 
     .filterActions {
       display: flex;
@@ -137,12 +134,12 @@
 
 @keyframes highlight {
   0% {
-    background-color: $slate-950;
+    background-color: var(--color-bg-highlighted);
     transform: scale(1.02);
   }
 
   50% {
-    background-color: $slate-900;
+    background-color: var(--color-bg-highlighted);
     transform: scale(1.01);
   }
 
@@ -153,14 +150,14 @@
 }
 
 .searchStatsContainer {
-  background-color: $bg-hdx-dark;
+  background-color: var(--color-bg-body);
   padding-inline: var(--mantine-spacing-xs);
   padding-block: var(--mantine-spacing-xxs);
   z-index: 3;
 }
 
 .timeChartContainer {
-  background-color: $bg-hdx-dark;
+  background-color: var(--color-bg-body);
   padding-inline: var(--mantine-spacing-xs);
   padding-block: var(--mantine-spacing-xxs);
   height: 120px;
@@ -168,7 +165,8 @@
 }
 
 .searchForm {
-  background-color: $body-bg;
+  background: var(--color-bg-body);
   z-index: 4;
   padding-bottom: var(--mantine-spacing-xs);
+  border-bottom: 1px solid var(--color-border);
 }

@@ -5,7 +5,6 @@ import Head from 'next/head';
 import { NextAdapter } from 'next-query-params';
 import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
-import SSRProvider from 'react-bootstrap/SSRProvider';
 import { QueryParamProvider } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
 import { ColorSchemeScript } from '@mantine/core';
@@ -34,7 +33,8 @@ import '@xyflow/react/dist/style.css';
 
 // Polyfill crypto.randomUUID for non-HTTPS environments
 if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
-  crypto.randomUUID = randomUUID;
+  crypto.randomUUID =
+    randomUUID as () => `${string}-${string}-${string}-${string}-${string}`;
 }
 
 enableMapSet();
@@ -96,13 +96,11 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   }, []);
 
   useEffect(() => {
-    document.documentElement.className =
-      userPreferences.theme === 'dark' ? 'hdx-theme-dark' : 'hdx-theme-light';
     // TODO: Remove after migration to Mantine
     document.body.style.fontFamily = userPreferences.font
       ? `"${userPreferences.font}", sans-serif`
       : '"IBM Plex Mono"';
-  }, [userPreferences.theme, userPreferences.font]);
+  }, [userPreferences.font]);
 
   const getLayout = Component.getLayout ?? (page => page);
 
@@ -117,23 +115,26 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         />
         <meta name="theme-color" content="#25292e"></meta>
         <meta name="google" content="notranslate" />
-        <ColorSchemeScript forceColorScheme="dark" />
+        <ColorSchemeScript
+          forceColorScheme={userPreferences.theme === 'dark' ? 'dark' : 'light'}
+        />
       </Head>
 
-      <SSRProvider>
-        <HDXQueryParamProvider>
-          <QueryParamProvider adapter={NextAdapter}>
-            <QueryClientProvider client={queryClient}>
-              <ThemeWrapper fontFamily={userPreferences.font}>
-                {getLayout(<Component {...pageProps} />)}
-                {confirmModal}
-              </ThemeWrapper>
-              <ReactQueryDevtools initialIsOpen={true} />
-              {background}
-            </QueryClientProvider>
-          </QueryParamProvider>
-        </HDXQueryParamProvider>
-      </SSRProvider>
+      <HDXQueryParamProvider>
+        <QueryParamProvider adapter={NextAdapter}>
+          <QueryClientProvider client={queryClient}>
+            <ThemeWrapper
+              fontFamily={userPreferences.font}
+              colorScheme={userPreferences.theme === 'dark' ? 'dark' : 'light'}
+            >
+              {getLayout(<Component {...pageProps} />)}
+              {confirmModal}
+            </ThemeWrapper>
+            <ReactQueryDevtools initialIsOpen={true} />
+            {background}
+          </QueryClientProvider>
+        </QueryParamProvider>
+      </HDXQueryParamProvider>
     </React.Fragment>
   );
 }

@@ -10,11 +10,11 @@
 
   &:hover,
   &:active {
-    background-color: var(--mantine-color-dark-3);
+    background-color: var(--color-bg-neutral);
   }
 
   &:active {
-    background-color: var(--mantine-color-dark-4);
+    background-color: var(--color-bg-neutral);
     width: 8px;
     margin-right: -1px;
   }
@@ -32,11 +32,11 @@
 
   &:hover,
   &:active {
-    background-color: var(--mantine-color-dark-3);
+    background-color: var(--color-bg-neutral);
   }
 
   &:active {
-    background-color: var(--mantine-color-dark-4);
+    background-color: var(--color-bg-neutral);
     height: 8px;
     margin-bottom: -1px;
   }

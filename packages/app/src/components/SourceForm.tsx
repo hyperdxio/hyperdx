@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Control,
   Controller,
+  useFieldArray,
   useForm,
   UseFormSetValue,
   UseFormWatch,
@@ -15,11 +16,13 @@ import {
   TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Anchor,
   Box,
   Button,
   Divider,
   Flex,
+  Grid,
   Group,
   Radio,
   Slider,
@@ -28,10 +31,12 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconTrash } from '@tabler/icons-react';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
+import SearchInputV2 from '@/SearchInputV2';
 import {
   inferTableSourceConfig,
   isValidMetricTable,
@@ -102,34 +107,35 @@ function FormRow({
 }) {
   return (
     // <Group grow preventGrowOverflow={false}>
-    <Flex align="center">
-      <Stack
-        justify="center"
-        style={{
-          maxWidth: 220,
-          minWidth: 220,
-          height: '36px',
-        }}
-      >
-        {typeof label === 'string' ? (
-          <Text tt="capitalize" c="gray.6" size="sm">
-            {label}
-          </Text>
-        ) : (
-          label
-        )}
-      </Stack>
-      <Text
-        c="gray.4"
-        me="sm"
-        style={{
-          ...(!helpText ? { opacity: 0, pointerEvents: 'none' } : {}),
-        }}
-      >
-        <Tooltip label={helpText} color="dark" c="white" multiline maw={600}>
-          <i className="bi bi-question-circle cursor-pointer" />
-        </Tooltip>
-      </Text>
+    <Flex align="flex-start">
+      <Flex align="center">
+        <Stack
+          justify="center"
+          style={{
+            maxWidth: 220,
+            minWidth: 220,
+            height: '36px',
+          }}
+        >
+          {typeof label === 'string' ? (
+            <Text tt="capitalize" size="sm">
+              {label}
+            </Text>
+          ) : (
+            label
+          )}
+        </Stack>
+        <Text
+          me="sm"
+          style={{
+            ...(!helpText ? { opacity: 0, pointerEvents: 'none' } : {}),
+          }}
+        >
+          <Tooltip label={helpText} color="dark" c="white" multiline maw={600}>
+            <i className="bi bi-question-circle cursor-pointer" />
+          </Tooltip>
+        </Text>
+      </Flex>
       <Box
         w="100%"
         style={{
@@ -142,6 +148,115 @@ function FormRow({
   );
 }
 
+function HighlightedAttributeExpressionsFormRow({
+  control,
+  watch,
+  name,
+  label,
+  helpText,
+}: TableModelProps & {
+  name:
+    | 'highlightedTraceAttributeExpressions'
+    | 'highlightedRowAttributeExpressions';
+  label: string;
+  helpText?: string;
+}) {
+  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
+  const tableName = watch(`from.tableName`);
+  const connectionId = watch(`connection`);
+
+  const {
+    fields: highlightedAttributes,
+    append: appendHighlightedAttribute,
+    remove: removeHighlightedAttribute,
+  } = useFieldArray({
+    control,
+    name,
+  });
+
+  return (
+    <FormRow label={label} helpText={helpText}>
+      <Grid columns={5}>
+        {highlightedAttributes.map((field, index) => (
+          <React.Fragment key={field.id}>
+            <Grid.Col span={3} pe={0}>
+              <SQLInlineEditorControlled
+                tableConnection={{
+                  databaseName,
+                  tableName,
+                  connectionId,
+                }}
+                control={control}
+                name={`${name}.${index}.sqlExpression`}
+                disableKeywordAutocomplete
+                placeholder="ResourceAttributes['http.host']"
+              />
+            </Grid.Col>
+            <Grid.Col span={2} ps="xs">
+              <Flex align="center" gap="sm">
+                <Text c="gray">AS</Text>
+                <SQLInlineEditorControlled
+                  control={control}
+                  name={`${name}.${index}.alias`}
+                  placeholder="Optional Alias"
+                  disableKeywordAutocomplete
+                />
+                <ActionIcon
+                  size="xs"
+                  variant="subtle"
+                  color="gray"
+                  onClick={() => removeHighlightedAttribute(index)}
+                >
+                  <IconTrash size={16} />
+                </ActionIcon>
+              </Flex>
+            </Grid.Col>
+            <Grid.Col span={3} pe={0}>
+              <InputControlled
+                control={control}
+                name={`${name}.${index}.luceneExpression`}
+                placeholder="ResourceAttributes.http.host (Optional) "
+              />
+            </Grid.Col>
+            <Grid.Col span={1} pe={0}>
+              <Text me="sm" mt={6}>
+                <Tooltip
+                  label={
+                    'An optional, Lucene version of the above expression. If provided, it is used when searching for this attribute value.'
+                  }
+                  color="dark"
+                  c="white"
+                  multiline
+                  maw={600}
+                >
+                  <i className="bi bi-question-circle cursor-pointer" />
+                </Tooltip>
+              </Text>
+            </Grid.Col>
+          </React.Fragment>
+        ))}
+      </Grid>
+      <Button
+        variant="default"
+        size="sm"
+        color="gray"
+        className="align-self-start"
+        mt={highlightedAttributes.length ? 'sm' : 'md'}
+        onClick={() => {
+          appendHighlightedAttribute({
+            sqlExpression: '',
+            luceneExpression: '',
+            alias: '',
+          });
+        }}
+      >
+        <i className="bi bi-plus-circle me-2" />
+        Add expression
+      </Button>
+    </FormRow>
+  );
+}
+
 // traceModel= ...
 // logModel=....
 // traceModel.logModel = 'custom'
@@ -150,7 +265,8 @@ function FormRow({
 // OR traceModel.logModel = 'log_id_blah'
 // custom always points towards the url param
 
-export function LogTableModelForm({ control, watch }: TableModelProps) {
+export function LogTableModelForm(props: TableModelProps) {
+  const { control, watch } = props;
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
@@ -196,7 +312,6 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
               underline="always"
               onClick={() => setShowOptionalFields(true)}
               size="xs"
-              c="gray.4"
             >
               <Text me="sm" span>
                 <i className="bi bi-gear" />
@@ -209,7 +324,6 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
               onClick={() => setShowOptionalFields(false)}
               size="xs"
               variant="subtle"
-              color="gray.4"
             >
               Hide Optional Fields
             </Button>
@@ -380,12 +494,26 @@ export function LogTableModelForm({ control, watch }: TableModelProps) {
             placeholder="Body"
           />
         </FormRow>
+        <Divider />
+        <HighlightedAttributeExpressionsFormRow
+          {...props}
+          name="highlightedRowAttributeExpressions"
+          label="Highlighted Attributes"
+          helpText="Expressions defining row-level attributes which are displayed in the row side panel for the selected row."
+        />
+        <HighlightedAttributeExpressionsFormRow
+          {...props}
+          name="highlightedTraceAttributeExpressions"
+          label="Highlighted Trace Attributes"
+          helpText="Expressions defining trace-level attributes which are displayed in the trace view for the selected trace."
+        />
       </Stack>
     </>
   );
 }
 
-export function TraceTableModelForm({ control, watch }: TableModelProps) {
+export function TraceTableModelForm(props: TableModelProps) {
+  const { control, watch } = props;
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const tableName = watch(`from.tableName`);
   const connectionId = watch(`connection`);
@@ -646,6 +774,19 @@ export function TraceTableModelForm({ control, watch }: TableModelProps) {
           disableKeywordAutocomplete
         />
       </FormRow>
+      <Divider />
+      <HighlightedAttributeExpressionsFormRow
+        {...props}
+        name="highlightedRowAttributeExpressions"
+        label="Highlighted Attributes"
+        helpText="Expressions defining row-level attributes which are displayed in the row side panel for the selected row"
+      />
+      <HighlightedAttributeExpressionsFormRow
+        {...props}
+        name="highlightedTraceAttributeExpressions"
+        label="Highlighted Trace Attributes"
+        helpText="Expressions defining trace-level attributes which are displayed in the trace view for the selected trace."
+      />
     </Stack>
   );
 }
@@ -1126,15 +1267,10 @@ export function TableSourceForm({
     >
       <Stack gap="md" mb="md">
         <Flex justify="space-between" align="center" mb="lg">
-          <Text c="gray.4">Source Settings</Text>
+          <Text>Source Settings</Text>
           <Group>
             {onCancel && (
-              <Button
-                variant="outline"
-                color="gray.4"
-                onClick={onCancel}
-                size="xs"
-              >
+              <Button variant="outline" onClick={onCancel} size="xs">
                 Cancel
               </Button>
             )}

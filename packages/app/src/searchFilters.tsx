@@ -127,10 +127,7 @@ export const useSearchPageFilterState = ({
   const [filters, setFilters] = React.useState<FilterState>({});
 
   React.useEffect(() => {
-    if (
-      !areFiltersEqual(filters, parsedQuery.filters) &&
-      Object.values(parsedQuery.filters).length > 0
-    ) {
+    if (!areFiltersEqual(filters, parsedQuery.filters)) {
       setFilters(parsedQuery.filters);
     }
     // only react to changes in parsed query

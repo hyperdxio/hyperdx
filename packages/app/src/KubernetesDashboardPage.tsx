@@ -83,7 +83,7 @@ const Th = React.memo<{
       {children}
       {!!sort && (
         <i
-          className={`ps-1 text-slate-400 fs-8.5 bi bi-caret-${
+          className={`ps-1 fs-8.5 bi bi-caret-${
             sort === 'asc' ? 'up-fill' : 'down-fill'
           }`}
         />
@@ -376,13 +376,11 @@ export const InfraPodsStatusTable = ({
           {isLoading ? (
             <TableLoading />
           ) : isError ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               Unable to load pod metrics
             </div>
           ) : podsList.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
-              No pods found
-            </div>
+            <div className="p-4 text-center text-muted fs-8">No pods found</div>
           ) : (
             <Table horizontalSpacing="md" highlightOnHover>
               <Table.Thead className="muted-thead">
@@ -447,7 +445,7 @@ export const InfraPodsStatusTable = ({
                           >
                             <Text
                               span
-                              c={pod.cpuLimitUtilization ? undefined : 'gray.7'}
+                              c={pod.cpuLimitUtilization ? undefined : 'gray'}
                             >
                               {pod.cpuLimitUtilization
                                 ? formatNumber(
@@ -468,7 +466,7 @@ export const InfraPodsStatusTable = ({
                           >
                             <Text
                               span
-                              c={pod.memLimitUtilization ? undefined : 'gray.7'}
+                              c={pod.memLimitUtilization ? undefined : 'gray'}
                             >
                               {pod.memLimitUtilization
                                 ? formatNumber(
@@ -480,7 +478,7 @@ export const InfraPodsStatusTable = ({
                           </Tooltip>
                         </Table.Td>
                         <Table.Td>
-                          <Text span c={pod.uptime ? undefined : 'gray.7'}>
+                          <Text span c={pod.uptime ? undefined : 'gray'}>
                             {pod.uptime ? formatUptime(pod.uptime) : '–'}
                           </Text>
                         </Table.Td>
@@ -488,10 +486,10 @@ export const InfraPodsStatusTable = ({
                           <Text
                             color={
                               pod.restarts >= 10
-                                ? 'red.6'
+                                ? 'red'
                                 : pod.restarts >= 5
-                                  ? 'yellow.3'
-                                  : 'grey.7'
+                                  ? 'yellow'
+                                  : 'gray'
                             }
                           >
                             {pod.restarts}
@@ -624,11 +622,11 @@ const NodesTable = ({
           {isLoading ? (
             <TableLoading />
           ) : isError ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               Unable to load nodes
             </div>
           ) : nodesList.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               No nodes found
             </div>
           ) : (
@@ -823,11 +821,11 @@ const NamespacesTable = ({
           {isLoading ? (
             <TableLoading />
           ) : isError ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               Unable to load namespaces
             </div>
           ) : namespacesList.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 fs-8">
+            <div className="p-4 text-center text-muted fs-8">
               No namespaces found
             </div>
           ) : (
@@ -1165,9 +1163,7 @@ function KubernetesDashboardPage() {
       )}
       <Group justify="space-between">
         <Group>
-          <Text c="gray.4" size="xl">
-            Kubernetes Dashboard
-          </Text>
+          <Text size="xl">Kubernetes Dashboard</Text>
           <SourceSelectControlled
             name="logSourceId"
             control={control}

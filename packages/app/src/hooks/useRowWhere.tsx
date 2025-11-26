@@ -65,7 +65,7 @@ export function processRowToWhereClause(
           // Handle case for json element, ex: json.c
 
           // Currently we can't distinguish null or 'null'
-          if (value === 'null') {
+          if (value == null || value === 'null') {
             return SqlString.format(`isNull(??)`, [valueExpr]);
           }
           if (value.length > 1000 || column.length > 1000) {
@@ -75,10 +75,11 @@ export function processRowToWhereClause(
 
           // escaped strings needs raw, because sqlString will add another layer of escaping
           // data other than array/object will always return with double quote(because of CH)
-          // remove double quote to search correctly
+          // remove double quote to search correctly.
+          // The coalesce is to handle the case when JSONExtract returns null due to the value being a string.
           return SqlString.format(
-            "toJSONString(?) = toJSONString(JSONExtract(?, 'Dynamic'))",
-            [SqlString.raw(valueExpr), value],
+            "toJSONString(?) = coalesce(toJSONString(JSONExtract(?, 'Dynamic')), toJSONString(?))",
+            [SqlString.raw(valueExpr), value, value],
           );
 
         default:

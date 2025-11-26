@@ -15,9 +15,9 @@ export function ChartBox({
         width: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background:
-          'linear-gradient(180deg, rgba(250,250,250,0.018) 0%, rgba(250,250,250,0.008) 100%)',
-        borderRadius: 2,
+        background: 'var(--color-bg-body)',
+        borderRadius: 'var(--mantine-radius-sm)',
+        border: '1px solid var(--color-border)',
         ...style,
       }}
     >

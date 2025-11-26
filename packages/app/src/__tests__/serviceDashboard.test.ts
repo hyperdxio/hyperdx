@@ -38,7 +38,6 @@ describe('Service Dashboard', () => {
         "SpanAttributes['k8s.resource.name']",
       );
       expect(expressions.k8sPodName).toBe("SpanAttributes['k8s.pod.name']");
-      expect(expressions.httpScheme).toBe("SpanAttributes['http.scheme']");
       expect(expressions.serverAddress).toBe(
         "SpanAttributes['server.address']",
       );
@@ -55,7 +54,6 @@ describe('Service Dashboard', () => {
         'SpanAttributes.`k8s.resource.name`',
       );
       expect(expressions.k8sPodName).toBe('SpanAttributes.`k8s.pod.name`');
-      expect(expressions.httpScheme).toBe('SpanAttributes.`http.scheme`');
       expect(expressions.serverAddress).toBe('SpanAttributes.`server.address`');
       expect(expressions.httpHost).toBe('SpanAttributes.`http.host`');
       const resultWithWhitespaceStripped = removeAllWhitespace(
@@ -80,7 +78,7 @@ describe('Service Dashboard', () => {
     it('should throw an error if an empty list of fields is passed', () => {
       expect(() => {
         makeCoalescedFieldsAccessQuery([], false);
-      }).toThrowError(
+      }).toThrow(
         'Empty fields array passed while trying to build a coalesced field access query',
       );
     });
@@ -88,7 +86,7 @@ describe('Service Dashboard', () => {
     it('should throw an error if more than 100 fields are passed', () => {
       expect(() => {
         makeCoalescedFieldsAccessQuery(Array(101).fill('field'), false);
-      }).toThrowError(
+      }).toThrow(
         'Too many fields (101) passed while trying to build a coalesced field access query. Maximum allowed is 100',
       );
     });
