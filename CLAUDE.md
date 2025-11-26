@@ -44,7 +44,7 @@ components:
 ### Frontend (`packages/app`)
 
 - **Framework**: Next.js 14 with TypeScript
-- **UI Components**: Mantine UI library + React Bootstrap
+- **UI Components**: Mantine UI library
 - **State Management**: Jotai for global state, TanStack Query for server state
 - **Charts/Visualization**: Recharts, uPlot
 - **Code Editor**: CodeMirror (for SQL/JSON editing)
@@ -192,8 +192,7 @@ import { useDisclosure, useForm } from '@mantine/hooks';
 1. **First choice**: Mantine components (`@mantine/core`, `@mantine/dates`,
    etc.)
 2. **Second choice**: Custom components built on Mantine primitives
-3. **Last resort**: React Bootstrap or custom CSS (only when Mantine doesn't
-   provide the functionality)
+3. **Last resort**: Custom styling using CSS Modules and SCSS
 
 **Styling Approach**:
 
