@@ -8,12 +8,29 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
-import { Button, Code, Group, Modal, Text } from '@mantine/core';
+import {
+  ActionIcon,
+  Button,
+  Code,
+  Group,
+  Modal,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconArrowsDiagonal } from '@tabler/icons-react';
+import {
+  IconArrowsDiagonal,
+  IconChartBar,
+  IconChartLine,
+} from '@tabler/icons-react';
 
-import { formatResponseForTimeChart, useTimeChartSettings } from '@/ChartUtils';
+import {
+  formatResponseForTimeChart,
+  getPreviousDateRange,
+  getPreviousPeriodOffset,
+  useTimeChartSettings,
+} from '@/ChartUtils';
 import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -27,7 +44,6 @@ function DBTimeChartComponent({
   config,
   enabled = true,
   logReferenceTimestamp,
-  onSettled,
   onTimeRangeSelect,
   queryKeyPrefix,
   referenceLines,
@@ -56,17 +72,41 @@ function DBTimeChartComponent({
     fillNulls,
   } = useTimeChartSettings(config);
 
-  const queriedConfig = {
-    ...config,
-    granularity,
-    limit: { limit: 100000 },
-  };
+  const queriedConfig = useMemo(
+    () => ({
+      ...config,
+      granularity,
+      limit: { limit: 100000 },
+    }),
+    [config, granularity],
+  );
 
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
     useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig, 'chunked'],
       enabled,
+      enableQueryChunking: true,
+    });
+
+  const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
+    return {
+      ...queriedConfig,
+      dateRange: getPreviousDateRange(dateRange),
+    };
+  }, [queriedConfig, dateRange]);
+
+  const previousPeriodOffset = useMemo(() => {
+    return config.compareToPreviousPeriod
+      ? getPreviousPeriodOffset(dateRange)
+      : undefined;
+  }, [dateRange, config.compareToPreviousPeriod]);
+
+  const { data: previousPeriodData, isLoading: isPreviousPeriodLoading } =
+    useQueriedChartConfig(previousPeriodChartConfig, {
+      placeholderData: (prev: any) => prev,
+      queryKey: [queryKeyPrefix, previousPeriodChartConfig, 'chunked'],
+      enabled: enabled && config.compareToPreviousPeriod,
       enableQueryChunking: true,
     });
 
@@ -77,36 +117,49 @@ function DBTimeChartComponent({
   }, [isError, isErrorExpanded, errorExpansion]);
 
   const isLoadingOrPlaceholder =
-    isLoading || !data?.isComplete || isPlaceholderData;
+    isLoading ||
+    isPreviousPeriodLoading ||
+    !data?.isComplete ||
+    (config.compareToPreviousPeriod && !previousPeriodData?.isComplete) ||
+    isPlaceholderData;
   const { data: source } = useSource({ id: sourceId });
 
-  const { graphResults, timestampColumn, groupKeys, lineNames, lineColors } =
-    useMemo(() => {
-      const defaultResponse = {
-        graphResults: [],
-        timestampColumn: undefined,
-        groupKeys: [],
-        lineNames: [],
-        lineColors: [],
-      };
+  const { graphResults, timestampColumn, lineData } = useMemo(() => {
+    const defaultResponse = {
+      graphResults: [],
+      timestampColumn: undefined,
+      lineData: [],
+    };
 
-      if (data == null || !isSuccess) {
-        return defaultResponse;
-      }
+    if (data == null || !isSuccess) {
+      return defaultResponse;
+    }
 
-      try {
-        return formatResponseForTimeChart({
-          res: data,
-          dateRange,
-          granularity,
-          generateEmptyBuckets: fillNulls !== false,
-          source,
-        });
-      } catch (e) {
-        console.error(e);
-        return defaultResponse;
-      }
-    }, [data, dateRange, granularity, isSuccess, fillNulls, source]);
+    try {
+      return formatResponseForTimeChart({
+        currentPeriodResponse: data,
+        previousPeriodResponse: config.compareToPreviousPeriod
+          ? previousPeriodData
+          : undefined,
+        dateRange,
+        granularity,
+        generateEmptyBuckets: fillNulls !== false,
+        source,
+      });
+    } catch (e) {
+      console.error(e);
+      return defaultResponse;
+    }
+  }, [
+    data,
+    dateRange,
+    granularity,
+    isSuccess,
+    fillNulls,
+    source,
+    config.compareToPreviousPeriod,
+    previousPeriodData,
+  ]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType
   const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
@@ -126,6 +179,12 @@ function DBTimeChartComponent({
       setDisplayTypeLocal(type);
     }
   };
+
+  useEffect(() => {
+    if (config.compareToPreviousPeriod) {
+      setDisplayTypeLocal(DisplayType.Line);
+    }
+  }, [config.compareToPreviousPeriod]);
 
   const [activeClickPayload, setActiveClickPayload] = useState<
     | {
@@ -310,7 +369,7 @@ function DBTimeChartComponent({
                 ) : null*/}
         {showDisplaySwitcher && (
           <div
-            className="bg-muted px-3 py-2 rounded fs-8"
+            className="bg-muted px-2 py-1 rounded fs-8"
             style={{
               zIndex: 5,
               position: 'absolute',
@@ -319,39 +378,48 @@ function DBTimeChartComponent({
               visibility: 'visible',
             }}
           >
-            <span
-              className={cx('text-decoration-none fs-7 cursor-pointer me-2', {
-                'text-success': displayType === 'line',
-                'text-muted-hover': displayType !== 'line',
-              })}
-              role="button"
-              title="Display as line chart"
-              onClick={() => handleSetDisplayType(DisplayType.Line)}
+            <Tooltip label="Display as Line Chart">
+              <ActionIcon
+                size="xs"
+                me={2}
+                className={cx({
+                  'text-success': displayType === 'line',
+                  'text-muted-hover': displayType !== 'line',
+                })}
+                onClick={() => handleSetDisplayType(DisplayType.Line)}
+              >
+                <IconChartLine />
+              </ActionIcon>
+            </Tooltip>
+
+            <Tooltip
+              label={
+                config.compareToPreviousPeriod
+                  ? 'Bar Chart Unavailable When Comparing to Previous Period'
+                  : 'Display as Bar Chart'
+              }
             >
-              <i className="bi bi-graph-up"></i>
-            </span>
-            <span
-              className={cx('text-decoration-none fs-7 cursor-pointer', {
-                'text-success': displayType === 'stacked_bar',
-                'text-muted-hover': displayType !== 'stacked_bar',
-              })}
-              role="button"
-              title="Display as bar chart"
-              onClick={() => handleSetDisplayType(DisplayType.StackedBar)}
-            >
-              <i className="bi bi-bar-chart"></i>
-            </span>
+              <ActionIcon
+                size="xs"
+                className={cx({
+                  'text-success': displayType === 'stacked_bar',
+                  'text-muted-hover': displayType !== 'stacked_bar',
+                })}
+                disabled={config.compareToPreviousPeriod}
+                onClick={() => handleSetDisplayType(DisplayType.StackedBar)}
+              >
+                <IconChartBar />
+              </ActionIcon>
+            </Tooltip>
           </div>
         )}
         <MemoChart
           dateRange={dateRange}
           displayType={displayType}
           graphResults={graphResults}
-          groupKeys={groupKeys}
+          lineData={lineData}
           isClickActive={false}
           isLoading={isLoadingOrPlaceholder}
-          lineColors={lineColors}
-          lineNames={lineNames}
           logReferenceTimestamp={logReferenceTimestamp}
           numberFormat={config.numberFormat}
           onTimeRangeSelect={onTimeRangeSelect}
@@ -359,6 +427,7 @@ function DBTimeChartComponent({
           setIsClickActive={setActiveClickPayload}
           showLegend={showLegend}
           timestampKey={timestampColumn?.name}
+          previousPeriodOffset={previousPeriodOffset}
         />
       </div>
     </div>
