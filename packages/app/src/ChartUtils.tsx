@@ -521,7 +521,7 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
-function getPreviousPeriodOffset(dateRange: [Date, Date]): number {
+export function getPreviousPeriodOffset(dateRange: [Date, Date]): number {
   const [start, end] = dateRange;
   return end.getTime() - start.getTime();
 }
@@ -535,6 +535,7 @@ export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
 export interface LineData {
   dataKey: string;
   currentPeriodKey: string;
+  previousPeriodKey: string;
   displayName: string;
   color: string;
   isDashed?: boolean;
@@ -657,6 +658,7 @@ function addResponseToFormattedData({
       lineDataMap[keyName] = {
         dataKey: keyName,
         currentPeriodKey,
+        previousPeriodKey,
         displayName: keyName,
         color,
         isDashed: isPreviousPeriod,

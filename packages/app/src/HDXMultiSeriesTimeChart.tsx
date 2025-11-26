@@ -21,7 +21,7 @@ import { Popover } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import type { NumberFormat } from '@/types';
-import { COLORS, formatNumber, getColorProps, truncateMiddle } from '@/utils';
+import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 
 import { LineData } from './ChartUtils';
 import { FormatTime, useFormatTime } from './useFormatTime';
@@ -41,8 +41,50 @@ type TooltipPayload = {
   opacity?: number;
 };
 
+const percentFormatter = new Intl.NumberFormat('en-US', {
+  style: 'percent',
+  signDisplay: 'always',
+  maximumFractionDigits: 2,
+});
+
+const calculatePercentChange = (current: number, previous: number) => {
+  if (previous === 0) {
+    return current === 0 ? 0 : undefined;
+  }
+  return (current - previous) / previous;
+};
+
+const PercentChange = ({
+  current,
+  previous,
+}: {
+  current: number;
+  previous: number;
+}) => {
+  const percentChange = calculatePercentChange(current, previous);
+  if (percentChange == undefined) {
+    return null;
+  }
+
+  const color =
+    percentChange > 0
+      ? 'var(--color-text-success)'
+      : 'var(--color-text-danger)';
+  return (
+    <span style={{ color }}>({percentFormatter.format(percentChange)})</span>
+  );
+};
+
 export const TooltipItem = memo(
-  ({ p, numberFormat }: { p: TooltipPayload; numberFormat?: NumberFormat }) => {
+  ({
+    p,
+    previous,
+    numberFormat,
+  }: {
+    p: TooltipPayload;
+    previous?: TooltipPayload;
+    numberFormat?: NumberFormat;
+  }) => {
     return (
       <div className="d-flex gap-2 items-center justify-center">
         <div>
@@ -62,32 +104,72 @@ export const TooltipItem = memo(
           <span style={{ color: p.color }}>
             {truncateMiddle(p.name ?? p.dataKey, 50)}
           </span>
-          : {numberFormat ? formatNumber(p.value, numberFormat) : p.value}
+          : {numberFormat ? formatNumber(p.value, numberFormat) : p.value}{' '}
+          {previous && (
+            <PercentChange current={p.value} previous={previous?.value} />
+          )}
         </div>
       </div>
     );
   },
 );
 
+type HDXLineChartTooltipProps = {
+  lineDataMap: { [keyName: string]: LineData };
+  previousPeriodOffset?: number;
+  numberFormat?: NumberFormat;
+} & Record<string, any>;
+
 const HDXLineChartTooltip = withErrorBoundary(
-  memo((props: any) => {
-    const { active, payload, label, numberFormat } = props;
+  memo((props: HDXLineChartTooltipProps) => {
+    const {
+      active,
+      payload,
+      label,
+      numberFormat,
+      lineDataMap,
+      previousPeriodOffset,
+    } = props;
+    const typedPayload = payload as TooltipPayload[];
+
+    const payloadByKey = useMemo(
+      () => new Map(typedPayload.map(p => [p.dataKey, p])),
+      [typedPayload],
+    );
+
     if (active && payload && payload.length) {
       return (
         <div className={styles.chartTooltip}>
           <div className={styles.chartTooltipHeader}>
             <FormatTime value={label * 1000} />
+            {previousPeriodOffset != null && (
+              <>
+                {' (vs '}
+                <FormatTime value={label * 1000 - previousPeriodOffset} />
+                {')'}
+              </>
+            )}
           </div>
           <div className={styles.chartTooltipContent}>
             {payload
-              .sort((a: any, b: any) => b.value - a.value)
-              .map((p: any) => (
-                <TooltipItem
-                  key={p.dataKey}
-                  p={p}
-                  numberFormat={numberFormat}
-                />
-              ))}
+              .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
+              .map((p: TooltipPayload) => {
+                const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
+                const isPreviousPeriod = previousKey === p.dataKey;
+                const previousPayload =
+                  !isPreviousPeriod && previousKey
+                    ? payloadByKey.get(previousKey)
+                    : undefined;
+
+                return (
+                  <TooltipItem
+                    key={p.dataKey}
+                    p={p}
+                    numberFormat={numberFormat}
+                    previous={previousPayload}
+                  />
+                );
+              })}
           </div>
         </div>
       );
@@ -249,6 +331,7 @@ export const MemoChart = memo(function MemoChart({
   timestampKey = 'ts_bucket',
   onTimeRangeSelect,
   showLegend = true,
+  previousPeriodOffset,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -263,6 +346,7 @@ export const MemoChart = memo(function MemoChart({
   timestampKey?: string;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   showLegend?: boolean;
+  previousPeriodOffset?: number;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -496,7 +580,13 @@ export const MemoChart = memo(function MemoChart({
         />
         {lines}
         <Tooltip
-          content={<HDXLineChartTooltip numberFormat={numberFormat} />}
+          content={
+            <HDXLineChartTooltip
+              numberFormat={numberFormat}
+              lineDataMap={lineDataMap}
+              previousPeriodOffset={previousPeriodOffset}
+            />
+          }
           wrapperStyle={{
             zIndex: 1,
           }}

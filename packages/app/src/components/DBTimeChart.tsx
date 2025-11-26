@@ -16,13 +16,17 @@ import {
   Modal,
   Text,
   Tooltip,
-  UnstyledButton,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconArrowsDiagonal } from '@tabler/icons-react';
 
-import { formatResponseForTimeChart, useTimeChartSettings } from '@/ChartUtils';
+import {
+  formatResponseForTimeChart,
+  getPreviousDateRange,
+  getPreviousPeriodOffset,
+  useTimeChartSettings,
+} from '@/ChartUtils';
 import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -82,20 +86,17 @@ function DBTimeChartComponent({
     });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
-    const currentPeriodDurationSeconds =
-      (dateRange[1].getTime() - dateRange[0].getTime()) / 1000;
-    const previousPeriodStart = add(dateRange[0], {
-      seconds: -currentPeriodDurationSeconds,
-    });
-    const previousPeriodEnd = add(dateRange[1], {
-      seconds: -currentPeriodDurationSeconds,
-    });
-
     return {
       ...queriedConfig,
-      dateRange: [previousPeriodStart, previousPeriodEnd],
+      dateRange: getPreviousDateRange(dateRange),
     };
   }, [queriedConfig, dateRange]);
+
+  const previousPeriodOffset = useMemo(() => {
+    return config.compareToPreviousPeriod
+      ? getPreviousPeriodOffset(dateRange)
+      : undefined;
+  }, [dateRange, config.compareToPreviousPeriod]);
 
   const { data: previousPeriodData, isLoading: isPreviousPeriodLoading } =
     useQueriedChartConfig(previousPeriodChartConfig, {
@@ -422,6 +423,7 @@ function DBTimeChartComponent({
           setIsClickActive={setActiveClickPayload}
           showLegend={showLegend}
           timestampKey={timestampColumn?.name}
+          previousPeriodOffset={previousPeriodOffset}
         />
       </div>
     </div>
