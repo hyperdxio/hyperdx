@@ -56,8 +56,6 @@ export const NestedFilterGroup = ({
   chartConfig,
   isLive,
 }: NestedFilterGroupProps) => {
-  const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
-
   const totalFiltersSize = useMemo(
     () =>
       Object.values(selectedValues).reduce(
@@ -65,6 +63,11 @@ export const NestedFilterGroup = ({
         0,
       ),
     [selectedValues],
+  );
+
+  const hasSelections = totalFiltersSize > 0;
+  const [isExpanded, setExpanded] = useState(
+    isDefaultExpanded ?? hasSelections,
   );
 
   return (
@@ -117,39 +120,45 @@ export const NestedFilterGroup = ({
           >
             <div className={classes.filterGroupPanel}>
               <Stack gap="xs">
-                {childFilters.map(child => (
-                  <FilterGroup
-                    key={child.key}
-                    data-testid={`nested-filter-group-${child.key}`}
-                    name={child.propertyPath}
-                    distributionKey={child.key}
-                    options={child.value.map(value => ({
-                      value,
-                      label: value,
-                    }))}
-                    optionsLoading={false}
-                    selectedValues={
-                      selectedValues[child.key] || {
-                        included: new Set(),
-                        excluded: new Set(),
-                      }
-                    }
-                    onChange={value => onChange(child.key, value)}
-                    onClearClick={() => onClearClick(child.key)}
-                    onOnlyClick={value => onOnlyClick(child.key, value)}
-                    onExcludeClick={value => onExcludeClick(child.key, value)}
-                    onPinClick={value => onPinClick(child.key, value)}
-                    isPinned={value => isPinned(child.key, value)}
-                    onFieldPinClick={() => onFieldPinClick?.(child.key)}
-                    isFieldPinned={isFieldPinned?.(child.key)}
-                    onLoadMore={() => onLoadMore(child.key)}
-                    loadMoreLoading={loadMoreLoading[child.key] || false}
-                    hasLoadedMore={hasLoadedMore[child.key] || false}
-                    isDefaultExpanded={false}
-                    chartConfig={chartConfig}
-                    isLive={isLive}
-                  />
-                ))}
+                {childFilters.map(child => {
+                  const childSelectedValues = selectedValues[child.key] || {
+                    included: new Set(),
+                    excluded: new Set(),
+                  };
+                  const childHasSelections =
+                    childSelectedValues.included.size +
+                      childSelectedValues.excluded.size >
+                    0;
+
+                  return (
+                    <FilterGroup
+                      key={child.key}
+                      data-testid={`nested-filter-group-${child.key}`}
+                      name={child.propertyPath}
+                      distributionKey={child.key}
+                      options={child.value.map(value => ({
+                        value,
+                        label: value,
+                      }))}
+                      optionsLoading={false}
+                      selectedValues={childSelectedValues}
+                      onChange={value => onChange(child.key, value)}
+                      onClearClick={() => onClearClick(child.key)}
+                      onOnlyClick={value => onOnlyClick(child.key, value)}
+                      onExcludeClick={value => onExcludeClick(child.key, value)}
+                      onPinClick={value => onPinClick(child.key, value)}
+                      isPinned={value => isPinned(child.key, value)}
+                      onFieldPinClick={() => onFieldPinClick?.(child.key)}
+                      isFieldPinned={isFieldPinned?.(child.key)}
+                      onLoadMore={() => onLoadMore(child.key)}
+                      loadMoreLoading={loadMoreLoading[child.key] || false}
+                      hasLoadedMore={hasLoadedMore[child.key] || false}
+                      isDefaultExpanded={childHasSelections}
+                      chartConfig={chartConfig}
+                      isLive={isLive}
+                    />
+                  );
+                })}
               </Stack>
               {childFilters.length === 0 && (
                 <Group m={6} gap="xs">
