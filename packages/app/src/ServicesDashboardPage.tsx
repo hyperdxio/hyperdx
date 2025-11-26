@@ -330,13 +330,7 @@ function HttpTab({
                   },
                 ],
                 numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
-                filters: [
-                  {
-                    type: 'sql',
-                    condition: `${expressions.httpScheme} = 'http'`,
-                  },
-                  ...getScopedFilters(source, appliedConfig),
-                ],
+                filters: getScopedFilters(source, appliedConfig),
                 groupBy:
                   reqChartType === 'overall'
                     ? undefined

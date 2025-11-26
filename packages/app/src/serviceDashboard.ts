@@ -117,11 +117,6 @@ function getDefaults({
       'k8s.pod.name',
       isAttributeFieldJSON,
     ),
-    httpScheme: formatFieldAccess(
-      spanAttributeField,
-      'http.scheme',
-      isAttributeFieldJSON,
-    ),
     serverAddress: formatFieldAccess(
       spanAttributeField,
       'server.address',
@@ -153,7 +148,6 @@ export function getExpressions(source?: TSource, jsonColumns: string[] = []) {
     severityText: source?.severityTextExpression || defaults.severityText,
 
     // HTTP
-    httpScheme: defaults.httpScheme,
     httpHost: defaults.httpHost,
     serverAddress: defaults.serverAddress,
 
