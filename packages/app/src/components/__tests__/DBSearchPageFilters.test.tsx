@@ -1,5 +1,5 @@
 import { UseQueryOptions, UseQueryResult } from '@tanstack/react-query';
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { useGetValuesDistribution } from '@/hooks/useMetadata';
@@ -9,6 +9,45 @@ import {
   FilterGroup,
   type FilterGroupProps,
 } from '../DBSearchPageFilters';
+import {
+  cleanClickHouseExpression,
+  groupFacetsByBaseName,
+  parseMapFieldName,
+} from '../DBSearchPageFilters/utils';
+
+describe('cleanClickHouseExpression', () => {
+  it('should remove toString wrapper', () => {
+    expect(cleanClickHouseExpression('toString(ResourceAttributes)')).toBe(
+      'ResourceAttributes',
+    );
+    expect(cleanClickHouseExpression('toString(user_data.name)')).toBe(
+      'user_data.name',
+    );
+  });
+
+  it('should convert backtick notation to clean dot notation', () => {
+    expect(cleanClickHouseExpression('`host`.`arch`')).toBe('host.arch');
+    expect(cleanClickHouseExpression('`host`.`os`.`type`')).toBe(
+      'host.os.type',
+    );
+  });
+
+  it('should handle mixed expressions', () => {
+    expect(cleanClickHouseExpression('toString(`host`.`arch`)')).toBe(
+      'host.arch',
+    );
+    expect(
+      cleanClickHouseExpression('toString(`process`.`executable`.`name`)'),
+    ).toBe('process.executable.name');
+  });
+
+  it('should return unchanged for already clean expressions', () => {
+    expect(cleanClickHouseExpression("ResourceAttributes['host.arch']")).toBe(
+      "ResourceAttributes['host.arch']",
+    );
+    expect(cleanClickHouseExpression('user_data.name')).toBe('user_data.name');
+  });
+});
 
 jest.mock('@/hooks/useMetadata', () => ({
   useGetValuesDistribution: jest
@@ -189,6 +228,150 @@ describe('cleanedFacetName', () => {
         'LogAttributes.http.url',
       );
     });
+  });
+});
+
+describe('parseMapFieldName', () => {
+  it('should parse ResourceAttributes map access', () => {
+    expect(parseMapFieldName("ResourceAttributes['service.name']")).toEqual({
+      baseName: 'ResourceAttributes',
+      propertyPath: 'service.name',
+    });
+  });
+
+  it('should parse SpanAttributes map access', () => {
+    expect(parseMapFieldName("SpanAttributes['http.method']")).toEqual({
+      baseName: 'SpanAttributes',
+      propertyPath: 'http.method',
+    });
+  });
+
+  it('should parse single property access', () => {
+    expect(parseMapFieldName("ResourceAttributes['service']")).toEqual({
+      baseName: 'ResourceAttributes',
+      propertyPath: 'service',
+    });
+  });
+
+  it('should handle double quotes', () => {
+    expect(parseMapFieldName('ResourceAttributes["service.name"]')).toEqual({
+      baseName: 'ResourceAttributes',
+      propertyPath: 'service.name',
+    });
+  });
+
+  it('should parse dot notation JSON access', () => {
+    expect(parseMapFieldName('user_data.name')).toEqual({
+      baseName: 'user_data',
+      propertyPath: 'name',
+    });
+  });
+
+  it('should parse nested dot notation JSON access', () => {
+    expect(parseMapFieldName('user_data.address.city')).toEqual({
+      baseName: 'user_data',
+      propertyPath: 'address.city',
+    });
+  });
+
+  it('should handle ClickHouse expressions with toString wrapper', () => {
+    expect(parseMapFieldName('toString(`host`.`arch`)')).toEqual({
+      baseName: 'host',
+      propertyPath: 'arch',
+    });
+    expect(
+      parseMapFieldName('toString(`process`.`executable`.`name`)'),
+    ).toEqual({
+      baseName: 'process',
+      propertyPath: 'executable.name',
+    });
+  });
+
+  it('should handle ClickHouse backtick dot notation', () => {
+    expect(parseMapFieldName('`host`.`arch`')).toEqual({
+      baseName: 'host',
+      propertyPath: 'arch',
+    });
+    expect(parseMapFieldName('`os`.`type`')).toEqual({
+      baseName: 'os',
+      propertyPath: 'type',
+    });
+    expect(parseMapFieldName('`process`.`executable`.`path`')).toEqual({
+      baseName: 'process',
+      propertyPath: 'executable.path',
+    });
+  });
+
+  it('should return null for non-map fields', () => {
+    expect(parseMapFieldName('service')).toBeNull();
+    expect(parseMapFieldName('')).toBeNull();
+    expect(parseMapFieldName('simple_field')).toBeNull();
+  });
+});
+
+describe('groupFacetsByBaseName', () => {
+  it('should group map-like facets by base name', () => {
+    const facets = [
+      { key: "ResourceAttributes['service.name']", value: ['web', 'api'] },
+      { key: "ResourceAttributes['service.version']", value: ['1.0', '2.0'] },
+      { key: "SpanAttributes['http.method']", value: ['GET', 'POST'] },
+      { key: 'level', value: ['info', 'error'] },
+    ];
+
+    const result = groupFacetsByBaseName(facets);
+
+    expect(result.grouped).toHaveLength(2);
+    expect(result.nonGrouped).toHaveLength(1);
+    expect(result.nonGrouped[0]).toEqual({
+      key: 'level',
+      value: ['info', 'error'],
+    });
+
+    // Check ResourceAttributes group
+    const resourceAttrsGroup = result.grouped.find(
+      g => g.key === 'ResourceAttributes',
+    );
+    expect(resourceAttrsGroup).toBeDefined();
+    expect(resourceAttrsGroup!.children).toHaveLength(2);
+    expect(resourceAttrsGroup!.children[0]).toEqual({
+      key: "ResourceAttributes['service.name']",
+      value: ['web', 'api'],
+      propertyPath: 'service.name',
+    });
+    expect(resourceAttrsGroup!.children[1]).toEqual({
+      key: "ResourceAttributes['service.version']",
+      value: ['1.0', '2.0'],
+      propertyPath: 'service.version',
+    });
+
+    // Check SpanAttributes group
+    const spanAttrsGroup = result.grouped.find(g => g.key === 'SpanAttributes');
+    expect(spanAttrsGroup).toBeDefined();
+    expect(spanAttrsGroup!.children).toHaveLength(1);
+    expect(spanAttrsGroup!.children[0]).toEqual({
+      key: "SpanAttributes['http.method']",
+      value: ['GET', 'POST'],
+      propertyPath: 'http.method',
+    });
+  });
+
+  it('should return empty groups when no map-like facets exist', () => {
+    const facets = [
+      { key: 'level', value: ['info', 'error'] },
+      { key: 'service', value: ['web', 'api'] },
+    ];
+
+    const result = groupFacetsByBaseName(facets);
+
+    expect(result.grouped).toHaveLength(0);
+    expect(result.nonGrouped).toEqual(facets);
+  });
+
+  it('should handle empty facet list', () => {
+    const result = groupFacetsByBaseName([]);
+
+    expect(result.grouped).toHaveLength(0);
+    expect(result.nonGrouped).toHaveLength(0);
   });
 });
 
@@ -404,16 +587,20 @@ describe('FilterGroup', () => {
     renderWithMantine(
       <FilterGroup
         {...defaultProps}
+        isDefaultExpanded={true}
         options={[
           { value: 'apple123', label: 'apple123' },
           { value: 'apple456', label: 'apple456' },
           { value: 'banana', label: 'banana' },
+          { value: 'cherry', label: 'cherry' },
+          { value: 'date', label: 'date' },
+          { value: 'elderberry', label: 'elderberry' },
         ]}
       />,
     );
 
-    // Type in search box
-    const searchInput = screen.getByPlaceholderText('Test Filter');
+    // Type in search box (shown when expanded and >5 options)
+    const searchInput = screen.getByPlaceholderText('Search values...');
     await userEvent.type(searchInput, 'apple');
 
     const labels = screen.getAllByText(/apple123|apple456/);
