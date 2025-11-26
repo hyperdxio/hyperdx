@@ -16,6 +16,7 @@ import {
   Portal,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconArrowsDiagonal, IconSearch } from '@tabler/icons-react';
@@ -150,19 +151,26 @@ function ActiveTimeTooltip({
                   payload.value,
                 );
                 return (
-                  <Link
+                  <Tooltip
                     key={idx}
-                    data-testid={`chart-view-events-link-${payload.dataKey}`}
-                    href={seriesUrl ?? '/search'}
-                    onClick={onDismiss}
+                    label={payload.name}
+                    withArrow
+                    color="gray"
+                    position="right"
                   >
-                    <Group gap="xs">
-                      <IconSearch size={12} />
-                      <Text size="xs" truncate flex="1">
-                        {payload.name}
-                      </Text>
-                    </Group>
-                  </Link>
+                    <Link
+                      data-testid={`chart-view-events-link-${payload.dataKey}`}
+                      href={seriesUrl ?? '/search'}
+                      onClick={onDismiss}
+                    >
+                      <Group gap="xs">
+                        <IconSearch size={12} />
+                        <Text size="xs" truncate flex="1">
+                          {payload.name}
+                        </Text>
+                      </Group>
+                    </Link>
+                  </Tooltip>
                 );
               })}
             </Stack>
