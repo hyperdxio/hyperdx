@@ -1,7 +1,8 @@
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { add } from 'date-fns';
 import { z } from 'zod';
 import {
+  ColumnMetaType,
   filterColumnMetaByType,
   inferTimestampColumn,
   JSDataType,
@@ -17,7 +18,7 @@ import {
   SQLInterval,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { SegmentedControl, Select as MSelect } from '@mantine/core';
+import { SegmentedControl } from '@mantine/core';
 
 import { getMetricNameSql } from './otelSemanticConventions';
 import {
@@ -29,7 +30,7 @@ import {
   TimeChartSeries,
 } from './types';
 import { NumberFormat } from './types';
-import { logLevelColor, logLevelColorOrder } from './utils';
+import { getColorProps, logLevelColor, logLevelColorOrder } from './utils';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
@@ -520,6 +521,41 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
+export interface LineData {
+  dataKey: string;
+  displayName: string;
+  color: string;
+}
+
+interface LineDataWithOptionalColor extends Omit<LineData, 'color'> {
+  color?: string;
+}
+
+function setLineColors(
+  sortedLineData: LineDataWithOptionalColor[],
+): LineData[] {
+  return sortedLineData.map((line, i) => {
+    if (!line.color) {
+      line.color = getColorProps(i, line.displayName ?? line.dataKey);
+    }
+    return line as LineData;
+  });
+}
+
+function firstGroupColumnIsLogLevel(
+  source: TSource | undefined,
+  groupColumns: ColumnMetaType[],
+) {
+  return (
+    source &&
+    groupColumns.length === 1 &&
+    groupColumns[0].name ===
+      (source.kind === SourceKind.Log
+        ? source.severityTextExpression
+        : source.statusCodeExpression)
+  );
+}
+
 // Input: { ts, value1, value2, groupBy1, groupBy2 },
 // Output: { ts, [value1Name, groupBy1, groupBy2]: value1, [...]: value2 }
 export function formatResponseForTimeChart({
@@ -555,13 +591,7 @@ export function formatResponseForTimeChart({
   // Timestamp -> { tsCol, line1, line2, ...}
   const tsBucketMap: Map<number, Record<string, any>> = new Map();
   const lineDataMap: {
-    [keyName: string]: {
-      dataKey: string;
-      displayName: string;
-      maxValue: number;
-      minValue: number;
-      color: string | undefined;
-    };
+    [keyName: string]: LineDataWithOptionalColor;
   } = {};
 
   const isSingleValueColumn = valueColumns.length === 1;
@@ -593,36 +623,22 @@ export function formatResponseForTimeChart({
       // Mutate the existing bucket object to avoid repeated large object copies
       tsBucket[keyName] = value;
 
+      // Special handling for log level / trace severity colors
       let color: string | undefined = undefined;
-      if (
-        source &&
-        groupColumns.length === 1 &&
-        groupColumns[0].name ===
-          (source.kind === SourceKind.Log
-            ? source.severityTextExpression
-            : source.statusCodeExpression)
-      ) {
+      if (firstGroupColumnIsLogLevel(source, groupColumns)) {
         color = logLevelColor(row[groupColumns[0].name]);
       }
-      // TODO: Set name and color correctly
+
       lineDataMap[keyName] = {
         dataKey: keyName,
         displayName: keyName,
         color,
-        maxValue: Math.max(
-          lineDataMap[keyName]?.maxValue ?? Number.NEGATIVE_INFINITY,
-          value,
-        ),
-        minValue: Math.min(
-          lineDataMap[keyName]?.minValue ?? Number.POSITIVE_INFINITY,
-          value,
-        ),
       };
     }
   }
 
   // TODO: Custom sort and truncate top N lines
-  const sortedLineDataMap = Object.values(lineDataMap).sort((a, b) => {
+  const sortedLineData = Object.values(lineDataMap).sort((a, b) => {
     return (
       logLevelColorOrder.findIndex(color => color === a.color) -
       logLevelColorOrder.findIndex(color => color === b.color)
@@ -646,13 +662,13 @@ export function formatResponseForTimeChart({
           [timestampColumn.name]: ts,
         };
 
-        for (const line of sortedLineDataMap) {
+        for (const line of sortedLineData) {
           tsBucket[line.dataKey] = 0;
         }
 
         tsBucketMap.set(ts, tsBucket);
       } else {
-        for (const line of sortedLineDataMap) {
+        for (const line of sortedLineData) {
           if (tsBucket[line.dataKey] == null) {
             tsBucket[line.dataKey] = 0;
           }
@@ -669,14 +685,12 @@ export function formatResponseForTimeChart({
     (a, b) => a[timestampColumn.name] - b[timestampColumn.name],
   );
 
-  // TODO: Return line color and names
+  const sortedLineDataWithColors = setLineColors(sortedLineData);
+
   return {
-    // dateRange: [minDate, maxDate],
     graphResults,
     timestampColumn,
-    groupKeys: sortedLineDataMap.map(l => l.dataKey),
-    lineNames: sortedLineDataMap.map(l => l.displayName),
-    lineColors: sortedLineDataMap.map(l => l.color),
+    lineData: sortedLineDataWithColors,
   };
 }
 

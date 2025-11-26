@@ -62,9 +62,7 @@ describe('ChartUtils', () => {
         name: '__hdx_time_bucket',
         type: 'DateTime',
       });
-      expect(actual.lineColors).toEqual([undefined]);
-      expect(actual.lineNames).toEqual([]);
-      expect(actual.groupKeys).toEqual([]);
+      expect(actual.lineData).toEqual([]);
     });
 
     it('should format a response with a single value column and no group by', () => {
@@ -113,12 +111,12 @@ describe('ChartUtils', () => {
         name: '__hdx_time_bucket',
         type: 'DateTime',
       });
-      expect(actual.lineColors).toEqual([undefined]);
-      expect(actual.lineNames).toEqual([
-        'AVG(toFloat64OrDefault(toString(Duration)))',
-      ]);
-      expect(actual.groupKeys).toEqual([
-        'AVG(toFloat64OrDefault(toString(Duration)))',
+      expect(actual.lineData).toEqual([
+        {
+          color: '#20c997',
+          dataKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          displayName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+        },
       ]);
     });
 
@@ -198,18 +196,27 @@ describe('ChartUtils', () => {
         name: '__hdx_time_bucket',
         type: 'DateTime',
       });
-      expect(actual.lineColors).toEqual([undefined]);
-      expect(actual.lineNames).toEqual([
-        'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
-        'max · checkout',
-        'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
-        'max · shipping',
-      ]);
-      expect(actual.groupKeys).toEqual([
-        'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
-        'max · checkout',
-        'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
-        'max · shipping',
+      expect(actual.lineData).toEqual([
+        {
+          color: '#20c997',
+          dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
+          displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
+        },
+        {
+          color: '#8250dc',
+          dataKey: 'max · checkout',
+          displayName: 'max · checkout',
+        },
+        {
+          color: '#cdad7a',
+          dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
+          displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
+        },
+        {
+          color: '#0d6efd',
+          dataKey: 'max · shipping',
+          displayName: 'max · shipping',
+        },
       ]);
     });
 
@@ -261,8 +268,23 @@ describe('ChartUtils', () => {
         source,
       });
 
-      expect(actual.lineNames).toEqual(['info', 'debug', 'error']);
-      expect(actual.lineColors).toEqual(['#20c997', '#20c997', '#F81358']);
+      expect(actual.lineData).toEqual([
+        {
+          color: '#20c997',
+          dataKey: 'info',
+          displayName: 'info',
+        },
+        {
+          color: '#20c997',
+          dataKey: 'debug',
+          displayName: 'debug',
+        },
+        {
+          color: '#F81358',
+          dataKey: 'error',
+          displayName: 'error',
+        },
+      ]);
     });
 
     it('should zero-fill missing time buckets', () => {
@@ -341,18 +363,27 @@ describe('ChartUtils', () => {
         name: '__hdx_time_bucket',
         type: 'DateTime',
       });
-      expect(actual.lineColors).toEqual([undefined]);
-      expect(actual.lineNames).toEqual([
-        'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
-        'max · checkout',
-        'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
-        'max · shipping',
-      ]);
-      expect(actual.groupKeys).toEqual([
-        'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
-        'max · checkout',
-        'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
-        'max · shipping',
+      expect(actual.lineData).toEqual([
+        {
+          color: '#20c997',
+          dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
+          displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
+        },
+        {
+          color: '#8250dc',
+          dataKey: 'max · checkout',
+          displayName: 'max · checkout',
+        },
+        {
+          color: '#cdad7a',
+          dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
+          displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
+        },
+        {
+          color: '#0d6efd',
+          dataKey: 'max · shipping',
+          displayName: 'max · shipping',
+        },
       ]);
     });
   });

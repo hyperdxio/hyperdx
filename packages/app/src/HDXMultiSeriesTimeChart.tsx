@@ -1,15 +1,5 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import Link from 'next/link';
+import { memo, useCallback, useId, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
-import { add } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
   Area,
@@ -18,10 +8,7 @@ import {
   BarChart,
   BarProps,
   CartesianGrid,
-  Label,
   Legend,
-  Line,
-  LineChart,
   ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
@@ -36,6 +23,7 @@ import { notifications } from '@mantine/notifications';
 import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, getColorProps, truncateMiddle } from '@/utils';
 
+import { LineData } from './ChartUtils';
 import { FormatTime, useFormatTime } from './useFormatTime';
 
 import styles from '../styles/HDXLineChart.module.scss';
@@ -228,9 +216,7 @@ export const MemoChart = memo(function MemoChart({
   setIsClickActive,
   isClickActive,
   dateRange,
-  groupKeys,
-  lineNames,
-  lineColors,
+  lineData,
   referenceLines,
   logReferenceTimestamp,
   displayType = DisplayType.Line,
@@ -244,9 +230,7 @@ export const MemoChart = memo(function MemoChart({
   setIsClickActive: (v: any) => void;
   isClickActive: any;
   dateRange: [Date, Date] | Readonly<[Date, Date]>;
-  groupKeys: string[];
-  lineNames: string[];
-  lineColors: Array<string | undefined>;
+  lineData: LineData[];
   referenceLines?: React.ReactNode;
   displayType?: DisplayType;
   numberFormat?: NumberFormat;
@@ -265,25 +249,12 @@ export const MemoChart = memo(function MemoChart({
     displayType === DisplayType.StackedBar ? BarChart : AreaChart; // LineChart;
 
   const lines = useMemo(() => {
-    const limitedGroupKeys = groupKeys.slice(0, HARD_LINES_LIMIT);
-
-    // Check if any group is missing from any row
-    const isContinuousGroup = graphResults.reduce((acc, row) => {
-      limitedGroupKeys.forEach(key => {
-        acc[key] = row[key] != null ? acc[key] : false;
-      });
-      return acc;
-    }, {});
+    const limitedGroupKeys = lineData
+      .map(ld => ld.dataKey)
+      .slice(0, HARD_LINES_LIMIT);
 
     return limitedGroupKeys.map((key, i) => {
-      const {
-        color: _color,
-        opacity,
-        strokeDasharray,
-        strokeWidth,
-      } = getColorProps(i, lineNames[i] ?? key);
-
-      const color = lineColors[i] ?? _color;
+      const color = lineData[i]?.color;
 
       const StackedBarWithOverlap = (props: BarProps) => {
         const { x, y, width, height, fill } = props;
@@ -304,9 +275,9 @@ export const MemoChart = memo(function MemoChart({
           key={key}
           type="monotone"
           dataKey={key}
-          name={lineNames[i] ?? key}
+          name={lineData[i]?.displayName ?? key}
           fill={color}
-          opacity={opacity}
+          opacity={1}
           stackId="1"
           isAnimationActive={false}
           shape={<StackedBarWithOverlap dataKey={key} />}
@@ -323,20 +294,12 @@ export const MemoChart = memo(function MemoChart({
             : {
                 fill: `url(#time-chart-lin-grad-${id}-${color.replace('#', '').toLowerCase()})`,
               })}
-          name={lineNames[i] ?? key}
+          name={lineData[i]?.displayName ?? key}
           isAnimationActive={false}
         />
       );
     });
-  }, [
-    groupKeys,
-    graphResults,
-    displayType,
-    lineNames,
-    lineColors,
-    id,
-    isHovered,
-  ]);
+  }, [lineData, displayType, id, isHovered]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
 

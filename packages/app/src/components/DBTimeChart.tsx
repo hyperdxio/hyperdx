@@ -80,33 +80,30 @@ function DBTimeChartComponent({
     isLoading || !data?.isComplete || isPlaceholderData;
   const { data: source } = useSource({ id: sourceId });
 
-  const { graphResults, timestampColumn, groupKeys, lineNames, lineColors } =
-    useMemo(() => {
-      const defaultResponse = {
-        graphResults: [],
-        timestampColumn: undefined,
-        groupKeys: [],
-        lineNames: [],
-        lineColors: [],
-      };
+  const { graphResults, timestampColumn, lineData } = useMemo(() => {
+    const defaultResponse = {
+      graphResults: [],
+      timestampColumn: undefined,
+      lineData: [],
+    };
 
-      if (data == null || !isSuccess) {
-        return defaultResponse;
-      }
+    if (data == null || !isSuccess) {
+      return defaultResponse;
+    }
 
-      try {
-        return formatResponseForTimeChart({
-          res: data,
-          dateRange,
-          granularity,
-          generateEmptyBuckets: fillNulls !== false,
-          source,
-        });
-      } catch (e) {
-        console.error(e);
-        return defaultResponse;
-      }
-    }, [data, dateRange, granularity, isSuccess, fillNulls, source]);
+    try {
+      return formatResponseForTimeChart({
+        res: data,
+        dateRange,
+        granularity,
+        generateEmptyBuckets: fillNulls !== false,
+        source,
+      });
+    } catch (e) {
+      console.error(e);
+      return defaultResponse;
+    }
+  }, [data, dateRange, granularity, isSuccess, fillNulls, source]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType
   const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
@@ -347,11 +344,9 @@ function DBTimeChartComponent({
           dateRange={dateRange}
           displayType={displayType}
           graphResults={graphResults}
-          groupKeys={groupKeys}
+          lineData={lineData}
           isClickActive={false}
           isLoading={isLoadingOrPlaceholder}
-          lineColors={lineColors}
-          lineNames={lineNames}
           logReferenceTimestamp={logReferenceTimestamp}
           numberFormat={config.numberFormat}
           onTimeRangeSelect={onTimeRangeSelect}
