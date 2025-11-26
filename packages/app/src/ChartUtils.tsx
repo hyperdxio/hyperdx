@@ -986,6 +986,7 @@ export function buildEventsSearchUrl({
   if (groupFilters && groupFilters.length > 0) {
     groupFilters.forEach(({ column, value }) => {
       if (column && value != null) {
+        // Can't use SQLString.escape here because the search endpoint relies on exist match for UI
         const condition = `${column} IN (${SqlString.escape(value)})`;
         additionalFilters.push({ type: 'sql', condition });
       }
@@ -1000,6 +1001,7 @@ export function buildEventsSearchUrl({
     if (!hasAggregateFunction) {
       const lowerBound = value * (1 - threshold);
       const upperBound = value * (1 + threshold);
+      // Can't use SQLString.escape here because the search endpoint relies on exist match for UI
       const condition = `${expression} BETWEEN ${SqlString.escape(lowerBound)} AND ${SqlString.escape(upperBound)}`;
 
       additionalFilters.push({
