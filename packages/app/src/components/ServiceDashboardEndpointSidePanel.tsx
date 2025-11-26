@@ -115,13 +115,7 @@ export default function ServiceDashboardEndpointSidePanel({
                           },
                         ],
                         numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
-                        filters: [
-                          ...endpointFilters,
-                          {
-                            type: 'sql',
-                            condition: `${expressions.httpScheme} = 'http'`,
-                          },
-                        ],
+                        filters: endpointFilters,
                         dateRange: searchedTimeRange,
                       }}
                       showDisplaySwitcher={false}
