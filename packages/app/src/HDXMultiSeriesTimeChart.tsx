@@ -615,9 +615,8 @@ export const MemoChart = memo(function MemoChart({
               />
             }
             wrapperStyle={{
-              zIndex: 400,
+              zIndex: 1,
             }}
-            allowEscapeViewBox={{ y: true }}
           />
         )}
         {referenceLines}
