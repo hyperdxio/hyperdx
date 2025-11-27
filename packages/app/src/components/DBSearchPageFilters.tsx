@@ -545,35 +545,41 @@ export const FilterGroup = ({
               </Tooltip>
             </Accordion.Control>
             <Group gap="xxxs" wrap="nowrap">
-              <ActionIcon
-                size="xs"
-                variant="subtle"
-                color="gray"
-                onClick={toggleShowDistributions}
-                title={
-                  showDistributions ? 'Hide distribution' : 'Show distribution'
-                }
-                data-testid={`toggle-distribution-button-${name}`}
-                aria-checked={showDistributions}
-                role="checkbox"
-              >
-                <i
-                  className={`bi ${isFetchingDistribution ? 'spinner-border spinner-border-sm' : showDistributions ? 'bi-bar-chart-line-fill' : 'bi-bar-chart-line'}`}
-                />
-              </ActionIcon>
-              {onFieldPinClick && (
-                <ActionIcon
-                  size="xs"
-                  variant="subtle"
-                  color="gray"
-                  onClick={onFieldPinClick}
-                  title={isFieldPinned ? 'Unpin field' : 'Pin field'}
-                  me={'4px'}
-                >
-                  <i
-                    className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
-                  />
-                </ActionIcon>
+              {!hasRange && (
+                <>
+                  <ActionIcon
+                    size="xs"
+                    variant="subtle"
+                    color="gray"
+                    onClick={toggleShowDistributions}
+                    title={
+                      showDistributions
+                        ? 'Hide distribution'
+                        : 'Show distribution'
+                    }
+                    data-testid={`toggle-distribution-button-${name}`}
+                    aria-checked={showDistributions}
+                    role="checkbox"
+                  >
+                    <i
+                      className={`bi ${isFetchingDistribution ? 'spinner-border spinner-border-sm' : showDistributions ? 'bi-bar-chart-line-fill' : 'bi-bar-chart-line'}`}
+                    />
+                  </ActionIcon>
+                  {onFieldPinClick && (
+                    <ActionIcon
+                      size="xs"
+                      variant="subtle"
+                      color="gray"
+                      onClick={onFieldPinClick}
+                      title={isFieldPinned ? 'Unpin field' : 'Pin field'}
+                      me={'4px'}
+                    >
+                      <i
+                        className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
+                      />
+                    </ActionIcon>
+                  )}
+                </>
               )}
               {totalFiltersSize > 0 && (
                 <TextButton
