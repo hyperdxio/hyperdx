@@ -1025,7 +1025,7 @@ export function buildEventsSearchUrl({
     to: to.toString(),
   };
 
-  // If its a metric chart, we don't can't pass the where and filters
+  // If its a metric chart, we don't pass the where and filters
   if (isMetricChart) {
     params.where = '';
     params.whereLanguage = 'lucene';
