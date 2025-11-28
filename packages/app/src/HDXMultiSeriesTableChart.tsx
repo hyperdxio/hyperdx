@@ -42,7 +42,7 @@ export const Table = ({
     visible?: boolean;
   }[];
   groupColumnName?: string;
-  getRowSearchLink?: (row: any) => string;
+  getRowSearchLink?: (row: any) => string | null;
   tableBottom?: React.ReactNode;
   sorting: SortingState;
   onSortingChange: (sorting: SortingState) => void;
@@ -108,10 +108,15 @@ export const Table = ({
             if (getRowSearchLink == null) {
               return formattedValue;
             }
+            const link = getRowSearchLink(row.original);
+
+            if (!link) {
+              return formattedValue;
+            }
 
             return (
               <Link
-                href={getRowSearchLink(row.original)}
+                href={link}
                 passHref
                 className={'align-top overflow-hidden py-1 pe-3'}
                 style={{
@@ -251,6 +256,7 @@ export const Table = ({
           )}
           {items.map(virtualRow => {
             const row = rows[virtualRow.index] as TableRow<any>;
+            const link = getRowSearchLink?.(row.original);
             return (
               <tr
                 key={virtualRow.key}
@@ -261,7 +267,7 @@ export const Table = ({
                 {row.getVisibleCells().map(cell => {
                   return (
                     <td key={cell.id} title={`${cell.getValue()}`}>
-                      {getRowSearchLink == null ? (
+                      {!link ? (
                         <div
                           className={cx('align-top overflow-hidden py-1 pe-3', {
                             'text-break': wrapLinesEnabled,
@@ -275,7 +281,7 @@ export const Table = ({
                         </div>
                       ) : (
                         <Link
-                          href={getRowSearchLink(row.original)}
+                          href={link}
                           passHref
                           className="align-top overflow-hidden py-1 pe-3"
                           style={{

@@ -104,6 +104,7 @@ export default function ServiceDashboardEndpointSidePanel({
                   </Group>
                   {source && (
                     <DBTimeChart
+                      sourceId={source.id}
                       config={{
                         ...source,
                         where: '',
@@ -130,6 +131,7 @@ export default function ServiceDashboardEndpointSidePanel({
                   </Group>
                   {source && (
                     <DBTimeChart
+                      sourceId={source.id}
                       config={{
                         ...source,
                         where: '',

@@ -1,9 +1,8 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { add } from 'date-fns';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -14,31 +13,187 @@ import {
   Code,
   Group,
   Modal,
+  Popover,
+  Portal,
+  Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { notifications } from '@mantine/notifications';
 import {
   IconArrowsDiagonal,
   IconChartBar,
   IconChartLine,
+  IconSearch,
 } from '@tabler/icons-react';
 
 import {
+  AGG_FNS,
+  buildEventsSearchUrl,
+  ChartKeyJoiner,
+  convertGranularityToSeconds,
   formatResponseForTimeChart,
   getPreviousDateRange,
   getPreviousPeriodOffset,
+  PreviousPeriodSuffix,
   useTimeChartSettings,
 } from '@/ChartUtils';
-import { convertGranularityToSeconds } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useSource } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
 
-// TODO: Support clicking in to view matched events
+type ActiveClickPayload = {
+  x: number;
+  y: number;
+  activeLabel: string;
+  xPerc: number;
+  yPerc: number;
+  activePayload?: { value?: number; dataKey?: string; name?: string }[];
+};
+
+function ActiveTimeTooltip({
+  activeClickPayload,
+  buildSearchUrl,
+  onDismiss,
+}: {
+  activeClickPayload: ActiveClickPayload | undefined;
+  buildSearchUrl: (key?: string, value?: number) => string | null;
+  onDismiss: () => void;
+}) {
+  const isOpen =
+    activeClickPayload != null &&
+    activeClickPayload.activePayload != null &&
+    activeClickPayload.activePayload.length > 0;
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const validPayloads = activeClickPayload
+    .activePayload!.filter(
+      p =>
+        p.value != null &&
+        // Exclude previous period series
+        // TODO: it would be cool to support this in the future
+        !p.dataKey?.endsWith(PreviousPeriodSuffix),
+    )
+    .sort((a, b) => b.value! - a.value!); // Sort by value descending (highest first)
+
+  return (
+    <>
+      {/* Backdrop to capture clicks and prevent propagation to chart */}
+      <Portal>
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 199, // Just below Mantine Popover default (200)
+          }}
+          onClick={e => {
+            e.stopPropagation();
+            e.preventDefault();
+            onDismiss();
+          }}
+          onMouseDown={e => {
+            e.stopPropagation();
+          }}
+        />
+      </Portal>
+
+      <Popover
+        opened={isOpen}
+        onChange={opened => {
+          if (!opened) {
+            onDismiss();
+          }
+        }}
+        position="bottom-start"
+        offset={4}
+        withinPortal
+        closeOnEscape
+        withArrow
+        shadow="md"
+      >
+        <Popover.Target>
+          <div
+            style={{
+              position: 'absolute',
+              left: activeClickPayload.x ?? 0,
+              top: activeClickPayload.y ?? 0,
+              width: 1,
+              height: 1,
+              pointerEvents: 'none',
+            }}
+          />
+        </Popover.Target>
+        <Popover.Dropdown
+          p="xs"
+          maw={300}
+          onClick={e => e.stopPropagation()}
+          onMouseDown={e => e.stopPropagation()}
+        >
+          {validPayloads.length <= 1 ? (
+            // Fallback scenario if limited data is available
+            <Link
+              data-testid="chart-view-events-link"
+              href={
+                buildSearchUrl(
+                  validPayloads?.[0]?.dataKey,
+                  validPayloads?.[0]?.value,
+                ) ?? '/search'
+              }
+              onClick={onDismiss}
+            >
+              <Group gap="xs">
+                <IconSearch size={16} />
+                View Events
+              </Group>
+            </Link>
+          ) : (
+            <Stack gap="xs" style={{ maxHeight: '170px', overflowY: 'auto' }}>
+              <Text c="gray.5" size="xs">
+                View Events for:
+              </Text>
+              {validPayloads.map((payload, idx) => {
+                const seriesUrl = buildSearchUrl(
+                  payload.dataKey,
+                  payload.value,
+                );
+                return (
+                  <Tooltip
+                    key={idx}
+                    label={payload.name}
+                    withArrow
+                    color="gray"
+                    position="right"
+                  >
+                    <Link
+                      data-testid={`chart-view-events-link-${payload.dataKey}`}
+                      href={seriesUrl ?? '/search'}
+                      onClick={onDismiss}
+                    >
+                      <Group gap="xs">
+                        <IconSearch size={12} />
+                        <Text size="xs" truncate flex="1">
+                          {payload.name}
+                        </Text>
+                      </Group>
+                    </Link>
+                  </Tooltip>
+                );
+              })}
+            </Stack>
+          )}
+        </Popover.Dropdown>
+      </Popover>
+    </>
+  );
+}
 
 function DBTimeChartComponent({
   config,
@@ -124,11 +279,21 @@ function DBTimeChartComponent({
     isPlaceholderData;
   const { data: source } = useSource({ id: sourceId });
 
-  const { graphResults, timestampColumn, lineData } = useMemo(() => {
+  const {
+    graphResults,
+    timestampColumn,
+    groupColumns,
+    valueColumns,
+    isSingleValueColumn,
+    lineData,
+  } = useMemo(() => {
     const defaultResponse = {
       graphResults: [],
       timestampColumn: undefined,
       lineData: [],
+      groupColumns: [],
+      valueColumns: [],
+      isSingleValueColumn: true,
     };
 
     if (data == null || !isSuccess) {
@@ -187,15 +352,19 @@ function DBTimeChartComponent({
   }, [config.compareToPreviousPeriod]);
 
   const [activeClickPayload, setActiveClickPayload] = useState<
-    | {
-        x: number;
-        y: number;
-        activeLabel: string;
-        xPerc: number;
-        yPerc: number;
-      }
-    | undefined
+    ActiveClickPayload | undefined
   >(undefined);
+
+  // Wrap the setter to only allow setting if source is available
+  const setActiveClickPayloadIfSourceAvailable = useCallback(
+    (payload: ActiveClickPayload | undefined) => {
+      if (source == null) {
+        return; // Don't set if no source
+      }
+      setActiveClickPayload(payload);
+    },
+    [source],
+  );
 
   const clickedActiveLabelDate = useMemo(() => {
     return activeClickPayload?.activeLabel != null
@@ -203,49 +372,126 @@ function DBTimeChartComponent({
       : undefined;
   }, [activeClickPayload]);
 
-  const qparams = useMemo(() => {
-    if (clickedActiveLabelDate == null || !source?.id == null) {
-      return null;
-    }
-    const isMetricChart = isMetricChartConfig(config);
-    if (isMetricChart && source?.logSourceId == null) {
-      notifications.show({
-        color: 'yellow',
-        message: 'No log source is associated with the selected metric source.',
+  const buildSearchUrl = useCallback(
+    (seriesKey?: string, seriesValue?: number) => {
+      if (clickedActiveLabelDate == null || source == null) {
+        return null;
+      }
+
+      // Parse the series key to extract group values
+      const seriesKeys = seriesKey?.split(ChartKeyJoiner);
+      const groupFilters: Array<{ column: string; value: any }> = [];
+
+      if (seriesKeys?.length && groupColumns?.length) {
+        // Determine if the first part is a value column name
+        const startsWithValueColumn =
+          !(isSingleValueColumn ?? true) ||
+          ((groupColumns?.length ?? 0) === 0 &&
+            (valueColumns?.length ?? 0) > 0);
+        const groupValues = startsWithValueColumn
+          ? seriesKeys.slice(1)
+          : seriesKeys;
+
+        // Build group filters
+        groupValues.forEach((value, index) => {
+          if (groupColumns[index] != null) {
+            groupFilters.push({
+              column: groupColumns[index],
+              value,
+            });
+          }
+        });
+      }
+
+      // Build value range filter for Y-axis if provided
+      let valueRangeFilter:
+        | {
+            expression: string;
+            value: number;
+          }
+        | undefined;
+
+      if (
+        seriesValue &&
+        Array.isArray(config.select) &&
+        config.select.length > 0
+      ) {
+        // Determine which value column to filter on
+        let valueExpression: string | undefined;
+
+        if ((isSingleValueColumn ?? true) && config.select.length === 1) {
+          const firstSelect = config.select[0];
+          const aggFn =
+            typeof firstSelect === 'string' ? undefined : firstSelect.aggFn;
+          // Only add value range filter if the aggregation is attributable
+          const isAttributable =
+            AGG_FNS.find(fn => fn.value === aggFn)?.isAttributable !== false;
+
+          if (isAttributable) {
+            valueExpression =
+              typeof firstSelect === 'string'
+                ? firstSelect
+                : firstSelect.valueExpression;
+          }
+        } else if (seriesKeys?.length && (valueColumns?.length ?? 0) > 0) {
+          const firstPart = seriesKeys[0];
+          const valueColumnIndex = valueColumns?.findIndex(
+            col => col === firstPart,
+          );
+
+          if (
+            valueColumnIndex != null &&
+            valueColumnIndex >= 0 &&
+            valueColumnIndex < config.select.length
+          ) {
+            const selectItem = config.select[valueColumnIndex];
+            const aggFn =
+              typeof selectItem === 'string' ? undefined : selectItem.aggFn;
+            // Only add value range filter if the aggregation is attributable
+            const isAttributable =
+              AGG_FNS.find(fn => fn.value === aggFn)?.isAttributable !== false;
+
+            if (isAttributable) {
+              valueExpression =
+                typeof selectItem === 'string'
+                  ? selectItem
+                  : selectItem.valueExpression;
+            }
+          }
+        }
+
+        if (valueExpression) {
+          valueRangeFilter = {
+            expression: valueExpression,
+            value: seriesValue,
+          };
+        }
+      }
+
+      // Calculate time range from clicked date and granularity
+      const from = clickedActiveLabelDate;
+      const to = add(clickedActiveLabelDate, {
+        seconds: convertGranularityToSeconds(granularity),
       });
-      return null;
-    }
-    const from = clickedActiveLabelDate.getTime();
-    const to = add(clickedActiveLabelDate, {
-      seconds: convertGranularityToSeconds(granularity),
-    }).getTime();
-    let where = config.where;
-    let whereLanguage = config.whereLanguage || 'lucene';
-    if (
-      where.length === 0 &&
-      Array.isArray(config.select) &&
-      config.select.length === 1
-    ) {
-      where = config.select[0].aggCondition ?? '';
-      whereLanguage = config.select[0].aggConditionLanguage ?? 'lucene';
-    }
-    const params: Record<string, string> = {
-      source: (isMetricChart ? source?.logSourceId : source?.id) ?? '',
-      where: where,
-      whereLanguage: whereLanguage,
-      filters: JSON.stringify(config.filters ?? []),
-      isLive: 'false',
-      from: from.toString(),
-      to: to.toString(),
-    };
-    // Include the select parameter if provided to preserve custom columns
-    // eventTableSelect is used for charts that override select (like histograms with count)
-    // to preserve the original table's select expression
-    if (config.eventTableSelect) {
-      params.select = config.eventTableSelect;
-    }
-    return new URLSearchParams(params);
-  }, [clickedActiveLabelDate, config, granularity, source]);
+
+      return buildEventsSearchUrl({
+        source,
+        config,
+        dateRange: [from, to],
+        groupFilters,
+        valueRangeFilter,
+      });
+    },
+    [
+      clickedActiveLabelDate,
+      config,
+      granularity,
+      source,
+      groupColumns,
+      valueColumns,
+      isSingleValueColumn,
+    ],
+  );
 
   return isLoading && !data ? (
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
@@ -318,35 +564,11 @@ function DBTimeChartComponent({
           top: 0,
         }}
       >
-        {activeClickPayload != null &&
-        qparams != null &&
-        // only View Events for single series
-        (!Array.isArray(config.select) || config.select.length === 1) ? (
-          <div
-            className="bg-muted px-3 py-2 rounded fs-8"
-            style={{
-              zIndex: 5,
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              visibility: 'visible',
-              transform: `translate(${
-                activeClickPayload.xPerc > 0.5
-                  ? (activeClickPayload?.x ?? 0) - 130
-                  : (activeClickPayload?.x ?? 0) + 4
-              }px, ${activeClickPayload?.y ?? 0}px)`,
-            }}
-          >
-            <Link
-              data-testid="chart-view-events-link"
-              href={`/search?${qparams?.toString()}`}
-              className="text-white-hover text-decoration-none"
-              onClick={() => setActiveClickPayload(undefined)}
-            >
-              <i className="bi bi-search me-1"></i> View Events
-            </Link>
-          </div>
-        ) : null}
+        <ActiveTimeTooltip
+          activeClickPayload={activeClickPayload}
+          buildSearchUrl={buildSearchUrl}
+          onDismiss={() => setActiveClickPayload(undefined)}
+        />
         {/* {totalGroups > groupKeys.length ? (
                 <div
                   className="bg-muted px-3 py-2 rounded fs-8"
@@ -417,14 +639,14 @@ function DBTimeChartComponent({
           dateRange={dateRange}
           displayType={displayType}
           graphResults={graphResults}
+          isClickActive={activeClickPayload}
           lineData={lineData}
-          isClickActive={false}
           isLoading={isLoadingOrPlaceholder}
           logReferenceTimestamp={logReferenceTimestamp}
           numberFormat={config.numberFormat}
           onTimeRangeSelect={onTimeRangeSelect}
           referenceLines={referenceLines}
-          setIsClickActive={setActiveClickPayload}
+          setIsClickActive={setActiveClickPayloadIfSourceAvailable}
           showLegend={showLegend}
           timestampKey={timestampColumn?.name}
           previousPeriodOffset={previousPeriodOffset}
