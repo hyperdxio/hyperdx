@@ -170,7 +170,8 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   // Create abort signal from timeout if provided
   const abortController = queryTimeout ? new AbortController() : undefined;
   if (abortController && queryTimeout) {
-    setTimeout(() => abortController.abort(), queryTimeout);
+    // Query timeout is in seconds, so we need to convert it to milliseconds
+    setTimeout(() => abortController.abort(), queryTimeout * 1000);
   }
 
   const resultSet =
