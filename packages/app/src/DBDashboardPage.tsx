@@ -68,7 +68,7 @@ import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { parseAsStringWithNewLines } from './utils/queryParsers';
 import api from './api';
-import { DEFAULT_CHART_CONFIG } from './ChartUtils';
+import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
@@ -321,7 +321,17 @@ const Tile = forwardRef(
             )}
             {queriedConfig?.displayType === DisplayType.Table && (
               <Box p="xs" h="100%">
-                <DBTableChart config={queriedConfig} />
+                <DBTableChart
+                  config={queriedConfig}
+                  getRowSearchLink={row =>
+                    buildTableRowSearchUrl({
+                      row,
+                      source,
+                      config: queriedConfig,
+                      dateRange: dateRange,
+                    })
+                  }
+                />
               </Box>
             )}
             {queriedConfig?.displayType === DisplayType.Number && (

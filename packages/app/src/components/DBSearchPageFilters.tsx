@@ -19,6 +19,7 @@ import {
   Group,
   Loader,
   MantineStyleProps,
+  NumberInput,
   ScrollArea,
   Stack,
   Tabs,
@@ -224,6 +225,67 @@ export const FilterCheckbox = ({
   );
 };
 
+const FilterRangeDisplay = ({
+  range,
+  onRangeChange,
+}: {
+  name: string;
+  range: { min: number; max: number };
+  onClearClick: VoidFunction;
+  onRangeChange?: (range: { min: number; max: number }) => void;
+}) => {
+  const [localMin, setLocalMin] = useState(range.min);
+  const [localMax, setLocalMax] = useState(range.max);
+
+  const handleMinChange = (value: number | string) => {
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    if (!isNaN(numValue)) {
+      setLocalMin(numValue);
+      if (onRangeChange) {
+        onRangeChange({ min: numValue, max: localMax });
+      }
+    }
+  };
+
+  const handleMaxChange = (value: number | string) => {
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    if (!isNaN(numValue)) {
+      setLocalMax(numValue);
+      if (onRangeChange) {
+        onRangeChange({ min: localMin, max: numValue });
+      }
+    }
+  };
+
+  return (
+    <Stack gap={8} px="xs" mb="xs">
+      <Group gap={4} wrap="nowrap">
+        <NumberInput
+          size="xs"
+          placeholder="Min"
+          value={localMin}
+          onChange={handleMinChange}
+          styles={{ input: { fontSize: '11px' } }}
+          flex={1}
+          hideControls
+        />
+        <Text size="xs" c="dimmed">
+          to
+        </Text>
+        <NumberInput
+          size="xs"
+          placeholder="Max"
+          value={localMax}
+          onChange={handleMaxChange}
+          styles={{ input: { fontSize: '11px' } }}
+          flex={1}
+          hideControls
+        />
+      </Group>
+    </Stack>
+  );
+};
+
 export type FilterGroupProps = {
   name: string;
   options: { value: string; label: string }[];
@@ -231,6 +293,7 @@ export type FilterGroupProps = {
   selectedValues?: {
     included: Set<string>;
     excluded: Set<string>;
+    range?: { min: number; max: number };
   };
   onChange: (value: string) => void;
   onClearClick: VoidFunction;
@@ -247,6 +310,7 @@ export type FilterGroupProps = {
   'data-testid'?: string;
   chartConfig: ChartConfigWithDateRange;
   isLive?: boolean;
+  onRangeChange?: (range: { min: number; max: number }) => void;
   distributionKey?: string; // Optional key to use for distribution queries, defaults to name
 };
 
@@ -273,6 +337,7 @@ export const FilterGroup = ({
   chartConfig,
   isLive,
   distributionKey,
+  onRangeChange,
 }: FilterGroupProps) => {
   const [search, setSearch] = useState('');
   // "Show More" button when there's lots of options
@@ -287,6 +352,9 @@ export const FilterGroup = ({
   const [dateRange, setDateRange] = useState<[Date, Date]>(
     chartConfig.dateRange,
   );
+
+  // If this filter has a range, display it differently
+  const hasRange = selectedValues.range != null;
 
   const toggleShowDistributions = () => {
     if (!showDistributions) {
@@ -336,7 +404,9 @@ export const FilterGroup = ({
   }, [distributionError]);
 
   const totalFiltersSize =
-    selectedValues.included.size + selectedValues.excluded.size;
+    selectedValues.included.size +
+    selectedValues.excluded.size +
+    (hasRange ? 1 : 0);
 
   const augmentedOptions = useMemo(() => {
     const selectedSet = new Set([
@@ -475,35 +545,41 @@ export const FilterGroup = ({
               </Tooltip>
             </Accordion.Control>
             <Group gap="xxxs" wrap="nowrap">
-              <ActionIcon
-                size="xs"
-                variant="subtle"
-                color="gray"
-                onClick={toggleShowDistributions}
-                title={
-                  showDistributions ? 'Hide distribution' : 'Show distribution'
-                }
-                data-testid={`toggle-distribution-button-${name}`}
-                aria-checked={showDistributions}
-                role="checkbox"
-              >
-                <i
-                  className={`bi ${isFetchingDistribution ? 'spinner-border spinner-border-sm' : showDistributions ? 'bi-bar-chart-line-fill' : 'bi-bar-chart-line'}`}
-                />
-              </ActionIcon>
-              {onFieldPinClick && (
-                <ActionIcon
-                  size="xs"
-                  variant="subtle"
-                  color="gray"
-                  onClick={onFieldPinClick}
-                  title={isFieldPinned ? 'Unpin field' : 'Pin field'}
-                  me={'4px'}
-                >
-                  <i
-                    className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
-                  />
-                </ActionIcon>
+              {!hasRange && (
+                <>
+                  <ActionIcon
+                    size="xs"
+                    variant="subtle"
+                    color="gray"
+                    onClick={toggleShowDistributions}
+                    title={
+                      showDistributions
+                        ? 'Hide distribution'
+                        : 'Show distribution'
+                    }
+                    data-testid={`toggle-distribution-button-${name}`}
+                    aria-checked={showDistributions}
+                    role="checkbox"
+                  >
+                    <i
+                      className={`bi ${isFetchingDistribution ? 'spinner-border spinner-border-sm' : showDistributions ? 'bi-bar-chart-line-fill' : 'bi-bar-chart-line'}`}
+                    />
+                  </ActionIcon>
+                  {onFieldPinClick && (
+                    <ActionIcon
+                      size="xs"
+                      variant="subtle"
+                      color="gray"
+                      onClick={onFieldPinClick}
+                      title={isFieldPinned ? 'Unpin field' : 'Pin field'}
+                      me={'4px'}
+                    >
+                      <i
+                        className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
+                      />
+                    </ActionIcon>
+                  )}
+                </>
               )}
               {totalFiltersSize > 0 && (
                 <TextButton
@@ -522,117 +598,128 @@ export const FilterGroup = ({
               content: 'p-0 pt-2',
             }}
           >
-            <Stack gap={0}>
-              {/* Show search bar if expanded and there are more than 5 values */}
-              {isExpanded && augmentedOptions.length > 5 && (
-                <div className="px-2 pb-2">
-                  <TextInput
-                    size="xs"
-                    placeholder="Search values..."
-                    value={search}
-                    data-testid={`filter-search-${name}`}
-                    onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                      setSearch(event.currentTarget.value)
-                    }
-                    rightSectionWidth={20}
-                    rightSection={<IconSearch size={12} stroke={2} />}
-                    classNames={{
-                      input: 'ps-0.5',
-                    }}
-                  />
-                </div>
-              )}
-              {displayedOptions.map(option => (
-                <FilterCheckbox
-                  key={option.value}
-                  label={option.label}
-                  pinned={isPinned(option.value)}
-                  className={
-                    recentlyMoved.has(option.value) ? classes.recentlyMoved : ''
-                  }
-                  value={
-                    selectedValues.included.has(option.value)
-                      ? 'included'
-                      : selectedValues.excluded.has(option.value)
-                        ? 'excluded'
-                        : false
-                  }
-                  onChange={() => handleChange(option.value)}
-                  onClickOnly={() => onOnlyClick(option.value)}
-                  onClickExclude={() => onExcludeClick(option.value)}
-                  onClickPin={() => onPinClick(option.value)}
-                  isPercentageLoading={isFetchingDistribution}
-                  percentage={
-                    showDistributions && distributionData
-                      ? (distributionData.get(option.value) ?? 0)
-                      : undefined
-                  }
-                />
-              ))}
-              {optionsLoading ? (
-                <Group m={6} gap="xs">
-                  <Loader size={12} color="gray" />
-                  <Text c="dimmed" size="xs">
-                    Loading...
-                  </Text>
-                </Group>
-              ) : displayedOptions.length === 0 ? (
-                <Group m={6} gap="xs">
-                  <Text c="dimmed" size="xs">
-                    No options found
-                  </Text>
-                </Group>
-              ) : null}
-              {showShowMoreButton && (
-                <div className="d-flex m-1">
-                  <TextButton
-                    label={
-                      shouldShowMore ? (
-                        <>
-                          <span className="bi-chevron-up" /> Less
-                        </>
-                      ) : (
-                        <>
-                          <span className="bi-chevron-right" /> Show more
-                        </>
-                      )
-                    }
-                    onClick={() => {
-                      // When show more is clicked, immediately show all and also fetch more from server.
-                      setShowMore(!shouldShowMore);
-                      if (!shouldShowMore) {
-                        onLoadMore?.(name);
+            {hasRange && selectedValues.range ? (
+              <FilterRangeDisplay
+                name={name}
+                range={selectedValues.range}
+                onClearClick={onClearClick}
+                onRangeChange={onRangeChange}
+              />
+            ) : (
+              <Stack gap={0}>
+                {/* Show search bar if expanded and there are more than 5 values */}
+                {isExpanded && augmentedOptions.length > 5 && (
+                  <div className="px-2 pb-2">
+                    <TextInput
+                      size="xs"
+                      placeholder="Search values..."
+                      value={search}
+                      data-testid={`filter-search-${name}`}
+                      onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                        setSearch(event.currentTarget.value)
                       }
-                    }}
-                  />
-                </div>
-              )}
-              {onLoadMore &&
-                !showShowMoreButton &&
-                !shouldShowMore &&
-                !hasLoadedMore && (
-                  <div className="d-flex m-1">
-                    {loadMoreLoading ? (
-                      <Group m={6} gap="xs">
-                        <Loader size={12} color="gray" />
-                        <Text c="dimmed" size="xs">
-                          Loading more...
-                        </Text>
-                      </Group>
-                    ) : (
-                      <TextButton
-                        display={hasLoadedMore ? 'none' : undefined}
-                        label={
-                          <>
-                            <span className="bi-chevron-right" /> Load more
-                          </>
-                        }
-                        onClick={() => onLoadMore(name)}
-                      />
-                    )}
+                      rightSectionWidth={20}
+                      rightSection={<IconSearch size={12} stroke={2} />}
+                      classNames={{
+                        input: 'ps-0.5',
+                      }}
+                    />
                   </div>
                 )}
-            </Stack>
+                {displayedOptions.map(option => (
+                  <FilterCheckbox
+                    key={option.value}
+                    label={option.label}
+                    pinned={isPinned(option.value)}
+                    className={
+                      recentlyMoved.has(option.value)
+                        ? classes.recentlyMoved
+                        : ''
+                    }
+                    value={
+                      selectedValues.included.has(option.value)
+                        ? 'included'
+                        : selectedValues.excluded.has(option.value)
+                          ? 'excluded'
+                          : false
+                    }
+                    onChange={() => handleChange(option.value)}
+                    onClickOnly={() => onOnlyClick(option.value)}
+                    onClickExclude={() => onExcludeClick(option.value)}
+                    onClickPin={() => onPinClick(option.value)}
+                    isPercentageLoading={isFetchingDistribution}
+                    percentage={
+                      showDistributions && distributionData
+                        ? (distributionData.get(option.value) ?? 0)
+                        : undefined
+                    }
+                  />
+                ))}
+                {optionsLoading ? (
+                  <Group m={6} gap="xs">
+                    <Loader size={12} color="gray" />
+                    <Text c="dimmed" size="xs">
+                      Loading...
+                    </Text>
+                  </Group>
+                ) : displayedOptions.length === 0 ? (
+                  <Group m={6} gap="xs">
+                    <Text c="dimmed" size="xs">
+                      No options found
+                    </Text>
+                  </Group>
+                ) : null}
+                {showShowMoreButton && (
+                  <div className="d-flex m-1">
+                    <TextButton
+                      label={
+                        shouldShowMore ? (
+                          <>
+                            <span className="bi-chevron-up" /> Less
+                          </>
+                        ) : (
+                          <>
+                            <span className="bi-chevron-right" /> Show more
+                          </>
+                        )
+                      }
+                      onClick={() => {
+                        // When show more is clicked, immediately show all and also fetch more from server.
+                        setShowMore(!shouldShowMore);
+                        if (!shouldShowMore) {
+                          onLoadMore?.(name);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+                {onLoadMore &&
+                  !showShowMoreButton &&
+                  !shouldShowMore &&
+                  !hasLoadedMore && (
+                    <div className="d-flex m-1">
+                      {loadMoreLoading ? (
+                        <Group m={6} gap="xs">
+                          <Loader size={12} color="gray" />
+                          <Text c="dimmed" size="xs">
+                            Loading more...
+                          </Text>
+                        </Group>
+                      ) : (
+                        <TextButton
+                          display={hasLoadedMore ? 'none' : undefined}
+                          label={
+                            <>
+                              <span className="bi-chevron-right" /> Load more
+                            </>
+                          }
+                          onClick={() => onLoadMore(name)}
+                        />
+                      )}
+                    </div>
+                  )}
+              </Stack>
+            )}
           </Accordion.Panel>
         </Stack>
       </Accordion.Item>
@@ -653,6 +740,7 @@ const DBSearchPageFiltersComponent = ({
   showDelta,
   denoiseResults,
   setDenoiseResults,
+  setFilterRange,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
@@ -662,6 +750,7 @@ const DBSearchPageFiltersComponent = ({
   showDelta: boolean;
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
+  setFilterRange: (key: string, range: { min: number; max: number }) => void;
 } & FilterStateHook) => {
   const setFilterValue = useCallback(
     (
@@ -888,6 +977,15 @@ const DBSearchPageFiltersComponent = ({
       return aChecked && !bChecked ? -1 : bChecked && !aChecked ? 1 : 0;
     });
 
+    // prioritize facets that have a range
+    _facets.sort((a, b) => {
+      const aRange = filterState?.[a.key]?.range;
+      const bRange = filterState?.[b.key]?.range;
+      if (aRange && !bRange) return -1;
+      if (!aRange && bRange) return 1;
+      return 0;
+    });
+
     return _facets;
   }, [
     facetsWithPinnedValues,
@@ -901,7 +999,7 @@ const DBSearchPageFiltersComponent = ({
   const showClearAllButton = useMemo(
     () =>
       Object.values(filterState).some(
-        f => f.included.size > 0 || f.excluded.size > 0,
+        f => f.included.size > 0 || f.excluded.size > 0 || f.range != null,
       ),
     [filterState],
   );
@@ -1159,10 +1257,12 @@ const DBSearchPageFiltersComponent = ({
                       isFieldPinned(facet.key) ||
                       (filterState[facet.key] &&
                         (filterState[facet.key].included.size > 0 ||
-                          filterState[facet.key].excluded.size > 0))
+                          filterState[facet.key].excluded.size > 0 ||
+                          filterState[facet.key].range != null))
                     }
                     chartConfig={chartConfig}
                     isLive={isLive}
+                    onRangeChange={range => setFilterRange(facet.key, range)}
                   />
                 ))}
               </>
