@@ -1,7 +1,7 @@
 {
   "name": "@hyperdx/common-utils",
   "description": "Common utilities for HyperDX application",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "license": "MIT",
   "private": true,
   "files": [
