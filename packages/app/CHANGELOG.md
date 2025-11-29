@@ -1,5 +1,36 @@
 # @hyperdx/app
 
+## 2.8.1
+
+### Patch Changes
+
+- 586bcce7: feat: Add previous period comparisons to line chart
+- 4503d394: improve markdown rendering after we removed bootrstrap reset styles
+- 337be9a2: Add support for deeplinking to search page from most charts and tables
+- 562dd7ea: Fix minor UI issues and enhance styling across various components
+- 087ff400: feat: Grouped filters for map/json types
+- 237a2677: style: Fix missing AlertHistory colors
+- bacefac9: fix: Fix session page source change on submit
+- 36cf8665: fix: Don't clobber spans in trace waterfall when multiple spans have duplicate span ids
+- 07392d23: feat: Add clickpy_link to clickpy trace source attributes
+- f868c3ca: Add back selection ui on histogram
+- 21146027: chore: remove deprecated SpanAttribute.http.scheme reference from serviceDashboard
+- 70fe682b: Add clickable alert timeline chips
+- 7cf4ba4d: Allow HyperDX's listen address to be overriden at runtime with the env var HYPERDX_APP_LISTEN_HOSTNAME. The default remains 0.0.0.0 .
+- 3b2a8633: fix: sort on the client side in KubernetedDashboardPage
+- 770276a1: feat: Add waterfall span/error count summary, span tooltip status
+- 59422a1a: feat: Add custom attributes for individual rows
+- 7405d183: bump typescript version
+- 5b7d646f: fix: date/timepicker issue with dates in the future
+- c8ec7fa9: fix: Hide table header when no columns are displayed
+- 770276a1: feat: Add search to trace waterfall
+- a9f10c5f: feat: Add highlighted attributes to overview panel
+- Updated dependencies [586bcce7]
+- Updated dependencies [59422a1a]
+- Updated dependencies [7405d183]
+- Updated dependencies [770276a1]
+  - @hyperdx/common-utils@0.8.1
+
 ## 2.8.0
 
 ### Minor Changes

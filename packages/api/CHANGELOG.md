@@ -1,5 +1,17 @@
 # @hyperdx/api
 
+## 2.8.1
+
+### Patch Changes
+
+- cac4d3dd: Allow connecting to Mongo with AWS Auth
+- e838436d: Improve value rounding on alerts to match thresholds
+- Updated dependencies [586bcce7]
+- Updated dependencies [59422a1a]
+- Updated dependencies [7405d183]
+- Updated dependencies [770276a1]
+  - @hyperdx/common-utils@0.8.1
+
 ## 2.8.0
 
 ### Minor Changes
