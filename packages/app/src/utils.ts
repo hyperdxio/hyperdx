@@ -528,34 +528,25 @@ export const useDrag = (
 
   const [isDragging, setIsDragging] = useState(false);
 
-  const handlePointerDown = useCallback(
-    (e: PointerEvent) => {
-      setIsDragging(true);
+  const handlePointerDown = (e: PointerEvent) => {
+    setIsDragging(true);
 
-      onPointerDown(e);
-    },
-    [setIsDragging, onPointerDown],
-  );
+    onPointerDown(e);
+  };
 
-  const handlePointerUp = useCallback(
-    (e: PointerEvent) => {
-      setIsDragging(false);
+  const handlePointerUp = (e: PointerEvent) => {
+    setIsDragging(false);
 
-      onPointerUp(e);
-    },
-    [setIsDragging, onPointerUp],
-  );
+    onPointerUp(e);
+  };
 
-  const handlePointerMove = useCallback(
-    (e: PointerEvent) => {
-      onPointerMove(e);
+  const handlePointerMove = (e: PointerEvent) => {
+    onPointerMove(e);
 
-      if (isDragging) {
-        onDrag(e);
-      }
-    },
-    [onPointerMove, isDragging, onDrag],
-  );
+    if (isDragging) {
+      onDrag(e);
+    }
+  };
 
   useEffect(() => {
     const element = ref.current;
@@ -570,9 +561,9 @@ export const useDrag = (
         element.removeEventListener('pointermove', handlePointerMove);
       };
     }
-
-    return () => {};
-  }, [ref, handlePointerUp, handlePointerMove, handlePointerDown]);
+    // disable dependency array as this doesn't fit nicely with react
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return { isDragging };
 };

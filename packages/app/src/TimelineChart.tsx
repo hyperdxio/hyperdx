@@ -410,16 +410,20 @@ export default function TimelineChart({
     }
   };
 
-  useDrag(timelineRef, {
-    onDrag: e => {
-      setOffset(v =>
-        Math.min(
-          Math.max(v - e.movementX * (0.125 / scale), 0),
-          100 - 100 / scale,
-        ),
-      );
-    },
-  });
+  const useDragOptions: Parameters<typeof useDrag>[1] = useMemo(
+    () => ({
+      onDrag: e => {
+        setOffset(v =>
+          Math.min(
+            Math.max(v - e.movementX * (0.125 / scale), 0),
+            100 - 100 / scale,
+          ),
+        );
+      },
+    }),
+    [scale, setOffset],
+  );
+  useDrag(timelineRef, useDragOptions);
 
   const [cursorXPerc, setCursorXPerc] = useState(0);
 
