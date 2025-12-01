@@ -165,21 +165,14 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   const query = await renderChartConfig(windowedConfig, getMetadata());
 
   const queryTimeout = queryKey[2];
-  const clickhouseClient = getClickhouseClient();
-
-  // Create abort signal from timeout if provided
-  const abortController = queryTimeout ? new AbortController() : undefined;
-  if (abortController && queryTimeout) {
-    // Query timeout is in seconds, so we need to convert it to milliseconds
-    setTimeout(() => abortController.abort(), queryTimeout * 1000);
-  }
+  const clickhouseClient = getClickhouseClient({ queryTimeout });
 
   const resultSet =
     await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
       query: query.sql,
       query_params: query.params,
       format: 'JSONCompactEachRowWithNamesAndTypes',
-      abort_signal: abortController?.signal || signal,
+      abort_signal: signal,
       connectionId: config.connection,
     });
 
