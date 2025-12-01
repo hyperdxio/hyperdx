@@ -176,13 +176,13 @@ function BenchmarkPage() {
     ) {
       return;
     }
-    setQueries(data.queries);
-    setConnections(data.connections);
+    setQueries(data.queries || []);
+    setConnections(data.connections || []);
     setIterations(data.iterations);
   };
 
-  const _queries = queries || [];
-  const _connections = connections || [];
+  const _queries = useMemo(() => queries || [], [queries]);
+  const _connections = useMemo(() => connections || [], [connections]);
 
   const { data: estimates } = useEstimates(
     { queries: _queries, connections: _connections },

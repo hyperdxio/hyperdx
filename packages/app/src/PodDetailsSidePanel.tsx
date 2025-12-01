@@ -320,10 +320,10 @@ export default function PodDetailsSidePanel({
     }
     return _where;
   }, [
-    nodeName,
     logSource,
     doesPrimaryOrSortingKeysContainServiceExpression,
     logServiceNames,
+    podName,
   ]);
 
   const handleClose = React.useCallback(() => {

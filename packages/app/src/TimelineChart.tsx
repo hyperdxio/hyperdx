@@ -410,7 +410,7 @@ export default function TimelineChart({
     }
   };
 
-  useDrag(timelineRef, [], {
+  useDrag(timelineRef, {
     onDrag: e => {
       setOffset(v =>
         Math.min(

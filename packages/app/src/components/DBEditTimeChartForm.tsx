@@ -477,7 +477,7 @@ export default function EditTimeChartForm({
     if (displayType !== DisplayType.Line) {
       setValue('alert', undefined);
     }
-  }, [displayType]);
+  }, [displayType, setValue]);
 
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
   const showSampleEvents = tableSource?.kind !== SourceKind.Metric;

@@ -530,6 +530,7 @@ function useSearchedConfigToChartConfig({
     where,
     whereLanguage,
     defaultOrderBy,
+    orderBy,
   ]);
 }
 
@@ -1072,7 +1073,7 @@ function DBSearchPage() {
       ...chartConfig,
       dateRange: searchedTimeRange,
     };
-  }, [me?.team, chartConfig, searchedTimeRange]);
+  }, [chartConfig, searchedTimeRange]);
 
   const displayedColumns = splitAndTrimWithBracket(
     dbSqlRowTableConfig?.select ??
@@ -1243,7 +1244,7 @@ function DBSearchPage() {
       onTimeRangeSelect(d1, d2);
       setIsLive(false);
     },
-    [onTimeRangeSelect],
+    [onTimeRangeSelect, setIsLive],
   );
 
   const filtersChartConfig = useMemo<ChartConfigWithDateRange>(() => {

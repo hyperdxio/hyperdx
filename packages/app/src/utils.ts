@@ -237,7 +237,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       window.removeEventListener('customStorage', handleCustomStorageChange);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, [instanceId, key]);
 
   // Fetch the value on client-side to avoid SSR issues
   useEffect(() => {
@@ -314,15 +314,18 @@ export function useQueryHistory<T>(type: string | undefined) {
 
 export function useIntersectionObserver(onIntersect: () => void) {
   const observer = useRef<IntersectionObserver | null>(null);
-  const observerRef = useCallback((node: Element | null) => {
-    if (observer.current) observer.current.disconnect();
-    observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting) {
-        onIntersect();
-      }
-    });
-    if (node) observer.current.observe(node);
-  }, []);
+  const observerRef = useCallback(
+    (node: Element | null) => {
+      if (observer.current) observer.current.disconnect();
+      observer.current = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting) {
+          onIntersect();
+        }
+      });
+      if (node) observer.current.observe(node);
+    },
+    [onIntersect],
+  );
 
   return { observerRef };
 }
@@ -509,7 +512,6 @@ export const usePrevious = <T>(value: T): T | undefined => {
 // From https://javascript.plainenglish.io/how-to-make-a-simple-custom-usedrag-react-hook-6b606d45d353
 export const useDrag = (
   ref: MutableRefObject<HTMLDivElement | null>,
-  deps = [],
   options: {
     onDrag?: (e: PointerEvent) => any;
     onPointerDown?: (e: PointerEvent) => any;
@@ -526,25 +528,34 @@ export const useDrag = (
 
   const [isDragging, setIsDragging] = useState(false);
 
-  const handlePointerDown = (e: PointerEvent) => {
-    setIsDragging(true);
+  const handlePointerDown = useCallback(
+    (e: PointerEvent) => {
+      setIsDragging(true);
 
-    onPointerDown(e);
-  };
+      onPointerDown(e);
+    },
+    [setIsDragging, onPointerDown],
+  );
 
-  const handlePointerUp = (e: PointerEvent) => {
-    setIsDragging(false);
+  const handlePointerUp = useCallback(
+    (e: PointerEvent) => {
+      setIsDragging(false);
 
-    onPointerUp(e);
-  };
+      onPointerUp(e);
+    },
+    [setIsDragging, onPointerUp],
+  );
 
-  const handlePointerMove = (e: PointerEvent) => {
-    onPointerMove(e);
+  const handlePointerMove = useCallback(
+    (e: PointerEvent) => {
+      onPointerMove(e);
 
-    if (isDragging) {
-      onDrag(e);
-    }
-  };
+      if (isDragging) {
+        onDrag(e);
+      }
+    },
+    [onPointerMove, isDragging, onDrag],
+  );
 
   useEffect(() => {
     const element = ref.current;
@@ -561,7 +572,7 @@ export const useDrag = (
     }
 
     return () => {};
-  }, [...deps, isDragging]);
+  }, [ref, handlePointerUp, handlePointerMove, handlePointerDown]);
 
   return { isDragging };
 };

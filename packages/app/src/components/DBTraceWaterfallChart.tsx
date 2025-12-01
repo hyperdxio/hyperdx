@@ -288,7 +288,7 @@ export function useEventsAroundFocus({
         id: rowWhere(omit(cd, ['SpanAttributes', '__hdx_hidden'])),
       };
     });
-  }, [afterSpanData, beforeSpanData]);
+  }, [afterSpanData, beforeSpanData, meta, rowWhere, type]);
 
   return {
     rows,

@@ -157,7 +157,7 @@ export function MetricNameSelect({
       });
     }
     return metricsFromQuery;
-  }, [gaugeMetrics, histogramMetrics, sumMetrics]);
+  }, [gaugeMetrics, histogramMetrics, sumMetrics, metricName, metricType]);
 
   return (
     <Select
