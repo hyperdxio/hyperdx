@@ -39,7 +39,11 @@ import {
 } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
-import { AGG_FNS, getPreviousDateRange } from '@/ChartUtils';
+import {
+  AGG_FNS,
+  buildTableRowSearchUrl,
+  getPreviousDateRange,
+} from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBTableChart from '@/components/DBTableChart';
@@ -1043,7 +1047,17 @@ export default function EditTimeChartForm({
           className="flex-grow-1 d-flex flex-column"
           style={{ minHeight: 400 }}
         >
-          <DBTableChart config={queriedConfig} />
+          <DBTableChart
+            config={queriedConfig}
+            getRowSearchLink={row =>
+              buildTableRowSearchUrl({
+                row,
+                source: tableSource,
+                config: queriedConfig,
+                dateRange: queriedConfig.dateRange,
+              })
+            }
+          />
         </div>
       )}
       {queryReady && queriedConfig != null && activeTab === 'time' && (

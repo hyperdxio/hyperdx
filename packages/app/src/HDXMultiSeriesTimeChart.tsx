@@ -443,6 +443,7 @@ export const MemoChart = memo(function MemoChart({
 
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
+  const mouseDownPosRef = useRef<number | null>(null);
 
   const lineDataMap = useMemo(() => {
     const map: { [key: string]: LineData } = {};
@@ -474,8 +475,14 @@ export const MemoChart = memo(function MemoChart({
 
           setHighlightStart(undefined);
           setHighlightEnd(undefined);
+          mouseDownPosRef.current = null;
         }}
-        onMouseDown={e => e != null && setHighlightStart(e.activeLabel)}
+        onMouseDown={e => {
+          if (e != null && e.chartX != null && e.chartY != null) {
+            setHighlightStart(e.activeLabel);
+            mouseDownPosRef.current = e.chartX;
+          }
+        }}
         onMouseMove={e => {
           setIsHovered(true);
 
@@ -485,12 +492,23 @@ export const MemoChart = memo(function MemoChart({
           }
         }}
         onMouseUp={e => {
+          const MIN_DRAG_DISTANCE = 20; // Minimum horizontal drag distance in pixels
+          let dragDistance = 0;
+
+          if (mouseDownPosRef.current != null && e?.chartX != null) {
+            dragDistance = Math.abs(e.chartX - mouseDownPosRef.current);
+          }
+
           if (e?.activeLabel != null && highlightStart === e.activeLabel) {
             // If it's just a click, don't zoom
             setHighlightStart(undefined);
             setHighlightEnd(undefined);
-          }
-          if (highlightStart != null && highlightEnd != null) {
+            mouseDownPosRef.current = null;
+          } else if (
+            highlightStart != null &&
+            highlightEnd != null &&
+            dragDistance >= MIN_DRAG_DISTANCE
+          ) {
             try {
               onTimeRangeSelect?.(
                 new Date(
@@ -513,6 +531,12 @@ export const MemoChart = memo(function MemoChart({
             }
             setHighlightStart(undefined);
             setHighlightEnd(undefined);
+            mouseDownPosRef.current = null;
+          } else {
+            // Drag was too short, clear the highlight
+            setHighlightStart(undefined);
+            setHighlightEnd(undefined);
+            mouseDownPosRef.current = null;
           }
         }}
         onClick={(state, e) => {
@@ -530,6 +554,7 @@ export const MemoChart = memo(function MemoChart({
               activeLabel: state.activeLabel,
               xPerc: state.chartX / sizeRef.current[0],
               yPerc: state.chartY / sizeRef.current[1],
+              activePayload: state.activePayload,
             });
           } else {
             // We clicked on the chart but outside of a line
@@ -580,19 +605,20 @@ export const MemoChart = memo(function MemoChart({
           tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
         />
         {lines}
-        <Tooltip
-          content={
-            <HDXLineChartTooltip
-              numberFormat={numberFormat}
-              lineDataMap={lineDataMap}
-              previousPeriodOffset={previousPeriodOffset}
-            />
-          }
-          wrapperStyle={{
-            zIndex: 1,
-          }}
-          allowEscapeViewBox={{ y: true }}
-        />
+        {isClickActive == null && (
+          <Tooltip
+            content={
+              <HDXLineChartTooltip
+                numberFormat={numberFormat}
+                lineDataMap={lineDataMap}
+                previousPeriodOffset={previousPeriodOffset}
+              />
+            }
+            wrapperStyle={{
+              zIndex: 1,
+            }}
+          />
+        )}
         {referenceLines}
         {highlightStart && highlightEnd ? (
           <ReferenceArea
