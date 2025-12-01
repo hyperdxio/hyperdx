@@ -34,7 +34,7 @@ import {
   convertGranularityToSeconds,
   formatResponseForTimeChart,
   getPreviousDateRange,
-  getPreviousPeriodOffset,
+  getPreviousPeriodOffsetSeconds,
   PreviousPeriodSuffix,
   useTimeChartSettings,
 } from '@/ChartUtils';
@@ -251,9 +251,9 @@ function DBTimeChartComponent({
     };
   }, [queriedConfig, dateRange]);
 
-  const previousPeriodOffset = useMemo(() => {
+  const previousPeriodOffsetSeconds = useMemo(() => {
     return config.compareToPreviousPeriod
-      ? getPreviousPeriodOffset(dateRange)
+      ? getPreviousPeriodOffsetSeconds(dateRange)
       : undefined;
   }, [dateRange, config.compareToPreviousPeriod]);
 
@@ -649,7 +649,7 @@ function DBTimeChartComponent({
           setIsClickActive={setActiveClickPayloadIfSourceAvailable}
           showLegend={showLegend}
           timestampKey={timestampColumn?.name}
-          previousPeriodOffset={previousPeriodOffset}
+          previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
         />
       </div>
     </div>

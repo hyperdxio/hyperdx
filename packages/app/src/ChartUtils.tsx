@@ -534,15 +534,20 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
-export function getPreviousPeriodOffset(dateRange: [Date, Date]): number {
+export function getPreviousPeriodOffsetSeconds(
+  dateRange: [Date, Date],
+): number {
   const [start, end] = dateRange;
-  return end.getTime() - start.getTime();
+  return Math.round((end.getTime() - start.getTime()) / 1000);
 }
 
 export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
   const [start, end] = currentRange;
-  const offset = getPreviousPeriodOffset(currentRange);
-  return [new Date(start.getTime() - offset), new Date(end.getTime() - offset)];
+  const offsetSeconds = getPreviousPeriodOffsetSeconds(currentRange);
+  return [
+    new Date(start.getTime() - offsetSeconds * 1000),
+    new Date(end.getTime() - offsetSeconds * 1000),
+  ];
 }
 
 export interface LineData {
@@ -633,10 +638,10 @@ function addResponseToFormattedData({
     const date = new Date(row[timestampColumn.name]);
 
     // Previous period data needs to be shifted forward to align with current period
-    const offset = isPreviousPeriod
-      ? getPreviousPeriodOffset(currentPeriodDateRange)
+    const offsetSeconds = isPreviousPeriod
+      ? getPreviousPeriodOffsetSeconds(currentPeriodDateRange)
       : 0;
-    const ts = Math.round((date.getTime() + offset) / 1000);
+    const ts = Math.round(date.getTime() / 1000 + offsetSeconds);
 
     for (const valueColumn of valueColumns) {
       let tsBucket = tsBucketMap.get(ts);

@@ -117,7 +117,7 @@ export const TooltipItem = memo(
 
 type HDXLineChartTooltipProps = {
   lineDataMap: { [keyName: string]: LineData };
-  previousPeriodOffset?: number;
+  previousPeriodOffsetSeconds?: number;
   numberFormat?: NumberFormat;
 } & Record<string, any>;
 
@@ -129,7 +129,7 @@ const HDXLineChartTooltip = withErrorBoundary(
       label,
       numberFormat,
       lineDataMap,
-      previousPeriodOffset,
+      previousPeriodOffsetSeconds,
     } = props;
     const typedPayload = payload as TooltipPayload[];
 
@@ -143,10 +143,12 @@ const HDXLineChartTooltip = withErrorBoundary(
         <div className={styles.chartTooltip}>
           <div className={styles.chartTooltipHeader}>
             <FormatTime value={label * 1000} />
-            {previousPeriodOffset != null && (
+            {previousPeriodOffsetSeconds != null && (
               <>
                 {' (vs '}
-                <FormatTime value={label * 1000 - previousPeriodOffset} />
+                <FormatTime
+                  value={(label - previousPeriodOffsetSeconds) * 1000}
+                />
                 {')'}
               </>
             )}
@@ -332,7 +334,7 @@ export const MemoChart = memo(function MemoChart({
   timestampKey = 'ts_bucket',
   onTimeRangeSelect,
   showLegend = true,
-  previousPeriodOffset,
+  previousPeriodOffsetSeconds,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -347,7 +349,7 @@ export const MemoChart = memo(function MemoChart({
   timestampKey?: string;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   showLegend?: boolean;
-  previousPeriodOffset?: number;
+  previousPeriodOffsetSeconds?: number;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -611,7 +613,7 @@ export const MemoChart = memo(function MemoChart({
               <HDXLineChartTooltip
                 numberFormat={numberFormat}
                 lineDataMap={lineDataMap}
-                previousPeriodOffset={previousPeriodOffset}
+                previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
               />
             }
             wrapperStyle={{
