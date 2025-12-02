@@ -79,4 +79,13 @@ ORDER BY
   toStartOfInterval (toDateTime (TimestampTime), INTERVAL 6 hour) AS \`__hdx_time_bucket\``;
     expect(format(input)).toBe(expected);
   });
+
+  test('should work with mod operator', () => {
+    const input = 'SELECT 10 % 2 FROM table';
+    const expected = `SELECT
+  10 % 2
+FROM
+  table`;
+    expect(format(input)).toBe(expected);
+  });
 });

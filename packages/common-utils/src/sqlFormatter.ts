@@ -449,7 +449,7 @@ const clickhouse: DialectOptions = {
     identTypes: [`""-qq`, '``'],
     extraParens: ['[]'],
     paramTypes: { positional: true },
-    operators: ['||'],
+    operators: ['||', '%'],
   },
   formatOptions: {
     onelineClauses: [...standardOnelineClauses, ...tabularOnelineClauses],
