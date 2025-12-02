@@ -149,7 +149,7 @@ const Tile = forwardRef(
           .getElementById(`chart-${chart.id}`)
           ?.scrollIntoView({ behavior: 'smooth' });
       }
-    }, []);
+    }, [chart.id, isHighlighed]);
 
     const [queriedConfig, setQueriedConfig] = useState<
       ChartConfigWithDateRange | undefined
@@ -776,6 +776,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       where,
       whereLanguage,
       onTimeRangeSelect,
+      filterQueries,
     ],
   );
 

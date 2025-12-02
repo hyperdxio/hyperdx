@@ -531,6 +531,7 @@ export const RawLogTable = memo(
         expandedRows,
         toggleRowExpansion,
         showExpandButton,
+        aliasMap,
       ],
     );
 
@@ -617,7 +618,10 @@ export const RawLogTable = memo(
     const rowVirtualizer = useVirtualizer({
       count: _rows.length,
       // count: hasNextPage ? allRows.length + 1 : allRows.length,
-      getScrollElement: () => tableContainerRef.current,
+      getScrollElement: useCallback(
+        () => tableContainerRef.current,
+        [tableContainerRef],
+      ),
       estimateSize: useCallback(() => 23, []),
       overscan: 30,
       paddingEnd: 20,
@@ -896,6 +900,7 @@ export const RawLogTable = memo(
                               >
                                 <div className={styles.fieldTextContainer}>
                                   <DBRowTableFieldWithPopover
+                                    key={cell.id}
                                     cellValue={cellValue}
                                     wrapLinesEnabled={wrapLinesEnabled}
                                     tableContainerRef={tableContainerRef}

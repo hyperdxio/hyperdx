@@ -192,6 +192,13 @@ const createStyleTheme = (allowMultiline: boolean = false) =>
     },
   });
 
+const cmBasicSetup = {
+  lineNumbers: false,
+  foldGutter: false,
+  highlightActiveLine: false,
+  highlightActiveLineGutter: false,
+};
+
 export default function SQLInlineEditor({
   tableConnection,
   tableConnections,
@@ -225,23 +232,21 @@ export default function SQLInlineEditor({
   // query search history
   const [queryHistory, setQueryHistory] = useQueryHistory(queryHistoryType);
 
-  const onSelectSearchHistory = (
-    view: EditorView,
-    from: number,
-    to: number,
-    q: string,
-  ) => {
-    // update history into search bar
-    view.dispatch({
-      changes: { from, to, insert: q },
-    });
-    // close history bar;
-    closeCompletion(view);
-    // update history order
-    setQueryHistory(q);
-    // execute search
-    if (onSubmit) onSubmit();
-  };
+  const onSelectSearchHistory = useCallback(
+    (view: EditorView, from: number, to: number, q: string) => {
+      // update history into search bar
+      view.dispatch({
+        changes: { from, to, insert: q },
+      });
+      // close history bar;
+      closeCompletion(view);
+      // update history order
+      setQueryHistory(q);
+      // execute search
+      if (onSubmit) onSubmit();
+    },
+    [onSubmit, setQueryHistory],
+  );
 
   const createHistoryList = useMemo(() => {
     return () => {
@@ -264,7 +269,7 @@ export default function SQLInlineEditor({
         }),
       };
     };
-  }, [queryHistory]);
+  }, [queryHistory, onSelectSearchHistory]);
 
   const [isFocused, setIsFocused] = useState(false);
 
@@ -304,7 +309,12 @@ export default function SQLInlineEditor({
         ),
       });
     },
-    [filteredFields, additionalSuggestions, queryHistory],
+    [
+      filteredFields,
+      additionalSuggestions,
+      createHistoryList,
+      disableKeywordAutocomplete,
+    ],
   );
 
   useEffect(() => {
@@ -352,6 +362,54 @@ export default function SQLInlineEditor({
     ];
   }, [parentRef]);
 
+  const cmExtensions = useMemo(
+    () => [
+      ...tooltipExt,
+      createStyleTheme(allowMultiline),
+      ...(allowMultiline ? [EditorView.lineWrapping] : []),
+      compartmentRef.current.of(
+        sql({
+          upperCaseKeywords: true,
+        }),
+      ),
+      Prec.highest(
+        keymap.of([
+          {
+            key: 'Enter',
+            run: view => {
+              if (onSubmit == null) {
+                return false;
+              }
+              if (queryHistoryType && ref?.current?.view) {
+                setQueryHistory(ref?.current?.view.state.doc.toString());
+              }
+              onSubmit();
+              return true;
+            },
+          },
+          ...(allowMultiline
+            ? [
+                {
+                  key: 'Shift-Enter',
+                  run: () => {
+                    // Allow default behavior (insert new line)
+                    return false;
+                  },
+                },
+              ]
+            : []),
+        ]),
+      ),
+      keymap.of([
+        {
+          key: 'Tab',
+          run: acceptCompletion,
+        },
+      ]),
+    ],
+    [allowMultiline, onSubmit, queryHistoryType, setQueryHistory, tooltipExt],
+  );
+
   return (
     <Paper
       flex="auto"
@@ -390,65 +448,15 @@ export default function SQLInlineEditor({
           value={value}
           onChange={onChange}
           theme={colorScheme === 'dark' ? 'dark' : 'light'}
-          onFocus={() => {
+          onFocus={useCallback(() => {
             setIsFocused(true);
-          }}
-          onBlur={() => {
+          }, [setIsFocused])}
+          onBlur={useCallback(() => {
             setIsFocused(false);
-          }}
-          extensions={[
-            ...tooltipExt,
-            createStyleTheme(allowMultiline),
-            ...(allowMultiline ? [EditorView.lineWrapping] : []),
-            compartmentRef.current.of(
-              sql({
-                upperCaseKeywords: true,
-              }),
-            ),
-            Prec.highest(
-              keymap.of([
-                {
-                  key: 'Enter',
-                  run: view => {
-                    if (onSubmit == null) {
-                      return false;
-                    }
-                    if (queryHistoryType && ref?.current?.view) {
-                      setQueryHistory(ref?.current?.view.state.doc.toString());
-                    }
-                    onSubmit();
-                    return true;
-                  },
-                },
-                ...(allowMultiline
-                  ? [
-                      {
-                        key: 'Shift-Enter',
-                        run: () => {
-                          // Allow default behavior (insert new line)
-                          return false;
-                        },
-                      },
-                    ]
-                  : []),
-              ]),
-            ),
-            keymap.of([
-              {
-                key: 'Tab',
-                run: acceptCompletion,
-              },
-            ]),
-          ]}
-          onCreateEditor={view => {
-            updateAutocompleteColumns(view);
-          }}
-          basicSetup={{
-            lineNumbers: false,
-            foldGutter: false,
-            highlightActiveLine: false,
-            highlightActiveLineGutter: false,
-          }}
+          }, [setIsFocused])}
+          extensions={cmExtensions}
+          onCreateEditor={updateAutocompleteColumns}
+          basicSetup={cmBasicSetup}
           placeholder={placeholder}
           onClick={() => {
             if (ref?.current?.view) {
