@@ -239,6 +239,10 @@ export default function ContextSubpanel({
     originalLanguage,
     newDateRange,
     contextBy,
+    source.connection,
+    source.defaultTableSelectExpression,
+    source.from,
+    source.timestampValueExpression,
   ]);
 
   return (

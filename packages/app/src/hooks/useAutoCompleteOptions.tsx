@@ -173,7 +173,7 @@ export function useAutoCompleteOptions(
         });
       });
     return output;
-  }, [fieldCompleteOptions, keyVals, searchField]);
+  }, [fieldCompleteOptions, keyVals, searchField, formatter]);
 
   // combine all autocomplete options
   return useMemo(() => {

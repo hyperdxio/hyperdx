@@ -363,7 +363,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     isLoading: isLogViewsLoading,
     refetch: refetchLogViews,
   } = useSavedSearches();
-  const logViews = logViewsData ?? [];
+  const logViews = useMemo(() => logViewsData ?? [], [logViewsData]);
 
   const updateDashboard = useUpdateDashboard();
   const updateLogView = useUpdateSavedSearch();
@@ -373,7 +373,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     isLoading: isDashboardsLoading,
     refetch: refetchDashboards,
   } = useDashboards();
-  const dashboards = dashboardsData ?? [];
+  const dashboards = useMemo(() => dashboardsData ?? [], [dashboardsData]);
 
   const router = useRouter();
   const { pathname, query } = router;

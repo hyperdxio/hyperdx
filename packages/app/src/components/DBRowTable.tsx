@@ -531,6 +531,7 @@ export const RawLogTable = memo(
         expandedRows,
         toggleRowExpansion,
         showExpandButton,
+        aliasMap,
       ],
     );
 

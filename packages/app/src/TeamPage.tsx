@@ -840,7 +840,7 @@ function TeamNameSection() {
         },
       );
     },
-    [refetchTeam, setTeamName, team?.name],
+    [refetchTeam, setTeamName],
   );
   return (
     <Box id="team_name">

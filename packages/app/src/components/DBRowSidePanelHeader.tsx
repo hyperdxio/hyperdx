@@ -151,27 +151,28 @@ export default function DBRowSidePanelHeader({
     [bodyExpanded, mainContent],
   );
 
-  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerElement, setHeaderElement] = useState<HTMLDivElement | null>(
+    null,
+  );
   const [headerHeight, setHeaderHeight] = useState(0);
   useEffect(() => {
-    if (!headerRef.current) return;
-    const el = headerRef.current;
+    if (!headerElement) return;
 
     const updateHeight = () => {
-      const newHeight = el.offsetHeight;
+      const newHeight = headerElement.offsetHeight;
       setHeaderHeight(newHeight);
     };
     updateHeight();
 
     // Set up a resize observer to detect height changes
     const resizeObserver = new ResizeObserver(updateHeight);
-    resizeObserver.observe(el);
+    resizeObserver.observe(headerElement);
 
     // Clean up the observer on component unmount
     return () => {
       resizeObserver.disconnect();
     };
-  }, [headerRef.current, setHeaderHeight]);
+  }, [headerElement]);
 
   const { userPreferences, setUserPreference } = useUserPreferences();
   const { expandSidebarHeader } = userPreferences;
@@ -221,7 +222,7 @@ export default function DBRowSidePanelHeader({
             overflow: 'auto',
             overflowWrap: 'break-word',
           }}
-          ref={headerRef}
+          ref={setHeaderElement}
         >
           <Flex justify="space-between" mb="xs">
             <Text size="xs">{mainContentHeader}</Text>

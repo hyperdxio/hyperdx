@@ -225,23 +225,21 @@ export default function SQLInlineEditor({
   // query search history
   const [queryHistory, setQueryHistory] = useQueryHistory(queryHistoryType);
 
-  const onSelectSearchHistory = (
-    view: EditorView,
-    from: number,
-    to: number,
-    q: string,
-  ) => {
-    // update history into search bar
-    view.dispatch({
-      changes: { from, to, insert: q },
-    });
-    // close history bar;
-    closeCompletion(view);
-    // update history order
-    setQueryHistory(q);
-    // execute search
-    if (onSubmit) onSubmit();
-  };
+  const onSelectSearchHistory = useCallback(
+    (view: EditorView, from: number, to: number, q: string) => {
+      // update history into search bar
+      view.dispatch({
+        changes: { from, to, insert: q },
+      });
+      // close history bar;
+      closeCompletion(view);
+      // update history order
+      setQueryHistory(q);
+      // execute search
+      if (onSubmit) onSubmit();
+    },
+    [onSubmit, setQueryHistory],
+  );
 
   const createHistoryList = useMemo(() => {
     return () => {
@@ -264,7 +262,7 @@ export default function SQLInlineEditor({
         }),
       };
     };
-  }, [queryHistory]);
+  }, [queryHistory, onSelectSearchHistory]);
 
   const [isFocused, setIsFocused] = useState(false);
 
@@ -304,7 +302,12 @@ export default function SQLInlineEditor({
         ),
       });
     },
-    [filteredFields, additionalSuggestions, queryHistory],
+    [
+      filteredFields,
+      additionalSuggestions,
+      createHistoryList,
+      disableKeywordAutocomplete,
+    ],
   );
 
   useEffect(() => {

@@ -114,7 +114,7 @@ export const SessionEventList = ({
     });
   const formatTime = useFormatTime();
 
-  const events = data?.data ?? [];
+  const events = React.useMemo(() => data?.data ?? [], [data?.data]);
 
   const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
 

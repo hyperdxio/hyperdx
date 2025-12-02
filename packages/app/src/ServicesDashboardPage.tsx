@@ -906,7 +906,13 @@ function ServicesDashboardPage() {
     ) {
       onSubmit();
     }
-  }, [service, sourceId]);
+  }, [
+    service,
+    sourceId,
+    appliedConfig.service,
+    appliedConfig.source,
+    onSubmit,
+  ]);
 
   return (
     <Box p="sm">

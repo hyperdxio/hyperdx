@@ -306,7 +306,7 @@ export default function SessionsPage() {
     if (sourceId !== appliedConfig.sessionSource) {
       onSubmit();
     }
-  }, [sourceId]);
+  }, [sourceId, appliedConfig.sessionSource, onSubmit]);
 
   // FIXME: fix the url
   const generateSearchUrl = useCallback(

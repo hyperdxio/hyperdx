@@ -1,7 +1,12 @@
 module.exports = {
   root: true,
   parser: '@typescript-eslint/parser',
-  plugins: ['simple-import-sort', '@typescript-eslint', 'prettier'],
+  plugins: [
+    'simple-import-sort',
+    '@typescript-eslint',
+    'prettier',
+    'react-hooks',
+  ],
   parserOptions: {
     tsconfigRootDir: __dirname,
     project: ['./tsconfig.json'],
@@ -23,6 +28,7 @@ module.exports = {
     'react/display-name': 'off',
     'simple-import-sort/exports': 'error',
     'simple-import-sort/imports': 'error',
+    'react-hooks/exhaustive-deps': 'error',
     'no-console': ['error', { allow: ['warn', 'error'] }],
   },
   overrides: [

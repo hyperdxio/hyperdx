@@ -1133,29 +1133,32 @@ export function TableSourceForm({
   }, [watch, kind, currentSourceId, sources, updateSource]);
 
   const sourceFormSchema = sourceSchemaWithout({ id: true });
-  const handleError = (error: z.ZodError<TSourceUnion>) => {
-    const errors = error.errors;
-    for (const err of errors) {
-      const errorPath: string = err.path.join('.');
-      // TODO: HDX-1768 get rid of this type assertion if possible
-      setError(errorPath as any, { ...err });
-    }
-    notifications.show({
-      color: 'red',
-      message: (
-        <Stack>
-          <Text size="sm">
-            <b>Failed to create source</b>
-          </Text>
-          {errors.map((err, i) => (
-            <Text key={i} size="sm">
-              ✖ {err.message}
+  const handleError = useCallback(
+    (error: z.ZodError<TSourceUnion>) => {
+      const errors = error.errors;
+      for (const err of errors) {
+        const errorPath: string = err.path.join('.');
+        // TODO: HDX-1768 get rid of this type assertion if possible
+        setError(errorPath as any, { ...err });
+      }
+      notifications.show({
+        color: 'red',
+        message: (
+          <Stack>
+            <Text size="sm">
+              <b>Failed to create source</b>
             </Text>
-          ))}
-        </Stack>
-      ),
-    });
-  };
+            {errors.map((err, i) => (
+              <Text key={i} size="sm">
+                ✖ {err.message}
+              </Text>
+            ))}
+          </Stack>
+        ),
+      });
+    },
+    [setError],
+  );
 
   const _onCreate = useCallback(() => {
     clearErrors();
@@ -1215,11 +1218,12 @@ export function TableSourceForm({
       );
     })();
   }, [
+    clearErrors,
+    handleError,
+    sourceFormSchema,
     handleSubmit,
     createSource,
     onCreate,
-    kind,
-    formState,
     sources,
     updateSource,
   ]);
@@ -1252,7 +1256,14 @@ export function TableSourceForm({
         },
       );
     })();
-  }, [handleSubmit, updateSource, onSave]);
+  }, [
+    handleSubmit,
+    updateSource,
+    onSave,
+    clearErrors,
+    handleError,
+    sourceFormSchema,
+  ]);
 
   const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
   const connectionId = watch(`connection`);
