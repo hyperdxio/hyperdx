@@ -268,7 +268,11 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       try {
         // Allow value to be a function so we have same API as useState
         // Save state
-        setStoredValue(value);
+        setStoredValue(prev => {
+          const newValue = value instanceof Function ? value(prev) : value;
+          window.localStorage.setItem(key, JSON.stringify(newValue));
+          return newValue;
+        });
         // Fire off event so other localStorage hooks listening with the same key
         // will update
         const event = new CustomEvent<CustomStorageChangeDetail>(
@@ -289,10 +293,6 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     },
     [instanceId, key],
   );
-  useEffect(() => {
-    // Save to local storage
-    window.localStorage.setItem(key, JSON.stringify(storedValue));
-  }, [key, storedValue]);
 
   return [storedValue, setValue] as const;
 }
