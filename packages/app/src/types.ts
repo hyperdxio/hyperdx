@@ -12,6 +12,22 @@ import {
 
 export type NumberFormat = _NumberFormat;
 
+export type Anomaly = {
+  _id: string;
+  team: string;
+  serviceName: string;
+  metric: string;
+  value: number;
+  baseline: number;
+  deviation: number;
+  startTime: string;
+  endTime: string;
+  status: 'open' | 'resolved' | 'ignored';
+  rcaAnalysis?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Team = {
   allowedAuthMethods: any[];
   apiKey?: string;

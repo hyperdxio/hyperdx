@@ -7,7 +7,7 @@ import type { UseQueryOptions } from '@tanstack/react-query';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
-import type { AlertsPageItem } from './types';
+import type { AlertsPageItem, Anomaly } from './types';
 
 type ServicesResponse = {
   data: Record<
@@ -483,6 +483,150 @@ const api = {
             password,
           },
         }).json() as Promise<{ success: boolean; error?: string }>,
+    });
+  },
+  // SLO hooks
+  useSLOs(options?: UseQueryOptions<any, Error>) {
+    return useQuery({
+      queryKey: ['slos'],
+      queryFn: () => hdxServer('slos', { method: 'GET' }).json(),
+      ...options,
+    });
+  },
+  useSLO(sloId: string, options?: UseQueryOptions<any, Error>) {
+    return useQuery({
+      queryKey: ['slos', sloId],
+      queryFn: () => hdxServer(`slos/${sloId}`, { method: 'GET' }).json(),
+      ...options,
+    });
+  },
+  useSLOStatus(sloId: string, options?: UseQueryOptions<any, Error>) {
+    return useQuery({
+      queryKey: ['slo-status', sloId],
+      queryFn: () =>
+        hdxServer(`slos/${sloId}/status`, { method: 'GET' }).json(),
+      ...options,
+    });
+  },
+  useSLOBurnRate(
+    sloId: string,
+    timeStart: Date,
+    timeEnd: Date,
+    options?: UseQueryOptions<any, Error>,
+  ) {
+    return useQuery({
+      queryKey: [
+        'slo-burn-rate',
+        sloId,
+        timeStart?.getTime(),
+        timeEnd?.getTime(),
+      ],
+      queryFn: () =>
+        hdxServer(`slos/${sloId}/burn-rate`, {
+          method: 'GET',
+          searchParams: {
+            timeStart: timeStart.toISOString(),
+            timeEnd: timeEnd.toISOString(),
+          },
+        }).json(),
+      ...options,
+    });
+  },
+  useCreateSLO() {
+    return useMutation({
+      mutationFn: async (slo: any) =>
+        hdxServer('slos', {
+          method: 'POST',
+          json: slo,
+        }).json(),
+    });
+  },
+  useUpdateSLO() {
+    return useMutation({
+      mutationFn: async ({ id, ...slo }: { id: string; [key: string]: any }) =>
+        hdxServer(`slos/${id}`, {
+          method: 'PATCH',
+          json: slo,
+        }).json(),
+    });
+  },
+  useDeleteSLO() {
+    return useMutation({
+      mutationFn: async (sloId: string) => {
+        await hdxServer(`slos/${sloId}`, {
+          method: 'DELETE',
+        }).text();
+      },
+    });
+  },
+  useSLOBubbleUp(
+    sloId: string,
+    timeStart: Date,
+    timeEnd: Date,
+    options?: UseQueryOptions<any, Error>,
+  ) {
+    return useQuery({
+      queryKey: [
+        'slo-bubble-up',
+        sloId,
+        timeStart?.getTime(),
+        timeEnd?.getTime(),
+      ],
+      queryFn: () =>
+        hdxServer(`slos/${sloId}/bubbleup`, {
+          method: 'POST',
+          json: {
+            timeStart: timeStart.toISOString(),
+            timeEnd: timeEnd.toISOString(),
+          },
+        }).json(),
+      enabled: !!sloId && !!timeStart && !!timeEnd,
+      ...options,
+    });
+  },
+  useAnomalies(
+    searchParams?: {
+      serviceName?: string;
+      status?: 'open' | 'resolved' | 'ignored';
+      limit?: number;
+      offset?: number;
+    },
+    options?: UseQueryOptions<any, Error>,
+  ) {
+    return useQuery({
+      queryKey: ['anomalies', searchParams],
+      queryFn: () =>
+        hdxServer('anomalies', {
+          method: 'GET',
+          searchParams: searchParams as any,
+        }).json<{ data: Anomaly[]; meta: any }>(),
+      ...options,
+    });
+  },
+  useAnomaly(id: string, options?: UseQueryOptions<any, Error>) {
+    return useQuery({
+      queryKey: ['anomaly', id],
+      queryFn: () =>
+        hdxServer(`anomalies/${id}`, {
+          method: 'GET',
+        }).json<{ data: Anomaly }>(),
+      enabled: !!id,
+      ...options,
+    });
+  },
+  useUpdateAnomaly() {
+    return useMutation({
+      mutationFn: async ({
+        id,
+        status,
+      }: {
+        id: string;
+        status: 'open' | 'resolved' | 'ignored';
+      }) =>
+        hdxServer(`anomalies/${id}`, {
+          method: 'PATCH',
+          json: { status },
+        }).json(),
     });
   },
 };

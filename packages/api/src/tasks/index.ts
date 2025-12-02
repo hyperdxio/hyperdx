@@ -11,6 +11,7 @@ import {
   timeExec,
 } from '@/tasks/metrics';
 import PingPongTask from '@/tasks/pingPongTask';
+import RunSLOChecksTask from '@/tasks/runSLOChecks';
 import { asTaskArgs, HdxTask, TaskArgs, TaskName } from '@/tasks/types';
 import logger from '@/utils/logger';
 
@@ -23,8 +24,11 @@ function createTask(argv: TaskArgs): HdxTask<TaskArgs> {
       return new CheckAlertTask(argv);
     case TaskName.PING_PONG:
       return new PingPongTask(argv);
+    case TaskName.CHECK_SLOS:
+      return new RunSLOChecksTask(argv);
+    // If the taskName is not recognized, throw an error
     default:
-      throw new Error(`Unknown task name ${taskName}`);
+      throw new Error(`Unknown task name ${taskName as string}`);
   }
 }
 

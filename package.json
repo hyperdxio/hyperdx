@@ -42,7 +42,9 @@
     "dev:compose": "docker compose -f docker-compose.dev.yml",
     "lint": "npx nx run-many -t ci:lint",
     "version": "make version",
-    "release": "npx changeset tag && npx changeset publish"
+    "release": "npx changeset tag && npx changeset publish",
+    "slo-task": "npx concurrently -k -n 'SLO-TASK' -c 'green.bold,blue.bold,yellow.bold,cyan.bold,magenta' 'nx run @hyperdx/api:dev-task check-slos'",
+    "anomaly-task": "npx concurrently -k -n 'ANOMALY-TASK' -c 'green.bold,blue.bold,yellow.bold,cyan.bold,magenta' 'nx run @hyperdx/api:dev-task detect-anomalies'"
   },
   "lint-staged": {
     "packages/api/src/routers/external-api/**/*.ts": [

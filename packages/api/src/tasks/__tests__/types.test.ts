@@ -291,4 +291,19 @@ describe('asTaskArgs', () => {
       expect('provider' in result).toBe(false);
     });
   });
+
+  describe('check-slos task', () => {
+    it('should accept check-slos task', () => {
+      const validArgs = {
+        _: ['check-slos'],
+      };
+
+      const result = asTaskArgs(validArgs);
+
+      expect(result).toEqual({
+        taskName: 'check-slos',
+      });
+      expect(result.taskName).toBe('check-slos');
+    });
+  });
 });
