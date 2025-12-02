@@ -22,6 +22,7 @@ import {
   Group,
   Input,
   Loader,
+  Overlay,
   ScrollArea,
 } from '@mantine/core';
 import { useDisclosure, useLocalStorage } from '@mantine/hooks';
@@ -405,8 +406,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     defaultValue: false,
   });
 
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
   const isSmallScreen = (width ?? 1000) < 900;
-  const isCollapsed = isSmallScreen || isPreferCollapsed;
+  const isCollapsed = isSmallScreen ? !isMobileNavOpen : isPreferCollapsed;
 
   const navWidth = isCollapsed ? 50 : 230;
   const navHeaderStyle = isCollapsed ? undefined : { height: 58 };
@@ -416,6 +419,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       route: pathname,
       query: JSON.stringify(query),
     });
+    // Close mobile nav on navigation
+    if (isSmallScreen && isMobileNavOpen) {
+      setIsMobileNavOpen(false);
+    }
   }, [pathname, query]);
 
   useEffect(() => {
@@ -597,11 +604,20 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         show={showInstallInstructions}
         onHide={closeInstallInstructions}
       />
+      {isSmallScreen && isMobileNavOpen && (
+        <Overlay
+          color="#000"
+          backgroundOpacity={0.55}
+          onClick={() => setIsMobileNavOpen(false)}
+          style={{ zIndex: 99 }}
+        />
+      )}
       <div
         className={`${styles.wrapper} inter`}
         style={{
           position: fixed ? 'fixed' : 'initial',
           letterSpacing: '0.05em',
+          zIndex: isSmallScreen && isMobileNavOpen ? 100 : undefined,
         }}
       >
         <div style={{ width: navWidth }}>
@@ -637,7 +653,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               className={isCollapsed ? 'mt-4' : ''}
               style={{ marginRight: -4, marginLeft: -4 }}
               title="Collapse/Expand Navigation"
-              onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
+              onClick={() => {
+                if (isSmallScreen) {
+                  setIsMobileNavOpen((v: boolean) => !v);
+                } else {
+                  setIsPreferCollapsed((v: boolean) => !v);
+                }
+              }}
             >
               <IconLayoutSidebarLeftCollapse size={16} />
             </ActionIcon>
