@@ -402,12 +402,15 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   const isSmallScreen = (width ?? 1000) < 900;
 
-  const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<boolean>({
+  const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<
+    boolean | undefined
+  >({
     key: 'isNavCollapsed',
-    defaultValue: isSmallScreen,
+    defaultValue: undefined,
   });
 
-  const isCollapsed = isPreferCollapsed;
+  const isCollapsed =
+    isPreferCollapsed != null ? isPreferCollapsed : isSmallScreen || false;
 
   const navWidth = isCollapsed ? 50 : 230;
   const navHeaderStyle = isCollapsed ? undefined : { height: 58 };
