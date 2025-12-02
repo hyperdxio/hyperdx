@@ -11,7 +11,7 @@ jest.mock('@/api', () => ({
   useMe: () => ({
     data: {
       team: {
-        queryTimeout: 30000,
+        queryTimeout: 30,
       },
     },
   }),
