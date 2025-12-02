@@ -618,7 +618,10 @@ export const RawLogTable = memo(
     const rowVirtualizer = useVirtualizer({
       count: _rows.length,
       // count: hasNextPage ? allRows.length + 1 : allRows.length,
-      getScrollElement: useCallback(() => tableContainerRef.current, []),
+      getScrollElement: useCallback(
+        () => tableContainerRef.current,
+        [tableContainerRef],
+      ),
       estimateSize: useCallback(() => 23, []),
       overscan: 30,
       paddingEnd: 20,

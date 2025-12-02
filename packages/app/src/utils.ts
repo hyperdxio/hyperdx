@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
-import type { MutableRefObject } from 'react';
+import type { MutableRefObject, SetStateAction } from 'react';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 
 import { dateRangeToString } from './timeQuery';
@@ -261,18 +261,14 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
   // Return a wrapped version of useState's setter function that ...
   // ... persists the new value to localStorage.
   const setValue = useCallback(
-    (value: T | ((prevState: T) => T)) => {
+    (value: SetStateAction<T>) => {
       if (typeof window === 'undefined') {
         return;
       }
       try {
         // Allow value to be a function so we have same API as useState
-        const valueToStore =
-          value instanceof Function ? value(storedValue) : value;
         // Save state
-        setStoredValue(valueToStore);
-        // Save to local storage
-        window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        setStoredValue(value);
         // Fire off event so other localStorage hooks listening with the same key
         // will update
         const event = new CustomEvent<CustomStorageChangeDetail>(
@@ -291,8 +287,13 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
         console.log(error);
       }
     },
-    [instanceId, key, storedValue],
+    [instanceId, key],
   );
+  useEffect(() => {
+    // Save to local storage
+    window.localStorage.setItem(key, JSON.stringify(storedValue));
+  }, [key, storedValue]);
+
   return [storedValue, setValue] as const;
 }
 
