@@ -641,7 +641,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               className={isCollapsed ? 'mt-4' : ''}
               style={{ marginRight: -4, marginLeft: -4 }}
               title="Collapse/Expand Navigation"
-              onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
+              onClick={() =>
+                setIsPreferCollapsed((v: boolean | undefined) => !v)
+              }
             >
               <IconLayoutSidebarLeftCollapse size={16} />
             </ActionIcon>
