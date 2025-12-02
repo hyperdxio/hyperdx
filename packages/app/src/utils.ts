@@ -260,55 +260,61 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
 
   // Return a wrapped version of useState's setter function that ...
   // ... persists the new value to localStorage.
-  const setValue = (value: T | ((prevState: T) => T)) => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    try {
-      // Allow value to be a function so we have same API as useState
-      const valueToStore =
-        value instanceof Function ? value(storedValue) : value;
-      // Save state
-      setStoredValue(valueToStore);
-      // Save to local storage
-      window.localStorage.setItem(key, JSON.stringify(valueToStore));
-      // Fire off event so other localStorage hooks listening with the same key
-      // will update
-      const event = new CustomEvent<CustomStorageChangeDetail>(
-        'customStorage',
-        {
-          detail: {
-            key,
-            instanceId,
+  const setValue = useCallback(
+    (value: T | ((prevState: T) => T)) => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+      try {
+        // Allow value to be a function so we have same API as useState
+        const valueToStore =
+          value instanceof Function ? value(storedValue) : value;
+        // Save state
+        setStoredValue(valueToStore);
+        // Save to local storage
+        window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        // Fire off event so other localStorage hooks listening with the same key
+        // will update
+        const event = new CustomEvent<CustomStorageChangeDetail>(
+          'customStorage',
+          {
+            detail: {
+              key,
+              instanceId,
+            },
           },
-        },
-      );
-      window.dispatchEvent(event);
-    } catch (error) {
-      // A more advanced implementation would handle the error case
-      // eslint-disable-next-line no-console
-      console.log(error);
-    }
-  };
+        );
+        window.dispatchEvent(event);
+      } catch (error) {
+        // A more advanced implementation would handle the error case
+        // eslint-disable-next-line no-console
+        console.log(error);
+      }
+    },
+    [instanceId, key, storedValue],
+  );
   return [storedValue, setValue] as const;
 }
 
 export function useQueryHistory<T>(type: string | undefined) {
   const key = `${QUERY_LOCAL_STORAGE.KEY}.${type}`;
   const [queryHistory, _setQueryHistory] = useLocalStorage<string[]>(key, []);
-  const setQueryHistory = (query: string) => {
-    // do not set up anything if there is no type or empty query
-    try {
-      const trimmed = query.trim();
-      if (!type || !trimmed) return null;
-      const deduped = [trimmed, ...queryHistory.filter(q => q !== trimmed)];
-      const limited = deduped.slice(0, QUERY_LOCAL_STORAGE.LIMIT);
-      _setQueryHistory(limited);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.log(`Failed to cache query history, error ${e.message}`);
-    }
-  };
+  const setQueryHistory = useCallback(
+    (query: string) => {
+      // do not set up anything if there is no type or empty query
+      try {
+        const trimmed = query.trim();
+        if (!type || !trimmed) return null;
+        const deduped = [trimmed, ...queryHistory.filter(q => q !== trimmed)];
+        const limited = deduped.slice(0, QUERY_LOCAL_STORAGE.LIMIT);
+        _setQueryHistory(limited);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.log(`Failed to cache query history, error ${e.message}`);
+      }
+    },
+    [_setQueryHistory, queryHistory, type],
+  );
   return [queryHistory, setQueryHistory] as const;
 }
 
