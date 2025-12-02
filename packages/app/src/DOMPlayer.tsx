@@ -243,7 +243,7 @@ export default function DOMPlayer({
   }, [setPlayerTime]);
 
   const updatePlayerTimeRafRef = useRef(0);
-  const updatePlayerTime = () => {
+  const updatePlayerTime = useCallback(() => {
     if (
       replayer.current != null &&
       replayer.current.service.state.matches('playing')
@@ -257,7 +257,7 @@ export default function DOMPlayer({
     }
 
     updatePlayerTimeRafRef.current = requestAnimationFrame(updatePlayerTime);
-  };
+  }, []);
 
   // Update timestamp ui in timeline
   useEffect(() => {
@@ -265,7 +265,7 @@ export default function DOMPlayer({
     return () => {
       cancelAnimationFrame(updatePlayerTimeRafRef.current);
     };
-  }, []);
+  }, [updatePlayerTime]);
 
   // Manage playback pause/play state, rrweb only
   useEffect(() => {
@@ -398,6 +398,7 @@ export default function DOMPlayer({
     isInitialEventsLoaded,
     playerState,
     play,
+    debug,
   ]);
 
   // Set player to the correct time based on focus
@@ -440,7 +441,7 @@ export default function DOMPlayer({
       }
       abort();
     };
-  }, []);
+  }, [abort]);
 
   const isLoading = isInitialEventsLoaded === false && isSearchResultsFetching;
   // TODO: Handle when ts is set to a value that's outside of this session
