@@ -50,11 +50,7 @@ export const DBRowTableFieldWithPopover = ({
 
   // Check if we have both the column name and filter function available
   // Only show filter for ServiceName and SeverityText
-  const canFilter =
-    columnName &&
-    (columnName === 'ServiceName' || columnName === 'SeverityText') &&
-    onPropertyAddClick &&
-    cellValue != null;
+  const canFilter = columnName && onPropertyAddClick && cellValue != null;
 
   const handleMouseEnter = () => {
     if (hoverDisabled) return;
