@@ -154,7 +154,9 @@ function SearchInput({
       data-testid="nav-search-input"
       placeholder={placeholder}
       value={value}
-      onChange={e => onChange(e.currentTarget.value)}
+      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+        onChange(e.currentTarget.value)
+      }
       leftSection={<i className="bi bi-search fs-8 ps-1 " />}
       onKeyDown={handleKeyDown}
       rightSection={

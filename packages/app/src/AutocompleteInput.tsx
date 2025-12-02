@@ -26,7 +26,7 @@ export default function AutocompleteInput({
   queryHistoryType,
   'data-testid': dataTestId,
 }: {
-  inputRef: React.RefObject<HTMLTextAreaElement>;
+  inputRef: React.RefObject<HTMLTextAreaElement | null>;
   value?: string;
   onChange: (value: string) => void;
   onSubmit?: () => void;

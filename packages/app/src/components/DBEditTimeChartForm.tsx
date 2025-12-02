@@ -18,9 +18,11 @@ import {
   DateRange,
   DisplayType,
   Filter,
+  MetricsDataType,
   SavedChartConfig,
   SelectList,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -68,6 +70,7 @@ import {
 } from '@/utils/alerts';
 
 import HDXMarkdownChart from '../HDXMarkdownChart';
+import type { NumberFormat } from '../types';
 
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';
@@ -106,7 +109,7 @@ const NumberFormatInputControlled = ({
       name="numberFormat"
       render={({ field: { onChange, value } }) => (
         <NumberFormatInput
-          onChange={newValue => {
+          onChange={(newValue?: NumberFormat) => {
             onChange(newValue);
             onSubmit();
           }}
@@ -133,6 +136,7 @@ function ChartSeriesEditorComponent({
   watch,
   parentRef,
   length,
+  tableSource,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -149,6 +153,7 @@ function ChartSeriesEditorComponent({
   tableName: string;
   watch: UseFormWatch<any>;
   length: number;
+  tableSource?: TSource;
 }) {
   const aggFn = watch(`${namePrefix}aggFn`);
   const aggConditionLanguage = watch(
@@ -157,8 +162,13 @@ function ChartSeriesEditorComponent({
   );
 
   const metricType = watch(`${namePrefix}metricType`);
-  const selectedSourceId = watch('source');
-  const { data: tableSource } = useSource({ id: selectedSourceId });
+
+  // Initialize metricType to 'gauge' when switching to a metric source
+  useEffect(() => {
+    if (tableSource?.kind === SourceKind.Metric && !metricType) {
+      setValue(`${namePrefix}metricType`, MetricsDataType.Gauge);
+    }
+  }, [tableSource?.kind, metricType, namePrefix, setValue]);
 
   const tableName =
     tableSource?.kind === SourceKind.Metric
@@ -243,7 +253,7 @@ function ChartSeriesEditorComponent({
             control={control}
           />
         </div>
-        {tableSource?.kind === SourceKind.Metric && (
+        {tableSource?.kind === SourceKind.Metric && metricType && (
           <div style={{ minWidth: 220 }}>
             <MetricNameSelect
               metricName={metricName}
@@ -257,6 +267,7 @@ function ChartSeriesEditorComponent({
                 setValue(`${namePrefix}metricType`, value)
               }
               metricSource={tableSource}
+              data-testid="metric-name-selector"
             />
             {metricType === 'gauge' && (
               <Flex justify="end">
@@ -763,6 +774,7 @@ export default function EditTimeChartForm({
                   }
                   tableName={tableName ?? ''}
                   watch={watch}
+                  tableSource={tableSource}
                 />
               ))}
               {fields.length > 1 && displayType !== DisplayType.Number && (
