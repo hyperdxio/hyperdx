@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { pick } from 'lodash';
 import {
   parseAsString,
   parseAsStringEnum,
@@ -8,7 +9,10 @@ import {
 } from 'nuqs';
 import { UseControllerProps, useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
+  ChartConfigWithDateRange,
+  CteChartConfig,
   DisplayType,
   Filter,
   SourceKind,
@@ -27,6 +31,7 @@ import {
 import { IconPlayerPlay } from '@tabler/icons-react';
 
 import {
+  convertDateRangeToGranularityString,
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
   MS_NUMBER_FORMAT,
@@ -54,12 +59,16 @@ import { useSource, useSources } from '@/source';
 import { Histogram } from '@/SVGIcons';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
+import { HARD_LINES_LIMIT } from './HDXMultiSeriesTimeChart';
+
 type AppliedConfig = {
   source?: string | null;
   service?: string | null;
   where?: string | null;
   whereLanguage?: 'sql' | 'lucene' | null;
 };
+
+const MAX_NUM_SERIES = HARD_LINES_LIMIT;
 
 function getScopedFilters(
   source: TSource,
@@ -551,6 +560,248 @@ function DatabaseTab({
     return window.location.pathname + '?' + searchParams.toString();
   }, []);
 
+  const totalTimePerQueryConfig =
+    useMemo<ChartConfigWithDateRange | null>(() => {
+      if (!source) return null;
+
+      return {
+        with: [
+          {
+            name: 'queries_by_total_time',
+            isSubquery: true,
+            chartConfig: {
+              ...pick(source, [
+                'timestampValueExpression',
+                'connection',
+                'from',
+              ]),
+              where: appliedConfig.where || '',
+              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              select: [
+                {
+                  alias: 'total_query_time_ms',
+                  aggFn: 'sum',
+                  valueExpression: expressions.durationInMillis,
+                  aggCondition: '',
+                },
+                {
+                  alias: 'Statement',
+                  valueExpression: expressions.dbStatement,
+                },
+              ],
+              groupBy: 'Statement',
+              filters: [
+                ...getScopedFilters(source, appliedConfig, false),
+                { type: 'sql', condition: expressions.isDbSpan },
+              ],
+              // Date range and granularity add an `__hdx_time_bucket` column to select and group by
+              dateRange: searchedTimeRange,
+              granularity: convertDateRangeToGranularityString(
+                searchedTimeRange,
+                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+              ),
+            } as CteChartConfig,
+          },
+          {
+            name: 'top_queries_by_total_time',
+            isSubquery: true,
+            chartConfig: {
+              connection: source.connection,
+              select: [
+                { valueExpression: 'Statement' },
+                {
+                  valueExpression: 'groupArray(total_query_time_ms)',
+                  alias: 'total_query_time_ms',
+                },
+                {
+                  valueExpression: 'groupArray(__hdx_time_bucket)',
+                  alias: '__hdx_time_buckets',
+                },
+              ],
+              from: { databaseName: '', tableName: 'queries_by_total_time' },
+              groupBy: 'Statement',
+              where: '',
+              // Select the top MAX_NUM_SERIES queries by max time in any bucket
+              orderBy: 'max(queries_by_total_time.total_query_time_ms) DESC',
+              limit: { limit: MAX_NUM_SERIES },
+              timestampValueExpression: '', // required only to satisfy CTE schema
+            },
+          },
+          {
+            name: 'zipped_series',
+            isSubquery: true,
+            chartConfig: {
+              connection: source.connection,
+              select: [
+                { valueExpression: 'Statement' },
+                {
+                  valueExpression:
+                    'arrayJoin(arrayZip(total_query_time_ms, __hdx_time_buckets))',
+                  alias: 'zipped',
+                },
+              ],
+              from: {
+                databaseName: '',
+                tableName: 'top_queries_by_total_time',
+              },
+              where: '',
+              timestampValueExpression: '', // required only to satisfy CTE schema
+            },
+          },
+        ],
+
+        select: [
+          { valueExpression: 'Statement' },
+          {
+            valueExpression: 'tupleElement(zipped, 1)',
+            alias: 'Total Query Time',
+          },
+          {
+            valueExpression: 'tupleElement(zipped, 2)',
+            alias: 'series_time_bucket',
+          },
+        ],
+        from: { databaseName: '', tableName: 'zipped_series' },
+        where: '',
+
+        displayType: DisplayType.StackedBar,
+        numberFormat: MS_NUMBER_FORMAT,
+        groupBy: 'Statement, zipped',
+        dateRange: searchedTimeRange,
+        timestampValueExpression: 'series_time_bucket',
+        connection: source.connection,
+      } satisfies ChartConfigWithDateRange;
+    }, [
+      appliedConfig,
+      expressions.dbStatement,
+      expressions.durationInMillis,
+      expressions.isDbSpan,
+      searchedTimeRange,
+      source,
+    ]);
+
+  const totalThroughputPerQueryConfig =
+    useMemo<ChartConfigWithDateRange | null>(() => {
+      if (!source) return null;
+
+      return {
+        with: [
+          {
+            name: 'queries_by_total_count',
+            isSubquery: true,
+            chartConfig: {
+              ...pick(source, [
+                'timestampValueExpression',
+                'connection',
+                'from',
+              ]),
+              where: appliedConfig.where || '',
+              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              select: [
+                {
+                  alias: 'total_query_count',
+                  aggFn: 'count',
+                  valueExpression: '',
+                  aggCondition: '',
+                },
+                {
+                  alias: 'Statement',
+                  valueExpression: expressions.dbStatement,
+                },
+              ],
+              groupBy: 'Statement',
+              filters: [
+                ...getScopedFilters(source, appliedConfig, false),
+                { type: 'sql', condition: expressions.isDbSpan },
+              ],
+              // Date range and granularity add an `__hdx_time_bucket` column to select and group by
+              dateRange: searchedTimeRange,
+              granularity: convertDateRangeToGranularityString(
+                searchedTimeRange,
+                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+              ),
+            } as CteChartConfig,
+          },
+          {
+            name: 'top_queries_by_total_count',
+            isSubquery: true,
+            chartConfig: {
+              connection: source.connection,
+              select: [
+                { valueExpression: 'Statement' },
+                {
+                  valueExpression: 'groupArray(total_query_count)',
+                  alias: 'total_query_count',
+                },
+                {
+                  valueExpression: 'groupArray(__hdx_time_bucket)',
+                  alias: '__hdx_time_buckets',
+                },
+              ],
+              from: { databaseName: '', tableName: 'queries_by_total_count' },
+              groupBy: 'Statement',
+              where: '',
+              // Select the top MAX_NUM_SERIES queries by max time in any bucket
+              orderBy: 'max(queries_by_total_count.total_query_count) DESC',
+              limit: { limit: MAX_NUM_SERIES },
+              timestampValueExpression: '', // required only to satisfy CTE schema
+            },
+          },
+          {
+            name: 'zipped_series',
+            isSubquery: true,
+            chartConfig: {
+              connection: source.connection,
+              select: [
+                { valueExpression: 'Statement' },
+                {
+                  valueExpression:
+                    'arrayJoin(arrayZip(total_query_count, __hdx_time_buckets))',
+                  alias: 'zipped',
+                },
+              ],
+              from: {
+                databaseName: '',
+                tableName: 'top_queries_by_total_count',
+              },
+              where: '',
+              timestampValueExpression: '', // required only to satisfy CTE schema
+            },
+          },
+        ],
+
+        select: [
+          { valueExpression: 'Statement' },
+          {
+            valueExpression: 'tupleElement(zipped, 1)',
+            alias: 'Total Query Count',
+          },
+          {
+            valueExpression: 'tupleElement(zipped, 2)',
+            alias: 'series_time_bucket',
+          },
+        ],
+        from: { databaseName: '', tableName: 'zipped_series' },
+        where: '',
+
+        displayType: DisplayType.StackedBar,
+        numberFormat: {
+          ...INTEGER_NUMBER_FORMAT,
+          unit: 'queries',
+        },
+        groupBy: 'Statement, zipped',
+        dateRange: searchedTimeRange,
+        timestampValueExpression: 'series_time_bucket',
+        connection: source.connection,
+      } satisfies ChartConfigWithDateRange;
+    }, [
+      appliedConfig,
+      expressions.dbStatement,
+      expressions.isDbSpan,
+      searchedTimeRange,
+      source,
+    ]);
+
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
       <Grid.Col span={6}>
@@ -558,30 +809,11 @@ function DatabaseTab({
           <Group justify="space-between" align="center" mb="sm">
             <Text size="sm">Total Time Consumed per Query</Text>
           </Group>
-          {source && (
+          {source && totalTimePerQueryConfig && (
             <DBTimeChart
               sourceId={source.id}
-              config={{
-                ...source,
-                displayType: DisplayType.StackedBar,
-                where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
-                select: [
-                  {
-                    alias: 'Total Query Time',
-                    aggFn: 'sum',
-                    valueExpression: expressions.durationInMillis,
-                    aggCondition: '',
-                  },
-                ],
-                filters: [
-                  ...getScopedFilters(source, appliedConfig, false),
-                  { type: 'sql', condition: expressions.isDbSpan },
-                ],
-                numberFormat: MS_NUMBER_FORMAT,
-                groupBy: expressions.dbStatement,
-                dateRange: searchedTimeRange,
-              }}
+              config={totalTimePerQueryConfig}
+              disableQueryChunking
             />
           )}
         </ChartBox>
@@ -591,33 +823,11 @@ function DatabaseTab({
           <Group justify="space-between" align="center" mb="sm">
             <Text size="sm">Throughput per Query</Text>
           </Group>
-          {source && (
+          {source && totalThroughputPerQueryConfig && (
             <DBTimeChart
               sourceId={source.id}
-              config={{
-                ...source,
-                displayType: DisplayType.StackedBar,
-                where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
-                select: [
-                  {
-                    alias: 'Total Query Count',
-                    aggFn: 'count',
-                    valueExpression: expressions.durationInMillis,
-                    aggCondition: '',
-                  },
-                ],
-                filters: [
-                  ...getScopedFilters(source, appliedConfig, false),
-                  { type: 'sql', condition: expressions.isDbSpan },
-                ],
-                numberFormat: {
-                  ...INTEGER_NUMBER_FORMAT,
-                  unit: 'queries',
-                },
-                groupBy: expressions.dbStatement,
-                dateRange: searchedTimeRange,
-              }}
+              config={totalThroughputPerQueryConfig}
+              disableQueryChunking
             />
           )}
         </ChartBox>

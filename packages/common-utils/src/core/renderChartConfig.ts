@@ -379,13 +379,19 @@ async function renderSelectList(
   // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
   // on a view/table that already perform the computation in select. This optimization is not currently
   // supported for queries using CTEs so skip the metadata fetch if there are CTE objects in the config.
-  const materializedFields = chartConfig.with?.length
-    ? undefined
-    : await metadata.getMaterializedColumnsLookupTable({
-        connectionId: chartConfig.connection,
-        databaseName: chartConfig.from.databaseName,
-        tableName: chartConfig.from.tableName,
-      });
+  let materializedFields: Map<string, string> | undefined;
+  try {
+    // This will likely error for a CTE
+    materializedFields = chartConfig.with?.length
+      ? undefined
+      : await metadata.getMaterializedColumnsLookupTable({
+          connectionId: chartConfig.connection,
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+        });
+  } catch {
+    // ignore
+  }
 
   const isRatio =
     chartConfig.seriesReturnType === 'ratio' && selectList.length === 2;
@@ -681,13 +687,19 @@ async function renderWhereExpression({
   // on a view/table that already perform the computation in select. This optimization is not currently
   // supported for queries using CTEs so skip the metadata fetch if there are CTE objects in the config.
 
-  const materializedFields = withClauses?.length
-    ? undefined
-    : await metadata.getMaterializedColumnsLookupTable({
-        connectionId,
-        databaseName: from.databaseName,
-        tableName: from.tableName,
-      });
+  let materializedFields: Map<string, string> | undefined;
+  try {
+    // This will likely error for a CTE
+    materializedFields = withClauses?.length
+      ? undefined
+      : await metadata.getMaterializedColumnsLookupTable({
+          connectionId,
+          databaseName: from.databaseName,
+          tableName: from.tableName,
+        });
+  } catch {
+    // ignore
+  }
 
   const _sqlPrefix = 'SELECT * FROM `t` WHERE ';
   const rawSQL = `${_sqlPrefix}${_condition}`;

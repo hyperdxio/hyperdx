@@ -76,6 +76,7 @@ export const convertCHDataTypeToJSType = (
     return JSDataType.Number;
   } else if (
     dataType.startsWith('String') ||
+    dataType.startsWith('Nullable(String)') ||
     dataType.startsWith('FixedString') ||
     dataType.startsWith('Enum') ||
     dataType.startsWith('UUID') ||

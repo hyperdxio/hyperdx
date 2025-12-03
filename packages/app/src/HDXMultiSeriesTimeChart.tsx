@@ -319,7 +319,8 @@ export const LegendRenderer = memo<{
   );
 });
 
-const HARD_LINES_LIMIT = 60;
+export const HARD_LINES_LIMIT = 60;
+
 export const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
