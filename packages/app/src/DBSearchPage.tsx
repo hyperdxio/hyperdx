@@ -1599,6 +1599,24 @@ function DBSearchPage() {
               isLive && interval !== LIVE_TAIL_DURATION_MS
             }
           />
+          {isLive && (
+            <Tooltip label="Live tail refresh interval">
+              <Select
+                size="sm"
+                w={80}
+                data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+                value={String(refreshFrequency)}
+                onChange={value =>
+                  setRefreshFrequency(value ? parseInt(value, 10) : null)
+                }
+                allowDeselect={false}
+                comboboxProps={{
+                  withinPortal: true,
+                  zIndex: 1000,
+                }}
+              />
+            </Tooltip>
+          )}
           <Button
             data-testid="search-submit-button"
             variant="outline"
@@ -1728,26 +1746,6 @@ function DBSearchPage() {
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                           />
                           <Group gap="sm" align="center">
-                            {isLive && (
-                              <Tooltip label="Live tail refresh interval">
-                                <Select
-                                  size="xs"
-                                  w={80}
-                                  data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
-                                  value={String(refreshFrequency)}
-                                  onChange={value =>
-                                    setRefreshFrequency(
-                                      value ? parseInt(value, 10) : null,
-                                    )
-                                  }
-                                  allowDeselect={false}
-                                  comboboxProps={{
-                                    withinPortal: true,
-                                    zIndex: 1000,
-                                  }}
-                                />
-                              </Tooltip>
-                            )}
                             {shouldShowLiveModeHint &&
                               analysisMode === 'results' &&
                               denoiseResults != true && (
