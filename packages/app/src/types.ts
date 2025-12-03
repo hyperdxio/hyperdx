@@ -264,6 +264,7 @@ export type Webhook = {
 };
 
 export type NextApiConfigResponseData = {
+  exporterEnabled: boolean;
   apiKey: string;
   collectorUrl: string;
   serviceName: string;
