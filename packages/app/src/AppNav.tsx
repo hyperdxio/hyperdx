@@ -33,6 +33,8 @@ import {
   IconHeartbeat,
   IconLayoutGrid,
   IconLayoutSidebarLeftCollapse,
+  IconSearch,
+  IconServer,
   IconSettings,
   IconSitemap,
   IconTable,
@@ -770,6 +772,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               />
 
               <AppNavLink
+                label="Services"
+                href="/services"
+                icon={<IconServer size={16} />}
+              />
+
+              <AppNavLink
                 label="Service Map"
                 href="/service-map"
                 icon={<IconSitemap size={16} />}
@@ -851,16 +859,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       >
                         ClickHouse
                       </Link>
-                      <Link
-                        href={`/services`}
-                        tabIndex={0}
-                        className={cx(styles.nestedLink, {
-                          [styles.nestedLinkActive]:
-                            pathname.startsWith('/services'),
-                        })}
-                      >
-                        Services
-                      </Link>
                       {IS_K8S_DASHBOARD_ENABLED && (
                         <Link
                           href={`/kubernetes`}
@@ -897,7 +895,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 className="px-3 mb-2 mt-4"
               >
                 <OnboardingChecklist onAddDataClick={openInstallInstructions} />
-                <AppNavCloudBanner />
+                {/* <AppNavCloudBanner /> */}
               </div>
             </>
           )}

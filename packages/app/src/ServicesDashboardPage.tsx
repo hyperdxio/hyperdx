@@ -61,6 +61,7 @@ import {
 import { useSource, useSources } from '@/source';
 import { Histogram } from '@/SVGIcons';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { ServiceDirectoryTab } from '@/components/ServiceReadiness/ServiceDirectory';
 
 import { HARD_LINES_LIMIT } from './HDXMultiSeriesTimeChart';
 
@@ -1313,7 +1314,7 @@ const appliedConfigMap = {
 function ServicesDashboardPage() {
   const [tab, setTab] = useQueryState(
     'tab',
-    parseAsStringEnum<string>(['http', 'database', 'errors']).withDefault(
+    parseAsStringEnum<string>(['http', 'database', 'errors', 'directory']).withDefault(
       'http',
     ),
   );
@@ -1485,43 +1486,59 @@ function ServicesDashboardPage() {
           </Group>
         </Group>
       </form>
-      {source?.kind !== 'trace' ? (
-        <Group align="center" justify="center" h="300px">
-          <Text c="gray">Please select a trace source</Text>
-        </Group>
-      ) : (
-        <Tabs
-          mt="md"
-          keepMounted={false}
-          defaultValue="http"
-          onChange={setTab}
-          value={tab}
-        >
-          <Tabs.List>
-            <Tabs.Tab value="http">HTTP Service</Tabs.Tab>
-            <Tabs.Tab value="database">Database</Tabs.Tab>
-            <Tabs.Tab value="errors">Errors</Tabs.Tab>
-          </Tabs.List>
-          <Tabs.Panel value="http">
+      <Tabs
+        mt="md"
+        keepMounted={false}
+        defaultValue="http"
+        onChange={setTab}
+        value={tab}
+      >
+        <Tabs.List>
+          <Tabs.Tab value="http">HTTP Service</Tabs.Tab>
+          <Tabs.Tab value="database">Database</Tabs.Tab>
+          <Tabs.Tab value="errors">Errors</Tabs.Tab>
+          <Tabs.Tab value="directory">Directory & Readiness</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="http">
+          {source?.kind === 'trace' ? (
             <HttpTab
               appliedConfig={appliedConfig}
               searchedTimeRange={searchedTimeRange}
             />
-          </Tabs.Panel>
-          <Tabs.Panel value="database">
+          ) : (
+            <Group align="center" justify="center" h="300px">
+              <Text c="gray">Please select a trace source</Text>
+            </Group>
+          )}
+        </Tabs.Panel>
+        <Tabs.Panel value="database">
+          {source?.kind === 'trace' ? (
             <DatabaseTab
               appliedConfig={appliedConfig}
               searchedTimeRange={searchedTimeRange}
             />
-          </Tabs.Panel>
-          <Tabs.Panel value="errors">
+          ) : (
+            <Group align="center" justify="center" h="300px">
+              <Text c="gray">Please select a trace source</Text>
+            </Group>
+          )}
+        </Tabs.Panel>
+        <Tabs.Panel value="errors">
+          {source?.kind === 'trace' ? (
             <ErrorsTab
               appliedConfig={appliedConfig}
               searchedTimeRange={searchedTimeRange}
             />
-          </Tabs.Panel>
-        </Tabs>
-      )}
+          ) : (
+            <Group align="center" justify="center" h="300px">
+              <Text c="gray">Please select a trace source</Text>
+            </Group>
+          )}
+        </Tabs.Panel>
+        <Tabs.Panel value="directory">
+          <ServiceDirectoryTab />
+        </Tabs.Panel>
+      </Tabs>
     </Box>
   );
 }

@@ -285,3 +285,61 @@ export type NextApiConfigResponseData = {
   collectorUrl: string;
   serviceName: string;
 };
+
+export enum ServiceTier {
+  CRITICAL = 'critical',
+  HIGH = 'high',
+  MEDIUM = 'medium',
+  LOW = 'low',
+}
+
+export enum ServiceReadiness {
+  GOLD = 'gold',
+  SILVER = 'silver',
+  BRONZE = 'bronze',
+  FAIL = 'fail',
+}
+
+export enum CheckType {
+  HAS_OWNER = 'has_owner',
+  HAS_RUNBOOK = 'has_runbook',
+  HAS_REPO = 'has_repo',
+  HAS_SLO = 'has_slo',
+  HAS_LOGS = 'has_logs',
+  HAS_TRACES = 'has_traces',
+}
+
+export enum CheckStatus {
+  PASS = 'pass',
+  FAIL = 'fail',
+}
+
+export interface ServiceCheck {
+  _id: string;
+  service: string;
+  checkType: CheckType;
+  status: CheckStatus;
+  message?: string;
+  updatedAt: string;
+}
+
+export interface Service {
+  _id: string;
+  name: string;
+  description?: string;
+  team: string;
+  
+  // Metadata
+  owner?: string; // User ID
+  tier: ServiceTier;
+  runbookUrl?: string;
+  repoUrl?: string;
+  
+  // State
+  lastSeenAt: string;
+  readiness?: ServiceReadiness;
+  
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+}

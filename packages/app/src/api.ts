@@ -7,7 +7,7 @@ import type { UseQueryOptions } from '@tanstack/react-query';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
-import type { AlertsPageItem, Anomaly } from './types';
+import type { AlertsPageItem, Anomaly, Service } from './types';
 
 type ServicesResponse = {
   data: Record<
@@ -35,6 +35,7 @@ export function loginHook(request: Request, options: any, response: Response) {
     '/join-team',
     '/login',
     '/register',
+    '/reset-password',
     '/reset-password',
   ];
   if (!WHITELIST_PATHS.includes(Router.pathname) && response.status === 401) {
@@ -182,6 +183,39 @@ const api = {
         hdxServer(`chart/services`, {
           method: 'GET',
         }).json() as Promise<ServicesResponse>,
+    });
+  },
+  // Registry Services (MongoDB)
+  useRegistryServices(options?: UseQueryOptions<Service[], Error>) {
+    return useQuery({
+      queryKey: ['registry-services'],
+      queryFn: () => hdxServer('services', { method: 'GET' }).json(),
+      ...options,
+    });
+  },
+  useRegistryService(serviceName: string, options?: UseQueryOptions<Service, Error>) {
+    return useQuery({
+      queryKey: ['registry-services', serviceName],
+      queryFn: () => hdxServer(`services/${serviceName}`, { method: 'GET' }).json(),
+      enabled: !!serviceName,
+      ...options,
+    });
+  },
+  useServiceChecks(serviceName: string, options?: UseQueryOptions<any[], Error>) {
+    return useQuery({
+      queryKey: ['service-checks', serviceName],
+      queryFn: () => hdxServer(`services/${serviceName}/checks`, { method: 'GET' }).json(),
+      enabled: !!serviceName,
+      ...options,
+    });
+  },
+  useUpdateService() {
+    return useMutation<Service, Error, { name: string } & Partial<Service>>({
+      mutationFn: async ({ name, ...updates }) =>
+        hdxServer(`services/${name}`, {
+          method: 'PATCH',
+          json: updates,
+        }).json(),
     });
   },
   useRotateTeamApiKey() {
@@ -599,6 +633,7 @@ const api = {
         hdxServer('anomalies', {
           method: 'GET',
           searchParams: searchParams as any,
+          // @ts-ignore
         }).json<{ data: Anomaly[]; meta: any }>(),
       ...options,
     });
@@ -609,6 +644,7 @@ const api = {
       queryFn: () =>
         hdxServer(`anomalies/${id}`, {
           method: 'GET',
+          // @ts-ignore
         }).json<{ data: Anomaly }>(),
       enabled: !!id,
       ...options,

@@ -88,6 +88,7 @@ app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
 app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
 app.use('/me', isUserAuthenticated, routers.meRouter);
 app.use('/slos', isUserAuthenticated, routers.slosRouter);
+app.use('/services', isUserAuthenticated, routers.servicesRouter);
 app.use('/team', isUserAuthenticated, routers.teamRouter);
 app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
 app.use('/uptime-monitors', isUserAuthenticated, routers.uptimeMonitorsRouter);
