@@ -7,7 +7,7 @@ import type { UseQueryOptions } from '@tanstack/react-query';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
-import type { AlertsPageItem, Anomaly, Service } from './types';
+import type { AlertsPageItem, Anomaly, Service, Incident } from './types';
 
 type ServicesResponse = {
   data: Record<
@@ -777,6 +777,66 @@ const api = {
         }).json(),
       enabled: !!monitorId && !!startDate && !!endDate,
       ...options,
+    });
+  },
+  // Incident hooks
+  useIncidents(options?: UseQueryOptions<any, Error>) {
+    return useQuery({
+      queryKey: ['incidents'],
+      queryFn: () => hdxServer('incidents', { method: 'GET' }).json(),
+      ...options,
+    });
+  },
+  useIncident(id: string, options?: UseQueryOptions<any, Error>) {
+    return useQuery({
+      queryKey: ['incidents', id],
+      queryFn: () =>
+        hdxServer(`incidents/${id}`, { method: 'GET' }).json<{
+          data: Incident;
+        }>(),
+      enabled: !!id,
+      ...options,
+    });
+  },
+  useCreateIncident() {
+    return useMutation({
+      mutationFn: async (incident: any) =>
+        hdxServer('incidents', {
+          method: 'POST',
+          json: incident,
+        }).json(),
+    });
+  },
+  useUpdateIncident() {
+    return useMutation({
+      mutationFn: async ({
+        id,
+        ...updates
+      }: {
+        id: string;
+        [key: string]: any;
+      }) =>
+        hdxServer(`incidents/${id}`, {
+          method: 'PATCH',
+          json: updates,
+        }).json(),
+    });
+  },
+  useAddIncidentComment() {
+    return useMutation({
+      mutationFn: async ({ id, message }: { id: string; message: string }) =>
+        hdxServer(`incidents/${id}/comments`, {
+          method: 'POST',
+          json: { message },
+        }).json(),
+    });
+  },
+  useAnalyzeIncident() {
+    return useMutation({
+      mutationFn: async (id: string) =>
+        hdxServer(`incidents/${id}/analyze`, {
+          method: 'POST',
+        }).json(),
     });
   },
 };

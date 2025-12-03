@@ -39,6 +39,7 @@ import {
   IconSitemap,
   IconTable,
   IconTarget,
+  IconAlertTriangle,
 } from '@tabler/icons-react';
 
 import {
@@ -763,6 +764,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   label="Uptime Monitors"
                   href="/uptime-monitors"
                   icon={<IconHeartbeat size={16} />}
+                />
+              )}
+              {!IS_LOCAL_MODE && (
+                <AppNavLink
+                  label="Incidents"
+                  href="/incidents"
+                  icon={<IconAlertTriangle size={16} />}
                 />
               )}
               <AppNavLink

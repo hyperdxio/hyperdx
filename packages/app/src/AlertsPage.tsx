@@ -301,6 +301,45 @@ function AlertHistoryCardList({
 }
 
 function AlertDetails({ alert }: { alert: AlertsPageItem }) {
+  const createIncident = api.useCreateIncident();
+
+  const handleCreateIncident = async () => {
+    let name = 'Alert';
+    if (alert.source === AlertSource.TILE && alert.dashboard) {
+      const tile = alert.dashboard?.tiles.find(
+        tile => tile.id === alert.tileId,
+      );
+      const tileName = tile?.config.name || 'Tile';
+      name = `${alert.dashboard?.name} > ${tileName}`;
+    } else if (
+      alert.source === AlertSource.SAVED_SEARCH &&
+      alert.savedSearch
+    ) {
+      name = alert.savedSearch?.name;
+    }
+
+    try {
+      await createIncident.mutateAsync({
+        title: `Alert: ${name}`,
+        description: `Triggered by alert ${name}. Source: ${alert.source}.`,
+        severity: IncidentSeverity.HIGH,
+        alertId: alert._id,
+        status: IncidentStatus.OPEN,
+      });
+      notifications.show({
+        title: 'Success',
+        message: 'Incident created from alert',
+        color: 'green',
+      });
+    } catch (e: any) {
+      notifications.show({
+        title: 'Error',
+        message: e.message || 'Failed to create incident',
+        color: 'red',
+      });
+    }
+  };
+
   const alertName = React.useMemo(() => {
     if (alert.source === AlertSource.TILE && alert.dashboard) {
       const tile = alert.dashboard?.tiles.find(
@@ -381,9 +420,20 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
     <div data-testid={`alert-card-${alert._id}`} className={styles.alertRow}>
       <Group>
         {alert.state === AlertState.ALERT && (
-          <Badge variant="light" color="red">
-            Alert
-          </Badge>
+          <Group gap="xs">
+            <Badge variant="light" color="red">
+              Alert
+            </Badge>
+            <Button
+              size="compact-xs"
+              variant="light"
+              color="red"
+              onClick={handleCreateIncident}
+              loading={createIncident.isPending}
+            >
+              Escalate to Incident
+            </Button>
+          </Group>
         )}
         {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
         {alert.state === AlertState.DISABLED && (

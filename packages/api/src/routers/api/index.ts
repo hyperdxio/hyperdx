@@ -8,6 +8,7 @@ import teamRouter from './team';
 import servicesRouter from './services';
 import webhooksRouter from './webhooks';
 import uptimeMonitorsRouter from './uptimeMonitors';
+import incidentsRouter from './incidents';
 
 export default {
   aiRouter,
@@ -20,4 +21,5 @@ export default {
   servicesRouter,
   webhooksRouter,
   uptimeMonitorsRouter,
+  incidentsRouter,
 };

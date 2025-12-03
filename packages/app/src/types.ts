@@ -343,3 +343,57 @@ export interface Service {
   createdAt: string;
   updatedAt: string;
 }
+
+export enum IncidentStatus {
+  OPEN = 'open',
+  INVESTIGATING = 'investigating',
+  FIXED = 'fixed',
+  RESOLVED = 'resolved',
+  CANCELLED = 'cancelled',
+}
+
+export enum IncidentSeverity {
+  CRITICAL = 'critical',
+  HIGH = 'high',
+  MEDIUM = 'medium',
+  LOW = 'low',
+}
+
+export enum IncidentSource {
+  MANUAL = 'manual',
+  ALERT = 'alert',
+}
+
+export interface IncidentEvent {
+  type: 'status_change' | 'comment' | 'assignment';
+  author: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  message: string;
+  createdAt: string;
+}
+
+export interface Incident {
+  _id: string;
+  title: string;
+  description?: string;
+  status: IncidentStatus;
+  severity: IncidentSeverity;
+  source: IncidentSource;
+  alert?: {
+    _id: string;
+    name: string;
+  };
+  owner?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  team: string;
+  events: IncidentEvent[];
+  resolutionNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}

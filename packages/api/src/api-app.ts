@@ -92,6 +92,7 @@ app.use('/services', isUserAuthenticated, routers.servicesRouter);
 app.use('/team', isUserAuthenticated, routers.teamRouter);
 app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
 app.use('/uptime-monitors', isUserAuthenticated, routers.uptimeMonitorsRouter);
+app.use('/incidents', isUserAuthenticated, routers.incidentsRouter);
 app.use('/connections', isUserAuthenticated, connectionsRouter);
 app.use('/sources', isUserAuthenticated, sourcesRouter);
 app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
