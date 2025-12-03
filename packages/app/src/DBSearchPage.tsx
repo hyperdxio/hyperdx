@@ -49,8 +49,10 @@ import {
   Menu,
   Modal,
   Paper,
+  Select,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
 import {
   useDebouncedCallback,
@@ -122,6 +124,15 @@ import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
 
 import searchPageStyles from '../styles/SearchPage.module.scss';
+
+const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
+  { value: '1000', label: '1s' },
+  { value: '2000', label: '2s' },
+  { value: '4000', label: '4s' },
+  { value: '10000', label: '10s' },
+  { value: '30000', label: '30s' },
+];
+const DEFAULT_REFRESH_FREQUENCY = 4000;
 
 const ALLOWED_SOURCE_KINDS = [SourceKind.Log, SourceKind.Trace];
 const SearchConfigSchema = z.object({
@@ -1014,6 +1025,11 @@ function DBSearchPage() {
     parseAsInteger.withDefault(LIVE_TAIL_DURATION_MS),
   );
 
+  const [refreshFrequency, setRefreshFrequency] = useQueryState(
+    'refreshFrequency',
+    parseAsInteger.withDefault(DEFAULT_REFRESH_FREQUENCY),
+  );
+
   const updateRelativeTimeInputValue = useCallback((interval: number) => {
     const label = getRelativeTimeOptionLabel(interval);
     if (label) {
@@ -1032,7 +1048,7 @@ function DBSearchPage() {
   useLiveUpdate({
     isLive,
     interval,
-    refreshFrequency: 4000,
+    refreshFrequency,
     onTimeRangeSelect,
     pause: isAnyQueryFetching || !queryReady || !isTabVisible,
   });
@@ -1583,6 +1599,24 @@ function DBSearchPage() {
               isLive && interval !== LIVE_TAIL_DURATION_MS
             }
           />
+          {isLive && (
+            <Tooltip label="Live tail refresh interval">
+              <Select
+                size="sm"
+                w={80}
+                data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+                value={String(refreshFrequency)}
+                onChange={value =>
+                  setRefreshFrequency(value ? parseInt(value, 10) : null)
+                }
+                allowDeselect={false}
+                comboboxProps={{
+                  withinPortal: true,
+                  zIndex: 1000,
+                }}
+              />
+            </Tooltip>
+          )}
           <Button
             data-testid="search-submit-button"
             variant="outline"
