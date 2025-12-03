@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
@@ -19,25 +19,51 @@ export default function DBTableChart({
   getRowSearchLink,
   enabled = true,
   queryKeyPrefix,
+  onSortingChange,
+  sort: controlledSort,
 }: {
   config: ChartConfigWithOptTimestamp;
   getRowSearchLink?: (row: any) => string | null;
   queryKeyPrefix?: string;
   enabled?: boolean;
+  onSortingChange?: (sort: SortingState) => void;
+  sort?: SortingState;
 }) {
   const [sort, setSort] = useState<SortingState>([]);
+
+  const effectiveSort = useMemo(
+    () => controlledSort || sort,
+    [controlledSort, sort],
+  );
+
+  const handleSortingChange = useCallback(
+    (newSort: SortingState) => {
+      setSort(newSort);
+      if (onSortingChange) {
+        onSortingChange(newSort);
+      }
+    },
+    [onSortingChange],
+  );
 
   const queriedConfig = (() => {
     const _config = omit(config, ['granularity']);
     if (!_config.limit) {
       _config.limit = { limit: 200 };
     }
-    if (_config.groupBy && typeof _config.groupBy === 'string') {
+
+    // Set a default orderBy if groupBy is set but orderBy is not
+    // so that the rows within the limit are deterministic.
+    if (
+      _config.groupBy &&
+      typeof _config.groupBy === 'string' &&
+      !_config.orderBy
+    ) {
       _config.orderBy = _config.groupBy;
     }
 
-    if (sort.length) {
-      _config.orderBy = sort?.map(o => {
+    if (effectiveSort.length) {
+      _config.orderBy = effectiveSort.map(o => {
         return {
           valueExpression: o.id,
           ordering: o.desc ? 'DESC' : 'ASC',
@@ -129,8 +155,8 @@ export default function DBTableChart({
       data={data?.data ?? []}
       columns={columns}
       getRowSearchLink={getRowSearchLink}
-      sorting={sort}
-      onSortingChange={setSort}
+      sorting={effectiveSort}
+      onSortingChange={handleSortingChange}
       tableBottom={
         hasNextPage && (
           <Text ref={fetchMoreRef} ta="center">
