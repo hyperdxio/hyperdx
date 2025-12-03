@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
-import type { MutableRefObject } from 'react';
+import type { MutableRefObject, SetStateAction } from 'react';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 
 import { dateRangeToString } from './timeQuery';
@@ -237,7 +237,7 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       window.removeEventListener('customStorage', handleCustomStorageChange);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, [instanceId, key]);
 
   // Fetch the value on client-side to avoid SSR issues
   useEffect(() => {
@@ -260,69 +260,79 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
 
   // Return a wrapped version of useState's setter function that ...
   // ... persists the new value to localStorage.
-  const setValue = (value: T | ((prevState: T) => T)) => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    try {
-      // Allow value to be a function so we have same API as useState
-      const valueToStore =
-        value instanceof Function ? value(storedValue) : value;
-      // Save state
-      setStoredValue(valueToStore);
-      // Save to local storage
-      window.localStorage.setItem(key, JSON.stringify(valueToStore));
-      // Fire off event so other localStorage hooks listening with the same key
-      // will update
-      const event = new CustomEvent<CustomStorageChangeDetail>(
-        'customStorage',
-        {
-          detail: {
-            key,
-            instanceId,
+  const setValue = useCallback(
+    (value: SetStateAction<T>) => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+      try {
+        // Allow value to be a function so we have same API as useState
+        // Save state
+        setStoredValue(prev => {
+          const newValue = value instanceof Function ? value(prev) : value;
+          window.localStorage.setItem(key, JSON.stringify(newValue));
+          return newValue;
+        });
+        // Fire off event so other localStorage hooks listening with the same key
+        // will update
+        const event = new CustomEvent<CustomStorageChangeDetail>(
+          'customStorage',
+          {
+            detail: {
+              key,
+              instanceId,
+            },
           },
-        },
-      );
-      window.dispatchEvent(event);
-    } catch (error) {
-      // A more advanced implementation would handle the error case
-      // eslint-disable-next-line no-console
-      console.log(error);
-    }
-  };
+        );
+        window.dispatchEvent(event);
+      } catch (error) {
+        // A more advanced implementation would handle the error case
+        // eslint-disable-next-line no-console
+        console.log(error);
+      }
+    },
+    [instanceId, key],
+  );
+
   return [storedValue, setValue] as const;
 }
 
 export function useQueryHistory<T>(type: string | undefined) {
   const key = `${QUERY_LOCAL_STORAGE.KEY}.${type}`;
   const [queryHistory, _setQueryHistory] = useLocalStorage<string[]>(key, []);
-  const setQueryHistory = (query: string) => {
-    // do not set up anything if there is no type or empty query
-    try {
-      const trimmed = query.trim();
-      if (!type || !trimmed) return null;
-      const deduped = [trimmed, ...queryHistory.filter(q => q !== trimmed)];
-      const limited = deduped.slice(0, QUERY_LOCAL_STORAGE.LIMIT);
-      _setQueryHistory(limited);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.log(`Failed to cache query history, error ${e.message}`);
-    }
-  };
+  const setQueryHistory = useCallback(
+    (query: string) => {
+      // do not set up anything if there is no type or empty query
+      try {
+        const trimmed = query.trim();
+        if (!type || !trimmed) return null;
+        const deduped = [trimmed, ...queryHistory.filter(q => q !== trimmed)];
+        const limited = deduped.slice(0, QUERY_LOCAL_STORAGE.LIMIT);
+        _setQueryHistory(limited);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.log(`Failed to cache query history, error ${e.message}`);
+      }
+    },
+    [_setQueryHistory, queryHistory, type],
+  );
   return [queryHistory, setQueryHistory] as const;
 }
 
 export function useIntersectionObserver(onIntersect: () => void) {
   const observer = useRef<IntersectionObserver | null>(null);
-  const observerRef = useCallback((node: Element | null) => {
-    if (observer.current) observer.current.disconnect();
-    observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting) {
-        onIntersect();
-      }
-    });
-    if (node) observer.current.observe(node);
-  }, []);
+  const observerRef = useCallback(
+    (node: Element | null) => {
+      if (observer.current) observer.current.disconnect();
+      observer.current = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting) {
+          onIntersect();
+        }
+      });
+      if (node) observer.current.observe(node);
+    },
+    [onIntersect],
+  );
 
   return { observerRef };
 }
@@ -509,7 +519,6 @@ export const usePrevious = <T>(value: T): T | undefined => {
 // From https://javascript.plainenglish.io/how-to-make-a-simple-custom-usedrag-react-hook-6b606d45d353
 export const useDrag = (
   ref: MutableRefObject<HTMLDivElement | null>,
-  deps = [],
   options: {
     onDrag?: (e: PointerEvent) => any;
     onPointerDown?: (e: PointerEvent) => any;
@@ -559,9 +568,9 @@ export const useDrag = (
         element.removeEventListener('pointermove', handlePointerMove);
       };
     }
-
-    return () => {};
-  }, [...deps, isDragging]);
+    // disable dependency array as this doesn't fit nicely with react
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return { isDragging };
 };

@@ -90,12 +90,15 @@ export function RowOverviewPanel({
   const flattenedEventAttributes =
     firstRow?.__hdx_event_attributes ?? EMPTY_OBJ;
 
-  const dataAttributes =
-    eventAttributesExpr &&
-    firstRow?.[eventAttributesExpr] &&
-    Object.keys(firstRow[eventAttributesExpr]).length > 0
-      ? { [eventAttributesExpr]: firstRow[eventAttributesExpr] }
-      : {};
+  const dataAttributes = useMemo(
+    () =>
+      eventAttributesExpr &&
+      firstRow?.[eventAttributesExpr] &&
+      Object.keys(firstRow[eventAttributesExpr]).length > 0
+        ? { [eventAttributesExpr]: firstRow[eventAttributesExpr] }
+        : {},
+    [eventAttributesExpr, firstRow],
+  );
 
   const _generateSearchUrl = useCallback(
     (query?: string, queryLanguage?: 'sql' | 'lucene') => {

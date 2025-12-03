@@ -36,7 +36,7 @@ export default function Playbar({
       queryKey: ['PlayBar', queriedConfig],
     },
   );
-  const events: any[] = data?.data ?? [];
+  const events: any[] = useMemo(() => data?.data ?? [], [data?.data]);
 
   const markers = useMemo<PlaybarMarker[]>(() => {
     return uniqBy(
