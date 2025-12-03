@@ -44,7 +44,8 @@
     "version": "make version",
     "release": "npx changeset tag && npx changeset publish",
     "slo-task": "npx concurrently -k -n 'SLO-TASK' -c 'green.bold,blue.bold,yellow.bold,cyan.bold,magenta' 'nx run @hyperdx/api:dev-task check-slos'",
-    "anomaly-task": "npx concurrently -k -n 'ANOMALY-TASK' -c 'green.bold,blue.bold,yellow.bold,cyan.bold,magenta' 'nx run @hyperdx/api:dev-task detect-anomalies'"
+    "anomaly-task": "npx concurrently -k -n 'ANOMALY-TASK' -c 'green.bold,blue.bold,yellow.bold,cyan.bold,magenta' 'nx run @hyperdx/api:dev-task detect-anomalies'",
+    "uptime-task": "npx concurrently -k -n 'UPTIME-TASK' -c 'green.bold,blue.bold,yellow.bold,cyan.bold,magenta' 'nx run @hyperdx/api:dev-task check-uptime-monitors'"
   },
   "lint-staged": {
     "packages/api/src/routers/external-api/**/*.ts": [

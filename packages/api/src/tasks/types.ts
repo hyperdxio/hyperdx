@@ -4,6 +4,7 @@ export enum TaskName {
   PING_PONG = 'ping-pong',
   CHECK_ALERTS = 'check-alerts',
   CHECK_SLOS = 'check-slos',
+  CHECK_UPTIME_MONITORS = 'check-uptime-monitors',
 }
 
 /**
@@ -34,15 +35,27 @@ const checkSlosTaskArgsSchema = z.object({
   taskName: z.literal(TaskName.CHECK_SLOS),
 });
 
+const checkUptimeMonitorsTaskArgsSchema = z.object({
+  taskName: z.literal(TaskName.CHECK_UPTIME_MONITORS),
+  concurrency: z
+    .number()
+    .int('concurrency must be an integer')
+    .min(1, 'concurrency must be at least 1')
+    .max(1024, 'concurrency must be less than 1024')
+    .optional(),
+});
+
 const taskArgsSchema = z.discriminatedUnion('taskName', [
   pingTaskArgsSchema,
   checkAlertsTaskArgsSchema,
   checkSlosTaskArgsSchema,
+  checkUptimeMonitorsTaskArgsSchema,
 ]);
 
 export type PingTaskArgs = z.infer<typeof pingTaskArgsSchema>;
 export type CheckAlertsTaskArgs = z.infer<typeof checkAlertsTaskArgsSchema>;
 export type CheckSlosTaskArgs = z.infer<typeof checkSlosTaskArgsSchema>;
+export type CheckUptimeMonitorsTaskArgs = z.infer<typeof checkUptimeMonitorsTaskArgsSchema>;
 export type TaskArgs = z.infer<typeof taskArgsSchema>;
 
 /**

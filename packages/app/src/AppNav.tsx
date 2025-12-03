@@ -30,6 +30,7 @@ import {
   IconBell,
   IconChartDots,
   IconDeviceLaptop,
+  IconHeartbeat,
   IconLayoutGrid,
   IconLayoutSidebarLeftCollapse,
   IconSettings,
@@ -753,6 +754,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   label="SLOs"
                   href="/slos"
                   icon={<IconTarget size={16} />}
+                />
+              )}
+              {!IS_LOCAL_MODE && (
+                <AppNavLink
+                  label="Uptime Monitors"
+                  href="/uptime-monitors"
+                  icon={<IconHeartbeat size={16} />}
                 />
               )}
               <AppNavLink

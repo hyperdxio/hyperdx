@@ -629,5 +629,119 @@ const api = {
         }).json(),
     });
   },
+  // Uptime Monitor hooks
+  useUptimeMonitors(options?: UseQueryOptions<any, Error>) {
+    return useQuery({
+      queryKey: ['uptime-monitors'],
+      queryFn: () => hdxServer('uptime-monitors', { method: 'GET' }).json(),
+      ...options,
+    });
+  },
+  useUptimeMonitor(monitorId: string, options?: UseQueryOptions<any, Error>) {
+    return useQuery({
+      queryKey: ['uptime-monitors', monitorId],
+      queryFn: () =>
+        hdxServer(`uptime-monitors/${monitorId}`, { method: 'GET' }).json(),
+      enabled: !!monitorId,
+      ...options,
+    });
+  },
+  useCreateUptimeMonitor() {
+    return useMutation({
+      mutationFn: async (monitor: any) =>
+        hdxServer('uptime-monitors', {
+          method: 'POST',
+          json: monitor,
+        }).json(),
+    });
+  },
+  useUpdateUptimeMonitor() {
+    return useMutation({
+      mutationFn: async ({
+        id,
+        ...monitor
+      }: {
+        id: string;
+        [key: string]: any;
+      }) =>
+        hdxServer(`uptime-monitors/${id}`, {
+          method: 'PUT',
+          json: monitor,
+        }).json(),
+    });
+  },
+  useDeleteUptimeMonitor() {
+    return useMutation({
+      mutationFn: async (monitorId: string) => {
+        await hdxServer(`uptime-monitors/${monitorId}`, {
+          method: 'DELETE',
+        }).text();
+      },
+    });
+  },
+  usePauseUptimeMonitor() {
+    return useMutation({
+      mutationFn: async ({
+        id,
+        pausedUntil,
+      }: {
+        id: string;
+        pausedUntil?: string;
+      }) =>
+        hdxServer(`uptime-monitors/${id}/pause`, {
+          method: 'POST',
+          json: { pausedUntil },
+        }).json(),
+    });
+  },
+  useResumeUptimeMonitor() {
+    return useMutation({
+      mutationFn: async (monitorId: string) =>
+        hdxServer(`uptime-monitors/${monitorId}/resume`, {
+          method: 'POST',
+        }).json(),
+    });
+  },
+  useUptimeCheckHistory(
+    monitorId: string,
+    limit?: number,
+    options?: UseQueryOptions<any, Error>,
+  ) {
+    return useQuery({
+      queryKey: ['uptime-check-history', monitorId, limit],
+      queryFn: () =>
+        hdxServer(`uptime-monitors/${monitorId}/history`, {
+          method: 'GET',
+          searchParams: limit ? { limit: limit.toString() } : {},
+        }).json(),
+      enabled: !!monitorId,
+      ...options,
+    });
+  },
+  useUptimeStats(
+    monitorId: string,
+    startDate: Date,
+    endDate: Date,
+    options?: UseQueryOptions<any, Error>,
+  ) {
+    return useQuery({
+      queryKey: [
+        'uptime-stats',
+        monitorId,
+        startDate?.getTime(),
+        endDate?.getTime(),
+      ],
+      queryFn: () =>
+        hdxServer(`uptime-monitors/${monitorId}/stats`, {
+          method: 'GET',
+          searchParams: {
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+          },
+        }).json(),
+      enabled: !!monitorId && !!startDate && !!endDate,
+      ...options,
+    });
+  },
 };
 export default api;

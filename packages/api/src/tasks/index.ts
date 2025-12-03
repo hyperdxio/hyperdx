@@ -4,6 +4,7 @@ import { serializeError } from 'serialize-error';
 
 import { RUN_SCHEDULED_TASKS_EXTERNALLY } from '@/config';
 import CheckAlertTask from '@/tasks/checkAlerts';
+import CheckUptimeMonitorsTask from '@/tasks/checkUptimeMonitors';
 import {
   taskExecutionDurationGauge,
   taskExecutionFailureCounter,
@@ -22,6 +23,8 @@ function createTask(argv: TaskArgs): HdxTask<TaskArgs> {
   switch (taskName) {
     case TaskName.CHECK_ALERTS:
       return new CheckAlertTask(argv);
+    case TaskName.CHECK_UPTIME_MONITORS:
+      return new CheckUptimeMonitorsTask(argv);
     case TaskName.PING_PONG:
       return new PingPongTask(argv);
     case TaskName.CHECK_SLOS:
@@ -40,12 +43,13 @@ async function main(argv: TaskArgs): Promise<void> {
       await task.execute();
       taskExecutionSuccessCounter.get(argv.taskName)?.add(1);
     } catch (e: unknown) {
+      const serializedError = serializeError(e);
       logger.error(
         {
-          cause: e,
+          error: serializedError,
           task,
         },
-        `${task.name()} failed: ${serializeError(e)}`,
+        `${task.name()} failed: ${e instanceof Error ? e.message : String(e)}`,
       );
       taskExecutionFailureCounter.get(argv.taskName)?.add(1);
     } finally {

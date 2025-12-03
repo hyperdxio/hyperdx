@@ -6,6 +6,7 @@ import rootRouter from './root';
 import slosRouter from './slos';
 import teamRouter from './team';
 import webhooksRouter from './webhooks';
+import uptimeMonitorsRouter from './uptimeMonitors';
 
 export default {
   aiRouter,
@@ -16,4 +17,5 @@ export default {
   slosRouter,
   teamRouter,
   webhooksRouter,
+  uptimeMonitorsRouter,
 };

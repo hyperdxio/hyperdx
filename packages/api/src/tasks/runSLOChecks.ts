@@ -6,11 +6,11 @@ import * as config from '@/config';
 import { injectTimeFilter } from '@/controllers/slo';
 import { connectDB, mongooseConnection } from '@/models';
 import SLO from '@/models/slo';
-import { CheckSLOsTaskArgs, HdxTask } from '@/tasks/types';
+import { CheckSlosTaskArgs, HdxTask } from '@/tasks/types';
 import logger from '@/utils/logger';
 
-export default class RunSLOChecksTask implements HdxTask<CheckSLOsTaskArgs> {
-  constructor(private args: CheckSLOsTaskArgs) {}
+export default class RunSLOChecksTask implements HdxTask<CheckSlosTaskArgs> {
+  constructor(private args: CheckSlosTaskArgs) {}
 
   async execute(): Promise<void> {
     logger.info('Starting SLO checks...');
