@@ -4,8 +4,7 @@ import { Box, Code, Group, Text } from '@mantine/core';
 
 import { ChartBox } from '@/components/ChartBox';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useJsonColumns } from '@/hooks/useMetadata';
-import { getExpressions } from '@/serviceDashboard';
+import { useServiceDashboardExpressions } from '@/serviceDashboard';
 
 import { SQLPreview } from './ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
@@ -27,12 +26,7 @@ export default function SlowestEventsTile({
   enabled?: boolean;
   extraFilters?: Filter[];
 }) {
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
-  const expressions = getExpressions(source, jsonColumns);
+  const { expressions } = useServiceDashboardExpressions({ source });
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     {
@@ -40,12 +34,16 @@ export default function SlowestEventsTile({
       where: '',
       whereLanguage: 'sql',
       select: [
+        // Separate the aggregations from the conversion to ms so that AggregatingMergeTree MVs can be used
+        {
+          alias: 'p95_duration_ns',
+          aggFn: 'quantile',
+          valueExpression: expressions?.duration ?? 'Duration',
+          level: 0.95,
+        },
         {
           alias: 'p95',
-          aggFn: 'quantile',
-          aggCondition: '',
-          valueExpression: expressions.durationInMillis,
-          level: 0.95,
+          valueExpression: `p95_duration_ns / ${expressions?.durationDivisorForMillis}`,
         },
       ],
       dateRange,
@@ -54,7 +52,7 @@ export default function SlowestEventsTile({
     {
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, source],
-      enabled,
+      enabled: enabled && !!expressions,
     },
   );
 
@@ -103,7 +101,8 @@ export default function SlowestEventsTile({
           No data found within time range.
         </div>
       ) : (
-        source && (
+        source &&
+        expressions && (
           <>
             <DBSqlRowTableWithSideBar
               isNestedPanel

@@ -12,8 +12,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import ServiceDashboardEndpointPerformanceChart from '@/components/ServiceDashboardEndpointPerformanceChart';
 import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
-import { useJsonColumns } from '@/hooks/useMetadata';
-import { getExpressions } from '@/serviceDashboard';
+import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { EndpointLatencyChart } from '@/ServicesDashboardPage';
 import { useSource } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
@@ -30,12 +29,7 @@ export default function ServiceDashboardEndpointSidePanel({
   searchedTimeRange: [Date, Date];
 }) {
   const { data: source } = useSource({ id: sourceId });
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
-  const expressions = getExpressions(source, jsonColumns);
+  const { expressions } = useServiceDashboardExpressions({ source });
 
   const [endpoint, setEndpoint] = useQueryState('endpoint', parseAsString);
   const onClose = useCallback(() => {
@@ -46,6 +40,8 @@ export default function ServiceDashboardEndpointSidePanel({
   const drawerZIndex = contextZIndex + 10;
 
   const endpointFilters = useMemo(() => {
+    if (!expressions) return [];
+
     const filters: Filter[] = [
       {
         type: 'sql',
@@ -102,16 +98,30 @@ export default function ServiceDashboardEndpointSidePanel({
                   <Group justify="space-between" align="center" mb="sm">
                     <Text size="sm">Request Error Rate</Text>
                   </Group>
-                  {source && (
+                  {source && expressions && (
                     <DBTimeChart
                       sourceId={source.id}
+                      hiddenSeries={['total_count', 'error_count']}
                       config={{
                         ...source,
                         where: '',
                         whereLanguage: 'sql',
                         select: [
+                          // Separate the aggregations from the conversion to rate so that AggregatingMergeTree MVs can be used
                           {
-                            valueExpression: `countIf(${expressions.isError}) / count()`,
+                            valueExpression: '',
+                            aggFn: 'count',
+                            alias: 'error_count',
+                            aggCondition: expressions.isError,
+                            aggConditionLanguage: 'sql',
+                          },
+                          {
+                            valueExpression: '',
+                            aggFn: 'count',
+                            alias: 'total_count',
+                          },
+                          {
+                            valueExpression: `error_count / total_count`,
                             alias: 'Error Rate %',
                           },
                         ],
@@ -129,7 +139,7 @@ export default function ServiceDashboardEndpointSidePanel({
                   <Group justify="space-between" align="center" mb="sm">
                     <Text size="sm">Request Throughput</Text>
                   </Group>
-                  {source && (
+                  {source && expressions && (
                     <DBTimeChart
                       sourceId={source.id}
                       config={{
@@ -172,12 +182,15 @@ export default function ServiceDashboardEndpointSidePanel({
                 />
               </Grid.Col>
               <Grid.Col span={12}>
-                <SlowestEventsTile
-                  title="Slowest 10% of Transactions"
-                  source={source}
-                  dateRange={searchedTimeRange}
-                  extraFilters={endpointFilters}
-                />
+                {/* Ensure expressions exists to ensure that endpointFilters has set */}
+                {expressions && (
+                  <SlowestEventsTile
+                    title="Slowest 5% of Transactions"
+                    source={source}
+                    dateRange={searchedTimeRange}
+                    extraFilters={endpointFilters}
+                  />
+                )}
               </Grid.Col>
             </Grid>
           </DrawerBody>
