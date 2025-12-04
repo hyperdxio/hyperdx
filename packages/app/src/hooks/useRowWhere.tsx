@@ -1,3 +1,5 @@
+'use client';
+
 import { useCallback, useMemo } from 'react';
 import MD5 from 'crypto-js/md5';
 import SqlString from 'sqlstring';

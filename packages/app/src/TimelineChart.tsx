@@ -1,3 +1,5 @@
+'use client';
+
 import { memo, RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import { Tooltip } from '@mantine/core';
