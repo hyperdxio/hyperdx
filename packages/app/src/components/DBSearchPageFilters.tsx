@@ -376,6 +376,14 @@ export const FilterGroup = ({
     }
   }, [isDefaultExpanded]);
 
+  const handleSetSearch = (value: string) => {
+    setSearch(value);
+
+    if (value && !hasLoadedMore) {
+      onLoadMore(name);
+    }
+  };
+
   const {
     data: distributionData,
     isFetching: isFetchingDistribution,
@@ -423,12 +431,16 @@ export const FilterGroup = ({
 
   const displayedOptions = useMemo(() => {
     if (search) {
-      return augmentedOptions.filter(option => {
-        return (
-          option.value &&
-          option.value.toLowerCase().includes(search.toLowerCase())
+      return augmentedOptions
+        .filter(option => {
+          return (
+            option.value &&
+            option.value.toLowerCase().includes(search.toLowerCase())
+          );
+        })
+        .sort((a, b) =>
+          a.value.localeCompare(b.value, undefined, { numeric: true }),
         );
-      });
     }
 
     // General Sorting of List
@@ -616,7 +628,7 @@ export const FilterGroup = ({
                       value={search}
                       data-testid={`filter-search-${name}`}
                       onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                        setSearch(event.currentTarget.value)
+                        handleSetSearch(event.currentTarget.value)
                       }
                       rightSectionWidth={20}
                       rightSection={<IconSearch size={12} stroke={2} />}
@@ -894,7 +906,7 @@ const DBSearchPageFiltersComponent = ({
             dateRange,
           },
           keys: [key],
-          limit: 200,
+          limit: 10000,
           disableRowLimit: true,
         });
         const newValues = newKeyVals[0].value;
