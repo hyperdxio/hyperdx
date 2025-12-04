@@ -17,6 +17,7 @@ import {
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 import { IS_LOCAL_MODE } from '@/config';
+import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { useConfirmModal } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
@@ -56,10 +57,22 @@ type AppPropsWithLayout = AppProps & {
   Component: NextPageWithLayout;
 };
 
+const FONT_VAR_MAP: Record<string, string> = {
+  'IBM Plex Mono': 'var(--font-ibm-plex-mono)',
+  'Roboto Mono': 'var(--font-roboto-mono)',
+  Inter: 'var(--font-inter)',
+  Roboto: 'var(--font-roboto)',
+};
+
+const DEFAULT_FONT_VAR = 'var(--font-ibm-plex-mono)';
+
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const { userPreferences } = useUserPreferences();
   const confirmModal = useConfirmModal();
   const background = useBackground(userPreferences);
+
+  const selectedFontVar =
+    FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR;
 
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
@@ -96,10 +109,19 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   }, []);
 
   useEffect(() => {
-    // TODO: Remove after migration to Mantine
-    document.body.style.fontFamily = userPreferences.font
-      ? `"${userPreferences.font}", sans-serif`
-      : '"IBM Plex Mono"';
+    // Apply font variables to both html and body for global accessibility
+    if (typeof document !== 'undefined') {
+      const fontClasses = `${ibmPlexMono.variable} ${robotoMono.variable} ${inter.variable} ${roboto.variable}`;
+      document.documentElement.className = fontClasses;
+      document.body.className = fontClasses;
+    }
+  }, []);
+
+  useEffect(() => {
+    // Apply selected font to body with high specificity
+    if (typeof document !== 'undefined' && userPreferences.font) {
+      document.body.style.fontFamily = `${FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR} !important`;
+    }
   }, [userPreferences.font]);
 
   const getLayout = Component.getLayout ?? (page => page);
@@ -120,21 +142,25 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         />
       </Head>
 
-      <HDXQueryParamProvider>
-        <QueryParamProvider adapter={NextAdapter}>
-          <QueryClientProvider client={queryClient}>
-            <ThemeWrapper
-              fontFamily={userPreferences.font}
-              colorScheme={userPreferences.theme === 'dark' ? 'dark' : 'light'}
-            >
-              {getLayout(<Component {...pageProps} />)}
-              {confirmModal}
-            </ThemeWrapper>
-            <ReactQueryDevtools initialIsOpen={true} />
-            {background}
-          </QueryClientProvider>
-        </QueryParamProvider>
-      </HDXQueryParamProvider>
+      <div>
+        <HDXQueryParamProvider>
+          <QueryParamProvider adapter={NextAdapter}>
+            <QueryClientProvider client={queryClient}>
+              <ThemeWrapper
+                fontFamily={selectedFontVar}
+                colorScheme={
+                  userPreferences.theme === 'dark' ? 'dark' : 'light'
+                }
+              >
+                {getLayout(<Component {...pageProps} />)}
+                {confirmModal}
+              </ThemeWrapper>
+              <ReactQueryDevtools initialIsOpen={true} />
+              {background}
+            </QueryClientProvider>
+          </QueryParamProvider>
+        </HDXQueryParamProvider>
+      </div>
     </React.Fragment>
   );
 }
