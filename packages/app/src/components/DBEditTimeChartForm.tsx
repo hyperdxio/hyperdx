@@ -6,7 +6,7 @@ import {
   useFieldArray,
   useForm,
   UseFormSetValue,
-  UseFormWatch,
+  useWatch,
 } from 'react-hook-form';
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import z from 'zod';
@@ -133,7 +133,6 @@ function ChartSeriesEditorComponent({
   setValue,
   showGroupBy,
   tableName: _tableName,
-  watch,
   parentRef,
   length,
   tableSource,
@@ -151,17 +150,17 @@ function ChartSeriesEditorComponent({
   setValue: UseFormSetValue<any>;
   showGroupBy: boolean;
   tableName: string;
-  watch: UseFormWatch<any>;
   length: number;
   tableSource?: TSource;
 }) {
-  const aggFn = watch(`${namePrefix}aggFn`);
-  const aggConditionLanguage = watch(
-    `${namePrefix}aggConditionLanguage`,
-    'lucene',
-  );
+  const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
+  const aggConditionLanguage = useWatch({
+    control,
+    name: `${namePrefix}aggConditionLanguage`,
+    defaultValue: 'lucene',
+  });
 
-  const metricType = watch(`${namePrefix}metricType`);
+  const metricType = useWatch({ control, name: `${namePrefix}metricType` });
 
   // Initialize metricType to 'gauge' when switching to a metric source
   useEffect(() => {
@@ -175,7 +174,7 @@ function ChartSeriesEditorComponent({
       ? getMetricTableName(tableSource, metricType)
       : _tableName;
 
-  const metricName = watch(`${namePrefix}metricName`);
+  const metricName = useWatch({ control, name: `${namePrefix}metricName` });
   const { data: attributeKeys } = useFetchMetricResourceAttrs({
     databaseName,
     tableName: tableName || '',
@@ -773,7 +772,6 @@ export default function EditTimeChartForm({
                     fields.length === 1 && displayType !== DisplayType.Number
                   }
                   tableName={tableName ?? ''}
-                  watch={watch}
                   tableSource={tableSource}
                 />
               ))}
