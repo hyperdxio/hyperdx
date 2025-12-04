@@ -10,7 +10,7 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Anchor, Box, Divider, Group, Text } from '@mantine/core';
+import { Anchor, Box, Code, Divider, Group, Text } from '@mantine/core';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -245,28 +245,37 @@ export function useEventsAroundFocus({
   /** A lucene expression that identifies rows to be hidden. Hidden rows will be returned with a `__hdx_hidden: true` column. */
   hiddenRowExpression?: string;
 }) {
-  let isFetching = false;
   const { config, alias, type } = useMemo(
     () => getConfig(tableSource, traceId, hiddenRowExpression),
     [tableSource, traceId, hiddenRowExpression],
   );
 
-  const { data: beforeSpanData, isFetching: isBeforeSpanFetching } =
-    useEventsData({
-      config,
-      dateRangeStartInclusive: true,
-      dateRange: [dateRange[0], focusDate],
-      enabled,
-    });
-  const { data: afterSpanData, isFetching: isAfterSpanFetching } =
-    useEventsData({
-      config,
-      dateRangeStartInclusive: false,
-      dateRange: [focusDate, dateRange[1]],
-      enabled,
-    });
-  isFetching = isFetching || isBeforeSpanFetching || isAfterSpanFetching;
+  const {
+    data: beforeSpanData,
+    isFetching: isBeforeSpanFetching,
+    error: beforeSpanError,
+  } = useEventsData({
+    config,
+    dateRangeStartInclusive: true,
+    dateRange: [dateRange[0], focusDate],
+    enabled,
+  });
+
+  const {
+    data: afterSpanData,
+    isFetching: isAfterSpanFetching,
+    error: afterSpanError,
+  } = useEventsData({
+    config,
+    dateRangeStartInclusive: false,
+    dateRange: [focusDate, dateRange[1]],
+    enabled,
+  });
+
+  const isFetching = isBeforeSpanFetching || isAfterSpanFetching;
   const meta = beforeSpanData?.meta ?? afterSpanData?.meta;
+  const error = beforeSpanError || afterSpanError;
+
   const rowWhere = useRowWhere({ meta, aliasMap: alias });
   const rows = useMemo(() => {
     // Sometimes meta has not loaded yet
@@ -294,6 +303,7 @@ export function useEventsAroundFocus({
     rows,
     meta,
     isFetching,
+    error,
   };
 }
 
@@ -352,6 +362,7 @@ export function DBTraceWaterfallChartContainer({
     rows: traceRowsData,
     isFetching: traceIsFetching,
     meta: traceRowsMeta,
+    error: traceError,
   } = useEventsAroundFocus({
     tableSource: traceTableSource,
     focusDate,
@@ -364,6 +375,7 @@ export function DBTraceWaterfallChartContainer({
     rows: logRowsData,
     isFetching: logIsFetching,
     meta: logRowsMeta,
+    error: logError,
   } = useEventsAroundFocus({
     // search data if logTableModel exist
     // search invalid date range if no logTableModel(react hook need execute no matter what)
@@ -376,6 +388,8 @@ export function DBTraceWaterfallChartContainer({
   });
 
   const isFetching = traceIsFetching || logIsFetching;
+  const error = traceError || logError;
+
   const rows: any[] = useMemo(
     () => [...traceRowsData, ...logRowsData],
     [traceRowsData, logRowsData],
@@ -799,7 +813,9 @@ export function DBTraceWaterfallChartContainer({
           )}
         </span>
       </Group>
-      <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
+      {!isFetching && !error && (
+        <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
+      )}
       <div
         style={{
           position: 'relative',
@@ -809,6 +825,20 @@ export function DBTraceWaterfallChartContainer({
       >
         {isFetching ? (
           <div className="my-3">Loading Traces...</div>
+        ) : error ? (
+          <Box mt="lg">
+            <Text my="sm" size="sm">
+              An error occurred while fetching trace data:
+            </Text>
+            <Code
+              block
+              style={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {error.message}
+            </Code>
+          </Box>
         ) : rows == null ? (
           <div>
             An unknown error occurred. <ContactSupportText />
