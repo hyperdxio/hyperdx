@@ -65,9 +65,10 @@ export default class DiscoverServicesTask implements HdxTask<DiscoverServicesTas
           try {
             const result = await this.clickhouseClient!.query({
               query,
-              format: 'JSONEachRow',
+              format: 'JSON',
             });
-            const rows = await result.json<Array<{ name: string }>>();
+            const response = await result.json() as { data: Array<{ name: string }> };
+            const rows = response.data || [];
             
             for (const row of rows) {
               if (row.name) {

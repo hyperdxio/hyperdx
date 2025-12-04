@@ -5,6 +5,7 @@ export enum TaskName {
   CHECK_ALERTS = 'check-alerts',
   CHECK_SLOS = 'check-slos',
   CHECK_UPTIME_MONITORS = 'check-uptime-monitors',
+  DETECT_ANOMALIES = 'detect-anomalies',
   DISCOVER_SERVICES = 'discover-services',
   RUN_READINESS_CHECKS = 'run-readiness-checks',
 }
@@ -15,6 +16,10 @@ export enum TaskName {
  */
 const pingTaskArgsSchema = z.object({
   taskName: z.literal(TaskName.PING_PONG),
+});
+
+const detectAnomaliesTaskArgsSchema = z.object({
+  taskName: z.literal(TaskName.DETECT_ANOMALIES),
 });
 
 const discoverServicesTaskArgsSchema = z.object({
@@ -60,6 +65,7 @@ const taskArgsSchema = z.discriminatedUnion('taskName', [
   checkAlertsTaskArgsSchema,
   checkSlosTaskArgsSchema,
   checkUptimeMonitorsTaskArgsSchema,
+  detectAnomaliesTaskArgsSchema,
   discoverServicesTaskArgsSchema,
   runReadinessChecksTaskArgsSchema,
 ]);
@@ -68,6 +74,7 @@ export type PingTaskArgs = z.infer<typeof pingTaskArgsSchema>;
 export type CheckAlertsTaskArgs = z.infer<typeof checkAlertsTaskArgsSchema>;
 export type CheckSlosTaskArgs = z.infer<typeof checkSlosTaskArgsSchema>;
 export type CheckUptimeMonitorsTaskArgs = z.infer<typeof checkUptimeMonitorsTaskArgsSchema>;
+export type DetectAnomaliesTaskArgs = z.infer<typeof detectAnomaliesTaskArgsSchema>;
 export type DiscoverServicesTaskArgs = z.infer<typeof discoverServicesTaskArgsSchema>;
 export type RunReadinessChecksTaskArgs = z.infer<typeof runReadinessChecksTaskArgsSchema>;
 export type TaskArgs = z.infer<typeof taskArgsSchema>;

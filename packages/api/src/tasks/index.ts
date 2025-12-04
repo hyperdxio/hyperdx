@@ -5,6 +5,7 @@ import { serializeError } from 'serialize-error';
 import { RUN_SCHEDULED_TASKS_EXTERNALLY } from '@/config';
 import CheckAlertTask from '@/tasks/checkAlerts';
 import CheckUptimeMonitorsTask from '@/tasks/checkUptimeMonitors';
+import DetectAnomaliesTask from '@/tasks/detectAnomalies';
 import DiscoverServicesTask from '@/tasks/discoverServices';
 import {
   taskExecutionDurationGauge,
@@ -27,7 +28,9 @@ function createTask(argv: TaskArgs): HdxTask<TaskArgs> {
       return new CheckAlertTask(argv);
     case TaskName.CHECK_UPTIME_MONITORS:
       return new CheckUptimeMonitorsTask(argv);
-    case TaskName.PING_PONG:
+    case TaskName.DETECT_ANOMALIES:
+      return new DetectAnomaliesTask(argv);
+      case TaskName.PING_PONG:
       return new PingPongTask(argv);
     case TaskName.CHECK_SLOS:
       return new RunSLOChecksTask(argv);
