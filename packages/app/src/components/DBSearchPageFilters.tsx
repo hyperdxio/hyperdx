@@ -881,6 +881,11 @@ const DBSearchPageFiltersComponent = ({
     }
   }, [chartConfig.dateRange, isLive]);
 
+  // Clear extra facets (from "load more") when switching sources
+  useEffect(() => {
+    setExtraFacets({});
+  }, [sourceId]);
+
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
   const {
