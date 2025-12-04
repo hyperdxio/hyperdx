@@ -1110,9 +1110,14 @@ function ServicesDashboardPage() {
 
   // Auto submit when service or source changes
   useEffect(() => {
+    const normalizedService = service ?? '';
+    const appliedService = appliedConfig.service ?? '';
+    const normalizedSource = sourceId ?? '';
+    const appliedSource = appliedConfig.source ?? '';
+
     if (
-      service !== appliedConfig.service ||
-      sourceId !== appliedConfig.source
+      normalizedService !== appliedService ||
+      (normalizedSource && normalizedSource !== appliedSource)
     ) {
       onSubmit();
     }
