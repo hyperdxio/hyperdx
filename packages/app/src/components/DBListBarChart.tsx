@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import type { FloatingPosition } from '@mantine/core';
 import { Box, Code, Flex, HoverCard, Text } from '@mantine/core';
-import { FloatingPosition } from '@mantine/core/lib/components/Floating';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import type { NumberFormat } from '@/types';
@@ -122,7 +122,7 @@ function ListBar({
                       </Text>
                       <Text size="xs" span>
                         {column.numberFormat != null
-                          ? (formatNumber(value, column.numberFormat) ?? 'N/A')
+                          ? formatNumber(value, column.numberFormat) ?? 'N/A'
                           : value}
                       </Text>
                     </Box>

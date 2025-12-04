@@ -34,14 +34,18 @@ export const AlertPreviewChart = ({
   thresholdType,
   select,
 }: AlertPreviewChartProps) => {
+  const resolvedSelect =
+    (select && select.trim().length > 0
+      ? select
+      : source.defaultTableSelectExpression) ?? '';
+
   const { data: aliasMap } = useAliasMapFromChartConfig({
-    select: select || '',
+    select: resolvedSelect,
     where: where || '',
     connection: source.connection,
     from: source.from,
     whereLanguage: whereLanguage || undefined,
   });
-
   const aliasWith = Object.entries(aliasMap ?? {}).map(([key, value]) => ({
     name: key,
     sql: {

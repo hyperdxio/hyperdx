@@ -35,6 +35,13 @@
     "**/yarn.lock": true,
     "**/yarn-*.cjs": true
   },
-  "cSpell.words": ["micropip", "opamp", "pyimport", "pyodide"],
+  "cSpell.words": [
+    "clickhouse",
+    "hyperdx",
+    "micropip",
+    "opamp",
+    "pyimport",
+    "pyodide"
+  ],
   "typescript.tsdk": "node_modules/typescript/lib"
 }

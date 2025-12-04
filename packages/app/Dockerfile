@@ -7,7 +7,7 @@ WORKDIR /app
 COPY .yarn ./.yarn
 COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./tsconfig.base.json ./
 COPY ./packages/common-utils ./packages/common-utils
-COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.js ./packages/app/mdx.d.ts ./packages/app/.eslintrc.js ./packages/app/
+COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.mjs ./packages/app/mdx.d.ts ./packages/app/eslint.config.mjs ./packages/app/
 RUN yarn install --mode=skip-build && yarn cache clean
 
 
@@ -51,8 +51,8 @@ ENV NODE_ENV production
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nextjs -u 1001
 
-# You only need to copy next.config.js if you are NOT using the default configuration
-COPY --from=builder /app/packages/app/next.config.js ./
+# You only need to copy next.config.mjs if you are NOT using the default configuration
+COPY --from=builder /app/packages/app/next.config.mjs ./
 COPY --from=builder --chown=nextjs:nodejs /app/packages/app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/packages/app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
