@@ -96,10 +96,12 @@ function getScopedFilters(
 function ServiceSelectControlled({
   sourceId,
   onCreate,
+  dateRange,
   ...props
 }: {
   sourceId?: string;
   size?: string;
+  dateRange: [Date, Date];
   onCreate?: () => void;
 } & UseControllerProps<any>) {
   const { data: source } = useSource({ id: sourceId });
@@ -125,7 +127,8 @@ function ServiceSelectControlled({
     ],
     where: `${expressions.service} IS NOT NULL`,
     whereLanguage: 'sql' as const,
-    limit: { limit: 200 },
+    limit: { limit: 10000 },
+    dateRange,
   };
 
   const { data, isLoading, isError } = useQueriedChartConfig(queriedConfig, {
@@ -136,7 +139,12 @@ function ServiceSelectControlled({
 
   const values = useMemo(() => {
     const services =
-      data?.data?.map((d: any) => d.service).filter(Boolean) || [];
+      data?.data
+        ?.map((d: any) => d.service)
+        .filter(Boolean)
+        .sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: 'base' }),
+        ) || [];
     return [
       {
         value: '',
@@ -156,6 +164,7 @@ function ServiceSelectControlled({
       placeholder="All Services"
       maxDropdownHeight={280}
       onCreate={onCreate}
+      nothingFoundMessage={isLoading ? 'Loading more...' : 'No matches found'}
     />
   );
 }
@@ -1155,6 +1164,7 @@ function ServicesDashboardPage() {
               sourceId={sourceId}
               control={control}
               name="service"
+              dateRange={searchedTimeRange}
             />
             <WhereLanguageControlled
               name="whereLanguage"
