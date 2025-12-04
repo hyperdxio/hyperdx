@@ -1133,10 +1133,12 @@ export default function EditTimeChartForm({
                 connection: tableSource.connection,
                 from: tableSource.from,
                 limit: { limit: 200 },
+                // Search mode requires a string select, not an array of aggregations
                 select:
-                  queriedConfig.select ||
-                  tableSource?.defaultTableSelectExpression ||
-                  '',
+                  typeof queriedConfig.select === 'string' &&
+                  queriedConfig.select
+                    ? queriedConfig.select
+                    : tableSource?.defaultTableSelectExpression || '',
                 groupBy: undefined,
                 granularity: undefined,
               }}
