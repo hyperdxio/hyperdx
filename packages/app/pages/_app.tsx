@@ -64,7 +64,15 @@ const FONT_VAR_MAP: Record<string, string> = {
   Roboto: 'var(--font-roboto)',
 };
 
+const MANTINE_FONT_MAP: Record<string, string> = {
+  'IBM Plex Mono': 'var(--font-ibm-plex-mono), monospace',
+  'Roboto Mono': 'var(--font-roboto-mono), monospace',
+  Inter: 'var(--font-inter), sans-serif',
+  Roboto: 'var(--font-roboto), sans-serif',
+};
+
 const DEFAULT_FONT_VAR = 'var(--font-inter)';
+const DEFAULT_MANTINE_FONT = 'var(--font-inter), sans-serif';
 
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const { userPreferences } = useUserPreferences();
@@ -73,6 +81,8 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 
   const selectedFontVar =
     FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR;
+  const selectedMantineFont =
+    MANTINE_FONT_MAP[userPreferences.font] || DEFAULT_MANTINE_FONT;
 
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
@@ -111,16 +121,22 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   useEffect(() => {
     // Apply font variables to both html and body for global accessibility
     if (typeof document !== 'undefined') {
-      const fontClasses = `${ibmPlexMono.variable} ${robotoMono.variable} ${inter.variable} ${roboto.variable}`;
-      document.documentElement.className = fontClasses;
-      document.body.className = fontClasses;
+      const fontClasses = [
+        ibmPlexMono.variable,
+        robotoMono.variable,
+        inter.variable,
+        roboto.variable,
+      ];
+      document.documentElement.classList.add(...fontClasses);
+      document.body.classList.add(...fontClasses);
     }
   }, []);
 
   useEffect(() => {
-    // Apply selected font to body with high specificity
+    // Update CSS variable for global font cascading
     if (typeof document !== 'undefined' && userPreferences.font) {
-      document.body.style.fontFamily = `${FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR} !important`;
+      const fontVar = FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR;
+      document.documentElement.style.setProperty('--app-font-family', fontVar);
     }
   }, [userPreferences.font]);
 
@@ -142,25 +158,21 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         />
       </Head>
 
-      <div>
-        <HDXQueryParamProvider>
-          <QueryParamProvider adapter={NextAdapter}>
-            <QueryClientProvider client={queryClient}>
-              <ThemeWrapper
-                fontFamily={selectedFontVar}
-                colorScheme={
-                  userPreferences.theme === 'dark' ? 'dark' : 'light'
-                }
-              >
-                {getLayout(<Component {...pageProps} />)}
-                {confirmModal}
-              </ThemeWrapper>
-              <ReactQueryDevtools initialIsOpen={true} />
-              {background}
-            </QueryClientProvider>
-          </QueryParamProvider>
-        </HDXQueryParamProvider>
-      </div>
+      <HDXQueryParamProvider>
+        <QueryParamProvider adapter={NextAdapter}>
+          <QueryClientProvider client={queryClient}>
+            <ThemeWrapper
+              fontFamily={selectedMantineFont}
+              colorScheme={userPreferences.theme === 'dark' ? 'dark' : 'light'}
+            >
+              {getLayout(<Component {...pageProps} />)}
+              {confirmModal}
+            </ThemeWrapper>
+            <ReactQueryDevtools initialIsOpen={true} />
+            {background}
+          </QueryClientProvider>
+        </QueryParamProvider>
+      </HDXQueryParamProvider>
     </React.Fragment>
   );
 }

@@ -27,10 +27,11 @@
   --mantine-webkit-font-smoothing: inherit;
   --mantine-moz-font-smoothing: inherit;
   color-scheme: dark;
+  --app-font-family: var(--font-inter);
 }
 
 body {
-  font-family: var(--font-ibm-plex-mono), monospace;
+  font-family: var(--app-font-family);
   font-size: var(--mantine-font-size-sm);
 }
 
@@ -196,7 +197,7 @@ body {
 // Nextra Overrides
 .nextra-toc,
 .nextra-sidebar-container {
-  font-family: 'Roboto', sans-serif;
+  font-family: var(--font-inter) !important;
 }
 
 // custom overrides for jsontree
