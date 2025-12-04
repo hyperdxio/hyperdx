@@ -3,7 +3,7 @@ import { NextAdapter } from 'next-query-params';
 import { initialize, mswLoader } from 'msw-storybook-addon';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { QueryParamProvider } from 'use-query-params';
-import type { Preview } from '@storybook/react';
+import type { Preview } from '@storybook/nextjs';
 
 import { meHandler } from '../src/mocks/handlers';
 import { ThemeWrapper } from '../src/ThemeWrapper';
@@ -60,7 +60,7 @@ const preview: Preview = {
     msw: {
       handlers: [meHandler],
     },
-    backgrounds: { disable: true },
+    backgrounds: { disabled: true },
   },
 };
 
