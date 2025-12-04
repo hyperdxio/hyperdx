@@ -1,5 +1,3 @@
-'use client';
-
 import { useMemo } from 'react';
 import stripAnsi from 'strip-ansi';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';

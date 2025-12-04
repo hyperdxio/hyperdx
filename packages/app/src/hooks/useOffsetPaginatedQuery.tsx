@@ -1,5 +1,3 @@
-'use client';
-
 import { useMemo } from 'react';
 import ms from 'ms';
 import type { ResponseJSON, Row } from '@hyperdx/common-utils/dist/clickhouse';

@@ -1,5 +1,3 @@
-'use client';
-
 import { useCallback, useMemo } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';

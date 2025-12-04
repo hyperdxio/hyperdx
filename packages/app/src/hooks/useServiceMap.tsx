@@ -1,5 +1,3 @@
-'use client';
-
 import SqlString from 'sqlstring';
 import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';

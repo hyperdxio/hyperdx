@@ -1,5 +1,3 @@
-'use client';
-
 import {
   MouseEvent as ReactMouseEvent,
   useCallback,

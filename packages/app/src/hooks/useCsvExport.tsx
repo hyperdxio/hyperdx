@@ -1,5 +1,3 @@
-'use client';
-
 import { useMemo } from 'react';
 
 const DEFAULT_MAX_ROWS = 4000;
