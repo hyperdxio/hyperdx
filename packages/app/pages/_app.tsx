@@ -64,7 +64,7 @@ const FONT_VAR_MAP: Record<string, string> = {
   Roboto: 'var(--font-roboto)',
 };
 
-const DEFAULT_FONT_VAR = 'var(--font-ibm-plex-mono)';
+const DEFAULT_FONT_VAR = 'var(--font-inter)';
 
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const { userPreferences } = useUserPreferences();
