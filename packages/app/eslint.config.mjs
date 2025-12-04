@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
+import storybook from 'eslint-plugin-storybook';
 import nextPlugin from '@next/eslint-plugin-next';
 import reactPlugin from 'eslint-plugin-react';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
@@ -12,6 +13,7 @@ export default [
   prettierConfig,
   {
     ignores: [
+      'playwright-report/**',
       '.next/**',
       'node_modules/**',
       'out/**',
@@ -30,7 +32,7 @@ export default [
     files: ['**/*.{js,jsx,ts,tsx}'],
     plugins: {
       '@next/next': nextPlugin,
-      'react': reactPlugin,
+      react: reactPlugin,
       'react-hooks': reactHooksPlugin,
       'simple-import-sort': simpleImportSort,
     },
@@ -108,5 +110,5 @@ export default [
       '@next/next/no-html-link-for-pages': 'off',
     },
   },
+  ...storybook.configs['flat/recommended'],
 ];
-
