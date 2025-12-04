@@ -1,9 +1,11 @@
-import { useContext, useMemo } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { TSource } from '@hyperdx/common-utils/dist/types';
-import { Flex } from '@mantine/core';
+import { Anchor, Flex } from '@mantine/core';
 
 import { RowSidePanelContext } from './DBRowSidePanel';
 import EventTag from './EventTag';
+
+const DEFAULT_ATTRIBUTES_TO_SHOW = 12;
 
 export type HighlightedAttribute = {
   source: TSource;
@@ -18,6 +20,8 @@ export function DBHighlightedAttributesList({
 }: {
   attributes: HighlightedAttribute[];
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   const {
     onPropertyAddClick,
     generateSearchUrl,
@@ -25,15 +29,19 @@ export function DBHighlightedAttributesList({
   } = useContext(RowSidePanelContext);
 
   const sortedAttributes = useMemo(() => {
-    return attributes.sort(
-      (a, b) =>
-        a.displayedKey.localeCompare(b.displayedKey) ||
-        a.value.localeCompare(b.value),
-    );
-  }, [attributes]);
+    return attributes
+      .sort(
+        (a, b) =>
+          a.displayedKey.localeCompare(b.displayedKey) ||
+          a.value.localeCompare(b.value),
+      )
+      .slice(0, isExpanded ? attributes.length : DEFAULT_ATTRIBUTES_TO_SHOW);
+  }, [attributes, isExpanded]);
+
+  const hiddenAttributesCount = attributes.length - sortedAttributes.length;
 
   return (
-    <Flex wrap="wrap" gap="2px" mb="md">
+    <Flex wrap="wrap" gap="2px" mb="md" align="baseline">
       {sortedAttributes.map(({ displayedKey, value, sql, lucene, source }) => (
         <EventTag
           displayedKey={displayedKey}
@@ -62,6 +70,11 @@ export function DBHighlightedAttributesList({
           }
         />
       ))}
+      {attributes.length > DEFAULT_ATTRIBUTES_TO_SHOW && (
+        <Anchor size="xs" onClick={() => setIsExpanded(!isExpanded)}>
+          {isExpanded ? 'Show Less' : `Show ${hiddenAttributesCount} More...`}
+        </Anchor>
+      )}
     </Flex>
   );
 }

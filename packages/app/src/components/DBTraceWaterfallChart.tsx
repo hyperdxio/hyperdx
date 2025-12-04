@@ -799,6 +799,7 @@ export function DBTraceWaterfallChartContainer({
           )}
         </span>
       </Group>
+      <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
       <div
         style={{
           position: 'relative',
@@ -816,9 +817,6 @@ export function DBTraceWaterfallChartContainer({
           <div className="my-3">No matching spans or logs found</div>
         ) : (
           <>
-            <DBHighlightedAttributesList
-              attributes={highlightedAttributeValues}
-            />
             <TimelineChart
               style={{
                 overflowY: 'auto',
