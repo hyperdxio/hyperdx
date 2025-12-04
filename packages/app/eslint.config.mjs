@@ -22,7 +22,7 @@ export default [
       '**/*.config.ts',
       '**/*.config.cjs',
       '**/*.config.mjs',
-      '.eslintrc.js',
+      'eslint.config.mjs',
       'public/__ENV.js',
     ],
   },
@@ -30,7 +30,7 @@ export default [
     files: ['**/*.{js,jsx,ts,tsx}'],
     plugins: {
       '@next/next': nextPlugin,
-      'react': reactPlugin,
+      react: reactPlugin,
       'react-hooks': reactHooksPlugin,
       'simple-import-sort': simpleImportSort,
     },
@@ -109,4 +109,3 @@ export default [
     },
   },
 ];
-

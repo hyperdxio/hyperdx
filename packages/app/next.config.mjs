@@ -13,6 +13,9 @@ const packageJson = JSON.parse(
 );
 const { version } = packageJson;
 
+// Support legacy consumers of next-runtime-env that expect this value under window.__ENV
+process.env.NEXT_PUBLIC_APP_VERSION = version;
+
 configureRuntimeEnv();
 
 const withNextra = nextra({
@@ -25,8 +28,10 @@ const basePath = process.env.NEXT_PUBLIC_HYPERDX_BASE_PATH;
 const nextConfig = {
   reactCompiler: true,
   basePath: basePath,
-  // Required for src/instrumentation.ts to run when using the pages router
-  instrumentationHook: true,
+  env: {
+    // Ensures bundler-time replacements for client/server code that references this env var
+    NEXT_PUBLIC_APP_VERSION: version,
+  },
   // External packages to prevent bundling issues (moved from experimental in Next.js 15+)
   // https://github.com/open-telemetry/opentelemetry-js/issues/4297#issuecomment-2285070503
   serverExternalPackages: [
@@ -65,9 +70,6 @@ const nextConfig = {
           ],
         },
       ];
-    },
-    publicRuntimeConfig: {
-      version,
     },
     productionBrowserSourceMaps: false,
     ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'

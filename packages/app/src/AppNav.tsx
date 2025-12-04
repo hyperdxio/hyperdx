@@ -45,6 +45,10 @@ import { useUserPreferences } from '@/useUserPreferences';
 
 import packageJson from '../package.json';
 
+// Expose the same value Next injected at build time; fall back to package.json for dev tooling
+const APP_VERSION =
+  process.env.NEXT_PUBLIC_APP_VERSION ?? packageJson.version ?? 'dev';
+
 import api from './api';
 import {
   AppNavCloudBanner,
@@ -882,7 +886,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           }}
         >
           <AppNavHelpMenu
-            version={packageJson.version}
+            version={APP_VERSION}
             onAddDataClick={openInstallInstructions}
           />
           <AppNavUserMenu
