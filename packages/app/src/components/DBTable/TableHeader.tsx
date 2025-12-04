@@ -20,6 +20,7 @@ export default function TableHeader({
   header: Header<any, any>;
   lastItemButtons?: React.ReactNode;
 }) {
+  'use no memo';
   return (
     <th
       className="overflow-hidden"
