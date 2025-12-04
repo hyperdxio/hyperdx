@@ -50,8 +50,20 @@ import { groupFacetsByBaseName } from './DBSearchPageFilters/utils';
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
 
+/* The initial number of values per filter to load */
+const INITIAL_LOAD_LIMIT = 20;
+
+/* The maximum number of values per filter to load when "Load More" is clicked */
+const LOAD_MORE_LOAD_LIMIT = 10000;
+
+/* The initial number of values per filter to render */
+const INITIAL_MAX_VALUES_DISPLAYED = 10;
+
+/* The maximum number of values per filter to render at once after loading more */
+const SHOW_MORE_MAX_VALUES_DISPLAYED = 50;
+
 // This function will clean json string attributes specifically. It will turn a string like
-// 'toString(ResourceAttributes.`hdx`.`sdk`.`version`)' into 'ResourceAttributes.hdx.sdk.verion'.
+// 'toString(ResourceAttributes.`hdx`.`sdk`.`version`)' into 'ResourceAttributes.hdx.sdk.version'.
 export function cleanedFacetName(key: string): string {
   if (key.startsWith('toString')) {
     return key
@@ -314,8 +326,6 @@ export type FilterGroupProps = {
   distributionKey?: string; // Optional key to use for distribution queries, defaults to name
 };
 
-const MAX_FILTER_GROUP_ITEMS = 10;
-
 export const FilterGroup = ({
   name,
   options,
@@ -411,11 +421,12 @@ export const FilterGroup = ({
     }
   }, [distributionError]);
 
-  const totalFiltersSize =
+  const totalAppliedFiltersSize =
     selectedValues.included.size +
     selectedValues.excluded.size +
     (hasRange ? 1 : 0);
 
+  // Loaded options + any selected options that aren't in the loaded list
   const augmentedOptions = useMemo(() => {
     const selectedSet = new Set([
       ...selectedValues.included,
@@ -429,7 +440,13 @@ export const FilterGroup = ({
     ];
   }, [options, selectedValues]);
 
-  const displayedOptions = useMemo(() => {
+  const displayedItemLimit = shouldShowMore
+    ? SHOW_MORE_MAX_VALUES_DISPLAYED
+    : INITIAL_MAX_VALUES_DISPLAYED;
+
+  // Options matching search, sorted appropriately
+  const sortedMatchingOptions = useMemo(() => {
+    // When searching, sort alphabetically
     if (search) {
       return augmentedOptions
         .filter(option => {
@@ -438,13 +455,13 @@ export const FilterGroup = ({
             option.value.toLowerCase().includes(search.toLowerCase())
           );
         })
-        .sort((a, b) =>
+        .toSorted((a, b) =>
           a.value.localeCompare(b.value, undefined, { numeric: true }),
         );
     }
 
-    // General Sorting of List
-    augmentedOptions.sort((a, b) => {
+    // When not searching, sort by pinned, selected, distribution, then alphabetically
+    return augmentedOptions.toSorted((a, b) => {
       const aPinned = isPinned(a.value);
       const aIncluded = selectedValues.included.has(a.value);
       const aExcluded = selectedValues.excluded.has(a.value);
@@ -474,23 +491,21 @@ export const FilterGroup = ({
       // Finally sort alphabetically/numerically
       return a.value.localeCompare(b.value, undefined, { numeric: true });
     });
-
-    // If expanded or small list, return everything
-    if (shouldShowMore || augmentedOptions.length <= MAX_FILTER_GROUP_ITEMS) {
-      return augmentedOptions;
-    }
-    // Return the subset of items
-    const pageSize = Math.max(MAX_FILTER_GROUP_ITEMS, totalFiltersSize);
-    return augmentedOptions.slice(0, pageSize);
   }, [
     search,
-    shouldShowMore,
-    isPinned,
     augmentedOptions,
-    selectedValues,
-    totalFiltersSize,
+    isPinned,
+    selectedValues.included,
+    selectedValues.excluded,
     distributionData,
   ]);
+
+  // The subset of options to be displayed
+  const displayedOptions = useMemo(() => {
+    return sortedMatchingOptions.length <= displayedItemLimit
+      ? sortedMatchingOptions
+      : sortedMatchingOptions.slice(0, displayedItemLimit);
+  }, [sortedMatchingOptions, displayedItemLimit]);
 
   // Simple highlight animation when checkbox is checked
   const handleChange = useCallback(
@@ -513,10 +528,14 @@ export const FilterGroup = ({
     },
     [onChange, selectedValues],
   );
+
+  const isLimitingDisplayedItems =
+    sortedMatchingOptions.length > displayedOptions.length;
+
   const showShowMoreButton =
     !search &&
-    augmentedOptions.length > MAX_FILTER_GROUP_ITEMS &&
-    totalFiltersSize < augmentedOptions.length;
+    augmentedOptions.length > INITIAL_MAX_VALUES_DISPLAYED &&
+    totalAppliedFiltersSize < augmentedOptions.length;
 
   return (
     <Accordion
@@ -593,7 +612,7 @@ export const FilterGroup = ({
                   )}
                 </>
               )}
-              {totalFiltersSize > 0 && (
+              {totalAppliedFiltersSize > 0 && (
                 <TextButton
                   label="Clear"
                   onClick={() => {
@@ -681,6 +700,19 @@ export const FilterGroup = ({
                     </Text>
                   </Group>
                 ) : null}
+                {isLimitingDisplayedItems && (shouldShowMore || search) && (
+                  <Text size="xxs" ms={28} fs="italic">
+                    Search to see more
+                  </Text>
+                )}
+                {loadMoreLoading && (
+                  <Group m={6} gap="xs">
+                    <Loader size={12} color="gray" />
+                    <Text c="dimmed" size="xs">
+                      Loading more...
+                    </Text>
+                  </Group>
+                )}
                 {showShowMoreButton && (
                   <div className="d-flex m-1">
                     <TextButton
@@ -708,26 +740,18 @@ export const FilterGroup = ({
                 {onLoadMore &&
                   !showShowMoreButton &&
                   !shouldShowMore &&
-                  !hasLoadedMore && (
+                  !hasLoadedMore &&
+                  !loadMoreLoading && (
                     <div className="d-flex m-1">
-                      {loadMoreLoading ? (
-                        <Group m={6} gap="xs">
-                          <Loader size={12} color="gray" />
-                          <Text c="dimmed" size="xs">
-                            Loading more...
-                          </Text>
-                        </Group>
-                      ) : (
-                        <TextButton
-                          display={hasLoadedMore ? 'none' : undefined}
-                          label={
-                            <>
-                              <span className="bi-chevron-right" /> Load more
-                            </>
-                          }
-                          onClick={() => onLoadMore(name)}
-                        />
-                      )}
+                      <TextButton
+                        display={hasLoadedMore ? 'none' : undefined}
+                        label={
+                          <>
+                            <span className="bi-chevron-right" /> Load more
+                          </>
+                        }
+                        onClick={() => onLoadMore(name)}
+                      />
                     </div>
                   )}
               </Stack>
@@ -859,14 +883,13 @@ const DBSearchPageFiltersComponent = ({
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
-  const keyLimit = 20;
   const {
     data: facets,
     isLoading: isFacetsLoading,
     isFetching: isFacetsFetching,
   } = useGetKeyValues({
     chartConfig: { ...chartConfig, dateRange },
-    limit: keyLimit,
+    limit: INITIAL_LOAD_LIMIT,
     keys: keysToFetch,
   });
 
@@ -906,7 +929,7 @@ const DBSearchPageFiltersComponent = ({
             dateRange,
           },
           keys: [key],
-          limit: 10000,
+          limit: LOAD_MORE_LOAD_LIMIT,
           disableRowLimit: true,
         });
         const newValues = newKeyVals[0].value;
