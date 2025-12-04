@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
 import { Modal, Paper, Tabs, Text, TextProps, Tooltip } from '@mantine/core';
 import { IconCode } from '@tabler/icons-react';
+import { useState } from 'react';
 
 import { useTableMetadata } from '@/hooks/useMetadata';
 
@@ -156,6 +156,9 @@ const SourceSchemaPreview = ({
           onClose={() => setIsModalOpen(false)}
           size="auto"
           title={tables.length > 1 ? `Table Schemas` : `Table Schema`}
+          styles={{
+            body: { minHeight: '60vh', maxHeight: '90vh', overflowY: 'auto' },
+          }}
         >
           <Tabs
             defaultValue={`${tables[0]?.databaseName}.${tables[0]?.tableName}.${tables[0]?.title}`}
