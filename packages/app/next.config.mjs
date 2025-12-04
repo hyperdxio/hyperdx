@@ -25,6 +25,8 @@ const basePath = process.env.NEXT_PUBLIC_HYPERDX_BASE_PATH;
 const nextConfig = {
   reactCompiler: true,
   basePath: basePath,
+  // Required for src/instrumentation.ts to run when using the pages router
+  instrumentationHook: true,
   // External packages to prevent bundling issues (moved from experimental in Next.js 15+)
   // https://github.com/open-telemetry/opentelemetry-js/issues/4297#issuecomment-2285070503
   serverExternalPackages: [
@@ -63,6 +65,9 @@ const nextConfig = {
           ],
         },
       ];
+    },
+    publicRuntimeConfig: {
+      version,
     },
     productionBrowserSourceMaps: false,
     ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'

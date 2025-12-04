@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Fuse from 'fuse.js';
 import { Popover, Textarea, UnstyledButton } from '@mantine/core';
@@ -26,7 +28,7 @@ export default function AutocompleteInput({
   queryHistoryType,
   'data-testid': dataTestId,
 }: {
-  inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  inputRef: React.RefObject<HTMLTextAreaElement>;
   value?: string;
   onChange: (value: string) => void;
   onSubmit?: () => void;

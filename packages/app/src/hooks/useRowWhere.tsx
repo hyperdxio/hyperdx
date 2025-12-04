@@ -1,3 +1,5 @@
+'use client';
+
 import { useCallback, useMemo } from 'react';
 import MD5 from 'crypto-js/md5';
 import SqlString from 'sqlstring';
@@ -125,7 +127,7 @@ export default function useRowWhere({
           // if aliasMap is provided, use the alias as the valueExpr
           // but if the alias is not found, use the column name as the valueExpr
           const valueExpr =
-            aliasMap != null ? (aliasMap[c.name] ?? c.name) : c.name;
+            aliasMap != null ? aliasMap[c.name] ?? c.name : c.name;
           return [
             c.name,
             {

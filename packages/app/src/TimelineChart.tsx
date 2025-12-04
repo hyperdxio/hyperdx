@@ -1,3 +1,5 @@
+'use client';
+
 import { memo, RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import { Tooltip } from '@mantine/core';
@@ -280,7 +282,7 @@ function TimelineMouseCursor({
   xPerc,
   setXPerc,
 }: {
-  containerRef: RefObject<HTMLDivElement | null>;
+  containerRef: RefObject<HTMLDivElement>;
   maxVal: number;
   labelWidth: number;
   height: number;
