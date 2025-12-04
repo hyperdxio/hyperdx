@@ -113,6 +113,7 @@ export function MetricNameSelect({
   isLoading,
   isError,
   metricSource,
+  'data-testid': dataTestId,
 }: {
   dateRange?: DateRange['dateRange'];
   metricType: MetricsDataType;
@@ -122,6 +123,7 @@ export function MetricNameSelect({
   isLoading?: boolean;
   isError?: boolean;
   metricSource: TSource;
+  'data-testid'?: string;
 }) {
   const SEPARATOR = ':::::::';
 
@@ -159,6 +161,9 @@ export function MetricNameSelect({
     return metricsFromQuery;
   }, [gaugeMetrics, histogramMetrics, sumMetrics, metricName, metricType]);
 
+  const currentValue =
+    metricName && metricType ? `${metricName}${SEPARATOR}${metricType}` : null;
+
   return (
     <Select
       disabled={isLoading || isError}
@@ -177,7 +182,7 @@ export function MetricNameSelect({
         width: 'auto',
         zIndex: 1111,
       }}
-      value={`${metricName}${SEPARATOR}${metricType}`}
+      value={currentValue}
       searchable
       clearable
       onChange={value => {
@@ -187,6 +192,7 @@ export function MetricNameSelect({
           setMetricType(_metricType.toLowerCase() as MetricsDataType);
         }
       }}
+      data-testid={dataTestId}
     />
   );
 }

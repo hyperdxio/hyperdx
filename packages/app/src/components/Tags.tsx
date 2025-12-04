@@ -117,7 +117,9 @@ export const Tags = React.memo(
             m={8}
             mb={0}
             value={q}
-            onChange={event => setQ(event.currentTarget.value)}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              setQ(event.currentTarget.value)
+            }
             onKeyDown={handleSearchKeyDown}
             rightSection={
               q && (

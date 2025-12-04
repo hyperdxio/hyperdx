@@ -20,6 +20,7 @@ export default function TableHeader({
   header: Header<any, any>;
   lastItemButtons?: React.ReactNode;
 }) {
+  'use no memo'; // todo: table headers arent being resized properly with the react compiler
   return (
     <th
       className="overflow-hidden"

@@ -375,7 +375,7 @@ function SaveSearchModal({
                     <ActionIcon
                       variant="transparent"
                       color="gray"
-                      onClick={e => {
+                      onClick={(e: React.MouseEvent) => {
                         e.stopPropagation();
                         setTags(tags.filter(t => t !== tag));
                       }}

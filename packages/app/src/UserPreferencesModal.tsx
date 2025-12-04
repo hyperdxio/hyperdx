@@ -222,7 +222,7 @@ export const UserPreferencesModal = ({
                 placeholder="https:// or data:"
                 value={userPreferences.backgroundUrl}
                 leftSection={<i className="bi bi-globe" />}
-                onChange={e =>
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setUserPreference({
                     backgroundUrl: e.currentTarget.value,
                   })

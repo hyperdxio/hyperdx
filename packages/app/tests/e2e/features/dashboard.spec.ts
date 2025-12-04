@@ -64,14 +64,17 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       const demoMetricsOption = page.locator('text=Demo Metrics');
       await expect(demoMetricsOption).toBeVisible();
       await demoMetricsOption.click();
+      await page.waitForTimeout(1000);
 
+      // Wait for the metric selector to appear
       const metricSelector = page.locator(
-        'input[placeholder*="metric"], input[placeholder*="Select a metric"]',
+        '[data-testid="metric-name-selector"]',
       );
-      await expect(metricSelector).toBeVisible();
+      await expect(metricSelector).toBeVisible({ timeout: 5000 });
 
       // Click to open the dropdown first
       await metricSelector.click();
+      await page.waitForTimeout(500);
 
       // Type the metric name to filter options
       await metricSelector.fill('k8s.container.cpu_limit');

@@ -5,7 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { InputControlled, PasswordInputControlled } from '../InputControlled';
 
 // Test wrapper component that provides form context
-function TestForm({ children }: { children: React.ReactNode }) {
+function TestForm({ children }: { children: React.ReactElement }) {
   const { control } = useForm({
     defaultValues: {
       testInput: '',
@@ -13,11 +13,7 @@ function TestForm({ children }: { children: React.ReactNode }) {
     },
   });
 
-  return (
-    <form>
-      {React.cloneElement(children as React.ReactElement, { control })}
-    </form>
-  );
+  return <form>{React.cloneElement(children, { control } as any)}</form>;
 }
 
 describe('InputControlled', () => {

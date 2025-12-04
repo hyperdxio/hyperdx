@@ -39,8 +39,8 @@ function HistogramChart({
     );
   }, [graphResults]);
 
-  const barChartRef = useRef<any>();
-  const activeBar = useRef<CategoricalChartState>();
+  const barChartRef = useRef<any>(null);
+  const activeBar = useRef<CategoricalChartState | undefined>(undefined);
 
   useHotkeys(['esc'], () => {
     activeBar.current = undefined;

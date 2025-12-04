@@ -4,7 +4,9 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head>
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script src="/__ENV.js" />
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
         <link
           rel="stylesheet"

@@ -105,7 +105,7 @@ export const Table = <T extends Record<string, unknown> | string[]>({
   );
 };
 
-export const TableCellButton: React.VFC<{
+export const TableCellButton: React.FC<{
   title?: string;
   label: React.ReactNode;
   biIcon?: string;

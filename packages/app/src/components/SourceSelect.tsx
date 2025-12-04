@@ -27,7 +27,7 @@ export const SourceSelectRightSection = ({
     rightSection: (
       <>
         <UnstyledButton
-          onClick={e => {
+          onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
             e.stopPropagation();
             e.preventDefault();
           }}
