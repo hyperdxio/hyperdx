@@ -49,13 +49,13 @@ export default function ServiceDashboardEndpointSidePanel({
     const filters: Filter[] = [
       {
         type: 'sql',
-        condition: `${expressions.spanName} = '${endpoint}' AND ${expressions.isSpanKindServer}`,
+        condition: `${expressions.spanName} IN ('${endpoint}') AND ${expressions.isSpanKindServer}`,
       },
     ];
     if (service) {
       filters.push({
         type: 'sql',
-        condition: `${expressions.service} = '${service}'`,
+        condition: `${expressions.service} IN ('${service}')`,
       });
     }
     return filters;
