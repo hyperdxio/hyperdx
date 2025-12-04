@@ -75,6 +75,11 @@ export type AlertsPageItem = Alert & {
     email: string;
     name?: string;
   };
+  incident?: {
+    _id: string;
+    status: IncidentStatus;
+    severity: IncidentSeverity;
+  };
 };
 
 export type AlertWithCreatedBy = Alert & {

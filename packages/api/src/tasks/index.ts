@@ -5,6 +5,7 @@ import { serializeError } from 'serialize-error';
 import { RUN_SCHEDULED_TASKS_EXTERNALLY } from '@/config';
 import CheckAlertTask from '@/tasks/checkAlerts';
 import CheckUptimeMonitorsTask from '@/tasks/checkUptimeMonitors';
+import DiscoverServicesTask from '@/tasks/discoverServices';
 import {
   taskExecutionDurationGauge,
   taskExecutionFailureCounter,
@@ -12,9 +13,8 @@ import {
   timeExec,
 } from '@/tasks/metrics';
 import PingPongTask from '@/tasks/pingPongTask';
-import RunSLOChecksTask from '@/tasks/runSLOChecks';
-import DiscoverServicesTask from '@/tasks/discoverServices';
 import RunReadinessChecksTask from '@/tasks/runReadinessChecks';
+import RunSLOChecksTask from '@/tasks/runSLOChecks';
 import { asTaskArgs, HdxTask, TaskArgs, TaskName } from '@/tasks/types';
 import logger from '@/utils/logger';
 

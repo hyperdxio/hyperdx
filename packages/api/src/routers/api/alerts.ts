@@ -12,6 +12,7 @@ import {
   getAlertsEnhanced,
   updateAlert,
 } from '@/controllers/alerts';
+import Incident, { IncidentStatus, IncidentSource } from '@/models/incident';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -23,7 +24,18 @@ router.get('/', async (req, res, next) => {
       return res.sendStatus(403);
     }
 
-    const alerts = await getAlertsEnhanced(teamId);
+    const [alerts, activeIncidents] = await Promise.all([
+      getAlertsEnhanced(teamId),
+      Incident.find({
+        team: teamId,
+        status: { $in: [IncidentStatus.OPEN, IncidentStatus.INVESTIGATING] },
+        source: IncidentSource.ALERT,
+      }),
+    ]);
+
+    const incidentsByAlertId = _.keyBy(activeIncidents, i =>
+      i.alert?.toString(),
+    );
 
     const data = await Promise.all(
       alerts.map(async alert => {
@@ -31,9 +43,13 @@ router.get('/', async (req, res, next) => {
           alertId: new ObjectId(alert._id),
           limit: 20,
         });
+        const incident = incidentsByAlertId[alert._id.toString()];
 
         return {
           history,
+          incident: incident
+            ? _.pick(incident, ['_id', 'status', 'severity'])
+            : undefined,
           silenced: alert.silenced
             ? {
                 by: alert.silenced.by?.email,

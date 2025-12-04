@@ -24,6 +24,18 @@ export const createIncident = async (
   input: IncidentInput,
   user: IUser,
 ) => {
+  if (input.alertId) {
+    const existingIncident = await Incident.findOne({
+      team: teamId,
+      alert: input.alertId,
+      status: { $in: [IncidentStatus.OPEN, IncidentStatus.INVESTIGATING] },
+    });
+
+    if (existingIncident) {
+      throw new Error('An active incident already exists for this alert');
+    }
+  }
+
   return new Incident({
     title: input.title,
     description: input.description,

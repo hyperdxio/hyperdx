@@ -424,15 +424,33 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
             <Badge variant="light" color="red">
               Alert
             </Badge>
-            <Button
-              size="compact-xs"
-              variant="light"
-              color="red"
-              onClick={handleCreateIncident}
-              loading={createIncident.isPending}
-            >
-              Escalate to Incident
-            </Button>
+            {alert.incident ? (
+              <Link
+                href={`/incidents/${alert.incident._id}`}
+                passHref
+                legacyBehavior
+              >
+                <Button
+                  component="a"
+                  size="compact-xs"
+                  variant="light"
+                  color="orange"
+                  leftSection={<i className="bi bi-exclamation-circle" />}
+                >
+                  View Incident
+                </Button>
+              </Link>
+            ) : (
+              <Button
+                size="compact-xs"
+                variant="light"
+                color="red"
+                onClick={handleCreateIncident}
+                loading={createIncident.isPending}
+              >
+                Escalate to Incident
+              </Button>
+            )}
           </Group>
         )}
         {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
