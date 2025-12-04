@@ -197,6 +197,7 @@ function ActiveTimeTooltip({
 
 function DBTimeChartComponent({
   config,
+  disableQueryChunking,
   enabled = true,
   logReferenceTimestamp,
   onTimeRangeSelect,
@@ -208,6 +209,7 @@ function DBTimeChartComponent({
   sourceId,
 }: {
   config: ChartConfigWithDateRange;
+  disableQueryChunking?: boolean;
   enabled?: boolean;
   logReferenceTimestamp?: number;
   onSettled?: () => void;
@@ -241,7 +243,7 @@ function DBTimeChartComponent({
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig, 'chunked'],
       enabled,
-      enableQueryChunking: true,
+      enableQueryChunking: !disableQueryChunking,
     });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
