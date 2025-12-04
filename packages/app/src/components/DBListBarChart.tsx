@@ -180,6 +180,7 @@ export default function DBListBarChart({
   enabled,
   valueColumn,
   groupColumn,
+  hiddenSeries = [],
 }: {
   config: ChartConfigWithDateRange;
   onSettled?: () => void;
@@ -189,6 +190,7 @@ export default function DBListBarChart({
   enabled?: boolean;
   valueColumn: string;
   groupColumn: string;
+  hiddenSeries?: string[];
 }) {
   const queriedConfig = omit(config, ['granularity']);
   const { data, isLoading, isError, error } = useQueriedChartConfig(
@@ -206,12 +208,14 @@ export default function DBListBarChart({
       return [];
     }
 
-    return Object.keys(rows?.[0]).map(key => ({
-      dataKey: key,
-      displayName: key,
-      numberFormat: config.numberFormat,
-    }));
-  }, [config.numberFormat, data]);
+    return Object.keys(rows?.[0])
+      .filter(key => !hiddenSeries.includes(key))
+      .map(key => ({
+        dataKey: key,
+        displayName: key,
+        numberFormat: config.numberFormat,
+      }));
+  }, [config.numberFormat, data, hiddenSeries]);
 
   return isLoading && !data ? (
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
