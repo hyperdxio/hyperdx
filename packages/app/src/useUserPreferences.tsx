@@ -7,7 +7,7 @@ export type UserPreferences = {
   isUTC: boolean;
   timeFormat: '12h' | '24h';
   theme: 'light' | 'dark';
-  font: 'IBM Plex Mono' | 'Inter';
+  font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   backgroundEnabled?: boolean;
   backgroundUrl?: string;
   backgroundBlur?: number;
