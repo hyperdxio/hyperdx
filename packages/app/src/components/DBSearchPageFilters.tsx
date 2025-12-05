@@ -386,13 +386,16 @@ export const FilterGroup = ({
     }
   }, [isDefaultExpanded]);
 
-  const handleSetSearch = (value: string) => {
-    setSearch(value);
+  const handleSetSearch = useCallback(
+    (value: string) => {
+      setSearch(value);
 
-    if (value && !hasLoadedMore) {
-      onLoadMore(name);
-    }
-  };
+      if (value && !hasLoadedMore) {
+        onLoadMore(name);
+      }
+    },
+    [hasLoadedMore, name, onLoadMore],
+  );
 
   const {
     data: distributionData,
