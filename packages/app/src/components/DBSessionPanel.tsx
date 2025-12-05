@@ -14,7 +14,7 @@ export const useSessionId = ({
   enabled = false,
 }: {
   sourceId?: string;
-  traceId: string;
+  traceId?: string;
   dateRange: [Date, Date];
   enabled?: boolean;
 }) => {
@@ -22,7 +22,7 @@ export const useSessionId = ({
   const { data: source } = useSource({ id: sourceId });
 
   const config = useMemo(() => {
-    if (!source) {
+    if (!source || !traceId) {
       return;
     }
     return {
@@ -54,10 +54,10 @@ export const useSessionId = ({
   }, [source, traceId]);
 
   const { data } = useEventsData({
-    config: config!, // ok to force unwrap, the query will be disabled if source is null
+    config: config!, // ok to force unwrap, the query will be disabled if config is null
     dateRangeStartInclusive: true,
     dateRange,
-    enabled: enabled && !!source,
+    enabled: enabled && !!source && !!config,
   });
 
   const result = useMemo(() => {

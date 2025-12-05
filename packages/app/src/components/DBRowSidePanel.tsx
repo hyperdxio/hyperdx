@@ -234,7 +234,7 @@ const DBRowSidePanel = ({
   }, [timestampDate]);
 
   const focusDate = timestampDate;
-  const traceId = normalizedRow?.['__hdx_trace_id'];
+  const traceId: string | undefined = normalizedRow?.['__hdx_trace_id'];
 
   const childSourceId =
     source.kind === 'log'
