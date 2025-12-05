@@ -79,8 +79,6 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const confirmModal = useConfirmModal();
   const background = useBackground(userPreferences);
 
-  const selectedFontVar =
-    FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR;
   const selectedMantineFont =
     MANTINE_FONT_MAP[userPreferences.font] || DEFAULT_MANTINE_FONT;
 
@@ -119,7 +117,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   }, []);
 
   useEffect(() => {
-    // Apply font variables to both html and body for global accessibility
+    // Ensure font variables are available on html element
     if (typeof document !== 'undefined') {
       const fontClasses = [
         ibmPlexMono.variable,
@@ -128,7 +126,6 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         roboto.variable,
       ];
       document.documentElement.classList.add(...fontClasses);
-      document.body.classList.add(...fontClasses);
     }
   }, []);
 
