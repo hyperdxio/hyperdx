@@ -129,14 +129,16 @@ type SQLInlineEditorProps = {
 
 const MAX_EDITOR_HEIGHT = '150px';
 
-const createStyleTheme = (allowMultiline: boolean = false) =>
+const createStyleTheme = () =>
   EditorView.baseTheme({
     '&.cm-editor.cm-focused': {
       outline: '0px solid transparent',
     },
     '&.cm-editor': {
       background: 'transparent !important',
-      ...(allowMultiline && { maxHeight: MAX_EDITOR_HEIGHT }),
+    },
+    '.cm-editor-multiline &.cm-editor': {
+      maxHeight: MAX_EDITOR_HEIGHT,
     },
     '& .cm-tooltip-autocomplete': {
       whiteSpace: 'nowrap',
@@ -185,10 +187,10 @@ const createStyleTheme = (allowMultiline: boolean = false) =>
     },
     '& .cm-scroller': {
       overflowX: 'hidden',
-      ...(allowMultiline && {
-        maxHeight: MAX_EDITOR_HEIGHT,
-        overflowY: 'auto',
-      }),
+    },
+    '.cm-editor-multiline & .cm-scroller': {
+      maxHeight: MAX_EDITOR_HEIGHT,
+      overflowY: 'auto',
     },
   });
 
@@ -365,7 +367,7 @@ export default function SQLInlineEditor({
   const cmExtensions = useMemo(
     () => [
       ...tooltipExt,
-      createStyleTheme(allowMultiline),
+      createStyleTheme(),
       ...(allowMultiline ? [EditorView.lineWrapping] : []),
       compartmentRef.current.of(
         sql({
@@ -441,7 +443,10 @@ export default function SQLInlineEditor({
           </Tooltip>
         </Text>
       )}
-      <div style={{ minWidth: 10, width: '100%' }}>
+      <div
+        style={{ minWidth: 10, width: '100%' }}
+        className={allowMultiline ? 'cm-editor-multiline' : ''}
+      >
         <CodeMirror
           indentWithTab={false}
           ref={ref}
