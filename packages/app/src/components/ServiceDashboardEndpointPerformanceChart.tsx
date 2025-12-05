@@ -6,8 +6,8 @@ import { ChartBox } from '@/components/ChartBox';
 import DBListBarChart from '@/components/DBListBarChart';
 import { useJsonColumns } from '@/hooks/useMetadata';
 import {
-  getExpressions,
   makeCoalescedFieldsAccessQuery,
+  useServiceDashboardExpressions,
 } from '@/serviceDashboard';
 
 const MAX_NUM_GROUPS = 200;
@@ -28,9 +28,9 @@ export default function ServiceDashboardEndpointPerformanceChart({
     tableName: source?.from?.tableName || '',
     connectionId: source?.connection || '',
   });
-  const expressions = getExpressions(source, jsonColumns);
+  const { expressions } = useServiceDashboardExpressions({ source });
 
-  if (!source) {
+  if (!source || !expressions) {
     return null;
   }
 

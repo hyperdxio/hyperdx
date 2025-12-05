@@ -174,7 +174,9 @@ export function useTimeQuery({
         )
       : undefined;
 
-  const inputTimeQueryDerivedTimeQueryRef = useRef<[Date, Date] | undefined>();
+  const inputTimeQueryDerivedTimeQueryRef = useRef<[Date, Date] | undefined>(
+    undefined,
+  );
 
   // When the inputTimeQuery changes, we should calculate the time range
   // and set the timeRangeQuery if there is no existing time range query
