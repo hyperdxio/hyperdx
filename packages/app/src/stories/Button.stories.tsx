@@ -1,5 +1,5 @@
 import { Button } from '@mantine/core';
-import type { Meta } from '@storybook/react';
+import type { Meta } from '@storybook/nextjs';
 
 // Just a test story, can be deleted
 

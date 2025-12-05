@@ -210,7 +210,7 @@ function DBChartExplorerPage() {
     // showRelativeInterval: isLive,
   });
 
-  const submitRef = useRef<() => void>();
+  const submitRef = useRef<(() => void) | undefined>(undefined);
   const { data: sources } = useSources();
   const { data: me } = api.useMe();
 

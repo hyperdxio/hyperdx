@@ -1,5 +1,5 @@
-import type { Meta } from '@storybook/react';
-import type { StoryObj } from '@storybook/react';
+import type { Meta } from '@storybook/nextjs';
+import type { StoryObj } from '@storybook/nextjs';
 
 import AppNav from '../AppNav';
 import { AppNavUserMenu } from '../AppNav.components';

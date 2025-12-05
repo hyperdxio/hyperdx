@@ -703,6 +703,7 @@ type AllKeys<T> = T extends any ? keyof T : never;
 // 3. [keyof T]
 //    Indexes into the mapped type to get the union of all non-never values
 type NonOptionalKeysPresentInEveryUnionBranch<T> = {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   [K in keyof T]-?: {} extends Pick<T, K> ? never : K;
 }[keyof T];
 
