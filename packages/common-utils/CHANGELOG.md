@@ -1,5 +1,21 @@
 # @hyperdx/common-utils
 
+## 0.9.0
+
+### Minor Changes
+
+- 52d27985: chore: Upgrade nextjs, react, and eslint + add react compiler
+
+### Patch Changes
+
+- 586bcce7: feat: Add previous period comparisons to line chart
+- ea25cc5d: fix: Support formatting queries with % operator
+- b7789ced: chore: deprecate unused go-parser service
+- ff422206: fix: Fix Services Dashboard Database tab charts
+- 59422a1a: feat: Add custom attributes for individual rows
+- 7405d183: bump typescript version
+- 770276a1: feat: Add search to trace waterfall
+
 ## 0.8.0
 
 ### Minor Changes
