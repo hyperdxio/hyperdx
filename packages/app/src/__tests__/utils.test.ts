@@ -1,4 +1,5 @@
 import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SortingState } from '@tanstack/react-table';
 import { act, renderHook } from '@testing-library/react';
 
 import { MetricsDataType, NumberFormat } from '../types';
@@ -7,6 +8,8 @@ import {
   formatAttributeClause,
   formatNumber,
   getMetricTableName,
+  orderByStringToSortingState,
+  sortingStateToOrderByString,
   stripTrailingSlash,
   useQueryHistory,
 } from '../utils';
@@ -532,5 +535,98 @@ describe('useQueryHistory', () => {
       setQueryHistory('   '); // empty after trim
     });
     expect(mockSetItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('sortingStateToOrderByString', () => {
+  it('returns undefined for null input', () => {
+    expect(sortingStateToOrderByString(null)).toBeUndefined();
+  });
+
+  it('returns undefined for empty array', () => {
+    const sortingState: SortingState = [];
+    expect(sortingStateToOrderByString(sortingState)).toBeUndefined();
+  });
+
+  it('converts sorting state with desc: false to ASC order', () => {
+    const sortingState: SortingState = [{ id: 'timestamp', desc: false }];
+    expect(sortingStateToOrderByString(sortingState)).toBe('timestamp ASC');
+  });
+
+  it('converts sorting state with desc: true to DESC order', () => {
+    const sortingState: SortingState = [{ id: 'timestamp', desc: true }];
+    expect(sortingStateToOrderByString(sortingState)).toBe('timestamp DESC');
+  });
+
+  it('handles column names with special characters', () => {
+    const sortingState: SortingState = [{ id: 'user_count', desc: false }];
+    expect(sortingStateToOrderByString(sortingState)).toBe('user_count ASC');
+  });
+});
+
+describe('orderByStringToSortingState', () => {
+  it('returns undefined for undefined input', () => {
+    expect(orderByStringToSortingState(undefined)).toBeUndefined();
+  });
+
+  it('returns undefined for empty string', () => {
+    expect(orderByStringToSortingState('')).toBeUndefined();
+  });
+
+  it('converts "column ASC" to sorting state with desc: false', () => {
+    const result = orderByStringToSortingState('timestamp ASC');
+    expect(result).toEqual([{ id: 'timestamp', desc: false }]);
+  });
+
+  it('converts "column DESC" to sorting state with desc: true', () => {
+    const result = orderByStringToSortingState('timestamp DESC');
+    expect(result).toEqual([{ id: 'timestamp', desc: true }]);
+  });
+
+  it('handles case insensitive direction keywords', () => {
+    expect(orderByStringToSortingState('col asc')).toEqual([
+      { id: 'col', desc: false },
+    ]);
+    expect(orderByStringToSortingState('col Asc')).toEqual([
+      { id: 'col', desc: false },
+    ]);
+    expect(orderByStringToSortingState('col desc')).toEqual([
+      { id: 'col', desc: true },
+    ]);
+    expect(orderByStringToSortingState('col Desc')).toEqual([
+      { id: 'col', desc: true },
+    ]);
+    expect(orderByStringToSortingState('col DESC')).toEqual([
+      { id: 'col', desc: true },
+    ]);
+  });
+
+  it('returns undefined for invalid format without direction', () => {
+    expect(orderByStringToSortingState('timestamp')).toBeUndefined();
+  });
+
+  it('returns undefined for invalid format with wrong number of parts', () => {
+    expect(orderByStringToSortingState('col name ASC')).toBeUndefined();
+  });
+
+  it('returns undefined for invalid direction keyword', () => {
+    expect(orderByStringToSortingState('col INVALID')).toBeUndefined();
+  });
+
+  it('handles column names with underscores', () => {
+    const result = orderByStringToSortingState('user_count DESC');
+    expect(result).toEqual([{ id: 'user_count', desc: true }]);
+  });
+
+  it('handles column names with numbers', () => {
+    const result = orderByStringToSortingState('col123 ASC');
+    expect(result).toEqual([{ id: 'col123', desc: false }]);
+  });
+
+  it('round-trips correctly with sortingStateToOrderByString', () => {
+    const originalSort: SortingState = [{ id: 'service_name', desc: true }];
+    const orderByString = sortingStateToOrderByString(originalSort);
+    const roundTripSort = orderByStringToSortingState(orderByString);
+    expect(roundTripSort).toEqual(originalSort);
   });
 });
