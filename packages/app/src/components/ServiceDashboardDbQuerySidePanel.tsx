@@ -8,8 +8,7 @@ import { ChartBox } from '@/components/ChartBox';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
-import { useJsonColumns } from '@/hooks/useMetadata';
-import { getExpressions } from '@/serviceDashboard';
+import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { useSource } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -25,12 +24,7 @@ export default function ServiceDashboardDbQuerySidePanel({
   searchedTimeRange: [Date, Date];
 }) {
   const { data: source } = useSource({ id: sourceId });
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
-  const expressions = getExpressions(source, jsonColumns);
+  const { expressions } = useServiceDashboardExpressions({ source });
 
   const [dbQuery, setDbQuery] = useQueryState('dbquery', parseAsString);
   const onClose = useCallback(() => {
@@ -44,13 +38,13 @@ export default function ServiceDashboardDbQuerySidePanel({
     const filters: Filter[] = [
       {
         type: 'sql',
-        condition: `${expressions.dbStatement} IN ('${dbQuery}')`,
+        condition: `${expressions?.dbStatement} IN ('${dbQuery}')`,
       },
     ];
     if (service) {
       filters.push({
         type: 'sql',
-        condition: `${expressions.service} IN ('${service}')`,
+        condition: `${expressions?.service} IN ('${service}')`,
       });
     }
     return filters;
@@ -97,7 +91,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                   <Group justify="space-between" align="center" mb="sm">
                     <Text size="sm">Total Query Time</Text>
                   </Group>
-                  {source && (
+                  {source && expressions && (
                     <DBTimeChart
                       sourceId={sourceId}
                       config={{
@@ -155,7 +149,7 @@ export default function ServiceDashboardDbQuerySidePanel({
               <Grid.Col span={12}>
                 {source && (
                   <SlowestEventsTile
-                    title="Slowest 10% of Queries"
+                    title="Slowest 5% of Queries"
                     source={source}
                     dateRange={searchedTimeRange}
                     extraFilters={dbQueryFilters}

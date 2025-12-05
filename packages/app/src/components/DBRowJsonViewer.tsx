@@ -412,7 +412,9 @@ export function DBRowJsonViewer({
             maw="400px"
             placeholder="Search properties by key or value"
             value={filter}
-            onChange={e => setFilter(e.currentTarget.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setFilter(e.currentTarget.value)
+            }
             leftSection={<i className="bi bi-search" />}
           />
           {filter && (

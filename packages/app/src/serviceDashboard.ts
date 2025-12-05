@@ -1,4 +1,9 @@
+import { useMemo } from 'react';
+import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { TSource } from '@hyperdx/common-utils/dist/types';
+
+import { useColumns, useJsonColumns } from './hooks/useMetadata';
 
 const COALESCE_FIELDS_LIMIT = 100;
 
@@ -131,21 +136,31 @@ function getDefaults({
   };
 }
 
-export function getExpressions(source?: TSource, jsonColumns: string[] = []) {
+const ENDPOINT_MATERIALIZED_COLUMN_NAME = 'endpoint';
+
+export function getExpressions(
+  source: TSource,
+  columns: ColumnMeta[],
+  jsonColumns: string[],
+) {
   const spanAttributeField =
     source?.eventAttributesExpression || 'SpanAttributes';
   const isAttributeFieldJSON = jsonColumns.includes(spanAttributeField);
   const defaults = getDefaults({ spanAttributeField, isAttributeFieldJSON });
 
+  const hasMaterializedEndpointColumn = !!columns.find(
+    col => col.name === ENDPOINT_MATERIALIZED_COLUMN_NAME,
+  );
+
   const fieldExpressions = {
     // General
-    duration: source?.durationExpression || defaults.duration,
-    durationPrecision: source?.durationPrecision || defaults.durationPrecision,
-    traceId: source?.traceIdExpression || defaults.traceId,
-    service: source?.serviceNameExpression || defaults.service,
-    spanName: source?.spanNameExpression || defaults.spanName,
-    spanKind: source?.spanKindExpression || defaults.spanKind,
-    severityText: source?.severityTextExpression || defaults.severityText,
+    duration: source.durationExpression || defaults.duration,
+    durationPrecision: source.durationPrecision || defaults.durationPrecision,
+    traceId: source.traceIdExpression || defaults.traceId,
+    service: source.serviceNameExpression || defaults.service,
+    spanName: source.spanNameExpression || defaults.spanName,
+    spanKind: source.spanKindExpression || defaults.spanKind,
+    severityText: source.severityTextExpression || defaults.severityText,
 
     // HTTP
     httpHost: defaults.httpHost,
@@ -159,19 +174,52 @@ export function getExpressions(source?: TSource, jsonColumns: string[] = []) {
     dbStatement: defaults.dbStatement,
   };
 
+  const auxExpressions = {
+    endpoint: hasMaterializedEndpointColumn
+      ? ENDPOINT_MATERIALIZED_COLUMN_NAME
+      : fieldExpressions.spanName,
+    /** An expression for reading the Span duration in milliseconds. Using this will prevent the use of aggregating materialized views which aggregate `Duration` instead of `Duration/1e6` */
+    durationInMillis: `${fieldExpressions.duration}/1e${fieldExpressions.durationPrecision - 3}`,
+    /** The divisor used to convert the Span duration to milliseconds */
+    durationDivisorForMillis: `1e${fieldExpressions.durationPrecision - 3}`,
+  };
+
   const filterExpressions = {
+    isEndpointNonEmpty: `NOT empty(${auxExpressions.endpoint})`,
     isError: `lower(${fieldExpressions.severityText}) = 'error'`,
     isSpanKindServer: `${fieldExpressions.spanKind} IN ('Server', 'SPAN_KIND_SERVER')`,
     isDbSpan: `${fieldExpressions.dbStatement} <> ''`,
-  };
-
-  const auxExpressions = {
-    durationInMillis: `${fieldExpressions.duration}/1e${fieldExpressions.durationPrecision - 3}`, // precision is per second
   };
 
   return {
     ...fieldExpressions,
     ...filterExpressions,
     ...auxExpressions,
+  };
+}
+
+export function useServiceDashboardExpressions({
+  source,
+}: {
+  source: TSource | undefined;
+}) {
+  const tableConnection = useMemo(() => tcFromSource(source), [source]);
+
+  const { data: jsonColumns, isLoading: isJsonColumnsLoading } =
+    useJsonColumns(tableConnection);
+  const { data: columns = [], isLoading: isColumnsLoading } =
+    useColumns(tableConnection);
+
+  const isLoading = !source || isJsonColumnsLoading || isColumnsLoading;
+
+  const expressions = useMemo(() => {
+    if (isLoading || !jsonColumns || !columns) return undefined;
+
+    return getExpressions(source, columns, jsonColumns);
+  }, [source, columns, jsonColumns, isLoading]);
+
+  return {
+    expressions,
+    isLoading,
   };
 }

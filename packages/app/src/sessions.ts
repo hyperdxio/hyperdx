@@ -301,7 +301,7 @@ export function useRRWebEventStream(
 
   const lastAbortController = useRef<AbortController | null>(null);
   const [fetchStatus, setFetchStatus] = useState<'fetching' | 'idle'>('idle');
-  const lastFetchStatusRef = useRef<'fetching' | 'idle' | undefined>();
+  const lastFetchStatusRef = useRef<'fetching' | 'idle' | undefined>(undefined);
 
   const { data: source } = useSource({ id: sourceId });
 

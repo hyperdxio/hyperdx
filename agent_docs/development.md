@@ -101,7 +101,7 @@ yarn run lint
 
 ## File Locations Quick Reference
 
-- **Config**: `packages/api/src/config.ts`, `packages/app/next.config.js`, `docker-compose.dev.yml`
+- **Config**: `packages/api/src/config.ts`, `packages/app/next.config.mjs`, `docker-compose.dev.yml`
 - **Models**: `packages/api/src/models/`
 - **API Routes**: `packages/api/src/routers/`
 - **Controllers**: `packages/api/src/controllers/`
