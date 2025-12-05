@@ -4,6 +4,7 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { MutableRefObject, SetStateAction } from 'react';
 import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SortingState } from '@tanstack/react-table';
 
 import { dateRangeToString } from './timeQuery';
 import { MetricsDataType, NumberFormat } from './types';
@@ -710,4 +711,48 @@ export const stripTrailingSlash = (url: string | undefined | null): string => {
     throw new Error('URL must be a non-empty string');
   }
   return url.endsWith('/') ? url.slice(0, -1) : url;
+};
+
+/**
+ * Converts the given SortingState into a SQL Order By string
+ * Note, only the first element of the SortingState is used. Returns
+ * undefined if the input is null or empty.
+ *
+ * Output format: "<column> <ASC|DESC>"
+ * */
+export const sortingStateToOrderByString = (
+  sort: SortingState | null,
+): string | undefined => {
+  const firstSort = sort?.at(0);
+  return firstSort
+    ? `${firstSort.id} ${firstSort.desc ? 'DESC' : 'ASC'}`
+    : undefined;
+};
+
+/**
+ * Converts the given SQL Order By string into a SortingState.
+ *
+ * Expects format matching the output of sortingStateToOrderByString
+ * ("<column> <ASC|DESC>"). Returns undefined if the input is invalid.
+ */
+export const orderByStringToSortingState = (
+  orderBy: string | undefined,
+): SortingState | undefined => {
+  if (!orderBy) {
+    return undefined;
+  }
+
+  const orderByParts = orderBy.split(' ');
+  const endsWithDirection = orderBy.toLowerCase().match(/ (asc|desc)$/i);
+
+  if (orderByParts.length !== 2 || !endsWithDirection) {
+    return undefined;
+  }
+
+  return [
+    {
+      id: orderByParts[0].trim(),
+      desc: orderByParts[1].trim().toUpperCase() === 'DESC',
+    },
+  ];
 };
