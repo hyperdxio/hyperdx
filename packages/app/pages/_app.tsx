@@ -17,6 +17,13 @@ import {
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 import { IS_LOCAL_MODE } from '@/config';
+import {
+  DEFAULT_FONT_VAR,
+  DEFAULT_MANTINE_FONT,
+  FONT_VAR_MAP,
+  MANTINE_FONT_MAP,
+} from '@/config/fonts';
+import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { useConfirmModal } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
@@ -61,6 +68,9 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const confirmModal = useConfirmModal();
   const background = useBackground(userPreferences);
 
+  const selectedMantineFont =
+    MANTINE_FONT_MAP[userPreferences.font] || DEFAULT_MANTINE_FONT;
+
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
     if (IS_LOCAL_MODE) {
@@ -96,10 +106,27 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   }, []);
 
   useEffect(() => {
-    // TODO: Remove after migration to Mantine
-    document.body.style.fontFamily = userPreferences.font
-      ? `"${userPreferences.font}", sans-serif`
-      : '"IBM Plex Mono"';
+    // Apply font classes to html element for CSS variable resolution.
+    // Although _document.tsx sets these server-side, they must be re-applied client-side
+    // during hydration to ensure CSS variables are available for dynamic font switching.
+    // This is critical for the --app-font-family CSS variable to work across all components.
+    if (typeof document !== 'undefined') {
+      const fontClasses = [
+        ibmPlexMono.variable,
+        robotoMono.variable,
+        inter.variable,
+        roboto.variable,
+      ];
+      document.documentElement.classList.add(...fontClasses);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Update CSS variable for global font cascading
+    if (typeof document !== 'undefined') {
+      const fontVar = FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR;
+      document.documentElement.style.setProperty('--app-font-family', fontVar);
+    }
   }, [userPreferences.font]);
 
   const getLayout = Component.getLayout ?? (page => page);
@@ -124,7 +151,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         <QueryParamProvider adapter={NextAdapter}>
           <QueryClientProvider client={queryClient}>
             <ThemeWrapper
-              fontFamily={userPreferences.font}
+              fontFamily={selectedMantineFont}
               colorScheme={userPreferences.theme === 'dark' ? 'dark' : 'light'}
             >
               {getLayout(<Component {...pageProps} />)}
