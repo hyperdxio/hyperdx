@@ -469,7 +469,9 @@ function DashboardName({
           <Input
             type="text"
             value={editedName}
-            onChange={e => setEditedName(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setEditedName(e.target.value)
+            }
             placeholder="Dashboard Name"
           />
           <Button ms="sm" variant="outline" type="submit" color="green">
@@ -697,9 +699,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             dateRange={searchedTimeRange}
             onEditClick={() => setEditedTile(chart)}
             granularity={
-              isRefreshEnabled
-                ? granularityOverride
-                : (granularity ?? undefined)
+              isRefreshEnabled ? granularityOverride : granularity ?? undefined
             }
             filters={[
               {

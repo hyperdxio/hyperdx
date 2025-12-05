@@ -6,7 +6,7 @@ import {
   useFieldArray,
   useForm,
   UseFormSetValue,
-  UseFormWatch,
+  useWatch,
 } from 'react-hook-form';
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import z from 'zod';
@@ -18,9 +18,11 @@ import {
   DateRange,
   DisplayType,
   Filter,
+  MetricsDataType,
   SavedChartConfig,
   SelectList,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -74,6 +76,7 @@ import {
 } from '@/utils/alerts';
 
 import HDXMarkdownChart from '../HDXMarkdownChart';
+import type { NumberFormat } from '../types';
 
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';
@@ -112,7 +115,7 @@ const NumberFormatInputControlled = ({
       name="numberFormat"
       render={({ field: { onChange, value } }) => (
         <NumberFormatInput
-          onChange={newValue => {
+          onChange={(newValue?: NumberFormat) => {
             onChange(newValue);
             onSubmit();
           }}
@@ -136,9 +139,9 @@ function ChartSeriesEditorComponent({
   setValue,
   showGroupBy,
   tableName: _tableName,
-  watch,
   parentRef,
   length,
+  tableSource,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -153,25 +156,31 @@ function ChartSeriesEditorComponent({
   setValue: UseFormSetValue<any>;
   showGroupBy: boolean;
   tableName: string;
-  watch: UseFormWatch<any>;
   length: number;
+  tableSource?: TSource;
 }) {
-  const aggFn = watch(`${namePrefix}aggFn`);
-  const aggConditionLanguage = watch(
-    `${namePrefix}aggConditionLanguage`,
-    'lucene',
-  );
+  const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
+  const aggConditionLanguage = useWatch({
+    control,
+    name: `${namePrefix}aggConditionLanguage`,
+    defaultValue: 'lucene',
+  });
 
-  const metricType = watch(`${namePrefix}metricType`);
-  const selectedSourceId = watch('source');
-  const { data: tableSource } = useSource({ id: selectedSourceId });
+  const metricType = useWatch({ control, name: `${namePrefix}metricType` });
+
+  // Initialize metricType to 'gauge' when switching to a metric source
+  useEffect(() => {
+    if (tableSource?.kind === SourceKind.Metric && !metricType) {
+      setValue(`${namePrefix}metricType`, MetricsDataType.Gauge);
+    }
+  }, [tableSource?.kind, metricType, namePrefix, setValue]);
 
   const tableName =
     tableSource?.kind === SourceKind.Metric
       ? getMetricTableName(tableSource, metricType)
       : _tableName;
 
-  const metricName = watch(`${namePrefix}metricName`);
+  const metricName = useWatch({ control, name: `${namePrefix}metricName` });
   const { data: attributeKeys } = useFetchMetricResourceAttrs({
     databaseName,
     tableName: tableName || '',
@@ -249,7 +258,7 @@ function ChartSeriesEditorComponent({
             control={control}
           />
         </div>
-        {tableSource?.kind === SourceKind.Metric && (
+        {tableSource?.kind === SourceKind.Metric && metricType && (
           <div style={{ minWidth: 220 }}>
             <MetricNameSelect
               metricName={metricName}
@@ -263,6 +272,7 @@ function ChartSeriesEditorComponent({
                 setValue(`${namePrefix}metricType`, value)
               }
               metricSource={tableSource}
+              data-testid="metric-name-selector"
             />
             {metricType === 'gauge' && (
               <Flex justify="end">
@@ -790,7 +800,7 @@ export default function EditTimeChartForm({
                     fields.length === 1 && displayType !== DisplayType.Number
                   }
                   tableName={tableName ?? ''}
-                  watch={watch}
+                  tableSource={tableSource}
                 />
               ))}
               {fields.length > 1 && displayType !== DisplayType.Number && (
@@ -1168,10 +1178,12 @@ export default function EditTimeChartForm({
                 connection: tableSource.connection,
                 from: tableSource.from,
                 limit: { limit: 200 },
+                // Search mode requires a string select, not an array of aggregations
                 select:
-                  queriedConfig.select ||
-                  tableSource?.defaultTableSelectExpression ||
-                  '',
+                  typeof queriedConfig.select === 'string' &&
+                  queriedConfig.select
+                    ? queriedConfig.select
+                    : tableSource?.defaultTableSelectExpression || '',
                 groupBy: undefined,
                 granularity: undefined,
               }}

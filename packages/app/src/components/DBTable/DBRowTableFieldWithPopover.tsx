@@ -15,7 +15,7 @@ export interface DBRowTableFieldWithPopoverProps {
   cellValue: unknown;
   wrapLinesEnabled: boolean;
   columnName?: string;
-  tableContainerRef?: React.RefObject<HTMLDivElement>;
+  tableContainerRef?: React.RefObject<HTMLDivElement | null>;
   isChart?: boolean;
 }
 
@@ -30,8 +30,8 @@ export const DBRowTableFieldWithPopover = ({
   const [opened, { close, open }] = useDisclosure(false);
   const [isCopied, setIsCopied] = useState(false);
   const [hoverDisabled, setHoverDisabled] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout>();
-  const hoverDisableTimeoutRef = useRef<NodeJS.Timeout>();
+  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const hoverDisableTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   // Cleanup timeouts on unmount to prevent memory leaks
   useEffect(() => {
@@ -49,12 +49,7 @@ export const DBRowTableFieldWithPopover = ({
   const { onPropertyAddClick } = useContext(RowSidePanelContext);
 
   // Check if we have both the column name and filter function available
-  // Only show filter for ServiceName and SeverityText
-  const canFilter =
-    columnName &&
-    (columnName === 'ServiceName' || columnName === 'SeverityText') &&
-    onPropertyAddClick &&
-    cellValue != null;
+  const canFilter = columnName && onPropertyAddClick && cellValue != null;
 
   const handleMouseEnter = () => {
     if (hoverDisabled) return;

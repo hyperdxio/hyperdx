@@ -21,6 +21,7 @@ export default function DBTableChart({
   queryKeyPrefix,
   onSortingChange,
   sort: controlledSort,
+  hiddenColumns = [],
 }: {
   config: ChartConfigWithOptTimestamp;
   getRowSearchLink?: (row: any) => string | null;
@@ -28,6 +29,7 @@ export default function DBTableChart({
   enabled?: boolean;
   onSortingChange?: (sort: SortingState) => void;
   sort?: SortingState;
+  hiddenColumns?: string[];
 }) {
   const [sort, setSort] = useState<SortingState>([]);
 
@@ -52,8 +54,8 @@ export default function DBTableChart({
       _config.limit = { limit: 200 };
     }
 
-    // Set a default orderBy if groupBy is set but orderBy is not
-    // so that the rows within the limit are deterministic.
+    // Set a default orderBy if groupBy is set but orderBy is not,
+    // so that the set of rows within the limit is stable.
     if (
       _config.groupBy &&
       typeof _config.groupBy === 'string' &&
@@ -106,14 +108,24 @@ export default function DBTableChart({
       groupByKeys = queriedConfig.groupBy.split(',').map(v => v.trim());
     }
 
-    return Object.keys(rows?.[0]).map(key => ({
-      // If it's an alias, wrap in quotes to support a variety of formats (ex "Time (ms)", "Req/s", etc)
-      id: aliasMap.includes(key) ? `"${key}"` : key,
-      dataKey: key,
-      displayName: key,
-      numberFormat: groupByKeys.includes(key) ? undefined : config.numberFormat,
-    }));
-  }, [config.numberFormat, aliasMap, queriedConfig.groupBy, data]);
+    return Object.keys(rows?.[0])
+      .filter(key => !hiddenColumns.includes(key))
+      .map(key => ({
+        // If it's an alias, wrap in quotes to support a variety of formats (ex "Time (ms)", "Req/s", etc)
+        id: aliasMap.includes(key) ? `"${key}"` : key,
+        dataKey: key,
+        displayName: key,
+        numberFormat: groupByKeys.includes(key)
+          ? undefined
+          : config.numberFormat,
+      }));
+  }, [
+    config.numberFormat,
+    aliasMap,
+    queriedConfig.groupBy,
+    data,
+    hiddenColumns,
+  ]);
 
   return isLoading && !data ? (
     <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">

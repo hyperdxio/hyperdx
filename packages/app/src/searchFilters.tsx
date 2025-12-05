@@ -84,6 +84,135 @@ export const areFiltersEqual = (a: FilterState, b: FilterState) => {
   return true;
 };
 
+// Helper function to split on commas while respecting quoted strings
+function splitValuesOnComma(valuesStr: string): string[] {
+  const values: string[] = [];
+  let currentValue = '';
+  let inString = false;
+
+  for (let i = 0; i < valuesStr.length; i++) {
+    const char = valuesStr[i];
+
+    if (char === "'" && (i === 0 || valuesStr[i - 1] !== '\\')) {
+      inString = !inString;
+      currentValue += char;
+      continue;
+    }
+
+    if (!inString && char === ',') {
+      if (currentValue.trim()) {
+        // Remove surrounding quotes if present
+        const trimmed = currentValue.trim();
+        const unquoted =
+          trimmed.startsWith("'") && trimmed.endsWith("'")
+            ? trimmed.slice(1, -1)
+            : trimmed;
+        values.push(unquoted);
+      }
+      currentValue = '';
+      continue;
+    }
+
+    currentValue += char;
+  }
+
+  // Add the last value
+  if (currentValue.trim()) {
+    const trimmed = currentValue.trim();
+    const unquoted =
+      trimmed.startsWith("'") && trimmed.endsWith("'")
+        ? trimmed.slice(1, -1)
+        : trimmed;
+    values.push(unquoted);
+  }
+
+  return values;
+}
+
+// Helper function to extract simple IN/NOT IN clauses from a condition
+// This handles both simple conditions and compound conditions with AND
+function extractInClauses(condition: string): Array<{
+  key: string;
+  values: string[];
+  isExclude: boolean;
+}> {
+  const results: Array<{
+    key: string;
+    values: string[];
+    isExclude: boolean;
+  }> = [];
+
+  // Split on ' AND ' while respecting quoted strings
+  const parts: string[] = [];
+  let currentPart = '';
+  let inString = false;
+
+  for (let i = 0; i < condition.length; i++) {
+    const char = condition[i];
+
+    if (char === "'" && (i === 0 || condition[i - 1] !== '\\')) {
+      inString = !inString;
+      currentPart += char;
+      continue;
+    }
+
+    if (!inString && condition.slice(i, i + 5).toUpperCase() === ' AND ') {
+      if (currentPart.trim()) {
+        parts.push(currentPart.trim());
+      }
+      currentPart = '';
+      i += 4; // Skip past ' AND '
+      continue;
+    }
+
+    currentPart += char;
+  }
+
+  if (currentPart.trim()) {
+    parts.push(currentPart.trim());
+  }
+
+  // Process each part to extract IN/NOT IN clauses
+  for (const part of parts) {
+    // Skip parts that contain OR (not supported) or comparison operators
+    if (
+      part.toUpperCase().includes(' OR ') ||
+      part.includes('=') ||
+      part.includes('<') ||
+      part.includes('>')
+    ) {
+      continue;
+    }
+
+    const isExclude = part.includes('NOT IN');
+
+    // Check if this is an IN clause
+    if (part.includes(' IN ') || part.includes(' NOT IN ')) {
+      const [key, values] = part.split(isExclude ? ' NOT IN ' : ' IN ');
+
+      if (key && values) {
+        const keyStr = key.trim();
+        // Remove outer parentheses and split on commas while respecting quotes
+        const trimmedValues = values.trim();
+        const withoutParens =
+          trimmedValues.startsWith('(') && trimmedValues.endsWith(')')
+            ? trimmedValues.slice(1, -1)
+            : trimmedValues;
+
+        const valuesArray = splitValuesOnComma(withoutParens);
+
+        results.push({
+          key: keyStr,
+          values: valuesArray,
+          isExclude,
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
 export const parseQuery = (
   q: Filter[],
 ): {
@@ -125,35 +254,23 @@ export const parseQuery = (
       }
     }
 
-    // Handle IN/NOT IN conditions
-    const isExclude = filter.condition.includes('NOT IN');
-    const [key, values] = filter.condition.split(
-      isExclude ? ' NOT IN ' : ' IN ',
-    );
+    // Extract all simple IN/NOT IN clauses from the condition
+    // This handles both simple conditions and compound conditions with AND/OR
+    const inClauses = extractInClauses(filter.condition);
 
-    // Skip if key or values is not present
-    if (!key || !values) {
-      continue;
-    }
-
-    const keyStr = key.trim();
-    const valuesStr = values
-      .replace('(', '')
-      .replace(')', '')
-      .split(',')
-      .map(v => v.trim().replace(/'/g, ''));
-
-    if (!state.has(keyStr)) {
-      state.set(keyStr, { included: new Set(), excluded: new Set() });
-    }
-    const sets = state.get(keyStr)!;
-    valuesStr.forEach(v => {
-      if (isExclude) {
-        sets.excluded.add(v);
-      } else {
-        sets.included.add(v);
+    for (const clause of inClauses) {
+      if (!state.has(clause.key)) {
+        state.set(clause.key, { included: new Set(), excluded: new Set() });
       }
-    });
+      const sets = state.get(clause.key)!;
+      clause.values.forEach(v => {
+        if (clause.isExclude) {
+          sets.excluded.add(v);
+        } else {
+          sets.included.add(v);
+        }
+      });
+    }
   }
   return { filters: Object.fromEntries(state) };
 };

@@ -195,19 +195,9 @@ function ActiveTimeTooltip({
   );
 }
 
-function DBTimeChartComponent({
-  config,
-  enabled = true,
-  logReferenceTimestamp,
-  onTimeRangeSelect,
-  queryKeyPrefix,
-  referenceLines,
-  setDisplayType,
-  showDisplaySwitcher = true,
-  showLegend = true,
-  sourceId,
-}: {
+type DBTimeChartComponentProps = {
   config: ChartConfigWithDateRange;
+  disableQueryChunking?: boolean;
   enabled?: boolean;
   logReferenceTimestamp?: number;
   onSettled?: () => void;
@@ -218,7 +208,24 @@ function DBTimeChartComponent({
   showDisplaySwitcher?: boolean;
   showLegend?: boolean;
   sourceId?: string;
-}) {
+  /** Names of series that should not be shown in the chart */
+  hiddenSeries?: string[];
+};
+
+function DBTimeChartComponent({
+  config,
+  disableQueryChunking,
+  enabled = true,
+  logReferenceTimestamp,
+  onTimeRangeSelect,
+  queryKeyPrefix,
+  referenceLines,
+  setDisplayType,
+  showDisplaySwitcher = true,
+  showLegend = true,
+  sourceId,
+  hiddenSeries,
+}: DBTimeChartComponentProps) {
   const [isErrorExpanded, errorExpansion] = useDisclosure(false);
   const {
     displayType: displayTypeProp,
@@ -241,7 +248,7 @@ function DBTimeChartComponent({
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, queriedConfig, 'chunked'],
       enabled,
-      enableQueryChunking: true,
+      enableQueryChunking: !disableQueryChunking,
     });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
@@ -310,6 +317,7 @@ function DBTimeChartComponent({
         granularity,
         generateEmptyBuckets: fillNulls !== false,
         source,
+        hiddenSeries,
       });
     } catch (e) {
       console.error(e);
@@ -324,6 +332,7 @@ function DBTimeChartComponent({
     source,
     config.compareToPreviousPeriod,
     previousPeriodData,
+    hiddenSeries,
   ]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType

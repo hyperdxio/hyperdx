@@ -522,8 +522,13 @@ export const K8S_NETWORK_NUMBER_FORMAT: NumberFormat = {
   output: 'byte',
 };
 
-function inferValueColumns(meta: Array<{ name: string; type: string }>) {
-  return filterColumnMetaByType(meta, [JSDataType.Number]);
+function inferValueColumns(
+  meta: Array<{ name: string; type: string }>,
+  excluded: Set<string>,
+) {
+  return filterColumnMetaByType(meta, [JSDataType.Number])?.filter(
+    c => !excluded.has(c.name),
+  );
 }
 
 function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
@@ -609,6 +614,7 @@ function addResponseToFormattedData({
   source,
   currentPeriodDateRange,
   isPreviousPeriod,
+  hiddenSeries = [],
 }: {
   tsBucketMap: Map<number, Record<string, any>>;
   lineDataMap: { [keyName: string]: LineDataWithOptionalColor };
@@ -616,6 +622,7 @@ function addResponseToFormattedData({
   source?: TSource;
   isPreviousPeriod: boolean;
   currentPeriodDateRange: [Date, Date];
+  hiddenSeries?: string[];
 }) {
   const { meta, data } = response;
   if (meta == null) {
@@ -629,7 +636,7 @@ function addResponseToFormattedData({
     );
   }
 
-  const valueColumns = inferValueColumns(meta) ?? [];
+  const valueColumns = inferValueColumns(meta, new Set(hiddenSeries)) ?? [];
   const groupColumns = inferGroupColumns(meta) ?? [];
   const isSingleValueColumn = valueColumns.length === 1;
   const hasGroupColumns = groupColumns.length > 0;
@@ -694,6 +701,7 @@ export function formatResponseForTimeChart({
   granularity,
   generateEmptyBuckets = true,
   source,
+  hiddenSeries = [],
 }: {
   dateRange: [Date, Date];
   granularity?: SQLInterval;
@@ -701,6 +709,7 @@ export function formatResponseForTimeChart({
   previousPeriodResponse?: ResponseJSON<Record<string, any>>;
   generateEmptyBuckets?: boolean;
   source?: TSource;
+  hiddenSeries?: string[];
 }) {
   const meta = currentPeriodResponse.meta;
 
@@ -709,7 +718,7 @@ export function formatResponseForTimeChart({
   }
 
   const timestampColumn = inferTimestampColumn(meta);
-  const valueColumns = inferValueColumns(meta) ?? [];
+  const valueColumns = inferValueColumns(meta, new Set(hiddenSeries)) ?? [];
   const groupColumns = inferGroupColumns(meta) ?? [];
   const isSingleValueColumn = valueColumns.length === 1;
 
@@ -732,6 +741,7 @@ export function formatResponseForTimeChart({
     source,
     isPreviousPeriod: false,
     currentPeriodDateRange: dateRange,
+    hiddenSeries,
   });
 
   if (previousPeriodResponse != null) {
@@ -742,6 +752,7 @@ export function formatResponseForTimeChart({
       source,
       isPreviousPeriod: true,
       currentPeriodDateRange: dateRange,
+      hiddenSeries,
     });
   }
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { pick } from 'lodash';
 import {
   parseAsString,
   parseAsStringEnum,
@@ -8,7 +9,11 @@ import {
 } from 'nuqs';
 import { UseControllerProps, useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
+  ChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
+  CteChartConfig,
   DisplayType,
   Filter,
   SourceKind,
@@ -27,6 +32,7 @@ import {
 import { IconPlayerPlay } from '@tabler/icons-react';
 
 import {
+  convertDateRangeToGranularityString,
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
   MS_NUMBER_FORMAT,
@@ -46,13 +52,17 @@ import { TimePicker } from '@/components/TimePicker';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
-import { useJsonColumns } from '@/hooks/useMetadata';
 import { withAppNav } from '@/layout';
 import SearchInputV2 from '@/SearchInputV2';
-import { getExpressions } from '@/serviceDashboard';
+import {
+  getExpressions,
+  useServiceDashboardExpressions,
+} from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
 import { Histogram } from '@/SVGIcons';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+
+import { HARD_LINES_LIMIT } from './HDXMultiSeriesTimeChart';
 
 type AppliedConfig = {
   source?: string | null;
@@ -61,12 +71,19 @@ type AppliedConfig = {
   whereLanguage?: 'sql' | 'lucene' | null;
 };
 
-function getScopedFilters(
-  source: TSource,
-  appliedConfig: AppliedConfig,
+const MAX_NUM_SERIES = HARD_LINES_LIMIT;
+
+function getScopedFilters({
+  appliedConfig,
+  expressions,
   includeIsSpanKindServer = true,
-): Filter[] {
-  const expressions = getExpressions(source);
+  includeNonEmptyEndpointFilter = false,
+}: {
+  appliedConfig: AppliedConfig;
+  expressions: ReturnType<typeof getExpressions>;
+  includeIsSpanKindServer?: boolean;
+  includeNonEmptyEndpointFilter?: boolean;
+}): Filter[] {
   const filters: Filter[] = [];
   // Database spans are of kind Client. To be cleaned up in HDX-1219
   if (includeIsSpanKindServer) {
@@ -79,6 +96,12 @@ function getScopedFilters(
     filters.push({
       type: 'sql',
       condition: `${expressions.service} IN ('${appliedConfig.service}')`,
+    });
+  }
+  if (includeNonEmptyEndpointFilter) {
+    filters.push({
+      type: 'sql',
+      condition: expressions.isEndpointNonEmpty,
     });
   }
   return filters;
@@ -94,12 +117,7 @@ function ServiceSelectControlled({
   onCreate?: () => void;
 } & UseControllerProps<any>) {
   const { data: source } = useSource({ id: sourceId });
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
-  const expressions = getExpressions(source, jsonColumns);
+  const { expressions } = useServiceDashboardExpressions({ source });
 
   const queriedConfig = {
     ...source,
@@ -111,10 +129,10 @@ function ServiceSelectControlled({
     select: [
       {
         alias: 'service',
-        valueExpression: `distinct(${expressions.service})`,
+        valueExpression: `distinct(${expressions?.service})`,
       },
     ],
-    where: `${expressions.service} IS NOT NULL`,
+    where: `${expressions?.service} IS NOT NULL`,
     whereLanguage: 'sql' as const,
     limit: { limit: 200 },
   };
@@ -122,7 +140,7 @@ function ServiceSelectControlled({
   const { data, isLoading, isError } = useQueriedChartConfig(queriedConfig, {
     placeholderData: (prev: any) => prev,
     queryKey: ['service-select', queriedConfig],
-    enabled: !!source,
+    enabled: !!source && !!expressions,
   });
 
   const values = useMemo(() => {
@@ -162,12 +180,7 @@ export function EndpointLatencyChart({
   appliedConfig?: AppliedConfig;
   extraFilters?: Filter[];
 }) {
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
-  const expressions = getExpressions(source, jsonColumns);
+  const { expressions } = useServiceDashboardExpressions({ source });
   const [latencyChartType, setLatencyChartType] = useState<
     'line' | 'histogram'
   >('line');
@@ -201,39 +214,58 @@ export function EndpointLatencyChart({
         </Box>
       </Group>
       {source &&
+        expressions &&
         (latencyChartType === 'line' ? (
           <DBTimeChart
             showDisplaySwitcher={false}
             sourceId={source.id}
+            hiddenSeries={[
+              'p95_duration_ns',
+              'p50_duration_ns',
+              'avg_duration_ns',
+            ]}
             config={{
               ...source,
               where: appliedConfig.where || '',
               whereLanguage: appliedConfig.whereLanguage || 'sql',
               select: [
+                // Separate the aggregations from the conversion to ms so that AggregatingMergeTree MVs can be used
                 {
-                  alias: '95th Percentile',
+                  alias: 'p95_duration_ns',
                   aggFn: 'quantile',
                   level: 0.95,
-                  valueExpression: expressions.durationInMillis,
+                  valueExpression: expressions.duration,
+                  aggCondition: '',
+                },
+                {
+                  alias: '95th Percentile',
+                  valueExpression: `p95_duration_ns / ${expressions.durationDivisorForMillis}`,
+                },
+                {
+                  alias: 'p50_duration_ns',
+                  aggFn: 'quantile',
+                  level: 0.5,
+                  valueExpression: expressions.duration,
                   aggCondition: '',
                 },
                 {
                   alias: 'Median',
-                  aggFn: 'quantile',
-                  level: 0.5,
-                  valueExpression: expressions.durationInMillis,
+                  valueExpression: `p50_duration_ns / ${expressions.durationDivisorForMillis}`,
+                },
+                {
+                  alias: 'avg_duration_ns',
+                  aggFn: 'avg',
+                  valueExpression: expressions.duration,
                   aggCondition: '',
                 },
                 {
                   alias: 'Avg',
-                  aggFn: 'avg',
-                  valueExpression: expressions.durationInMillis,
-                  aggCondition: '',
+                  valueExpression: `avg_duration_ns / ${expressions.durationDivisorForMillis}`,
                 },
               ],
               filters: [
                 ...extraFilters,
-                ...getScopedFilters(source, appliedConfig),
+                ...getScopedFilters({ appliedConfig, expressions }),
               ],
               numberFormat: MS_NUMBER_FORMAT,
               dateRange,
@@ -253,7 +285,7 @@ export function EndpointLatencyChart({
               ],
               filters: [
                 ...extraFilters,
-                ...getScopedFilters(source, appliedConfig),
+                ...getScopedFilters({ appliedConfig, expressions }),
               ],
               dateRange,
             }}
@@ -271,12 +303,7 @@ function HttpTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
-  const expressions = getExpressions(source, jsonColumns);
+  const { expressions } = useServiceDashboardExpressions({ source });
 
   const [reqChartType, setReqChartType] = useQueryState(
     'reqChartType',
@@ -296,6 +323,157 @@ function HttpTab({
     return window.location.pathname + '?' + searchParams.toString();
   }, []);
 
+  const requestErrorRateConfig =
+    useMemo<ChartConfigWithDateRange | null>(() => {
+      if (!source || !expressions) return null;
+      if (reqChartType === 'overall') {
+        return {
+          ...source,
+          where: appliedConfig.where || '',
+          whereLanguage: appliedConfig.whereLanguage || 'sql',
+          displayType: DisplayType.Line,
+          select: [
+            {
+              valueExpression: `countIf(${expressions.isError}) / count()`,
+              alias: 'error_rate',
+            },
+          ],
+          numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
+          filters: getScopedFilters({ appliedConfig, expressions }),
+          dateRange: searchedTimeRange,
+        } satisfies ChartConfigWithDateRange;
+      }
+      return {
+        timestampValueExpression: 'series_time_bucket',
+        connection: source.connection,
+        with: [
+          {
+            name: 'error_series',
+            chartConfig: {
+              timestampValueExpression: source?.timestampValueExpression || '',
+              connection: source?.connection ?? '',
+              from: source?.from ?? {
+                databaseName: '',
+                tableName: '',
+              },
+              where: appliedConfig.where || '',
+              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              select: [
+                {
+                  valueExpression: '',
+                  aggFn: 'count',
+                  alias: 'error_count',
+                  aggCondition: expressions.isError,
+                  aggConditionLanguage: 'sql',
+                },
+                {
+                  valueExpression: '',
+                  aggFn: 'count',
+                  alias: 'total_count',
+                },
+                {
+                  valueExpression: `error_count / total_count`,
+                  alias: 'error_rate',
+                },
+                {
+                  valueExpression: expressions?.endpoint,
+                  alias: 'endpoint',
+                },
+              ],
+              filters: getScopedFilters({ appliedConfig, expressions }),
+              groupBy: [
+                {
+                  valueExpression: 'endpoint',
+                },
+              ],
+              orderBy: [
+                {
+                  valueExpression: 'endpoint',
+                  ordering: 'ASC',
+                },
+              ],
+              dateRange: searchedTimeRange,
+              granularity: convertDateRangeToGranularityString(
+                searchedTimeRange,
+                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+              ),
+            } as ChartConfigWithOptDateRange,
+            isSubquery: true,
+          },
+          // Select the top N series from the search as we don't want to crash the browser.
+          // Series are selected based on their max error value
+          {
+            name: 'selected_error_series',
+            isSubquery: true,
+            chartConfig: {
+              timestampValueExpression: '__hdx_time_bucket',
+              connection: source.connection,
+              select: [
+                {
+                  valueExpression: 'groupArray(error_rate)',
+                  alias: 'error_rate',
+                },
+                { valueExpression: 'endpoint' },
+                {
+                  valueExpression: 'groupArray(__hdx_time_bucket)',
+                  alias: '__hdx_time_buckets',
+                },
+              ],
+              from: { databaseName: '', tableName: 'error_series' },
+              where: '',
+              groupBy: 'endpoint',
+              orderBy: 'max(error_series.error_rate) DESC',
+              limit: { limit: MAX_NUM_SERIES },
+            },
+          },
+          // CTE that explodes series arrays into rows again for compatibility with DBTimeChart
+          {
+            name: 'zipped_error_series',
+            isSubquery: true,
+            chartConfig: {
+              timestampValueExpression: '__hdx_time_bucket',
+              connection: source.connection,
+              select: [
+                { valueExpression: 'endpoint' },
+                {
+                  valueExpression:
+                    'arrayJoin(arrayZip(error_rate, __hdx_time_buckets))',
+                  alias: 'zipped',
+                },
+              ],
+              from: {
+                databaseName: '',
+                tableName: 'selected_error_series',
+              },
+              where: '',
+            },
+          },
+        ],
+        select: [
+          {
+            valueExpression: 'tupleElement(zipped, 1)',
+            alias: 'Error Rate %',
+          },
+          {
+            valueExpression: 'endpoint',
+          },
+          {
+            valueExpression: 'tupleElement(zipped, 2)',
+            alias: 'series_time_bucket',
+          },
+        ],
+        from: {
+          databaseName: '',
+          tableName: 'zipped_error_series',
+        },
+        where: '',
+        dateRange: searchedTimeRange,
+        displayType: DisplayType.Line,
+        numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
+        groupBy: 'zipped, endpoint',
+      } satisfies ChartConfigWithDateRange;
+    }, [source, searchedTimeRange, appliedConfig, expressions, reqChartType]);
+
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
       <Grid.Col span={6}>
@@ -312,32 +490,12 @@ function HttpTab({
               ]}
             />
           </Group>
-          {source && (
+          {source && requestErrorRateConfig && (
             <DBTimeChart
               sourceId={source.id}
-              config={{
-                ...source,
-                where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
-                displayType:
-                  reqChartType === 'overall'
-                    ? DisplayType.Line
-                    : DisplayType.StackedBar,
-                select: [
-                  {
-                    valueExpression: `countIf(${expressions.isError}) / count()`,
-                    alias: 'Error Rate %',
-                  },
-                ],
-                numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
-                filters: getScopedFilters(source, appliedConfig),
-                groupBy:
-                  reqChartType === 'overall'
-                    ? undefined
-                    : source.spanNameExpression || expressions.spanName,
-                dateRange: searchedTimeRange,
-              }}
+              config={requestErrorRateConfig}
               showDisplaySwitcher={false}
+              disableQueryChunking
             />
           )}
         </ChartBox>
@@ -347,7 +505,7 @@ function HttpTab({
           <Group justify="space-between" align="center" mb="sm">
             <Text size="sm">Request Throughput</Text>
           </Group>
-          {source && (
+          {source && expressions && (
             <DBTimeChart
               sourceId={source.id}
               config={{
@@ -368,7 +526,7 @@ function HttpTab({
                   },
                 ],
                 numberFormat: { ...INTEGER_NUMBER_FORMAT, unit: 'requests' },
-                filters: getScopedFilters(source, appliedConfig),
+                filters: getScopedFilters({ appliedConfig, expressions }),
                 dateRange: searchedTimeRange,
               }}
             />
@@ -381,58 +539,89 @@ function HttpTab({
             <Text size="sm">20 Top Most Time Consuming Endpoints</Text>
           </Group>
 
-          {source && (
+          {source && expressions && (
             <DBListBarChart
               groupColumn="Endpoint"
               valueColumn="Total (ms)"
               getRowSearchLink={getRowSearchLink}
+              hiddenSeries={[
+                'duration_ns',
+                'total_requests',
+                'duration_p95_ns',
+                'duration_p50_ns',
+                'error_requests',
+              ]}
               config={{
                 ...source,
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 select: [
+                  // Separate the aggregations from the conversion to ms and rate so that AggregatingMergeTree MVs can be used
                   {
                     alias: 'Endpoint',
-                    valueExpression:
-                      source.spanNameExpression || expressions.spanName,
+                    valueExpression: expressions.endpoint,
+                  },
+                  {
+                    alias: 'duration_ns',
+                    aggFn: 'sum',
+                    valueExpression: expressions.duration,
+                    aggCondition: '',
                   },
                   {
                     alias: 'Total (ms)',
-                    aggFn: 'sum',
-                    valueExpression: expressions.durationInMillis,
+                    valueExpression: `duration_ns / ${expressions.durationDivisorForMillis}`,
                     aggCondition: '',
+                  },
+                  {
+                    alias: 'total_requests',
+                    aggFn: 'count',
+                    valueExpression: '',
                   },
                   {
                     alias: 'Req/Min',
                     valueExpression: `
-                      count() /
+                      total_requests /
                       age('mi', toDateTime(${startTime / 1000}), toDateTime(${endTime / 1000}))`,
                   },
                   {
-                    alias: 'P95 (ms)',
+                    alias: 'duration_p95_ns',
                     aggFn: 'quantile',
-                    valueExpression: expressions.durationInMillis,
+                    level: 0.95,
+                    valueExpression: expressions.duration,
                     aggCondition: '',
+                  },
+                  {
+                    alias: 'P95 (ms)',
+                    valueExpression: `duration_p95_ns / ${expressions.durationDivisorForMillis}`,
+                  },
+                  {
+                    alias: 'duration_p50_ns',
+                    aggFn: 'quantile',
                     level: 0.5,
+                    valueExpression: expressions.duration,
+                    aggCondition: '',
                   },
                   {
                     alias: 'Median (ms)',
-                    aggFn: 'quantile',
-                    valueExpression: expressions.durationInMillis,
-                    aggCondition: '',
-                    level: 0.95,
+                    valueExpression: `duration_p50_ns / ${expressions.durationDivisorForMillis}`,
                   },
-
+                  {
+                    alias: 'error_requests',
+                    aggFn: 'count',
+                    valueExpression: '',
+                    aggCondition: expressions.isError,
+                    aggConditionLanguage: 'sql',
+                  },
                   {
                     alias: 'Errors/Min',
-                    valueExpression: `countIf(${expressions.isError}) /
+                    valueExpression: `error_requests /
                       age('mi', toDateTime(${startTime / 1000}), toDateTime(${endTime / 1000}))`,
                   },
                 ],
                 selectGroupBy: false,
-                groupBy: source.spanNameExpression || expressions.spanName,
+                groupBy: expressions.endpoint,
                 orderBy: '"Total (ms)" DESC',
-                filters: getScopedFilters(source, appliedConfig),
+                filters: getScopedFilters({ appliedConfig, expressions }),
                 dateRange: searchedTimeRange,
                 numberFormat: MS_NUMBER_FORMAT,
                 limit: { limit: 20 },
@@ -473,45 +662,85 @@ function HttpTab({
               ]}
             />
           </Group>
-          {source && (
+          {source && expressions && (
             <DBTableChart
               getRowSearchLink={getRowSearchLink}
+              hiddenColumns={[
+                'total_count',
+                'p95_duration_ns',
+                'p50_duration_ns',
+                'duration_sum_ns',
+                'error_count',
+              ]}
               config={{
                 ...source,
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 select: [
+                  // Separate the aggregations from the conversion to ms and rate so that AggregatingMergeTree MVs can be used
                   {
                     alias: 'Endpoint',
-                    valueExpression:
-                      source.spanNameExpression || expressions.spanName,
+                    valueExpression: expressions.endpoint,
+                  },
+                  {
+                    alias: 'total_count',
+                    valueExpression: '',
+                    aggFn: 'count',
                   },
                   {
                     alias: 'Req/Min',
-                    valueExpression: `round(count() /
+                    valueExpression: `round(total_count /
                         age('mi', toDateTime(${startTime / 1000}), toDateTime(${endTime / 1000})), 1)`,
                   },
                   {
+                    alias: 'p95_duration_ns',
+                    valueExpression: expressions.duration,
+                    aggFn: 'quantile',
+                    level: 0.95,
+                  },
+                  {
                     alias: 'P95 (ms)',
-                    valueExpression: `round(quantile(0.95)(${expressions.durationInMillis}), 2)`,
+                    valueExpression: `round(p95_duration_ns / ${expressions.durationDivisorForMillis}, 2)`,
+                  },
+                  {
+                    alias: 'p50_duration_ns',
+                    valueExpression: expressions.duration,
+                    aggFn: 'quantile',
+                    level: 0.5,
                   },
                   {
                     alias: 'Median (ms)',
-                    valueExpression: `round(quantile(0.5)(${expressions.durationInMillis}), 2)`,
+                    valueExpression: `round(p50_duration_ns / ${expressions.durationDivisorForMillis}, 2)`,
+                  },
+                  {
+                    alias: 'duration_sum_ns',
+                    valueExpression: expressions.duration,
+                    aggFn: 'sum',
                   },
                   {
                     alias: 'Total (ms)',
-                    valueExpression: `round(sum(${expressions.durationInMillis}), 2)`,
+                    valueExpression: `round(duration_sum_ns / ${expressions.durationDivisorForMillis}, 2)`,
+                  },
+                  {
+                    alias: 'error_count',
+                    valueExpression: '',
+                    aggCondition: expressions.isError,
+                    aggConditionLanguage: 'sql',
+                    aggFn: 'count',
                   },
                   {
                     alias: 'Errors/Min',
-                    valueExpression: `round(countIf(${expressions.isError}) /
+                    valueExpression: `round(error_count /
                       age('mi', toDateTime(${startTime / 1000}), toDateTime(${endTime / 1000})), 1)`,
                   },
                 ],
-                filters: getScopedFilters(source, appliedConfig),
+                filters: getScopedFilters({
+                  appliedConfig,
+                  expressions,
+                  includeNonEmptyEndpointFilter: true,
+                }),
                 selectGroupBy: false,
-                groupBy: source.spanNameExpression || expressions.spanName,
+                groupBy: expressions.endpoint,
                 dateRange: searchedTimeRange,
                 orderBy:
                   topEndpointsChartType === 'time'
@@ -536,12 +765,7 @@ function DatabaseTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
-  const expressions = getExpressions(source, jsonColumns);
+  const { expressions } = useServiceDashboardExpressions({ source });
 
   const [chartType, setChartType] = useState<'table' | 'list'>('list');
 
@@ -551,6 +775,243 @@ function DatabaseTab({
     return window.location.pathname + '?' + searchParams.toString();
   }, []);
 
+  const totalTimePerQueryConfig =
+    useMemo<ChartConfigWithDateRange | null>(() => {
+      if (!source || !expressions) return null;
+
+      return {
+        with: [
+          {
+            name: 'queries_by_total_time',
+            isSubquery: true,
+            chartConfig: {
+              ...pick(source, [
+                'timestampValueExpression',
+                'connection',
+                'from',
+              ]),
+              where: appliedConfig.where || '',
+              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              select: [
+                {
+                  alias: 'total_query_time_ms',
+                  aggFn: 'sum',
+                  valueExpression: expressions.durationInMillis,
+                  aggCondition: '',
+                },
+                {
+                  alias: 'Statement',
+                  valueExpression: expressions.dbStatement,
+                },
+              ],
+              groupBy: 'Statement',
+              filters: [
+                ...getScopedFilters({
+                  expressions,
+                  appliedConfig,
+                  includeIsSpanKindServer: false,
+                }),
+                { type: 'sql', condition: expressions.isDbSpan },
+              ],
+              // Date range and granularity add an `__hdx_time_bucket` column to select and group by
+              dateRange: searchedTimeRange,
+              granularity: convertDateRangeToGranularityString(
+                searchedTimeRange,
+                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+              ),
+            } as CteChartConfig,
+          },
+          {
+            name: 'top_queries_by_total_time',
+            isSubquery: true,
+            chartConfig: {
+              connection: source.connection,
+              select: [
+                { valueExpression: 'Statement' },
+                {
+                  valueExpression: 'groupArray(total_query_time_ms)',
+                  alias: 'total_query_time_ms',
+                },
+                {
+                  valueExpression: 'groupArray(__hdx_time_bucket)',
+                  alias: '__hdx_time_buckets',
+                },
+              ],
+              from: { databaseName: '', tableName: 'queries_by_total_time' },
+              groupBy: 'Statement',
+              where: '',
+              // Select the top MAX_NUM_SERIES queries by max time in any bucket
+              orderBy: 'max(queries_by_total_time.total_query_time_ms) DESC',
+              limit: { limit: MAX_NUM_SERIES },
+              timestampValueExpression: '', // required only to satisfy CTE schema
+            },
+          },
+          {
+            name: 'zipped_series',
+            isSubquery: true,
+            chartConfig: {
+              connection: source.connection,
+              select: [
+                { valueExpression: 'Statement' },
+                {
+                  valueExpression:
+                    'arrayJoin(arrayZip(total_query_time_ms, __hdx_time_buckets))',
+                  alias: 'zipped',
+                },
+              ],
+              from: {
+                databaseName: '',
+                tableName: 'top_queries_by_total_time',
+              },
+              where: '',
+              timestampValueExpression: '', // required only to satisfy CTE schema
+            },
+          },
+        ],
+
+        select: [
+          { valueExpression: 'Statement' },
+          {
+            valueExpression: 'tupleElement(zipped, 1)',
+            alias: 'Total Query Time',
+          },
+          {
+            valueExpression: 'tupleElement(zipped, 2)',
+            alias: 'series_time_bucket',
+          },
+        ],
+        from: { databaseName: '', tableName: 'zipped_series' },
+        where: '',
+
+        displayType: DisplayType.StackedBar,
+        numberFormat: MS_NUMBER_FORMAT,
+        groupBy: 'Statement, zipped',
+        dateRange: searchedTimeRange,
+        timestampValueExpression: 'series_time_bucket',
+        connection: source.connection,
+      } satisfies ChartConfigWithDateRange;
+    }, [appliedConfig, expressions, searchedTimeRange, source]);
+
+  const totalThroughputPerQueryConfig =
+    useMemo<ChartConfigWithDateRange | null>(() => {
+      if (!source || !expressions) return null;
+
+      return {
+        with: [
+          {
+            name: 'queries_by_total_count',
+            isSubquery: true,
+            chartConfig: {
+              ...pick(source, [
+                'timestampValueExpression',
+                'connection',
+                'from',
+              ]),
+              where: appliedConfig.where || '',
+              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              select: [
+                {
+                  alias: 'total_query_count',
+                  aggFn: 'count',
+                  valueExpression: '',
+                  aggCondition: '',
+                },
+                {
+                  alias: 'Statement',
+                  valueExpression: expressions.dbStatement,
+                },
+              ],
+              groupBy: 'Statement',
+              filters: [
+                ...getScopedFilters({
+                  expressions,
+                  appliedConfig,
+                  includeIsSpanKindServer: false,
+                }),
+                { type: 'sql', condition: expressions.isDbSpan },
+              ],
+              // Date range and granularity add an `__hdx_time_bucket` column to select and group by
+              dateRange: searchedTimeRange,
+              granularity: convertDateRangeToGranularityString(
+                searchedTimeRange,
+                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+              ),
+            } as CteChartConfig,
+          },
+          {
+            name: 'top_queries_by_total_count',
+            isSubquery: true,
+            chartConfig: {
+              connection: source.connection,
+              select: [
+                { valueExpression: 'Statement' },
+                {
+                  valueExpression: 'groupArray(total_query_count)',
+                  alias: 'total_query_count',
+                },
+                {
+                  valueExpression: 'groupArray(__hdx_time_bucket)',
+                  alias: '__hdx_time_buckets',
+                },
+              ],
+              from: { databaseName: '', tableName: 'queries_by_total_count' },
+              groupBy: 'Statement',
+              where: '',
+              // Select the top MAX_NUM_SERIES queries by max time in any bucket
+              orderBy: 'max(queries_by_total_count.total_query_count) DESC',
+              limit: { limit: MAX_NUM_SERIES },
+              timestampValueExpression: '', // required only to satisfy CTE schema
+            },
+          },
+          {
+            name: 'zipped_series',
+            isSubquery: true,
+            chartConfig: {
+              connection: source.connection,
+              select: [
+                { valueExpression: 'Statement' },
+                {
+                  valueExpression:
+                    'arrayJoin(arrayZip(total_query_count, __hdx_time_buckets))',
+                  alias: 'zipped',
+                },
+              ],
+              from: {
+                databaseName: '',
+                tableName: 'top_queries_by_total_count',
+              },
+              where: '',
+              timestampValueExpression: '', // required only to satisfy CTE schema
+            },
+          },
+        ],
+
+        select: [
+          { valueExpression: 'Statement' },
+          {
+            valueExpression: 'tupleElement(zipped, 1)',
+            alias: 'Total Query Count',
+          },
+          {
+            valueExpression: 'tupleElement(zipped, 2)',
+            alias: 'series_time_bucket',
+          },
+        ],
+        from: { databaseName: '', tableName: 'zipped_series' },
+        where: '',
+
+        displayType: DisplayType.StackedBar,
+        numberFormat: {
+          ...INTEGER_NUMBER_FORMAT,
+          unit: 'queries',
+        },
+        groupBy: 'Statement, zipped',
+        dateRange: searchedTimeRange,
+        timestampValueExpression: 'series_time_bucket',
+        connection: source.connection,
+      } satisfies ChartConfigWithDateRange;
+    }, [appliedConfig, expressions, searchedTimeRange, source]);
+
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
       <Grid.Col span={6}>
@@ -558,30 +1019,11 @@ function DatabaseTab({
           <Group justify="space-between" align="center" mb="sm">
             <Text size="sm">Total Time Consumed per Query</Text>
           </Group>
-          {source && (
+          {source && totalTimePerQueryConfig && (
             <DBTimeChart
               sourceId={source.id}
-              config={{
-                ...source,
-                displayType: DisplayType.StackedBar,
-                where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
-                select: [
-                  {
-                    alias: 'Total Query Time',
-                    aggFn: 'sum',
-                    valueExpression: expressions.durationInMillis,
-                    aggCondition: '',
-                  },
-                ],
-                filters: [
-                  ...getScopedFilters(source, appliedConfig, false),
-                  { type: 'sql', condition: expressions.isDbSpan },
-                ],
-                numberFormat: MS_NUMBER_FORMAT,
-                groupBy: expressions.dbStatement,
-                dateRange: searchedTimeRange,
-              }}
+              config={totalTimePerQueryConfig}
+              disableQueryChunking
             />
           )}
         </ChartBox>
@@ -591,33 +1033,11 @@ function DatabaseTab({
           <Group justify="space-between" align="center" mb="sm">
             <Text size="sm">Throughput per Query</Text>
           </Group>
-          {source && (
+          {source && totalThroughputPerQueryConfig && (
             <DBTimeChart
               sourceId={source.id}
-              config={{
-                ...source,
-                displayType: DisplayType.StackedBar,
-                where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
-                select: [
-                  {
-                    alias: 'Total Query Count',
-                    aggFn: 'count',
-                    valueExpression: expressions.durationInMillis,
-                    aggCondition: '',
-                  },
-                ],
-                filters: [
-                  ...getScopedFilters(source, appliedConfig, false),
-                  { type: 'sql', condition: expressions.isDbSpan },
-                ],
-                numberFormat: {
-                  ...INTEGER_NUMBER_FORMAT,
-                  unit: 'queries',
-                },
-                groupBy: expressions.dbStatement,
-                dateRange: searchedTimeRange,
-              }}
+              config={totalThroughputPerQueryConfig}
+              disableQueryChunking
             />
           )}
         </ChartBox>
@@ -651,6 +1071,7 @@ function DatabaseTab({
             </Box>
           </Group>
           {source &&
+            expressions &&
             (chartType === 'list' ? (
               <DBListBarChart
                 groupColumn="Statement"
@@ -662,7 +1083,7 @@ function DatabaseTab({
                   where: appliedConfig.where || '',
                   whereLanguage: appliedConfig.whereLanguage || 'sql',
                   dateRange: searchedTimeRange,
-                  groupBy: expressions.dbStatement,
+                  groupBy: 'Statement',
                   selectGroupBy: false,
                   orderBy: '"Total" DESC',
                   select: [
@@ -687,17 +1108,10 @@ function DatabaseTab({
                       aggFn: 'quantile',
                       valueExpression: expressions.durationInMillis,
                       aggCondition: '',
-                      level: 0.5,
-                    },
-                    {
-                      alias: 'Median (ms)',
-                      aggFn: 'quantile',
-                      valueExpression: expressions.durationInMillis,
-                      aggCondition: '',
                       level: 0.95,
                     },
                     {
-                      alias: 'Median',
+                      alias: 'Median (ms)',
                       aggFn: 'quantile',
                       valueExpression: expressions.durationInMillis,
                       aggCondition: '',
@@ -705,7 +1119,11 @@ function DatabaseTab({
                     },
                   ],
                   filters: [
-                    ...getScopedFilters(source, appliedConfig, false),
+                    ...getScopedFilters({
+                      appliedConfig,
+                      expressions,
+                      includeIsSpanKindServer: false,
+                    }),
                     { type: 'sql', condition: expressions.isDbSpan },
                   ],
                   limit: { limit: 20 },
@@ -719,7 +1137,7 @@ function DatabaseTab({
                   where: appliedConfig.where || '',
                   whereLanguage: appliedConfig.whereLanguage || 'sql',
                   dateRange: searchedTimeRange,
-                  groupBy: expressions.dbStatement,
+                  groupBy: 'Statement',
                   orderBy: '"Total" DESC',
                   selectGroupBy: false,
                   select: [
@@ -744,17 +1162,10 @@ function DatabaseTab({
                       aggFn: 'quantile',
                       valueExpression: expressions.durationInMillis,
                       aggCondition: '',
-                      level: 0.5,
-                    },
-                    {
-                      alias: 'Median (ms)',
-                      aggFn: 'quantile',
-                      valueExpression: expressions.durationInMillis,
-                      aggCondition: '',
                       level: 0.95,
                     },
                     {
-                      alias: 'Median',
+                      alias: 'Median (ms)',
                       aggFn: 'quantile',
                       valueExpression: expressions.durationInMillis,
                       aggCondition: '',
@@ -762,7 +1173,11 @@ function DatabaseTab({
                     },
                   ],
                   filters: [
-                    ...getScopedFilters(source, appliedConfig, false),
+                    ...getScopedFilters({
+                      appliedConfig,
+                      expressions,
+                      includeIsSpanKindServer: false,
+                    }),
                     { type: 'sql', condition: expressions.isDbSpan },
                   ],
                   limit: { limit: 20 },
@@ -784,12 +1199,7 @@ function ErrorsTab({
   appliedConfig: AppliedConfig;
 }) {
   const { data: source } = useSource({ id: appliedConfig.source });
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
-  const expressions = getExpressions(source, jsonColumns);
+  const { expressions } = useServiceDashboardExpressions({ source });
 
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
@@ -798,7 +1208,7 @@ function ErrorsTab({
           <Group justify="space-between" align="center" mb="sm">
             <Text size="sm">Error Events per Service</Text>
           </Group>
-          {source && (
+          {source && expressions && (
             <DBTimeChart
               sourceId={source.id}
               config={{
@@ -811,13 +1221,13 @@ function ErrorsTab({
                     valueExpression: `count()`,
                   },
                 ],
-                numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
+                numberFormat: INTEGER_NUMBER_FORMAT,
                 filters: [
                   {
                     type: 'sql',
                     condition: expressions.isError,
                   },
-                  ...getScopedFilters(source, appliedConfig),
+                  ...getScopedFilters({ appliedConfig, expressions }),
                 ],
                 groupBy: source.serviceNameExpression || expressions.service,
                 dateRange: searchedTimeRange,
@@ -900,9 +1310,14 @@ function ServicesDashboardPage() {
 
   // Auto submit when service or source changes
   useEffect(() => {
+    const normalizedService = service ?? '';
+    const appliedService = appliedConfig.service ?? '';
+    const normalizedSource = sourceId ?? '';
+    const appliedSource = appliedConfig.source ?? '';
+
     if (
-      service !== appliedConfig.service ||
-      sourceId !== appliedConfig.source
+      normalizedService !== appliedService ||
+      (normalizedSource && normalizedSource !== appliedSource)
     ) {
       onSubmit();
     }
