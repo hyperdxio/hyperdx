@@ -17,6 +17,12 @@ import {
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 import { IS_LOCAL_MODE } from '@/config';
+import {
+  DEFAULT_FONT_VAR,
+  DEFAULT_MANTINE_FONT,
+  FONT_VAR_MAP,
+  MANTINE_FONT_MAP,
+} from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { useConfirmModal } from '@/useConfirm';
@@ -56,23 +62,6 @@ export type NextPageWithLayout<P = object, IP = P> = NextPage<P, IP> & {
 type AppPropsWithLayout = AppProps & {
   Component: NextPageWithLayout;
 };
-
-const FONT_VAR_MAP: Record<string, string> = {
-  'IBM Plex Mono': 'var(--font-ibm-plex-mono)',
-  'Roboto Mono': 'var(--font-roboto-mono)',
-  Inter: 'var(--font-inter)',
-  Roboto: 'var(--font-roboto)',
-};
-
-const MANTINE_FONT_MAP: Record<string, string> = {
-  'IBM Plex Mono': 'var(--font-ibm-plex-mono), monospace',
-  'Roboto Mono': 'var(--font-roboto-mono), monospace',
-  Inter: 'var(--font-inter), sans-serif',
-  Roboto: 'var(--font-roboto), sans-serif',
-};
-
-const DEFAULT_FONT_VAR = 'var(--font-inter)';
-const DEFAULT_MANTINE_FONT = 'var(--font-inter), sans-serif';
 
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const { userPreferences } = useUserPreferences();
@@ -117,7 +106,10 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   }, []);
 
   useEffect(() => {
-    // Ensure font variables are available on html element
+    // Apply font classes to html element for CSS variable resolution.
+    // Although _document.tsx sets these server-side, they must be re-applied client-side
+    // during hydration to ensure CSS variables are available for dynamic font switching.
+    // This is critical for the --app-font-family CSS variable to work across all components.
     if (typeof document !== 'undefined') {
       const fontClasses = [
         ibmPlexMono.variable,
