@@ -123,7 +123,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 
   useEffect(() => {
     // Update CSS variable for global font cascading
-    if (typeof document !== 'undefined' && userPreferences.font) {
+    if (typeof document !== 'undefined') {
       const fontVar = FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR;
       document.documentElement.style.setProperty('--app-font-family', fontVar);
     }
