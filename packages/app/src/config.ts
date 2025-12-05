@@ -28,6 +28,8 @@ export const IS_LOCAL_MODE = //true;
   // @ts-ignore
   (process.env.NEXT_PUBLIC_IS_LOCAL_MODE ?? 'false') === 'true';
 
+export const IS_SELF_HOSTED_MODE = (process.env.NEXT_PUBLIC_IS_SELF_HOSTED_MODE ?? 'false') === 'true';
+
 // Features in development
 export const IS_K8S_DASHBOARD_ENABLED = true;
 export const IS_METRICS_ENABLED = true;
