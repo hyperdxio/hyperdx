@@ -50,5 +50,4 @@ export const OPTIONS_FONTS = [
   'Roboto Mono',
   'Inter',
   'Roboto',
-  { value: 'or use your own font', disabled: true },
 ];
