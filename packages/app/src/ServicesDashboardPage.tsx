@@ -505,6 +505,7 @@ function HttpTab({
               config={requestErrorRateConfig}
               showDisplaySwitcher={false}
               disableQueryChunking
+              disableDrillDown
             />
           )}
         </ChartBox>
@@ -1048,6 +1049,7 @@ function DatabaseTab({
               sourceId={source.id}
               config={totalThroughputPerQueryConfig}
               disableQueryChunking
+              disableDrillDown
             />
           )}
         </ChartBox>
