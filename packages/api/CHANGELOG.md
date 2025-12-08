@@ -1,5 +1,26 @@
 # @hyperdx/api
 
+## 2.9.0
+
+### Minor Changes
+
+- 52d27985: chore: Upgrade nextjs, react, and eslint + add react compiler
+
+### Patch Changes
+
+- cac4d3dd: Allow connecting to Mongo with AWS Auth
+- b7789ced: chore: deprecate unused go-parser service
+- e838436d: Improve value rounding on alerts to match thresholds
+- Updated dependencies [586bcce7]
+- Updated dependencies [ea25cc5d]
+- Updated dependencies [52d27985]
+- Updated dependencies [b7789ced]
+- Updated dependencies [ff422206]
+- Updated dependencies [59422a1a]
+- Updated dependencies [7405d183]
+- Updated dependencies [770276a1]
+  - @hyperdx/common-utils@0.9.0
+
 ## 2.8.0
 
 ### Minor Changes
