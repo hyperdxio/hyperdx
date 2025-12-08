@@ -505,6 +505,7 @@ function HttpTab({
               config={requestErrorRateConfig}
               showDisplaySwitcher={false}
               disableQueryChunking
+              disableDrillDown
             />
           )}
         </ChartBox>
@@ -1032,6 +1033,7 @@ function DatabaseTab({
             <DBTimeChart
               sourceId={source.id}
               config={totalTimePerQueryConfig}
+              disableDrillDown
               disableQueryChunking
             />
           )}
@@ -1047,6 +1049,7 @@ function DatabaseTab({
               sourceId={source.id}
               config={totalThroughputPerQueryConfig}
               disableQueryChunking
+              disableDrillDown
             />
           )}
         </ChartBox>

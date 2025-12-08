@@ -198,6 +198,7 @@ function ActiveTimeTooltip({
 type DBTimeChartComponentProps = {
   config: ChartConfigWithDateRange;
   disableQueryChunking?: boolean;
+  disableDrillDown?: boolean;
   enabled?: boolean;
   logReferenceTimestamp?: number;
   onSettled?: () => void;
@@ -215,6 +216,7 @@ type DBTimeChartComponentProps = {
 function DBTimeChartComponent({
   config,
   disableQueryChunking,
+  disableDrillDown,
   enabled = true,
   logReferenceTimestamp,
   onTimeRangeSelect,
@@ -367,12 +369,12 @@ function DBTimeChartComponent({
   // Wrap the setter to only allow setting if source is available
   const setActiveClickPayloadIfSourceAvailable = useCallback(
     (payload: ActiveClickPayload | undefined) => {
-      if (source == null) {
+      if (source == null || disableDrillDown) {
         return; // Don't set if no source
       }
       setActiveClickPayload(payload);
     },
-    [source],
+    [source, disableDrillDown],
   );
 
   const clickedActiveLabelDate = useMemo(() => {
