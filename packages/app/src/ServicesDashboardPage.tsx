@@ -1032,6 +1032,7 @@ function DatabaseTab({
             <DBTimeChart
               sourceId={source.id}
               config={totalTimePerQueryConfig}
+              disableDrillDown
               disableQueryChunking
             />
           )}
