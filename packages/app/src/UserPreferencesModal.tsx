@@ -14,14 +14,8 @@ import {
   Text,
 } from '@mantine/core';
 
+import { OPTIONS_FONTS } from './config/fonts';
 import { UserPreferences, useUserPreferences } from './useUserPreferences';
-
-const OPTIONS_FONTS = [
-  'IBM Plex Mono',
-  'Roboto Mono',
-  'Inter',
-  { value: 'or use your own font', disabled: true },
-];
 
 const OPTIONS_THEMES = [
   { label: 'Dark', value: 'dark' },

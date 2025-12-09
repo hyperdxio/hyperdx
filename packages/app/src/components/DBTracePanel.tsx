@@ -4,7 +4,6 @@ import { useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
-  Badge,
   Button,
   Center,
   Divider,
@@ -19,7 +18,6 @@ import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallCha
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
 
-import ServiceMap from './ServiceMap/ServiceMap';
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { SourceSelectControlled } from './SourceSelect';
@@ -41,7 +39,7 @@ export default function DBTracePanel({
 }: {
   parentSourceId?: string | null;
   childSourceId?: string | null;
-  traceId: string;
+  traceId?: string;
   dateRange: [Date, Date];
   focusDate: Date;
   // Passed in from side panel to try to identify which
@@ -54,7 +52,7 @@ export default function DBTracePanel({
   };
   'data-testid'?: string;
 }) {
-  const { control, watch, setValue } = useForm({
+  const { control, watch } = useForm({
     defaultValues: {
       source: childSourceId,
     },
@@ -192,7 +190,7 @@ export default function DBTracePanel({
         </Stack>
       )}
       <Divider my="sm" />
-      {traceSourceData?.kind === SourceKind.Trace && (
+      {traceSourceData?.kind === SourceKind.Trace && traceId && (
         <DBTraceWaterfallChartContainer
           traceTableSource={traceSourceData}
           logTableSource={logSourceData}
@@ -246,7 +244,7 @@ export default function DBTracePanel({
           )}
         </>
       )}
-      {traceSourceData != null && !eventRowWhere && (
+      {traceSourceData != null && !eventRowWhere && traceId && (
         <Paper shadow="xs" p="xl" mt="md">
           <Center mih={100}>
             <Text size="sm">Please select a span above to view details.</Text>

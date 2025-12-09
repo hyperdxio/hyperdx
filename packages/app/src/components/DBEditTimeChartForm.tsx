@@ -40,6 +40,7 @@ import {
   Textarea,
 } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
+import { SortingState } from '@tanstack/react-table';
 
 import {
   AGG_FNS,
@@ -59,7 +60,12 @@ import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import { parseTimeQuery } from '@/timeQuery';
 import { FormatTime } from '@/useFormatTime';
-import { getMetricTableName, optionsToSelectData } from '@/utils';
+import {
+  getMetricTableName,
+  optionsToSelectData,
+  orderByStringToSortingState,
+  sortingStateToOrderByString,
+} from '@/utils';
 import {
   ALERT_CHANNEL_OPTIONS,
   DEFAULT_TILE_ALERT,
@@ -458,6 +464,7 @@ export default function EditTimeChartForm({
   const alert = watch('alert');
   const seriesReturnType = watch('seriesReturnType');
   const compareToPreviousPeriod = watch('compareToPreviousPeriod');
+  const groupBy = watch('groupBy');
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -535,6 +542,11 @@ export default function EditTimeChartForm({
           select: isSelectEmpty
             ? tableSource.defaultTableSelectExpression || ''
             : config.select,
+          // Order By can only be set by the user for table charts
+          orderBy:
+            config.displayType === DisplayType.Table
+              ? config.orderBy
+              : undefined,
         };
         setQueriedConfig(
           // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
@@ -546,6 +558,22 @@ export default function EditTimeChartForm({
       }
     })();
   }, [handleSubmit, setChartConfig, setQueriedConfig, tableSource, dateRange]);
+
+  const onTableSortingChange = useCallback(
+    (sortState: SortingState | null) => {
+      setValue('orderBy', sortingStateToOrderByString(sortState) ?? '');
+      onSubmit();
+    },
+    [setValue, onSubmit],
+  );
+
+  const tableSortState = useMemo(
+    () =>
+      queriedConfig?.orderBy && typeof queriedConfig.orderBy === 'string'
+        ? orderByStringToSortingState(queriedConfig.orderBy)
+        : undefined,
+    [queriedConfig],
+  );
 
   useEffect(() => {
     if (submitRef) {
@@ -990,6 +1018,21 @@ export default function EditTimeChartForm({
           )}
         </Flex>
         <Flex gap="sm" my="sm" align="center" justify="end">
+          {activeTab === 'table' && (
+            <div style={{ minWidth: 300 }}>
+              <SQLInlineEditorControlled
+                parentRef={parentRef}
+                tableConnection={tcFromSource(tableSource)}
+                // The default order by is the current group by value
+                placeholder={typeof groupBy === 'string' ? groupBy : ''}
+                control={control}
+                name={`orderBy`}
+                disableKeywordAutocomplete
+                onSubmit={onSubmit}
+                label="ORDER BY"
+              />
+            </div>
+          )}
           {activeTab !== 'markdown' &&
             setDisplayedTimeInputValue != null &&
             displayedTimeInputValue != null &&
@@ -1067,6 +1110,8 @@ export default function EditTimeChartForm({
                 dateRange: queriedConfig.dateRange,
               })
             }
+            onSortingChange={onTableSortingChange}
+            sort={tableSortState}
           />
         </div>
       )}
