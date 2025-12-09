@@ -94,16 +94,22 @@ export default function ServiceDashboardDbQuerySidePanel({
                   {source && expressions && (
                     <DBTimeChart
                       sourceId={sourceId}
+                      hiddenSeries={['total_duration_ns']}
                       config={{
                         ...source,
                         where: '',
                         whereLanguage: 'sql',
                         select: [
+                          // Separate the aggregations from the conversion to ms so that AggregatingMergeTree MVs can be used
                           {
-                            aggFn: 'sum' as const,
-                            valueExpression: expressions.durationInMillis,
-                            alias: 'Total Query Time',
+                            aggFn: 'sum',
+                            valueExpression: expressions.duration,
+                            alias: 'total_duration_ns',
                             aggCondition: '',
+                          },
+                          {
+                            valueExpression: `total_duration_ns / ${expressions.durationDivisorForMillis}`,
+                            alias: 'Total Query Time',
                           },
                         ],
                         numberFormat: MS_NUMBER_FORMAT,
@@ -119,7 +125,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                   <Group justify="space-between" align="center" mb="sm">
                     <Text size="sm">Query Throughput</Text>
                   </Group>
-                  {source && (
+                  {source && expressions && (
                     <DBTimeChart
                       sourceId={sourceId}
                       config={{
