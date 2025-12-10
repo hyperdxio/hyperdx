@@ -103,7 +103,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     container:
-      image: mcr.microsoft.com/playwright:v1.55.0-jammy
+      image: mcr.microsoft.com/playwright:v1.57.0-jammy
     permissions:
       contents: read
       pull-requests: write
