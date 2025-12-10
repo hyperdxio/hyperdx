@@ -12,10 +12,14 @@ yarn dev
 
 ## Key Development Scripts
 
-- `yarn app:dev`: Start API, frontend, alerts task, and common-utils in watch mode
+- `yarn app:dev`: Start API, frontend, alerts task, and common-utils in watch
+  mode
 - `yarn lint`: Run linting across all packages
 - `yarn dev:int`: Run integration tests in watch mode
 - `yarn dev:unit`: Run unit tests in watch mode (per package)
+- `yarn test:e2e`: Run Playwright E2E tests (in `packages/app`)
+- `yarn test:e2e:ci`: Run Playwright E2E tests in CI Docker environment (in
+  `packages/app`)
 
 ## Environment Configuration
 
@@ -30,12 +34,14 @@ yarn dev
 - **Unit Tests**: Jest with TypeScript support
 - **Integration Tests**: Jest with database fixtures
 - **Frontend Testing**: React Testing Library + Jest
-- **E2E Testing**: Custom smoke tests with BATS
+- **E2E Testing**: Playwright (frontend) and Custom smoke tests with BATS
+  (ingestion)
 
 ### Testing Patterns
 
 - **TDD Approach**: Write tests before implementation for new features
-- **Test organization**: Tests co-located with source files in `__tests__/` directories
+- **Test organization**: Tests co-located with source files in `__tests__/`
+  directories
 - **Mocking**: MSW for API mocking in frontend tests
 - **Database testing**: Isolated test databases with fixtures
 
@@ -52,6 +58,7 @@ yarn dev:int
 ```
 
 **CI Testing Notes:**
+
 - Uses separate Docker Compose configuration optimized for CI
 - Isolated test environment with `-p int` project name
 - Includes all necessary services (ClickHouse, MongoDB, OTel Collector)
@@ -79,6 +86,7 @@ yarn dev:int
 ### Pre-commit Hooks
 
 The project uses Husky + lint-staged to automatically run:
+
 - Prettier for formatting
 - ESLint for linting
 - API doc generation (for external API changes)
@@ -101,11 +109,11 @@ yarn run lint
 
 ## File Locations Quick Reference
 
-- **Config**: `packages/api/src/config.ts`, `packages/app/next.config.mjs`, `docker-compose.dev.yml`
+- **Config**: `packages/api/src/config.ts`, `packages/app/next.config.mjs`,
+  `docker-compose.dev.yml`
 - **Models**: `packages/api/src/models/`
 - **API Routes**: `packages/api/src/routers/`
 - **Controllers**: `packages/api/src/controllers/`
 - **Pages**: `packages/app/pages/`
 - **Components**: `packages/app/src/`
 - **Shared Utils**: `packages/common-utils/src/`
-

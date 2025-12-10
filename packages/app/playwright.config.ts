@@ -19,7 +19,9 @@ export default defineConfig({
   reporter: [
     ['html'],
     ['json', { outputFile: 'test-results/results.json' }],
-    ...(process.env.CI ? [['github', {}] as const] : []),
+    ...(process.env.CI
+      ? [['github'] as const, ['list'] as const]
+      : [['list'] as const]),
   ],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
@@ -34,7 +36,7 @@ export default defineConfig({
   },
 
   /* Global test timeout - CI needs more time than local */
-  timeout: 45 * 1000,
+  timeout: 60 * 1000,
 
   /* Configure projects for different test environments */
   projects: [
@@ -48,8 +50,9 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command:
-      'NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_TELEMETRY_DISABLED=1 PORT=8081 yarn run dev',
+    command: process.env.CI
+      ? 'NEXT_PUBLIC_IS_LOCAL_MODE=true yarn build && NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=8081 yarn start'
+      : 'NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_TELEMETRY_DISABLED=1 PORT=8081 yarn run dev',
     port: 8081,
     reuseExistingServer: !process.env.CI,
     timeout: 180 * 1000,
