@@ -14445,12 +14445,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint-plugin-security@npm:^2.1.0":
-  version: 2.1.0
-  resolution: "eslint-plugin-security@npm:2.1.0"
+"eslint-plugin-security@npm:^3.0.1":
+  version: 3.0.1
+  resolution: "eslint-plugin-security@npm:3.0.1"
   dependencies:
     safe-regex: "npm:^2.1.1"
-  checksum: 10c0/55e1576dc0a4ae7f6c9fd009a7c619c809d321c84b2f6e80792fa3927fb8c4e4641996ff73fbb3fbfa32b5a816e389a59072eb003e56794ac78dc1b3d29fefd8
+  checksum: 10c0/6b85feabe389b73e0a5961abfeac79214d61699249c990c9a66628a5e45870b49f1ab0be63223dfd75c4046ff9632f42a963790616f66e2c6d59b6c24643c5e0
   languageName: node
   linkType: hard
 
@@ -16576,7 +16576,7 @@ __metadata:
     eslint-plugin-n: "npm:^16.4.0"
     eslint-plugin-prettier: "npm:^5.2.1"
     eslint-plugin-react-hooks: "npm:^7.0.1"
-    eslint-plugin-security: "npm:^2.1.0"
+    eslint-plugin-security: "npm:^3.0.1"
     eslint-plugin-simple-import-sort: "npm:^12.1.1"
     husky: "npm:^8.0.3"
     lint-staged: "npm:^13.1.2"
