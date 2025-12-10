@@ -395,39 +395,14 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
 
       for (const interval of intervals) {
         await test.step(`Search with ${interval.label}`, async () => {
-          // Wait for Live Tail to settle (refreshes every 4s)
-          await page.waitForLoadState('networkidle');
-          await page.waitForTimeout(500);
-
-          // Click time picker input with force to bypass any overlay issues
-          const timePickerInput = page.locator(
-            '[data-testid="time-picker-input"]',
-          );
-          await timePickerInput.click({ force: true });
-
-          const popover = page.locator('[data-testid="time-picker-popover"]');
-          await expect(popover).toBeVisible({ timeout: 10000 });
-
-          // Use JavaScript to click directly - bypasses ALL Playwright checks and works during re-renders
-          await page.evaluate(label => {
-            const buttons = Array.from(
-              document.querySelectorAll(
-                '[data-testid="time-picker-popover"] button',
-              ),
-            );
-            const button = buttons.find(btn =>
-              btn.textContent?.includes(label),
-            );
-            if (button) {
-              (button as HTMLElement).click();
-            } else {
-              throw new Error(`Button with label "${label}" not found`);
-            }
-          }, interval.label);
-
-          await page.waitForURL(`**/search**liveInterval=${interval.ms}**`, {
-            timeout: 10000,
+          await page.click('[data-testid="time-picker-input"]');
+          await page.waitForSelector('[data-testid="time-picker-popover"]', {
+            state: 'visible',
           });
+
+          const intervalButton = page.locator(`text=${interval.label}`);
+          await intervalButton.click();
+          await page.waitForURL(`**/search**liveInterval=${interval.ms}**`);
 
           await page.waitForLoadState('networkidle');
 

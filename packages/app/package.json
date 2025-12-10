@@ -20,7 +20,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
-    "test:e2e:ci": "docker run --rm -v $(pwd)/../..:/workspace -w /workspace -e CI=true mcr.microsoft.com/playwright:v1.57.0-jammy bash -c 'rm -rf packages/app/.next packages/common-utils/dist node_modules packages/*/node_modules .yarn/cache && corepack enable && yarn install && npx nx run-many -t ci:build && cd packages/app && yarn test:e2e; chmod -R 777 test-results playwright-report 2>/dev/null || true'",
+    "test:e2e:ci": "../../scripts/test-e2e-ci.sh",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
     "knip": "knip"
