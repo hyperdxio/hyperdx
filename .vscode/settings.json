@@ -7,6 +7,13 @@
     "source.fixAll.eslint": "always",
     "source.fixAll.stylelint": "always"
   },
+  "eslint.useFlatConfig": true,
+  "[typescript]": {
+    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+  },
   "[scss]": {
     "editor.defaultFormatter": "stylelint.vscode-stylelint"
   },
