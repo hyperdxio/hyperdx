@@ -1,5 +1,3 @@
-/* stylelint-disable */
-
 .wrapper {
   height: 100vh;
   max-height: 100vh;
@@ -147,7 +145,6 @@
   }
 }
 
-
 // User menu trigger styling
 .userMenuTrigger {
   pointer-events: all;
@@ -155,7 +152,9 @@
   margin: 8px 0.875rem 0.875rem;
   padding: 4px 8px;
   border-radius: 8px;
-  transition: background-color 0.2s ease, transform 0.1s ease;
+  transition:
+    background-color 0.2s ease,
+    transform 0.1s ease;
   max-width: 100%;
   overflow: hidden;
 
@@ -193,7 +192,10 @@
   height: 28px;
   border-radius: 50%;
   border: 1px solid var(--color-border);
-  transition: background-color 0.2s ease, transform 0.1s ease, border-color 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    transform 0.1s ease,
+    border-color 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
