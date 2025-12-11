@@ -103,7 +103,7 @@ const DashboardFilters = ({
           dateRange={dateRange}
           onChange={value => onSetFilterValue(filter.expression, value)}
           value={
-            filterValues[filter.expression]?.included.values().next().value
+            filterValues[filter.expression]?.included.values().next().value?.toString()
           }
         />
       ))}
