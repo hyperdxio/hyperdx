@@ -1,0 +1,7 @@
+{
+  "verbose": false,
+  "delay": 1000,
+  "signal": "SIGTERM",
+  "ext": "ts,json,js",
+  "watch": ["src", "../common-utils/dist/**/*.js"]
+}

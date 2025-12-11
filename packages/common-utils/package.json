@@ -49,7 +49,7 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "dev": "nodemon --watch ./src --ext ts --exec \"yarn dev:build\"",
+    "dev": "nodemon --on-change-only --watch ./src --ext ts --exec \"yarn dev:build\"",
     "dev:build": "tsup && tsc --emitDeclarationOnly --declaration",
     "build": "tsup",
     "ci:build": "tsup",

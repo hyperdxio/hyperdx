@@ -36,13 +36,16 @@ collector and ClickHouse server in Docker.
 To enable self-instrumentation and demo logs, you can set the `HYPERDX_API_KEY`
 to your ingestion key (go to
 [http://localhost:8080/team](http://localhost:8080/team) after creating your
-account) and then restart the stack.
+account).
 
-ex.
+To do this, create a `.env.local` file in the root of the project and add the
+following:
 
 ```sh
-HYPERDX_API_KEY=<YOUR_INGESTION_API_KEY_HERE> yarn run dev
+HYPERDX_API_KEY=<YOUR_INGESTION_API_KEY_HERE>
 ```
+
+Then restart the stack using `yarn dev`.
 
 The core services are all hot-reloaded, so you can make changes to the code and
 see them reflected in real-time.
