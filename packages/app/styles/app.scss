@@ -8,7 +8,7 @@
 
 // Custom utilities (bg-surface, border-dark, etc.)
 @use './_utilities';
-@use 'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css';
+@import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css');
 
 .inter {
   font-family: var(--font-inter), 'Helvetica Neue', sans-serif;
