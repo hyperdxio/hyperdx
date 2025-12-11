@@ -122,7 +122,7 @@ function ListBar({
                       </Text>
                       <Text size="xs" span>
                         {column.numberFormat != null
-                          ? formatNumber(value, column.numberFormat) ?? 'N/A'
+                          ? (formatNumber(value, column.numberFormat) ?? 'N/A')
                           : value}
                       </Text>
                     </Box>

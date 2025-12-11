@@ -699,7 +699,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             dateRange={searchedTimeRange}
             onEditClick={() => setEditedTile(chart)}
             granularity={
-              isRefreshEnabled ? granularityOverride : granularity ?? undefined
+              isRefreshEnabled
+                ? granularityOverride
+                : (granularity ?? undefined)
             }
             filters={[
               {
