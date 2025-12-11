@@ -199,6 +199,7 @@ type DBTimeChartComponentProps = {
   config: ChartConfigWithDateRange;
   disableQueryChunking?: boolean;
   disableDrillDown?: boolean;
+  enableParallelQueries?: boolean;
   enabled?: boolean;
   logReferenceTimestamp?: number;
   onSettled?: () => void;
@@ -217,6 +218,7 @@ function DBTimeChartComponent({
   config,
   disableQueryChunking,
   disableDrillDown,
+  enableParallelQueries,
   enabled = true,
   logReferenceTimestamp,
   onTimeRangeSelect,
@@ -248,9 +250,16 @@ function DBTimeChartComponent({
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
     useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, queriedConfig, 'chunked'],
+      queryKey: [
+        queryKeyPrefix,
+        queriedConfig,
+        'chunked',
+        disableQueryChunking,
+        enableParallelQueries,
+      ],
       enabled,
       enableQueryChunking: !disableQueryChunking,
+      enableParallelQueries: enableParallelQueries,
     });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {

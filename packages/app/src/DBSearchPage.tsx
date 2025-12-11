@@ -1778,6 +1778,7 @@ function DBSearchPage() {
                             showDisplaySwitcher={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
+                            enableParallelQueries
                           />
                         </Box>
                       )}
