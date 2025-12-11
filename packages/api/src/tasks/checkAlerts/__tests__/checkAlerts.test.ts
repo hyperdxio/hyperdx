@@ -3604,149 +3604,7 @@ describe('checkAlerts', () => {
       // Verify that webhook was called for the alert
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
     });
-  });
 
-  describe('getPreviousAlertHistories', () => {
-    const server = getServer();
-
-    beforeAll(async () => {
-      await server.start();
-    });
-
-    afterEach(async () => {
-      await server.clearDBs();
-      jest.clearAllMocks();
-    });
-
-    afterAll(async () => {
-      await server.stop();
-    });
-
-    const saveAlert = (id: mongoose.Types.ObjectId, createdAt: Date) => {
-      return new AlertHistory({
-        alert: id,
-        createdAt,
-        state: AlertState.OK,
-      }).save();
-    };
-
-    it('should return the latest alert history for each alert', async () => {
-      const alert1Id = new mongoose.Types.ObjectId();
-      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
-      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
-
-      const alert2Id = new mongoose.Types.ObjectId();
-      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
-      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
-
-      const result = await getPreviousAlertHistories(
-        [alert1Id.toString(), alert2Id.toString()],
-        new Date('2025-01-01T00:20:00Z'),
-      );
-
-      expect(result.size).toBe(2);
-      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
-        new Date('2025-01-01T00:05:00Z'),
-      );
-      expect(result.get(alert2Id.toString())!.createdAt).toEqual(
-        new Date('2025-01-01T00:15:00Z'),
-      );
-    });
-
-    it('should not return alert histories from the future', async () => {
-      const alert1Id = new mongoose.Types.ObjectId();
-      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
-      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
-
-      const alert2Id = new mongoose.Types.ObjectId();
-      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
-      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z')); // This one is in the future
-
-      const result = await getPreviousAlertHistories(
-        [alert1Id.toString(), alert2Id.toString()],
-        new Date('2025-01-01T00:14:00Z'),
-      );
-
-      expect(result.size).toBe(2);
-      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
-        new Date('2025-01-01T00:05:00Z'),
-      );
-      expect(result.get(alert2Id.toString())!.createdAt).toEqual(
-        new Date('2025-01-01T00:10:00Z'),
-      );
-    });
-
-    it('should not return a history if there are no histories for the given alert', async () => {
-      const alert1Id = new mongoose.Types.ObjectId();
-      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
-      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
-
-      const alert2Id = new mongoose.Types.ObjectId();
-
-      const result = await getPreviousAlertHistories(
-        [alert1Id.toString(), alert2Id.toString()],
-        new Date('2025-01-01T00:20:00Z'),
-      );
-
-      expect(result.size).toBe(1);
-      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
-        new Date('2025-01-01T00:05:00Z'),
-      );
-      expect(result.get(alert2Id.toString())).toBeUndefined();
-    });
-
-    it('should not return a history for an alert that is not provided in the argument', async () => {
-      const alert1Id = new mongoose.Types.ObjectId();
-      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
-      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
-
-      const alert2Id = new mongoose.Types.ObjectId();
-      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
-      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
-
-      const result = await getPreviousAlertHistories(
-        [alert1Id.toString()],
-        new Date('2025-01-01T00:20:00Z'),
-      );
-
-      expect(result.size).toBe(1);
-      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
-        new Date('2025-01-01T00:05:00Z'),
-      );
-    });
-
-    it('should batch alert IDs across multiple aggregation queries if necessary', async () => {
-      const alert1Id = new mongoose.Types.ObjectId();
-      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
-      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
-
-      const alert2Id = new mongoose.Types.ObjectId();
-      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
-      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
-
-      const aggregateSpy = jest.spyOn(AlertHistory, 'aggregate');
-
-      const result = await getPreviousAlertHistories(
-        [
-          alert1Id.toString(),
-          ...Array(150).fill(new mongoose.Types.ObjectId().toString()),
-          alert2Id.toString(),
-        ],
-        new Date('2025-01-01T00:20:00Z'),
-      );
-
-      expect(aggregateSpy).toHaveBeenCalledTimes(4); // 152 ids, batch size 50 => 4 batches
-      expect(result.size).toBe(2);
-      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
-        new Date('2025-01-01T00:05:00Z'),
-      );
-      expect(result.get(alert2Id.toString())!.createdAt).toEqual(
-        new Date('2025-01-01T00:15:00Z'),
-      );
-    });
-  });
-
-  describe('Silenced alerts', () => {
     it('should not fire notifications when alert is silenced', async () => {
       const {
         team,
@@ -3978,6 +3836,146 @@ describe('checkAlerts', () => {
       // Verify webhook WAS called
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
       expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+    });
+  });
+
+  describe('getPreviousAlertHistories', () => {
+    const server = getServer();
+
+    beforeAll(async () => {
+      await server.start();
+    });
+
+    afterEach(async () => {
+      await server.clearDBs();
+      jest.clearAllMocks();
+    });
+
+    afterAll(async () => {
+      await server.stop();
+    });
+
+    const saveAlert = (id: mongoose.Types.ObjectId, createdAt: Date) => {
+      return new AlertHistory({
+        alert: id,
+        createdAt,
+        state: AlertState.OK,
+      }).save();
+    };
+
+    it('should return the latest alert history for each alert', async () => {
+      const alert1Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
+      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
+
+      const alert2Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
+      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
+
+      const result = await getPreviousAlertHistories(
+        [alert1Id.toString(), alert2Id.toString()],
+        new Date('2025-01-01T00:20:00Z'),
+      );
+
+      expect(result.size).toBe(2);
+      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:05:00Z'),
+      );
+      expect(result.get(alert2Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:15:00Z'),
+      );
+    });
+
+    it('should not return alert histories from the future', async () => {
+      const alert1Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
+      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
+
+      const alert2Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
+      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z')); // This one is in the future
+
+      const result = await getPreviousAlertHistories(
+        [alert1Id.toString(), alert2Id.toString()],
+        new Date('2025-01-01T00:14:00Z'),
+      );
+
+      expect(result.size).toBe(2);
+      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:05:00Z'),
+      );
+      expect(result.get(alert2Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:10:00Z'),
+      );
+    });
+
+    it('should not return a history if there are no histories for the given alert', async () => {
+      const alert1Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
+      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
+
+      const alert2Id = new mongoose.Types.ObjectId();
+
+      const result = await getPreviousAlertHistories(
+        [alert1Id.toString(), alert2Id.toString()],
+        new Date('2025-01-01T00:20:00Z'),
+      );
+
+      expect(result.size).toBe(1);
+      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:05:00Z'),
+      );
+      expect(result.get(alert2Id.toString())).toBeUndefined();
+    });
+
+    it('should not return a history for an alert that is not provided in the argument', async () => {
+      const alert1Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
+      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
+
+      const alert2Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
+      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
+
+      const result = await getPreviousAlertHistories(
+        [alert1Id.toString()],
+        new Date('2025-01-01T00:20:00Z'),
+      );
+
+      expect(result.size).toBe(1);
+      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:05:00Z'),
+      );
+    });
+
+    it('should batch alert IDs across multiple aggregation queries if necessary', async () => {
+      const alert1Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
+      await saveAlert(alert1Id, new Date('2025-01-01T00:05:00Z'));
+
+      const alert2Id = new mongoose.Types.ObjectId();
+      await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
+      await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
+
+      const aggregateSpy = jest.spyOn(AlertHistory, 'aggregate');
+
+      const result = await getPreviousAlertHistories(
+        [
+          alert1Id.toString(),
+          ...Array(150).fill(new mongoose.Types.ObjectId().toString()),
+          alert2Id.toString(),
+        ],
+        new Date('2025-01-01T00:20:00Z'),
+      );
+
+      expect(aggregateSpy).toHaveBeenCalledTimes(4); // 152 ids, batch size 50 => 4 batches
+      expect(result.size).toBe(2);
+      expect(result.get(alert1Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:05:00Z'),
+      );
+      expect(result.get(alert2Id.toString())!.createdAt).toEqual(
+        new Date('2025-01-01T00:15:00Z'),
+      );
     });
   });
 });

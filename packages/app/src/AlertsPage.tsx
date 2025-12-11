@@ -109,8 +109,8 @@ function AckAlert({ alert }: { alert: AlertType }) {
   );
 
   const handleUnsilenceAlert = React.useCallback(() => {
-    unsilenceAlert.mutate(alert._id || '', mutateOptions);
-  }, [alert._id, mutateOptions, unsilenceAlert]);
+    unsilenceAlert.mutate(alert.id || '', mutateOptions);
+  }, [alert.id, mutateOptions, unsilenceAlert]);
 
   const isNoLongerMuted = React.useMemo(() => {
     return alert.silenced ? new Date() > new Date(alert.silenced.until) : false;
@@ -121,18 +121,18 @@ function AckAlert({ alert }: { alert: AlertType }) {
       const mutedUntil = add(new Date(), duration);
       silenceAlert.mutate(
         {
-          alertId: alert._id || '',
+          alertId: alert.id || '',
           mutedUntil: mutedUntil.toISOString(),
         },
         mutateOptions,
       );
     },
-    [alert._id, mutateOptions, silenceAlert],
+    [alert.id, mutateOptions, silenceAlert],
   );
 
   if (alert.silenced?.at) {
     return (
-      <ErrorBoundary fallback={<>Something went wrong</>}>
+      <ErrorBoundary message="Failed to load alert acknowledgment menu">
         <Menu>
           <Menu.Target>
             <Button
@@ -183,7 +183,7 @@ function AckAlert({ alert }: { alert: AlertType }) {
 
   if (alert.state === 'ALERT') {
     return (
-      <ErrorBoundary fallback={<>Something went wrong</>}>
+      <ErrorBoundary message="Failed to load alert acknowledgment menu">
         <Menu disabled={silenceAlert.isPending}>
           <Menu.Target>
             <Button size="compact-sm" variant="default">
