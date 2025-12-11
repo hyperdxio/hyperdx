@@ -7,18 +7,17 @@
     "source.fixAll.eslint": "always",
     "source.fixAll.stylelint": "always"
   },
-  "[typescript]": {
-    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
-  },
-  "[typescriptreact]": {
-    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
-  },
   "[scss]": {
     "editor.defaultFormatter": "stylelint.vscode-stylelint"
   },
   "[css]": {
     "editor.defaultFormatter": "stylelint.vscode-stylelint"
   },
+  "eslint.workingDirectories": [
+    {
+      "mode": "auto"
+    }
+  ],
   "stylelint.validate": ["css", "postcss", "scss"],
   "cssVariables.lookupFiles": [
     "**/*.css",
@@ -30,6 +29,7 @@
   "search.exclude": {
     "**/node_modules": true,
     "**/bower_components": true,
+    "**/.next": true,
     "**/*.code-search": true,
     "**/*.map": true,
     "**/yarn.lock": true,
@@ -42,6 +42,5 @@
     "opamp",
     "pyimport",
     "pyodide"
-  ],
-  "typescript.tsdk": "node_modules/typescript/lib"
+  ]
 }

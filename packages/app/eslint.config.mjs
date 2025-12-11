@@ -77,6 +77,7 @@ export default [
         ecmaFeatures: {
           jsx: true,
         },
+        tsconfigRootDir: import.meta.dirname,
       },
       globals: {
         React: 'readonly',
