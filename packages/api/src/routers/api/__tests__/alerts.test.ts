@@ -174,4 +174,124 @@ describe('alerts router', () => {
       expect(alert.dashboard).toBeDefined();
     }
   });
+
+  it('can silence an alert', async () => {
+    const { agent, user } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+        }),
+      )
+      .expect(200);
+
+    const mutedUntil = new Date(Date.now() + 3600000).toISOString(); // 1 hour from now
+    await agent
+      .post(`/alerts/${alert.body.data._id}/silenced`)
+      .send({ mutedUntil })
+      .expect(200);
+
+    // Verify the alert was silenced
+    const alertFromDb = await Alert.findById(alert.body.data._id);
+    expect(alertFromDb).toBeDefined();
+    expect(alertFromDb!.silenced).toBeDefined();
+    expect(alertFromDb!.silenced!.by).toEqual(user._id);
+    expect(alertFromDb!.silenced!.at).toBeDefined();
+    expect(new Date(alertFromDb!.silenced!.until).toISOString()).toBe(
+      mutedUntil,
+    );
+  });
+
+  it('can unsilence an alert', async () => {
+    const { agent, user } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+        }),
+      )
+      .expect(200);
+
+    // First silence the alert
+    const mutedUntil = new Date(Date.now() + 3600000).toISOString();
+    await agent
+      .post(`/alerts/${alert.body.data._id}/silenced`)
+      .send({ mutedUntil })
+      .expect(200);
+
+    // Verify it was silenced
+    let alertFromDb = await Alert.findById(alert.body.data._id);
+    expect(alertFromDb!.silenced).toBeDefined();
+
+    // Now unsilence it
+    await agent.delete(`/alerts/${alert.body.data._id}/silenced`).expect(200);
+
+    // Verify it was unsilenced
+    alertFromDb = await Alert.findById(alert.body.data._id);
+    expect(alertFromDb).toBeDefined();
+    expect(alertFromDb!.silenced).toBeUndefined();
+  });
+
+  it('returns silenced info in GET /alerts', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+        }),
+      )
+      .expect(200);
+
+    // Silence the alert
+    const mutedUntil = new Date(Date.now() + 3600000).toISOString();
+    await agent
+      .post(`/alerts/${alert.body.data._id}/silenced`)
+      .send({ mutedUntil })
+      .expect(200);
+
+    // Get alerts and verify silenced info is returned
+    const alerts = await agent.get('/alerts').expect(200);
+    expect(alerts.body.data.length).toBe(1);
+    const silencedAlert = alerts.body.data[0];
+    expect(silencedAlert.silenced).toBeDefined();
+    expect(silencedAlert.silenced.by).toBeDefined(); // Should contain email
+    expect(silencedAlert.silenced.at).toBeDefined();
+    expect(silencedAlert.silenced.until).toBeDefined();
+  });
+
+  it('prevents silencing an alert that does not exist', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const fakeId = randomMongoId();
+    const mutedUntil = new Date(Date.now() + 3600000).toISOString();
+
+    await agent
+      .post(`/alerts/${fakeId}/silenced`)
+      .send({ mutedUntil })
+      .expect(500); // Should fail because alert doesn't exist
+  });
+
+  it('prevents unsilencing an alert that does not exist', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const fakeId = randomMongoId();
+
+    await agent.delete(`/alerts/${fakeId}/silenced`).expect(500); // Should fail
+  });
 });

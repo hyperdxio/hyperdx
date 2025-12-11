@@ -207,6 +207,17 @@ const Tile = forwardRef(
       return 'red';
     }, [alert]);
 
+    const alertTooltip = useMemo(() => {
+      if (!alert) {
+        return 'Add alert';
+      }
+      let tooltip = `Has alert and is in ${alert.state} state`;
+      if (alert.silenced?.by) {
+        tooltip += `. Ack'd by ${alert.silenced.by}`;
+      }
+      return tooltip;
+    }, [alert]);
+
     const { data: me } = api.useMe();
 
     return (
@@ -235,9 +246,10 @@ const Tile = forwardRef(
             <Flex gap="0px">
               {chart.config.displayType === DisplayType.Line && (
                 <Indicator
-                  size={5}
+                  size={alert?.state === AlertState.OK ? 6 : 8}
                   zIndex={1}
                   color={alertIndicatorColor}
+                  processing={alert?.state === AlertState.ALERT}
                   label={!alert && <span className="fs-8">+</span>}
                   mr={4}
                 >
@@ -247,7 +259,7 @@ const Tile = forwardRef(
                     color="gray"
                     size="xxs"
                     onClick={onEditClick}
-                    title="Alerts"
+                    title={alertTooltip}
                   >
                     <i className="bi bi-bell fs-7"></i>
                   </Button>
