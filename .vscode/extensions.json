@@ -4,7 +4,7 @@
     "clinyong.vscode-css-modules",
     "streetsidesoftware.code-spell-checker",
     "dbaeumer.vscode-eslint",
-    "hossaini.bootstrap-intellisense",
-    "stylelint.vscode-stylelint"
+    "stylelint.vscode-stylelint",
+    "esbenp.prettier-vscode"
   ]
 }
