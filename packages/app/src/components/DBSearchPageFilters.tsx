@@ -1010,7 +1010,7 @@ const DBSearchPageFiltersComponent = ({
     for (const key of remainingFilterState) {
       _facets.push({
         key,
-        value: Array.from(filterState[key].included).map(v => v.toString()),
+        value: Array.from(filterState[key].included),
       });
     }
 
