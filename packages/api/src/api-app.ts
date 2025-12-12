@@ -15,7 +15,7 @@ import savedSearchRouter from './routers/api/savedSearch';
 import sourcesRouter from './routers/api/sources';
 import externalRoutersV2 from './routers/external-api/v2';
 import usageStats from './tasks/usageStats';
-import { expressLogger } from './utils/logger';
+import logger, { expressLogger } from './utils/logger';
 import passport from './utils/passport';
 
 const app: express.Application = express();
@@ -105,17 +105,11 @@ if (
   process.env.NODE_ENV !== 'production' &&
   process.env.ENABLE_SWAGGER === 'true'
 ) {
-  import('./utils/swagger.js')
-    .then(({ setupSwagger }) => {
-      console.log('Swagger UI setup and available at /api/v2/docs');
-      setupSwagger(app);
-    })
-    .catch(error => {
-      console.error(
-        'Failed to dynamically load or setup Swagger. Swagger UI will not be available.',
-        error,
-      );
-    });
+  // Will require a refactor to ESM to use import statements
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { setupSwagger } = require('./utils/swagger');
+  setupSwagger(app);
+  logger.info('Swagger UI setup and available at /api/v2/docs');
 }
 
 app.use('/api/v2', externalRoutersV2);
