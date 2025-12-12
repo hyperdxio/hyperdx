@@ -148,7 +148,11 @@ function AckAlert({ alert }: { alert: AlertsPageItem }) {
             <Button
               size="compact-sm"
               variant="light"
-              color={isNoLongerMuted ? 'orange' : 'green'}
+              color={
+                isNoLongerMuted
+                  ? 'var(--color-bg-warning)'
+                  : 'var(--color-bg-success)'
+              }
               leftSection={<i className="bi bi-bell-slash fs-8" />}
             >
               Ack&apos;d
