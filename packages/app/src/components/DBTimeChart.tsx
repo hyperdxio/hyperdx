@@ -27,6 +27,7 @@ import {
   IconSearch,
 } from '@tabler/icons-react';
 
+import api from '@/api';
 import {
   AGG_FNS,
   buildEventsSearchUrl,
@@ -199,6 +200,7 @@ type DBTimeChartComponentProps = {
   config: ChartConfigWithDateRange;
   disableQueryChunking?: boolean;
   disableDrillDown?: boolean;
+  enableParallelQueries?: boolean;
   enabled?: boolean;
   logReferenceTimestamp?: number;
   onSettled?: () => void;
@@ -217,6 +219,7 @@ function DBTimeChartComponent({
   config,
   disableQueryChunking,
   disableDrillDown,
+  enableParallelQueries,
   enabled = true,
   logReferenceTimestamp,
   onTimeRangeSelect,
@@ -245,12 +248,21 @@ function DBTimeChartComponent({
     [config, granularity],
   );
 
+  const { data: me, isLoading: isLoadingMe } = api.useMe();
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
     useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, queriedConfig, 'chunked'],
-      enabled,
+      queryKey: [
+        queryKeyPrefix,
+        queriedConfig,
+        'chunked',
+        disableQueryChunking,
+        enableParallelQueries && me?.team?.parallelizeWhenPossible,
+      ],
+      enabled: enabled && !isLoadingMe,
       enableQueryChunking: !disableQueryChunking,
+      enableParallelQueries:
+        enableParallelQueries && me?.team?.parallelizeWhenPossible,
     });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
