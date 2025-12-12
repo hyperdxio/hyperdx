@@ -248,7 +248,7 @@ function DBTimeChartComponent({
     [config, granularity],
   );
 
-  const { data: me } = api.useMe();
+  const { data: me, isLoading: isLoadingMe } = api.useMe();
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
     useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
@@ -259,7 +259,7 @@ function DBTimeChartComponent({
         disableQueryChunking,
         enableParallelQueries && me?.team?.parallelizeWhenPossible,
       ],
-      enabled,
+      enabled: enabled && !isLoadingMe,
       enableQueryChunking: !disableQueryChunking,
       enableParallelQueries:
         enableParallelQueries && me?.team?.parallelizeWhenPossible,

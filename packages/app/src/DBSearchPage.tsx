@@ -1744,6 +1744,7 @@ function DBSearchPage() {
                           <SearchTotalCountChart
                             config={histogramTimeChartConfig}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
+                            enableParallelQueries
                           />
                           <Group gap="sm" align="center">
                             {shouldShowLiveModeHint &&
