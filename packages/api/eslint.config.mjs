@@ -50,6 +50,12 @@ export default [
           varsIgnorePattern: '^_',
         },
       ],
+      'n/no-missing-require': [
+        'error',
+        {
+          tryExtensions: ['.js', '.ts', '.json'],
+        },
+      ],
       'n/no-process-exit': 'warn',
       'n/no-missing-import': 'off',
       'n/no-unpublished-import': [
