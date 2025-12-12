@@ -22,24 +22,25 @@ echo "Settings: Max size=${MAX_SIZE_MB}MB, Max archives=${MAX_ARCHIVES}, Check i
 
 while true; do
     sleep "$CHECK_INTERVAL"
-    
+
     if [ -f "$LOG_FILE" ]; then
         SIZE=$(stat -c%s "$LOG_FILE" 2>/dev/null || stat -f%z "$LOG_FILE" 2>/dev/null || echo 0)
-        
+
         if [ "$SIZE" -gt "$MAX_SIZE_BYTES" ]; then
             echo "Rotating $LOG_FILE (size: $SIZE bytes)"
-            
+
             # Rotate existing archives
             for i in $(seq $((MAX_ARCHIVES - 1)) -1 1); do
                 if [ -f "${LOG_FILE}.${i}" ]; then
                     mv "${LOG_FILE}.${i}" "${LOG_FILE}.$((i + 1))"
                 fi
             done
-            
-            # Move current log to .1
-            cp "$LOG_FILE" "${LOG_FILE}.1"
-            > "$LOG_FILE"  # Truncate the original file
-            
+
+            # Move current log to .1 using an atomic operation.  Then send SIGUHUP to the
+            # collector to refresh the config and reopen the default log file.
+            mv "$LOG_FILE" "${LOG_FILE}.1"
+            fuser -k -HUP "${LOG_FILE}.1"
+
             # Remove oldest archive if it exists
             if [ -f "${LOG_FILE}.${MAX_ARCHIVES}" ]; then
                 rm "${LOG_FILE}.${MAX_ARCHIVES}"
