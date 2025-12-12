@@ -120,8 +120,8 @@ function AckAlert({ alert }: { alert: AlertType }) {
   );
 
   const handleUnsilenceAlert = React.useCallback(() => {
-    unsilenceAlert.mutate(alert.id || '', mutateOptions);
-  }, [alert.id, mutateOptions, unsilenceAlert]);
+    unsilenceAlert.mutate(alert._id || '', mutateOptions);
+  }, [alert._id, mutateOptions, unsilenceAlert]);
 
   const isNoLongerMuted = React.useMemo(() => {
     return isAlertSilenceExpired(alert.silenced);
@@ -132,13 +132,13 @@ function AckAlert({ alert }: { alert: AlertType }) {
       const mutedUntil = add(new Date(), duration);
       silenceAlert.mutate(
         {
-          alertId: alert.id || '',
+          alertId: alert._id || '',
           mutedUntil: mutedUntil.toISOString(),
         },
         mutateOptions,
       );
     },
-    [alert.id, mutateOptions, silenceAlert],
+    [alert._id, mutateOptions, silenceAlert],
   );
 
   if (alert.silenced?.at) {
@@ -374,7 +374,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
   }, [alert]);
 
   return (
-    <div data-testid={`alert-card-${alert.id}`} className={styles.alertRow}>
+    <div data-testid={`alert-card-${alert._id}`} className={styles.alertRow}>
       <Group>
         {alert.state === AlertState.ALERT && (
           <Badge variant="light" color="red">
@@ -391,7 +391,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
         <Stack gap={2}>
           <div>
             <Link
-              data-testid={`alert-link-${alert.id}`}
+              data-testid={`alert-link-${alert._id}`}
               href={alertUrl}
               className={styles.alertLink}
               title={linkTitle}
