@@ -4,10 +4,12 @@ import type { Filter } from '@hyperdx/common-utils/dist/types';
 
 import { useLocalStorage } from './utils';
 
+export const IS_ROOT_SPAN_COLUMN_NAME = 'isRootSpan';
+
 export type FilterState = {
   [key: string]: {
-    included: Set<string>;
-    excluded: Set<string>;
+    included: Set<string | boolean>;
+    excluded: Set<string | boolean>;
     range?: { min: number; max: number }; // For BETWEEN conditions
   };
 };
@@ -31,7 +33,7 @@ export const filtersToQuery = (
         conditions.push({
           type: 'sql' as const,
           condition: `${actualKey} IN (${Array.from(values.included)
-            .map(v => `'${v}'`)
+            .map(v => (typeof v === 'string' ? `'${v}'` : v))
             .join(', ')})`,
         });
       }
@@ -39,7 +41,7 @@ export const filtersToQuery = (
         conditions.push({
           type: 'sql' as const,
           condition: `${actualKey} NOT IN (${Array.from(values.excluded)
-            .map(v => `'${v}'`)
+            .map(v => (typeof v === 'string' ? `'${v}'` : v))
             .join(', ')})`,
         });
       }
@@ -84,9 +86,24 @@ export const areFiltersEqual = (a: FilterState, b: FilterState) => {
   return true;
 };
 
-// Helper function to split on commas while respecting quoted strings
-function splitValuesOnComma(valuesStr: string): string[] {
-  const values: string[] = [];
+// Helper function to parse a string value as boolean if possible, or otherwise
+// return as string with surrounding quotes removed.
+const getBooleanOrUnquotedString = (value: string): string | boolean => {
+  const trimmed = value.trim();
+
+  if (['true', 'false'].includes(trimmed.toLowerCase())) {
+    return trimmed.toLowerCase() === 'true';
+  }
+
+  // Remove surrounding quotes if present
+  return trimmed.startsWith("'") && trimmed.endsWith("'")
+    ? trimmed.slice(1, -1)
+    : trimmed;
+};
+
+// Helper function to split on commas while respecting quoted strings and booleans
+function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
+  const values: (string | boolean)[] = [];
   let currentValue = '';
   let inString = false;
 
@@ -101,13 +118,7 @@ function splitValuesOnComma(valuesStr: string): string[] {
 
     if (!inString && char === ',') {
       if (currentValue.trim()) {
-        // Remove surrounding quotes if present
-        const trimmed = currentValue.trim();
-        const unquoted =
-          trimmed.startsWith("'") && trimmed.endsWith("'")
-            ? trimmed.slice(1, -1)
-            : trimmed;
-        values.push(unquoted);
+        values.push(getBooleanOrUnquotedString(currentValue));
       }
       currentValue = '';
       continue;
@@ -118,12 +129,7 @@ function splitValuesOnComma(valuesStr: string): string[] {
 
   // Add the last value
   if (currentValue.trim()) {
-    const trimmed = currentValue.trim();
-    const unquoted =
-      trimmed.startsWith("'") && trimmed.endsWith("'")
-        ? trimmed.slice(1, -1)
-        : trimmed;
-    values.push(unquoted);
+    values.push(getBooleanOrUnquotedString(currentValue));
   }
 
   return values;
@@ -133,12 +139,12 @@ function splitValuesOnComma(valuesStr: string): string[] {
 // This handles both simple conditions and compound conditions with AND
 function extractInClauses(condition: string): Array<{
   key: string;
-  values: string[];
+  values: (string | boolean)[];
   isExclude: boolean;
 }> {
   const results: Array<{
     key: string;
-    values: string[];
+    values: (string | boolean)[];
     isExclude: boolean;
   }> = [];
 
@@ -221,8 +227,8 @@ export const parseQuery = (
   const state = new Map<
     string,
     {
-      included: Set<string>;
-      excluded: Set<string>;
+      included: Set<string | boolean>;
+      excluded: Set<string | boolean>;
       range?: { min: number; max: number };
     }
   >();
@@ -311,7 +317,7 @@ export const useSearchPageFilterState = ({
   const setFilterValue = React.useCallback(
     (
       property: string,
-      value: string,
+      value: string | boolean,
       action?: 'only' | 'exclude' | 'include',
     ) => {
       setFilters(prevFilters => {
@@ -400,7 +406,7 @@ export const useSearchPageFilterState = ({
 };
 
 type PinnedFilters = {
-  [key: string]: string[];
+  [key: string]: (string | boolean)[];
 };
 
 export type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
@@ -466,7 +472,7 @@ export function usePinnedFilters(sourceId: string | null) {
     usePinnedFilterBySource(sourceId);
 
   const toggleFilterPin = React.useCallback(
-    (property: string, value: string) => {
+    (property: string, value: string | boolean) => {
       setPinnedFilters(prevFilters =>
         produce(prevFilters, draft => {
           if (!draft[property]) {
@@ -508,7 +514,7 @@ export function usePinnedFilters(sourceId: string | null) {
   );
 
   const isFilterPinned = React.useCallback(
-    (property: string, value: string): boolean => {
+    (property: string, value: string | boolean): boolean => {
       return (
         pinnedFilters[property] &&
         pinnedFilters[property].some(v => v === value)

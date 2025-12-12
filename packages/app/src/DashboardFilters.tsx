@@ -102,9 +102,10 @@ const DashboardFilters = ({
           filter={filter}
           dateRange={dateRange}
           onChange={value => onSetFilterValue(filter.expression, value)}
-          value={
-            filterValues[filter.expression]?.included.values().next().value
-          }
+          value={filterValues[filter.expression]?.included
+            .values()
+            .next()
+            .value?.toString()}
         />
       ))}
     </Group>

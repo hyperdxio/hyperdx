@@ -65,6 +65,23 @@ describe('searchFilters', () => {
         { type: 'sql', condition: "toString(json.key) NOT IN ('other value')" },
       ]);
     });
+
+    it('should should handle boolean filter values', () => {
+      const filters = {
+        isRootSpan: {
+          included: new Set<string | boolean>([true]),
+          excluded: new Set<string | boolean>([]),
+        },
+        another_column: {
+          included: new Set<string | boolean>([]),
+          excluded: new Set<string | boolean>([true, false]),
+        },
+      };
+      expect(filtersToQuery(filters)).toEqual([
+        { type: 'sql', condition: 'isRootSpan IN (true)' },
+        { type: 'sql', condition: 'another_column NOT IN (true, false)' },
+      ]);
+    });
   });
 
   describe('parseQuery', () => {
@@ -275,6 +292,29 @@ describe('searchFilters', () => {
         },
       });
     });
+
+    it('handles boolean filter values', () => {
+      const result = parseQuery([
+        {
+          type: 'sql',
+          condition: `isRootSpan IN (true)`,
+        },
+        {
+          type: 'sql',
+          condition: `another_boolean NOT IN (TRUE, FALSE)`,
+        },
+      ]);
+      expect(result.filters).toEqual({
+        isRootSpan: {
+          included: new Set([true]),
+          excluded: new Set(),
+        },
+        another_boolean: {
+          included: new Set(),
+          excluded: new Set([true, false]),
+        },
+      });
+    });
   });
 
   describe('areFiltersEqual', () => {
@@ -320,6 +360,30 @@ describe('searchFilters', () => {
           excluded: new Set<string>(),
         },
         type: { included: new Set<string>(), excluded: new Set<string>() },
+      };
+      expect(areFiltersEqual(a, b)).toBe(true);
+    });
+
+    it('should handle boolean filters', () => {
+      const a = {
+        isRootSpan: {
+          included: new Set<string | boolean>([true]),
+          excluded: new Set<string | boolean>(),
+        },
+        another_column: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>([true, false]),
+        },
+      };
+      const b = {
+        isRootSpan: {
+          included: new Set<string | boolean>([true]),
+          excluded: new Set<string | boolean>(),
+        },
+        another_column: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>([false, true]),
+        },
       };
       expect(areFiltersEqual(a, b)).toBe(true);
     });
