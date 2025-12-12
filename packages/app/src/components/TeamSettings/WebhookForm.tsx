@@ -16,6 +16,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconInfoCircleFilled } from '@tabler/icons-react';
 import ReactCodeMirror, {
   EditorView,
   placeholder,
@@ -373,7 +374,7 @@ export function WebhookForm({
             />
           </div>,
           <Alert
-            icon={<i className="bi bi-info-circle-fill " />}
+            icon={<IconInfoCircleFilled size={16} />}
             key="5"
             className="mb-4"
             color="gray"

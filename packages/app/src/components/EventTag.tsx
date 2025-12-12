@@ -3,7 +3,7 @@ import Link from 'next/link';
 import SqlString from 'sqlstring';
 import { SearchConditionLanguage } from '@hyperdx/common-utils/dist/types';
 import { Button, Group, Popover, Stack, Text, Tooltip } from '@mantine/core';
-import { IconLink } from '@tabler/icons-react';
+import { IconCirclePlus, IconLink, IconSearch } from '@tabler/icons-react';
 
 import { isLinkableUrl } from '@/utils/highlightedAttributes';
 
@@ -103,7 +103,7 @@ export default function EventTag({
               color="gray"
               variant="subtle"
               size="xs"
-              rightSection={<i className="bi bi-plus-circle" />}
+              rightSection={<IconCirclePlus size={14} />}
               onClick={() => {
                 onPropertyAddClick(sqlExpression, value);
                 setOpened(false);
@@ -123,7 +123,7 @@ export default function EventTag({
                 color="gray"
                 variant="subtle"
                 size="xs"
-                rightSection={<i className="bi bi-search" />}
+                rightSection={<IconSearch size={14} />}
               >
                 Search This Value
               </Button>

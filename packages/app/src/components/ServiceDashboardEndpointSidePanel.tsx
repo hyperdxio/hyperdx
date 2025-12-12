@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 import { Drawer, Grid, Group, Text } from '@mantine/core';
+import { IconServer } from '@tabler/icons-react';
 
 import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
@@ -83,7 +84,7 @@ export default function ServiceDashboardEndpointSidePanel({
                 Details for {endpoint}
                 {service && (
                   <Text component="span" c="gray" fz="xs">
-                    <i className="bi bi-hdd ms-3 me-1" />
+                    <IconServer size={14} className="ms-3 me-1" />
                     {service}
                   </Text>
                 )}

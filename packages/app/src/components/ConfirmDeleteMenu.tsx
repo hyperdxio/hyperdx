@@ -1,4 +1,5 @@
 import { Button, Menu } from '@mantine/core';
+import { IconTrash } from '@tabler/icons-react';
 
 export default function ConfirmDeleteMenu({
   onDelete,
@@ -13,10 +14,7 @@ export default function ConfirmDeleteMenu({
         </Button>
       </Menu.Target>
       <Menu.Dropdown>
-        <Menu.Item
-          leftSection={<i className="bi bi-trash-fill" />}
-          onClick={onDelete}
-        >
+        <Menu.Item leftSection={<IconTrash size={16} />} onClick={onDelete}>
           Confirm Delete
         </Menu.Item>
       </Menu.Dropdown>

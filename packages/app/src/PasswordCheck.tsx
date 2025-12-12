@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { IconCheck, IconX } from '@tabler/icons-react';
 
 const checkLength = (password: string) => password.length >= 12;
 const checkOneUpper = (password: string) => /[A-Z]+/.test(password);
@@ -71,6 +72,6 @@ export const CheckOrX = ({
   );
 };
 
-const Check = () => <i className={'bi bi-check2'}></i>;
+const Check = () => <IconCheck size={14} />;
 
-const XShape = () => <i className={'bi bi-x'}></i>;
+const XShape = () => <IconX size={14} />;

@@ -176,7 +176,9 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
   });
 
   test.describe('Pods Table Sorting', () => {
-    const SORT_ICON_SELECTOR = 'i.bi-caret-down-fill, i.bi-caret-up-fill';
+    // Tabler icons render as SVG elements with class 'tabler-icon'
+    const SORT_ICON_SELECTOR =
+      'svg.tabler-icon-caret-down-filled, svg.tabler-icon-caret-up-filled';
 
     async function waitForTableLoad(page: Page): Promise<Locator> {
       const podsTable = page.getByTestId('k8s-pods-table');
@@ -196,7 +198,9 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
       const podsTable = await waitForTableLoad(page);
       const restartsHeader = getColumnHeader(podsTable, 'Restarts');
 
-      await expect(restartsHeader.locator('i.bi-caret-down-fill')).toBeVisible({
+      await expect(
+        restartsHeader.locator('svg.tabler-icon-caret-down-filled'),
+      ).toBeVisible({
         timeout: 10000,
       });
 
@@ -210,7 +214,9 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
       await restartsHeader.click();
       await page.waitForTimeout(500);
 
-      await expect(restartsHeader.locator('i.bi-caret-up-fill')).toBeVisible();
+      await expect(
+        restartsHeader.locator('svg.tabler-icon-caret-up-filled'),
+      ).toBeVisible();
 
       const firstRestartsAfter = await podsTable
         .locator('tbody tr')
