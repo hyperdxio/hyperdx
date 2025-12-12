@@ -9,6 +9,7 @@ import {
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { formatRelative } from 'date-fns';
 import produce from 'immer';
 import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -45,7 +46,7 @@ import {
 } from '@mantine/core';
 import { useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconFilterEdit, IconPlayerPlay } from '@tabler/icons-react';
+import { IconBell, IconFilterEdit, IconPlayerPlay } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
@@ -212,8 +213,9 @@ const Tile = forwardRef(
         return 'Add alert';
       }
       let tooltip = `Has alert and is in ${alert.state} state`;
-      if (alert.silenced?.by) {
-        tooltip += `. Ack'd by ${alert.silenced.by}`;
+      if (alert.silenced?.at) {
+        const silencedAt = new Date(alert.silenced.at);
+        tooltip += `. Ack'd ${formatRelative(silencedAt, new Date())}`;
       }
       return tooltip;
     }, [alert]);
@@ -253,16 +255,17 @@ const Tile = forwardRef(
                   label={!alert && <span className="fs-8">+</span>}
                   mr={4}
                 >
-                  <Button
-                    data-testid={`tile-alerts-button-${chart.id}`}
-                    variant="subtle"
-                    color="gray"
-                    size="xxs"
-                    onClick={onEditClick}
-                    title={alertTooltip}
-                  >
-                    <i className="bi bi-bell fs-7"></i>
-                  </Button>
+                  <Tooltip label={alertTooltip} withArrow>
+                    <Button
+                      data-testid={`tile-alerts-button-${chart.id}`}
+                      variant="subtle"
+                      color="gray"
+                      size="xxs"
+                      onClick={onEditClick}
+                    >
+                      <IconBell size={16} />
+                    </Button>
+                  </Tooltip>
                 </Indicator>
               )}
 

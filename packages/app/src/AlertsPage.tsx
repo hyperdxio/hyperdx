@@ -20,6 +20,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconBell } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
