@@ -631,9 +631,7 @@ function HttpTab({
                 selectGroupBy: false,
                 groupBy: expressions.endpoint,
                 orderBy: '"Total (ms)" DESC',
-                filters: [
-                  ...getScopedFilters({ appliedConfig, expressions }),
-                ],
+                filters: [...getScopedFilters({ appliedConfig, expressions })],
                 dateRange: searchedTimeRange,
                 numberFormat: MS_NUMBER_FORMAT,
                 limit: { limit: 20 },
