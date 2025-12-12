@@ -9,6 +9,7 @@ import {
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { formatRelative } from 'date-fns';
 import produce from 'immer';
 import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -219,6 +220,18 @@ const Tile = forwardRef(
       return 'red';
     }, [alert]);
 
+    const alertTooltip = useMemo(() => {
+      if (!alert) {
+        return 'Add alert';
+      }
+      let tooltip = `Has alert and is in ${alert.state} state`;
+      if (alert.silenced?.at) {
+        const silencedAt = new Date(alert.silenced.at);
+        tooltip += `. Ack'd ${formatRelative(silencedAt, new Date())}`;
+      }
+      return tooltip;
+    }, [alert]);
+
     const { data: me } = api.useMe();
 
     return (
@@ -247,22 +260,24 @@ const Tile = forwardRef(
             <Flex gap="0px">
               {chart.config.displayType === DisplayType.Line && (
                 <Indicator
-                  size={5}
+                  size={alert?.state === AlertState.OK ? 6 : 8}
                   zIndex={1}
                   color={alertIndicatorColor}
+                  processing={alert?.state === AlertState.ALERT}
                   label={!alert && <span className="fs-8">+</span>}
                   mr={4}
                 >
-                  <Button
-                    data-testid={`tile-alerts-button-${chart.id}`}
-                    variant="subtle"
-                    color="gray"
-                    size="xxs"
-                    onClick={onEditClick}
-                    title="Alerts"
-                  >
-                    <IconBell size={14} />
-                  </Button>
+                  <Tooltip label={alertTooltip} withArrow>
+                    <Button
+                      data-testid={`tile-alerts-button-${chart.id}`}
+                      variant="subtle"
+                      color="gray"
+                      size="xxs"
+                      onClick={onEditClick}
+                    >
+                      <IconBell size={16} />
+                    </Button>
+                  </Tooltip>
                 </Indicator>
               )}
 

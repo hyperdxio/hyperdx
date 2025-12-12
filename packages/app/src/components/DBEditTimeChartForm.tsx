@@ -32,6 +32,7 @@ import {
   Divider,
   Flex,
   Group,
+  Menu,
   Paper,
   Stack,
   Switch,
@@ -46,6 +47,8 @@ import {
   IconChartLine,
   IconCirclePlus,
   IconCode,
+  IconDotsVertical,
+  IconLayoutGrid,
   IconList,
   IconMarkdown,
   IconNumbers,
@@ -102,6 +105,7 @@ import {
 } from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
 import { NumberFormatInput } from './NumberFormat';
+import SaveToDashboardModal from './SaveToDashboardModal';
 import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
@@ -531,6 +535,9 @@ export default function EditTimeChartForm({
   const [queriedConfig, setQueriedConfig] = useState<
     ChartConfigWithDateRange | undefined
   >(undefined);
+
+  const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
+    useState(false);
 
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
@@ -1074,6 +1081,23 @@ export default function EditTimeChartForm({
               <IconPlayerPlay size={16} />
             </Button>
           )}
+          {!IS_LOCAL_MODE && !dashboardId && (
+            <Menu width={250}>
+              <Menu.Target>
+                <Button variant="outline" color="gray" px="xs" size="xs">
+                  <IconDotsVertical size={14} />
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  leftSection={<IconLayoutGrid size={16} />}
+                  onClick={() => setSaveToDashboardModalOpen(true)}
+                >
+                  Save to Dashboard
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
         </Flex>
       </Flex>
       {activeTab === 'time' && (
@@ -1252,6 +1276,11 @@ export default function EditTimeChartForm({
           </Accordion>
         </>
       )}
+      <SaveToDashboardModal
+        chartConfig={chartConfig}
+        opened={saveToDashboardModalOpen}
+        onClose={() => setSaveToDashboardModalOpen(false)}
+      />
     </div>
   );
 }
