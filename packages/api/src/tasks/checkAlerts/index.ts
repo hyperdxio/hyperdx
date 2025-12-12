@@ -21,7 +21,7 @@ import mongoose from 'mongoose';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
-import Alert, { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
+import { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
@@ -101,16 +101,16 @@ const fireChannelEvent = async ({
     throw new Error('Team not found');
   }
 
-  // Re-fetch the alert to get the latest silenced state. Other alert properties
-  // (threshold, interval, groupBy, etc.) are stable during execution and do not
-  // need to be refetched. We only check the silence state here to ensure we respect
-  // user silencing actions that may have occurred after the alert task was queued.
-  const freshAlert = await Alert.findById(alert.id);
-  if ((freshAlert?.silenced?.until?.getTime() ?? 0) > Date.now()) {
+  // KNOWN LIMITATION: Alert data (including silenced state) is fetched when the
+  // task is queued via AlertProvider, not when it processes. If a user silences
+  // an alert after it's queued but before it processes, this execution may still
+  // send a notification. Subsequent alert checks will respect the silenced state.
+  // This trade-off maintains architectural separation from direct database access.
+  if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
     logger.info(
       {
         alertId: alert.id,
-        silenced: freshAlert?.silenced,
+        silenced: alert.silenced,
       },
       'Skipped firing alert due to silence',
     );

@@ -3668,6 +3668,10 @@ describe('checkAlerts', () => {
       };
       await alertDoc!.save();
 
+      // Update the details.alert object to reflect the silenced state
+      // (simulates what would happen if the alert was silenced before task queuing)
+      details.alert.silenced = alertDoc!.silenced;
+
       // Process the alert - should skip firing because it's silenced
       await processAlertAtTime(
         now,
@@ -3748,6 +3752,9 @@ describe('checkAlerts', () => {
       };
       await alertDoc!.save();
 
+      // Update the details.alert object to reflect the expired silenced state
+      details.alert.silenced = alertDoc!.silenced;
+
       // Process the alert - should fire because silence has expired
       await processAlertAtTime(
         now,
@@ -3822,6 +3829,9 @@ describe('checkAlerts', () => {
       const alertDoc = await Alert.findById(details.alert.id);
       alertDoc!.silenced = undefined;
       await alertDoc!.save();
+
+      // Update the details.alert object to reflect the unsilenced state
+      details.alert.silenced = undefined;
 
       // Process the alert - should fire normally
       await processAlertAtTime(
