@@ -18,7 +18,100 @@ exports[`renderChartConfig containing CTE clauses should render a ChSql CTE conf
 
 exports[`renderChartConfig containing CTE clauses should render a chart config CTE configuration correctly 1`] = `"WITH Parts AS (SELECT _part, _part_offset FROM default.some_table WHERE ((FieldA = 'test')) ORDER BY rand() DESC LIMIT 1000) SELECT * FROM Parts WHERE ((FieldA = 'test') AND (indexHint((_part, _part_offset) IN (SELECT tuple(_part, _part_offset) FROM Parts)))) ORDER BY rand() DESC LIMIT 1000"`;
 
-exports[`renderChartConfig histogram metric queries should generate a query with grouping and time bucketing 1`] = `
+exports[`renderChartConfig histogram metric queries count should generate a count query with grouping and time bucketing 1`] = `
+"WITH source AS (
+        SELECT
+            TimeUnix,
+            AggregationTemporality,
+            toStartOfInterval(toDateTime(TimeUnix), INTERVAL 2 minute) AS \`__hdx_time_bucket\`,
+            [ResourceAttributes['host']] AS group,
+            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+            cityHash64(ExplicitBounds) AS bounds_hash,
+            toInt64(Count) AS current_count,
+            lagInFrame(toNullable(current_count), 1, NULL) OVER (
+                PARTITION BY group,  attr_hash, bounds_hash, AggregationTemporality
+                ORDER BY TimeUnix
+            ) AS prev_count,
+            CASE
+                WHEN AggregationTemporality = 1 THEN current_count
+                WHEN AggregationTemporality = 2 THEN greatest(0, current_count - coalesce(prev_count, 0))
+                ELSE 0
+            END AS delta
+        FROM default.otel_metrics_histogram
+        WHERE (TimeUnix >= toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 2 minute) - INTERVAL 2 minute AND TimeUnix <= toStartOfInterval(fromUnixTimestamp64Milli(1765670400000), INTERVAL 2 minute) + INTERVAL 2 minute) AND ((MetricName = 'http.server.duration'))
+    ),metrics AS (
+        SELECT
+            \`__hdx_time_bucket\`,
+            group,
+            sum(delta) AS \\"Value\\"
+        FROM source
+        GROUP BY group, \`__hdx_time_bucket\`
+    ) SELECT \`__hdx_time_bucket\`, group, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable'"
+`;
+
+exports[`renderChartConfig histogram metric queries count should generate a count query without grouping but time bucketing 1`] = `
+"WITH source AS (
+        SELECT
+            TimeUnix,
+            AggregationTemporality,
+            toStartOfInterval(toDateTime(TimeUnix), INTERVAL 2 minute) AS \`__hdx_time_bucket\`,
+            
+            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+            cityHash64(ExplicitBounds) AS bounds_hash,
+            toInt64(Count) AS current_count,
+            lagInFrame(toNullable(current_count), 1, NULL) OVER (
+                PARTITION BY  attr_hash, bounds_hash, AggregationTemporality
+                ORDER BY TimeUnix
+            ) AS prev_count,
+            CASE
+                WHEN AggregationTemporality = 1 THEN current_count
+                WHEN AggregationTemporality = 2 THEN greatest(0, current_count - coalesce(prev_count, 0))
+                ELSE 0
+            END AS delta
+        FROM default.otel_metrics_histogram
+        WHERE (TimeUnix >= toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 2 minute) - INTERVAL 2 minute AND TimeUnix <= toStartOfInterval(fromUnixTimestamp64Milli(1765670400000), INTERVAL 2 minute) + INTERVAL 2 minute) AND ((MetricName = 'http.server.duration'))
+    ),metrics AS (
+        SELECT
+            \`__hdx_time_bucket\`,
+            
+            sum(delta) AS \\"Value\\"
+        FROM source
+        GROUP BY \`__hdx_time_bucket\`
+    ) SELECT \`__hdx_time_bucket\`, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable'"
+`;
+
+exports[`renderChartConfig histogram metric queries count should generate a count query without grouping or time bucketing 1`] = `
+"WITH source AS (
+        SELECT
+            TimeUnix,
+            AggregationTemporality,
+            TimeUnix AS \`__hdx_time_bucket\`,
+            
+            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+            cityHash64(ExplicitBounds) AS bounds_hash,
+            toInt64(Count) AS current_count,
+            lagInFrame(toNullable(current_count), 1, NULL) OVER (
+                PARTITION BY  attr_hash, bounds_hash, AggregationTemporality
+                ORDER BY TimeUnix
+            ) AS prev_count,
+            CASE
+                WHEN AggregationTemporality = 1 THEN current_count
+                WHEN AggregationTemporality = 2 THEN greatest(0, current_count - coalesce(prev_count, 0))
+                ELSE 0
+            END AS delta
+        FROM default.otel_metrics_histogram
+        WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND ((MetricName = 'http.server.duration'))
+    ),metrics AS (
+        SELECT
+            \`__hdx_time_bucket\`,
+            
+            sum(delta) AS \\"Value\\"
+        FROM source
+        GROUP BY \`__hdx_time_bucket\`
+    ) SELECT \`__hdx_time_bucket\`, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable'"
+`;
+
+exports[`renderChartConfig histogram metric queries quantile should generate a query with grouping and time bucketing 1`] = `
 "WITH source AS (
           SELECT
             MetricName,
@@ -102,7 +195,7 @@ exports[`renderChartConfig histogram metric queries should generate a query with
           ) SELECT \`__hdx_time_bucket\`, group, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable'"
 `;
 
-exports[`renderChartConfig histogram metric queries should generate a query without grouping but time bucketing 1`] = `
+exports[`renderChartConfig histogram metric queries quantile should generate a query without grouping but time bucketing 1`] = `
 "WITH source AS (
           SELECT
             MetricName,
@@ -186,12 +279,12 @@ exports[`renderChartConfig histogram metric queries should generate a query with
           ) SELECT \`__hdx_time_bucket\`, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable'"
 `;
 
-exports[`renderChartConfig histogram metric queries should generate a query without grouping or time bucketing 1`] = `
+exports[`renderChartConfig histogram metric queries quantile should generate a query without grouping or time bucketing 1`] = `
 "WITH source AS (
           SELECT
             MetricName,
             ExplicitBounds,
-            TimeUnix AS \`__hdx_time_bucket\`
+            TimeUnix AS \`__hdx_time_bucket\`,
             
             sumForEach(deltas) as rates
           FROM (
