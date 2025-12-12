@@ -11,6 +11,11 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Anchor, Box, Code, Divider, Group, Text } from '@mantine/core';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconLogs,
+} from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -677,11 +682,11 @@ export function DBTraceWaterfallChartContainer({
                 toggleCollapse(id);
               }}
             >
-              <i
-                className={`bi bi-chevron-${
-                  collapsedIds.has(id) ? 'right' : 'down'
-                }`}
-              />{' '}
+              {collapsedIds.has(id) ? (
+                <IconChevronRight size={14} className="me-1 text-muted-hover" />
+              ) : (
+                <IconChevronDown size={14} className="me-1 text-muted-hover" />
+              )}{' '}
             </Text>
             {!isFilterActive && (
               <Text span size="xxs" me="xs" pt="2px">
@@ -702,9 +707,10 @@ export function DBTraceWaterfallChartContainer({
               role="button"
             >
               {type === SourceKind.Log ? (
-                <i
-                  className="bi bi-card-text fs-8 me-2 align-middle"
-                  title="Correlated Log Line"
+                <IconLogs
+                  size={14}
+                  className="me-2 align-middle"
+                  aria-label="Correlated Log Line"
                 />
               ) : null}
               {serviceName ? `${serviceName} | ` : ''}

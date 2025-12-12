@@ -11,6 +11,11 @@ import {
   isString,
 } from 'lodash';
 import { useHover } from '@mantine/hooks';
+import {
+  IconCaretDownFilled,
+  IconCaretRightFilled,
+  IconClipboard,
+} from '@tabler/icons-react';
 
 import styles from './HyperJson.module.scss';
 
@@ -264,13 +269,13 @@ const Line = React.memo(
             <div className={styles.key}>
               {isExpandable &&
                 (isExpanded ? (
-                  <i className="bi bi-caret-down-fill fs-9"></i>
+                  <IconCaretDownFilled size={10} />
                 ) : (
-                  <i className="bi bi-caret-right-fill fs-9"></i>
+                  <IconCaretRightFilled size={10} />
                 ))}
               {keyName}
               <div className={styles.hoverContent}>
-                <i className="bi bi-clipboard" />
+                <IconClipboard size={14} />
               </div>
             </div>
           </div>

@@ -3,7 +3,14 @@ import cx from 'classnames';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { ScrollArea, Skeleton, Stack } from '@mantine/core';
 import { useThrottledCallback, useThrottledValue } from '@mantine/hooks';
-import { IconPlayerPlay } from '@tabler/icons-react';
+import {
+  IconArrowsLeftRight,
+  IconMapPin,
+  IconMessage,
+  IconPlayerPlay,
+  IconPointer,
+  IconTerminal,
+} from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import useRowWhere from '@/hooks/useRowWhere';
@@ -28,11 +35,11 @@ type SessionEvent = {
   duration: number;
 };
 
-const EVENT_ROW_SOURCE_ICONS = {
-  navigation: 'bi bi-geo-alt',
-  chat: 'bi bi-chat-dots',
-  network: 'bi bi-arrow-left-right',
-  custom: 'bi bi-cursor',
+const EVENT_ROW_SOURCE_ICONS: Record<string, React.ReactNode> = {
+  navigation: <IconMapPin size={14} />,
+  chat: <IconMessage size={14} />,
+  network: <IconArrowsLeftRight size={14} />,
+  custom: <IconPointer size={14} />,
 };
 
 const EventRow = React.forwardRef(
@@ -63,11 +70,9 @@ const EventRow = React.forwardRef(
         })}
       >
         <div className={styles.eventRowIcon}>
-          <i
-            className={
-              EVENT_ROW_SOURCE_ICONS[event.eventSource] || 'bi bi-terminal'
-            }
-          />
+          {EVENT_ROW_SOURCE_ICONS[event.eventSource] || (
+            <IconTerminal size={14} />
+          )}
         </div>
         <div className={styles.eventRowContent} onClick={onClick}>
           <div className={styles.eventRowTitle}>

@@ -36,7 +36,11 @@ import {
   Text,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconPlayerPlay } from '@tabler/icons-react';
+import {
+  IconDeviceLaptop,
+  IconInfoCircleFilled,
+  IconPlayerPlay,
+} from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -511,7 +515,7 @@ export default function SessionsPage() {
           <>
             {sessionSource && sessionSource.kind !== SourceKind.Session && (
               <Alert
-                icon={<i className="bi bi-info-circle-fill " />}
+                icon={<IconInfoCircleFilled size={16} />}
                 color="gray"
                 py="xs"
                 mt="md"
@@ -545,7 +549,7 @@ function SessionSetupInstructions() {
   return (
     <>
       <Stack w={500} mx="auto" mt="xl" gap="xxs">
-        <i className="bi bi-laptop text-muted fs-1"></i>
+        <IconDeviceLaptop size={32} className="text-muted" />
         <Text c="gray" fw={500} size="xs">
           Instructions
         </Text>

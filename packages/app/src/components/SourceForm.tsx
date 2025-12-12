@@ -31,7 +31,12 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconTrash } from '@tabler/icons-react';
+import {
+  IconCirclePlus,
+  IconHelpCircle,
+  IconSettings,
+  IconTrash,
+} from '@tabler/icons-react';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
@@ -132,7 +137,7 @@ function FormRow({
           }}
         >
           <Tooltip label={helpText} color="dark" c="white" multiline maw={600}>
-            <i className="bi bi-question-circle cursor-pointer" />
+            <IconHelpCircle size={14} className="cursor-pointer" />
           </Tooltip>
         </Text>
       </Flex>
@@ -229,7 +234,7 @@ function HighlightedAttributeExpressionsFormRow({
                   multiline
                   maw={600}
                 >
-                  <i className="bi bi-question-circle cursor-pointer" />
+                  <IconHelpCircle size={14} className="cursor-pointer" />
                 </Tooltip>
               </Text>
             </Grid.Col>
@@ -250,7 +255,7 @@ function HighlightedAttributeExpressionsFormRow({
           });
         }}
       >
-        <i className="bi bi-plus-circle me-2" />
+        <IconCirclePlus size={14} className="me-2" />
         Add expression
       </Button>
     </FormRow>
@@ -313,10 +318,10 @@ export function LogTableModelForm(props: TableModelProps) {
               onClick={() => setShowOptionalFields(true)}
               size="xs"
             >
-              <Text me="sm" span>
-                <i className="bi bi-gear" />
-              </Text>
-              Configure Optional Fields
+              <Group gap="xs">
+                <IconSettings size={14} />
+                Configure Optional Fields
+              </Group>
             </Anchor>
           )}
           {showOptionalFields && (

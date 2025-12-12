@@ -6,6 +6,7 @@ import {
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
+import { IconBook } from '@tabler/icons-react';
 
 import AutocompleteInput from '@/AutocompleteInput';
 
@@ -212,7 +213,7 @@ export default function SearchInputV2({
               href="https://clickhouse.com/docs/use-cases/observability/clickstack/search"
               rel="noreferrer"
             >
-              <i className="bi bi-book me-1" />
+              <IconBook size={14} className="me-1" />
               <span className="me-1">Docs</span>
             </a>
           </div>

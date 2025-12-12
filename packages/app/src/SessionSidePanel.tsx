@@ -10,6 +10,7 @@ import {
 import { Button } from '@mantine/core';
 import { Drawer } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconLink, IconX } from '@tabler/icons-react';
 
 import { Session } from './sessions';
 import SessionSubpanel from './SessionSubpanel';
@@ -123,7 +124,7 @@ export default function SessionSidePanel({
                   <Button
                     variant="default"
                     size="sm"
-                    leftSection={<i className="bi bi-link-45deg fs-7.5" />}
+                    leftSection={<IconLink size={14} />}
                     style={{ fontSize: '12px' }}
                   >
                     Share Session
@@ -135,7 +136,7 @@ export default function SessionSidePanel({
                   onClick={onClose}
                   style={{ padding: '4px 8px' }}
                 >
-                  <i className="bi bi-x-lg" />
+                  <IconX size={14} />
                 </Button>
               </div>
             </div>

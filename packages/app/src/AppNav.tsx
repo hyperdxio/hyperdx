@@ -27,10 +27,15 @@ import {
 import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 import {
   IconBell,
+  IconBellFilled,
   IconChartDots,
+  IconChevronDown,
+  IconChevronRight,
+  IconCommand,
   IconDeviceLaptop,
   IconLayoutGrid,
   IconLayoutSidebarLeftCollapse,
+  IconSearch,
   IconSettings,
   IconSitemap,
   IconTable,
@@ -135,7 +140,7 @@ function SearchInput({
     return (
       <div className={styles.kbd}>
         {window.navigator.platform?.toUpperCase().includes('MAC') ? (
-          <i className="bi bi-command" />
+          <IconCommand size={8} />
         ) : (
           <span style={{ letterSpacing: -2 }}>Ctrl</span>
         )}
@@ -161,7 +166,7 @@ function SearchInput({
       onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
         onChange(e.currentTarget.value)
       }
-      leftSection={<i className="bi bi-search fs-8 ps-1 " />}
+      leftSection={<IconSearch size={16} className="ps-1" />}
       onKeyDown={handleKeyDown}
       rightSection={
         value ? (
@@ -208,7 +213,11 @@ const AppNavGroupLabel = ({
 }) => {
   return (
     <div className={styles.listGroupName} onClick={onClick}>
-      <i className={`bi bi-chevron-${collapsed ? 'right' : 'down'}`} />
+      {collapsed ? (
+        <IconChevronRight size={14} />
+      ) : (
+        <IconChevronDown size={14} />
+      )}
       <div>{name}</div>
     </div>
   );
@@ -486,20 +495,25 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         draggable
         data-savedsearchid={savedSearch.id}
       >
-        <div className="d-inline-block text-truncate">{savedSearch.name}</div>
-        {Array.isArray(savedSearch.alerts) && savedSearch.alerts.length > 0 ? (
-          savedSearch.alerts.some(a => a.state === AlertState.ALERT) ? (
-            <i
-              className="bi bi-bell float-end text-danger ms-1"
-              title="Has Alerts and is in ALERT state"
-            ></i>
-          ) : (
-            <i
-              className="bi bi-bell float-end ms-1"
-              title="Has Alerts and is in OK state"
-            ></i>
-          )
-        ) : null}
+        <Group gap={2}>
+          <div className="d-inline-block text-truncate">{savedSearch.name}</div>
+          {Array.isArray(savedSearch.alerts) &&
+          savedSearch.alerts.length > 0 ? (
+            savedSearch.alerts.some(a => a.state === AlertState.ALERT) ? (
+              <IconBellFilled
+                size={14}
+                className="float-end text-danger ms-1"
+                aria-label="Has Alerts and is in ALERT state"
+              />
+            ) : (
+              <IconBell
+                size={14}
+                className="float-end ms-1"
+                aria-label="Has Alerts and is in OK state"
+              />
+            )
+          ) : null}
+        </Group>
       </Link>
     ),
     [
