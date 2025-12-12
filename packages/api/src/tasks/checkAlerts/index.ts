@@ -21,7 +21,7 @@ import mongoose from 'mongoose';
 import ms from 'ms';
 import { serializeError } from 'serialize-error';
 
-import { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
+import Alert, { AlertState, AlertThresholdType, IAlert } from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
@@ -101,11 +101,13 @@ const fireChannelEvent = async ({
     throw new Error('Team not found');
   }
 
-  if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
+  // Re-fetch the alert to get the latest silenced state
+  const freshAlert = await Alert.findById(alert.id);
+  if ((freshAlert?.silenced?.until?.getTime() ?? 0) > Date.now()) {
     logger.info(
       {
         alertId: alert.id,
-        silenced: alert.silenced,
+        silenced: freshAlert?.silenced,
       },
       'Skipped firing alert due to silence',
     );
