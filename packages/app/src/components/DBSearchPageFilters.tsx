@@ -33,6 +33,7 @@ import { IconSearch } from '@tabler/icons-react';
 
 import {
   useAllFields,
+  useColumns,
   useGetKeyValues,
   useGetValuesDistribution,
   useJsonColumns,
@@ -40,7 +41,11 @@ import {
 } from '@/hooks/useMetadata';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
-import { FilterStateHook, usePinnedFilters } from '@/searchFilters';
+import {
+  FilterStateHook,
+  IS_ROOT_SPAN_COLUMN_NAME,
+  usePinnedFilters,
+} from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
 
@@ -300,19 +305,19 @@ const FilterRangeDisplay = ({
 
 export type FilterGroupProps = {
   name: string;
-  options: { value: string; label: string }[];
+  options: { value: string | boolean; label: string }[];
   optionsLoading?: boolean;
   selectedValues?: {
-    included: Set<string>;
-    excluded: Set<string>;
+    included: Set<string | boolean>;
+    excluded: Set<string | boolean>;
     range?: { min: number; max: number };
   };
-  onChange: (value: string) => void;
+  onChange: (value: string | boolean) => void;
   onClearClick: VoidFunction;
-  onOnlyClick: (value: string) => void;
-  onExcludeClick: (value: string) => void;
-  onPinClick: (value: string) => void;
-  isPinned: (value: string) => boolean;
+  onOnlyClick: (value: string | boolean) => void;
+  onExcludeClick: (value: string | boolean) => void;
+  onPinClick: (value: string | boolean) => void;
+  isPinned: (value: string | boolean) => boolean;
   onFieldPinClick?: VoidFunction;
   isFieldPinned?: boolean;
   onLoadMore: (key: string) => void;
@@ -355,7 +360,9 @@ export const FilterGroup = ({
   // Accordion expanded state
   const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
   // Track recently moved items for highlight animation
-  const [recentlyMoved, setRecentlyMoved] = useState<Set<string>>(new Set());
+  const [recentlyMoved, setRecentlyMoved] = useState<Set<string | boolean>>(
+    new Set(),
+  );
   // Show what percentage of the data has each value
   const [showDistributions, setShowDistributions] = useState(false);
   // For live searches, don't refresh percentages when date range changes
@@ -438,7 +445,7 @@ export const FilterGroup = ({
     return [
       ...Array.from(selectedSet)
         .filter(value => !options.find(option => option.value === value))
-        .map(value => ({ value, label: value })),
+        .map(value => ({ value, label: value.toString() })),
       ...options,
     ];
   }, [options, selectedValues]);
@@ -455,11 +462,11 @@ export const FilterGroup = ({
         .filter(option => {
           return (
             option.value &&
-            option.value.toLowerCase().includes(search.toLowerCase())
+            option.label.toLowerCase().includes(search.toLowerCase())
           );
         })
         .toSorted((a, b) =>
-          a.value.localeCompare(b.value, undefined, { numeric: true }),
+          a.label.localeCompare(b.label, undefined, { numeric: true }),
         );
     }
 
@@ -485,14 +492,14 @@ export const FilterGroup = ({
       if (!aExcluded && bExcluded) return 1;
 
       // Then sort by estimated percentage of rows with this value, if available
-      const aPercentage = distributionData?.get(a.value) ?? 0;
-      const bPercentage = distributionData?.get(b.value) ?? 0;
+      const aPercentage = distributionData?.get(a.value.toString()) ?? 0;
+      const bPercentage = distributionData?.get(b.value.toString()) ?? 0;
       if (aPercentage !== bPercentage) {
         return bPercentage - aPercentage;
       }
 
       // Finally sort alphabetically/numerically
-      return a.value.localeCompare(b.value, undefined, { numeric: true });
+      return a.label.localeCompare(b.label, undefined, { numeric: true });
     });
   }, [
     search,
@@ -512,7 +519,7 @@ export const FilterGroup = ({
 
   // Simple highlight animation when checkbox is checked
   const handleChange = useCallback(
-    (value: string) => {
+    (value: string | boolean) => {
       const wasIncluded = selectedValues.included.has(value);
 
       // If checking (not unchecking), trigger highlight animation
@@ -662,7 +669,7 @@ export const FilterGroup = ({
                 )}
                 {displayedOptions.map(option => (
                   <FilterCheckbox
-                    key={option.value}
+                    key={option.value.toString()}
                     label={option.label}
                     pinned={isPinned(option.value)}
                     className={
@@ -684,7 +691,7 @@ export const FilterGroup = ({
                     isPercentageLoading={isFetchingDistribution}
                     percentage={
                       showDistributions && distributionData
-                        ? (distributionData.get(option.value) ?? 0)
+                        ? (distributionData.get(option.value.toString()) ?? 0)
                         : undefined
                     }
                   />
@@ -794,7 +801,7 @@ const DBSearchPageFiltersComponent = ({
   const setFilterValue = useCallback(
     (
       property: string,
-      value: string,
+      value: string | boolean,
       action?: 'only' | 'exclude' | 'include' | undefined,
     ) => {
       return _setFilterValue(property, value, action);
@@ -817,6 +824,11 @@ const DBSearchPageFiltersComponent = ({
     connectionId: chartConfig.connection,
   });
   const { data, isLoading, error } = useAllFields({
+    databaseName: chartConfig.from.databaseName,
+    tableName: chartConfig.from.tableName,
+    connectionId: chartConfig.connection,
+  });
+  const { data: columns } = useColumns({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
     connectionId: chartConfig.connection,
@@ -913,7 +925,7 @@ const DBSearchPageFiltersComponent = ({
     return Array.from(mergedKeys).map(key => {
       const queriedValues = facetsMap.get(key);
       const pinnedValues = pinnedFilters[key];
-      const mergedValues = new Set<string>([
+      const mergedValues = new Set<string | boolean>([
         ...(queriedValues ?? []),
         ...(pinnedValues ?? []),
       ]);
@@ -961,7 +973,7 @@ const DBSearchPageFiltersComponent = ({
   );
 
   const shownFacets = useMemo(() => {
-    const _facets: { key: string; value: string[] }[] = [];
+    const _facets: { key: string; value: (string | boolean)[] }[] = [];
     for (const _facet of facetsWithPinnedValues ?? []) {
       const facet = structuredClone(_facet);
       if (jsonColumns?.some(col => facet.key.startsWith(col))) {
@@ -996,7 +1008,10 @@ const DBSearchPageFiltersComponent = ({
       key => !_facets.some(facet => facet.key === key),
     );
     for (const key of remainingFilterState) {
-      _facets.push({ key, value: Array.from(filterState[key].included) });
+      _facets.push({
+        key,
+        value: Array.from(filterState[key].included).map(v => v.toString()),
+      });
     }
 
     // prioritize facets that are primary keys
@@ -1052,12 +1067,17 @@ const DBSearchPageFiltersComponent = ({
       if (!source?.parentSpanIdExpression) return;
 
       if (rootSpansOnly) {
-        setFilterValue(source.parentSpanIdExpression, '', 'only');
+        if (columns?.some(col => col.name === IS_ROOT_SPAN_COLUMN_NAME)) {
+          setFilterValue(IS_ROOT_SPAN_COLUMN_NAME, true, 'only');
+        } else {
+          setFilterValue(source.parentSpanIdExpression, '', 'only');
+        }
       } else {
         clearFilter(source.parentSpanIdExpression);
+        clearFilter(IS_ROOT_SPAN_COLUMN_NAME);
       }
     },
-    [setFilterValue, clearFilter, source],
+    [setFilterValue, clearFilter, source, columns],
   );
 
   const isRootSpansOnly = useMemo(() => {
@@ -1065,9 +1085,12 @@ const DBSearchPageFiltersComponent = ({
       return false;
 
     const parentSpanIdFilter = filterState?.[source?.parentSpanIdExpression];
+    const isRootSpanFilter = filterState?.[IS_ROOT_SPAN_COLUMN_NAME];
     return (
-      parentSpanIdFilter?.included.size === 1 &&
-      parentSpanIdFilter?.included.has('')
+      (parentSpanIdFilter?.included.size === 1 &&
+        parentSpanIdFilter?.included.has('')) ||
+      (isRootSpanFilter?.included.size === 1 &&
+        isRootSpanFilter?.included.has(true))
     );
   }, [filterState, source]);
 
@@ -1214,7 +1237,10 @@ const DBSearchPageFiltersComponent = ({
                       },
                       {} as Record<
                         string,
-                        { included: Set<string>; excluded: Set<string> }
+                        {
+                          included: Set<string | boolean>;
+                          excluded: Set<string | boolean>;
+                        }
                       >,
                     )}
                     onChange={(key, value) => {
@@ -1269,7 +1295,7 @@ const DBSearchPageFiltersComponent = ({
                     name={cleanedFacetName(facet.key)}
                     options={facet.value.map(value => ({
                       value,
-                      label: value,
+                      label: value.toString(),
                     }))}
                     optionsLoading={isFacetsLoading}
                     selectedValues={
