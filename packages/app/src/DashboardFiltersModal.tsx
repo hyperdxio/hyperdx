@@ -329,7 +329,6 @@ const DashboardFiltersModal = ({
     if (opened) {
       setSelectedFilter(undefined);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened]);
 
   const handleRemoveFilter = (id: string) => {
