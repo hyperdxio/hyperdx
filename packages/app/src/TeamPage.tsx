@@ -4,7 +4,11 @@ import { HTTPError } from 'ky';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind, WebhookService } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TeamClickHouseSettings,
+  WebhookService,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
@@ -486,11 +490,7 @@ function TeamNameSection() {
 type ClickhouseSettingType = 'number' | 'boolean';
 
 interface ClickhouseSettingFormProps {
-  settingKey:
-    | 'searchRowLimit'
-    | 'queryTimeout'
-    | 'metadataMaxRowsToRead'
-    | 'fieldMetadataDisabled';
+  settingKey: keyof TeamClickHouseSettings;
   label: string;
   tooltip?: string;
   type: ClickhouseSettingType;
@@ -499,7 +499,6 @@ interface ClickhouseSettingFormProps {
   min?: number;
   max?: number;
   displayValue?: (value: any, defaultValue?: any) => string;
-  options?: string[]; // For boolean settings displayed as select
 }
 
 function ClickhouseSettingForm({
@@ -512,7 +511,6 @@ function ClickhouseSettingForm({
   min,
   max,
   displayValue,
-  options,
 }: ClickhouseSettingFormProps) {
   const { data: me, refetch: refetchMe } = api.useMe();
   const updateClickhouseSettings = api.useUpdateClickhouseSettings();
@@ -523,12 +521,8 @@ function ClickhouseSettingForm({
   const form = useForm<{ value: any }>({
     defaultValues: {
       value:
-        type === 'boolean'
-          ? currentValue != null
-            ? currentValue
-              ? 'Disabled'
-              : 'Enabled'
-            : 'Enabled'
+        type === 'boolean' && displayValue != null && currentValue != null
+          ? displayValue(currentValue)
           : (currentValue ?? defaultValue ?? ''),
     },
   });
@@ -538,7 +532,7 @@ function ClickhouseSettingForm({
       try {
         const settingValue =
           type === 'boolean'
-            ? values.value === 'Disabled'
+            ? values.value === displayValue?.(true)
             : Number(values.value);
 
         updateClickhouseSettings.mutate(
@@ -567,7 +561,14 @@ function ClickhouseSettingForm({
         });
       }
     },
-    [refetchMe, updateClickhouseSettings, settingKey, label, type],
+    [
+      refetchMe,
+      updateClickhouseSettings,
+      settingKey,
+      label,
+      type,
+      displayValue,
+    ],
   );
 
   return (
@@ -585,12 +586,12 @@ function ClickhouseSettingForm({
       {isEditing && hasAdminAccess ? (
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <Group>
-            {type === 'boolean' && options ? (
+            {type === 'boolean' && displayValue ? (
               <SelectControlled
                 control={form.control}
                 name="value"
                 value={form.watch('value')}
-                data={options}
+                data={[displayValue(true), displayValue(false)]}
                 size="xs"
                 placeholder="Please select"
                 withAsterisk
@@ -725,8 +726,14 @@ function TeamQueryConfigSection() {
             label="Field Metadata Queries"
             tooltip="Enable to fetch field metadata from ClickHouse"
             type="boolean"
-            options={['Enabled', 'Disabled']}
             displayValue={value => (value ? 'Disabled' : 'Enabled')}
+          />
+          <ClickhouseSettingForm
+            settingKey="parallelizeWhenPossible"
+            label="Parallelize Queries When Possible"
+            tooltip="HyperDX sends windowed queries to ClickHouse in series. This setting parallelizes those queries when it makes sense to. This may cause increased peak load on ClickHouse"
+            type="boolean"
+            displayValue={value => (value ? 'Enabled' : 'Disabled')}
           />
         </Stack>
       </Card>

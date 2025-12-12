@@ -46,17 +46,21 @@ export function parseMapFieldName(
 
 // Group facets by their base names for map-like fields
 export function groupFacetsByBaseName(
-  facets: { key: string; value: string[] }[],
+  facets: { key: string; value: (string | boolean)[] }[],
 ) {
   const grouped: Map<
     string,
     {
       key: string;
-      value: string[];
-      children: { key: string; value: string[]; propertyPath: string }[];
+      value: (string | boolean)[];
+      children: {
+        key: string;
+        value: (string | boolean)[];
+        propertyPath: string;
+      }[];
     }
   > = new Map();
-  const nonGrouped: { key: string; value: string[] }[] = [];
+  const nonGrouped: { key: string; value: (string | boolean)[] }[] = [];
 
   for (const facet of facets) {
     const parsed = parseMapFieldName(facet.key);

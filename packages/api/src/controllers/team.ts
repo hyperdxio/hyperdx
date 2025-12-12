@@ -1,3 +1,4 @@
+import { TeamClickHouseSettings } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -5,7 +6,7 @@ import * as config from '@/config';
 import type { ObjectId } from '@/models';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
-import Team, { TeamCHSettings } from '@/models/team';
+import Team from '@/models/team';
 
 const LOCAL_APP_TEAM_ID = '_local_team_';
 export const LOCAL_APP_TEAM = {
@@ -82,7 +83,7 @@ export function setTeamName(teamId: ObjectId, name: string) {
 
 export function updateTeamClickhouseSettings(
   teamId: ObjectId,
-  settings: TeamCHSettings,
+  settings: TeamClickHouseSettings,
 ) {
   return Team.findByIdAndUpdate(teamId, settings, { new: true });
 }

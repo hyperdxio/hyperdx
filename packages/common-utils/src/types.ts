@@ -534,6 +534,17 @@ export const ConnectionSchema = z.object({
 
 export type Connection = z.infer<typeof ConnectionSchema>;
 
+export const TeamClickHouseSettingsSchema = z.object({
+  fieldMetadataDisabled: z.boolean().optional(),
+  searchRowLimit: z.number().optional(),
+  queryTimeout: z.number().optional(),
+  metadataMaxRowsToRead: z.number().optional(),
+  parallelizeWhenPossible: z.boolean().optional(),
+});
+export type TeamClickHouseSettings = z.infer<
+  typeof TeamClickHouseSettingsSchema
+>;
+
 // --------------------------
 // TABLE SOURCES
 // --------------------------

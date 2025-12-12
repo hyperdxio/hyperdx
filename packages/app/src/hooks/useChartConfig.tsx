@@ -41,6 +41,7 @@ interface AdditionalUseQueriedChartConfigOptions {
    * and should be disabled.
    */
   enableQueryChunking?: boolean;
+  enableParallelQueries?: boolean;
 }
 
 type TimeWindow = {
@@ -126,11 +127,13 @@ async function* fetchDataInChunks({
   clickhouseClient,
   signal,
   enableQueryChunking = false,
+  enableParallelQueries = false,
 }: {
   config: ChartConfigWithOptDateRange;
   clickhouseClient: ClickhouseClient;
   signal: AbortSignal;
   enableQueryChunking?: boolean;
+  enableParallelQueries?: boolean;
 }) {
   const windows =
     enableQueryChunking && shouldUseChunking(config)
@@ -148,6 +151,30 @@ async function* fetchDataInChunks({
     await renderMTViewConfig();
   }
 
+  if (enableParallelQueries) {
+    // fetch in parallel
+    const results = await Promise.all(
+      windows.map(w => {
+        const windowedConfig = {
+          ...config,
+          ...(w ?? {}),
+        };
+        return clickhouseClient.queryChartConfig({
+          config: windowedConfig,
+          metadata: getMetadata(),
+          opts: {
+            abort_signal: signal,
+          },
+        });
+      }),
+    );
+    for (let i = 0; i < results.length; i++) {
+      yield { chunk: results[i], isComplete: i === results.length - 1 };
+    }
+    return;
+  }
+
+  // fetch in series
   for (let i = 0; i < windows.length; i++) {
     const window = windows[i];
 
@@ -209,7 +236,11 @@ export function useQueriedChartConfig(
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
     // same config but different enableQueryChunking values do not share a query
-    queryKey: [config, options?.enableQueryChunking ?? false],
+    queryKey: [
+      config,
+      options?.enableQueryChunking ?? false,
+      options?.enableParallelQueries ?? false,
+    ],
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
@@ -230,6 +261,7 @@ export function useQueriedChartConfig(
         clickhouseClient,
         signal: context.signal,
         enableQueryChunking: options?.enableQueryChunking,
+        enableParallelQueries: options?.enableParallelQueries,
       });
 
       let accumulatedChunks: TQueryFnData = emptyValue;
