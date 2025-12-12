@@ -1,0 +1,95 @@
+name: E2E Test Comment
+
+on:
+  workflow_run:
+    workflows: ['Main']
+    types:
+      - completed
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion != 'skipped'
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Download PR number
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-number
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Read PR number
+        id: pr
+        run: echo "number=$(cat pr-number.txt)" >> $GITHUB_OUTPUT
+
+      - name: Download test results
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true
+
+      - name: Generate test results message
+        id: test-results
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const fs = require('fs');
+
+            try {
+              if (fs.existsSync('results.json')) {
+                const results = JSON.parse(fs.readFileSync('results.json', 'utf8'));
+                const { stats } = results;
+
+                const failed = stats.unexpected || 0;
+                const passed = stats.expected || 0;
+                const flaky = stats.flaky || 0;
+                const skipped = stats.skipped || 0;
+                const duration = Math.round((stats.duration || 0) / 1000);
+
+                const summary = failed > 0
+                  ? `❌ **${failed} test${failed > 1 ? 's' : ''} failed**`
+                  : `✅ **All tests passed**`;
+
+                return `## E2E Test Results
+
+            ${summary} • ${passed} passed • ${skipped} skipped • ${duration}s
+
+            | Status | Count |
+            |--------|-------|
+            | ✅ Passed | ${passed} |
+            | ❌ Failed | ${failed} |
+            | ⚠️ Flaky | ${flaky} |
+            | ⏭️ Skipped | ${skipped} |
+
+            [View full report →](https://github.com/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }})`;
+              } else {
+                return `## E2E Test Results
+
+            ❌ **Test results file not found**
+
+            [View full report →](https://github.com/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }})`;
+              }
+            } catch (error) {
+              console.log('Could not parse test results:', error.message);
+              return `## E2E Test Results
+
+            ❌ **Error reading test results**
+
+            [View full report →](https://github.com/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }})`;
+            }
+
+      - name: Comment PR with test results
+        uses: mshick/add-pr-comment@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          message: ${{ steps.test-results.outputs.result }}
+          message-id: e2e-test-results
+          issue: ${{ steps.pr.outputs.number }}

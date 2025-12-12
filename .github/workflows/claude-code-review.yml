@@ -1,7 +1,7 @@
 name: Claude Code Review
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize]
     # Optional: Only run on specific file changes
     # paths:
@@ -21,14 +21,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
       issues: read
       id-token: write
 
     steps:
+      # SECURITY: Using pull_request_target is safe here because:
+      # 1. We checkout the base branch (not PR code) - no untrusted code execution
+      # 2. Claude Code Action uses GitHub API to read PR, doesn't execute PR code
+      # 3. Allowed tools are restricted to safe read-only gh commands + gh pr comment
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 1
 
       - name: Run Claude Code Review
