@@ -26,6 +26,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PageHeader } from '@/components/PageHeader';
 
+import { isAlertSilenceExpired } from './utils/alerts';
 import api from './api';
 import { withAppNav } from './layout';
 import type { AlertsPageItem } from './types';
@@ -98,10 +99,20 @@ function AckAlert({ alert }: { alert: AlertType }) {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['alerts'] });
       },
-      onError: () => {
+      onError: (error: any) => {
+        const status = error?.response?.status;
+        let message = 'Failed to silence alert, please try again later.';
+
+        if (status === 404) {
+          message = 'Alert not found.';
+        } else if (status === 400) {
+          message =
+            'Invalid request. Please ensure the silence duration is valid.';
+        }
+
         notifications.show({
           color: 'red',
-          message: 'Failed to silence alert, please try again later.',
+          message,
         });
       },
     }),
@@ -113,7 +124,7 @@ function AckAlert({ alert }: { alert: AlertType }) {
   }, [alert.id, mutateOptions, unsilenceAlert]);
 
   const isNoLongerMuted = React.useMemo(() => {
-    return alert.silenced ? new Date() > new Date(alert.silenced.until) : false;
+    return isAlertSilenceExpired(alert.silenced);
   }, [alert.silenced]);
 
   const handleSilenceAlert = React.useCallback(

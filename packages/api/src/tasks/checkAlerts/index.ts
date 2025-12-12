@@ -101,7 +101,10 @@ const fireChannelEvent = async ({
     throw new Error('Team not found');
   }
 
-  // Re-fetch the alert to get the latest silenced state
+  // Re-fetch the alert to get the latest silenced state. Other alert properties
+  // (threshold, interval, groupBy, etc.) are stable during execution and do not
+  // need to be refetched. We only check the silence state here to ensure we respect
+  // user silencing actions that may have occurred after the alert task was queued.
   const freshAlert = await Alert.findById(alert.id);
   if ((freshAlert?.silenced?.until?.getTime() ?? 0) > Date.now()) {
     logger.info(

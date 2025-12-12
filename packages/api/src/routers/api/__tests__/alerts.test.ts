@@ -285,13 +285,13 @@ describe('alerts router', () => {
     await agent
       .post(`/alerts/${fakeId}/silenced`)
       .send({ mutedUntil })
-      .expect(500); // Should fail because alert doesn't exist
+      .expect(404); // Should fail because alert doesn't exist
   });
 
   it('prevents unsilencing an alert that does not exist', async () => {
     const { agent } = await getLoggedInAgent(server);
     const fakeId = randomMongoId();
 
-    await agent.delete(`/alerts/${fakeId}/silenced`).expect(500); // Should fail
+    await agent.delete(`/alerts/${fakeId}/silenced`).expect(404); // Should fail
   });
 });
