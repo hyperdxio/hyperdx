@@ -3668,6 +3668,9 @@ describe('checkAlerts', () => {
       };
       await alertDoc!.save();
 
+      // Update the details.alert object to reflect the silenced state
+      details.alert = alertDoc;
+
       // Process the alert - should skip firing because it's silenced
       await processAlertAtTime(
         now,
