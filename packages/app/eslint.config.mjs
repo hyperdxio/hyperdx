@@ -68,6 +68,13 @@ export default [
           ],
         },
       ],
+      'no-restricted-syntax': [
+        'warn',
+        {
+          selector: 'Literal[value=/\\bbi-\\b/i]',
+          message: 'Please update to use @tabler/icons-react instead',
+        },
+      ],
       'react-hooks/exhaustive-deps': 'error',
       'no-console': ['error', { allow: ['warn', 'error'] }],
     },
