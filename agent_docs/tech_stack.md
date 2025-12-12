@@ -8,7 +8,7 @@
 - **Charts/Visualization**: Recharts, uPlot
 - **Code Editor**: CodeMirror (for SQL/JSON editing)
 - **Styling**: Mantine's built-in system, SCSS modules when needed
-- **Icons**: Use `@tabler/icons-react` instead of bootstrap icons
+- **Icons**: Use `@tabler/icons-react`
 
 **UI Component Priority**: Mantine components first → Custom components on Mantine primitives → Custom SCSS modules as last resort
 
