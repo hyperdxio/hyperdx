@@ -25,6 +25,7 @@ import {
 import {
   calculateNextTilePosition,
   getDefaultTileSize,
+  makeId,
 } from '@/utils/tilePositioning';
 
 interface SaveToDashboardModalProps {
@@ -45,9 +46,6 @@ export default function SaveToDashboardModal({
   const createDashboard = useCreateDashboard();
   const updateDashboard = useUpdateDashboard();
 
-  const [selectedDashboardId, setSelectedDashboardId] = useState<string>('');
-  const [isCreatingNew, setIsCreatingNew] = useState(false);
-
   const { control, handleSubmit, reset, watch, formState } = useForm<{
     dashboardId: string;
     newDashboardName: string;
@@ -59,18 +57,12 @@ export default function SaveToDashboardModal({
   });
 
   const dashboardId = watch('dashboardId');
-
-  // Update isCreatingNew when dashboard selection changes
-  useEffect(() => {
-    setIsCreatingNew(dashboardId === CREATE_NEW_DASHBOARD_VALUE);
-  }, [dashboardId]);
+  const isCreatingNew = dashboardId === CREATE_NEW_DASHBOARD_VALUE;
 
   // Reset form when modal is closed
   useEffect(() => {
     if (!opened) {
       reset();
-      setSelectedDashboardId('');
-      setIsCreatingNew(false);
     }
   }, [opened, reset]);
 
@@ -87,7 +79,7 @@ export default function SaveToDashboardModal({
     const size = getDefaultTileSize(chartConfig.displayType);
 
     return {
-      id: crypto.randomUUID(),
+      id: makeId(),
       x: position.x,
       y: position.y,
       w: size.w,

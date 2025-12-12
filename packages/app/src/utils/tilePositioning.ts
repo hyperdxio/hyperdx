@@ -3,6 +3,12 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Tile } from '@/dashboard';
 
 /**
+ * Generate a unique ID for a tile
+ * @returns A random string ID in base 36
+ */
+export const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
+
+/**
  * Calculate the next available position for a new tile at the bottom of the dashboard
  * @param tiles - Array of existing tiles on the dashboard
  * @returns Position object with x and y coordinates
