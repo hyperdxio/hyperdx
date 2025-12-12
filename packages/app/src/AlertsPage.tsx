@@ -5,7 +5,6 @@ import cx from 'classnames';
 import type { Duration } from 'date-fns';
 import { add, formatRelative } from 'date-fns';
 import {
-  Alert as AlertType,
   AlertHistory,
   AlertSource,
   AlertState,
@@ -89,7 +88,7 @@ function AlertHistoryCard({
 
 const HISTORY_ITEMS = 18;
 
-function AckAlert({ alert }: { alert: AlertType }) {
+function AckAlert({ alert }: { alert: AlertsPageItem }) {
   const queryClient = useQueryClient();
   const silenceAlert = api.useSilenceAlert();
   const unsilenceAlert = api.useUnsilenceAlert();
@@ -417,7 +416,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
 
       <Group>
         <AlertHistoryCardList history={alert.history} alertUrl={alertUrl} />
-        <AckAlert alert={alert as unknown as AlertType} />
+        <AckAlert alert={alert} />
       </Group>
     </div>
   );
