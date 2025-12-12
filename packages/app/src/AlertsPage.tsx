@@ -153,7 +153,7 @@ function AckAlert({ alert }: { alert: AlertsPageItem }) {
                   ? 'var(--color-bg-warning)'
                   : 'var(--color-bg-success)'
               }
-              leftSection={<i className="bi bi-bell-slash fs-8" />}
+              leftSection={<IconBell size={16} />}
             >
               Ack&apos;d
             </Button>
