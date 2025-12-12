@@ -51,6 +51,7 @@ export type LogStreamModel = KeyValuePairs & {
 };
 
 export type AlertsPageItem = Alert & {
+  _id: string;
   history: AlertHistory[];
   dashboard?: ServerDashboard;
   savedSearch?: SavedSearch;
