@@ -691,7 +691,7 @@ export const FilterGroup = ({
                     isPercentageLoading={isFetchingDistribution}
                     percentage={
                       showDistributions && distributionData
-                        ? distributionData.get(option.value.toString()) ?? 0
+                        ? (distributionData.get(option.value.toString()) ?? 0)
                         : undefined
                     }
                   />
