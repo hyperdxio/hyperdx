@@ -135,7 +135,12 @@ router.post(
   '/:id/silenced',
   validateRequest({
     body: z.object({
-      mutedUntil: z.string().datetime(),
+      mutedUntil: z
+        .string()
+        .datetime()
+        .refine(val => new Date(val) > new Date(), {
+          message: 'mutedUntil must be in the future',
+        }),
     }),
     params: z.object({
       id: objectIdSchema,
@@ -150,7 +155,7 @@ router.post(
 
       const alert = await getAlertById(req.params.id, teamId);
       if (!alert) {
-        throw new Error('Alert not found');
+        return res.status(404).json({ error: 'Alert not found' });
       }
       alert.silenced = {
         by: req.user._id,
@@ -182,7 +187,7 @@ router.delete(
 
       const alert = await getAlertById(req.params.id, teamId);
       if (!alert) {
-        throw new Error('Alert not found');
+        return res.status(404).json({ error: 'Alert not found' });
       }
       alert.silenced = undefined;
       await alert.save();

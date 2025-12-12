@@ -121,3 +121,14 @@ export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
     webhookId: '',
   },
 };
+
+/**
+ * Checks if an alert's silence period has expired.
+ * @param silenced - The alert's silenced state containing the until timestamp
+ * @returns true if the silence period has expired, false otherwise
+ */
+export function isAlertSilenceExpired(silenced?: {
+  until: string | Date;
+}): boolean {
+  return silenced ? new Date() > new Date(silenced.until) : false;
+}

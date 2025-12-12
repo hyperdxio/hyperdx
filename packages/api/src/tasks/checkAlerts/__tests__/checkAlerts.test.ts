@@ -3604,6 +3604,249 @@ describe('checkAlerts', () => {
       // Verify that webhook was called for the alert
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
     });
+
+    it('should not fire notifications when alert is silenced', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      // Silence the alert until 1 hour from now
+      const alertDoc = await Alert.findById(details.alert.id);
+      alertDoc!.silenced = {
+        at: new Date(),
+        until: new Date(Date.now() + 3600000), // 1 hour from now
+      };
+      await alertDoc!.save();
+
+      // Update the details.alert object to reflect the silenced state
+      // (simulates what would happen if the alert was silenced before task queuing)
+      details.alert.silenced = alertDoc!.silenced;
+
+      // Process the alert - should skip firing because it's silenced
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Verify webhook was NOT called
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+
+      // Verify alert state was still updated
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+    });
+
+    it('should fire notifications when silenced period has expired', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      // Silence the alert but set expiry to the past
+      const alertDoc = await Alert.findById(details.alert.id);
+      alertDoc!.silenced = {
+        at: new Date(Date.now() - 7200000), // 2 hours ago
+        until: new Date(Date.now() - 3600000), // 1 hour ago (expired)
+      };
+      await alertDoc!.save();
+
+      // Update the details.alert object to reflect the expired silenced state
+      details.alert.silenced = alertDoc!.silenced;
+
+      // Process the alert - should fire because silence has expired
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Verify webhook WAS called
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+    });
+
+    it('should fire notifications when alert is unsilenced', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      // Alert is unsilenced (no silenced field)
+      const alertDoc = await Alert.findById(details.alert.id);
+      alertDoc!.silenced = undefined;
+      await alertDoc!.save();
+
+      // Update the details.alert object to reflect the unsilenced state
+      details.alert.silenced = undefined;
+
+      // Process the alert - should fire normally
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Verify webhook WAS called
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+    });
   });
 
   describe('getPreviousAlertHistories', () => {

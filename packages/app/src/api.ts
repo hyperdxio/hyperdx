@@ -92,6 +92,23 @@ const api = {
         }),
     });
   },
+  useSilenceAlert() {
+    return useMutation<any, Error, { alertId: string; mutedUntil: string }>({
+      mutationFn: async ({ alertId, mutedUntil }) =>
+        server(`alerts/${alertId}/silenced`, {
+          method: 'POST',
+          json: { mutedUntil },
+        }),
+    });
+  },
+  useUnsilenceAlert() {
+    return useMutation<any, Error, string>({
+      mutationFn: async (alertId: string) =>
+        server(`alerts/${alertId}/silenced`, {
+          method: 'DELETE',
+        }),
+    });
+  },
   useDashboards(options?: UseQueryOptions<any, Error>) {
     return useQuery({
       queryKey: [`dashboards`],
