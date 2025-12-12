@@ -1,5 +1,20 @@
 # @hyperdx/app
 
+## 2.9.1
+
+### Patch Changes
+
+- 215b9bf7: Add prop to disable drilldown if not supported
+- 6d4fc318: feat: parallelize DBSearchPage's histogram query
+- 96f0539e: feat: Add silence alerts feature
+- b564a369: fix: Ensure adequate SQL/Schema Preview modal height
+- 84d60a64: fix: Fix double value for isRootSpan facet
+- ae4c8765: fix: error loading row data by multiple search panel in dashboard
+- 776e3927: fix: Fix queries/minute calculation in Services Dashboard
+- 6d4fc318: feat: add teamsetting for paralellizing queries when possible
+- 69d9a418: feat: Filter on isRootSpan column if present
+- 780279fd: feat: Save tile to dashboard from chart explorer
+
 ## 2.9.0
 
 ### Minor Changes

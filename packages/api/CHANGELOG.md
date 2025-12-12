@@ -1,5 +1,12 @@
 # @hyperdx/api
 
+## 2.9.1
+
+### Patch Changes
+
+- 96f0539e: feat: Add silence alerts feature
+- 6d4fc318: feat: add teamsetting for paralellizing queries when possible
+
 ## 2.9.0
 
 ### Minor Changes
