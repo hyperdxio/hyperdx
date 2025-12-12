@@ -36,7 +36,7 @@ while true; do
                 fi
             done
 
-            # Move current log to .1 using an atomic operation.  Then send SIGUHUP to the
+            # Move current log to .1 using an atomic operation.  Then send SIGHUP to the
             # collector to refresh the config and reopen the default log file.
             mv "$LOG_FILE" "${LOG_FILE}.1"
             fuser -k -HUP "${LOG_FILE}.1"
