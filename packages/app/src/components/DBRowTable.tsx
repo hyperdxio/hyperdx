@@ -49,6 +49,7 @@ import {
 import {
   IconCode,
   IconDownload,
+  IconRefresh,
   IconRotateClockwise,
   IconSettings,
   IconTextWrap,
@@ -273,7 +274,7 @@ const SqlModal = ({
       ) : isLoadingSql ? (
         <div className="text-center my-2">
           <div className="spin-animate d-inline-block me-2">
-            <i className="bi bi-arrow-repeat" />
+            <IconRefresh size={14} />
           </div>
           Loading SQL...
         </div>
@@ -957,7 +958,7 @@ export const RawLogTable = memo(
                   {isLoading ? (
                     <div className="my-3">
                       <div className="spin-animate d-inline-block">
-                        <i className="bi bi-arrow-repeat" />
+                        <IconRefresh size={14} />
                       </div>{' '}
                       {loadingDate != null && (
                         <>

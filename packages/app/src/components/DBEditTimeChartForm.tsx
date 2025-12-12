@@ -40,7 +40,22 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
-import { IconPlayerPlay } from '@tabler/icons-react';
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconBell,
+  IconChartLine,
+  IconCirclePlus,
+  IconCode,
+  IconDotsVertical,
+  IconLayoutGrid,
+  IconList,
+  IconMarkdown,
+  IconNumbers,
+  IconPlayerPlay,
+  IconTable,
+  IconTrash,
+} from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
 import {
@@ -216,7 +231,7 @@ function ChartSeriesEditorComponent({
                 onClick={() => onSwapSeries(index, index - 1)}
                 title="Move up"
               >
-                <i className="bi bi-arrow-up" />
+                <IconArrowUp size={14} />
               </Button>
             )}
             {(index ?? -1) < length - 1 && (
@@ -227,7 +242,7 @@ function ChartSeriesEditorComponent({
                 onClick={() => onSwapSeries(index, index + 1)}
                 title="Move down"
               >
-                <i className="bi bi-arrow-down" />
+                <IconArrowDown size={14} />
               </Button>
             )}
             {((index ?? -1) > 0 || length > 1) && (
@@ -237,7 +252,7 @@ function ChartSeriesEditorComponent({
                 size="xs"
                 onClick={() => onRemoveSeries(index)}
               >
-                <i className="bi bi-trash me-2" />
+                <IconTrash size={14} className="me-2" />
                 Remove Series
               </Button>
             )}
@@ -700,31 +715,31 @@ export default function EditTimeChartForm({
             <Tabs.List>
               <Tabs.Tab
                 value={DisplayType.Line}
-                leftSection={<i className="bi bi-graph-up" />}
+                leftSection={<IconChartLine size={16} />}
               >
                 Line/Bar
               </Tabs.Tab>
               <Tabs.Tab
                 value={DisplayType.Table}
-                leftSection={<i className="bi bi-table" />}
+                leftSection={<IconTable size={16} />}
               >
                 Table
               </Tabs.Tab>
               <Tabs.Tab
                 value={DisplayType.Number}
-                leftSection={<i className="bi bi-123" />}
+                leftSection={<IconNumbers size={16} />}
               >
                 Number
               </Tabs.Tab>
               <Tabs.Tab
                 value={DisplayType.Search}
-                leftSection={<i className="bi bi-card-list" />}
+                leftSection={<IconList size={16} />}
               >
                 Search
               </Tabs.Tab>
               <Tabs.Tab
                 value={DisplayType.Markdown}
-                leftSection={<i className="bi bi-markdown" />}
+                leftSection={<IconMarkdown size={16} />}
               >
                 Markdown
               </Tabs.Tab>
@@ -851,7 +866,7 @@ export default function EditTimeChartForm({
                         });
                       }}
                     >
-                      <i className="bi bi-plus-circle me-2" />
+                      <IconCirclePlus size={14} className="me-2" />
                       Add Series
                     </Button>
                   )}
@@ -885,7 +900,7 @@ export default function EditTimeChartForm({
                           )
                         }
                       >
-                        <i className="bi bi-bell-fill me-2" />
+                        <IconBell size={14} className="me-2" />
                         {!alert ? 'Add Alert' : 'Remove Alert'}
                       </Button>
                     )}
@@ -1070,12 +1085,12 @@ export default function EditTimeChartForm({
             <Menu width={250}>
               <Menu.Target>
                 <Button variant="outline" color="gray" px="xs" size="xs">
-                  <i className="bi bi-three-dots-vertical" />
+                  <IconDotsVertical size={14} />
                 </Button>
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Item
-                  leftSection={<i className="bi bi-layout-three-columns" />}
+                  leftSection={<IconLayoutGrid size={16} />}
                   onClick={() => setSaveToDashboardModalOpen(true)}
                 >
                   Save to Dashboard
@@ -1221,7 +1236,7 @@ export default function EditTimeChartForm({
           {showSampleEvents && (
             <Accordion defaultValue="sample">
               <Accordion.Item value="sample">
-                <Accordion.Control icon={<i className="bi bi-card-list"></i>}>
+                <Accordion.Control icon={<IconList size={16} />}>
                   <Text size="sm" style={{ alignSelf: 'center' }}>
                     Sample Matched Events
                   </Text>
@@ -1247,7 +1262,7 @@ export default function EditTimeChartForm({
           )}
           <Accordion defaultValue="">
             <Accordion.Item value={'SQL'}>
-              <Accordion.Control icon={<i className="bi bi-code-square"></i>}>
+              <Accordion.Control icon={<IconCode size={16} />}>
                 <Text size="sm" style={{ alignSelf: 'center' }}>
                   Generated SQL
                 </Text>

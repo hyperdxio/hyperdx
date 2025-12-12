@@ -2,7 +2,7 @@ import React, { memo, useCallback, useState } from 'react';
 import cx from 'classnames';
 import { useQueryState } from 'nuqs';
 import { TSource } from '@hyperdx/common-utils/dist/types';
-import { IconChevronRight } from '@tabler/icons-react';
+import { IconArrowsMaximize, IconChevronRight } from '@tabler/icons-react';
 
 import styles from '../../styles/LogTable.module.scss';
 
@@ -68,7 +68,7 @@ export const ExpandedLogRow = memo(
                       lineHeight: 1,
                     }}
                   >
-                    <i className="bi bi-arrows-angle-expand" />
+                    <IconArrowsMaximize size={14} />
                   </button>
                 )}
                 {children}

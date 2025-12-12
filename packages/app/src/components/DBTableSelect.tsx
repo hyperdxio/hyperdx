@@ -1,5 +1,6 @@
 import { useController, UseControllerProps } from 'react-hook-form';
 import { Flex, Select } from '@mantine/core';
+import { IconTable } from '@tabler/icons-react';
 
 import { useTablesDirect } from '@/clickhouse';
 
@@ -55,7 +56,7 @@ export default function DBTableSelect({
       <Select
         searchable
         placeholder="Table"
-        leftSection={<i className="bi bi-table"></i>}
+        leftSection={<IconTable size={16} />}
         maxDropdownHeight={280}
         data={data}
         disabled={isTablesLoading}

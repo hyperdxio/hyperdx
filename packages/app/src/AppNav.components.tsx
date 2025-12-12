@@ -14,8 +14,19 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import {
+  IconBook,
+  IconBrandDiscord,
+  IconBulb,
+  IconChevronDown,
+  IconChevronRight,
+  IconChevronUp,
+  IconHelp,
+  IconLogout,
+  IconSettings,
+  IconUserCog,
+} from '@tabler/icons-react';
 
-import { Icon } from '@/components/Icon';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import { useSources } from '@/source';
 
@@ -132,7 +143,7 @@ export const AppNavUserMenu = ({
                     </Text>
                   </div>
                 </Tooltip>
-                <Icon name="chevron-right" className="fs-8 " />
+                <IconChevronRight size={14} />
               </>
             )}
           </Group>
@@ -146,14 +157,14 @@ export const AppNavUserMenu = ({
             data-testid="team-settings-menu-item"
             href="/team"
             component={Link}
-            leftSection={<Icon name="gear" />}
+            leftSection={<IconSettings size={16} />}
           >
             Team Settings
           </Menu.Item>
         )}
         <Menu.Item
           data-testid="user-preferences-menu-item"
-          leftSection={<Icon name="person-gear" />}
+          leftSection={<IconUserCog size={16} />}
           onClick={onClickUserPreferences}
         >
           User Preferences
@@ -164,7 +175,7 @@ export const AppNavUserMenu = ({
             <Menu.Item
               data-testid="logout-menu-item"
               color="red"
-              leftSection={<Icon name="box-arrow-left" />}
+              leftSection={<IconLogout size={16} />}
               component={Link}
               href={logoutUrl}
             >
@@ -221,7 +232,7 @@ export const AppNavHelpMenu = ({
           <Menu.Target>
             <UnstyledButton data-testid="help-menu-trigger" w="100%">
               <Group align="center" justify="center" h={28}>
-                <Icon name="question-lg" />
+                <IconHelp size={16} />
               </Group>
             </UnstyledButton>
           </Menu.Target>
@@ -239,13 +250,13 @@ export const AppNavHelpMenu = ({
               data-testid="documentation-menu-item"
               href="https://clickhouse.com/docs/use-cases/observability/clickstack"
               component="a"
-              leftSection={<Icon name="book" />}
+              leftSection={<IconBook size={16} />}
             >
               Documentation
             </Menu.Item>
             <Menu.Item
               data-testid="discord-menu-item"
-              leftSection={<Icon name="discord" />}
+              leftSection={<IconBrandDiscord size={16} />}
               component="a"
               href="https://hyperdx.io/discord"
               target="_blank"
@@ -254,7 +265,7 @@ export const AppNavHelpMenu = ({
             </Menu.Item>
             <Menu.Item
               data-testid="setup-instructions-menu-item"
-              leftSection={<Icon name="lightbulb" />}
+              leftSection={<IconBulb size={16} />}
               onClick={onAddDataClick}
             >
               Setup Instructions
@@ -321,11 +332,11 @@ export const AppNavLink = ({
           size="sm"
           onClick={onToggle}
         >
-          <i
-            className={`fs-8 bi bi-chevron-${
-              isExpanded ? 'up' : 'down'
-            } text-muted-hover`}
-          />
+          {isExpanded ? (
+            <IconChevronUp size={14} className="text-muted-hover" />
+          ) : (
+            <IconChevronDown size={14} className="text-muted-hover" />
+          )}
         </ActionIcon>
       )}
     </Group>

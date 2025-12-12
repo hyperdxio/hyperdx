@@ -15,6 +15,16 @@ import {
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import {
+  IconChartLine,
+  IconCheck,
+  IconFilter,
+  IconMinus,
+  IconPlus,
+  IconSearch,
+  IconSettings,
+  IconTextWrap,
+} from '@tabler/icons-react';
 
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
@@ -81,12 +91,12 @@ function HyperJsonMenu() {
           setJsonOptions({ ...jsonOptions, lineWrap: !jsonOptions.lineWrap })
         }
       >
-        <i className="bi bi-text-wrap" />
+        <IconTextWrap size={14} />
       </UnstyledButton>
       <Menu width={240} withinPortal={false}>
         <Menu.Target>
           <UnstyledButton>
-            <i className="bi bi-gear" />
+            <IconSettings size={14} />
           </UnstyledButton>
         </Menu.Target>
         <Menu.Dropdown>
@@ -104,7 +114,7 @@ function HyperJsonMenu() {
             py={8}
             rightSection={
               jsonOptions.normallyExpanded ? (
-                <i className="ps-2 bi bi-check2" />
+                <IconCheck size={14} className="ps-2" />
               ) : null
             }
           >
@@ -114,7 +124,9 @@ function HyperJsonMenu() {
             lh="1"
             py={8}
             rightSection={
-              jsonOptions.tabulate ? <i className="ps-2 bi bi-check2" /> : null
+              jsonOptions.tabulate ? (
+                <IconCheck size={14} className="ps-2" />
+              ) : null
             }
             onClick={() =>
               setJsonOptions({
@@ -184,7 +196,7 @@ export function DBRowJsonViewer({
           key: 'add-to-search',
           label: (
             <>
-              <i className="bi bi-funnel-fill me-1" />
+              <IconFilter size={14} className="me-1" />
               Add to Filters
             </>
           ),
@@ -227,7 +239,7 @@ export function DBRowJsonViewer({
           key: 'search',
           label: (
             <>
-              <i className="bi bi-search me-1" />
+              <IconSearch size={14} className="me-1" />
               Search
             </>
           ),
@@ -271,7 +283,7 @@ export function DBRowJsonViewer({
       if (generateChartUrl && typeof value === 'number') {
         actions.push({
           key: 'chart',
-          label: <i className="bi bi-graph-up" />,
+          label: <IconChartLine size={14} />,
           title: 'Chart',
           onClick: () => {
             let chartFieldPath = fieldPath;
@@ -318,12 +330,12 @@ export function DBRowJsonViewer({
           key: 'toggle-column',
           label: isIncluded ? (
             <>
-              <i className="bi bi-dash fs-7 me-1" />
+              <IconMinus size={14} className="me-1" />
               Column
             </>
           ) : (
             <>
-              <i className="bi bi-plus fs-7 me-1" />
+              <IconPlus size={14} className="me-1" />
               Column
             </>
           ),
@@ -415,7 +427,7 @@ export function DBRowJsonViewer({
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               setFilter(e.currentTarget.value)
             }
-            leftSection={<i className="bi bi-search" />}
+            leftSection={<IconSearch size={16} />}
           />
           {filter && (
             <Button

@@ -13,6 +13,7 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
+import { IconPencil } from '@tabler/icons-react';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { useSource, useUpdateSource } from '@/source';
@@ -135,7 +136,7 @@ export default function DBTracePanel({
               size="xs"
               onClick={() => setShowTraceIdInput(v => !v)}
             >
-              <i className="bi bi-pencil"></i>
+              <IconPencil size={14} />
             </Button>
           )}
         </Flex>

@@ -4,6 +4,14 @@ import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Replayer } from 'rrweb';
 import { ActionIcon, CopyButton, HoverCard } from '@mantine/core';
+import {
+  IconArrowsMaximize,
+  IconCheck,
+  IconCopy,
+  IconGlobe,
+  IconLink,
+  IconList,
+} from '@tabler/icons-react';
 
 import { useRRWebEventStream } from '@/sessions';
 import { useDebugMode } from '@/utils';
@@ -43,13 +51,13 @@ const URLHoverCard = memo(({ url }: { url: string }) => {
           <table className="table fs-8 mb-0">
             <tr>
               <td>
-                <i className="bi bi-globe fs-8 "></i>
+                <IconGlobe size={14} />
               </td>
               <td>{parsedUrl?.host}</td>
             </tr>
             <tr>
               <td>
-                <i className="bi bi-link-45deg fs-7"></i>
+                <IconLink size={14} />
               </td>
               <td>{parsedUrl?.pathname}</td>
             </tr>
@@ -474,9 +482,9 @@ export default function DOMPlayer({
           color="gray"
         >
           {playerFullWidth ? (
-            <i className="bi bi-list"></i>
+            <IconList size={14} />
           ) : (
-            <i className="bi bi-arrows-fullscreen fs-8"></i>
+            <IconArrowsMaximize size={14} />
           )}
         </ActionIcon>
         <CopyButton value={lastHref}>
@@ -490,11 +498,7 @@ export default function DOMPlayer({
                 size="sm"
                 color="gray"
               >
-                {copied ? (
-                  <i className="bi bi-check2 fs-8" />
-                ) : (
-                  <i className="bi bi-copy fs-8" />
-                )}
+                {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
               </ActionIcon>
             </>
           )}

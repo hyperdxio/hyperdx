@@ -11,6 +11,14 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import {
+  IconClock,
+  IconCurrencyDollar,
+  IconDatabase,
+  IconNumbers,
+  IconPercentage,
+  IconX,
+} from '@tabler/icons-react';
 
 import { NumberFormat } from '../types';
 import { formatNumber } from '../utils';
@@ -23,12 +31,12 @@ const FORMAT_NAMES: Record<string, string> = {
   time: 'Time',
 };
 
-const FORMAT_ICONS: Record<string, string> = {
-  number: '123',
-  currency: 'currency-dollar',
-  percent: 'percent',
-  byte: 'database',
-  time: 'clock',
+const FORMAT_ICONS: Record<string, React.ReactNode> = {
+  number: <IconNumbers size={14} />,
+  currency: <IconCurrencyDollar size={14} />,
+  percent: <IconPercentage size={14} />,
+  byte: <IconDatabase size={14} />,
+  time: <IconClock size={14} />,
 };
 
 export const NumberFormatForm: React.FC<{
@@ -83,11 +91,7 @@ export const NumberFormatForm: React.FC<{
         >
           <NativeSelect
             label="Output format"
-            leftSection={
-              values.output && (
-                <i className={`bi bi-${FORMAT_ICONS[values.output]}`} />
-              )
-            }
+            leftSection={values.output && FORMAT_ICONS[values.output]}
             style={{ flex: 1 }}
             data={[
               { value: 'number', label: 'Number' },
@@ -234,11 +238,7 @@ export const NumberFormatInput: React.FC<{
           size="compact-sm"
           color="dark"
           variant="default"
-          leftSection={
-            value?.output && (
-              <i className={`bi bi-${FORMAT_ICONS[value.output]}`} />
-            )
-          }
+          leftSection={value?.output && FORMAT_ICONS[value.output]}
         >
           {value?.output ? FORMAT_NAMES[value.output] : 'Set number format'}
         </Button>
@@ -250,7 +250,7 @@ export const NumberFormatInput: React.FC<{
             px="xs"
             onClick={() => handleApply(undefined)}
           >
-            <i className="bi bi-x-lg" />
+            <IconX size={14} />
           </Button>
         )}
       </Button.Group>

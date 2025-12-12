@@ -10,6 +10,7 @@ import {
   ScrollArea,
   Stack,
 } from '@mantine/core';
+import { IconSearch, IconTags } from '@tabler/icons-react';
 
 import api from '@/api';
 
@@ -101,7 +102,7 @@ export const Tags = React.memo(
               color="gray"
               style={{ cursor: 'pointer' }}
             >
-              <i className="bi bi-tags fs-7" />
+              <IconTags size={14} />
             </ActionIcon>
           )}
         </Popover.Target>
@@ -112,7 +113,7 @@ export const Tags = React.memo(
             size="xs"
             placeholder={allowCreate ? 'Search or create tag' : 'Search tag'}
             variant="filled"
-            leftSection={<i className="bi bi-search" />}
+            leftSection={<IconSearch size={16} />}
             autoFocus
             m={8}
             mb={0}

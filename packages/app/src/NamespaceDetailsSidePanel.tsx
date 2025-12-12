@@ -175,7 +175,7 @@ function NamespaceLogs({
                 legacyBehavior
               >
                 <Anchor size="xs" color="dimmed">
-                  Search <i className="bi bi-box-arrow-up-right"></i>
+                  Search <IconExternalLink size={12} style={{ display: 'inline' }} />
                 </Anchor>
               </Link> 
               */}

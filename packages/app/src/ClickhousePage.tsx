@@ -22,6 +22,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
+import { IconRefresh } from '@tabler/icons-react';
 import ReactCodeMirror from '@uiw/react-codemirror';
 
 import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
@@ -529,7 +530,7 @@ function ClickhousePage() {
               aria-label="Refresh dashboard"
               px="xs"
             >
-              <i className="bi bi-arrow-clockwise fs-5"></i>
+              <IconRefresh size={18} />
             </Button>
           </Tooltip>
         </Group>

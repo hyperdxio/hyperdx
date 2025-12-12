@@ -29,7 +29,13 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconPlayerPlay } from '@tabler/icons-react';
+import {
+  IconChartLine,
+  IconFilter,
+  IconPlayerPlay,
+  IconRefresh,
+  IconTable,
+} from '@tabler/icons-react';
 
 import {
   convertDateRangeToGranularityString,
@@ -207,7 +213,7 @@ export function EndpointLatencyChart({
               title="Line Chart"
               onClick={() => setLatencyChartType('line')}
             >
-              <i className="bi bi-graph-up" />
+              <IconChartLine size={14} />
             </Button>
 
             <Button
@@ -1072,7 +1078,7 @@ function DatabaseTab({
                   title="List"
                   onClick={() => setChartType('list')}
                 >
-                  <i className="bi bi-filter-left" />
+                  <IconFilter size={14} />
                 </Button>
 
                 <Button
@@ -1082,7 +1088,7 @@ function DatabaseTab({
                   title="Table"
                   onClick={() => setChartType('table')}
                 >
-                  <i className="bi bi-table" />
+                  <IconTable size={14} />
                 </Button>
               </Button.Group>
             </Box>
@@ -1476,7 +1482,7 @@ function ServicesDashboardPage() {
                 aria-label="Refresh dashboard"
                 px="xs"
               >
-                <i className="bi bi-arrow-clockwise fs-5"></i>
+                <IconRefresh size={18} />
               </Button>
             </Tooltip>
             <Button variant="outline" type="submit" px="sm">

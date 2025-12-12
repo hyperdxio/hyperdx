@@ -1,5 +1,6 @@
 import * as React from 'react';
 import cx from 'classnames';
+import { IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import {
   ColumnDef,
   flexRender,
@@ -108,13 +109,14 @@ export const Table = <T extends Record<string, unknown> | string[]>({
 export const TableCellButton: React.FC<{
   title?: string;
   label: React.ReactNode;
-  biIcon?: string;
+  biIcon?: 'chevron-up' | 'chevron-down';
   onClick: VoidFunction;
 }> = ({ onClick, title, label, biIcon }) => {
   return (
     <button className={styles.tableCellButton} title={title} onClick={onClick}>
       {label && <span>{label}</span>}
-      {biIcon ? <i className={`bi bi-${biIcon}`} /> : null}
+      {biIcon === 'chevron-up' && <IconChevronUp size={14} />}
+      {biIcon === 'chevron-down' && <IconChevronDown size={14} />}
     </button>
   );
 };

@@ -17,6 +17,11 @@ import {
   Text,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import {
+  IconChevronDown,
+  IconChevronUp,
+  IconInfoCircle,
+} from '@tabler/icons-react';
 
 import api from '@/api';
 import { DEFAULT_CHART_CONFIG, Granularity } from '@/ChartUtils';
@@ -120,7 +125,7 @@ function AIAssistant({
       <Box mb="sm">
         <Alert
           color="dark"
-          icon={<i className="bi bi-info-circle" />}
+          icon={<IconInfoCircle size={16} />}
           variant="outline"
           withCloseButton
           onClose={() => setAlertDismissed(true)}
@@ -150,9 +155,9 @@ function AIAssistant({
         >
           <Group gap="xs">
             {opened ? (
-              <i className="bi bi-chevron-up" />
+              <IconChevronUp size={14} />
             ) : (
-              <i className="bi bi-chevron-down" />
+              <IconChevronDown size={14} />
             )}
             <Text size="xxs">AI Assistant [A]</Text>
           </Group>

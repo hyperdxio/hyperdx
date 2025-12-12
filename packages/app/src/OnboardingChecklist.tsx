@@ -12,6 +12,12 @@ import {
   Text,
   UnstyledButton,
 } from '@mantine/core';
+import {
+  IconArrowRight,
+  IconCheck,
+  IconChevronDown,
+  IconChevronUp,
+} from '@tabler/icons-react';
 
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import api from './api';
@@ -165,10 +171,11 @@ const OnboardingChecklist = ({
           size="sm"
           onClick={() => setIsCollapsed(!isCollapsed)}
         >
-          <i
-            className={`bi bi-chevron-${isCollapsed ? 'down' : 'up'} `}
-            style={{ fontSize: 12 }}
-          />
+          {isCollapsed ? (
+            <IconChevronDown size={12} />
+          ) : (
+            <IconChevronUp size={12} />
+          )}
         </ActionIcon>
       </Group>
 
@@ -200,8 +207,8 @@ const OnboardingChecklist = ({
                   {step.isLoading ? (
                     <Loader size="xs" color="gray" />
                   ) : step.isComplete ? (
-                    <i
-                      className="bi bi-check"
+                    <IconCheck
+                      size={16}
                       style={{
                         fontSize: 12,
                         fontWeight: 'bold',
@@ -232,10 +239,9 @@ const OnboardingChecklist = ({
                 </div>
 
                 {!step.isComplete && (step.href || step.onClick) && (
-                  <i
-                    className="bi bi-arrow-right"
+                  <IconArrowRight
+                    size={12}
                     style={{
-                      fontSize: 12,
                       color: 'var(--color-text-muted)',
                     }}
                   />
