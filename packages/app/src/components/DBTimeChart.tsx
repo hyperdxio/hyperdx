@@ -256,8 +256,11 @@ function DBTimeChartComponent({
         queryKeyPrefix,
         queriedConfig,
         'chunked',
-        disableQueryChunking,
-        enableParallelQueries && me?.team?.parallelizeWhenPossible,
+        {
+          disableQueryChunking,
+          enableParallelQueries,
+          parallelizeWhenPossible: me?.team?.parallelizeWhenPossible,
+        },
       ],
       enabled: enabled && !isLoadingMe,
       enableQueryChunking: !disableQueryChunking,

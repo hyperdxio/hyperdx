@@ -449,8 +449,11 @@ export function useNewTimeQuery({
     },
   );
 
-  const [searchedTimeRange, setSearchedTimeRange] =
-    useState<[Date, Date]>(initialTimeRange);
+  const [searchedTimeRange, setSearchedTimeRange] = useState<[Date, Date]>(
+    from != null && to != null
+      ? [new Date(from), new Date(to)]
+      : initialTimeRange,
+  );
 
   const onSearch = useCallback(
     (timeQuery: string) => {
