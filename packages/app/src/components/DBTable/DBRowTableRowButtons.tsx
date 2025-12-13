@@ -22,7 +22,6 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   const copyRowData = async () => {
     try {
       // Filter out internal metadata fields that start with __ or are generated IDs
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { __hyperdx_id, ...cleanRow } = row;
 
       // Parse JSON string fields to make them proper JSON objects

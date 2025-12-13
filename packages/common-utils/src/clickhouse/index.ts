@@ -470,11 +470,8 @@ export abstract class BaseClickhouseClient {
       debugSql = query;
     }
 
-    // eslint-disable-next-line no-console
     console.debug('--------------------------------------------------------');
-    // eslint-disable-next-line no-console
     console.debug('Sending Query:', debugSql);
-    // eslint-disable-next-line no-console
     console.debug('--------------------------------------------------------');
   }
 

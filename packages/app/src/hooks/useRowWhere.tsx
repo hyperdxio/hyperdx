@@ -142,7 +142,6 @@ export default function useRowWhere({
   return useCallback(
     (row: Record<string, any>) => {
       // Filter out synthetic columns that aren't in the database schema
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { __hyperdx_id, ...dbRow } = row;
       return processRowToWhereClause(dbRow, columnMap);
     },
