@@ -68,6 +68,15 @@ export default [
           ],
         },
       ],
+      // Temporary rule to enforce use of @tabler/icons-react instead of bi bi-icons
+      // Will remove after we've updated all icons and let some PRs merge.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/\\bbi-\\b/i]',
+          message: 'Please update to use @tabler/icons-react instead',
+        },
+      ],
       'react-hooks/exhaustive-deps': 'error',
       'no-console': ['error', { allow: ['warn', 'error'] }],
     },

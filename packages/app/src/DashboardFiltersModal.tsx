@@ -20,7 +20,13 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { IconFilter, IconPencil, IconTrash } from '@tabler/icons-react';
+import {
+  IconFilter,
+  IconInfoCircle,
+  IconPencil,
+  IconStack,
+  IconTrash,
+} from '@tabler/icons-react';
 
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
@@ -55,7 +61,7 @@ const CustomInputWrapper = ({
       <Input.Label>{label}</Input.Label>
       {tooltipText && (
         <Tooltip label={tooltipText}>
-          <i className="bi bi-info-circle ms-2" />
+          <IconInfoCircle size={14} className="ms-2" />
         </Tooltip>
       )}
       {errorMessage && (
@@ -280,7 +286,7 @@ const DashboardFiltersList = ({
               </Group>
             </Group>
             <Group gap="xs">
-              <i className="bi bi-collection"></i>
+              <IconStack size={14} />
               <Text size="xs">
                 {sources?.find(s => s.id === filter.source)?.name}
               </Text>
@@ -329,7 +335,6 @@ const DashboardFiltersModal = ({
     if (opened) {
       setSelectedFilter(undefined);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened]);
 
   const handleRemoveFilter = (id: string) => {

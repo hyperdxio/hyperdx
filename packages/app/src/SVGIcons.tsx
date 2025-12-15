@@ -1,4 +1,4 @@
-// Only use this file if you can't find any icon in bootstrap icons
+// Only use this file if you can't find any icon in tabler icons
 
 type IconProps = {
   style?: React.CSSProperties;

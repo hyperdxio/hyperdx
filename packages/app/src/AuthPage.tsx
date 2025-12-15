@@ -14,6 +14,7 @@ import {
   Stack,
   TextInput,
 } from '@mantine/core';
+import { IconAt, IconLock } from '@tabler/icons-react';
 
 import api from './api';
 import * as config from './config';
@@ -150,7 +151,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                     withAsterisk={false}
                     placeholder="you@company.com"
                     type="email"
-                    leftSection={<i className="bi bi-at fs-5" />}
+                    leftSection={<IconAt size={18} />}
                     error={errors.email?.message}
                     required
                     {...form.email}
@@ -159,7 +160,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                     size="md"
                     label="Password"
                     withAsterisk={false}
-                    leftSection={<i className="bi bi-lock-fill" />}
+                    leftSection={<IconLock size={16} />}
                     error={errors.password?.message}
                     required
                     placeholder="Password"
@@ -179,7 +180,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                         size="md"
                         required
                         withAsterisk={false}
-                        leftSection={<i className="bi bi-lock-fill" />}
+                        leftSection={<IconLock size={16} />}
                         error={errors.confirmPassword?.message}
                         placeholder="Confirm Password"
                         {...form.confirmPassword}

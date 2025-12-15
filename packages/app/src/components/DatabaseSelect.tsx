@@ -1,5 +1,6 @@
 import { useController, UseControllerProps } from 'react-hook-form';
 import { Select } from '@mantine/core';
+import { IconDatabase } from '@tabler/icons-react';
 
 import { useDatabasesDirect } from '@/clickhouse';
 
@@ -36,7 +37,7 @@ export default function DatabaseSelect({
     <Select
       searchable
       placeholder="Database"
-      leftSection={<i className="bi bi-database"></i>}
+      leftSection={<IconDatabase size={16} />}
       maxDropdownHeight={280}
       data={data}
       disabled={isDatabasesLoading}

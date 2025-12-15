@@ -60,7 +60,15 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconPlayerPlay } from '@tabler/icons-react';
+import {
+  IconBolt,
+  IconCirclePlus,
+  IconPlayerPlay,
+  IconPlus,
+  IconSettings,
+  IconTags,
+  IconX,
+} from '@tabler/icons-react';
 import { useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
@@ -381,7 +389,7 @@ function SaveSearchModal({
                       }}
                       size="xs"
                     >
-                      <i className="bi bi-x" />
+                      <IconX size={14} />
                     </ActionIcon>
                   }
                 >
@@ -395,7 +403,7 @@ function SaveSearchModal({
                   color="gray"
                   size="xs"
                 >
-                  <i className="bi bi-plus me-1"></i>
+                  <IconPlus size={14} className="me-1" />
                   Add Tag
                 </Button>
               </Tags>
@@ -1376,7 +1384,7 @@ function DBSearchPage() {
                   title="Edit Source"
                 >
                   <Text size="xs">
-                    <i className="bi bi-gear" />
+                    <IconSettings size={14} />
                   </Text>
                 </ActionIcon>
               </Menu.Target>
@@ -1384,7 +1392,7 @@ function DBSearchPage() {
                 <Menu.Label>Sources</Menu.Label>
                 <Menu.Item
                   data-testid="create-new-source-menu-item"
-                  leftSection={<i className="bi bi-plus-circle" />}
+                  leftSection={<IconCirclePlus size={14} />}
                   onClick={() => setNewSourceModalOpened(true)}
                 >
                   Create New Source
@@ -1392,7 +1400,7 @@ function DBSearchPage() {
                 {IS_LOCAL_MODE ? (
                   <Menu.Item
                     data-testid="edit-source-menu-item"
-                    leftSection={<i className="bi bi-gear" />}
+                    leftSection={<IconSettings size={14} />}
                     onClick={() => setModelFormExpanded(v => !v)}
                   >
                     Edit Source
@@ -1400,7 +1408,7 @@ function DBSearchPage() {
                 ) : (
                   <Menu.Item
                     data-testid="edit-sources-menu-item"
-                    leftSection={<i className="bi bi-gear" />}
+                    leftSection={<IconSettings size={14} />}
                     component={Link}
                     href="/team"
                   >
@@ -1485,7 +1493,7 @@ function DBSearchPage() {
                       size="xs"
                       style={{ flexShrink: 0 }}
                     >
-                      <i className="bi bi-tags-fill me-1"></i>
+                      <IconTags size={14} className="me-1" />
                       {savedSearch.tags?.length || 0}
                     </Button>
                   </Tags>
@@ -1755,7 +1763,10 @@ function DBSearchPage() {
                                   variant="outline"
                                   onClick={handleResumeLiveTail}
                                 >
-                                  <i className="bi text-success bi-lightning-charge-fill me-2" />
+                                  <IconBolt
+                                    size={14}
+                                    className="text-success me-2"
+                                  />
                                   Resume Live Tail
                                 </Button>
                               )}

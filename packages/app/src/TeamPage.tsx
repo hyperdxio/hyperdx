@@ -28,7 +28,17 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconPencil } from '@tabler/icons-react';
+import {
+  IconCheck,
+  IconChevronDown,
+  IconChevronUp,
+  IconClipboard,
+  IconDatabase,
+  IconHelpCircle,
+  IconPencil,
+  IconServer,
+  IconX,
+} from '@tabler/icons-react';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
 import SelectControlled from '@/components/SelectControlled';
@@ -84,7 +94,7 @@ function ConnectionsSection() {
                     onClick={() => setEditedConnectionId(c.id)}
                     size="sm"
                   >
-                    <i className="bi bi-pencil-fill me-2" /> Edit
+                    <IconPencil size={14} className="me-2" /> Edit
                   </Button>
                 )}
                 {editedConnectionId === c.id && (
@@ -93,7 +103,7 @@ function ConnectionsSection() {
                     onClick={() => setEditedConnectionId(null)}
                     size="sm"
                   >
-                    <i className="bi bi-x-lg me-2" /> Cancel
+                    <IconX size={14} className="me-2" /> Cancel
                   </Button>
                 )}
               </Flex>
@@ -162,23 +172,27 @@ function SourcesSection() {
                 <div>
                   <Text>{s.name}</Text>
                   <Text size="xxs" c="dimmed" mt="xs">
-                    {capitalizeFirstLetter(s.kind)}
-                    <Text px="md" span>
-                      <span className="bi-hdd-stack me-1" />
-                      {connections?.find(c => c.id === s.connection)?.name}
-                    </Text>
-                    {s.from && (
-                      <>
-                        <span className="bi-database me-1" />
-                        {s.from.databaseName}
-                        {
-                          s.kind === SourceKind.Metric
-                            ? ''
-                            : '.' /** Metrics dont have table names */
-                        }
-                        {s.from.tableName}
-                      </>
-                    )}
+                    <Group gap="xs">
+                      {capitalizeFirstLetter(s.kind)}
+                      <Group gap={2}>
+                        <IconServer size={14} />
+                        {connections?.find(c => c.id === s.connection)?.name}
+                      </Group>
+                      <Group gap={2}>
+                        {s.from && (
+                          <>
+                            <IconDatabase size={14} />
+                            {s.from.databaseName}
+                            {
+                              s.kind === SourceKind.Metric
+                                ? ''
+                                : '.' /** Metrics dont have table names */
+                            }
+                            {s.from.tableName}
+                          </>
+                        )}
+                      </Group>
+                    </Group>
                   </Text>
                 </div>
                 {editedSourceId !== s.id && (
@@ -187,7 +201,7 @@ function SourcesSection() {
                     onClick={() => setEditedSourceId(s.id)}
                     size="sm"
                   >
-                    <i className="bi bi-chevron-down" />
+                    <IconChevronDown size={14} />
                   </Button>
                 )}
                 {editedSourceId === s.id && (
@@ -196,7 +210,7 @@ function SourcesSection() {
                     onClick={() => setEditedSourceId(null)}
                     size="sm"
                   >
-                    <i className="bi bi-chevron-up" />
+                    <IconChevronUp size={14} />
                   </Button>
                 )}
               </Flex>
@@ -348,7 +362,7 @@ function IntegrationsSection() {
                       onClick={() => setEditedWebhookId(null)}
                       size="compact-xs"
                     >
-                      <i className="bi bi-x-lg me-2" /> Cancel
+                      <IconX size={14} className="me-2" /> Cancel
                     </Button>
                   )}
                 </Group>
@@ -472,7 +486,7 @@ function TeamNameSection() {
               <Button
                 size="xs"
                 variant="default"
-                leftSection={<i className="bi bi-pencil " />}
+                leftSection={<IconPencil size={16} />}
                 onClick={() => {
                   setIsEditingTeamName(true);
                 }}
@@ -578,7 +592,7 @@ function ClickhouseSettingForm({
         {tooltip && (
           <Tooltip label={tooltip}>
             <Text size="sm" style={{ cursor: 'help' }}>
-              <i className="bi bi-question-circle" />
+              <IconHelpCircle size={14} />
             </Text>
           </Tooltip>
         )}
@@ -663,7 +677,7 @@ function ClickhouseSettingForm({
             <Button
               size="xs"
               variant="default"
-              leftSection={<i className="bi bi-pencil " />}
+              leftSection={<IconPencil size={16} />}
               onClick={() => setIsEditing(true)}
             >
               Change
@@ -756,14 +770,10 @@ const APIKeyCopyButton = ({
         variant={copied ? 'light' : 'default'}
         color="gray"
         rightSection={
-          <div className="ms-2 text-nowrap">
-            {copied ? (
-              <i className="bi bi-check-lg me-2" />
-            ) : (
-              <i className="bi bi-clipboard-fill me-2" />
-            )}
+          <Group wrap="nowrap" gap={4} ms="xs">
+            {copied ? <IconCheck size={14} /> : <IconClipboard size={14} />}
             {copied ? 'Copied!' : 'Copy'}
-          </div>
+          </Group>
         }
       >
         <div data-test-id={dataTestId} className="text-wrap text-break">

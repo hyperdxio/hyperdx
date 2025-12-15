@@ -3,6 +3,12 @@ import cx from 'classnames';
 import { ErrorBoundary } from 'react-error-boundary';
 import { Button, Text, Tooltip } from '@mantine/core';
 import { Group, Loader } from '@mantine/core';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconChevronUp,
+  IconLogs,
+} from '@tabler/icons-react';
 import { ColumnDef, Row, Table as TanstackTable } from '@tanstack/react-table';
 
 import { StacktraceFrame as TStacktraceFrame } from '@/types';
@@ -126,7 +132,11 @@ export const CollapsibleSection = ({
         role="button"
         onClick={() => setCollapsed(!collapsed)}
       >
-        <i className={`bi bi-chevron-${collapsed ? 'right' : 'down'} me-2`}></i>
+        {collapsed ? (
+          <IconChevronRight size={14} className="me-2" />
+        ) : (
+          <IconChevronDown size={14} className="me-2" />
+        )}
         <div className="fs-7">{title}</div>
       </div>
       {collapsed ? null : <div className="mb-4">{children}</div>}
@@ -226,7 +236,7 @@ export const StacktraceRow = ({
               withArrow
               color="gray"
             >
-              <i className="bi bi-box-seam me-2" title="in_app: false" />
+              <IconLogs size={14} className="me-2" aria-label="in_app: false" />
             </Tooltip>
           )}
           {augmentedFrame && (
@@ -618,11 +628,11 @@ export const ExceptionSubpanel = ({
           >
             {stacktraceExpanded ? (
               <>
-                <i className="bi bi-chevron-up me-2" /> Hide stack trace
+                <IconChevronUp size={14} className="me-2" /> Hide stack trace
               </>
             ) : (
               <>
-                <i className="bi bi-chevron-down me-2" />
+                <IconChevronDown size={14} className="me-2" />
                 Show {stacktraceHiddenRowsCount} more frames
               </>
             )}
@@ -647,11 +657,12 @@ export const ExceptionSubpanel = ({
               >
                 {breadcrumbExpanded ? (
                   <>
-                    <i className="bi bi-chevron-up me-2" /> Hide breadcrumbs
+                    <IconChevronUp size={14} className="me-2" /> Hide
+                    breadcrumbs
                   </>
                 ) : (
                   <>
-                    <i className="bi bi-chevron-down me-2" />
+                    <IconChevronDown size={14} className="me-2" />
                     Show {breadcrumbHiddenRowsCount} more breadcrumbs
                   </>
                 )}

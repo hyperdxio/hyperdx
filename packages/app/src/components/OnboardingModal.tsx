@@ -6,6 +6,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconArrowLeft } from '@tabler/icons-react';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
 import { IS_LOCAL_MODE } from '@/config';
@@ -400,7 +401,7 @@ export default function OnboardingModal({
             p="xs"
             mb="md"
           >
-            <i className="bi bi-arrow-left me-2" /> Back
+            <IconArrowLeft size={14} className="me-2" /> Back
           </Button>
           <Text size="sm" mb="md">
             Lets set up a source table to query telemetry from.

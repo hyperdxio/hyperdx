@@ -20,6 +20,15 @@ import {
   SegmentedControl,
   Tooltip,
 } from '@mantine/core';
+import {
+  IconArrowBackUp,
+  IconArrowForwardUp,
+  IconArrowsMinimize,
+  IconPlayerPause,
+  IconPlayerPlay,
+  IconToggleLeft,
+  IconToggleRight,
+} from '@tabler/icons-react';
 
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 
@@ -531,7 +540,7 @@ export default function SessionSubpanel({
                   setEventsFollowPlayerPosition(!eventsFollowPlayerPosition)
                 }
               >
-                <i className="bi bi-chevron-bar-contract fs-6" />
+                <IconArrowsMinimize size={18} />
               </ActionIcon>
             </Tooltip>
           </Group>
@@ -631,7 +640,7 @@ export default function SessionSubpanel({
                 onClick={skipBackward}
                 disabled={(focus?.ts || 0) <= minTs}
               >
-                <i className="bi bi-arrow-counterclockwise fs-6" />
+                <IconArrowBackUp size={18} />
               </ActionIcon>
             </Tooltip>
             <Tooltip
@@ -645,11 +654,11 @@ export default function SessionSubpanel({
                 radius="xl"
                 onClick={togglePlayerState}
               >
-                <i
-                  className={`bi fs-4 ${
-                    playerState === 'paused' ? 'bi-play-fill' : 'bi-pause-fill'
-                  }`}
-                />
+                {playerState === 'paused' ? (
+                  <IconPlayerPlay size={20} />
+                ) : (
+                  <IconPlayerPause size={20} />
+                )}
               </ActionIcon>
             </Tooltip>
             <Tooltip label="Skip 15 seconds" color="gray">
@@ -661,7 +670,7 @@ export default function SessionSubpanel({
                 onClick={skipForward}
                 disabled={(focus?.ts || 0) >= maxTs}
               >
-                <i className="bi bi-arrow-clockwise fs-6" />
+                <IconArrowForwardUp size={18} />
               </ActionIcon>
             </Tooltip>
           </Group>
@@ -672,11 +681,11 @@ export default function SessionSubpanel({
               variant="light"
               fw="normal"
               rightSection={
-                <i
-                  className={`bi ${
-                    skipInactive ? 'bi-toggle-off' : 'bi-toggle-on'
-                  } fs-6 pe-1`}
-                />
+                skipInactive ? (
+                  <IconToggleLeft size={18} className="pe-1" />
+                ) : (
+                  <IconToggleRight size={18} className="pe-1" />
+                )
               }
               onClick={() => setSkipInactive(!skipInactive)}
             >

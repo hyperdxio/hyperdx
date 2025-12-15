@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
 import { Modal, Paper, Tabs, Text, TextProps, Tooltip } from '@mantine/core';
-import { IconCode } from '@tabler/icons-react';
+import { IconCode, IconRefresh } from '@tabler/icons-react';
 
 import { useTableMetadata } from '@/hooks/useMetadata';
 
@@ -77,8 +77,8 @@ const TableSchemaPreview = ({
       style={{ overflow: 'hidden' }}
     >
       {isLoading ? (
-        <div className="spin-animate d-inline-block">
-          <i className="bi bi-arrow-repeat" />
+        <div className="d-inline-block">
+          <IconRefresh className="spin-animate" />
         </div>
       ) : (
         <SQLPreview

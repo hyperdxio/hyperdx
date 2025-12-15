@@ -13,6 +13,7 @@ import {
   Switch,
   Text,
 } from '@mantine/core';
+import { IconWorld } from '@tabler/icons-react';
 
 import { OPTIONS_FONTS } from './config/fonts';
 import { UserPreferences, useUserPreferences } from './useUserPreferences';
@@ -215,7 +216,7 @@ export const UserPreferencesModal = ({
               <Input
                 placeholder="https:// or data:"
                 value={userPreferences.backgroundUrl}
-                leftSection={<i className="bi bi-globe" />}
+                leftSection={<IconWorld size={16} />}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setUserPreference({
                     backgroundUrl: e.currentTarget.value,

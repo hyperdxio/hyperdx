@@ -15,6 +15,17 @@ import {
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import {
+  IconChartLine,
+  IconCheck,
+  IconCopy,
+  IconFilter,
+  IconMinus,
+  IconPlus,
+  IconSearch,
+  IconSettings,
+  IconTextWrap,
+} from '@tabler/icons-react';
 
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
@@ -81,12 +92,12 @@ function HyperJsonMenu() {
           setJsonOptions({ ...jsonOptions, lineWrap: !jsonOptions.lineWrap })
         }
       >
-        <i className="bi bi-text-wrap" />
+        <IconTextWrap size={14} />
       </UnstyledButton>
       <Menu width={240} withinPortal={false}>
         <Menu.Target>
           <UnstyledButton>
-            <i className="bi bi-gear" />
+            <IconSettings size={14} />
           </UnstyledButton>
         </Menu.Target>
         <Menu.Dropdown>
@@ -104,7 +115,7 @@ function HyperJsonMenu() {
             py={8}
             rightSection={
               jsonOptions.normallyExpanded ? (
-                <i className="ps-2 bi bi-check2" />
+                <IconCheck size={14} className="ps-2" />
               ) : null
             }
           >
@@ -114,7 +125,9 @@ function HyperJsonMenu() {
             lh="1"
             py={8}
             rightSection={
-              jsonOptions.tabulate ? <i className="ps-2 bi bi-check2" /> : null
+              jsonOptions.tabulate ? (
+                <IconCheck size={14} className="ps-2" />
+              ) : null
             }
             onClick={() =>
               setJsonOptions({
@@ -183,10 +196,10 @@ export function DBRowJsonViewer({
         actions.push({
           key: 'add-to-search',
           label: (
-            <>
-              <i className="bi bi-funnel-fill me-1" />
+            <Group gap={2}>
+              <IconFilter size={14} />
               Add to Filters
-            </>
+            </Group>
           ),
           title: 'Add to Filters',
           onClick: () => {
@@ -226,10 +239,10 @@ export function DBRowJsonViewer({
         actions.push({
           key: 'search',
           label: (
-            <>
-              <i className="bi bi-search me-1" />
+            <Group gap={2}>
+              <IconSearch size={14} />
               Search
-            </>
+            </Group>
           ),
           title: 'Search for this value only',
           onClick: () => {
@@ -271,7 +284,7 @@ export function DBRowJsonViewer({
       if (generateChartUrl && typeof value === 'number') {
         actions.push({
           key: 'chart',
-          label: <i className="bi bi-graph-up" />,
+          label: <IconChartLine size={14} />,
           title: 'Chart',
           onClick: () => {
             let chartFieldPath = fieldPath;
@@ -317,15 +330,15 @@ export function DBRowJsonViewer({
         actions.push({
           key: 'toggle-column',
           label: isIncluded ? (
-            <>
-              <i className="bi bi-dash fs-7 me-1" />
+            <Group gap={2}>
+              <IconMinus size={14} />
               Column
-            </>
+            </Group>
           ) : (
-            <>
-              <i className="bi bi-plus fs-7 me-1" />
+            <Group gap={2}>
+              <IconPlus size={14} />
               Column
-            </>
+            </Group>
           ),
           title: isIncluded
             ? `Remove ${fieldPath} column from results table`
@@ -372,7 +385,12 @@ export function DBRowJsonViewer({
       } else {
         actions.push({
           key: 'copy-value',
-          label: 'Copy Value',
+          label: (
+            <Group gap={2}>
+              <IconCopy size={14} />
+              Copy Value
+            </Group>
+          ),
           onClick: () => {
             window.navigator.clipboard.writeText(
               typeof value === 'string'
@@ -415,7 +433,7 @@ export function DBRowJsonViewer({
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               setFilter(e.currentTarget.value)
             }
-            leftSection={<i className="bi bi-search" />}
+            leftSection={<IconSearch size={16} />}
           />
           {filter && (
             <Button

@@ -1,5 +1,6 @@
 import cx from 'classnames';
-import { Button, Modal } from '@mantine/core';
+import { Button, Group, Modal } from '@mantine/core';
+import { IconClipboard, IconClipboardCheck } from '@tabler/icons-react';
 
 import api from './api';
 import Clipboard from './Clipboard';
@@ -29,15 +30,14 @@ function CopyableValue({
                 {value}
               </pre>
             </div>
-            <div className={cx('fs-7 text-end text-nowrap')}>
-              <i
-                className={cx('bi me-2', {
-                  'bi-clipboard': !isCopied,
-                  'bi-clipboard-check': isCopied,
-                })}
-              ></i>
+            <Group gap={2} wrap="nowrap" className={cx('fs-7 text-end')}>
+              {isCopied ? (
+                <IconClipboardCheck size={14} />
+              ) : (
+                <IconClipboard size={14} />
+              )}
               {isCopied ? 'Copied!' : 'Copy'}
-            </div>
+            </Group>
           </div>
         );
       }}
