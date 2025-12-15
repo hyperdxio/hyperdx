@@ -15,6 +15,7 @@ export default [
   prettierPlugin,
   {
     ignores: [
+      'next-env.d.ts',
       'playwright-report/**',
       '.next/**',
       'node_modules/**',
