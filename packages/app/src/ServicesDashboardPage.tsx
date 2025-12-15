@@ -348,8 +348,21 @@ function HttpTab({
           whereLanguage: appliedConfig.whereLanguage || 'sql',
           displayType: DisplayType.Line,
           select: [
+            // Separate the aggregations from the rate calculation so that AggregatingMergeTree MVs can be used
             {
-              valueExpression: `countIf(${expressions.isError}) / count()`,
+              valueExpression: '',
+              aggFn: 'count',
+              alias: 'total_requests',
+            },
+            {
+              valueExpression: '',
+              aggFn: 'count',
+              aggCondition: expressions.isError,
+              aggConditionLanguage: 'sql',
+              alias: 'error_requests',
+            },
+            {
+              valueExpression: `error_requests / total_requests`,
               alias: 'error_rate',
             },
           ],
@@ -508,6 +521,7 @@ function HttpTab({
           {source && requestErrorRateConfig && (
             <DBTimeChart
               sourceId={source.id}
+              hiddenSeries={['total_requests', 'error_requests']}
               config={requestErrorRateConfig}
               showDisplaySwitcher={false}
               disableQueryChunking
@@ -1284,7 +1298,8 @@ function ErrorsTab({
                 displayType: DisplayType.StackedBar,
                 select: [
                   {
-                    valueExpression: `count()`,
+                    valueExpression: '',
+                    aggFn: 'count',
                   },
                 ],
                 numberFormat: INTEGER_NUMBER_FORMAT,
