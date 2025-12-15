@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 
 // Read version from package.json
 const packageJson = JSON.parse(
-  readFileSync(join(__dirname, 'package.json'), 'utf-8')
+  readFileSync(join(__dirname, 'package.json'), 'utf-8'),
 );
 const { version } = packageJson;
 
@@ -51,7 +51,10 @@ const nextConfig = {
   // TODO: Re-evaluate when Turbopack CSS module support improves
   // Ignore otel pkgs warnings
   // https://github.com/open-telemetry/opentelemetry-js/issues/4173#issuecomment-1822938936
-  webpack: (config, { buildId, dev, isServer, defaultLoaders, nextRuntime, webpack }) => {
+  webpack: (
+    config,
+    { buildId, dev, isServer, defaultLoaders, nextRuntime, webpack },
+  ) => {
     if (isServer) {
       config.ignoreWarnings = [{ module: /opentelemetry/ }];
     }
@@ -78,7 +81,13 @@ const nextConfig = {
         }
       : {}),
   }),
+  logging: {
+    incomingRequests: {
+      // This is our proxy to the API server, so we don't want to log it.
+      // We also log this in the API server, so we don't want to log it twice.
+      ignore: [/\/api\/.*/],
+    },
+  },
 };
 
 export default nextConfig;
-
