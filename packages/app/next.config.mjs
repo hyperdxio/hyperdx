@@ -83,7 +83,6 @@ const nextConfig = {
   }),
   logging: {
     incomingRequests: {
-      // This is our proxy to the API server, so we don't want to log it.
       // We also log this in the API server, so we don't want to log it twice.
       ignore: [/\/api\/.*/],
     },
