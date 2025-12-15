@@ -35,8 +35,11 @@ export function useSearchTotalCount(
       queryKeyPrefix,
       queriedConfig,
       'chunked',
-      disableQueryChunking,
-      enableParallelQueries && me?.team?.parallelizeWhenPossible,
+      {
+        disableQueryChunking,
+        enableParallelQueries,
+        parallelizeWhenPossible: me?.team?.parallelizeWhenPossible,
+      },
     ],
     staleTime: 1000 * 60 * 5,
     refetchOnWindowFocus: false,
