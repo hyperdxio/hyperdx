@@ -1338,13 +1338,34 @@ function ServicesDashboardPage() {
 
   const { data: sources } = useSources();
 
-  const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
+  const [appliedConfigParams, setAppliedConfigParams] =
+    useQueryStates(appliedConfigMap);
+
+  // Only use the source from the URL params if it is a trace source
+  const appliedConfig = useMemo(() => {
+    if (!sources?.length) return appliedConfigParams;
+
+    const traceSources = sources?.filter(s => s.kind === SourceKind.Trace);
+    const paramsSourceIdIsTraceSource = traceSources?.find(
+      s => s.id === appliedConfigParams.source,
+    );
+
+    const effectiveSourceId = paramsSourceIdIsTraceSource
+      ? appliedConfigParams.source
+      : traceSources?.[0]?.id || '';
+
+    return {
+      ...appliedConfigParams,
+      source: effectiveSourceId,
+    };
+  }, [appliedConfigParams, sources]);
+
   const { control, watch, setValue, handleSubmit } = useForm({
-    values: {
+    defaultValues: {
       where: '',
       whereLanguage: 'sql' as 'sql' | 'lucene',
       service: appliedConfig?.service || '',
-      source: appliedConfig?.source || sources?.[0]?.id,
+      source: appliedConfig?.source ?? '',
     },
   });
 
@@ -1355,10 +1376,18 @@ function ServicesDashboardPage() {
   });
 
   useEffect(() => {
-    if (sourceId && !appliedConfig.source) {
-      setAppliedConfig({ source: sourceId });
+    if (
+      appliedConfig.source &&
+      appliedConfig.source !== appliedConfigParams.source
+    ) {
+      setAppliedConfigParams({ source: sourceId });
     }
-  }, [appliedConfig.source, setAppliedConfig, sourceId]);
+  }, [
+    appliedConfig.source,
+    appliedConfigParams.source,
+    setAppliedConfigParams,
+    sourceId,
+  ]);
 
   const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
@@ -1371,7 +1400,7 @@ function ServicesDashboardPage() {
   });
 
   // For future use if Live button is added
-  const [isLive, setIsLive] = useState(false);
+  const [isLive, _setIsLive] = useState(false);
 
   const { manualRefreshCooloff, refresh } = useDashboardRefresh({
     searchedTimeRange,
@@ -1382,9 +1411,9 @@ function ServicesDashboardPage() {
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(values => {
-      setAppliedConfig(values);
+      setAppliedConfigParams(values);
     })();
-  }, [handleSubmit, setAppliedConfig, onSearch, displayedTimeInputValue]);
+  }, [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue]);
 
   // Auto submit when service or source changes
   useEffect(() => {
@@ -1551,7 +1580,7 @@ const ServicesDashboardPageDynamic = dynamic(
   },
 );
 
-// @ts-ignore
+// @ts-expect-error Next.js layout typing
 ServicesDashboardPageDynamic.getLayout = withAppNav;
 
 export default ServicesDashboardPageDynamic;
