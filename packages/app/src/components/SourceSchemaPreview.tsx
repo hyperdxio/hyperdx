@@ -77,8 +77,8 @@ const TableSchemaPreview = ({
       style={{ overflow: 'hidden' }}
     >
       {isLoading ? (
-        <div className="spin-animate d-inline-block">
-          <IconRefresh size={14} />
+        <div className="d-inline-block">
+          <IconRefresh className="spin-animate" />
         </div>
       ) : (
         <SQLPreview

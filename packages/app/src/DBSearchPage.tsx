@@ -1392,7 +1392,7 @@ function DBSearchPage() {
                 <Menu.Label>Sources</Menu.Label>
                 <Menu.Item
                   data-testid="create-new-source-menu-item"
-                  leftSection={<IconCirclePlus size={16} />}
+                  leftSection={<IconCirclePlus size={14} />}
                   onClick={() => setNewSourceModalOpened(true)}
                 >
                   Create New Source

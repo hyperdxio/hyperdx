@@ -20,6 +20,7 @@ import {
   Anchor,
   Box,
   Button,
+  Center,
   Divider,
   Flex,
   Grid,
@@ -130,16 +131,17 @@ function FormRow({
             label
           )}
         </Stack>
-        <Text
+        <Center
           me="sm"
+          ms="sm"
           style={{
             ...(!helpText ? { opacity: 0, pointerEvents: 'none' } : {}),
           }}
         >
           <Tooltip label={helpText} color="dark" c="white" multiline maw={600}>
-            <IconHelpCircle size={14} className="cursor-pointer" />
+            <IconHelpCircle size={20} className="cursor-pointer" />
           </Tooltip>
-        </Text>
+        </Center>
       </Flex>
       <Box
         w="100%"

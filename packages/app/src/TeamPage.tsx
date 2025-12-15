@@ -770,14 +770,10 @@ const APIKeyCopyButton = ({
         variant={copied ? 'light' : 'default'}
         color="gray"
         rightSection={
-          <div className="ms-2 text-nowrap">
-            {copied ? (
-              <IconCheck size={14} className="me-2" />
-            ) : (
-              <IconClipboard size={14} className="me-2" />
-            )}
+          <Group wrap="nowrap" gap={4} ms="xs">
+            {copied ? <IconCheck size={14} /> : <IconClipboard size={14} />}
             {copied ? 'Copied!' : 'Copy'}
-          </div>
+          </Group>
         }
       >
         <div data-test-id={dataTestId} className="text-wrap text-break">

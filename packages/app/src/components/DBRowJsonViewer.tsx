@@ -18,6 +18,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconChartLine,
   IconCheck,
+  IconCopy,
   IconFilter,
   IconMinus,
   IconPlus,
@@ -195,10 +196,10 @@ export function DBRowJsonViewer({
         actions.push({
           key: 'add-to-search',
           label: (
-            <>
-              <IconFilter size={14} className="me-1" />
+            <Group gap={2}>
+              <IconFilter size={14} />
               Add to Filters
-            </>
+            </Group>
           ),
           title: 'Add to Filters',
           onClick: () => {
@@ -238,10 +239,10 @@ export function DBRowJsonViewer({
         actions.push({
           key: 'search',
           label: (
-            <>
-              <IconSearch size={14} className="me-1" />
+            <Group gap={2}>
+              <IconSearch size={14} />
               Search
-            </>
+            </Group>
           ),
           title: 'Search for this value only',
           onClick: () => {
@@ -329,15 +330,15 @@ export function DBRowJsonViewer({
         actions.push({
           key: 'toggle-column',
           label: isIncluded ? (
-            <>
-              <IconMinus size={14} className="me-1" />
+            <Group gap={2}>
+              <IconMinus size={14} />
               Column
-            </>
+            </Group>
           ) : (
-            <>
-              <IconPlus size={14} className="me-1" />
+            <Group gap={2}>
+              <IconPlus size={14} />
               Column
-            </>
+            </Group>
           ),
           title: isIncluded
             ? `Remove ${fieldPath} column from results table`
@@ -384,7 +385,12 @@ export function DBRowJsonViewer({
       } else {
         actions.push({
           key: 'copy-value',
-          label: 'Copy Value',
+          label: (
+            <Group gap={2}>
+              <IconCopy size={14} />
+              Copy Value
+            </Group>
+          ),
           onClick: () => {
             window.navigator.clipboard.writeText(
               typeof value === 'string'
