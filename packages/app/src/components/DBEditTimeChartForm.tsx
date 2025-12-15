@@ -32,6 +32,7 @@ import {
   Divider,
   Flex,
   Group,
+  Menu,
   Paper,
   Stack,
   Switch,
@@ -89,6 +90,7 @@ import {
 } from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
 import { NumberFormatInput } from './NumberFormat';
+import SaveToDashboardModal from './SaveToDashboardModal';
 import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
@@ -518,6 +520,9 @@ export default function EditTimeChartForm({
   const [queriedConfig, setQueriedConfig] = useState<
     ChartConfigWithDateRange | undefined
   >(undefined);
+
+  const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
+    useState(false);
 
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
@@ -1061,6 +1066,23 @@ export default function EditTimeChartForm({
               <IconPlayerPlay size={16} />
             </Button>
           )}
+          {!IS_LOCAL_MODE && !dashboardId && (
+            <Menu width={250}>
+              <Menu.Target>
+                <Button variant="outline" color="gray" px="xs" size="xs">
+                  <i className="bi bi-three-dots-vertical" />
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  leftSection={<i className="bi bi-layout-three-columns" />}
+                  onClick={() => setSaveToDashboardModalOpen(true)}
+                >
+                  Save to Dashboard
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          )}
         </Flex>
       </Flex>
       {activeTab === 'time' && (
@@ -1239,6 +1261,11 @@ export default function EditTimeChartForm({
           </Accordion>
         </>
       )}
+      <SaveToDashboardModal
+        chartConfig={chartConfig}
+        opened={saveToDashboardModalOpen}
+        onClose={() => setSaveToDashboardModalOpen(false)}
+      />
     </div>
   );
 }

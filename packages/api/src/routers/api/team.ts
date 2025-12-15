@@ -1,3 +1,4 @@
+import { TeamClickHouseSettingsSchema } from '@hyperdx/common-utils/dist/types';
 import crypto from 'crypto';
 import express from 'express';
 import pick from 'lodash/pick';
@@ -91,12 +92,7 @@ router.patch(
 router.patch(
   '/clickhouse-settings',
   validateRequest({
-    body: z.object({
-      fieldMetadataDisabled: z.boolean().optional(),
-      searchRowLimit: z.number().optional(),
-      queryTimeout: z.number().optional(),
-      metadataMaxRowsToRead: z.number().optional(),
-    }),
+    body: TeamClickHouseSettingsSchema,
   }),
   async (req, res, next) => {
     try {
@@ -105,40 +101,20 @@ router.patch(
         throw new Error(`User ${req.user?._id} not associated with a team`);
       }
 
-      const {
-        fieldMetadataDisabled,
-        metadataMaxRowsToRead,
-        searchRowLimit,
-        queryTimeout,
-      } = req.body;
-
-      const settings = {
-        ...(searchRowLimit !== undefined && { searchRowLimit }),
-        ...(queryTimeout !== undefined && { queryTimeout }),
-        ...(fieldMetadataDisabled !== undefined && { fieldMetadataDisabled }),
-        ...(metadataMaxRowsToRead !== undefined && { metadataMaxRowsToRead }),
-      };
-
-      if (Object.keys(settings).length === 0) {
+      if (Object.keys(req.body).length === 0) {
         return res.json({});
       }
 
-      const team = await updateTeamClickhouseSettings(teamId, settings);
+      const team = await updateTeamClickhouseSettings(teamId, req.body);
 
-      res.json({
-        ...(searchRowLimit !== undefined && {
-          searchRowLimit: team?.searchRowLimit,
-        }),
-        ...(queryTimeout !== undefined && {
-          queryTimeout: team?.queryTimeout,
-        }),
-        ...(fieldMetadataDisabled !== undefined && {
-          fieldMetadataDisabled: team?.fieldMetadataDisabled,
-        }),
-        ...(metadataMaxRowsToRead !== undefined && {
-          metadataMaxRowsToRead: team?.metadataMaxRowsToRead,
-        }),
-      });
+      res.json(
+        Object.entries(req.body).reduce((acc, cur) => {
+          return {
+            ...acc,
+            [cur[0]]: team?.[cur[0]],
+          };
+        }, {} as any),
+      );
     } catch (e) {
       next(e);
     }

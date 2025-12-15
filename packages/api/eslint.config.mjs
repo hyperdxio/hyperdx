@@ -30,9 +30,9 @@ export default [
     plugins: {
       '@typescript-eslint': tseslint.plugin,
       'simple-import-sort': simpleImportSort,
-      'prettier': prettierPlugin,
-      'n': nodePlugin,
-      'security': securityPlugin,
+      prettier: prettierPlugin,
+      n: nodePlugin,
+      security: securityPlugin,
     },
     rules: {
       ...nodePlugin.configs.recommended.rules,
@@ -48,6 +48,12 @@ export default [
         {
           argsIgnorePattern: '^_',
           varsIgnorePattern: '^_',
+        },
+      ],
+      'n/no-missing-require': [
+        'error',
+        {
+          tryExtensions: ['.js', '.ts', '.json'],
         },
       ],
       'n/no-process-exit': 'warn',
@@ -96,4 +102,3 @@ export default [
     },
   },
 ];
-

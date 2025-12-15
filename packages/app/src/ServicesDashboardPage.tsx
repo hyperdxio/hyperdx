@@ -342,8 +342,21 @@ function HttpTab({
           whereLanguage: appliedConfig.whereLanguage || 'sql',
           displayType: DisplayType.Line,
           select: [
+            // Separate the aggregations from the rate calculation so that AggregatingMergeTree MVs can be used
             {
-              valueExpression: `countIf(${expressions.isError}) / count()`,
+              valueExpression: '',
+              aggFn: 'count',
+              alias: 'total_requests',
+            },
+            {
+              valueExpression: '',
+              aggFn: 'count',
+              aggCondition: expressions.isError,
+              aggConditionLanguage: 'sql',
+              alias: 'error_requests',
+            },
+            {
+              valueExpression: `error_requests / total_requests`,
               alias: 'error_rate',
             },
           ],
@@ -502,6 +515,7 @@ function HttpTab({
           {source && requestErrorRateConfig && (
             <DBTimeChart
               sourceId={source.id}
+              hiddenSeries={['total_requests', 'error_requests']}
               config={requestErrorRateConfig}
               showDisplaySwitcher={false}
               disableQueryChunking
@@ -631,7 +645,7 @@ function HttpTab({
                 selectGroupBy: false,
                 groupBy: expressions.endpoint,
                 orderBy: '"Total (ms)" DESC',
-                filters: getScopedFilters({ appliedConfig, expressions }),
+                filters: [...getScopedFilters({ appliedConfig, expressions })],
                 dateRange: searchedTimeRange,
                 numberFormat: MS_NUMBER_FORMAT,
                 limit: { limit: 20 },
@@ -803,11 +817,16 @@ function DatabaseTab({
               where: appliedConfig.where || '',
               whereLanguage: appliedConfig.whereLanguage || 'sql',
               select: [
+                // Separate the aggregations from the conversion to ms so that AggregatingMergeTree MVs can be used
+                {
+                  alias: 'total_query_time_ns',
+                  aggFn: 'sum',
+                  valueExpression: expressions.duration,
+                  aggCondition: '',
+                },
                 {
                   alias: 'total_query_time_ms',
-                  aggFn: 'sum',
-                  valueExpression: expressions.durationInMillis,
-                  aggCondition: '',
+                  valueExpression: `total_query_time_ns / ${expressions.durationDivisorForMillis}`,
                 },
                 {
                   alias: 'Statement',
@@ -1090,6 +1109,12 @@ function DatabaseTab({
                 valueColumn="Total"
                 hoverCardPosition="top-start"
                 getRowSearchLink={getRowSearchLink}
+                hiddenSeries={[
+                  'total_duration_ns',
+                  'total_queries',
+                  'p95_duration_ns',
+                  'p50_duration_ns',
+                ]}
                 config={{
                   ...source,
                   where: appliedConfig.where || '',
@@ -1099,35 +1124,51 @@ function DatabaseTab({
                   selectGroupBy: false,
                   orderBy: '"Total" DESC',
                   select: [
+                    // Separate the aggregations from the conversion to ms and rate so that AggregatingMergeTree MVs can be used
                     {
                       alias: 'Statement',
                       valueExpression: expressions.dbStatement,
                     },
                     {
-                      alias: 'Total',
+                      alias: 'total_duration_ns',
                       aggFn: 'sum',
+                      valueExpression: expressions.duration,
                       aggCondition: '',
-                      valueExpression: expressions.durationInMillis,
+                    },
+                    {
+                      alias: 'Total',
+                      valueExpression: `total_duration_ns / ${expressions.durationDivisorForMillis}`,
+                    },
+                    {
+                      alias: 'total_queries',
+                      aggFn: 'count',
+                      valueExpression: '',
                     },
                     {
                       alias: 'Queries/Min',
-                      aggFn: 'count',
-                      valueExpression: `value / age('mi', toDateTime(${searchedTimeRange[0].getTime() / 1000}), toDateTime(${searchedTimeRange[1].getTime() / 1000}))`,
+                      valueExpression: `total_queries / age('mi', toDateTime(${searchedTimeRange[0].getTime() / 1000}), toDateTime(${searchedTimeRange[1].getTime() / 1000}))`,
+                    },
+                    {
+                      alias: 'p95_duration_ns',
+                      aggFn: 'quantile',
+                      level: 0.95,
+                      valueExpression: expressions.duration,
                       aggCondition: '',
                     },
                     {
                       alias: 'P95 (ms)',
+                      valueExpression: `p95_duration_ns / ${expressions.durationDivisorForMillis}`,
+                    },
+                    {
+                      alias: 'p50_duration_ns',
                       aggFn: 'quantile',
-                      valueExpression: expressions.durationInMillis,
+                      level: 0.5,
+                      valueExpression: expressions.duration,
                       aggCondition: '',
-                      level: 0.95,
                     },
                     {
                       alias: 'Median (ms)',
-                      aggFn: 'quantile',
-                      valueExpression: expressions.durationInMillis,
-                      aggCondition: '',
-                      level: 0.5,
+                      valueExpression: `p50_duration_ns / ${expressions.durationDivisorForMillis}`,
                     },
                   ],
                   filters: [
@@ -1144,6 +1185,12 @@ function DatabaseTab({
             ) : (
               <DBTableChart
                 getRowSearchLink={getRowSearchLink}
+                hiddenColumns={[
+                  'duration_ns',
+                  'total_count',
+                  'p95_duration_ns',
+                  'p50_duration_ns',
+                ]}
                 config={{
                   ...source,
                   where: appliedConfig.where || '',
@@ -1158,30 +1205,45 @@ function DatabaseTab({
                       valueExpression: expressions.dbStatement,
                     },
                     {
-                      alias: 'Total',
+                      alias: 'duration_ns',
                       aggFn: 'sum',
+                      valueExpression: expressions.duration,
                       aggCondition: '',
-                      valueExpression: expressions.durationInMillis,
+                    },
+                    {
+                      alias: 'Total',
+                      valueExpression: `duration_ns / ${expressions.durationDivisorForMillis}`,
+                    },
+                    {
+                      alias: 'total_count',
+                      aggFn: 'count',
+                      valueExpression: '',
                     },
                     {
                       alias: 'Queries/Min',
-                      aggFn: 'count',
-                      valueExpression: `value / age('mi', toDateTime(${searchedTimeRange[0].getTime() / 1000}), toDateTime(${searchedTimeRange[1].getTime() / 1000}))`,
-                      aggCondition: '',
+                      valueExpression: `total_count / age('mi', toDateTime(${searchedTimeRange[0].getTime() / 1000}), toDateTime(${searchedTimeRange[1].getTime() / 1000}))`,
                     },
                     {
-                      alias: 'P95 (ms)',
+                      alias: 'p95_duration_ns',
                       aggFn: 'quantile',
-                      valueExpression: expressions.durationInMillis,
+                      valueExpression: expressions.duration,
                       aggCondition: '',
                       level: 0.95,
                     },
                     {
-                      alias: 'Median (ms)',
+                      alias: 'P95 (ms)',
+                      valueExpression: `p95_duration_ns / ${expressions.durationDivisorForMillis}`,
+                    },
+                    {
+                      alias: 'p50_duration_ns',
                       aggFn: 'quantile',
-                      valueExpression: expressions.durationInMillis,
+                      valueExpression: expressions.duration,
                       aggCondition: '',
                       level: 0.5,
+                    },
+                    {
+                      alias: 'Median (ms)',
+                      valueExpression: `p50_duration_ns / ${expressions.durationDivisorForMillis}`,
                     },
                   ],
                   filters: [
@@ -1230,7 +1292,8 @@ function ErrorsTab({
                 displayType: DisplayType.StackedBar,
                 select: [
                   {
-                    valueExpression: `count()`,
+                    valueExpression: '',
+                    aggFn: 'count',
                   },
                 ],
                 numberFormat: INTEGER_NUMBER_FORMAT,

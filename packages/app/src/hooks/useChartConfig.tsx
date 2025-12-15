@@ -41,6 +41,7 @@ interface AdditionalUseQueriedChartConfigOptions {
    * and should be disabled.
    */
   enableQueryChunking?: boolean;
+  enableParallelQueries?: boolean;
 }
 
 type TimeWindow = {
@@ -126,11 +127,13 @@ async function* fetchDataInChunks({
   clickhouseClient,
   signal,
   enableQueryChunking = false,
+  enableParallelQueries = false,
 }: {
   config: ChartConfigWithOptDateRange;
   clickhouseClient: ClickhouseClient;
   signal: AbortSignal;
   enableQueryChunking?: boolean;
+  enableParallelQueries?: boolean;
 }) {
   const windows =
     enableQueryChunking && shouldUseChunking(config)
@@ -148,6 +151,48 @@ async function* fetchDataInChunks({
     await renderMTViewConfig();
   }
 
+  if (enableParallelQueries) {
+    // fetch in parallel
+    const promises = windows.map(async (w, index) => {
+      const windowedConfig = {
+        ...config,
+        ...(w ?? {}),
+      };
+      return {
+        index,
+        queryResult: await clickhouseClient.queryChartConfig({
+          config: windowedConfig,
+          metadata: getMetadata(),
+          opts: {
+            abort_signal: signal,
+          },
+        }),
+      };
+    });
+    const remainingPromises = [...promises];
+    const bufferedChunks = new Array(windows.length);
+    let flushed = 0;
+    for (let i = 0; i < promises.length; i++) {
+      // receive any promise in the array that resolves
+      const { index, queryResult } = await Promise.race(remainingPromises);
+      // add to an ordered buffer array, keeping in mind the flushed count thus far
+      bufferedChunks[index - flushed] = queryResult;
+      // use promises array (doesn't change in size) to find the index in the ever-changing remainingPromises array
+      const resolvedPromiseIdx = remainingPromises.indexOf(promises[index]);
+      // use found index to remove entry from remainingPromises
+      remainingPromises.splice(resolvedPromiseIdx, 1);
+      // while bufferedChunks has in-ordered data, flush it
+      while (bufferedChunks.length > 0 && bufferedChunks[0] !== undefined) {
+        // remove data from front so that it always arrives in order
+        const chunk = bufferedChunks.shift();
+        yield { chunk, isComplete: bufferedChunks.length === 0 };
+        flushed += 1;
+      }
+    }
+    return;
+  }
+
+  // fetch in series
   for (let i = 0; i < windows.length; i++) {
     const window = windows[i];
 
@@ -209,7 +254,11 @@ export function useQueriedChartConfig(
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
     // same config but different enableQueryChunking values do not share a query
-    queryKey: [config, options?.enableQueryChunking ?? false],
+    queryKey: [
+      config,
+      options?.enableQueryChunking ?? false,
+      options?.enableParallelQueries ?? false,
+    ],
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
@@ -230,6 +279,7 @@ export function useQueriedChartConfig(
         clickhouseClient,
         signal: context.signal,
         enableQueryChunking: options?.enableQueryChunking,
+        enableParallelQueries: options?.enableParallelQueries,
       });
 
       let accumulatedChunks: TQueryFnData = emptyValue;

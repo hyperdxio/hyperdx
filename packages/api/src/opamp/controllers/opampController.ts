@@ -331,7 +331,7 @@ export class OpampController {
         const otelCollectorConfig = buildOtelCollectorConfig(teams);
 
         if (config.IS_DEV) {
-          console.log(JSON.stringify(otelCollectorConfig, null, 2));
+          logger.debug(JSON.stringify(otelCollectorConfig, null, 2));
         }
 
         const remoteConfig = createRemoteConfig(

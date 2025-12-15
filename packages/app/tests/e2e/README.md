@@ -1,6 +1,8 @@
 # End-to-End Testing
 
-This directory contains Playwright-based end-to-end tests for the HyperDX application. The tests are organized into core functionality and feature-specific test suites.
+This directory contains Playwright-based end-to-end tests for the HyperDX
+application. The tests are organized into core functionality and
+feature-specific test suites.
 
 ## Prerequisites
 
@@ -47,7 +49,9 @@ cd packages/app && yarn test:e2e --grep "@dashboard"
 
 ### Local Mode vs Full Server
 
-Tests tagged with `@local-mode` can run against the local development server without external dependencies. The test configuration automatically starts a local development server with `NEXT_PUBLIC_IS_LOCAL_MODE=true`.
+Tests tagged with `@local-mode` can run against the local development server
+without external dependencies. The test configuration automatically starts a
+local development server with `NEXT_PUBLIC_IS_LOCAL_MODE=true`.
 
 ## Test Organization
 
@@ -87,6 +91,15 @@ Run tests in debug mode with browser developer tools:
 yarn test:e2e:debug
 ```
 
+### CI Mode
+
+Run tests in ci mode, which runs it in a docker container and environment
+similar to how it runs inside of Github Actions
+
+```bash
+yarn test:e2e:ci
+```
+
 ### Single Test Debugging
 
 To debug a specific test file:
@@ -114,6 +127,7 @@ yarn playwright show-report
 ```
 
 The report includes:
+
 - Test execution timeline
 - Screenshots of failures
 - Video recordings of failed tests
@@ -122,6 +136,7 @@ The report includes:
 ### Test Results
 
 Test artifacts are stored in:
+
 - `test-results/` - Screenshots, videos, and traces for failed tests
 - `playwright-report/` - HTML report files
 
@@ -138,7 +153,8 @@ yarn playwright show-trace test-results/[test-name]/trace.zip
 The test configuration is defined in `playwright.config.ts`:
 
 - **Base URL**: `http://localhost:8080` (configurable via `PLAYWRIGHT_BASE_URL`)
-- **Test Timeout**: 60 seconds (increased from default 30s to reduce flaky test failures)
+- **Test Timeout**: 60 seconds (increased from default 30s to reduce flaky test
+  failures)
 - **Retries**: 1 retry locally, 2 on CI
 - **Workers**: Undefined (uses Playwright defaults)
 - **Screenshots**: Captured on failure only
@@ -152,6 +168,7 @@ The test configuration is defined in `playwright.config.ts`:
 ### Writing Tests
 
 Tests use the extended base test from `utils/base-test.ts` which provides:
+
 - Automatic handling of connection/sources
 - Tanstack Query devtools management
 - Network idle waiting after navigation
@@ -169,6 +186,7 @@ Tests use the extended base test from `utils/base-test.ts` which provides:
 ### Server Connection Issues
 
 If tests fail with connection errors:
+
 1. Ensure no other services are running on port 8080
 2. Check that the development server starts successfully
 3. Verify environment variables are properly configured
@@ -176,14 +194,17 @@ If tests fail with connection errors:
 ### Flaky Tests
 
 For intermittent failures:
+
 1. Check the HTML report for timing issues
 2. Review network logs for failed requests
-3. Consider if individual test steps need longer wait times (global timeout is now 60s)
+3. Consider if individual test steps need longer wait times (global timeout is
+   now 60s)
 4. Use the trace viewer to analyze test execution
 
 ### CI/CD Integration
 
 Tests are configured to run in CI environments with:
+
 - 60-second test timeout (same as local)
 - Multiple retry attempts (2 retries on CI vs 1 locally)
 - Artifact collection for failed tests

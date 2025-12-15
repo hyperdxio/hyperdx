@@ -8,23 +8,26 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 
+import { FilterState } from '@/searchFilters';
+
 import { FilterGroup } from '../DBSearchPageFilters';
 
 import classes from '../../../styles/SearchPage.module.scss';
 
 export type NestedFilterGroupProps = {
   name: string;
-  childFilters: { key: string; value: string[]; propertyPath: string }[];
-  selectedValues?: Record<
-    string,
-    { included: Set<string>; excluded: Set<string> }
-  >;
-  onChange: (key: string, value: string) => void;
+  childFilters: {
+    key: string;
+    value: (string | boolean)[];
+    propertyPath: string;
+  }[];
+  selectedValues?: FilterState;
+  onChange: (key: string, value: string | boolean) => void;
   onClearClick: (key: string) => void;
-  onOnlyClick: (key: string, value: string) => void;
-  onExcludeClick: (key: string, value: string) => void;
-  onPinClick: (key: string, value: string) => void;
-  isPinned: (key: string, value: string) => boolean;
+  onOnlyClick: (key: string, value: string | boolean) => void;
+  onExcludeClick: (key: string, value: string | boolean) => void;
+  onPinClick: (key: string, value: string | boolean) => void;
+  isPinned: (key: string, value: string | boolean) => boolean;
   onFieldPinClick?: (key: string) => void;
   isFieldPinned?: (key: string) => boolean;
   onLoadMore: (key: string) => void;
@@ -137,8 +140,8 @@ export const NestedFilterGroup = ({
                       name={child.propertyPath}
                       distributionKey={child.key}
                       options={child.value.map(value => ({
-                        value,
-                        label: value,
+                        value: value,
+                        label: value.toString(),
                       }))}
                       optionsLoading={false}
                       selectedValues={childSelectedValues}
