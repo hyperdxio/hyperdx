@@ -35,6 +35,7 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
+  IconFilterOff,
   IconPin,
   IconPinFilled,
   IconRefresh,
@@ -199,7 +200,7 @@ export const FilterCheckbox = ({
             gap="xs"
             wrap="nowrap"
             justify="space-between"
-            pe={'11px'}
+            pe={'4px'}
             miw={0}
           >
             <Text
@@ -239,16 +240,23 @@ export const FilterCheckbox = ({
             data-testid={`filter-exclude-${label}`}
           />
         )}
-        <TextButton
+        <ActionIcon
           onClick={onClickPin}
-          label={pinned ? <IconPinFilled size={14} /> : <IconPin size={14} />}
+          size="xs"
+          variant="subtle"
+          color="gray"
+          aria-label={pinned ? 'Unpin field' : 'Pin field'}
+          role="checkbox"
+          aria-checked={pinned}
           data-testid={`filter-pin-${label}`}
-        />
+        >
+          {pinned ? <IconPinFilled size={12} /> : <IconPin size={12} />}
+        </ActionIcon>
       </div>
       {pinned && (
-        <Text size="xxs">
+        <Center me="1px">
           <IconPinFilled size={12} />
-        </Text>
+        </Center>
       )}
     </div>
   );
@@ -578,6 +586,7 @@ export const FilterGroup = ({
               p="0"
               pr="xxxs"
               data-testid="filter-group-control"
+              style={{ overflow: 'hidden' }}
               classNames={{
                 chevron: 'm-0',
                 label: 'p-0',
@@ -592,62 +601,87 @@ export const FilterGroup = ({
                 fz="xxs"
                 color="gray"
               >
-                <Text size="xs" fw="500">
+                <Text size="xs" fw="500" truncate="end">
                   {name}
                 </Text>
               </Tooltip>
             </Accordion.Control>
-            <Group gap="xxxs" wrap="nowrap">
+            <Group gap={0} wrap="nowrap">
               {!hasRange && (
                 <>
-                  <ActionIcon
-                    size="xs"
-                    variant="subtle"
-                    color="gray"
-                    onClick={toggleShowDistributions}
-                    title={
+                  <Tooltip
+                    label={
                       showDistributions
-                        ? 'Hide distribution'
-                        : 'Show distribution'
+                        ? 'Hide Distribution'
+                        : 'Show Distribution'
                     }
-                    data-testid={`toggle-distribution-button-${name}`}
-                    aria-checked={showDistributions}
-                    role="checkbox"
+                    position="top"
+                    withArrow
+                    fz="xxs"
+                    color="gray"
                   >
-                    {isFetchingDistribution ? (
-                      <span className="spinner-border spinner-border-sm" />
-                    ) : showDistributions ? (
-                      <IconChartBar size={14} />
-                    ) : (
-                      <IconChartBarOff size={14} />
-                    )}
-                  </ActionIcon>
-                  {onFieldPinClick && (
                     <ActionIcon
                       size="xs"
                       variant="subtle"
                       color="gray"
-                      onClick={onFieldPinClick}
-                      title={isFieldPinned ? 'Unpin field' : 'Pin field'}
-                      me={'4px'}
+                      onClick={toggleShowDistributions}
+                      data-testid={`toggle-distribution-button-${name}`}
+                      aria-checked={showDistributions}
+                      role="checkbox"
                     >
-                      {isFieldPinned ? (
-                        <IconPinFilled size={14} />
+                      {isFetchingDistribution ? (
+                        <span className="spinner-border spinner-border-sm" />
+                      ) : showDistributions ? (
+                        <IconChartBarOff size={14} />
                       ) : (
-                        <IconPin size={14} />
+                        <IconChartBar size={14} />
                       )}
                     </ActionIcon>
+                  </Tooltip>
+                  {onFieldPinClick && (
+                    <Tooltip
+                      label={isFieldPinned ? 'Unpin Field' : 'Pin Field'}
+                      position="top"
+                      withArrow
+                      fz="xxs"
+                      color="gray"
+                    >
+                      <ActionIcon
+                        size="xs"
+                        variant="subtle"
+                        color="gray"
+                        onClick={onFieldPinClick}
+                      >
+                        {isFieldPinned ? (
+                          <IconPinFilled size={14} />
+                        ) : (
+                          <IconPin size={14} />
+                        )}
+                      </ActionIcon>
+                    </Tooltip>
                   )}
                 </>
               )}
               {totalAppliedFiltersSize > 0 && (
-                <TextButton
-                  label="Clear"
-                  onClick={() => {
-                    onClearClick();
-                    setSearch('');
-                  }}
-                />
+                <Tooltip
+                  label="Clear Filters"
+                  position="top"
+                  withArrow
+                  fz="xxs"
+                  color="gray"
+                >
+                  <ActionIcon
+                    size="xs"
+                    variant="subtle"
+                    color="gray"
+                    onClick={() => {
+                      onClearClick();
+                      setSearch('');
+                    }}
+                  >
+                    <IconFilterOff size={14} />
+                  </ActionIcon>
+                </Tooltip>
               )}
             </Group>
           </Center>
