@@ -542,10 +542,7 @@ function HttpTab({
                 ...source,
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
-                displayType:
-                  reqChartType === 'overall'
-                    ? DisplayType.Line
-                    : DisplayType.StackedBar,
+                displayType: DisplayType.Line,
                 select: [
                   {
                     aggFn: 'count' as const,
