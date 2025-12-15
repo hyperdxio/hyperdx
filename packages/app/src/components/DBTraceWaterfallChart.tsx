@@ -10,7 +10,12 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Anchor, Box, Code, Divider, Group, Text } from '@mantine/core';
+import { Anchor, Box, Center, Code, Divider, Group, Text } from '@mantine/core';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconLogs,
+} from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -667,9 +672,7 @@ export function DBTraceWaterfallChartContainer({
                 }}
               ></div>
             ))}
-            <Text
-              span
-              me="xxs"
+            <Center
               style={{
                 opacity: result.children.length > 0 ? 1 : 0,
               }}
@@ -677,12 +680,12 @@ export function DBTraceWaterfallChartContainer({
                 toggleCollapse(id);
               }}
             >
-              <i
-                className={`bi bi-chevron-${
-                  collapsedIds.has(id) ? 'right' : 'down'
-                }`}
-              />{' '}
-            </Text>
+              {collapsedIds.has(id) ? (
+                <IconChevronRight size={16} className="me-1 text-muted-hover" />
+              ) : (
+                <IconChevronDown size={16} className="me-1 text-muted-hover" />
+              )}{' '}
+            </Center>
             {!isFilterActive && (
               <Text span size="xxs" me="xs" pt="2px">
                 {result.children.length > 0
@@ -690,26 +693,30 @@ export function DBTraceWaterfallChartContainer({
                   : ''}
               </Text>
             )}
-            <Text
-              size="xxs"
-              truncate="end"
-              // style={{ width: 200 }}
-              span
-              // onClick={() => {
-              //   toggleCollapse(id);
-              // }}
-              title={`${serviceName}${hasHttpAttributes && httpUrl ? ` | ${displayText}` : ''}`}
-              role="button"
-            >
+
+            <Group gap={0} wrap="nowrap">
               {type === SourceKind.Log ? (
-                <i
-                  className="bi bi-card-text fs-8 me-2 align-middle"
-                  title="Correlated Log Line"
+                <IconLogs
+                  size={14}
+                  className="align-middle me-2"
+                  aria-label="Correlated Log Line"
                 />
               ) : null}
-              {serviceName ? `${serviceName} | ` : ''}
-              {displayText}
-            </Text>
+              <Text
+                size="xxs"
+                truncate="end"
+                // style={{ width: 200 }}
+                span
+                // onClick={() => {
+                //   toggleCollapse(id);
+                // }}
+                title={`${serviceName}${hasHttpAttributes && httpUrl ? ` | ${displayText}` : ''}`}
+                role="button"
+              >
+                {serviceName ? `${serviceName} | ` : ''}
+                {displayText}
+              </Text>
+            </Group>
           </div>
         </div>
       ),

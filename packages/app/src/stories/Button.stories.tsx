@@ -1,5 +1,6 @@
 import { Button } from '@mantine/core';
 import type { Meta } from '@storybook/nextjs';
+import { IconStarFilled } from '@tabler/icons-react';
 
 // Just a test story, can be deleted
 
@@ -14,7 +15,7 @@ const meta: Meta = {
 export const Default = () => (
   <Button
     variant="light"
-    leftSection={<i className="bi bi-star-fill" />}
+    leftSection={<IconStarFilled size={14} />}
     size="compact-sm"
   >
     Assign exception to Warren

@@ -1,4 +1,5 @@
 import { Button, Menu, Text } from '@mantine/core';
+import { IconDotsVertical, IconForms, IconTrash } from '@tabler/icons-react';
 
 export default function SearchPageActionBar({
   onClickDeleteSavedSearch,
@@ -17,19 +18,19 @@ export default function SearchPageActionBar({
           size="xs"
           style={{ flexShrink: 0 }}
         >
-          <i className="bi bi-three-dots-vertical" />
+          <IconDotsVertical size={14} />
         </Button>
       </Menu.Target>
 
       <Menu.Dropdown>
         <Menu.Item
-          leftSection={<i className="bi bi-trash-fill" />}
+          leftSection={<IconTrash size={16} />}
           onClick={onClickDeleteSavedSearch}
         >
           Delete Saved Search
         </Menu.Item>
         <Menu.Item
-          leftSection={<i className="bi bi-input-cursor-text" />}
+          leftSection={<IconForms size={16} />}
           onClick={onClickRenameSavedSearch}
         >
           Rename Saved Search

@@ -5,10 +5,15 @@ import cx from 'classnames';
 import { format } from 'date-fns';
 import { JSONTree } from 'react-json-tree';
 import { Alert, Button, CloseButton, Kbd, Text, Tooltip } from '@mantine/core';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconCode,
+  IconPackage,
+} from '@tabler/icons-react';
 import { ColumnDef, Row, Table } from '@tanstack/react-table';
 
 import HyperJson from './components/HyperJson';
-import { Icon } from './components/Icon';
 import { StacktraceFrame as StacktraceFrameCmp } from './components/StacktraceFrame';
 import { TableCellButton } from './components/Table';
 import { UNDEFINED_WIDTH } from './tableUtils';
@@ -37,7 +42,11 @@ export const CollapsibleSection = ({
         role="button"
         onClick={() => setCollapsed(!collapsed)}
       >
-        <i className={`bi bi-chevron-${collapsed ? 'right' : 'down'} me-2`}></i>
+        {collapsed ? (
+          <IconChevronRight size={14} className="me-2" />
+        ) : (
+          <IconChevronDown size={14} className="me-2" />
+        )}
         <div className="fs-7">{title}</div>
       </div>
       {collapsed ? null : <div className="mb-4">{children}</div>}
@@ -137,7 +146,11 @@ export const StacktraceRow = ({
               withArrow
               color="gray"
             >
-              <i className="bi bi-box-seam me-2" title="in_app: false" />
+              <IconPackage
+                size={14}
+                className="me-2"
+                aria-label="in_app: false"
+              />
             </Tooltip>
           )}
           {augmentedFrame && (
@@ -526,9 +539,9 @@ export const SourceMapsFtux = () => {
       onClose={() => setIsDismissed(true)}
     >
       <Text size="xs">
-        <Icon name="code-square" /> Some of the stack frames are pointing to
-        minified files. Use hyperdx-cli to upload your source maps and see the
-        original code.
+        <IconCode size={16} /> Some of the stack frames are pointing to minified
+        files. Use hyperdx-cli to upload your source maps and see the original
+        code.
       </Text>
       <Link href="https://www.npmjs.com/package/@hyperdx/cli" target="_blank">
         <Button size="compact-xs" variant="light" mt="xs">

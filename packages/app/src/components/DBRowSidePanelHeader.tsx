@@ -16,6 +16,10 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
+import {
+  IconArrowsDiagonal,
+  IconArrowsDiagonalMinimize2,
+} from '@tabler/icons-react';
 
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
@@ -240,9 +244,9 @@ export default function DBRowSidePanelHeader({
               >
                 {/* TODO: Only show expand button when maxHeight = 120? */}
                 {expandSidebarHeader ? (
-                  <i className="bi bi-arrows-angle-contract" />
+                  <IconArrowsDiagonalMinimize2 size={14} />
                 ) : (
-                  <i className="bi bi-arrows-angle-expand" />
+                  <IconArrowsDiagonal size={14} />
                 )}
               </Button>
             )}

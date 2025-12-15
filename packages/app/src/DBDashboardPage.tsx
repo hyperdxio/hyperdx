@@ -46,7 +46,19 @@ import {
 } from '@mantine/core';
 import { useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconBell, IconFilterEdit, IconPlayerPlay } from '@tabler/icons-react';
+import {
+  IconBell,
+  IconCopy,
+  IconDotsVertical,
+  IconDownload,
+  IconFilterEdit,
+  IconPencil,
+  IconPlayerPlay,
+  IconRefresh,
+  IconTags,
+  IconTrash,
+  IconUpload,
+} from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
@@ -277,7 +289,7 @@ const Tile = forwardRef(
                 onClick={onDuplicateClick}
                 title="Duplicate"
               >
-                <i className="bi bi-copy fs-8"></i>
+                <IconCopy size={14} />
               </Button>
               <Button
                 data-testid={`tile-edit-button-${chart.id}`}
@@ -287,7 +299,7 @@ const Tile = forwardRef(
                 onClick={onEditClick}
                 title="Edit"
               >
-                <i className="bi bi-pencil"></i>
+                <IconPencil size={14} />
               </Button>
               <Button
                 data-testid={`tile-delete-button-${chart.id}`}
@@ -297,7 +309,7 @@ const Tile = forwardRef(
                 onClick={onDeleteClick}
                 title="Delete"
               >
-                <i className="bi bi-trash"></i>
+                <IconTrash size={14} />
               </Button>
             </Flex>
           ) : (
@@ -505,7 +517,7 @@ function DashboardName({
               size="xs"
               onClick={() => setEditing(true)}
             >
-              <i className="bi bi-pencil"></i>
+              <IconPencil size={14} />
             </Button>
           )}
         </div>
@@ -944,7 +956,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 size="xs"
                 style={{ flexShrink: 0 }}
               >
-                <i className="bi bi-tags-fill me-2"></i>
+                <IconTags size={14} className="me-2" />
                 {dashboard?.tags?.length || 0}{' '}
                 {dashboard?.tags?.length === 1 ? 'Tag' : 'Tags'}
               </Button>
@@ -954,14 +966,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <Menu width={250}>
               <Menu.Target>
                 <Button variant="default" px="xs" size="xs">
-                  <i className="bi bi-three-dots-vertical" />
+                  <IconDotsVertical size={14} />
                 </Button>
               </Menu.Target>
 
               <Menu.Dropdown>
                 {hasTiles && (
                   <Menu.Item
-                    leftSection={<i className="bi bi-download" />}
+                    leftSection={<IconDownload size={16} />}
                     onClick={() => {
                       if (!sources || !dashboard) {
                         notifications.show({
@@ -984,7 +996,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   </Menu.Item>
                 )}
                 <Menu.Item
-                  leftSection={<i className="bi bi-upload" />}
+                  leftSection={<IconUpload size={16} />}
                   onClick={() => {
                     if (dashboard && !dashboard.tiles.length) {
                       router.push(
@@ -998,7 +1010,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
                 </Menu.Item>
                 <Menu.Item
-                  leftSection={<i className="bi bi-trash-fill" />}
+                  leftSection={<IconTrash size={16} />}
                   color="red"
                   onClick={() =>
                     deleteDashboard.mutate(dashboard?.id ?? '', {
@@ -1097,7 +1109,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             title="Refresh dashboard"
             px="xs"
           >
-            <i className="bi bi-arrow-clockwise fs-5"></i>
+            <IconRefresh size={18} />
           </Button>
         </Tooltip>
         <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">

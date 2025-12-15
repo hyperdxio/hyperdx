@@ -3,6 +3,7 @@ import { UseControllerProps } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { SelectProps, UnstyledButton } from '@mantine/core';
 import { ComboboxChevron } from '@mantine/core';
+import { IconStack } from '@tabler/icons-react';
 
 import SelectControlled from '@/components/SelectControlled';
 import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
@@ -94,7 +95,7 @@ function SourceSelectControlledComponent({
       comboboxProps={{ withinPortal: false, ...comboboxProps }}
       searchable
       placeholder="Data Source"
-      leftSection={<i className="bi bi-collection"></i>}
+      leftSection={<IconStack size={16} />}
       maxDropdownHeight={280}
       size={size}
       onCreate={onCreate}

@@ -1,8 +1,8 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
-import { Flex, Text, UnstyledButton } from '@mantine/core';
-import { IconGripVertical } from '@tabler/icons-react';
+import { UnstyledButton } from '@mantine/core';
+import { IconDownload, IconTextWrap } from '@tabler/icons-react';
 import {
   flexRender,
   getCoreRowModel,
@@ -228,7 +228,7 @@ export const Table = ({
                             <UnstyledButton
                               onClick={() => setWrapLinesEnabled(prev => !prev)}
                             >
-                              <i className="bi bi-text-wrap" />
+                              <IconTextWrap size={14} />
                             </UnstyledButton>
                             <CsvExportButton
                               data={csvData}
@@ -236,7 +236,7 @@ export const Table = ({
                               className="fs-8 ms-2"
                               title="Download table as CSV"
                             >
-                              <i className="bi bi-download" />
+                              <IconDownload size={14} />
                             </CsvExportButton>
                           </div>
                         )}

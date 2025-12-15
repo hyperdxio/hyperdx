@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { Box, Button, Text } from '@mantine/core';
+import { IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { ColumnDef } from '@tanstack/react-table';
 
 import { FormatTime } from '@/useFormatTime';
@@ -128,11 +129,11 @@ export const SpanEventsSubpanel = ({
           >
             {isExpanded ? (
               <>
-                <i className="bi bi-chevron-up me-2" /> Hide events
+                <IconChevronUp size={14} className="me-2" /> Hide events
               </>
             ) : (
               <>
-                <i className="bi bi-chevron-down me-2" />
+                <IconChevronDown size={14} className="me-2" />
                 Show {hiddenRowsCount} more events
               </>
             )}

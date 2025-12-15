@@ -20,7 +20,17 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconBell } from '@tabler/icons-react';
+import {
+  IconAlertTriangle,
+  IconBell,
+  IconBrandSlack,
+  IconChartLine,
+  IconCheck,
+  IconChevronRight,
+  IconHelpCircle,
+  IconInfoCircleFilled,
+  IconTableRow,
+} from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -312,7 +322,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
           {alert.dashboard?.name}
           {tileName ? (
             <>
-              <i className="bi bi-chevron-right fs-8 mx-1 " />
+              <IconChevronRight size={14} className="mx-1" />
               {tileName}
             </>
           ) : null}
@@ -338,11 +348,11 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
   const alertIcon = (() => {
     switch (alert.source) {
       case AlertSource.TILE:
-        return 'bi-graph-up';
+        return <IconChartLine size={14} />;
       case AlertSource.SAVED_SEARCH:
-        return 'bi-layout-text-sidebar-reverse';
+        return <IconTableRow size={14} />;
       default:
-        return 'bi-question';
+        return <IconHelpCircle size={14} />;
     }
   })();
 
@@ -359,9 +369,9 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
   const notificationMethod = React.useMemo(() => {
     if (alert.channel.type === 'webhook') {
       return (
-        <span>
-          Notify via <i className="bi bi-slack"></i> Webhook
-        </span>
+        <Group gap={2}>
+          Notify via <IconBrandSlack size={16} /> Webhook
+        </Group>
       );
     }
   }, [alert]);
@@ -400,8 +410,10 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
               className={styles.alertLink}
               title={linkTitle}
             >
-              <i className={`bi ${alertIcon} me-2 fs-8`} />
-              {alertName}
+              <Group gap={2}>
+                {alertIcon}
+                {alertName}
+              </Group>
             </Link>
           </div>
           <div className="fs-8 d-flex gap-2">
@@ -435,18 +447,18 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
     <div className="d-flex flex-column gap-4">
       {alarmAlerts.length > 0 && (
         <div>
-          <div className={styles.sectionHeader}>
-            <i className="bi bi-exclamation-triangle"></i> Triggered
-          </div>
+          <Group className={styles.sectionHeader}>
+            <IconAlertTriangle size={14} /> Triggered
+          </Group>
           {alarmAlerts.map((alert, index) => (
             <AlertDetails key={index} alert={alert} />
           ))}
         </div>
       )}
       <div>
-        <div className={styles.sectionHeader}>
-          <i className="bi bi-check-lg"></i> OK
-        </div>
+        <Group className={styles.sectionHeader}>
+          <IconCheck size={14} /> OK
+        </Group>
         {okData.length === 0 && (
           <div className="text-center my-4 fs-8">No alerts</div>
         )}
@@ -472,7 +484,7 @@ export default function AlertsPage() {
       <div className="my-4">
         <Container maw={1500}>
           <Alert
-            icon={<i className="bi bi-info-circle-fill " />}
+            icon={<IconInfoCircleFilled size={16} />}
             color="gray"
             py="xs"
             mt="md"

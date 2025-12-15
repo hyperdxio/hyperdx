@@ -3,15 +3,9 @@ import Link from 'next/link';
 import { pickBy } from 'lodash';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { JSONTree } from 'react-json-tree';
-import {
-  Accordion,
-  Box,
-  Button,
-  CopyButton,
-  TableData,
-  Text,
-} from '@mantine/core';
+import { Accordion, Box, Button, CopyButton, TableData } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconTerminal } from '@tabler/icons-react';
 
 import HyperJson from '@/components/HyperJson';
 import { Table } from '@/components/Table';
@@ -229,7 +223,7 @@ export function NetworkPropertySubpanel({
           }}
         >
           <Button size="xs" variant="light">
-            <i className="bi bi-terminal-plus me-2" />
+            <IconTerminal size={14} className="me-2" />
             Copy Request as Curl
           </Button>
         </CopyToClipboard>
@@ -240,7 +234,7 @@ export function NetworkPropertySubpanel({
             size="sm"
             as="a"
           >
-            <i className="bi bi-graph-up me-2" />
+            <IconChartLine size={14} className="me-2" />
             Endpoint Trends
           </Button>
         </Link> */}

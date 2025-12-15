@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { UseControllerProps } from 'react-hook-form';
+import { IconServer } from '@tabler/icons-react';
 
 import SelectControlled from '@/components/SelectControlled';
 import { useConnections } from '@/connection';
@@ -28,7 +29,7 @@ export function ConnectionSelectControlled({
       comboboxProps={{ withinPortal: false }}
       searchable
       placeholder="Connection"
-      leftSection={<i className="bi bi-hdd-stack"></i>}
+      leftSection={<IconServer size={16} />}
       maxDropdownHeight={280}
       size={size}
     />

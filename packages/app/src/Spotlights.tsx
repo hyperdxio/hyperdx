@@ -3,6 +3,19 @@
 import * as React from 'react';
 import { useRouter } from 'next/router';
 import { Spotlight, SpotlightActionData } from '@mantine/spotlight';
+import {
+  IconActivityHeartbeat,
+  IconBell,
+  IconChartLine,
+  IconDeviceLaptop,
+  IconGridDots,
+  IconHelpCircle,
+  IconLayout,
+  IconLayoutSidebar,
+  IconLogs,
+  IconSearch,
+  IconSettings,
+} from '@tabler/icons-react';
 
 import api from './api';
 import Logo from './Icon';
@@ -27,7 +40,7 @@ export const useSpotlightActions = () => {
       logViewActions.push({
         id: logView._id,
         group: 'Saved searches',
-        leftSection: <i className="bi bi-layout-text-sidebar-reverse" />,
+        leftSection: <IconLogs size={16} />,
         description: logView.query,
         label: logView.name,
         keywords: ['search', 'log', 'saved'],
@@ -42,7 +55,7 @@ export const useSpotlightActions = () => {
       logViewActions.push({
         id: dashboard._id,
         group: 'Dashboards',
-        leftSection: <i className="bi bi-grid-1x2" />,
+        leftSection: <IconLayout size={16} />,
         label: dashboard.name,
         keywords: ['dashboard'],
         onClick: () => {
@@ -55,7 +68,7 @@ export const useSpotlightActions = () => {
       {
         id: 'search',
         group: 'Menu',
-        leftSection: <i className="bi bi-layout-text-sidebar-reverse" />,
+        leftSection: <IconLogs size={16} />,
         label: 'Search',
         description: 'Start a new search',
         keywords: ['log', 'events', 'logs'],
@@ -66,7 +79,7 @@ export const useSpotlightActions = () => {
       {
         id: 'chart-explorer',
         group: 'Menu',
-        leftSection: <i className="bi bi-graph-up" />,
+        leftSection: <IconChartLine size={16} />,
         label: 'Chart Explorer',
         description: 'Explore your data',
         keywords: ['graph', 'metrics'],
@@ -77,7 +90,7 @@ export const useSpotlightActions = () => {
       {
         id: 'new-dashboard',
         group: 'Menu',
-        leftSection: <i className="bi bi-grid-1x2" />,
+        leftSection: <IconGridDots size={16} />,
         label: 'New Dashboard',
         description: 'Create a new dashboard',
         keywords: ['graph'],
@@ -88,7 +101,7 @@ export const useSpotlightActions = () => {
       {
         id: 'sessions',
         group: 'Menu',
-        leftSection: <i className="bi bi-laptop" />,
+        leftSection: <IconDeviceLaptop size={16} />,
         label: 'Client Sessions',
         description: 'View client sessions',
         keywords: ['browser', 'web'],
@@ -99,7 +112,7 @@ export const useSpotlightActions = () => {
       {
         id: 'alerts',
         group: 'Menu',
-        leftSection: <i className="bi bi-bell" />,
+        leftSection: <IconBell size={16} />,
         label: 'Alerts',
         description: 'View and manage alerts',
         onClick: () => {
@@ -110,7 +123,7 @@ export const useSpotlightActions = () => {
         id: 'service-health',
         group: 'Menu',
         label: 'Service Health',
-        leftSection: <i className="bi bi-heart-pulse" />,
+        leftSection: <IconActivityHeartbeat size={16} />,
         description: 'HTTP, Database and Infrastructure metrics',
         onClick: () => {
           router.push('/services');
@@ -119,7 +132,7 @@ export const useSpotlightActions = () => {
       {
         id: 'team-settings',
         group: 'Menu',
-        leftSection: <i className="bi bi-gear" />,
+        leftSection: <IconSettings size={16} />,
         label: 'Team Settings',
 
         onClick: () => {
@@ -129,7 +142,7 @@ export const useSpotlightActions = () => {
       {
         id: 'documentation',
         group: 'Menu',
-        leftSection: <i className="bi bi-question-circle" />,
+        leftSection: <IconHelpCircle size={16} />,
         label: 'Documentation',
         keywords: ['help', 'docs'],
         onClick: () => {
@@ -170,7 +183,7 @@ export const HDXSpotlightProvider = ({
       <Spotlight
         shortcut="mod + K"
         searchProps={{
-          leftSection: <i className="bi bi-search" />,
+          leftSection: <IconSearch size={16} />,
           placeholder: 'Search',
         }}
         nothingFound="Nothing found"
