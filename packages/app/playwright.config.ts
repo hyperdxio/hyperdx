@@ -5,6 +5,11 @@ import path from 'path';
 const USE_FULLSTACK = process.env.E2E_FULLSTACK === 'true';
 const AUTH_FILE = path.join(__dirname, 'tests/e2e/.auth/user.json');
 
+// Timeout configuration constants (in milliseconds)
+const TEST_TIMEOUT_MS = 60 * 1000; // 60 seconds per test
+const API_SERVER_STARTUP_TIMEOUT_MS = 120 * 1000; // 2 minutes for API to start
+const APP_SERVER_STARTUP_TIMEOUT_MS = 180 * 1000; // 3 minutes for Next.js build + start
+
 /**
  * @see https://playwright.dev/docs/test-configuration
  */
@@ -45,7 +50,7 @@ export default defineConfig({
   },
 
   /* Global test timeout - CI needs more time than local */
-  timeout: 60 * 1000,
+  timeout: TEST_TIMEOUT_MS,
 
   /* Configure projects for different test environments */
   projects: [
@@ -68,11 +73,11 @@ export default defineConfig({
         // Full-stack mode: Start API and App servers (infrastructure started separately)
         {
           // Loads configuration from .env.e2e (connections, settings)
-          command:
-            'cd ../api && DOTENV_CONFIG_PATH=.env.e2e npx ts-node --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r @hyperdx/node-opentelemetry/build/src/tracing src/index.ts',
+          // Environment variables (MONGO_URI, etc.) can override .env.e2e values
+          command: `cd ../api && ${process.env.MONGO_URI ? `MONGO_URI="${process.env.MONGO_URI}"` : ''} DOTENV_CONFIG_PATH=.env.e2e npx ts-node --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r @hyperdx/node-opentelemetry/build/src/tracing src/index.ts`,
           port: 29000,
           reuseExistingServer: !process.env.CI,
-          timeout: 120 * 1000,
+          timeout: API_SERVER_STARTUP_TIMEOUT_MS,
           stdout: 'pipe',
           stderr: 'pipe',
         },
@@ -82,7 +87,7 @@ export default defineConfig({
             : 'SERVER_URL=http://localhost:29000 PORT=28081 NEXT_TELEMETRY_DISABLED=1 yarn run dev',
           port: 28081,
           reuseExistingServer: !process.env.CI,
-          timeout: 180 * 1000,
+          timeout: APP_SERVER_STARTUP_TIMEOUT_MS,
           stdout: 'pipe',
           stderr: 'pipe',
         },
@@ -94,7 +99,7 @@ export default defineConfig({
           : 'NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_TELEMETRY_DISABLED=1 PORT=8081 yarn run dev',
         port: 8081,
         reuseExistingServer: !process.env.CI,
-        timeout: 180 * 1000,
+        timeout: APP_SERVER_STARTUP_TIMEOUT_MS,
         stdout: 'pipe',
         stderr: 'pipe',
       },

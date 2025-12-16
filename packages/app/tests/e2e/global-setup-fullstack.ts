@@ -12,6 +12,16 @@ import fs from 'fs';
 import path from 'path';
 import { chromium, FullConfig } from '@playwright/test';
 
+// Configuration constants
+const API_HEALTH_CHECK_MAX_RETRIES = parseInt(
+  process.env.E2E_API_HEALTH_CHECK_MAX_RETRIES || '30',
+  10,
+);
+const API_HEALTH_CHECK_RETRY_DELAY_MS = 1000;
+const SOURCE_SELECTOR_TIMEOUT_MS = 10000;
+const PAGE_LOAD_TIMEOUT_MS = 30000;
+
+// Password must be at least 8 characters with uppercase, lowercase, number, and special char
 const DEFAULT_TEST_USER = {
   email: process.env.E2E_TEST_USER_EMAIL || 'e2e-test@hyperdx.io',
   password: process.env.E2E_TEST_USER_PASSWORD || 'TestPassword123!',
@@ -50,11 +60,9 @@ async function globalSetup(config: FullConfig) {
 
   // Wait for API server to be ready
   console.log('Waiting for API server to be ready...');
-  const maxRetries = 30;
-  const retryDelay = 1000;
   let apiReady = false;
 
-  for (let i = 0; i < maxRetries; i++) {
+  for (let i = 0; i < API_HEALTH_CHECK_MAX_RETRIES; i++) {
     try {
       const response = await fetch(`${API_URL}/health`).catch(() => null);
       if (response?.ok) {
@@ -66,17 +74,15 @@ async function globalSetup(config: FullConfig) {
       // Continue retrying
     }
 
-    if (i === maxRetries - 1) {
+    if (i === API_HEALTH_CHECK_MAX_RETRIES - 1) {
       throw new Error(
-        `API server not ready after ${(maxRetries * retryDelay) / 1000} seconds`,
+        `API server not ready after ${(API_HEALTH_CHECK_MAX_RETRIES * API_HEALTH_CHECK_RETRY_DELAY_MS) / 1000} seconds`,
       );
     }
 
-    await new Promise(resolve => setTimeout(resolve, retryDelay));
-  }
-
-  if (!apiReady) {
-    throw new Error('API server health check failed');
+    await new Promise(resolve =>
+      setTimeout(resolve, API_HEALTH_CHECK_RETRY_DELAY_MS),
+    );
   }
 
   // Create test user and save auth state
@@ -101,24 +107,22 @@ async function globalSetup(config: FullConfig) {
     );
 
     if (!registerResponse.ok()) {
+      const status = registerResponse.status();
       const body = await registerResponse.text();
-      // If user/team already exists, that's okay
-      if (
-        !body.includes('already exists') &&
-        !body.includes('duplicate') &&
-        !body.includes('teamAlreadyExists')
-      ) {
-        throw new Error(
-          `Registration failed: ${registerResponse.status()} ${body}`,
+
+      // 409 Conflict indicates user/team already exists - this is acceptable
+      if (status === 409) {
+        console.log('  User/team already exists (409 Conflict), continuing');
+        console.log(
+          '  DEFAULT_SOURCES will NOT be applied (only happens on new team creation)',
         );
+        console.log(
+          '  Sources must already exist in the database from a previous run',
+        );
+      } else {
+        // Any other error is a real failure
+        throw new Error(`Registration failed: ${status} ${body}`);
       }
-      console.log('  User/team already exists, continuing');
-      console.log(
-        '  DEFAULT_SOURCES will NOT be applied (only happens on new team creation)',
-      );
-      console.log(
-        '  Sources must already exist in the database from a previous run',
-      );
     } else {
       console.log('  User registered successfully');
       console.log(
@@ -143,8 +147,10 @@ async function globalSetup(config: FullConfig) {
     }
 
     // Navigate to the app to establish session
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { timeout: PAGE_LOAD_TIMEOUT_MS });
+    await page.waitForLoadState('networkidle', {
+      timeout: PAGE_LOAD_TIMEOUT_MS,
+    });
 
     console.log('  Login successful');
 
@@ -197,13 +203,15 @@ async function globalSetup(config: FullConfig) {
 
     // Navigate to search page to ensure sources are loaded
     console.log('Navigating to search page');
-    await page.goto('/search');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/search', { timeout: PAGE_LOAD_TIMEOUT_MS });
+    await page.waitForLoadState('networkidle', {
+      timeout: PAGE_LOAD_TIMEOUT_MS,
+    });
 
     // Wait for source selector to be ready (indicates sources are loaded)
     await page.waitForSelector('[data-testid="source-settings-menu"]', {
       state: 'visible',
-      timeout: 10000,
+      timeout: SOURCE_SELECTOR_TIMEOUT_MS,
     });
 
     // Save authentication state

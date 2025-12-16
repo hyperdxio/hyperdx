@@ -9,6 +9,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOCKER_COMPOSE_FILE="$REPO_ROOT/packages/app/tests/e2e/docker-compose.yml"
 
+# Configuration constants
+readonly MAX_MONGODB_WAIT_ATTEMPTS=15
+readonly MONGODB_WAIT_DELAY_SECONDS=1
+
 # Parse arguments
 LOCAL_MODE=false
 TAGS=""
@@ -36,47 +40,52 @@ cleanup_mongodb() {
   docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" down -v
 }
 
+check_mongodb_health() {
+  # Health check script that tests ping, insert, and delete operations
+  docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" exec -T db mongosh --quiet --eval "
+    try {
+      db.adminCommand('ping');
+      db.getSiblingDB('test').test.insertOne({_id: 'healthcheck', ts: new Date()});
+      db.getSiblingDB('test').test.deleteOne({_id: 'healthcheck'});
+      print('ready');
+    } catch(e) {
+      print('not ready: ' + e);
+      quit(1);
+    }
+  " 2>&1
+}
+
 wait_for_mongodb() {
   echo "Waiting for MongoDB to be ready..."
-  local max_attempts=15
   local attempt=1
 
   # Verify mongosh is available in the container
   if ! docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" exec -T db which mongosh >/dev/null 2>&1; then
     echo "ERROR: mongosh not found in MongoDB container"
     echo "Container may not be running or using incompatible image"
+    echo "Try running: docker compose -p e2e -f $DOCKER_COMPOSE_FILE logs db"
     return 1
   fi
 
-  while [ $attempt -le $max_attempts ]; do
-    # Check if MongoDB is accepting connections and ready for writes
+  while [ $attempt -le $MAX_MONGODB_WAIT_ATTEMPTS ]; do
     local result
-    result=$(docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" exec -T db mongosh --quiet --eval "
-      try {
-        db.adminCommand('ping');
-        db.getSiblingDB('test').test.insertOne({_id: 'healthcheck', ts: new Date()});
-        db.getSiblingDB('test').test.deleteOne({_id: 'healthcheck'});
-        print('ready');
-      } catch(e) {
-        print('not ready: ' + e);
-        quit(1);
-      }
-    " 2>&1)
+    result=$(check_mongodb_health)
 
     if echo "$result" | grep -q "ready"; then
       echo "MongoDB is ready and accepting writes"
       return 0
     fi
 
-    if [ $attempt -eq $max_attempts ]; then
-      echo "MongoDB failed to become ready after $max_attempts attempts"
+    if [ $attempt -eq $MAX_MONGODB_WAIT_ATTEMPTS ]; then
+      local total_wait=$((MAX_MONGODB_WAIT_ATTEMPTS * MONGODB_WAIT_DELAY_SECONDS))
+      echo "MongoDB failed to become ready after $total_wait seconds"
       echo "Last error: $result"
       return 1
     fi
 
-    echo "Waiting for MongoDB... ($attempt/$max_attempts)"
+    echo "Waiting for MongoDB... ($attempt/$MAX_MONGODB_WAIT_ATTEMPTS)"
     attempt=$((attempt + 1))
-    sleep 1
+    sleep $MONGODB_WAIT_DELAY_SECONDS
   done
 }
 
@@ -93,8 +102,8 @@ run_local_mode() {
 run_fullstack_mode() {
   echo "Running E2E tests in full-stack mode (MongoDB + API + demo ClickHouse)..."
 
-  # Set up cleanup trap
-  trap cleanup_mongodb EXIT
+  # Set up cleanup trap for both normal exit and errors
+  trap cleanup_mongodb EXIT ERR
 
   # Start MongoDB
   echo "Starting MongoDB for full-stack tests..."
