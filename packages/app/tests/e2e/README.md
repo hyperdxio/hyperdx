@@ -12,46 +12,108 @@ feature-specific test suites.
 
 ## Running Tests
 
-### All Tests
+### Default: Full-Stack Mode
 
-To run the complete test suite:
+By default, `make e2e` runs tests in **full-stack mode** with MongoDB + API + demo ClickHouse for maximum consistency and real backend features:
 
 ```bash
-# From project root
+# Run all tests (full-stack with MongoDB + API + demo ClickHouse)
 make e2e
 
-# Or from packages/app directory
-yarn test:e2e
+# Run specific tests (full-stack)
+make e2e tags="@kubernetes"
+make e2e tags="@smoke"
 ```
 
-### Tagged Tests
+### Optional: Local Mode (Frontend Only)
 
-Tests are organized using tags to allow selective execution:
+For faster iteration during development, use `local=true` to skip MongoDB and run frontend-only tests:
 
 ```bash
-# Run smoke tests only
-make e2e tags="@smoke"
+# Run all tests in local mode (no MongoDB, frontend only)
+make e2e local=true
 
-# Run search-related tests
-make e2e tags="@search"
-
-# Run dashboard tests
-make e2e tags="@dashboard"
-
-# Run local-mode tests
-make e2e tags="@local-mode"
-
-# Or using yarn directly with grep
-cd packages/app && yarn test:e2e --grep "@smoke"
-cd packages/app && yarn test:e2e --grep "@search"
-cd packages/app && yarn test:e2e --grep "@dashboard"
+# Run specific tests in local mode
+make e2e local=true tags="@search"
 ```
 
-### Local Mode vs Full Server
+**When to use local mode:**
+- Quick frontend iteration during development
+- Testing UI components that don't need auth/persistence
+- Faster test execution when you don't need backend features
 
-Tests tagged with `@local-mode` can run against the local development server
-without external dependencies. The test configuration automatically starts a
-local development server with `NEXT_PUBLIC_IS_LOCAL_MODE=true`.
+### Test Modes
+
+#### Full-Stack Mode (Default)
+**Default behavior** - runs with real backend (MongoDB + API) and demo ClickHouse data.
+
+**What it includes:**
+- MongoDB (port 29998) - authentication, teams, users, persistence
+- API Server (port 29000) - full backend logic
+- App Server (port 28081) - frontend
+- **Demo ClickHouse** (remote) - pre-populated logs/traces/metrics/K8s data
+
+**Benefits:**
+- Test authentication flows (login, signup, teams)
+- Test persistence (saved searches, dashboards, alerts)
+- Test real API endpoints and backend logic
+- Consistent with production environment
+- All features work (auth, persistence, data querying)
+
+```bash
+# Default: full-stack mode
+make e2e
+make e2e tags="@kubernetes"
+```
+
+#### Local Mode (Opt-in for Speed)
+**Frontend-only mode** - skips MongoDB/API, connects directly to demo ClickHouse from browser.
+
+**Use for:**
+- Quick frontend iteration during development
+- Testing UI components that don't need auth
+- Faster test execution when backend features aren't needed
+
+**Limitations:**
+- No authentication (no login/signup)
+- No persistence (can't save searches/dashboards)
+- No API calls (queries go directly to demo ClickHouse)
+
+```bash
+# Opt-in to local mode for speed
+make e2e local=true
+make e2e local=true tags="@search"
+```
+
+## Writing Tests
+
+Since full-stack is the default, all tests have access to authentication, persistence, and real backend features:
+
+```typescript
+import { expect, test } from '../../utils/base-test';
+
+test.describe('My Feature', () => {
+  test('should allow authenticated user to save search', async ({ page }) => {
+    // User is already authenticated (via global setup in full-stack mode)
+    await page.goto('/search');
+
+    // Query demo ClickHouse data
+    await page.fill('[data-testid="search-input"]', 'ServiceName:"frontend"');
+    await page.click('[data-testid="search-submit-button"]');
+
+    // Save search (uses real MongoDB for persistence)
+    await page.click('[data-testid="save-search-button"]');
+    await page.fill('[data-testid="search-name-input"]', 'My Saved Search');
+    await page.click('[data-testid="confirm-save"]');
+
+    // Verify saved search persists
+    await page.goto('/saved-searches');
+    await expect(page.getByText('My Saved Search')).toBeVisible();
+  });
+});
+```
+
+**Note:** Tests that need to run in local mode (frontend-only) should be tagged with `@local-mode` and explicitly run with `make e2e local=true`.
 
 ## Test Organization
 
@@ -183,13 +245,27 @@ Tests use the extended base test from `utils/base-test.ts` which provides:
 
 ## Troubleshooting
 
-### Server Connection Issues
+### Common Issues
 
-If tests fail with connection errors:
+**Server connection errors:**
+- Port 28081 (full-stack) or 8081 (local mode) already in use
+- Check development server started successfully
+- Verify environment variables in `.env.e2e`
 
-1. Ensure no other services are running on port 8080
-2. Check that the development server starts successfully
-3. Verify environment variables are properly configured
+**MongoDB connection issues (full-stack mode):**
+- Check port 29998 is available: `lsof -i :29998`
+- View MongoDB logs: `docker compose -p e2e -f tests/e2e/docker-compose.yml logs`
+- MongoDB is auto-managed by `make e2e` (default)
+
+**Sources don't appear in UI:**
+- Check API logs for `setupTeamDefaults` errors
+- Verify `DEFAULT_SOURCES` in `.env.e2e` points to demo ClickHouse
+- Ensure you registered a new user (DEFAULT_SOURCES only applies to new teams)
+
+**Tests can't find demo data:**
+- Verify sources use `otel_v2` database (demo ClickHouse)
+- Check Network tab - should query `sql-clickhouse.clickhouse.com`
+- Verify a source is selected in UI dropdown
 
 ### Flaky Tests
 

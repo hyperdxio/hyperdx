@@ -67,13 +67,29 @@ ci-unit:
 
 .PHONY: e2e
 e2e:
-	@if [ -z "$(tags)" ]; then \
-		echo "Running all E2E tests in local mode..."; \
-		cd packages/app && yarn test:e2e; \
+	@# Run full-stack by default (MongoDB + API + demo ClickHouse)
+	@# Use 'make e2e local=true' to skip MongoDB and run local mode only
+	@if [ "$(local)" = "true" ]; then \
+		echo "Running E2E tests in local mode (frontend only)..."; \
+		if [ -z "$(tags)" ]; then \
+			cd packages/app && yarn test:e2e; \
+		else \
+			cd packages/app && yarn test:e2e --grep "$(tags)"; \
+		fi; \
 	else \
-		echo "Running E2E tests with tags: $(tags)"; \
-		cd packages/app && yarn test:e2e --grep "$(tags)"; \
+		echo "Starting MongoDB for full-stack tests..."; \
+		docker compose -p e2e -f packages/app/tests/e2e/docker-compose.yml up -d; \
+		sleep 5; \
+		echo "Running E2E tests in full-stack mode (MongoDB + API + demo ClickHouse)..."; \
+		if [ -z "$(tags)" ]; then \
+			cd packages/app && E2E_FULLSTACK=true yarn test:e2e; \
+		else \
+			cd packages/app && E2E_FULLSTACK=true yarn test:e2e --grep "$(tags)"; \
+		fi; \
+		echo "Stopping MongoDB..."; \
+		docker compose -p e2e -f packages/app/tests/e2e/docker-compose.yml down -v; \
 	fi
+
 
 # TODO: check db connections before running the migration CLIs
 .PHONY: dev-migrate-db
