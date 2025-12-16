@@ -1,3 +1,4 @@
+import { pick } from 'lodash';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Group, Text } from '@mantine/core';
 
@@ -95,7 +96,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
           groupColumn="group"
           valueColumn="Total Time Spent"
           config={{
-            ...source,
+            ...pick(source, ['timestampValueExpression', 'connection', 'from']),
             where: '',
             whereLanguage: 'sql',
             select: [

@@ -128,7 +128,7 @@ function ServiceSelectControlled({
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const queriedConfig = {
-    ...source,
+    timestampValueExpression: source?.timestampValueExpression || '',
     from: {
       databaseName: source?.from.databaseName || '',
       tableName: source?.from.tableName || '',
@@ -240,7 +240,11 @@ export function EndpointLatencyChart({
               'avg_duration_ns',
             ]}
             config={{
-              ...source,
+              ...pick(source, [
+                'timestampValueExpression',
+                'connection',
+                'from',
+              ]),
               where: appliedConfig.where || '',
               whereLanguage: appliedConfig.whereLanguage || 'sql',
               select: [
@@ -289,7 +293,11 @@ export function EndpointLatencyChart({
         ) : (
           <DBHistogramChart
             config={{
-              ...source,
+              ...pick(source, [
+                'timestampValueExpression',
+                'connection',
+                'from',
+              ]),
               where: appliedConfig.where || '',
               whereLanguage: appliedConfig.whereLanguage || 'sql',
               select: [
@@ -343,7 +351,7 @@ function HttpTab({
       if (!source || !expressions) return null;
       if (reqChartType === 'overall') {
         return {
-          ...source,
+          ...pick(source, ['timestampValueExpression', 'connection', 'from']),
           where: appliedConfig.where || '',
           whereLanguage: appliedConfig.whereLanguage || 'sql',
           displayType: DisplayType.Line,
@@ -539,7 +547,11 @@ function HttpTab({
             <DBTimeChart
               sourceId={source.id}
               config={{
-                ...source,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 displayType: DisplayType.Line,
@@ -579,7 +591,11 @@ function HttpTab({
                 'error_requests',
               ]}
               config={{
-                ...source,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 select: [
@@ -700,7 +716,11 @@ function HttpTab({
                 'error_count',
               ]}
               config={{
-                ...source,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 select: [
@@ -1119,7 +1139,11 @@ function DatabaseTab({
                   'p50_duration_ns',
                 ]}
                 config={{
-                  ...source,
+                  ...pick(source, [
+                    'timestampValueExpression',
+                    'connection',
+                    'from',
+                  ]),
                   where: appliedConfig.where || '',
                   whereLanguage: appliedConfig.whereLanguage || 'sql',
                   dateRange: searchedTimeRange,
@@ -1195,7 +1219,11 @@ function DatabaseTab({
                   'p50_duration_ns',
                 ]}
                 config={{
-                  ...source,
+                  ...pick(source, [
+                    'timestampValueExpression',
+                    'connection',
+                    'from',
+                  ]),
                   where: appliedConfig.where || '',
                   whereLanguage: appliedConfig.whereLanguage || 'sql',
                   dateRange: searchedTimeRange,
@@ -1289,7 +1317,11 @@ function ErrorsTab({
             <DBTimeChart
               sourceId={source.id}
               config={{
-                ...source,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 displayType: DisplayType.StackedBar,
