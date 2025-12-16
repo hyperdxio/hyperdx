@@ -10,10 +10,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
-          cpus: '1.0'
+          memory: 1G
+          cpus: '2.0'
         reservations:
-          memory: 256M
+          memory: 512M
           cpus: '0.5'
 networks:
   internal:

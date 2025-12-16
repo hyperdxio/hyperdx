@@ -109,8 +109,11 @@ jobs:
       mongodb:
         image: mongo:5.0.14-focal
         options: >-
-          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
-          --health-interval 10s --health-timeout 5s --health-retries 5
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1});
+          db.getSiblingDB(\"test\").test.insertOne({_id: \"healthcheck\"});
+          db.getSiblingDB(\"test\").test.deleteOne({_id: \"healthcheck\"})'"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+          --health-start-period 10s
     permissions:
       contents: read
       pull-requests: write
@@ -139,6 +142,7 @@ jobs:
       - name: Run Playwright tests (full-stack mode)
         env:
           E2E_FULLSTACK: 'true'
+          E2E_UNIQUE_USER: 'true'
           MONGO_URI: mongodb://mongodb:27017/hyperdx-e2e
         run: |
           cd packages/app

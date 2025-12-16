@@ -13,12 +13,12 @@ import path from 'path';
 import { chromium, FullConfig } from '@playwright/test';
 
 const MOCK_USER = {
-  email: 'e2e-test@hyperdx.io',
-  password: 'TestPassword123!',
+  email: process.env.E2E_TEST_USER_EMAIL || 'e2e-test@hyperdx.io',
+  password: process.env.E2E_TEST_USER_PASSWORD || 'TestPassword123!',
 };
 
-const API_URL = 'http://localhost:29000';
-const APP_URL = 'http://localhost:28081';
+const API_URL = process.env.E2E_API_URL || 'http://localhost:29000';
+const APP_URL = process.env.E2E_APP_URL || 'http://localhost:28081';
 const AUTH_FILE = path.join(__dirname, '.auth/user.json');
 
 async function globalSetup(config: FullConfig) {
@@ -35,8 +35,43 @@ async function globalSetup(config: FullConfig) {
     fs.unlinkSync(AUTH_FILE);
   }
 
-  // Wait a bit for servers to be fully ready
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  // Generate unique test user email if E2E_UNIQUE_USER is set (useful for parallel CI runs)
+  if (process.env.E2E_UNIQUE_USER === 'true') {
+    const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    MOCK_USER.email = `e2e-test-${uniqueId}@hyperdx.io`;
+    console.log(`  Using unique test user: ${MOCK_USER.email}`);
+  }
+
+  // Wait for API server to be ready
+  console.log('Waiting for API server to be ready...');
+  const maxRetries = 30;
+  const retryDelay = 1000;
+  let apiReady = false;
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(`${API_URL}/health`).catch(() => null);
+      if (response?.ok) {
+        apiReady = true;
+        console.log('  API server is ready');
+        break;
+      }
+    } catch (error) {
+      // Continue retrying
+    }
+
+    if (i === maxRetries - 1) {
+      throw new Error(
+        `API server not ready after ${(maxRetries * retryDelay) / 1000} seconds`,
+      );
+    }
+
+    await new Promise(resolve => setTimeout(resolve, retryDelay));
+  }
+
+  if (!apiReady) {
+    throw new Error('API server health check failed');
+  }
 
   // Create test user and save auth state
   console.log('Creating test user and logging in');
@@ -109,28 +144,49 @@ async function globalSetup(config: FullConfig) {
 
     // Verify default sources were auto-created (via DEFAULT_SOURCES env var)
     console.log('Verifying default sources were created');
-    const sourcesResponse = await page.request.get(`${API_URL}/sources`);
-    if (sourcesResponse.ok()) {
-      const sources = await sourcesResponse.json();
-      console.log(`  Found ${sources.length} default sources`);
-      if (sources.length === 0) {
-        console.warn('  WARNING: No sources found');
-        console.warn(
-          '  This may happen if the team already existed from a previous run',
-        );
-        console.warn('  DEFAULT_SOURCES only applies to newly created teams');
-        console.warn('  Tests may fail if sources are not configured');
-      } else {
-        sources.forEach((source: any) => {
-          console.log(`    - ${source.name} (${source.kind})`);
-        });
-      }
-    } else {
+    let sourcesResponse;
+    try {
+      sourcesResponse = await page.request.get(`${API_URL}/sources`);
+    } catch (error) {
+      console.error('  Network error fetching sources:', error);
+      throw new Error(
+        `Failed to connect to API at ${API_URL}/sources - is the API server running?`,
+      );
+    }
+
+    if (!sourcesResponse.ok()) {
       const errorText = await sourcesResponse.text();
       console.error(
-        `  Failed to fetch sources: ${sourcesResponse.status} ${errorText}`,
+        `  API error fetching sources: ${sourcesResponse.status} ${errorText}`,
       );
-      throw new Error('Failed to fetch sources');
+
+      if (
+        sourcesResponse.status() === 401 ||
+        sourcesResponse.status() === 403
+      ) {
+        throw new Error('Authentication failed - check session setup');
+      } else if (sourcesResponse.status() >= 500) {
+        throw new Error(
+          `API server error (${sourcesResponse.status()}) - check API logs`,
+        );
+      } else {
+        throw new Error(`Failed to fetch sources: ${sourcesResponse.status()}`);
+      }
+    }
+
+    const sources = await sourcesResponse.json();
+    console.log(`  Found ${sources.length} default sources`);
+    if (sources.length === 0) {
+      console.warn('  WARNING: No sources found');
+      console.warn(
+        '  This may happen if the team already existed from a previous run',
+      );
+      console.warn('  DEFAULT_SOURCES only applies to newly created teams');
+      console.warn('  Tests may fail if sources are not configured');
+    } else {
+      sources.forEach((source: any) => {
+        console.log(`    - ${source.name} (${source.kind})`);
+      });
     }
 
     // Navigate to search page to ensure sources are loaded

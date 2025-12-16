@@ -38,17 +38,34 @@ cleanup_mongodb() {
 
 wait_for_mongodb() {
   echo "Waiting for MongoDB to be ready..."
-  for i in {1..5}; do
-    if docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" exec -T db mongosh --quiet --eval "db.adminCommand('ping')" >/dev/null 2>&1; then
-      echo "MongoDB is ready"
+  local max_attempts=15
+  local attempt=1
+
+  while [ $attempt -le $max_attempts ]; do
+    # Check if MongoDB is accepting connections and ready for writes
+    if docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" exec -T db mongosh --quiet --eval "
+      try {
+        db.adminCommand('ping');
+        db.getSiblingDB('test').test.insertOne({_id: 'healthcheck', ts: new Date()});
+        db.getSiblingDB('test').test.deleteOne({_id: 'healthcheck'});
+        print('ready');
+      } catch(e) {
+        print('not ready: ' + e);
+        quit(1);
+      }
+    " 2>/dev/null | grep -q "ready"; then
+      echo "MongoDB is ready and accepting writes"
       return 0
     fi
-    if [ "$i" -eq 5 ]; then
-      echo "MongoDB failed to start after 10 seconds"
+
+    if [ $attempt -eq $max_attempts ]; then
+      echo "MongoDB failed to become ready after $max_attempts attempts"
       return 1
     fi
-    echo "Waiting for MongoDB... ($i/5)"
-    sleep 2
+
+    echo "Waiting for MongoDB... ($attempt/$max_attempts)"
+    attempt=$((attempt + 1))
+    sleep 1
   done
 }
 

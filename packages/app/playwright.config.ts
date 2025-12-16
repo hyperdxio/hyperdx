@@ -66,9 +66,7 @@ export default defineConfig({
     ? [
         // Full-stack mode: Start API and App servers (infrastructure started separately)
         {
-          // Note: DOTENV_CONFIG_PATH specifies the env file to load (.env.e2e contains
-          // connection strings and configuration, not inline credentials). The -r dotenv-expand/config
-          // flag loads environment variables from the specified file before starting the server.
+          // Loads configuration from .env.e2e (connections, settings)
           command:
             'cd ../api && DOTENV_CONFIG_PATH=.env.e2e npx ts-node --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r @hyperdx/node-opentelemetry/build/src/tracing src/index.ts',
           port: 29000,
