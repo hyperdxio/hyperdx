@@ -289,7 +289,10 @@ const getChartConfigFromAlert = (
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
     // Doesn't work for metric alerts yet
-    if (tile.config.displayType === DisplayType.Line) {
+    if (
+      tile.config.displayType === DisplayType.Line ||
+      tile.config.displayType === DisplayType.StackedBar
+    ) {
       return {
         connection,
         dateRange,
