@@ -60,13 +60,11 @@ async function globalSetup(config: FullConfig) {
 
   // Wait for API server to be ready
   console.log('Waiting for API server to be ready...');
-  let apiReady = false;
 
   for (let i = 0; i < API_HEALTH_CHECK_MAX_RETRIES; i++) {
     try {
       const response = await fetch(`${API_URL}/health`).catch(() => null);
       if (response?.ok) {
-        apiReady = true;
         console.log('  API server is ready');
         break;
       }

@@ -139,15 +139,8 @@ jobs:
       - name: Build dependencies
         run: npx nx run-many -t ci:build
 
-      - name: Verify MongoDB connectivity
-        run: |
-          echo "Testing MongoDB connection..."
-          npx mongosh mongodb://mongodb:27017/hyperdx-e2e --eval "db.adminCommand('ping')" || {
-            echo "ERROR: Cannot connect to MongoDB service"
-            exit 1
-          }
-
       - name: Run Playwright tests (full-stack mode)
+        # MongoDB service health check ensures it's ready before this step runs
         # Note: Tests use ClickHouse demo instance (otel_demo with empty password)
         # This is intentionally public - it's ClickHouse's read-only demo instance
         env:
