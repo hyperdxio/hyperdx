@@ -151,16 +151,20 @@ router.post(
         });
       }
 
+      // Normalize email to lowercase for consistency
+      const normalizedEmail = toEmail.toLowerCase();
+
+      // Check for existing invitation with normalized email
       let teamInvite = await TeamInvite.findOne({
         teamId,
-        email: toEmail, // TODO: case insensitive ?
+        email: normalizedEmail,
       });
 
       if (!teamInvite) {
         teamInvite = await new TeamInvite({
           teamId,
           name,
-          email: toEmail, // TODO: case insensitive ?
+          email: normalizedEmail,
           token: crypto.randomBytes(32).toString('hex'),
         }).save();
       }
