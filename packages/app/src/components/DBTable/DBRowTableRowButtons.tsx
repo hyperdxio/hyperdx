@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { IconCopy, IconLink } from '@tabler/icons-react';
+import { IconCopy, IconLink, IconTextWrap } from '@tabler/icons-react';
 
 import DBRowTableIconButton from './DBRowTableIconButton';
 
@@ -9,12 +9,16 @@ export interface DBRowTableRowButtonsProps {
   row: Record<string, any>;
   getRowWhere: (row: Record<string, any>) => string;
   sourceId?: string;
+  isWrapped: boolean;
+  onToggleWrap: () => void;
 }
 
 export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   row,
   getRowWhere,
   sourceId,
+  isWrapped,
+  onToggleWrap,
 }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [isUrlCopied, setIsUrlCopied] = useState(false);
@@ -22,7 +26,7 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   const copyRowData = async () => {
     try {
       // Filter out internal metadata fields that start with __ or are generated IDs
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
       const { __hyperdx_id, ...cleanRow } = row;
 
       // Parse JSON string fields to make them proper JSON objects
@@ -76,6 +80,15 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
 
   return (
     <div className={styles.rowButtons}>
+      {!isWrapped && (
+        <DBRowTableIconButton
+          onClick={onToggleWrap}
+          variant="copy"
+          title="Wrap All Lines"
+        >
+          <IconTextWrap size={16} />
+        </DBRowTableIconButton>
+      )}
       <DBRowTableIconButton
         onClick={copyRowData}
         variant="copy"
@@ -84,7 +97,7 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
           isCopied ? 'Copied entire row as JSON!' : 'Copy entire row as JSON'
         }
       >
-        <IconCopy size={12} />
+        <IconCopy size={16} />
       </DBRowTableIconButton>
       <DBRowTableIconButton
         onClick={copyRowUrl}
@@ -96,7 +109,7 @@ export const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
             : 'Copy shareable link to this specific row'
         }
       >
-        <IconLink size={12} />
+        <IconLink size={16} />
       </DBRowTableIconButton>
     </div>
   );
