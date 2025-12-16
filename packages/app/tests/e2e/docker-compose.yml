@@ -7,6 +7,14 @@ services:
       - 29998:29998
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
 networks:
   internal:
     name: 'hyperdx-e2e-internal-network'

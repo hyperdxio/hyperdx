@@ -104,6 +104,13 @@ jobs:
     timeout-minutes: 15
     container:
       image: mcr.microsoft.com/playwright:v1.57.0-jammy
+      options: --network-alias playwright
+    services:
+      mongodb:
+        image: mongo:5.0.14-focal
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s --health-timeout 5s --health-retries 5
     permissions:
       contents: read
       pull-requests: write
@@ -129,7 +136,10 @@ jobs:
       - name: Build dependencies
         run: npx nx run-many -t ci:build
 
-      - name: Run Playwright tests
+      - name: Run Playwright tests (full-stack mode)
+        env:
+          E2E_FULLSTACK: 'true'
+          MONGO_URI: mongodb://mongodb:27017/hyperdx-e2e
         run: |
           cd packages/app
           yarn test:e2e --shard=${{ matrix.shard }}/4

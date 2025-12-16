@@ -114,10 +114,12 @@ async function globalSetup(config: FullConfig) {
       const sources = await sourcesResponse.json();
       console.log(`  Found ${sources.length} default sources`);
       if (sources.length === 0) {
-        console.error('  No sources found - check DEFAULT_SOURCES env var');
-        throw new Error(
-          'No sources created - DEFAULT_SOURCES may not be set or team already existed',
+        console.warn('  WARNING: No sources found');
+        console.warn(
+          '  This may happen if the team already existed from a previous run',
         );
+        console.warn('  DEFAULT_SOURCES only applies to newly created teams');
+        console.warn('  Tests may fail if sources are not configured');
       } else {
         sources.forEach((source: any) => {
           console.log(`    - ${source.name} (${source.kind})`);
@@ -135,7 +137,12 @@ async function globalSetup(config: FullConfig) {
     console.log('Navigating to search page');
     await page.goto('/search');
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(2000);
+
+    // Wait for source selector to be ready (indicates sources are loaded)
+    await page.waitForSelector('[data-testid="source-settings-menu"]', {
+      state: 'visible',
+      timeout: 10000,
+    });
 
     // Save authentication state
     const authDir = path.dirname(AUTH_FILE);

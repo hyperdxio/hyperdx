@@ -70,24 +70,17 @@ e2e:
 	@# Run full-stack by default (MongoDB + API + demo ClickHouse)
 	@# Use 'make e2e local=true' to skip MongoDB and run local mode only
 	@if [ "$(local)" = "true" ]; then \
-		echo "Running E2E tests in local mode (frontend only)..."; \
 		if [ -z "$(tags)" ]; then \
-			cd packages/app && yarn test:e2e; \
+			./scripts/test-e2e.sh --local; \
 		else \
-			cd packages/app && yarn test:e2e --grep "$(tags)"; \
+			./scripts/test-e2e.sh --local --tags "$(tags)"; \
 		fi; \
 	else \
-		echo "Starting MongoDB for full-stack tests..."; \
-		docker compose -p e2e -f packages/app/tests/e2e/docker-compose.yml up -d; \
-		sleep 5; \
-		echo "Running E2E tests in full-stack mode (MongoDB + API + demo ClickHouse)..."; \
 		if [ -z "$(tags)" ]; then \
-			cd packages/app && E2E_FULLSTACK=true yarn test:e2e; \
+			./scripts/test-e2e.sh; \
 		else \
-			cd packages/app && E2E_FULLSTACK=true yarn test:e2e --grep "$(tags)"; \
+			./scripts/test-e2e.sh --tags "$(tags)"; \
 		fi; \
-		echo "Stopping MongoDB..."; \
-		docker compose -p e2e -f packages/app/tests/e2e/docker-compose.yml down -v; \
 	fi
 
 

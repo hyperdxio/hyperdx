@@ -279,9 +279,12 @@ For intermittent failures:
 
 ### CI/CD Integration
 
-Tests are configured to run in CI environments with:
+Tests run in **full-stack mode** on CI (GitHub Actions) with:
 
+- MongoDB service container for authentication and persistence
+- Demo ClickHouse for telemetry data
 - 60-second test timeout (same as local)
 - Multiple retry attempts (2 retries on CI vs 1 locally)
 - Artifact collection for failed tests
 - GitHub Actions integration for PR comments
+- Parallel execution across 4 shards for faster feedback
