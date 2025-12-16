@@ -1413,13 +1413,12 @@ function ServicesDashboardPage() {
       appliedConfig.source &&
       appliedConfig.source !== appliedConfigParams.source
     ) {
-      setAppliedConfigParams({ source: sourceId });
+      setAppliedConfigParams({ source: appliedConfig.source });
     }
   }, [
     appliedConfig.source,
     appliedConfigParams.source,
     setAppliedConfigParams,
-    sourceId,
   ]);
 
   const DEFAULT_INTERVAL = 'Past 1h';
