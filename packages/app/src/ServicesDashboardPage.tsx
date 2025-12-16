@@ -7,7 +7,7 @@ import {
   useQueryState,
   useQueryStates,
 } from 'nuqs';
-import { UseControllerProps, useForm } from 'react-hook-form';
+import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
@@ -1407,6 +1407,7 @@ function ServicesDashboardPage() {
     id: watch('source'),
   });
 
+  // Update the `source` query parameter if the appliedConfig source changes
   useEffect(() => {
     if (
       appliedConfig.source &&
@@ -1447,26 +1448,34 @@ function ServicesDashboardPage() {
     })();
   }, [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue]);
 
-  // Auto submit when service or source changes
+  // Auto-submit when source changes
   useEffect(() => {
-    const normalizedService = service ?? '';
-    const appliedService = appliedConfig.service ?? '';
-    const normalizedSource = sourceId ?? '';
-    const appliedSource = appliedConfig.source ?? '';
+    const { unsubscribe } = watch((data, { name, type }) => {
+      if (
+        name === 'source' &&
+        type === 'change' &&
+        data.source &&
+        data.source !== appliedConfig.source
+      ) {
+        onSubmit();
+      }
+    });
+    return () => unsubscribe();
+  }, [appliedConfig.source, onSubmit, watch]);
 
-    if (
-      normalizedService !== appliedService ||
-      (normalizedSource && normalizedSource !== appliedSource)
-    ) {
-      onSubmit();
-    }
-  }, [
-    service,
-    sourceId,
-    appliedConfig.service,
-    appliedConfig.source,
-    onSubmit,
-  ]);
+  // Auto-submit when service changes
+  useEffect(() => {
+    const { unsubscribe } = watch((data, { name, type }) => {
+      if (
+        name === 'service' &&
+        type === 'change' &&
+        data.service !== appliedConfig.service
+      ) {
+        onSubmit();
+      }
+    });
+    return () => unsubscribe();
+  }, [appliedConfig.service, onSubmit, watch]);
 
   return (
     <Box p="sm">
