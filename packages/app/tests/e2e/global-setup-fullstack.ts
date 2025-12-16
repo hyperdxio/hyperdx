@@ -12,10 +12,10 @@ import fs from 'fs';
 import path from 'path';
 import { chromium, FullConfig } from '@playwright/test';
 
-const MOCK_USER = {
+const DEFAULT_TEST_USER = {
   email: process.env.E2E_TEST_USER_EMAIL || 'e2e-test@hyperdx.io',
   password: process.env.E2E_TEST_USER_PASSWORD || 'TestPassword123!',
-};
+} as const;
 
 const API_URL = process.env.E2E_API_URL || 'http://localhost:29000';
 const APP_URL = process.env.E2E_APP_URL || 'http://localhost:28081';
@@ -35,10 +35,16 @@ async function globalSetup(config: FullConfig) {
     fs.unlinkSync(AUTH_FILE);
   }
 
-  // Generate unique test user email if E2E_UNIQUE_USER is set (useful for parallel CI runs)
+  // Generate unique test user if E2E_UNIQUE_USER is set (useful for parallel CI runs)
+  const MOCK_USER =
+    process.env.E2E_UNIQUE_USER === 'true'
+      ? {
+          email: `e2e-test-${Date.now()}-${Math.random().toString(36).slice(2, 9)}@hyperdx.io`,
+          password: DEFAULT_TEST_USER.password,
+        }
+      : { ...DEFAULT_TEST_USER };
+
   if (process.env.E2E_UNIQUE_USER === 'true') {
-    const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    MOCK_USER.email = `e2e-test-${uniqueId}@hyperdx.io`;
     console.log(`  Using unique test user: ${MOCK_USER.email}`);
   }
 

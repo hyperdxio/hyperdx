@@ -243,6 +243,33 @@ Tests use the extended base test from `utils/base-test.ts` which provides:
 - Use descriptive test names and organize with appropriate tags
 - Clean up test data when necessary
 
+## Configuration Details
+
+### Port Configuration
+
+**Local Environment (make e2e):**
+- MongoDB: 29998 (custom port to avoid conflicts)
+- API Server: 29000
+- App Server: 28081
+
+**CI Environment (GitHub Actions):**
+- MongoDB: 27017 (default, accessed via service name `mongodb`)
+- API Server: 29000
+- App Server: 28081
+
+The MongoDB port differs between local and CI to:
+- Avoid conflicts with existing MongoDB instances locally (port 27017)
+- Use standard ports in isolated CI containers (port 27017)
+- CI accesses MongoDB via hostname `mongodb` instead of `localhost`
+
+### Playwright Configuration
+
+The test setup uses Playwright's `webServer` array feature (v1.32+) to start multiple servers:
+- API server (port 29000) - loads `.env.e2e` configuration
+- App server (port 28081) - connects to API
+
+This requires Playwright v1.32.0 or higher. Current version: v1.57.0
+
 ## Troubleshooting
 
 ### Common Issues
@@ -253,9 +280,10 @@ Tests use the extended base test from `utils/base-test.ts` which provides:
 - Verify environment variables in `.env.e2e`
 
 **MongoDB connection issues (full-stack mode):**
-- Check port 29998 is available: `lsof -i :29998`
+- Check port 29998 is available locally: `lsof -i :29998`
 - View MongoDB logs: `docker compose -p e2e -f tests/e2e/docker-compose.yml logs`
 - MongoDB is auto-managed by `make e2e` (default)
+- Note: CI uses port 27017 internally (accessed via service name)
 
 **Sources don't appear in UI:**
 - Check API logs for `setupTeamDefaults` errors

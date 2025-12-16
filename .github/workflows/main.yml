@@ -109,9 +109,9 @@ jobs:
       mongodb:
         image: mongo:5.0.14-focal
         options: >-
-          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1});
-          db.getSiblingDB(\"test\").test.insertOne({_id: \"healthcheck\"});
-          db.getSiblingDB(\"test\").test.deleteOne({_id: \"healthcheck\"})'"
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping: 1});
+          db.getSiblingDB(\"test\").test.insertOne({_id: \"hc\"});
+          db.getSiblingDB(\"test\").test.deleteOne({_id: \"hc\"})'"
           --health-interval 10s --health-timeout 5s --health-retries 10
           --health-start-period 10s
     permissions:

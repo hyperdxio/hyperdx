@@ -62,6 +62,7 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
+  // Note: webServer array syntax requires Playwright v1.32.0+ (current: v1.57.0)
   webServer: USE_FULLSTACK
     ? [
         // Full-stack mode: Start API and App servers (infrastructure started separately)
