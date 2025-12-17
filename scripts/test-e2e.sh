@@ -42,7 +42,8 @@ cleanup_mongodb() {
 
 check_mongodb_health() {
   # Health check script that tests ping, insert, and delete operations
-  docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" exec -T db mongosh --quiet --eval "
+  # Note: MongoDB is configured to run on port 29998 inside the container
+  docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" exec -T db mongosh --port 29998 --quiet --eval "
     try {
       db.adminCommand('ping');
       db.getSiblingDB('test').test.insertOne({_id: 'healthcheck', ts: new Date()});
@@ -93,9 +94,9 @@ run_local_mode() {
   echo "Running E2E tests in local mode (frontend only)..."
   cd "$REPO_ROOT/packages/app"
   if [ -n "$TAGS" ]; then
-    yarn test:e2e --grep "$TAGS"
+    yarn test:e2e --grep "$TAGS" --grep-invert "@full-stack"
   else
-    yarn test:e2e
+    yarn test:e2e --grep-invert "@full-stack"
   fi
 }
 
