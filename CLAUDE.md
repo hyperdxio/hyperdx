@@ -42,7 +42,7 @@ The project uses **Yarn 4.5.1** workspaces. Docker Compose manages ClickHouse, M
 2. **Type safety**: Use TypeScript strictly; Zod schemas for validation
 3. **Existing patterns**: Follow established patterns in the codebase - explore similar files before implementing
 4. **Component size**: Keep files under 300 lines; break down large components
-5. **Testing**: Tests live in `__tests__/` directories; use Jest for unit/integration tests
+5. **Testing**: Tests live in `__tests__/` directories; use Jest for unit/integration tests, `cd packages/app && yarn ci:unit` for unit tests, and `cd packages/app && yarn ci:int` for integration tests
 
 ## Important Context
 
