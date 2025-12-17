@@ -94,9 +94,9 @@ run_local_mode() {
   echo "Running E2E tests in local mode (frontend only)..."
   cd "$REPO_ROOT/packages/app"
   if [ -n "$TAGS" ]; then
-    yarn test:e2e --grep "$TAGS" --grep-invert "@full-stack"
+    yarn test:e2e --local --grep "$TAGS"
   else
-    yarn test:e2e --grep-invert "@full-stack"
+    yarn test:e2e --local
   fi
 }
 
@@ -115,12 +115,12 @@ run_fullstack_mode() {
     exit 1
   fi
 
-  # Run tests with full-stack flag
+  # Run tests in full-stack mode (default for yarn test:e2e)
   cd "$REPO_ROOT/packages/app"
   if [ -n "$TAGS" ]; then
-    E2E_FULLSTACK=true yarn test:e2e --grep "$TAGS"
+    yarn test:e2e --grep "$TAGS"
   else
-    E2E_FULLSTACK=true yarn test:e2e
+    yarn test:e2e
   fi
 }
 
