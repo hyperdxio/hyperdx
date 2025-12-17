@@ -7,7 +7,7 @@ import {
   useQueryState,
   useQueryStates,
 } from 'nuqs';
-import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
+import { UseControllerProps, useForm } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
@@ -16,6 +16,7 @@ import {
   CteChartConfig,
   DisplayType,
   Filter,
+  PresetDashboard,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -32,6 +33,7 @@ import {
 import {
   IconChartLine,
   IconFilter,
+  IconFilterEdit,
   IconPlayerPlay,
   IconRefresh,
   IconTable,
@@ -68,13 +70,20 @@ import { useSource, useSources } from '@/source';
 import { Histogram } from '@/SVGIcons';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
+import usePresetDashboardFilters from './hooks/usePresetDashboardFilters';
+import DashboardFilters from './DashboardFilters';
+import DashboardFiltersModal from './DashboardFiltersModal';
 import { HARD_LINES_LIMIT } from './HDXMultiSeriesTimeChart';
 
-type AppliedConfig = {
+type AppliedConfigParams = {
   source?: string | null;
   service?: string | null;
   where?: string | null;
   whereLanguage?: 'sql' | 'lucene' | null;
+};
+
+type AppliedConfig = AppliedConfigParams & {
+  additionalFilters?: Filter[];
 };
 
 const MAX_NUM_SERIES = HARD_LINES_LIMIT;
@@ -90,7 +99,7 @@ function getScopedFilters({
   includeIsSpanKindServer?: boolean;
   includeNonEmptyEndpointFilter?: boolean;
 }): Filter[] {
-  const filters: Filter[] = [];
+  const filters: Filter[] = [...(appliedConfig.additionalFilters || [])];
   // Database spans are of kind Client. To be cleaned up in HDX-1219
   if (includeIsSpanKindServer) {
     filters.push({
@@ -1374,7 +1383,7 @@ function ServicesDashboardPage() {
     useQueryStates(appliedConfigMap);
 
   // Only use the source from the URL params if it is a trace source
-  const appliedConfig = useMemo(() => {
+  const appliedConfigWithoutFilters = useMemo(() => {
     if (!sources?.length) return appliedConfigParams;
 
     const traceSources = sources?.filter(s => s.kind === SourceKind.Trace);
@@ -1396,8 +1405,8 @@ function ServicesDashboardPage() {
     defaultValues: {
       where: '',
       whereLanguage: 'sql' as 'sql' | 'lucene',
-      service: appliedConfig?.service || '',
-      source: appliedConfig?.source ?? '',
+      service: appliedConfigWithoutFilters?.service || '',
+      source: appliedConfigWithoutFilters?.source ?? '',
     },
   });
 
@@ -1407,16 +1416,39 @@ function ServicesDashboardPage() {
     id: watch('source'),
   });
 
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const {
+    filters,
+    filterValues,
+    setFilterValue,
+    filterQueries: additionalFilters,
+    handleSaveFilter,
+    handleRemoveFilter,
+    isFetching: isFetchingFilters,
+    isMutationPending: isFiltersMutationPending,
+  } = usePresetDashboardFilters({
+    presetDashboard: PresetDashboard.Services,
+    sourceId: sourceId || '',
+  });
+
+  const appliedConfig = useMemo(
+    () => ({
+      ...appliedConfigWithoutFilters,
+      additionalFilters,
+    }),
+    [appliedConfigWithoutFilters, additionalFilters],
+  );
+
   // Update the `source` query parameter if the appliedConfig source changes
   useEffect(() => {
     if (
-      appliedConfig.source &&
-      appliedConfig.source !== appliedConfigParams.source
+      appliedConfigWithoutFilters.source &&
+      appliedConfigWithoutFilters.source !== appliedConfigParams.source
     ) {
-      setAppliedConfigParams({ source: appliedConfig.source });
+      setAppliedConfigParams({ source: appliedConfigWithoutFilters.source });
     }
   }, [
-    appliedConfig.source,
+    appliedConfigWithoutFilters.source,
     appliedConfigParams.source,
     setAppliedConfigParams,
   ]);
@@ -1552,6 +1584,15 @@ function ServicesDashboardPage() {
               setInputValue={setDisplayedTimeInputValue}
               onSearch={onSearch}
             />
+            <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+              <Button
+                variant="default"
+                px="xs"
+                onClick={() => setShowFiltersModal(true)}
+              >
+                <IconFilterEdit strokeWidth={1} />
+              </Button>
+            </Tooltip>
             <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
               <Button
                 onClick={refresh}
@@ -1572,6 +1613,12 @@ function ServicesDashboardPage() {
           </Group>
         </Group>
       </form>
+      <DashboardFilters
+        filters={filters}
+        filterValues={filterValues}
+        onSetFilterValue={setFilterValue}
+        dateRange={searchedTimeRange}
+      />
       {source?.kind !== 'trace' ? (
         <Group align="center" justify="center" h="300px">
           <Text c="gray">Please select a trace source</Text>
@@ -1609,6 +1656,15 @@ function ServicesDashboardPage() {
           </Tabs.Panel>
         </Tabs>
       )}
+      <DashboardFiltersModal
+        opened={showFiltersModal}
+        onClose={() => setShowFiltersModal(false)}
+        filters={filters}
+        onSaveFilter={handleSaveFilter}
+        onRemoveFilter={handleRemoveFilter}
+        source={source}
+        isLoading={isFetchingFilters || isFiltersMutationPending}
+      />
     </Box>
   );
 }

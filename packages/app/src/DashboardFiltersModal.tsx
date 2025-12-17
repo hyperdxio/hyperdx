@@ -5,9 +5,11 @@ import {
   DashboardFilter,
   MetricsDataType,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
+  Center,
   Group,
   Input,
   Modal,
@@ -24,6 +26,7 @@ import {
   IconFilter,
   IconInfoCircle,
   IconPencil,
+  IconRefresh,
   IconStack,
   IconTrash,
 } from '@tabler/icons-react';
@@ -77,6 +80,7 @@ const CustomInputWrapper = ({
 interface DashboardFilterEditFormProps {
   filter: DashboardFilter;
   isNew: boolean;
+  source: TSource | undefined;
   onSave: (definition: DashboardFilter) => void;
   onClose: () => void;
   onCancel: () => void;
@@ -85,6 +89,7 @@ interface DashboardFilterEditFormProps {
 const DashboardFilterEditForm = ({
   filter,
   isNew,
+  source: presetSource,
   onSave,
   onClose,
   onCancel,
@@ -150,6 +155,7 @@ const DashboardFilterEditForm = ({
                 sourceSchemaPreview={
                   <SourceSchemaPreview source={source} variant="text" />
                 }
+                disabled={!!presetSource}
               />
             </CustomInputWrapper>
             {sourceIsMetric && (
@@ -294,10 +300,9 @@ const DashboardFiltersList = ({
           </Paper>
         ))}
         {isLoading && (
-          <div
-            className="spinner-border mx-auto"
-            style={{ width: 14, height: 14 }}
-          />
+          <Center>
+            <IconRefresh className="spin-animate" />
+          </Center>
         )}
       </Stack>
 
@@ -314,6 +319,7 @@ interface DashboardFiltersEditModalProps {
   opened: boolean;
   filters: DashboardFilter[];
   isLoading?: boolean;
+  source?: TSource;
   onClose: () => void;
   onSaveFilter: (filter: DashboardFilter) => void;
   onRemoveFilter: (id: string) => void;
@@ -325,6 +331,7 @@ const DashboardFiltersModal = ({
   opened,
   filters,
   isLoading,
+  source,
   onClose,
   onSaveFilter,
   onRemoveFilter,
@@ -350,7 +357,7 @@ const DashboardFiltersModal = ({
       type: 'QUERY_EXPRESSION',
       name: '',
       expression: '',
-      source: '',
+      source: source?.id ?? '',
     });
   };
 
@@ -378,6 +385,7 @@ const DashboardFiltersModal = ({
         onCancel={() => setSelectedFilter(undefined)}
         onClose={onClose}
         isNew={selectedFilter.id === NEW_FILTER_ID}
+        source={source}
       />
     );
   } else {
