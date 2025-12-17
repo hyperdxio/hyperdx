@@ -104,6 +104,16 @@ jobs:
     timeout-minutes: 15
     container:
       image: mcr.microsoft.com/playwright:v1.57.0-jammy
+      options: --network-alias playwright
+    services:
+      mongodb:
+        image: mongo:5.0.14-focal
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping: 1});
+          db.getSiblingDB(\"test\").test.insertOne({_id: \"hc\"});
+          db.getSiblingDB(\"test\").test.deleteOne({_id: \"hc\"})'"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+          --health-start-period 10s
     permissions:
       contents: read
       pull-requests: write
@@ -129,7 +139,15 @@ jobs:
       - name: Build dependencies
         run: npx nx run-many -t ci:build
 
-      - name: Run Playwright tests
+      - name: Run Playwright tests (full-stack mode)
+        # MongoDB service health check ensures it's ready before this step runs
+        # Note: Tests use ClickHouse demo instance (otel_demo with empty password)
+        # This is intentionally public - it's ClickHouse's read-only demo instance
+        env:
+          E2E_FULLSTACK: 'true'
+          E2E_UNIQUE_USER: 'true'
+          E2E_API_HEALTH_CHECK_MAX_RETRIES: '60'
+          MONGO_URI: mongodb://mongodb:27017/hyperdx-e2e
         run: |
           cd packages/app
           yarn test:e2e --shard=${{ matrix.shard }}/4
