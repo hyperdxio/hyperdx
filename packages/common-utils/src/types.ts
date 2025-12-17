@@ -506,6 +506,16 @@ export const DashboardFilterSchema = z.object({
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
+export enum PresetDashboard {
+  Services = 'services',
+}
+
+export const PresetDashboardFilterSchema = DashboardFilterSchema.extend({
+  presetDashboard: z.nativeEnum(PresetDashboard),
+});
+
+export type PresetDashboardFilter = z.infer<typeof PresetDashboardFilterSchema>;
+
 export const DashboardSchema = z.object({
   id: z.string(),
   name: z.string().min(1),

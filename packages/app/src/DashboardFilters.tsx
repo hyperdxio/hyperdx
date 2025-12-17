@@ -44,6 +44,8 @@ const DashboardFilterSelect = ({
         select: '',
       },
       keys: [filter.expression],
+      disableRowLimit: true,
+      limit: 10000,
     },
     {
       enabled:

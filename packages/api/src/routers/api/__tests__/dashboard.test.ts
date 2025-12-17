@@ -1,6 +1,15 @@
-import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertThresholdType,
+  MetricsDataType,
+  PresetDashboard,
+  SourceKind,
+  TSourceUnion,
+} from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
-import mongoose from 'mongoose';
+import mongoose, { Types } from 'mongoose';
+
+import PresetDashboardFilter from '@/models/presetDashboardFilter';
+import { Source } from '@/models/source';
 
 import {
   getLoggedInAgent,
@@ -358,5 +367,489 @@ describe('dashboard router', () => {
 
     // Alert should have updated threshold
     expect(updatedAlertRecord.threshold).toBe(updatedThreshold);
+  });
+
+  describe('preset dashboards', () => {
+    const MOCK_SOURCE: Omit<Extract<TSourceUnion, { kind: 'log' }>, 'id'> = {
+      kind: SourceKind.Log,
+      name: 'Test Source',
+      connection: new Types.ObjectId().toString(),
+      from: {
+        databaseName: 'test_db',
+        tableName: 'test_table',
+      },
+      timestampValueExpression: 'timestamp',
+      defaultTableSelectExpression: 'body',
+    };
+
+    const MOCK_PRESET_DASHBOARD_FILTER = {
+      name: 'Test Filter',
+      type: 'QUERY_EXPRESSION',
+      expression: 'service.name:test-service',
+      presetDashboard: PresetDashboard.Services,
+    };
+
+    describe('GET /preset/:presetDashboard/filters', () => {
+      it('returns preset dashboard filters for a given source', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        // Create a test source
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        // Create a preset dashboard filter
+        const filter = await PresetDashboardFilter.create({
+          ...MOCK_PRESET_DASHBOARD_FILTER,
+          team: team._id,
+          source: source._id,
+        });
+
+        const response = await agent
+          .get(`/dashboards/preset/${PresetDashboard.Services}/filters`)
+          .query({ sourceId: source._id.toString() })
+          .expect(200);
+
+        expect(response.body).toHaveLength(1);
+        expect(response.body[0]).toMatchObject({
+          name: MOCK_PRESET_DASHBOARD_FILTER.name,
+          type: MOCK_PRESET_DASHBOARD_FILTER.type,
+          expression: MOCK_PRESET_DASHBOARD_FILTER.expression,
+          presetDashboard: MOCK_PRESET_DASHBOARD_FILTER.presetDashboard,
+          source: source._id.toString(),
+          id: filter._id.toString(),
+        });
+      });
+
+      it('returns empty array when no filters exist for source', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        const response = await agent
+          .get(`/dashboards/preset/${PresetDashboard.Services}/filters`)
+          .query({ sourceId: source._id.toString() })
+          .expect(200);
+
+        expect(response.body).toEqual([]);
+      });
+
+      it('returns 400 when sourceId is missing', async () => {
+        const { agent } = await getLoggedInAgent(server);
+
+        await agent
+          .get(`/dashboards/preset/${PresetDashboard.Services}/filters`)
+          .expect(400);
+      });
+
+      it('returns 400 when sourceId is empty', async () => {
+        const { agent } = await getLoggedInAgent(server);
+
+        await agent
+          .get(`/dashboards/preset/${PresetDashboard.Services}/filters`)
+          .query({ sourceId: '' })
+          .expect(400);
+      });
+
+      it('returns 400 for invalid preset dashboard type', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        await agent
+          .get('/dashboards/preset/invalid-dashboard/filters')
+          .query({ sourceId: source._id.toString() })
+          .expect(400);
+      });
+
+      it('does not return filters from other teams in GET', async () => {
+        const { agent: agent1, team: team1 } = await getLoggedInAgent(server);
+        const team2 = new mongoose.Types.ObjectId();
+
+        const source1 = await Source.create({
+          ...MOCK_SOURCE,
+          team: team1._id,
+        });
+
+        const source2 = await Source.create({
+          ...MOCK_SOURCE,
+          team: team2,
+        });
+
+        await PresetDashboardFilter.create({
+          ...MOCK_PRESET_DASHBOARD_FILTER,
+          team: team1._id,
+          source: source1._id,
+        });
+
+        await PresetDashboardFilter.create({
+          ...MOCK_PRESET_DASHBOARD_FILTER,
+          team: team2,
+          source: source2._id,
+        });
+
+        const response = await agent1
+          .get(`/dashboards/preset/${PresetDashboard.Services}/filters`)
+          .query({ sourceId: source1._id.toString() })
+          .expect(200);
+
+        expect(response.body).toHaveLength(1);
+        expect(response.body[0].team).toEqual(team1._id.toString());
+      });
+    });
+
+    describe('POST /preset/:presetDashboard/filter', () => {
+      it('creates a new preset dashboard filter', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        const filterInput = {
+          ...MOCK_PRESET_DASHBOARD_FILTER,
+          id: new Types.ObjectId().toString(),
+          source: source._id.toString(),
+        };
+
+        const response = await agent
+          .post(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+          .send({ filter: filterInput })
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          name: MOCK_PRESET_DASHBOARD_FILTER.name,
+          type: MOCK_PRESET_DASHBOARD_FILTER.type,
+          expression: MOCK_PRESET_DASHBOARD_FILTER.expression,
+          presetDashboard: MOCK_PRESET_DASHBOARD_FILTER.presetDashboard,
+        });
+
+        // Verify filter was created in database
+        const filters = await PresetDashboardFilter.find({ team: team._id });
+        expect(filters).toHaveLength(1);
+        expect(filters[0]._id.toString()).toBe(response.body.id);
+        expect(filters[0].source.toString()).toBe(source._id.toString());
+        expect(filters[0].team.toString()).toBe(team._id.toString());
+        expect(filters[0].name).toBe(MOCK_PRESET_DASHBOARD_FILTER.name);
+        expect(filters[0].type).toBe(MOCK_PRESET_DASHBOARD_FILTER.type);
+        expect(filters[0].expression).toBe(
+          MOCK_PRESET_DASHBOARD_FILTER.expression,
+        );
+        expect(filters[0].presetDashboard).toBe(
+          MOCK_PRESET_DASHBOARD_FILTER.presetDashboard,
+        );
+      });
+
+      it('creates filter with optional sourceMetricType', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        const filterInput = {
+          ...MOCK_PRESET_DASHBOARD_FILTER,
+          id: new Types.ObjectId().toString(),
+          source: source._id.toString(),
+          sourceMetricType: MetricsDataType.Gauge,
+        };
+
+        const response = await agent
+          .post(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+          .send({ filter: filterInput })
+          .expect(200);
+
+        expect(response.body.sourceMetricType).toBe(MetricsDataType.Gauge);
+      });
+
+      it('returns 400 when filter preset dashboard does not match params', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        const filterInput = {
+          ...MOCK_PRESET_DASHBOARD_FILTER,
+          id: new Types.ObjectId().toString(),
+          source: source._id.toString(),
+          presetDashboard: PresetDashboard.Services,
+        };
+
+        // Try to create with mismatched preset dashboard in URL
+        await agent
+          .post('/dashboards/preset/invalid-dashboard/filter')
+          .send({ filter: filterInput })
+          .expect(400);
+      });
+
+      it('returns 400 when filter is missing required fields', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        const incompleteFilter = {
+          name: 'Test Filter',
+          source: source._id.toString(),
+          // Missing type, expression, presetDashboard
+        };
+
+        await agent
+          .post(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+          .send({ filter: incompleteFilter })
+          .expect(400);
+      });
+
+      it('returns 400 when filter body is missing', async () => {
+        const { agent } = await getLoggedInAgent(server);
+
+        await agent
+          .post(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+          .send({})
+          .expect(400);
+      });
+    });
+
+    describe('PUT /preset/:presetDashboard/filter', () => {
+      it('updates an existing preset dashboard filter', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        // Create initial filter
+        const existingFilter = await PresetDashboardFilter.create({
+          ...MOCK_PRESET_DASHBOARD_FILTER,
+          team: team._id,
+          source: source._id,
+        });
+
+        const updatedFilterInput = {
+          id: existingFilter._id.toString(),
+          name: 'Updated Filter Name',
+          type: MOCK_PRESET_DASHBOARD_FILTER.type,
+          expression: 'service.name:updated-service',
+          presetDashboard: MOCK_PRESET_DASHBOARD_FILTER.presetDashboard,
+          source: source._id.toString(),
+        };
+
+        const response = await agent
+          .put(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+          .send({ filter: updatedFilterInput })
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          name: 'Updated Filter Name',
+          expression: 'service.name:updated-service',
+        });
+
+        // Verify filter was updated in database
+        const updatedFilter = await PresetDashboardFilter.findById(
+          existingFilter._id,
+        );
+        expect(updatedFilter?.name).toBe('Updated Filter Name');
+        expect(updatedFilter?.expression).toBe('service.name:updated-service');
+      });
+
+      it('returns an error when the filter does not exist', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        const newFilterInput = {
+          id: new Types.ObjectId().toString(),
+          name: 'New Filter',
+          type: MOCK_PRESET_DASHBOARD_FILTER.type,
+          expression: 'service.name:new-service',
+          presetDashboard: MOCK_PRESET_DASHBOARD_FILTER.presetDashboard,
+          source: source._id.toString(),
+        };
+
+        await agent
+          .put(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+          .send({ filter: newFilterInput })
+          .expect(404);
+      });
+
+      it('updates filter with sourceMetricType', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        const existingFilter = await PresetDashboardFilter.create({
+          ...MOCK_PRESET_DASHBOARD_FILTER,
+          team: team._id,
+          source: source._id,
+        });
+
+        const updatedFilterInput = {
+          id: existingFilter._id.toString(),
+          name: MOCK_PRESET_DASHBOARD_FILTER.name,
+          type: MOCK_PRESET_DASHBOARD_FILTER.type,
+          expression: MOCK_PRESET_DASHBOARD_FILTER.expression,
+          presetDashboard: MOCK_PRESET_DASHBOARD_FILTER.presetDashboard,
+          source: source._id.toString(),
+          sourceMetricType: MetricsDataType.Histogram,
+        };
+
+        const response = await agent
+          .put(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+          .send({ filter: updatedFilterInput })
+          .expect(200);
+
+        expect(response.body.sourceMetricType).toBe(MetricsDataType.Histogram);
+      });
+
+      it('returns 400 when filter preset dashboard does not match params', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        const filterInput = {
+          id: new Types.ObjectId().toString(),
+          name: 'Test Filter',
+          type: MOCK_PRESET_DASHBOARD_FILTER.type,
+          expression: 'test',
+          presetDashboard: PresetDashboard.Services,
+          source: source._id.toString(),
+        };
+
+        // Try to update with mismatched preset dashboard in URL
+        await agent
+          .put('/dashboards/preset/invalid-dashboard/filter')
+          .send({ filter: filterInput })
+          .expect(400);
+      });
+
+      it('returns 400 when filter is missing required fields', async () => {
+        const { agent } = await getLoggedInAgent(server);
+
+        const incompleteFilter = {
+          id: new Types.ObjectId().toString(),
+          name: 'Test Filter',
+          // Missing type, expression, presetDashboard, source
+        };
+
+        await agent
+          .put(`/dashboards/preset/${PresetDashboard.Services}/filter`)
+          .send({ filter: incompleteFilter })
+          .expect(400);
+      });
+    });
+
+    describe('DELETE /preset/:presetDashboard/filter/:id', () => {
+      it('deletes a preset dashboard filter', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team._id,
+        });
+
+        // Create a filter to delete
+        const filter = await PresetDashboardFilter.create({
+          ...MOCK_PRESET_DASHBOARD_FILTER,
+          team: team._id,
+          source: source._id,
+        });
+
+        const response = await agent
+          .delete(
+            `/dashboards/preset/${PresetDashboard.Services}/filter/${filter._id}`,
+          )
+          .expect(200);
+
+        expect(response.body).toMatchObject({
+          id: filter._id.toString(),
+        });
+
+        // Verify filter was deleted from database
+        const deletedFilter = await PresetDashboardFilter.findById(filter._id);
+        expect(deletedFilter).toBeNull();
+      });
+
+      it('returns 404 when filter does not exist', async () => {
+        const { agent } = await getLoggedInAgent(server);
+
+        const nonExistentId = new Types.ObjectId().toString();
+
+        await agent
+          .delete(
+            `/dashboards/preset/${PresetDashboard.Services}/filter/${nonExistentId}`,
+          )
+          .expect(404);
+      });
+
+      it('returns 400 when id is invalid', async () => {
+        const { agent } = await getLoggedInAgent(server);
+
+        await agent
+          .delete('/dashboards/preset/services/filter/invalid-id')
+          .expect(400);
+      });
+
+      it('returns 400 for invalid preset dashboard type', async () => {
+        const { agent } = await getLoggedInAgent(server);
+
+        const filterId = new Types.ObjectId().toString();
+
+        await agent
+          .delete(`/dashboards/preset/invalid-dashboard/filter/${filterId}`)
+          .expect(400);
+      });
+
+      it('does not delete filters from other teams', async () => {
+        const { agent: agent } = await getLoggedInAgent(server); // team 1
+        const team2Id = new mongoose.Types.ObjectId();
+
+        const source = await Source.create({
+          ...MOCK_SOURCE,
+          team: team2Id,
+        });
+
+        const filter = await PresetDashboardFilter.create({
+          ...MOCK_PRESET_DASHBOARD_FILTER,
+          team: team2Id,
+          source: source._id,
+        });
+
+        // Try to delete team2's filter as team1
+        await agent
+          .delete(
+            `/dashboards/preset/${PresetDashboard.Services}/filter/${filter._id}`,
+          )
+          .expect(404);
+
+        // Verify filter still exists for team2
+        const stillExistingFilter = await PresetDashboardFilter.findById(
+          filter._id,
+        );
+        expect(stillExistingFilter).toBeTruthy();
+      });
+    });
   });
 });
