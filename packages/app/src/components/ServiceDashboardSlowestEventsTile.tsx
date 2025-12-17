@@ -1,3 +1,4 @@
+import { pick } from 'lodash';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import type { Filter, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Group, Text } from '@mantine/core';
@@ -30,7 +31,7 @@ export default function SlowestEventsTile({
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     {
-      ...source,
+      ...pick(source, ['timestampValueExpression', 'connection', 'from']),
       where: '',
       whereLanguage: 'sql',
       select: [
@@ -109,7 +110,11 @@ export default function SlowestEventsTile({
               breadcrumbPath={[{ label: 'Endpoint' }]}
               sourceId={source.id}
               config={{
-                ...source,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: '',
                 whereLanguage: 'sql',
                 select: [

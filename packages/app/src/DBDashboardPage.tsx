@@ -258,7 +258,8 @@ const Tile = forwardRef(
           </Text>
           {hovered ? (
             <Flex gap="0px">
-              {chart.config.displayType === DisplayType.Line && (
+              {(chart.config.displayType === DisplayType.Line ||
+                chart.config.displayType === DisplayType.StackedBar) && (
                 <Indicator
                   size={alert?.state === AlertState.OK ? 6 : 8}
                   zIndex={1}
@@ -1112,16 +1113,18 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <IconRefresh size={18} />
           </Button>
         </Tooltip>
-        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-          <Button
-            variant="default"
-            px="xs"
-            mr={6}
-            onClick={() => setShowFiltersModal(true)}
-          >
-            <IconFilterEdit strokeWidth={1} />
-          </Button>
-        </Tooltip>
+        {!IS_LOCAL_MODE && (
+          <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+            <Button
+              variant="default"
+              px="xs"
+              mr={6}
+              onClick={() => setShowFiltersModal(true)}
+            >
+              <IconFilterEdit strokeWidth={1} />
+            </Button>
+          </Tooltip>
+        )}
         <Button
           data-testid="search-submit-button"
           variant="outline"

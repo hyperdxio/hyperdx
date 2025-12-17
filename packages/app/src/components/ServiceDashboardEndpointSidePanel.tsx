@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { pick } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 import { Drawer, Grid, Group, Text } from '@mantine/core';
@@ -104,7 +105,11 @@ export default function ServiceDashboardEndpointSidePanel({
                       sourceId={source.id}
                       hiddenSeries={['total_count', 'error_count']}
                       config={{
-                        ...source,
+                        ...pick(source, [
+                          'timestampValueExpression',
+                          'connection',
+                          'from',
+                        ]),
                         where: '',
                         whereLanguage: 'sql',
                         select: [
@@ -144,7 +149,11 @@ export default function ServiceDashboardEndpointSidePanel({
                     <DBTimeChart
                       sourceId={source.id}
                       config={{
-                        ...source,
+                        ...pick(source, [
+                          'timestampValueExpression',
+                          'connection',
+                          'from',
+                        ]),
                         where: '',
                         whereLanguage: 'sql',
                         select: [

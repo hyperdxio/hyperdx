@@ -140,6 +140,75 @@ Array [
     expect(resp.body.url).toContain(`/join-team?token=${teamInvite.token}`);
   });
 
+  it('POST /team/invitation with different case reuses existing invitation', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    // Create invitation with lowercase email
+    const resp1 = await agent
+      .post('/team/invitation')
+      .send({
+        email: 'casesensitive@example.com',
+        name: 'Case Test',
+      })
+      .expect(200);
+
+    const firstInvite = await TeamInvite.findOne({
+      email: 'casesensitive@example.com',
+    });
+    expect(firstInvite).not.toBeNull();
+    const firstToken = firstInvite!.token;
+
+    // Try to create invitation with uppercase email
+    const resp2 = await agent
+      .post('/team/invitation')
+      .send({
+        email: 'CaseSensitive@Example.com',
+        name: 'Case Test 2',
+      })
+      .expect(200);
+
+    // Should reuse the same invitation (same token)
+    const secondInvite = await TeamInvite.findOne({
+      email: 'casesensitive@example.com',
+    });
+    expect(secondInvite).not.toBeNull();
+    expect(secondInvite!.token).toBe(firstToken);
+
+    // Should only have one invitation in the database
+    const allInvites = await TeamInvite.find({
+      email: 'casesensitive@example.com',
+    });
+    expect(allInvites).toHaveLength(1);
+  });
+
+  it('POST /team/invitation rejects existing user regardless of email case', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    // Create a user with lowercase email
+    await User.create({
+      email: 'existinguser@example.com',
+      team: team.id,
+    });
+
+    // Try to invite with different casing - should be rejected
+    await agent
+      .post('/team/invitation')
+      .send({
+        email: 'ExistingUser@Example.com',
+        name: 'Existing User',
+      })
+      .expect(400);
+
+    // Try to invite with exact same casing - should also be rejected
+    await agent
+      .post('/team/invitation')
+      .send({
+        email: 'existinguser@example.com',
+        name: 'Existing User',
+      })
+      .expect(400);
+  });
+
   it('GET /team/invitations', async () => {
     const { agent } = await getLoggedInAgent(server);
     await Promise.all([
