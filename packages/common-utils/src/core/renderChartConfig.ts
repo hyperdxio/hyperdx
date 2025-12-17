@@ -381,14 +381,16 @@ async function renderSelectList(
   // supported for queries using CTEs so skip the metadata fetch if there are CTE objects in the config.
   let materializedFields: Map<string, string> | undefined;
   try {
-    // This will likely error for a CTE
-    materializedFields = chartConfig.with?.length
-      ? undefined
-      : await metadata.getMaterializedColumnsLookupTable({
-          connectionId: chartConfig.connection,
-          databaseName: chartConfig.from.databaseName,
-          tableName: chartConfig.from.tableName,
-        });
+    // This will likely error when referencing a CTE, which is assumed
+    // to be the case when chartConfig.from.databaseName is not set.
+    materializedFields =
+      chartConfig.with?.length || !chartConfig.from.databaseName
+        ? undefined
+        : await metadata.getMaterializedColumnsLookupTable({
+            connectionId: chartConfig.connection,
+            databaseName: chartConfig.from.databaseName,
+            tableName: chartConfig.from.tableName,
+          });
   } catch {
     // ignore
   }
@@ -689,14 +691,16 @@ async function renderWhereExpression({
 
   let materializedFields: Map<string, string> | undefined;
   try {
-    // This will likely error for a CTE
-    materializedFields = withClauses?.length
-      ? undefined
-      : await metadata.getMaterializedColumnsLookupTable({
-          connectionId,
-          databaseName: from.databaseName,
-          tableName: from.tableName,
-        });
+    // This will likely error when referencing a CTE, which is assumed
+    // to be the case when from.databaseName is not set.
+    materializedFields =
+      withClauses?.length || !from.databaseName
+        ? undefined
+        : await metadata.getMaterializedColumnsLookupTable({
+            connectionId,
+            databaseName: from.databaseName,
+            tableName: from.tableName,
+          });
   } catch {
     // ignore
   }

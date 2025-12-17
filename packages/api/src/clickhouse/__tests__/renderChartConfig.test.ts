@@ -145,7 +145,7 @@ describe('renderChartConfig', () => {
             { aggFn: 'sum', valueExpression: 'strVal' },
           ],
           from: {
-            databaseName: '',
+            databaseName: DEFAULT_DATABASE,
             tableName: `agg_fn_str_test`,
           },
           where: '',
@@ -183,7 +183,7 @@ describe('renderChartConfig', () => {
             { aggFn: 'sum', valueExpression: 'strVal' },
           ],
           from: {
-            databaseName: '',
+            databaseName: DEFAULT_DATABASE,
             tableName: `agg_fn_default_test`,
           },
           where: '',
