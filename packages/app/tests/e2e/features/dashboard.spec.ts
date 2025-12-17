@@ -4,6 +4,132 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/dashboards');
   });
+
+  test(
+    'should persist dashboard across page reloads',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const uniqueDashboardName = `Test Dashboard ${Date.now()}`;
+
+      await test.step('Create and name a new dashboard', async () => {
+        const createDashboardButton = page.locator(
+          '[data-testid="create-dashboard-button"]',
+        );
+        await expect(createDashboardButton).toBeVisible();
+        await createDashboardButton.click();
+
+        await page.waitForURL('**/dashboards**');
+        await page.waitForLoadState('networkidle');
+
+        // Wait for the dashboard name title to be visible first
+        const dashboardNameTitle = page.getByRole('heading', {
+          name: 'My Dashboard',
+          level: 3,
+        });
+        await expect(dashboardNameTitle).toBeVisible({ timeout: 5000 });
+
+        // Double-click to enter edit mode
+        await dashboardNameTitle.dblclick();
+
+        // Edit dashboard name
+        const dashboardNameInput = page.locator(
+          'input[placeholder="Dashboard Name"]',
+        );
+        await expect(dashboardNameInput).toBeVisible();
+        await dashboardNameInput.fill(uniqueDashboardName);
+        await page.keyboard.press('Enter');
+
+        // Wait for the name to be saved by checking it appears as a heading
+        const updatedDashboardName = page.getByRole('heading', {
+          name: uniqueDashboardName,
+          level: 3,
+        });
+        await expect(updatedDashboardName).toBeVisible({ timeout: 10000 });
+
+        // Wait for network to settle after save
+        await page.waitForLoadState('networkidle');
+      });
+
+      await test.step('Add a tile to the dashboard', async () => {
+        const addNewTileButton = page.locator(
+          '[data-testid="add-new-tile-button"]',
+        );
+        await expect(addNewTileButton).toBeVisible();
+        await addNewTileButton.click();
+        await page.waitForTimeout(1000);
+
+        const chartNameInput = page.locator('[data-testid="chart-name-input"]');
+        await expect(chartNameInput).toBeVisible();
+        await chartNameInput.fill('Persistence Test Chart');
+
+        const runQueryButton = page.locator(
+          '[data-testid="chart-run-query-button"]',
+        );
+        await expect(runQueryButton).toBeVisible();
+        await runQueryButton.click();
+        await page.waitForTimeout(2000);
+
+        const saveButton = page.locator('[data-testid="chart-save-button"]');
+        await expect(saveButton).toBeVisible();
+        await saveButton.click();
+        await page.waitForTimeout(2000);
+
+        const chartContainer = page.locator('.recharts-responsive-container');
+        await expect(chartContainer).toHaveCount(1);
+      });
+
+      let dashboardUrl: string;
+      await test.step('Save dashboard URL', async () => {
+        dashboardUrl = page.url();
+        console.log(`Dashboard URL: ${dashboardUrl}`);
+      });
+
+      await test.step('Navigate away from dashboard', async () => {
+        await page.goto('/search');
+        await page.waitForLoadState('networkidle');
+        await expect(page).toHaveURL(/.*\/search/);
+      });
+
+      await test.step('Return to dashboard and verify persistence', async () => {
+        await page.goto(dashboardUrl);
+        await page.waitForLoadState('networkidle');
+
+        // Wait for dashboard to load by checking for tiles first
+        const dashboardTiles = page.locator('[data-testid^="dashboard-tile-"]');
+        await expect(dashboardTiles).toHaveCount(1);
+
+        // Verify dashboard name persisted (displayed as h3 title)
+        const dashboardNameHeading = page.getByRole('heading', {
+          name: uniqueDashboardName,
+          level: 3,
+        });
+        await expect(dashboardNameHeading).toBeVisible({ timeout: 5000 });
+
+        // Verify chart still shows
+        const chartContainer = page.locator('.recharts-responsive-container');
+        await expect(chartContainer).toBeVisible();
+      });
+
+      await test.step('Verify dashboard appears in dashboards list', async () => {
+        await page.goto('/dashboards');
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(1000);
+
+        // Look for our dashboard in the list
+        const dashboardLink = page.locator(`text="${uniqueDashboardName}"`);
+        await expect(dashboardLink).toBeVisible({ timeout: 10000 });
+
+        // Click on it and verify it loads
+        await dashboardLink.click();
+        await page.waitForURL('**/dashboards/**');
+        await page.waitForLoadState('networkidle');
+
+        // Verify we're on the right dashboard
+        const dashboardTiles = page.locator('[data-testid^="dashboard-tile-"]');
+        await expect(dashboardTiles).toHaveCount(1);
+      });
+    },
+  );
   test('Comprehensive dashboard workflow - create, add tiles, configure, and test', async ({
     page,
   }) => {

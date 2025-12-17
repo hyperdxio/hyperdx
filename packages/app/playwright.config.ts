@@ -1,4 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
+import path from 'path';
+
+// Check if we should use full-stack mode (with backend)
+const USE_FULLSTACK = process.env.E2E_FULLSTACK === 'true';
+const AUTH_FILE = path.join(__dirname, 'tests/e2e/.auth/user.json');
+
+// Timeout configuration constants (in milliseconds)
+const TEST_TIMEOUT_MS = 60 * 1000; // 60 seconds per test
+const API_SERVER_STARTUP_TIMEOUT_MS = 120 * 1000; // 2 minutes for API to start
+const APP_SERVER_STARTUP_TIMEOUT_MS = 180 * 1000; // 3 minutes for Next.js build + start
 
 /**
  * @see https://playwright.dev/docs/test-configuration
@@ -6,7 +16,9 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests/e2e',
   /* Global setup to ensure server is ready */
-  globalSetup: require.resolve('./global-setup.js'),
+  globalSetup: USE_FULLSTACK
+    ? require.resolve('./tests/e2e/global-setup-fullstack.ts')
+    : require.resolve('./global-setup.js'),
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -26,7 +38,9 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:8081',
+    baseURL: USE_FULLSTACK
+      ? 'http://localhost:28081'
+      : process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:8081',
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
     /* Take screenshot on failure */
@@ -36,7 +50,7 @@ export default defineConfig({
   },
 
   /* Global test timeout - CI needs more time than local */
-  timeout: 60 * 1000,
+  timeout: TEST_TIMEOUT_MS,
 
   /* Configure projects for different test environments */
   projects: [
@@ -44,19 +58,49 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        // Use saved authentication state for full-stack mode
+        ...(USE_FULLSTACK && {
+          storageState: AUTH_FILE,
+        }),
       },
     },
   ],
 
   /* Run your local dev server before starting the tests */
-  webServer: {
-    command: process.env.CI
-      ? 'NEXT_PUBLIC_IS_LOCAL_MODE=true yarn build && NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=8081 yarn start'
-      : 'NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_TELEMETRY_DISABLED=1 PORT=8081 yarn run dev',
-    port: 8081,
-    reuseExistingServer: !process.env.CI,
-    timeout: 180 * 1000,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  },
+  // Note: webServer array syntax requires Playwright v1.32.0+ (current: v1.57.0)
+  webServer: USE_FULLSTACK
+    ? [
+        // Full-stack mode: Start API and App servers (infrastructure started separately)
+        {
+          // Loads configuration from .env.e2e (connections, settings)
+          // Environment variables (MONGO_URI, etc.) can override .env.e2e values
+          command: `cd ../api && ${process.env.MONGO_URI ? `MONGO_URI="${process.env.MONGO_URI}"` : ''} DOTENV_CONFIG_PATH=.env.e2e npx ts-node --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r @hyperdx/node-opentelemetry/build/src/tracing src/index.ts`,
+          port: 29000,
+          reuseExistingServer: !process.env.CI,
+          timeout: API_SERVER_STARTUP_TIMEOUT_MS,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+        {
+          command: process.env.CI
+            ? 'SERVER_URL=http://localhost:29000 PORT=28081 yarn build && SERVER_URL=http://localhost:29000 PORT=28081 yarn start'
+            : 'SERVER_URL=http://localhost:29000 PORT=28081 NEXT_TELEMETRY_DISABLED=1 yarn run dev',
+          port: 28081,
+          reuseExistingServer: !process.env.CI,
+          timeout: APP_SERVER_STARTUP_TIMEOUT_MS,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      ]
+    : {
+        // Local mode: Frontend only
+        command: process.env.CI
+          ? 'NEXT_PUBLIC_IS_LOCAL_MODE=true yarn build && NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=8081 yarn start'
+          : 'NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_TELEMETRY_DISABLED=1 PORT=8081 yarn run dev',
+        port: 8081,
+        reuseExistingServer: !process.env.CI,
+        timeout: APP_SERVER_STARTUP_TIMEOUT_MS,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
 });
