@@ -71,6 +71,7 @@ import { Histogram } from '@/SVGIcons';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import usePresetDashboardFilters from './hooks/usePresetDashboardFilters';
+import { IS_LOCAL_MODE } from './config';
 import DashboardFilters from './DashboardFilters';
 import DashboardFiltersModal from './DashboardFiltersModal';
 import { HARD_LINES_LIMIT } from './HDXMultiSeriesTimeChart';
@@ -1584,15 +1585,17 @@ function ServicesDashboardPage() {
               setInputValue={setDisplayedTimeInputValue}
               onSearch={onSearch}
             />
-            <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-              <Button
-                variant="default"
-                px="xs"
-                onClick={() => setShowFiltersModal(true)}
-              >
-                <IconFilterEdit strokeWidth={1} />
-              </Button>
-            </Tooltip>
+            {!IS_LOCAL_MODE && (
+              <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+                <Button
+                  variant="default"
+                  px="xs"
+                  onClick={() => setShowFiltersModal(true)}
+                >
+                  <IconFilterEdit strokeWidth={1} />
+                </Button>
+              </Tooltip>
+            )}
             <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
               <Button
                 onClick={refresh}

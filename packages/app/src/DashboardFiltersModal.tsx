@@ -202,7 +202,7 @@ const DashboardFilterEditForm = ({
               />
             </CustomInputWrapper>
 
-            <Group justify="flex-end" my="xs">
+            <Group justify="space-between" my="xs">
               <Button variant="default" onClick={onCancel}>
                 Cancel
               </Button>
@@ -306,7 +306,10 @@ const DashboardFiltersList = ({
         )}
       </Stack>
 
-      <Group justify="center" my="sm">
+      <Group justify="space-between" my="sm">
+        <Button variant="default" onClick={onClose}>
+          Close
+        </Button>
         <Button variant="filled" onClick={onAddNew}>
           Add new filter
         </Button>
