@@ -1,123 +1,101 @@
+import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
 
 test.describe('Search Filters', { tag: ['@search'] }, () => {
+  let searchPage: SearchPage;
+
   test.beforeEach(async ({ page }) => {
-    await page.goto('/search');
+    searchPage = new SearchPage(page);
+    await searchPage.goto();
   });
 
-  test('should filter logs by severity level and persist pinned filters', async ({
-    page,
-  }) => {
+  test('should filter logs by severity level and persist pinned filters', async () => {
     await test.step('Apply Info severity filter', async () => {
-      // Open the Severity filter group
-      await page.locator('[data-testid="filter-group-SeverityText"]').click();
+      // Use filter component to open filter group
+      await searchPage.filters.openFilterGroup('SeverityText');
 
-      // Select the Info severity level
-      const infoCheckbox = page.locator(
-        '[data-testid="filter-checkbox-input-info"]',
-      );
-      await expect(infoCheckbox).toBeVisible();
-      await infoCheckbox.click();
-      await expect(infoCheckbox).toBeChecked();
+      // Apply the info filter using component method
+      const infoInput = searchPage.filters.getFilterCheckboxInput('info');
+      await expect(infoInput).toBeVisible();
 
-      // Verify search results are filtered
-      await expect(
-        page.locator('[data-testid="search-results-table"]'),
-      ).toBeVisible();
+      await searchPage.filters.applyFilter('info');
+
+      // Verify filter is checked
+      await expect(infoInput).toBeChecked();
+
+      // Verify search results are visible (filters applied)
+      await expect(searchPage.getSearchResultsTable()).toBeVisible();
     });
 
     await test.step('Exclude Info severity level', async () => {
-      // Hover over the Info filter to show exclude button
-      const infoFilter = page.locator('[data-testid="filter-checkbox-info"]');
-      await infoFilter.hover();
+      // Use filter component to exclude the filter
+      await searchPage.filters.excludeFilter('info');
 
-      // Click exclude button to invert the filter
-      await page.locator('[data-testid="filter-exclude-info"]').first().click();
-      await page.waitForTimeout(500);
-
-      // Verify filter shows as excluded (indeterminate state)
-      const infoInput = page.locator(
-        '[data-testid="filter-checkbox-input-info"]',
-      );
-      await expect(infoInput).toHaveAttribute('data-indeterminate', 'true');
-      await page.waitForLoadState('networkidle');
+      // Verify filter shows as excluded using web-first assertion
+      const isExcluded = await searchPage.filters.isFilterExcluded('info');
+      expect(isExcluded).toBe(true);
     });
 
     await test.step('Clear the filter', async () => {
-      // Click the filter again to clear it
-      await page.locator('[data-testid="filter-checkbox-info"]').click();
-      await page.waitForTimeout(500);
+      // Use filter component to clear
+      await searchPage.filters.clearFilter('info');
+
+      // Verify filter is no longer checked
+      const infoInput = searchPage.filters.getFilterCheckboxInput('info');
+      await expect(infoInput).not.toBeChecked();
     });
 
     await test.step('Test using search to find and apply the filter', async () => {
-      // Find and expand a filter that shows a search input (has >5 values)
-      const filterControls = page.locator(
-        '[data-testid="filter-group-control"]',
-      );
-      const filterCount = await filterControls.count();
+      // Use filter component's helper to find a filter with search capability
+      const skipFilters = ['severity', 'level'];
+      const filterName =
+        await searchPage.filters.findFilterWithSearch(skipFilters);
 
-      // Try each filter until we find one with a search input
-      for (let i = 0; i < Math.min(filterCount, 5); i++) {
-        const filter = filterControls.nth(i);
-        const filterText = await filter.textContent();
-        const filterName =
-          filterText?.trim().replace(/\s*\(\d+\)\s*$/, '') || `filter-${i}`;
+      if (filterName) {
+        // Search input is already visible from findFilterWithSearch
+        // Test the search functionality
+        await searchPage.filters.searchFilterValues(filterName, 'test');
 
-        // Skip severity-related filters as they likely have few values
-        if (
-          filterName.toLowerCase().includes('severity') ||
-          filterName.toLowerCase().includes('level')
-        ) {
-          continue;
-        }
+        // Verify search input has the value
+        const searchInput = searchPage.filters.getFilterSearchInput(filterName);
+        await expect(searchInput).toHaveValue('test');
 
-        // Expand the filter
-        await filter.click();
-        await page.waitForTimeout(500);
+        // Clear the search
+        await searchPage.filters.clearFilterSearch(filterName);
 
-        // Check if search input appears
-        const searchInput = page.locator(
-          `[data-testid="filter-search-${filterName}"]`,
-        );
-
-        try {
-          await searchInput.waitFor({ state: 'visible', timeout: 1000 });
-          // Search input is visible, test it
-          await searchInput.fill('test');
-          await page.waitForTimeout(500);
-          await searchInput.clear();
-          await page.waitForTimeout(500);
-          break; // Found a working filter, stop testing
-        } catch (e) {
-          // Search input not visible, collapse and try next filter
-          await filter.click();
-          await page.waitForTimeout(500);
-        }
+        // Verify search input is cleared
+        await expect(searchInput).toHaveValue('');
       }
     });
 
     await test.step('Pin filter and verify it persists after reload', async () => {
-      const infoFilter = page.locator('[data-testid="filter-checkbox-info"]');
-
       // First exclude the filter, then pin it
-      await infoFilter.hover();
-      await page.locator('[data-testid="filter-exclude-info"]').click();
-      await infoFilter.hover();
-
-      // Pin the filter
-      await page.locator('[data-testid="filter-pin-info"]').click();
-      await page.waitForTimeout(500);
+      await searchPage.filters.excludeFilter('info');
+      await searchPage.filters.pinFilter('info');
 
       // Reload page and verify filter persists
-      await page.reload();
-      await page.waitForLoadState('networkidle');
+      await searchPage.page.reload();
 
-      await expect(
-        page.locator('[data-testid="filter-checkbox-info"]').first(),
-      ).toBeVisible();
+      // Verify filter checkbox is still visible
+      const infoCheckbox = searchPage.filters.getFilterCheckbox('info');
+      await expect(infoCheckbox).toBeVisible();
+
+      // Verify it's still excluded
+      const isExcluded = await searchPage.filters.isFilterExcluded('info');
+      expect(isExcluded).toBe(true);
     });
   });
-  //todo: test filter value pinning
-  //todo: text filter expand/collapse
-  //todo: test show more/show less
+
+  // TODO: Implement these tests following the same pattern
+  // test('should pin filter values', async () => {
+  //   // Use searchPage.filters.pinFilter()
+  // });
+
+  // test('should expand and collapse text filters', async () => {
+  //   // Use searchPage.filters.openFilterGroup() and getFilterGroup()
+  // });
+
+  // test('should show more and show less filter values', async () => {
+  //   // Add methods to FilterComponent for show more/less
+  // });
 });

@@ -4353,6 +4353,7 @@ __metadata:
     date-fns-tz: "npm:^2.0.0"
     dayjs: "npm:^1.11.19"
     eslint-config-next: "npm:^16.0.10"
+    eslint-plugin-playwright: "npm:^2.4.0"
     eslint-plugin-storybook: "npm:10.1.4"
     flat: "npm:^5.0.2"
     fuse.js: "npm:^6.6.2"
@@ -14534,6 +14535,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"eslint-plugin-playwright@npm:^2.4.0":
+  version: 2.4.0
+  resolution: "eslint-plugin-playwright@npm:2.4.0"
+  dependencies:
+    globals: "npm:^16.4.0"
+  peerDependencies:
+    eslint: ">=8.40.0"
+  checksum: 10c0/ed6085835b4b9e61662abf24c9b7e94b2cd9046bb2566a42e833efcdc7032729821bdf08eee1171dad6772929ccce9eb71e15435f375026b7006985e0dbc57db
+  languageName: node
+  linkType: hard
+
 "eslint-plugin-prettier@npm:^5.2.1":
   version: 5.2.1
   resolution: "eslint-plugin-prettier@npm:5.2.1"
@@ -16111,6 +16123,13 @@ __metadata:
   version: 14.0.0
   resolution: "globals@npm:14.0.0"
   checksum: 10c0/b96ff42620c9231ad468d4c58ff42afee7777ee1c963013ff8aabe095a451d0ceeb8dcd8ef4cbd64d2538cef45f787a78ba3a9574f4a634438963e334471302d
+  languageName: node
+  linkType: hard
+
+"globals@npm:^16.4.0":
+  version: 16.5.0
+  resolution: "globals@npm:16.5.0"
+  checksum: 10c0/615241dae7851c8012f5aa0223005b1ed6607713d6813de0741768bd4ddc39353117648f1a7086b4b0fa45eae733f1c0a0fe369aa4e543bb63f8de8990178ea9
   languageName: node
   linkType: hard
 

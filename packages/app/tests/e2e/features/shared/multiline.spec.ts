@@ -1,5 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
+import { DashboardPage } from '../../page-objects/DashboardPage';
+import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
 
 test.describe('Multiline Input', { tag: '@search' }, () => {
@@ -11,17 +13,13 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     await editor.click();
     await page.keyboard.type('first line');
 
-    // Wait for editor to stabilize and get height with single line
-    await page.waitForTimeout(200);
+    // Get initial single line height
     const singleLineBox = await editor.boundingBox();
     const singleLineHeight = singleLineBox?.height || 0;
 
     // Add a line break and type second line
     await page.keyboard.press('Shift+Enter');
     await page.keyboard.type('second line');
-
-    // Wait for layout changes
-    await page.waitForTimeout(300);
 
     // Verify height increased
     const multiLineBox = await editor.boundingBox();
@@ -65,11 +63,18 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     test(`should expand SQL input on line break on ${name}`, async ({
       page,
     }) => {
-      await page.goto(path);
-
-      // Switch to SQL mode
-      const container = formSelector ? page.locator(formSelector) : page;
-      await container.locator('text=SQL').first().click();
+      // Navigate using page object
+      if (path === '/search') {
+        const searchPage = new SearchPage(page);
+        await searchPage.goto();
+        await searchPage.switchToSQLMode();
+      } else {
+        const dashboardPage = new DashboardPage(page);
+        await dashboardPage.goto();
+        // Switch to SQL mode
+        const container = page;
+        await container.locator('text=SQL').first().click();
+      }
 
       const editor = getEditor(page, 'SQL', formSelector, whereText);
       await expect(editor).toBeVisible();
@@ -79,11 +84,18 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     test(`should expand Lucene input on line break on ${name}`, async ({
       page,
     }) => {
-      await page.goto(path);
-
-      // Switch to Lucene mode
-      const container = formSelector ? page.locator(formSelector) : page;
-      await container.locator('text=Lucene').first().click();
+      // Navigate using page object
+      if (path === '/search') {
+        const searchPage = new SearchPage(page);
+        await searchPage.goto();
+        await searchPage.switchToLuceneMode();
+      } else {
+        const dashboardPage = new DashboardPage(page);
+        await dashboardPage.goto();
+        // Switch to Lucene mode
+        const container = page;
+        await container.locator('text=Lucene').first().click();
+      }
 
       const editor = getEditor(page, 'Lucene', formSelector, whereText);
       await expect(editor).toBeVisible();

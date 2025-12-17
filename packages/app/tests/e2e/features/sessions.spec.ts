@@ -1,55 +1,49 @@
+import { SessionsPage } from '../page-objects/SessionsPage';
 import { expect, test } from '../utils/base-test';
 
 test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
-  test('should load sessions page', async ({ page }) => {
+  let sessionsPage: SessionsPage;
+
+  test.beforeEach(async ({ page }) => {
+    sessionsPage = new SessionsPage(page);
+  });
+
+  test('should load sessions page', async () => {
     await test.step('Navigate to sessions page', async () => {
-      await page.goto('/sessions');
-      await page.waitForLoadState('networkidle');
-      await page.waitForTimeout(1000);
+      await sessionsPage.goto();
     });
 
     await test.step('Verify sessions page components are present', async () => {
-      await page.waitForTimeout(1000);
+      // Use web-first assertions instead of synchronous expect
+      await expect(sessionsPage.form).toBeVisible();
+      await expect(sessionsPage.dataSource).toBeVisible();
 
-      const selectors = [
-        '[data-testid="sessions-search-form"]',
-        'input[placeholder="Data Source"]',
-        '.mantine-Select-input',
-      ];
-
-      for (const selector of selectors) {
-        expect(page.locator(selector)).toBeVisible();
-      }
+      // Verify Mantine select input is present
+      const selectInput = sessionsPage.page.locator('.mantine-Select-input');
+      await expect(selectInput).toBeVisible();
     });
   });
 
-  test('should interact with session cards', async ({ page }) => {
+  test('should interact with session cards', async () => {
     await test.step('Navigate to sessions page and wait for load', async () => {
       // First go to search page to trigger onboarding modal handling
-      await page.goto('/search');
-      await page.waitForLoadState('networkidle');
-      await page.waitForTimeout(1000);
+      await sessionsPage.page.goto('/search');
 
       // Then navigate to sessions page
-      await page.goto('/sessions');
-      await page.waitForLoadState('networkidle');
-      await page.waitForTimeout(2000);
+      await sessionsPage.goto();
     });
 
     await test.step('Find and interact with session cards', async () => {
-      const sessionCards = page.locator('[data-testid^="session-card-"]');
+      const sessionCards = sessionsPage.getSessionCards();
       const sessionCount = await sessionCards.count();
 
       if (sessionCount > 0) {
-        const firstSession = sessionCards.first();
+        const firstSession = sessionsPage.getFirstSessionCard();
         await expect(firstSession).toBeVisible();
-        await firstSession.click();
-        await page.waitForTimeout(1000);
+        await sessionsPage.openFirstSession();
       } else {
         // If no session cards, at least verify the page structure is correct
-        await expect(
-          page.locator('input[placeholder="Data Source"]'),
-        ).toBeVisible();
+        await expect(sessionsPage.dataSource).toBeVisible();
       }
     });
   });

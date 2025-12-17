@@ -146,9 +146,6 @@ async function globalSetup(config: FullConfig) {
 
     // Navigate to the app to establish session
     await page.goto('/', { timeout: PAGE_LOAD_TIMEOUT_MS });
-    await page.waitForLoadState('networkidle', {
-      timeout: PAGE_LOAD_TIMEOUT_MS,
-    });
 
     console.log('  Login successful');
 
@@ -202,9 +199,6 @@ async function globalSetup(config: FullConfig) {
     // Navigate to search page to ensure sources are loaded
     console.log('Navigating to search page');
     await page.goto('/search', { timeout: PAGE_LOAD_TIMEOUT_MS });
-    await page.waitForLoadState('networkidle', {
-      timeout: PAGE_LOAD_TIMEOUT_MS,
-    });
 
     // Wait for source selector to be ready (indicates sources are loaded)
     await page.waitForSelector('[data-testid="source-settings-menu"]', {
