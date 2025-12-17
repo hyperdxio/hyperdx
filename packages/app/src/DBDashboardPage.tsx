@@ -258,7 +258,8 @@ const Tile = forwardRef(
           </Text>
           {hovered ? (
             <Flex gap="0px">
-              {chart.config.displayType === DisplayType.Line && (
+              {(chart.config.displayType === DisplayType.Line ||
+                chart.config.displayType === DisplayType.StackedBar) && (
                 <Indicator
                   size={alert?.state === AlertState.OK ? 6 : 8}
                   zIndex={1}

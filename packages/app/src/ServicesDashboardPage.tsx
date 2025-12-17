@@ -7,7 +7,7 @@ import {
   useQueryState,
   useQueryStates,
 } from 'nuqs';
-import { UseControllerProps, useForm } from 'react-hook-form';
+import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
@@ -128,7 +128,7 @@ function ServiceSelectControlled({
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const queriedConfig = {
-    ...source,
+    timestampValueExpression: source?.timestampValueExpression || '',
     from: {
       databaseName: source?.from.databaseName || '',
       tableName: source?.from.tableName || '',
@@ -240,7 +240,11 @@ export function EndpointLatencyChart({
               'avg_duration_ns',
             ]}
             config={{
-              ...source,
+              ...pick(source, [
+                'timestampValueExpression',
+                'connection',
+                'from',
+              ]),
               where: appliedConfig.where || '',
               whereLanguage: appliedConfig.whereLanguage || 'sql',
               select: [
@@ -289,7 +293,11 @@ export function EndpointLatencyChart({
         ) : (
           <DBHistogramChart
             config={{
-              ...source,
+              ...pick(source, [
+                'timestampValueExpression',
+                'connection',
+                'from',
+              ]),
               where: appliedConfig.where || '',
               whereLanguage: appliedConfig.whereLanguage || 'sql',
               select: [
@@ -343,7 +351,7 @@ function HttpTab({
       if (!source || !expressions) return null;
       if (reqChartType === 'overall') {
         return {
-          ...source,
+          ...pick(source, ['timestampValueExpression', 'connection', 'from']),
           where: appliedConfig.where || '',
           whereLanguage: appliedConfig.whereLanguage || 'sql',
           displayType: DisplayType.Line,
@@ -539,13 +547,14 @@ function HttpTab({
             <DBTimeChart
               sourceId={source.id}
               config={{
-                ...source,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
-                displayType:
-                  reqChartType === 'overall'
-                    ? DisplayType.Line
-                    : DisplayType.StackedBar,
+                displayType: DisplayType.Line,
                 select: [
                   {
                     aggFn: 'count' as const,
@@ -582,7 +591,11 @@ function HttpTab({
                 'error_requests',
               ]}
               config={{
-                ...source,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 select: [
@@ -703,7 +716,11 @@ function HttpTab({
                 'error_count',
               ]}
               config={{
-                ...source,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 select: [
@@ -1122,7 +1139,11 @@ function DatabaseTab({
                   'p50_duration_ns',
                 ]}
                 config={{
-                  ...source,
+                  ...pick(source, [
+                    'timestampValueExpression',
+                    'connection',
+                    'from',
+                  ]),
                   where: appliedConfig.where || '',
                   whereLanguage: appliedConfig.whereLanguage || 'sql',
                   dateRange: searchedTimeRange,
@@ -1198,7 +1219,11 @@ function DatabaseTab({
                   'p50_duration_ns',
                 ]}
                 config={{
-                  ...source,
+                  ...pick(source, [
+                    'timestampValueExpression',
+                    'connection',
+                    'from',
+                  ]),
                   where: appliedConfig.where || '',
                   whereLanguage: appliedConfig.whereLanguage || 'sql',
                   dateRange: searchedTimeRange,
@@ -1292,7 +1317,11 @@ function ErrorsTab({
             <DBTimeChart
               sourceId={source.id}
               config={{
-                ...source,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 displayType: DisplayType.StackedBar,
@@ -1341,13 +1370,34 @@ function ServicesDashboardPage() {
 
   const { data: sources } = useSources();
 
-  const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
+  const [appliedConfigParams, setAppliedConfigParams] =
+    useQueryStates(appliedConfigMap);
+
+  // Only use the source from the URL params if it is a trace source
+  const appliedConfig = useMemo(() => {
+    if (!sources?.length) return appliedConfigParams;
+
+    const traceSources = sources?.filter(s => s.kind === SourceKind.Trace);
+    const paramsSourceIdIsTraceSource = traceSources?.find(
+      s => s.id === appliedConfigParams.source,
+    );
+
+    const effectiveSourceId = paramsSourceIdIsTraceSource
+      ? appliedConfigParams.source
+      : traceSources?.[0]?.id || '';
+
+    return {
+      ...appliedConfigParams,
+      source: effectiveSourceId,
+    };
+  }, [appliedConfigParams, sources]);
+
   const { control, watch, setValue, handleSubmit } = useForm({
-    values: {
+    defaultValues: {
       where: '',
       whereLanguage: 'sql' as 'sql' | 'lucene',
       service: appliedConfig?.service || '',
-      source: appliedConfig?.source || sources?.[0]?.id,
+      source: appliedConfig?.source ?? '',
     },
   });
 
@@ -1357,11 +1407,19 @@ function ServicesDashboardPage() {
     id: watch('source'),
   });
 
+  // Update the `source` query parameter if the appliedConfig source changes
   useEffect(() => {
-    if (sourceId && !appliedConfig.source) {
-      setAppliedConfig({ source: sourceId });
+    if (
+      appliedConfig.source &&
+      appliedConfig.source !== appliedConfigParams.source
+    ) {
+      setAppliedConfigParams({ source: appliedConfig.source });
     }
-  }, [appliedConfig.source, setAppliedConfig, sourceId]);
+  }, [
+    appliedConfig.source,
+    appliedConfigParams.source,
+    setAppliedConfigParams,
+  ]);
 
   const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
@@ -1374,7 +1432,7 @@ function ServicesDashboardPage() {
   });
 
   // For future use if Live button is added
-  const [isLive, setIsLive] = useState(false);
+  const [isLive, _setIsLive] = useState(false);
 
   const { manualRefreshCooloff, refresh } = useDashboardRefresh({
     searchedTimeRange,
@@ -1385,30 +1443,38 @@ function ServicesDashboardPage() {
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(values => {
-      setAppliedConfig(values);
+      setAppliedConfigParams(values);
     })();
-  }, [handleSubmit, setAppliedConfig, onSearch, displayedTimeInputValue]);
+  }, [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue]);
 
-  // Auto submit when service or source changes
+  // Auto-submit when source changes
   useEffect(() => {
-    const normalizedService = service ?? '';
-    const appliedService = appliedConfig.service ?? '';
-    const normalizedSource = sourceId ?? '';
-    const appliedSource = appliedConfig.source ?? '';
+    const { unsubscribe } = watch((data, { name, type }) => {
+      if (
+        name === 'source' &&
+        type === 'change' &&
+        data.source &&
+        data.source !== appliedConfig.source
+      ) {
+        onSubmit();
+      }
+    });
+    return () => unsubscribe();
+  }, [appliedConfig.source, onSubmit, watch]);
 
-    if (
-      normalizedService !== appliedService ||
-      (normalizedSource && normalizedSource !== appliedSource)
-    ) {
-      onSubmit();
-    }
-  }, [
-    service,
-    sourceId,
-    appliedConfig.service,
-    appliedConfig.source,
-    onSubmit,
-  ]);
+  // Auto-submit when service changes
+  useEffect(() => {
+    const { unsubscribe } = watch((data, { name, type }) => {
+      if (
+        name === 'service' &&
+        type === 'change' &&
+        data.service !== appliedConfig.service
+      ) {
+        onSubmit();
+      }
+    });
+    return () => unsubscribe();
+  }, [appliedConfig.service, onSubmit, watch]);
 
   return (
     <Box p="sm">
@@ -1554,7 +1620,7 @@ const ServicesDashboardPageDynamic = dynamic(
   },
 );
 
-// @ts-ignore
+// @ts-expect-error Next.js layout typing
 ServicesDashboardPageDynamic.getLayout = withAppNav;
 
 export default ServicesDashboardPageDynamic;
