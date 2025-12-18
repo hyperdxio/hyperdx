@@ -662,7 +662,7 @@ describe('renderChartConfig', () => {
       const generatedSql = await renderChartConfig(config, mockMetadata);
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain('HAVING');
-      expect(actual).toContain('count(*) > 100');
+      expect(actual.toLowerCase()).toContain('count(*) > 100');
       expect(actual).toMatchSnapshot();
     });
 
@@ -689,7 +689,7 @@ describe('renderChartConfig', () => {
         where: '',
         whereLanguage: 'sql',
         groupBy: 'endpoint',
-        having: 'avg(response_time) > 500 AND count(*) > 10',
+        having: 'avg(response_time) > 500 and count(*) > 10',
         havingLanguage: 'sql',
         timestampValueExpression: 'timestamp',
         dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
@@ -698,7 +698,9 @@ describe('renderChartConfig', () => {
       const generatedSql = await renderChartConfig(config, mockMetadata);
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain('HAVING');
-      expect(actual).toContain('avg(response_time) > 500 AND count(*) > 10');
+      expect(actual.toLowerCase()).toContain(
+        'avg(response_time) > 500 and count(*) > 10',
+      );
       expect(actual).toMatchSnapshot();
     });
 
@@ -758,7 +760,7 @@ describe('renderChartConfig', () => {
       const generatedSql = await renderChartConfig(config, mockMetadata);
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain('HAVING');
-      expect(actual).toContain('count(*) > 50');
+      expect(actual.toLowerCase()).toContain('count(*) > 50');
       expect(actual).toContain('GROUP BY');
       expect(actual).toMatchSnapshot();
     });
@@ -1004,5 +1006,241 @@ describe('renderChartConfig', () => {
         expect(actualSql).toBe(expected);
       },
     );
+  });
+
+  describe('mapContains optimization', () => {
+    beforeEach(() => {
+      mockMetadata.getColumns.mockResolvedValue([
+        { name: 'timestamp', type: 'DateTime' },
+        { name: 'LogAttributes', type: 'Map(String, String)' },
+        { name: 'ResourceAttributes', type: 'Map(String, String)' },
+        {
+          name: 'materialized_log_level',
+          type: 'String',
+          default_type: 'MATERIALIZED',
+          default_expression: "LogAttributes['level']",
+        },
+      ] as ColumnMeta[]);
+    });
+
+    it('should add mapContains when checking map values exact match', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where: "ResourceAttributes['service.name'] = 'api'",
+        whereLanguage: 'sql',
+        implicitColumnExpression: 'Body',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain(
+        "mapContains(`ResourceAttributes`, 'service.name')",
+      );
+      expect(actual).toContain("ResourceAttributes['service.name'] = 'api'");
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should add mapContains for multiple different map keys', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where:
+          "LogAttributes['level'] = 'error' AND ResourceAttributes['service.name'] = 'api'",
+        whereLanguage: 'sql',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain("mapContains(`LogAttributes`, 'level')");
+      expect(actual).toContain(
+        "mapContains(`ResourceAttributes`, 'service.name')",
+      );
+      expect(actual).toContain("LogAttributes['level'] = 'error'");
+      expect(actual).toContain("ResourceAttributes['service.name'] = 'api'");
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should not duplicate mapContains for the same map key used multiple times', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where:
+          "LogAttributes['level'] = 'error' OR LogAttributes['level'] = 'warn'",
+        whereLanguage: 'sql',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      // Should only contain mapContains once for the same key
+      const mapContainsMatches = actual.match(
+        /mapContains\(`LogAttributes`, 'level'\)/g,
+      );
+      expect(mapContainsMatches).toHaveLength(1);
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should add mapContains for materialized columns based on their map source', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where: "materialized_log_level = 'error'",
+        whereLanguage: 'sql',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain("mapContains(`LogAttributes`, 'level')");
+      expect(actual).toContain("materialized_log_level = 'error'");
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should handle notEmpty map value null checks properly', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where: "notEmpty(LogAttributes['level']) != 1",
+        whereLanguage: 'sql',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain("mapContains(`LogAttributes`, 'level') != 1");
+      expect(actual).toContain("notEmpty(LogAttributes['level']) != 1");
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should not add mapContains when no maps are accessed', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where: "timestamp > '2025-01-01'",
+        whereLanguage: 'sql',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).not.toContain('mapContains');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should not add mapContains for CTE queries', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: '', // Empty database name indicates CTE
+          tableName: 'TestCte',
+        },
+        with: [
+          {
+            name: 'TestCte',
+            sql: chSql`SELECT timestamp, LogAttributes FROM otel_logs`,
+          },
+        ],
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '*',
+            aggCondition: '',
+          },
+        ],
+        where: "LogAttributes['level'] = 'error'",
+        whereLanguage: 'sql',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      // Should not add mapContains for CTE queries
+      expect(actual).not.toContain('mapContains');
+      expect(actual).toMatchSnapshot();
+    });
   });
 });

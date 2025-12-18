@@ -2,7 +2,13 @@ import isPlainObject from 'lodash/isPlainObject';
 import * as SQLParser from 'node-sql-parser';
 import SqlString from 'sqlstring';
 
-import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
+import {
+  ChSql,
+  chSql,
+  ColumnMeta,
+  concatChSql,
+  wrapChSqlIfNotEmpty,
+} from '@/clickhouse';
 import { Metadata } from '@/core/metadata';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 
@@ -24,6 +30,7 @@ import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
   getFirstTimestampValueExpression,
+  objectHash,
   optimizeTimestampValueExpression,
   parseToStartOfFunction,
   splitAndTrimWithBracket,
@@ -279,6 +286,250 @@ const fastifySQL = ({
   } catch (e) {
     return rawSQL;
   }
+};
+
+type SQLMapValueIdent = {
+  type: 'map';
+  mapName: string;
+  keyName: string;
+};
+type SQLColumnIdent = {
+  type: 'column';
+  name: string;
+};
+type SQLValueIdent = SQLMapValueIdent | SQLColumnIdent;
+const extractIdent = (node: ColumnRef): SQLValueIdent | undefined => {
+  if (node.type !== 'column_ref') return;
+  let identName: string;
+  if (typeof node.column === 'string') {
+    identName = node.column;
+  } else if (
+    node.column.expr.type === 'backticks_quote_string' ||
+    node.column.expr.type === 'default'
+  ) {
+    identName = node.column.expr.value as string;
+  } else {
+    return;
+  }
+
+  const keyName = node.array_index?.[0]?.index?.value;
+  if (keyName) {
+    return { type: 'map', mapName: identName, keyName };
+  } else {
+    return { type: 'column', name: identName };
+  }
+};
+
+// Check if expression is of the form "notEmpty(Map, key) != 1" or "1 != notEmpty(Map, key)"
+const checkIsMapValueNull = (
+  node: SQLParser.Expr,
+): {
+  isMapValueNullCondition: boolean;
+  ident?: SQLValueIdent;
+} => {
+  const nope = { isMapValueNullCondition: false };
+  if (node.operator !== '!=') return nope;
+
+  let funcNode: SQLParser.Function;
+  let numNode: SQLParser.Value;
+  if (node.left.type === 'function' && node.right.type === 'number') {
+    funcNode = node.left as SQLParser.Function;
+    numNode = node.right as SQLParser.Value;
+  } else if (node.right.type === 'function' && node.left.type === 'number') {
+    funcNode = node.right as SQLParser.Function;
+    numNode = node.left as SQLParser.Value;
+  } else {
+    return nope;
+  }
+
+  // check numNode
+  if (numNode.type !== 'number' || numNode.value !== 1) return nope;
+
+  // check funcNode to be "notEmpty(map, key)"
+  if (funcNode.name.name[0]?.value !== 'notEmpty') return nope;
+  if (funcNode.args?.value?.length !== 1) return nope;
+  const argsNode = funcNode.args.value[0];
+  if (argsNode.type !== 'column_ref') return nope;
+  const ident = extractIdent(argsNode as ColumnRef);
+  if (!ident) return nope;
+
+  return {
+    isMapValueNullCondition: true,
+    ident,
+  };
+};
+
+const optimizeMapAccessWhere = ({
+  columns,
+  rawSQL,
+}: {
+  columns: ColumnMeta[];
+  rawSQL: string;
+}): string => {
+  // Parse the SQL AST
+  const idents: Array<{
+    ident: SQLValueIdent;
+    doesContain: boolean;
+  }> = [];
+  try {
+    const parser = new SQLParser.Parser();
+    const ast = parser.astify(rawSQL, {
+      database: 'Postgresql',
+    }) as SQLParser.Select;
+
+    // travere ast and collect all column or map identifiers that are used
+    const traverse = (
+      node:
+        | SQLParser.Expr
+        | SQLParser.ExpressionValue
+        | SQLParser.ExprList
+        | SQLParser.Function
+        | null,
+    ) => {
+      if (node == null) {
+        return;
+      }
+
+      const traverseNode = (
+        nodes: SQLParser.ExpressionValue | SQLParser.ExprList,
+      ) => {
+        if (Array.isArray(nodes)) {
+          for (const node of nodes) {
+            traverse(node);
+          }
+        } else {
+          traverse(nodes);
+        }
+      };
+
+      switch (node.type) {
+        case 'binary_expr': {
+          // Could be =, !=, AND, OR, LIKE, ILIKE
+          const _n = node as SQLParser.Expr;
+
+          if (_n.operator === '!=') {
+            const { isMapValueNullCondition, ident } = checkIsMapValueNull(_n);
+            if (isMapValueNullCondition && ident) {
+              idents.push({
+                ident,
+                doesContain: false,
+              });
+              // do not traverse
+              break;
+            }
+          }
+          traverseNode(_n.left);
+          traverseNode(_n.right);
+          break;
+        }
+        case 'function': {
+          const _n = node as SQLParser.Function;
+          if (_n.args?.type === 'expr_list') {
+            traverseNode(_n.args?.value as any);
+          }
+
+          break;
+        }
+        case 'column_ref': {
+          const ident = extractIdent(node as ColumnRef);
+          if (ident) {
+            idents.push({ doesContain: true, ident });
+          }
+          break;
+        }
+        default:
+          // ignore other types
+          break;
+      }
+
+      return;
+    };
+
+    traverse(ast.where);
+
+    if (idents.length === 0) {
+      return parser.sqlify(ast);
+    }
+
+    // build set of Maps
+    const maps = new Set(
+      columns.filter(v => v.type.startsWith('Map')).map(v => v.name),
+    );
+
+    // Build a Map of materialized columns to their respective map entries
+    const materializedColumnToMapIdent = columns.reduce((prevMap, cur) => {
+      if (cur.default_type !== 'MATERIALIZED' && cur.default_type !== 'DEFAULT')
+        return prevMap;
+      const bracketStart = cur.default_expression.indexOf("['");
+      if (bracketStart === -1) return prevMap;
+      const mapName = cur.default_expression.slice(0, bracketStart);
+      if (!maps.has(mapName)) return prevMap;
+      const keyName = cur.default_expression.slice(
+        bracketStart + "['".length,
+        -"']".length,
+      );
+      prevMap.set(cur.name, { type: 'map', mapName, keyName });
+      return prevMap;
+    }, new Map<string, SQLMapValueIdent>());
+
+    // replace materialized idents with map ident
+    for (const curIdent of idents) {
+      if (curIdent.ident.type === 'column') {
+        const materializedMapIdent = materializedColumnToMapIdent.get(
+          curIdent.ident.name,
+        );
+        if (materializedMapIdent) {
+          curIdent.ident = materializedMapIdent;
+        }
+      }
+    }
+
+    // deduplicate idents and remove columns or nonexistent maps
+    const _idents: typeof idents = [];
+    const identsHashSet = new Set();
+    for (const curIdent of idents) {
+      if (
+        curIdent.ident.type === 'column' ||
+        !maps.has(curIdent.ident.mapName)
+      ) {
+        continue;
+      }
+      const hash = objectHash.sha1(curIdent);
+      if (!identsHashSet.has(hash)) {
+        identsHashSet.add(hash);
+        _idents.push(curIdent);
+      }
+    }
+
+    // add map idents to AST
+    const addIdentToAst = (ident: SQLMapValueIdent, doesContain: boolean) => {
+      let expr = `mapContains(${ident.mapName}, '${ident.keyName}')`;
+      if (!doesContain) {
+        expr += ' != 1';
+      }
+      const completeStatement = 'SELECT * from b WHERE ' + expr;
+      const tmpAst = parser.astify(completeStatement) as SQLParser.Select;
+      const tmpWhere = ast.where;
+      if (tmpWhere) {
+        ast.where = {
+          type: 'binary_expr',
+          operator: 'AND',
+          left: tmpWhere,
+          right: tmpAst.where!,
+        };
+      }
+    };
+    for (const ident of _idents) {
+      if (ident.ident.type === 'map') {
+        addIdentToAst(ident.ident, ident.doesContain);
+      }
+    }
+
+    return parser.sqlify(ast);
+  } catch {
+    // ignore
+  }
+  return '';
 };
 
 const aggFnExpr = ({
@@ -706,7 +957,7 @@ async function renderWhereExpression({
   }
 
   const _sqlPrefix = 'SELECT * FROM `t` WHERE ';
-  const rawSQL = `${_sqlPrefix}${_condition}`;
+  let rawSQL = `${_sqlPrefix}${_condition}`;
   // strip 'SELECT * FROM `t` WHERE ' from the sql
   if (materializedFields) {
     _condition = fastifySQL({ materializedFields, rawSQL }).replace(
@@ -714,6 +965,31 @@ async function renderWhereExpression({
       '',
     );
   }
+
+  try {
+    // This will likely error when referencing a CTE, which is assumed
+    // to be the case when from.databaseName is not set.
+    const columns =
+      withClauses?.length || !from.databaseName
+        ? undefined
+        : await metadata.getColumns({
+            connectionId,
+            databaseName: from.databaseName,
+            tableName: from.tableName,
+          });
+
+    if (columns) {
+      rawSQL = `${_sqlPrefix}${_condition}`;
+      // If the WHERE contains any clauses that check map value, add mapContains(map, key) to the WHERE
+      _condition = optimizeMapAccessWhere({
+        columns,
+        rawSQL,
+      }).replace(_sqlPrefix, '');
+    }
+  } catch {
+    // ignore
+  }
+
   return chSql`${{ UNSAFE_RAW_SQL: _condition }}`;
 }
 
