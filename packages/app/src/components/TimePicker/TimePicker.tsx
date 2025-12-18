@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { memo, useMemo, useState } from 'react';
 import { add, Duration, format, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
@@ -69,7 +69,7 @@ const H = ({ children }: { children: React.ReactNode }) => (
   </Text>
 );
 
-export const TimePicker = ({
+const TimePickerComponent = ({
   inputValue: value,
   setInputValue: onChange,
   onSearch,
@@ -468,3 +468,4 @@ export const TimePicker = ({
     </Popover>
   );
 };
+export const TimePicker = memo(TimePickerComponent);
