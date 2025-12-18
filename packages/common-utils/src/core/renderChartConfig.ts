@@ -966,7 +966,10 @@ async function renderWhereExpression({
     );
   }
 
-  if (process.env.MAP_CONTAINS_OPTIMIZATION_ENABLED === 'true') {
+  if (
+    process.env.NODE_ENV !== 'production' ||
+    process.env.MAP_CONTAINS_OPTIMIZATION_ENABLED === 'true'
+  ) {
     // This is an issue with the core DB, we shouldn't have to add `mapContains` to a query that is checking access to a map. But here we are
     try {
       // This will likely error when referencing a CTE, which is assumed
