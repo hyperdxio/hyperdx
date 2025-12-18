@@ -12,6 +12,10 @@ import {
 import { Metadata } from '@/core/metadata';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 
+const MAP_CONTAINS_OPTIMIZATION_ENABLED =
+  process.env.NEXT_PUBLIC_MAP_CONTAINS_OPTIMIZATION_ENABLED ||
+  process.env.NODE_ENV !== 'production';
+
 /**
  * Helper function to create a MetricName filter condition.
  * Uses metricNameSql if available (which handles both old and new metric names via OR),
@@ -377,7 +381,7 @@ const optimizeMapAccessWhere = ({
       database: 'Postgresql',
     }) as SQLParser.Select;
 
-    // travere ast and collect all column or map identifiers that are used
+    // traverse ast and collect all column or map identifiers that are used
     const traverse = (
       node:
         | SQLParser.Expr
@@ -529,7 +533,7 @@ const optimizeMapAccessWhere = ({
   } catch {
     // ignore
   }
-  return '';
+  return rawSQL;
 };
 
 const aggFnExpr = ({
@@ -966,10 +970,7 @@ async function renderWhereExpression({
     );
   }
 
-  if (
-    process.env.NODE_ENV !== 'production' ||
-    process.env.MAP_CONTAINS_OPTIMIZATION_ENABLED === 'true'
-  ) {
+  if (MAP_CONTAINS_OPTIMIZATION_ENABLED) {
     // This is an issue with the core DB, we shouldn't have to add `mapContains` to a query that is checking access to a map. But here we are
     try {
       // This will likely error when referencing a CTE, which is assumed
