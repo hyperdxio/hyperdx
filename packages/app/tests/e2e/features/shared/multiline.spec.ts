@@ -64,6 +64,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       page,
     }) => {
       // Navigate using page object
+      // eslint-disable-next-line playwright/no-conditional-in-test
       if (path === '/search') {
         const searchPage = new SearchPage(page);
         await searchPage.goto();
@@ -85,6 +86,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       page,
     }) => {
       // Navigate using page object
+      // eslint-disable-next-line playwright/no-conditional-in-test
       if (path === '/search') {
         const searchPage = new SearchPage(page);
         await searchPage.goto();

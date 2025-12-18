@@ -157,98 +157,72 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
 
       const restartsHeader = k8sPage.getColumnHeader(podsTable, 'Restarts');
 
-      // Verify initial sort icon
-      await expect(
-        restartsHeader.locator('svg.tabler-icon-caret-down-filled'),
-      ).toBeVisible({ timeout: 10000 });
+      // Verify initial descending sort icon
+      await expect(k8sPage.getDescendingSortIcon(restartsHeader)).toBeVisible({
+        timeout: 10000,
+      });
 
-      const firstRestartsBefore = podsTable
-        .locator('tbody tr')
-        .first()
-        .locator('td')
-        .last();
-      // Click to sort
-      await restartsHeader.click();
-
-      // Verify sort icon changed
-      await expect(
-        restartsHeader.locator('svg.tabler-icon-caret-up-filled'),
-      ).toBeVisible();
-
-      const firstRestartsAfter = await podsTable
-        .locator('tbody tr')
-        .first()
-        .locator('td')
-        .last()
-        .textContent();
-
-      await expect(firstRestartsBefore).not.toHaveText(firstRestartsAfter);
-    });
-
-    test('should sort by status column', async () => {
-      const podsTable = k8sPage.getPodsTable();
-      await expect(podsTable.locator('tbody tr').first()).toBeVisible();
-
-      const statusHeader = k8sPage.getColumnHeader(podsTable, 'Status');
-      const sortIcon = k8sPage.getSortIcon(statusHeader);
-
-      // No sort icon initially
-      await expect(sortIcon).toHaveCount(0);
-
-      // Click to sort
-      await statusHeader.click();
-
-      // Sort icon should appear
-      await expect(sortIcon).toBeVisible();
-    });
-
-    test('should sort by CPU/Limit column', async () => {
-      const podsTable = k8sPage.getPodsTable();
-      await expect(podsTable.locator('tbody tr').first()).toBeVisible();
-
-      const cpuLimitHeader = k8sPage.getColumnHeader(podsTable, 'CPU/Limit');
-      const sortIcon = k8sPage.getSortIcon(cpuLimitHeader);
+      const firstRestartsBefore = await k8sPage.getFirstCellValue(
+        podsTable,
+        'Restarts',
+      );
 
       // Click to sort ascending
-      await cpuLimitHeader.click();
-      await expect(sortIcon).toBeVisible();
+      await k8sPage.sortByColumn(podsTable, 'Restarts');
 
-      // Click to sort descending
-      await cpuLimitHeader.click();
-      await expect(sortIcon).toBeVisible();
+      // Verify sort icon changed to ascending
+      await expect(k8sPage.getAscendingSortIcon(restartsHeader)).toBeVisible();
+
+      const firstRestartsAfter = await k8sPage.getFirstCellValue(
+        podsTable,
+        'Restarts',
+      );
+
+      expect(firstRestartsBefore).not.toEqual(firstRestartsAfter);
     });
 
-    test('should sort by Memory/Limit column', async () => {
-      const podsTable = k8sPage.getPodsTable();
-      await expect(podsTable.locator('tbody tr').first()).toBeVisible();
+    // Parametrized test for common sorting behavior
+    const sortableColumns = [
+      { name: 'Status', hasInitialSort: false },
+      { name: 'CPU/Limit', hasInitialSort: false },
+      { name: 'Mem/Limit', hasInitialSort: false },
+      { name: 'Age', hasInitialSort: false },
+    ];
 
-      const memLimitHeader = k8sPage.getColumnHeader(podsTable, 'Mem/Limit');
+    for (const column of sortableColumns) {
+      test(`should sort by ${column.name} column`, async () => {
+        const podsTable = k8sPage.getPodsTable();
+        await expect(podsTable.locator('tbody tr').first()).toBeVisible();
 
-      await memLimitHeader.click();
+        const header = k8sPage.getColumnHeader(podsTable, column.name);
+        const sortIcon = k8sPage.getSortIcon(header);
 
-      await expect(k8sPage.getSortIcon(memLimitHeader)).toBeVisible();
-    });
+        // Verify no sort icon initially (unless specified)
+        if (!column.hasInitialSort) {
+          await expect(sortIcon).toHaveCount(0);
+        }
 
-    test('should sort by Age column', async () => {
-      const podsTable = k8sPage.getPodsTable();
-      await expect(podsTable.locator('tbody tr').first()).toBeVisible();
+        // Click to sort
+        await k8sPage.sortByColumn(podsTable, column.name);
 
-      const ageHeader = k8sPage.getColumnHeader(podsTable, 'Age');
+        // Verify sort icon appears
+        await expect(sortIcon).toBeVisible();
 
-      await ageHeader.click();
+        // Click again to toggle sort direction
+        await k8sPage.sortByColumn(podsTable, column.name);
 
-      await expect(k8sPage.getSortIcon(ageHeader)).toBeVisible();
-    });
+        // Sort icon should still be visible
+        await expect(sortIcon).toBeVisible();
+      });
+    }
 
     test('should maintain sort when switching phase filters', async () => {
       const podsTable = k8sPage.getPodsTable();
       await expect(podsTable.locator('tbody tr').first()).toBeVisible();
 
-      const ageHeader = k8sPage.getColumnHeader(podsTable, 'Age');
-      const sortIcon = k8sPage.getSortIcon(ageHeader);
-
       // Sort by age
-      await ageHeader.click();
+      const ageHeader = await k8sPage.sortByColumn(podsTable, 'Age');
+      const sortIcon = k8sPage.getSortIcon(ageHeader);
       await expect(sortIcon).toBeVisible();
 
       // Switch to "All" tab

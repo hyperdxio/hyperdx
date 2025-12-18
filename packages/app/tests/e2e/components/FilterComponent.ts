@@ -16,14 +16,14 @@ export class FilterComponent {
    * @param filterName - e.g., 'SeverityText', 'ServiceName'
    */
   getFilterGroup(filterName: string) {
-    return this.page.locator(`[data-testid="filter-group-${filterName}"]`);
+    return this.page.getByTestId(`filter-group-${filterName}`);
   }
 
   /**
    * Get filter group control (clickable header)
    */
   getFilterGroupControl(index?: number) {
-    const controls = this.page.locator('[data-testid="filter-group-control"]');
+    const controls = this.page.getByTestId('filter-group-control');
     return index !== undefined ? controls.nth(index) : controls;
   }
 
@@ -39,16 +39,14 @@ export class FilterComponent {
    * @param valueName - e.g., 'info', 'error', 'debug'
    */
   getFilterCheckbox(valueName: string) {
-    return this.page.locator(`[data-testid="filter-checkbox-${valueName}"]`);
+    return this.page.getByTestId(`filter-checkbox-${valueName}`);
   }
 
   /**
    * Get checkbox input element
    */
   getFilterCheckboxInput(valueName: string) {
-    return this.page.locator(
-      `[data-testid="filter-checkbox-input-${valueName}"]`,
-    );
+    return this.page.getByTestId(`filter-checkbox-input-${valueName}`);
   }
 
   /**
@@ -66,10 +64,8 @@ export class FilterComponent {
     const filterCheckbox = this.getFilterCheckbox(valueName);
     await filterCheckbox.hover();
 
-    const excludeButton = this.page.locator(
-      `[data-testid="filter-exclude-${valueName}"]`,
-    );
-    await excludeButton.click();
+    const excludeButton = this.page.getByTestId(`filter-exclude-${valueName}`);
+    await excludeButton.first().click();
   }
 
   /**
@@ -79,9 +75,7 @@ export class FilterComponent {
     const filterCheckbox = this.getFilterCheckbox(valueName);
     await filterCheckbox.hover();
 
-    const pinButton = this.page.locator(
-      `[data-testid="filter-pin-${valueName}"]`,
-    );
+    const pinButton = this.page.getByTestId(`filter-pin-${valueName}`);
     await pinButton.click();
   }
 
@@ -89,15 +83,17 @@ export class FilterComponent {
    * Clear/unselect a filter
    */
   async clearFilter(valueName: string) {
+    const input = this.getFilterCheckboxInput(valueName);
     const checkbox = this.getFilterCheckbox(valueName);
     await checkbox.click();
+    await input.click();
   }
 
   /**
    * Get filter search input
    */
   getFilterSearchInput(filterName: string) {
-    return this.page.locator(`[data-testid="filter-search-${filterName}"]`);
+    return this.page.getByTestId(`filter-search-${filterName}`);
   }
 
   /**
@@ -166,8 +162,6 @@ export class FilterComponent {
    * Get all filter values for a specific filter group
    */
   getFilterValues(filterGroupName: string) {
-    return this.page.locator(
-      `[data-testid^="filter-checkbox-"][data-testid*="${filterGroupName}"]`,
-    );
+    return this.page.getByTestId(`filter-checkbox-${filterGroupName}`);
   }
 }

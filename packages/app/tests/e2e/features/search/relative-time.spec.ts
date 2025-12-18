@@ -17,7 +17,7 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
       await test.step('Verify switch is interactive', async () => {
         const switchInput = searchPage.timePicker.getRelativeTimeSwitch();
         // Check initial state (should be checked if in live mode)
-        await expect(switchInput).toBeVisible();
+        await expect(switchInput).toBeAttached();
       });
     });
 

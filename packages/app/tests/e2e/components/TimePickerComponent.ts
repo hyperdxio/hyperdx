@@ -16,14 +16,12 @@ export class TimePickerComponent {
 
   constructor(page: Page) {
     this.page = page;
-    this.pickerInput = page.locator('[data-testid="time-picker-input"]');
-    this.pickerPopover = page.locator('[data-testid="time-picker-popover"]');
-    this.pickerApplyButton = page.locator('[data-testid="time-picker-apply"]');
-    this.pickerCloseButton = page.locator('[data-testid="time-picker-close"]');
-    this.picker1HourBack = page.locator('[data-testid="time-picker-1h-back"]');
-    this.picker1HourForward = page.locator(
-      '[data-testid="time-picker-1h-forward"]',
-    );
+    this.pickerInput = page.getByTestId('time-picker-input');
+    this.pickerPopover = page.getByTestId('time-picker-popover');
+    this.pickerApplyButton = page.getByTestId('time-picker-apply');
+    this.pickerCloseButton = page.getByTestId('time-picker-close');
+    this.picker1HourBack = page.getByTestId('time-picker-1h-back');
+    this.picker1HourForward = page.getByTestId('time-picker-1h-forward');
     this.relativeTimeSwitch = page.getByTestId('time-picker-relative-switch');
   }
 

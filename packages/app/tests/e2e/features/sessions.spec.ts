@@ -34,17 +34,10 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
     });
 
     await test.step('Find and interact with session cards', async () => {
-      const sessionCards = sessionsPage.getSessionCards();
-      const sessionCount = await sessionCards.count();
-
-      if (sessionCount > 0) {
-        const firstSession = sessionsPage.getFirstSessionCard();
-        await expect(firstSession).toBeVisible();
-        await sessionsPage.openFirstSession();
-      } else {
-        // If no session cards, at least verify the page structure is correct
-        await expect(sessionsPage.dataSource).toBeVisible();
-      }
+      const firstSession = sessionsPage.getFirstSessionCard();
+      await expect(sessionsPage.dataSource).toBeVisible();
+      await expect(firstSession).toBeVisible();
+      await sessionsPage.openFirstSession();
     });
   });
 });

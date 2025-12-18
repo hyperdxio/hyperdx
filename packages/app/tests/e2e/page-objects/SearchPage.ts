@@ -47,8 +47,8 @@ export class SearchPage {
     this.searchInput = page.locator('[data-testid="search-input"]');
     this.searchButton = page.locator('[data-testid="search-submit-button"]');
     this.saveSearchButton = page.locator('[data-testid="save-search-button"]');
-    this.luceneTab = page.getByRole('tab', { name: 'Lucene' });
-    this.sqlTab = page.getByRole('tab', { name: 'SQL' });
+    this.luceneTab = page.getByRole('button', { name: 'Lucene' });
+    this.sqlTab = page.getByRole('button', { name: 'SQL' });
   }
 
   /**
