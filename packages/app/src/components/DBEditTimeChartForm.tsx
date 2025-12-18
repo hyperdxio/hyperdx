@@ -475,6 +475,8 @@ export default function EditTimeChartForm({
     name: 'series',
   });
 
+  const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
+
   const select = watch('select');
   const sourceId = watch('source');
   const whereLanguage = watch('whereLanguage');
@@ -1234,7 +1236,10 @@ export default function EditTimeChartForm({
         <>
           <Divider mt="md" />
           {showSampleEvents && (
-            <Accordion defaultValue="sample">
+            <Accordion
+              value={isSampleEventsOpen ? 'sample' : null}
+              onChange={value => setIsSampleEventsOpen(value === 'sample')}
+            >
               <Accordion.Item value="sample">
                 <Accordion.Control icon={<IconList size={16} />}>
                   <Text size="sm" style={{ alignSelf: 'center' }}>
@@ -1250,7 +1255,7 @@ export default function EditTimeChartForm({
                       <DBSqlRowTableWithSideBar
                         sourceId={sourceId}
                         config={sampleEventsConfig}
-                        enabled
+                        enabled={isSampleEventsOpen}
                         isLive={false}
                         queryKeyPrefix={'search'}
                       />
