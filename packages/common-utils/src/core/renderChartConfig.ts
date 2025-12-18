@@ -966,28 +966,31 @@ async function renderWhereExpression({
     );
   }
 
-  try {
-    // This will likely error when referencing a CTE, which is assumed
-    // to be the case when from.databaseName is not set.
-    const columns =
-      withClauses?.length || !from.databaseName
-        ? undefined
-        : await metadata.getColumns({
-            connectionId,
-            databaseName: from.databaseName,
-            tableName: from.tableName,
-          });
+  if (process.env.MAP_CONTAINS_OPTIMIZATION_ENABLED === 'true') {
+    // This is an issue with the core DB, we shouldn't have to add `mapContains` to a query that is checking access to a map. But here we are
+    try {
+      // This will likely error when referencing a CTE, which is assumed
+      // to be the case when from.databaseName is not set.
+      const columns =
+        withClauses?.length || !from.databaseName
+          ? undefined
+          : await metadata.getColumns({
+              connectionId,
+              databaseName: from.databaseName,
+              tableName: from.tableName,
+            });
 
-    if (columns) {
-      rawSQL = `${_sqlPrefix}${_condition}`;
-      // If the WHERE contains any clauses that check map value, add mapContains(map, key) to the WHERE
-      _condition = optimizeMapAccessWhere({
-        columns,
-        rawSQL,
-      }).replace(_sqlPrefix, '');
+      if (columns) {
+        rawSQL = `${_sqlPrefix}${_condition}`;
+        // If the WHERE contains any clauses that check map value, add mapContains(map, key) to the WHERE
+        _condition = optimizeMapAccessWhere({
+          columns,
+          rawSQL,
+        }).replace(_sqlPrefix, '');
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
 
   return chSql`${{ UNSAFE_RAW_SQL: _condition }}`;
