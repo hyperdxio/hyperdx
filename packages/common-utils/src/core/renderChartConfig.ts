@@ -171,8 +171,6 @@ const fastifySQL = ({
       database: 'Postgresql',
     }) as SQLParser.Select;
 
-    let mapAndKeysUsed: Array<{ map: string; key: string }> | undefined;
-
     // traveral ast and replace the left node with the materialized field
     // FIXME: type node (AST type is incomplete): https://github.com/taozhi8833998/node-sql-parser/blob/42ea0b1800c5d425acb8c5ca708a1cee731aada8/types.d.ts#L474
     const traverse = (
@@ -192,19 +190,10 @@ const fastifySQL = ({
         case 'column_ref': {
           // FIXME: handle 'Value' type?
           const _n = node as ColumnRef;
-          // @ts-expect-error _n exists
+          // @ts-ignore
           if (typeof _n.column !== 'string') {
-            // @ts-expect-error assume column exists
-            const mapName = _n.column?.expr.value;
-            const keyName = _n.array_index?.[0]?.index.value;
-            colExpr = `${mapName}['${keyName}']`;
-            if (mapName && keyName) {
-              if (!mapAndKeysUsed) mapAndKeysUsed = [];
-              mapAndKeysUsed.push({
-                map: mapName,
-                key: keyName,
-              });
-            }
+            // @ts-ignore
+            colExpr = `${_n.column?.expr.value}['${_n.array_index?.[0]?.index.value}']`;
           }
           break;
         }
@@ -286,14 +275,7 @@ const fastifySQL = ({
 
     traverse(ast.where);
 
-    let sql = parser.sqlify(ast);
-    if (ast.where && mapAndKeysUsed) {
-      const mapContains = mapAndKeysUsed
-        .map(v => `mapContains(${v.map}, '${v.key}')`)
-        .join(' AND ');
-      sql = `${sql} AND ${mapContains}`;
-    }
-    return sql;
+    return parser.sqlify(ast);
   } catch (e) {
     return rawSQL;
   }
