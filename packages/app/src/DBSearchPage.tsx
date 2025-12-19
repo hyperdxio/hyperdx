@@ -1,6 +1,8 @@
 import {
   FormEvent,
   FormEventHandler,
+  memo,
+  SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -20,7 +22,7 @@ import {
   useQueryState,
   useQueryStates,
 } from 'nuqs';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
@@ -182,6 +184,126 @@ export function getDefaultSourceId(
   return sources[0].id;
 }
 
+function SourceEditMenu({
+  setModalOpen,
+  setModelFormExpanded,
+}: {
+  setModalOpen: (val: SetStateAction<boolean>) => void;
+  setModelFormExpanded: (val: SetStateAction<boolean>) => void;
+}) {
+  return (
+    <Menu withArrow position="bottom-start">
+      <Menu.Target>
+        <ActionIcon
+          data-testid="source-settings-menu"
+          variant="subtle"
+          size="sm"
+          title="Edit Source"
+        >
+          <Text size="xs">
+            <IconSettings size={14} />
+          </Text>
+        </ActionIcon>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Label>Sources</Menu.Label>
+        <Menu.Item
+          data-testid="create-new-source-menu-item"
+          leftSection={<IconCirclePlus size={14} />}
+          onClick={() => setModalOpen(true)}
+        >
+          Create New Source
+        </Menu.Item>
+        {IS_LOCAL_MODE ? (
+          <Menu.Item
+            data-testid="edit-source-menu-item"
+            leftSection={<IconSettings size={14} />}
+            onClick={() => setModelFormExpanded(v => !v)}
+          >
+            Edit Source
+          </Menu.Item>
+        ) : (
+          <Menu.Item
+            data-testid="edit-sources-menu-item"
+            leftSection={<IconSettings size={14} />}
+            component={Link}
+            href="/team"
+          >
+            Edit Sources
+          </Menu.Item>
+        )}
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
+
+function SourceEditModal({
+  opened,
+  onClose,
+  inputSource,
+}: {
+  opened: boolean;
+  onClose: () => void;
+  inputSource: string | undefined;
+}) {
+  return (
+    <Modal size="xl" opened={opened} onClose={onClose} title="Edit Source">
+      <TableSourceForm sourceId={inputSource} />
+    </Modal>
+  );
+}
+
+function NewSourceModal({
+  opened,
+  onClose,
+  onCreate,
+}: {
+  opened: boolean;
+  onClose: () => void;
+  onCreate: (source: TSource) => void;
+}) {
+  return (
+    <Modal
+      size="xl"
+      opened={opened}
+      onClose={onClose}
+      title="Configure New Source"
+    >
+      <TableSourceForm isNew defaultName="My New Source" onCreate={onCreate} />
+    </Modal>
+  );
+}
+
+function ResumeLiveTailButton({
+  handleResumeLiveTail,
+}: {
+  handleResumeLiveTail: () => void;
+}) {
+  return (
+    <Button size="compact-xs" variant="outline" onClick={handleResumeLiveTail}>
+      <IconBolt size={14} className="text-success me-2" />
+      Resume Live Tail
+    </Button>
+  );
+}
+
+function SearchSubmitButton({
+  isFormStateDirty,
+}: {
+  isFormStateDirty: boolean;
+}) {
+  return (
+    <Button
+      data-testid="search-submit-button"
+      variant="outline"
+      type="submit"
+      color={isFormStateDirty ? 'var(--color-text-success)' : 'gray'}
+    >
+      <IconPlayerPlay size={16} />
+    </Button>
+  );
+}
+
 function SearchNumRows({
   config,
   enabled,
@@ -209,7 +331,7 @@ function SearchNumRows({
   );
 }
 
-function SaveSearchModal({
+function SaveSearchModalComponent({
   searchedConfig,
   opened,
   onClose,
@@ -423,6 +545,7 @@ function SaveSearchModal({
     </Modal>
   );
 }
+const SaveSearchModal = memo(SaveSearchModalComponent);
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 15m', false) as [Date, Date];
@@ -744,7 +867,7 @@ function DBSearchPage() {
     resolver: zodResolver(SearchConfigSchema),
   });
 
-  const inputSource = watch('source');
+  const inputSource = useWatch({ name: 'source', control });
   // const { data: inputSourceObj } = useSource({ id: inputSource });
   const { data: inputSourceObjs } = useSources();
   const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
@@ -875,8 +998,9 @@ function DBSearchPage() {
     [debouncedSubmit, setValue],
   );
 
+  const filters = useWatch({ name: 'filters', control });
   const searchFilters = useSearchPageFilterState({
-    searchQuery: watch('filters') ?? undefined,
+    searchQuery: filters ?? undefined,
     onFilterChange: handleSetFilters,
   });
 
@@ -941,8 +1065,8 @@ function DBSearchPage() {
       : null;
     return { hasQueryError, queryError };
   }, [_queryErrors]);
-  const inputWhere = watch('where');
-  const inputWhereLanguage = watch('whereLanguage');
+  const inputWhere = useWatch({ name: 'where', control });
+  const inputWhereLanguage = useWatch({ name: 'whereLanguage', control });
   // query suggestion for 'where' if error
   const whereSuggestions = useSqlSuggestions({
     input: inputWhere,
@@ -1342,6 +1466,54 @@ function DBSearchPage() {
     [inputSourceObj],
   );
 
+  const onTimePickerSearch = useCallback(
+    (range: string) => {
+      setIsLive(false);
+      onSearch(range);
+    },
+    [setIsLive, onSearch],
+  );
+
+  const onTimePickerRelativeSearch = useCallback(
+    (rangeMs: number) => {
+      const _range = parseRelativeTimeQuery(rangeMs);
+      setIsLive(true);
+      setInterval(rangeMs);
+      onTimeRangeSelect(_range[0], _range[1], null);
+    },
+    [setIsLive, setInterval, onTimeRangeSelect],
+  );
+
+  const clearSaveSearchModalState = useCallback(
+    () => setSaveSearchModalState(undefined),
+    [setSaveSearchModalState],
+  );
+
+  const onLanguageChange = useCallback(
+    (lang: 'sql' | 'lucene') =>
+      setValue('whereLanguage', lang, {
+        shouldDirty: true,
+      }),
+    [setValue],
+  );
+
+  const onModelFormExpandClose = useCallback(() => {
+    setModelFormExpanded(false);
+  }, [setModelFormExpanded]);
+
+  const setNewSourceModalClosed = useCallback(
+    () => setNewSourceModalOpened(false),
+    [setNewSourceModalOpened],
+  );
+
+  const onNewSourceCreate = useCallback(
+    (newSource: TSource) => {
+      setValue('source', newSource.id);
+      setNewSourceModalClosed();
+    },
+    [setValue, setNewSourceModalClosed],
+  );
+
   return (
     <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
       <Head>
@@ -1376,48 +1548,10 @@ function DBSearchPage() {
               data-testid="source-selector"
               sourceSchemaPreview={sourceSchemaPreview}
             />
-            <Menu withArrow position="bottom-start">
-              <Menu.Target>
-                <ActionIcon
-                  data-testid="source-settings-menu"
-                  variant="subtle"
-                  size="sm"
-                  title="Edit Source"
-                >
-                  <Text size="xs">
-                    <IconSettings size={14} />
-                  </Text>
-                </ActionIcon>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Label>Sources</Menu.Label>
-                <Menu.Item
-                  data-testid="create-new-source-menu-item"
-                  leftSection={<IconCirclePlus size={14} />}
-                  onClick={() => setNewSourceModalOpened(true)}
-                >
-                  Create New Source
-                </Menu.Item>
-                {IS_LOCAL_MODE ? (
-                  <Menu.Item
-                    data-testid="edit-source-menu-item"
-                    leftSection={<IconSettings size={14} />}
-                    onClick={() => setModelFormExpanded(v => !v)}
-                  >
-                    Edit Source
-                  </Menu.Item>
-                ) : (
-                  <Menu.Item
-                    data-testid="edit-sources-menu-item"
-                    leftSection={<IconSettings size={14} />}
-                    component={Link}
-                    href="/team"
-                  >
-                    Edit Sources
-                  </Menu.Item>
-                )}
-              </Menu.Dropdown>
-            </Menu>
+            <SourceEditMenu
+              setModalOpen={setNewSourceModalOpened}
+              setModelFormExpanded={setModelFormExpanded}
+            />
           </Group>
           <Box style={{ minWidth: 100, flexGrow: 1 }}>
             <SQLInlineEditorControlled
@@ -1516,33 +1650,16 @@ function DBSearchPage() {
             </>
           )}
         </Flex>
-        <Modal
-          size="xl"
+        <SourceEditModal
           opened={modelFormExpanded}
-          onClose={() => {
-            setModelFormExpanded(false);
-          }}
-          title="Edit Source"
-        >
-          <TableSourceForm sourceId={inputSource} />
-        </Modal>
-        <Modal
-          size="xl"
+          onClose={onModelFormExpandClose}
+          inputSource={inputSource}
+        />
+        <NewSourceModal
           opened={newSourceModalOpened}
-          onClose={() => {
-            setNewSourceModalOpened(false);
-          }}
-          title="Configure New Source"
-        >
-          <TableSourceForm
-            isNew
-            defaultName="My New Source"
-            onCreate={newSource => {
-              setValue('source', newSource.id);
-              setNewSourceModalOpened(false);
-            }}
-          />
-        </Modal>
+          onClose={setNewSourceModalClosed}
+          onCreate={onNewSourceCreate}
+        />
         <Flex gap="sm" mt="sm" px="sm">
           <WhereLanguageControlled
             name="whereLanguage"
@@ -1550,15 +1667,11 @@ function DBSearchPage() {
             sqlInput={
               <Box style={{ width: '75%', flexGrow: 1 }}>
                 <SQLInlineEditorControlled
-                  tableConnection={tcFromSource(inputSourceObj)}
+                  tableConnection={inputSourceTableConnection}
                   control={control}
                   name="where"
                   placeholder="SQL WHERE clause (ex. column = 'foo')"
-                  onLanguageChange={lang =>
-                    setValue('whereLanguage', lang, {
-                      shouldDirty: true,
-                    })
-                  }
+                  onLanguageChange={onLanguageChange}
                   language="sql"
                   onSubmit={onSubmit}
                   label="WHERE"
@@ -1591,16 +1704,8 @@ function DBSearchPage() {
             data-testid="time-picker"
             inputValue={displayedTimeInputValue}
             setInputValue={setDisplayedTimeInputValue}
-            onSearch={range => {
-              setIsLive(false);
-              onSearch(range);
-            }}
-            onRelativeSearch={rangeMs => {
-              const _range = parseRelativeTimeQuery(rangeMs);
-              setIsLive(true);
-              setInterval(rangeMs);
-              onTimeRangeSelect(_range[0], _range[1], null);
-            }}
+            onSearch={onTimePickerSearch}
+            onRelativeSearch={onTimePickerRelativeSearch}
             showLive={analysisMode === 'results'}
             isLiveMode={isLive}
             // Default to relative time mode if the user has made changes to interval and reloaded.
@@ -1626,20 +1731,13 @@ function DBSearchPage() {
               />
             </Tooltip>
           )}
-          <Button
-            data-testid="search-submit-button"
-            variant="outline"
-            type="submit"
-            color={formState.isDirty ? 'var(--color-text-success)' : 'gray'}
-          >
-            <IconPlayerPlay size={16} />
-          </Button>
+          <SearchSubmitButton isFormStateDirty={formState.isDirty} />
         </Flex>
       </form>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal
           opened={saveSearchModalState != null}
-          onClose={() => setSaveSearchModalState(undefined)}
+          onClose={clearSaveSearchModalState}
           // @ts-ignore FIXME: Do some sort of validation?
           searchedConfig={searchedConfig}
           isUpdate={saveSearchModalState === 'update'}
@@ -1759,17 +1857,9 @@ function DBSearchPage() {
                             {shouldShowLiveModeHint &&
                               analysisMode === 'results' &&
                               denoiseResults != true && (
-                                <Button
-                                  size="compact-xs"
-                                  variant="outline"
-                                  onClick={handleResumeLiveTail}
-                                >
-                                  <IconBolt
-                                    size={14}
-                                    className="text-success me-2"
-                                  />
-                                  Resume Live Tail
-                                </Button>
+                                <ResumeLiveTailButton
+                                  handleResumeLiveTail={handleResumeLiveTail}
+                                />
                               )}
                             <SearchNumRows
                               config={{
