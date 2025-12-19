@@ -14,17 +14,11 @@ if [ -z "$LOG_FILE" ]; then
     exit 1
 fi
 
-# Wait for file to exist if it doesn't yet
-while [ ! -f "$LOG_FILE" ]; do
-    echo "Waiting for log file to be created: $LOG_FILE" >&2
-    sleep "$SLEEP_INTERVAL"
+while true; do
+  # Use tail -F to follow the file by name, not by descriptor
+  # This handles rotation and truncation gracefully
+  # -n 0: Start from the end (don't output existing content)
+  # -F: Follow by name and retry if file is inaccessible
+  # -s: Sleep interval between checks
+  tail -n 0 -F -s "$SLEEP_INTERVAL" "$LOG_FILE" || true
 done
-
-echo "Starting to tail: $LOG_FILE" >&2
-
-# Use tail -F to follow the file by name, not by descriptor
-# This handles rotation and truncation gracefully
-# -n 0: Start from the end (don't output existing content)
-# -F: Follow by name and retry if file is inaccessible
-# -s: Sleep interval between checks
-tail -n 0 -F -s "$SLEEP_INTERVAL" "$LOG_FILE"

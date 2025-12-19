@@ -23,9 +23,8 @@ USER ${USER_UID}:${USER_GID}
 COPY --from=supervisor --chmod=755 /usr/local/bin/opampsupervisor /opampsupervisor
 COPY --from=col --chmod=755 /otelcol-contrib /otelcontribcol
 
-# Copy entrypoint and log rotation scripts
+# Copy entrypoint and log tail wrapper scripts
 COPY --chmod=755 ./entrypoint.sh /entrypoint.sh
-COPY --chmod=755 ./log-rotator.sh /log-rotator.sh
 COPY --chmod=755 ./log-tailer.sh /log-tailer.sh
 
 ## dev ##############################################################################################

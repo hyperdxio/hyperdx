@@ -1,14 +1,19 @@
 #!/bin/sh
 set -e
 
-# Start log rotation script in background for agent.log
-# Arguments: log_file_path [max_size_mb] [max_archives] [check_interval_seconds]
-/log-rotator.sh /etc/otel/supervisor-data/agent.log 16 1 60 &
-
-# Start log tailer script in background for agent.log
-# Arguments: log_file_path [check_interval_seconds]
 if [ "$OTEL_SUPERVISOR_LOGS" = "true" ]; then
-    /log-tailer.sh /etc/otel/supervisor-data/agent.log 1 &
+ # Start log tailer process in background for agent.log
+  # Arguments: log_file_path [check_interval_seconds]
+  /log-tailer.sh /etc/otel/supervisor-data/agent.log 1 &
+
+  # Create a agent log file for the supervisor and collector child process. Normally
+  # this file would be created as a standard file but we just want a FIFO pipe that
+  # will pass data over to the tail process in the entrypoint script. This avoids
+  # the need to the supervisor to store and forward the logs in its memory while also
+  # eliminating the need for volume based storage.
+  if [ ! -e /etc/otel/supervisor-data/agent.log ]; then
+    mkfifo /etc/otel/supervisor-data/agent.log || echo "Failed to create FIFO" >&2
+  fi
 fi
 
 # Render the supervisor config template using gomplate
