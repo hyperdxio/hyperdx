@@ -412,6 +412,12 @@ export default function SQLInlineEditor({
     [allowMultiline, onSubmit, queryHistoryType, setQueryHistory, tooltipExt],
   );
 
+  const onClickCodeMirror = useCallback(() => {
+    if (ref?.current?.view) {
+      startCompletion(ref.current.view);
+    }
+  }, []);
+
   return (
     <Paper
       flex="auto"
@@ -463,11 +469,7 @@ export default function SQLInlineEditor({
           onCreateEditor={updateAutocompleteColumns}
           basicSetup={cmBasicSetup}
           placeholder={placeholder}
-          onClick={() => {
-            if (ref?.current?.view) {
-              startCompletion(ref.current.view);
-            }
-          }}
+          onClick={onClickCodeMirror}
         />
       </div>
       {onLanguageChange != null && language != null && (
