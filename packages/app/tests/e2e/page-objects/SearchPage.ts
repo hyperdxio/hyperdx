@@ -64,25 +64,9 @@ export class SearchPage {
    * Perform a search with the given query
    */
   async performSearch(query: string) {
-    // Store reference to current first row (if exists) to detect when results refresh
-    const hadExistingRows = (await this.table.getRows().count()) > 0;
-    const oldFirstRowTestId = hadExistingRows
-      ? await this.table.firstRow.getAttribute('data-testid')
-      : null;
-
     await this.searchInput.fill(query);
     await this.searchButton.click();
-
-    if (oldFirstRowTestId) {
-      // Wait for old first row to disappear (indicates results are refreshing)
-      await this.page
-        .locator(`[data-testid="${oldFirstRowTestId}"]`)
-        .waitFor({ state: 'hidden', timeout: this.defaultTimeout })
-        .catch(() => {
-          // Old row might already be gone, that's fine
-        });
-    }
-
+    await this.page.waitForLoadState('networkidle');
     // Wait for new results to populate
     await this.table.waitForRowsToPopulate();
   }

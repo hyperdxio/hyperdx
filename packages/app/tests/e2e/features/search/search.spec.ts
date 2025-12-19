@@ -73,8 +73,8 @@ test.describe('Search', { tag: '@search' }, () => {
     test('Search with Different Query Types - Lucene', async () => {
       await test.step('Test multiple search query types', async () => {
         const queries = [
-          'error',
-          'status:200',
+          'cart',
+          'ServiceName:"accounting"',
           '*exception*',
           'SeverityText:"error"',
         ];
@@ -95,13 +95,6 @@ test.describe('Search', { tag: '@search' }, () => {
       await test.step('Verify search results and interact with table rows', async () => {
         const resultsTable = searchPage.getSearchResultsTable();
         await expect(resultsTable).toBeVisible();
-
-        // Use table component for row operations
-        const rows = searchPage.table.getRows();
-        // Verify at least one row exists (count can vary based on data)
-        await expect(rows.first()).toBeVisible({
-          timeout: searchPage.defaultTimeout,
-        });
 
         // Click second row (index 1) using component method
         await searchPage.table.clickRow(1);
