@@ -1,6 +1,7 @@
 /**
  * SavedSearchModalComponent - Reusable component for save search modal
  * Used for creating and managing saved searches
+ * Not used until Saved Search functionality is implemented
  */
 import { Locator, Page } from '@playwright/test';
 

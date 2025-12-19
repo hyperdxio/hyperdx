@@ -75,7 +75,7 @@ test.describe('Search', { tag: '@search' }, () => {
         const queries = [
           'cart',
           'ServiceName:"accounting"',
-          '*exception*',
+          '*info*',
           'SeverityText:"error"',
         ];
 

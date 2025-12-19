@@ -1,6 +1,7 @@
 /**
  * AlertsPage - Page object for the /alerts page
  * Encapsulates all interactions with the alerts interface
+ * Currently not used until Alerts tests are implemented
  */
 import { Locator, Page } from '@playwright/test';
 
