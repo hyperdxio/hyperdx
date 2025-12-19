@@ -65,15 +65,16 @@ export class TimePickerComponent {
    * Open the time picker dropdown
    */
   async open() {
+    await this.page.waitForLoadState('networkidle');
     await this.pickerInput.click();
-    await this.pickerPopover.waitFor({ state: 'visible' });
+    await this.pickerPopover.waitFor({ state: 'visible', timeout: 5000 });
   }
 
   /**
    * Close the time picker dropdown
    */
   async close() {
-    await this.pickerCloseButton.click();
+    await this.pickerCloseButton.click({ timeout: 5000 });
   }
 
   /**
@@ -81,7 +82,7 @@ export class TimePickerComponent {
    */
   async toggleRelativeTimeSwitch() {
     // Click parent element to trigger the switch
-    await this.relativeTimeSwitch.locator('..').click();
+    await this.relativeTimeSwitch.locator('..').click({ timeout: 5000 });
   }
 
   /**
@@ -115,8 +116,11 @@ export class TimePickerComponent {
    * Select a time interval option by label (e.g., "Last 1 hour", "Last 6 hours", "Live Tail")
    */
   async selectTimeInterval(label: string) {
+    // Wait for DOM to stabilize before clicking
+    await this.page.waitForLoadState('networkidle');
     const intervalButton = this.page.locator(`text=${label}`);
-    await intervalButton.click();
+    // Add timeout to fail faster instead of waiting for full test timeout
+    await intervalButton.click({ timeout: 10000 });
   }
 
   /**
@@ -140,7 +144,7 @@ export class TimePickerComponent {
    */
   async goBack1Hour() {
     await this.open();
-    await this.picker1HourBack.click();
+    await this.picker1HourBack.click({ timeout: 5000 });
   }
 
   /**
@@ -148,14 +152,14 @@ export class TimePickerComponent {
    */
   async goForward1Hour() {
     await this.open();
-    await this.picker1HourForward.click();
+    await this.picker1HourForward.click({ timeout: 5000 });
   }
 
   /**
    * Apply the selected time range
    */
   async apply() {
-    await this.pickerApplyButton.click();
+    await this.pickerApplyButton.click({ timeout: 5000 });
   }
 
   /**
