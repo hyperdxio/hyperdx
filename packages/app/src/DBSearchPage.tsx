@@ -518,6 +518,7 @@ function useSearchedConfigToChartConfig({
         data: {
           select: select || (sourceObj.defaultTableSelectExpression ?? ''),
           from: sourceObj.from,
+          source: sourceObj.id,
           ...(sourceObj.tableFilterExpression != null
             ? {
                 filters: [

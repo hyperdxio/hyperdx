@@ -284,12 +284,12 @@ const fastifySQL = ({
 const aggFnExpr = ({
   fn,
   expr,
-  quantileLevel,
+  level,
   where,
 }: {
   fn: AggregateFunction | AggregateFunctionWithCombinators;
   expr?: string;
-  quantileLevel?: number;
+  level?: number;
   where?: string;
 }) => {
   const isAny = fn === 'any';
@@ -304,9 +304,21 @@ const aggFnExpr = ({
   const whereWithExtraNullCheck = `${where} AND ${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
 
   if (fn.endsWith('Merge')) {
-    return chSql`${fn}(${{
-      UNSAFE_RAW_SQL: expr ?? '',
-    }})`;
+    const renderedFnArgs = chSql`${{ UNSAFE_RAW_SQL: expr ?? '' }}`;
+
+    const shouldParameterizeWithLevel =
+      level && (fn.startsWith('quantile') || fn.startsWith('histogram'));
+    const renderedFnArgsWithQuantileLevel = shouldParameterizeWithLevel
+      ? chSql`(${{
+          UNSAFE_RAW_SQL: Number.isFinite(level) ? `${level}` : '0',
+        }})`
+      : [];
+
+    if (isWhereUsed) {
+      return chSql`${fn}If${renderedFnArgsWithQuantileLevel}(${renderedFnArgs}, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }})`;
+    } else {
+      return chSql`${fn}${renderedFnArgsWithQuantileLevel}(${renderedFnArgs})`;
+    }
   }
   // TODO: merge this chunk with the rest of logics
   else if (fn.endsWith('State')) {
@@ -342,13 +354,11 @@ const aggFnExpr = ({
       }}${isWhereUsed ? chSql`, ${{ UNSAFE_RAW_SQL: where }}` : ''})`;
     }
 
-    if (quantileLevel != null) {
-      return chSql`quantile${isWhereUsed ? 'If' : ''}(${{
+    if (level != null) {
+      return chSql`${fn}${isWhereUsed ? 'If' : ''}(${{
         // Using Float64 param leads to an added coersion, but we don't need to
         // escape number values anyways
-        UNSAFE_RAW_SQL: Number.isFinite(quantileLevel)
-          ? `${quantileLevel}`
-          : '0',
+        UNSAFE_RAW_SQL: Number.isFinite(level) ? `${level}` : '0',
       }})(${unsafeExpr}${
         isWhereUsed
           ? chSql`, ${{ UNSAFE_RAW_SQL: whereWithExtraNullCheck }}`
@@ -424,12 +434,15 @@ async function renderSelectList(
                 with: chartConfig.with,
               })
             : chSql`${{ UNSAFE_RAW_SQL: select.valueExpression }}`;
-      } else if (select.aggFn === 'quantile') {
+      } else if (
+        select.aggFn.startsWith('quantile') ||
+        select.aggFn.startsWith('histogram')
+      ) {
         expr = aggFnExpr({
           fn: select.aggFn,
           expr: select.valueExpression,
-          // @ts-ignore (TS doesn't know that we've already checked for quantile)
-          quantileLevel: select.level,
+          // @ts-expect-error (TS doesn't know that we've already checked for quantile)
+          level: select.level,
           where: whereClause.sql,
         });
       } else {
