@@ -103,6 +103,9 @@ export class KubernetesPage {
     await firstPodRow.scrollIntoViewIfNeeded();
 
     await firstPodRow.click();
+
+    // Wait for details panel to load
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
@@ -116,26 +119,37 @@ export class KubernetesPage {
     // and React won't re-render and replace DOM elements
     await this.page.waitForLoadState('networkidle');
 
-    // Now get the row reference (after table is stable)
-    const firstNodeRow = nodesTable.getByRole('row').nth(1);
+    // Match row by content (Ready/Not Ready status) to avoid virtual list padding rows
+    const firstNodeRow = nodesTable
+      .getByRole('row', { name: /Ready/i })
+      .first();
 
     // Wait for the row to be visible and actionable
-    await firstNodeRow.waitFor({ state: 'visible', timeout: 2000 });
+    await firstNodeRow.waitFor({ state: 'visible', timeout: 5000 });
 
     // Scroll into view if needed
     await firstNodeRow.scrollIntoViewIfNeeded();
 
     await firstNodeRow.click();
+
+    // Wait for details panel to load
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
    * Click on namespace row
    */
   async clickNamespaceRow(namespace: string) {
+    // Wait for network to settle first
+    await this.page.waitForLoadState('networkidle');
+
     const namespaceRow = this.getNamespacesTable().getByRole('row', {
       name: new RegExp(namespace),
     });
     await namespaceRow.click();
+
+    // Wait for details panel to load
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
