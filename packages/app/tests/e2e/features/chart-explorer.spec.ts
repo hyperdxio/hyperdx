@@ -1,27 +1,29 @@
+import { ChartExplorerPage } from '../page-objects/ChartExplorerPage';
 import { expect, test } from '../utils/base-test';
 
 test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
-  test('should interact with chart configuration', async ({ page }) => {
-    // Navigate to chart explorer
-    await page.goto('/chart');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
+  let chartExplorerPage: ChartExplorerPage;
 
+  test.beforeEach(async ({ page }) => {
+    chartExplorerPage = new ChartExplorerPage(page);
+    await chartExplorerPage.goto();
+  });
+
+  test('should interact with chart configuration', async () => {
     await test.step('Verify chart configuration form is accessible', async () => {
-      const chartForm = page.locator('[data-testid="chart-explorer-form"]');
-      await expect(chartForm).toBeVisible();
+      await expect(chartExplorerPage.form).toBeVisible();
     });
 
     await test.step('Can run basic query and display chart', async () => {
-      const runQueryButton = page.locator(
-        '[data-testid="chart-run-query-button"]',
-      );
-      await expect(runQueryButton).toBeVisible();
-      await runQueryButton.click();
-      await page.waitForTimeout(2000);
+      // Use chart editor component to run query
+      await expect(chartExplorerPage.chartEditor.runButton).toBeVisible();
+      // wait for network idle
+      await chartExplorerPage.page.waitForLoadState('networkidle');
+
+      await chartExplorerPage.chartEditor.runQuery();
 
       // Verify chart is rendered
-      const chartContainer = page.locator('.recharts-responsive-container');
+      const chartContainer = chartExplorerPage.getFirstChart();
       await expect(chartContainer).toBeVisible();
     });
   });

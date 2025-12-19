@@ -1,123 +1,123 @@
+import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
 
 test.describe('Search Filters', { tag: ['@search'] }, () => {
+  let searchPage: SearchPage;
+  let availableFilterValue: string | null = null;
+
   test.beforeEach(async ({ page }) => {
-    await page.goto('/search');
-  });
+    searchPage = new SearchPage(page);
+    await searchPage.goto();
 
-  test('should filter logs by severity level and persist pinned filters', async ({
-    page,
-  }) => {
-    await test.step('Apply Info severity filter', async () => {
-      // Open the Severity filter group
-      await page.locator('[data-testid="filter-group-SeverityText"]').click();
+    // Find an available filter value once and reuse across tests
+    if (!availableFilterValue) {
+      await searchPage.filters.openFilterGroup('SeverityText');
 
-      // Select the Info severity level
-      const infoCheckbox = page.locator(
-        '[data-testid="filter-checkbox-input-info"]',
-      );
-      await expect(infoCheckbox).toBeVisible();
-      await infoCheckbox.click();
-      await expect(infoCheckbox).toBeChecked();
+      // Get first visible filter checkbox
+      const firstCheckbox = searchPage.page
+        .locator('[data-testid^="filter-checkbox-"]')
+        .first();
+      const testId = await firstCheckbox.getAttribute('data-testid');
 
-      // Verify search results are filtered
-      await expect(
-        page.locator('[data-testid="search-results-table"]'),
-      ).toBeVisible();
-    });
-
-    await test.step('Exclude Info severity level', async () => {
-      // Hover over the Info filter to show exclude button
-      const infoFilter = page.locator('[data-testid="filter-checkbox-info"]');
-      await infoFilter.hover();
-
-      // Click exclude button to invert the filter
-      await page.locator('[data-testid="filter-exclude-info"]').first().click();
-      await page.waitForTimeout(500);
-
-      // Verify filter shows as excluded (indeterminate state)
-      const infoInput = page.locator(
-        '[data-testid="filter-checkbox-input-info"]',
-      );
-      await expect(infoInput).toHaveAttribute('data-indeterminate', 'true');
-      await page.waitForLoadState('networkidle');
-    });
-
-    await test.step('Clear the filter', async () => {
-      // Click the filter again to clear it
-      await page.locator('[data-testid="filter-checkbox-info"]').click();
-      await page.waitForTimeout(500);
-    });
-
-    await test.step('Test using search to find and apply the filter', async () => {
-      // Find and expand a filter that shows a search input (has >5 values)
-      const filterControls = page.locator(
-        '[data-testid="filter-group-control"]',
-      );
-      const filterCount = await filterControls.count();
-
-      // Try each filter until we find one with a search input
-      for (let i = 0; i < Math.min(filterCount, 5); i++) {
-        const filter = filterControls.nth(i);
-        const filterText = await filter.textContent();
-        const filterName =
-          filterText?.trim().replace(/\s*\(\d+\)\s*$/, '') || `filter-${i}`;
-
-        // Skip severity-related filters as they likely have few values
-        if (
-          filterName.toLowerCase().includes('severity') ||
-          filterName.toLowerCase().includes('level')
-        ) {
-          continue;
-        }
-
-        // Expand the filter
-        await filter.click();
-        await page.waitForTimeout(500);
-
-        // Check if search input appears
-        const searchInput = page.locator(
-          `[data-testid="filter-search-${filterName}"]`,
-        );
-
-        try {
-          await searchInput.waitFor({ state: 'visible', timeout: 1000 });
-          // Search input is visible, test it
-          await searchInput.fill('test');
-          await page.waitForTimeout(500);
-          await searchInput.clear();
-          await page.waitForTimeout(500);
-          break; // Found a working filter, stop testing
-        } catch (e) {
-          // Search input not visible, collapse and try next filter
-          await filter.click();
-          await page.waitForTimeout(500);
-        }
+      // Extract the value name from data-testid="filter-checkbox-{value}"
+      if (testId) {
+        availableFilterValue = testId.replace('filter-checkbox-', '');
       }
-    });
-
-    await test.step('Pin filter and verify it persists after reload', async () => {
-      const infoFilter = page.locator('[data-testid="filter-checkbox-info"]');
-
-      // First exclude the filter, then pin it
-      await infoFilter.hover();
-      await page.locator('[data-testid="filter-exclude-info"]').click();
-      await infoFilter.hover();
-
-      // Pin the filter
-      await page.locator('[data-testid="filter-pin-info"]').click();
-      await page.waitForTimeout(500);
-
-      // Reload page and verify filter persists
-      await page.reload();
-      await page.waitForLoadState('networkidle');
-
-      await expect(
-        page.locator('[data-testid="filter-checkbox-info"]').first(),
-      ).toBeVisible();
-    });
+    }
   });
-  //todo: test filter value pinning
-  //todo: text filter expand/collapse
-  //todo: test show more/show less
+
+  test('Should apply filters', async () => {
+    // Use filter component to open filter group
+    await searchPage.filters.openFilterGroup('SeverityText');
+
+    // Apply the filter using component method
+    const filterInput = searchPage.filters.getFilterCheckboxInput(
+      availableFilterValue!,
+    );
+    await expect(filterInput).toBeVisible();
+
+    await searchPage.filters.applyFilter(availableFilterValue!);
+
+    // Verify filter is checked
+    await expect(filterInput).toBeChecked();
+
+    // Verify search results are visible (filters applied)
+    await expect(searchPage.getSearchResultsTable()).toBeVisible();
+  });
+
+  test('Should exclude filters', async () => {
+    // Use filter component to exclude the filter
+    await searchPage.filters.excludeFilter(availableFilterValue!);
+
+    // Verify filter shows as excluded using web-first assertion
+    const isExcluded = await searchPage.filters.isFilterExcluded(
+      availableFilterValue!,
+    );
+    expect(isExcluded).toBe(true);
+  });
+
+  test('Should clear filters', async () => {
+    await searchPage.filters.clearFilter(availableFilterValue!);
+
+    // Verify filter is no longer checked
+    const filterInput = searchPage.filters.getFilterCheckboxInput(
+      availableFilterValue!,
+    );
+    await expect(filterInput).not.toBeChecked();
+  });
+
+  test('Should search for and apply filters', async () => {
+    // Use filter component's helper to find a filter with search capability
+    const skipFilters = ['severity', 'level'];
+    const filterName =
+      await searchPage.filters.findFilterWithSearch(skipFilters);
+
+    if (filterName) {
+      // Search input is already visible from findFilterWithSearch
+      // Test the search functionality
+      await searchPage.filters.searchFilterValues(filterName, 'test');
+
+      // Verify search input has the value
+      const searchInput = searchPage.filters.getFilterSearchInput(filterName);
+      await expect(searchInput).toHaveValue('test');
+
+      // Clear the search
+      await searchPage.filters.clearFilterSearch(filterName);
+
+      // Verify search input is cleared
+      await expect(searchInput).toHaveValue('');
+    }
+  });
+
+  test('Should pin filter and verify it persists after reload', async () => {
+    await searchPage.filters.pinFilter(availableFilterValue!);
+
+    // Reload page and verify filter persists
+    await searchPage.page.reload();
+
+    // Verify filter checkbox is still visible
+    const filterCheckbox = searchPage.filters.getFilterCheckbox(
+      availableFilterValue!,
+    );
+    await expect(filterCheckbox).toBeVisible();
+
+    //verify there is a pin icon
+    const pinIcon = searchPage.page.getByTestId(
+      `filter-pin-${availableFilterValue!}-pinned`,
+    );
+    await expect(pinIcon).toBeVisible();
+  });
+
+  // TODO: Implement these tests following the same pattern
+  // test('should pin filter values', async () => {
+  //   // Use searchPage.filters.pinFilter()
+  // });
+
+  // test('should expand and collapse text filters', async () => {
+  //   // Use searchPage.filters.openFilterGroup() and getFilterGroup()
+  // });
+
+  // test('should show more and show less filter values', async () => {
+  //   // Add methods to FilterComponent for show more/less
+  // });
 });

@@ -255,7 +255,7 @@ export const FilterCheckbox = ({
       </div>
       {pinned && (
         <Center me="1px">
-          <IconPinFilled size={12} />
+          <IconPinFilled size={12} data-testid={`filter-pin-${label}-pinned`} />
         </Center>
       )}
     </div>
