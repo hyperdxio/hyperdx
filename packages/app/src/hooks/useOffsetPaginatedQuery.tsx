@@ -6,12 +6,17 @@ import {
   ClickHouseQueryError,
   ColumnMetaType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
+import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithOptTimestamp,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   QueryClient,
   QueryFunction,
@@ -21,7 +26,8 @@ import {
 
 import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
-import { getMetadata } from '@/metadata';
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
+import { useSource } from '@/source';
 import { omit } from '@/utils';
 import {
   generateTimeWindowsAscending,
@@ -34,6 +40,7 @@ type TQueryKey = readonly [
   ChartConfigWithOptTimestamp,
   number | undefined,
 ];
+
 function queryKeyFn(
   prefix: string,
   config: ChartConfigWithOptTimestamp,
@@ -57,6 +64,13 @@ type TQueryFnData = {
 type TData = {
   pages: TQueryFnData[];
   pageParams: TPageParam[];
+};
+
+type QueryMeta = {
+  queryClient: QueryClient;
+  hasPreviousQueries: boolean;
+  metadata: Metadata;
+  source?: TSource;
 };
 
 // Get time window from page param
@@ -130,16 +144,29 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   if (meta == null) {
     throw new Error('Query missing client meta');
   }
-  const queryClient = meta.queryClient as QueryClient;
+
+  const { queryClient, metadata, hasPreviousQueries, source } =
+    meta as QueryMeta;
+
   // Only stream incrementally if this is a fresh query with no previous
   // response or if it's a paginated query
   // otherwise we'll flicker the UI with streaming data
   const isStreamingIncrementally =
-    !meta.hasPreviousQueries ||
-    pageParam.offset > 0 ||
-    pageParam.windowIndex > 0;
+    !hasPreviousQueries || pageParam.offset > 0 || pageParam.windowIndex > 0;
 
-  const config = queryKey[1];
+  const queryTimeout = queryKey[2];
+  const clickhouseClient = getClickhouseClient({ queryTimeout });
+
+  const rawConfig = queryKey[1];
+  const config = source?.materializedViews?.length
+    ? await tryOptimizeConfigWithMaterializedView(
+        rawConfig,
+        metadata,
+        clickhouseClient,
+        signal,
+        source,
+      )
+    : rawConfig;
 
   // Get the time window for this page
   const shouldUseWindowing = isTimestampExpressionInFirstOrderBy(config);
@@ -162,11 +189,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     },
   };
 
-  const query = await renderChartConfig(windowedConfig, getMetadata());
-
-  const queryTimeout = queryKey[2];
-  // TODO: it seems like queryTimeout is not being honored, we should fix this
-  const clickhouseClient = getClickhouseClient({ queryTimeout });
+  const query = await renderChartConfig(windowedConfig, metadata);
 
   // Create abort signal from timeout if provided
   const abortController = queryTimeout ? new AbortController() : undefined;
@@ -371,15 +394,20 @@ export default function useOffsetPaginatedQuery(
     queryKeyPrefix?: string;
   } = {},
 ) {
-  const { data: meData } = api.useMe();
+  const { data: meData, isLoading: isLoadingMe } = api.useMe();
   const key = queryKeyFn(queryKeyPrefix, config, meData?.team?.queryTimeout);
   const queryClient = useQueryClient();
+  const metadata = useMetadataWithSettings();
   const matchedQueries = queryClient.getQueriesData<TData>({
     queryKey: [queryKeyPrefix, omit(config, ['dateRange'])],
   });
   // TODO: Check that the time ranges overlap
   const hasPreviousQueries =
     matchedQueries.filter(([_, data]) => data != null).length > 0;
+
+  const { data: source, isLoading: isLoadingSource } = useSource({
+    id: config.source,
+  });
 
   const {
     data,
@@ -401,7 +429,7 @@ export default function useOffsetPaginatedQuery(
       // Only preserve previous query in live mode
       return isLive ? prev : undefined;
     },
-    enabled,
+    enabled: enabled && !isLoadingMe && !isLoadingSource,
     initialPageParam: { windowIndex: 0, offset: 0 } as TPageParam,
     getNextPageParam: (lastPage, allPages) => {
       return getNextPageParam(lastPage, allPages, config);
@@ -410,7 +438,9 @@ export default function useOffsetPaginatedQuery(
     meta: {
       queryClient,
       hasPreviousQueries,
-    },
+      metadata,
+      source,
+    } satisfies QueryMeta,
     queryFn,
     gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
     retry: 1,
@@ -426,7 +456,7 @@ export default function useOffsetPaginatedQuery(
     data: flattenedData,
     fetchNextPage,
     hasNextPage,
-    isFetching,
-    isLoading,
+    isFetching: isFetching || isLoadingMe || isLoadingSource,
+    isLoading: isLoading || isLoadingMe || isLoadingSource,
   };
 }

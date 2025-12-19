@@ -98,6 +98,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                       sourceId={sourceId}
                       hiddenSeries={['total_duration_ns']}
                       config={{
+                        source: source.id,
                         ...pick(source, [
                           'timestampValueExpression',
                           'connection',
@@ -135,6 +136,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                     <DBTimeChart
                       sourceId={sourceId}
                       config={{
+                        source: source.id,
                         ...pick(source, [
                           'timestampValueExpression',
                           'connection',

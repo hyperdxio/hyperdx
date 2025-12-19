@@ -72,6 +72,9 @@ export const Source = mongoose.model<ISource>(
       highlightedRowAttributeExpressions: {
         type: mongoose.Schema.Types.Array,
       },
+      materializedViews: {
+        type: mongoose.Schema.Types.Array,
+      },
 
       metricTables: {
         type: {
