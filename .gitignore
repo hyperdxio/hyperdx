@@ -61,6 +61,9 @@ e2e/cypress/results
 **/playwright/.cache/
 **/.auth/
 
+# storybook
+**/storybook-static/
+
 # scripts
 scripts/*.csv
 **/venv
