@@ -22,6 +22,8 @@ export class KubernetesPage {
    */
   async goto() {
     await this.page.goto('/kubernetes');
+    // Wait for initial data to load (charts, tables, etc.)
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
@@ -29,6 +31,8 @@ export class KubernetesPage {
    */
   async switchToTab(tabName: string) {
     await this.page.getByRole('tab', { name: tabName }).click();
+    // Wait for tab content to load (charts, tables, etc.)
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
@@ -83,13 +87,17 @@ export class KubernetesPage {
   async clickFirstPodRow(status: string = 'Running') {
     const podsTable = this.getPodsTable();
 
-    // Wait for at least one row with the status to be visible
+    // Wait for network to settle first - ensures table data is fully loaded
+    // and React won't re-render and replace DOM elements
+    await this.page.waitForLoadState('networkidle');
+
+    // Now get the row reference (after table is stable)
     const firstPodRow = podsTable
       .getByRole('row', { name: new RegExp(status) })
       .first();
 
-    // Explicitly wait for the row to be visible and actionable
-    await firstPodRow.waitFor({ state: 'visible', timeout: 3000 });
+    // Wait for the row to be visible and actionable
+    await firstPodRow.waitFor({ state: 'visible', timeout: 2000 });
 
     // Scroll into view if needed
     await firstPodRow.scrollIntoViewIfNeeded();
@@ -104,18 +112,18 @@ export class KubernetesPage {
   async clickFirstNodeRow() {
     const nodesTable = this.getNodesTable();
 
-    // Wait for table to have at least one data row (skip header row at index 0)
+    // Wait for network to settle first - ensures table data is fully loaded
+    // and React won't re-render and replace DOM elements
+    await this.page.waitForLoadState('networkidle');
+
+    // Now get the row reference (after table is stable)
     const firstNodeRow = nodesTable.getByRole('row').nth(1);
 
-    // Explicitly wait for the row to be visible and actionable
-    await firstNodeRow.waitFor({ state: 'visible', timeout: 10000 });
+    // Wait for the row to be visible and actionable
+    await firstNodeRow.waitFor({ state: 'visible', timeout: 2000 });
 
     // Scroll into view if needed
     await firstNodeRow.scrollIntoViewIfNeeded();
-
-    // Wait for React event handlers to be attached
-    // This is a workaround for tables that render before handlers are ready
-    await this.page.waitForLoadState('networkidle');
 
     await firstNodeRow.click();
   }
