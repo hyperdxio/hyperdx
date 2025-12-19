@@ -66,23 +66,37 @@ export class ChartEditorComponent {
   }
 
   /**
-   * Run the query
+   * Run the query and wait for it to complete
    */
   async runQuery() {
     await this.runQueryButton.click();
+    // Wait for network to settle
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
-   * Save the chart/tile
+   * Save the chart/tile and wait for modal to close
    */
   async save() {
     await this.saveButton.click();
+    // Wait for save button to disappear (modal closes)
+    await this.saveButton.waitFor({ state: 'hidden', timeout: 2000 });
+  }
+
+  /**
+   * Wait for chart editor data to load (sources, metrics, etc.)
+   */
+  async waitForDataToLoad() {
+    await this.runQueryButton.waitFor({ state: 'visible', timeout: 2000 });
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
    * Complete workflow: create a basic chart with name and save
    */
   async createBasicChart(name: string) {
+    // Wait for data sources to load before interacting
+    await this.waitForDataToLoad();
     await this.setChartName(name);
     await this.runQuery();
     await this.save();
@@ -97,6 +111,8 @@ export class ChartEditorComponent {
     metricName: string,
     metricValue?: string,
   ) {
+    // Wait for data sources to load before interacting
+    await this.waitForDataToLoad();
     await this.selectSource(sourceName);
     await this.selectMetric(metricName, metricValue);
     await this.runQuery();

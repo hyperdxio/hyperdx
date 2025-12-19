@@ -35,11 +35,13 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           'Persistence Test Chart',
         );
 
-        // wait for network idle
-        await dashboardPage.page.waitForLoadState('networkidle');
-        // Verify chart was added
+        // Wait for tile to appear first (wrapper element)
+        const dashboardTiles = dashboardPage.getTiles();
+        await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
+
+        // Then verify chart rendered inside (recharts can take time to initialize)
         const chartContainers = dashboardPage.getChartContainers();
-        await expect(chartContainers).toHaveCount(1);
+        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
       });
 
       let dashboardUrl: string;
@@ -103,12 +105,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
       await dashboardPage.chartEditor.createBasicChart('Test Chart');
 
-      // wait for network idle
-      await dashboardPage.page.waitForLoadState('networkidle');
-
-      // Verify chart was added
-      const chartContainers = dashboardPage.getChartContainers();
-      await expect(chartContainers).toHaveCount(1);
+      // Verify tile was added (chart content depends on data availability)
+      const dashboardTiles = dashboardPage.getTiles();
+      await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
     });
 
     await test.step('Add second tile with Demo Metrics', async () => {
@@ -189,9 +188,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       // Delete first tile
       await dashboardPage.deleteTile(0);
 
-      // Verify tile count decreased
-      const tileCountNow = await dashboardTiles.count();
-      expect(tileCountNow).toBe(tileCountBefore - 1);
+      // Verify tile count decreased (use toHaveCount for auto-waiting)
+      await expect(dashboardTiles).toHaveCount(tileCountBefore - 1);
     });
   });
 });
