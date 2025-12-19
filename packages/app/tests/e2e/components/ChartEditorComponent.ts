@@ -14,13 +14,11 @@ export class ChartEditorComponent {
 
   constructor(page: Page) {
     this.page = page;
-    this.chartNameInput = page.locator('[data-testid="chart-name-input"]');
-    this.sourceSelector = page.locator('[data-testid="source-selector"]');
-    this.metricSelector = page.locator('[data-testid="metric-name-selector"]');
-    this.runQueryButton = page.locator(
-      '[data-testid="chart-run-query-button"]',
-    );
-    this.saveButton = page.locator('[data-testid="chart-save-button"]');
+    this.chartNameInput = page.getByTestId('chart-name-input');
+    this.sourceSelector = page.getByTestId('source-selector');
+    this.metricSelector = page.getByTestId('metric-name-selector');
+    this.runQueryButton = page.getByTestId('chart-run-query-button');
+    this.saveButton = page.getByTestId('chart-save-button');
   }
 
   /**
@@ -35,8 +33,9 @@ export class ChartEditorComponent {
    */
   async selectSource(sourceName: string) {
     await this.sourceSelector.click();
-    const sourceOption = this.page.locator(`text=${sourceName}`);
-    await sourceOption.click();
+    // Use getByRole for more reliable selection
+    const sourceOption = this.page.getByRole('option', { name: sourceName });
+    await sourceOption.click({ timeout: 5000 });
   }
 
   /**
@@ -54,11 +53,12 @@ export class ChartEditorComponent {
 
     // If a specific metric value is provided, wait for and click it
     if (metricValue) {
+      // Use attribute selector for combobox options
       const targetMetricOption = this.page.locator(
         `[data-combobox-option="true"][value="${metricValue}"]`,
       );
       await targetMetricOption.waitFor({ state: 'visible', timeout: 5000 });
-      await targetMetricOption.click();
+      await targetMetricOption.click({ timeout: 5000 });
     } else {
       // Otherwise just press Enter to select the first match
       await this.page.keyboard.press('Enter');

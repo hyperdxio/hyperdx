@@ -118,7 +118,8 @@ export class TimePickerComponent {
   async selectTimeInterval(label: string) {
     // Wait for DOM to stabilize before clicking
     await this.page.waitForLoadState('networkidle');
-    const intervalButton = this.page.locator(`text=${label}`);
+    // Use getByRole for more reliable selection than text= selector
+    const intervalButton = this.page.getByRole('button', { name: label });
     // Add timeout to fail faster instead of waiting for full test timeout
     await intervalButton.click({ timeout: 10000 });
   }
@@ -169,8 +170,8 @@ export class TimePickerComponent {
     await this.open();
     // This would need to be implemented based on actual UI
     // Just a placeholder for the pattern
-    await this.page.locator('[data-testid="custom-from"]').fill(from);
-    await this.page.locator('[data-testid="custom-to"]').fill(to);
+    await this.page.getByTestId('custom-from').fill(from);
+    await this.page.getByTestId('custom-to').fill(to);
     await this.apply();
   }
 }
