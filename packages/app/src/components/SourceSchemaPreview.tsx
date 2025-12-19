@@ -93,7 +93,7 @@ const TableSchemaPreview = ({
 
 export interface SourceSchemaPreviewProps {
   source?: Pick<TSource, 'connection' | 'from' | 'metricTables'> &
-    Partial<Pick<TSource, 'kind' | 'name'>>;
+    Partial<Pick<TSource, 'kind' | 'name' | 'materializedViews'>>;
   iconStyles?: Pick<TextProps, 'size' | 'color'>;
   variant?: 'icon' | 'text';
 }
@@ -138,6 +138,16 @@ const SourceSchemaPreview = ({
       title: source.name ?? source.from.tableName,
     });
   }
+
+  const mvConfigs = source?.materializedViews ?? [];
+  tables.push(
+    ...mvConfigs.map(({ tableName, databaseName }) => ({
+      databaseName,
+      tableName,
+      connectionId: source!.connection,
+      title: `${tableName} (MV)`,
+    })),
+  );
 
   const isEnabled = !!source && tables.length > 0;
 
