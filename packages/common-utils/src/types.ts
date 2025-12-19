@@ -64,6 +64,11 @@ export const AggregateFunctionSchema = z.enum([
   'any',
   'none',
 ]);
+export const InternalAggregateFunctionSchema = z.enum([
+  ...AggregateFunctionSchema.options,
+  // Not exposed to the user directly, but used in pre-built dashboards
+  'histogram',
+]);
 export const AggregateFunctionWithCombinatorsSchema = z
   .string()
   .regex(/^(\w+)If(State|Merge)$/);
@@ -82,7 +87,12 @@ export const RootValueExpressionSchema = z
   })
   .or(
     z.object({
-      aggFn: z.literal('quantile'),
+      aggFn: z.union([
+        z.literal('quantile'),
+        z.literal('quantileMerge'),
+        z.literal('histogram'),
+        z.literal('histogramMerge'),
+      ]),
       level: z.number(),
       aggCondition: SearchConditionSchema,
       aggConditionLanguage: SearchConditionLanguageSchema,
@@ -165,6 +175,9 @@ export type SearchConditionLanguage = z.infer<
   typeof SearchConditionLanguageSchema
 >;
 export type AggregateFunction = z.infer<typeof AggregateFunctionSchema>;
+export type InternalAggregateFunction = z.infer<
+  typeof InternalAggregateFunctionSchema
+>;
 export type AggregateFunctionWithCombinators = z.infer<
   typeof AggregateFunctionWithCombinatorsSchema
 >;
@@ -390,6 +403,7 @@ export const _ChartConfigSchema = z.object({
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
   compareToPreviousPeriod: z.boolean().optional(),
+  source: z.string().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.
@@ -469,6 +483,7 @@ export const SavedChartConfigSchema = z
     _ChartConfigSchema.omit({
       connection: true,
       timestampValueExpression: true,
+      source: true, // Omit the optional source here since it's required above
     }).shape,
   )
   .extend(
@@ -593,6 +608,38 @@ const HighlightedAttributeExpressionsSchema = z.array(
   }),
 );
 
+const AggregatedColumnConfigSchema = z
+  .object({
+    sourceColumn: z.string().optional(),
+    aggFn: InternalAggregateFunctionSchema,
+    mvColumn: z.string().min(1, 'Materialized View Column is required'),
+  })
+  .refine(
+    ({ sourceColumn, aggFn }) => aggFn === 'count' || !!sourceColumn?.length,
+    { message: 'Materialized View Source Column is required' },
+  );
+
+export type AggregatedColumnConfig = z.infer<
+  typeof AggregatedColumnConfigSchema
+>;
+
+export const MaterializedViewConfigurationSchema = z.object({
+  databaseName: z.string().min(1, 'Materialized View Database is required'),
+  tableName: z.string().min(1, 'Materialized View Table is required'),
+  dimensionColumns: z.string(),
+  minGranularity: SQLIntervalSchema,
+  timestampColumn: z
+    .string()
+    .min(1, 'Materialized View Timestamp column is required'),
+  aggregatedColumns: z
+    .array(AggregatedColumnConfigSchema)
+    .min(1, 'At least one aggregated column is required'),
+});
+
+export type MaterializedViewConfiguration = z.infer<
+  typeof MaterializedViewConfigurationSchema
+>;
+
 // Log source form schema
 const LogSourceAugmentation = {
   kind: z.literal(SourceKind.Log),
@@ -619,6 +666,7 @@ const LogSourceAugmentation = {
     HighlightedAttributeExpressionsSchema.optional(),
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
+  materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
 };
 
 // Trace source form schema
@@ -653,6 +701,7 @@ const TraceSourceAugmentation = {
     HighlightedAttributeExpressionsSchema.optional(),
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
+  materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
 };
 
 // Session source form schema

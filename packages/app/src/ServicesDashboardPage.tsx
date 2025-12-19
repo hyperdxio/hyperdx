@@ -138,6 +138,7 @@ function ServiceSelectControlled({
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const queriedConfig = {
+    source: source?.id,
     timestampValueExpression: source?.timestampValueExpression || '',
     from: {
       databaseName: source?.from.databaseName || '',
@@ -250,6 +251,7 @@ export function EndpointLatencyChart({
               'avg_duration_ns',
             ]}
             config={{
+              source: source.id,
               ...pick(source, [
                 'timestampValueExpression',
                 'connection',
@@ -303,6 +305,7 @@ export function EndpointLatencyChart({
         ) : (
           <DBHistogramChart
             config={{
+              source: source.id,
               ...pick(source, [
                 'timestampValueExpression',
                 'connection',
@@ -312,8 +315,14 @@ export function EndpointLatencyChart({
               whereLanguage: appliedConfig.whereLanguage || 'sql',
               select: [
                 {
+                  alias: 'data_nanoseconds',
+                  aggFn: 'histogram',
+                  level: 20,
+                  valueExpression: expressions.duration,
+                },
+                {
                   alias: 'data',
-                  valueExpression: `histogram(20)(${expressions.durationInMillis})`,
+                  valueExpression: `arrayMap(bin -> (bin.1 / ${expressions.durationDivisorForMillis}, bin.2 / ${expressions.durationDivisorForMillis}, bin.3), data_nanoseconds)`,
                 },
               ],
               filters: [
@@ -361,6 +370,7 @@ function HttpTab({
       if (!source || !expressions) return null;
       if (reqChartType === 'overall') {
         return {
+          source: source.id,
           ...pick(source, ['timestampValueExpression', 'connection', 'from']),
           where: appliedConfig.where || '',
           whereLanguage: appliedConfig.whereLanguage || 'sql',
@@ -392,6 +402,7 @@ function HttpTab({
       return {
         timestampValueExpression: 'series_time_bucket',
         connection: source.connection,
+        source: source.id,
         with: [
           {
             name: 'error_series',
@@ -557,6 +568,7 @@ function HttpTab({
             <DBTimeChart
               sourceId={source.id}
               config={{
+                source: source.id,
                 ...pick(source, [
                   'timestampValueExpression',
                   'connection',
@@ -601,6 +613,7 @@ function HttpTab({
                 'error_requests',
               ]}
               config={{
+                source: source.id,
                 ...pick(source, [
                   'timestampValueExpression',
                   'connection',
@@ -726,6 +739,7 @@ function HttpTab({
                 'error_count',
               ]}
               config={{
+                source: source.id,
                 ...pick(source, [
                   'timestampValueExpression',
                   'connection',
@@ -951,6 +965,7 @@ function DatabaseTab({
         dateRange: searchedTimeRange,
         timestampValueExpression: 'series_time_bucket',
         connection: source.connection,
+        source: source.id,
       } satisfies ChartConfigWithDateRange;
     }, [appliedConfig, expressions, searchedTimeRange, source]);
 
@@ -1071,6 +1086,7 @@ function DatabaseTab({
         dateRange: searchedTimeRange,
         timestampValueExpression: 'series_time_bucket',
         connection: source.connection,
+        source: source.id,
       } satisfies ChartConfigWithDateRange;
     }, [appliedConfig, expressions, searchedTimeRange, source]);
 
@@ -1149,6 +1165,7 @@ function DatabaseTab({
                   'p50_duration_ns',
                 ]}
                 config={{
+                  source: source.id,
                   ...pick(source, [
                     'timestampValueExpression',
                     'connection',
@@ -1229,6 +1246,7 @@ function DatabaseTab({
                   'p50_duration_ns',
                 ]}
                 config={{
+                  source: source.id,
                   ...pick(source, [
                     'timestampValueExpression',
                     'connection',
@@ -1327,6 +1345,7 @@ function ErrorsTab({
             <DBTimeChart
               sourceId={source.id}
               config={{
+                source: source.id,
                 ...pick(source, [
                   'timestampValueExpression',
                   'connection',

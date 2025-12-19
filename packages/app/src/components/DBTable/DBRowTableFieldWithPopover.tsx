@@ -149,6 +149,8 @@ export const DBRowTableFieldWithPopover = ({
         offset={5}
         opened={opened}
         portalProps={{ target: tableContainerRef?.current ?? undefined }}
+        closeOnClickOutside={false}
+        clickOutsideEvents={[]}
       >
         <Popover.Target>
           <span
