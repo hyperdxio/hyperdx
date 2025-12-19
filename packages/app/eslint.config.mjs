@@ -124,7 +124,7 @@ export default [
       'no-empty': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@next/next/no-html-link-for-pages': 'off',
-      'playwright/no-networkidle': 'off',
+      'playwright/no-networkidle': 'off', // temporary until we have a better way to deal with react re-renders
     },
   },
   ...storybook.configs['flat/recommended'],

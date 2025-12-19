@@ -47,8 +47,8 @@ export class SearchPage {
     this.searchInput = page.locator('[data-testid="search-input"]');
     this.searchButton = page.locator('[data-testid="search-submit-button"]');
     this.saveSearchButton = page.locator('[data-testid="save-search-button"]');
-    this.luceneTab = page.getByRole('button', { name: 'Lucene' });
-    this.sqlTab = page.getByRole('button', { name: 'SQL' });
+    this.luceneTab = page.getByRole('button', { name: 'Lucene', exact: true });
+    this.sqlTab = page.getByRole('button', { name: 'SQL', exact: true });
   }
 
   /**
@@ -56,6 +56,8 @@ export class SearchPage {
    */
   async goto() {
     await this.page.goto('/search');
+    // Wait for page to load
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
@@ -64,6 +66,8 @@ export class SearchPage {
   async performSearch(query: string) {
     await this.searchInput.fill(query);
     await this.searchButton.click();
+    // Wait for search results to load
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
@@ -106,6 +110,8 @@ export class SearchPage {
     await this.switchToSQLMode();
     await this.searchInput.fill(query);
     await this.searchButton.click();
+    // Wait for search results to load
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
@@ -113,6 +119,8 @@ export class SearchPage {
    */
   async submitEmptySearch() {
     await this.searchButton.click();
+    // Wait for search results to load
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
