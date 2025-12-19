@@ -47,7 +47,7 @@ export default function ServiceDashboardEndpointSidePanel({
     const filters: Filter[] = [
       {
         type: 'sql',
-        condition: `${expressions.spanName} IN ('${endpoint}') AND ${expressions.isSpanKindServer}`,
+        condition: `${expressions.endpoint} IN ('${endpoint}') AND ${expressions.isSpanKindServer}`,
       },
     ];
     if (service) {
@@ -105,6 +105,7 @@ export default function ServiceDashboardEndpointSidePanel({
                       sourceId={source.id}
                       hiddenSeries={['total_count', 'error_count']}
                       config={{
+                        source: source.id,
                         ...pick(source, [
                           'timestampValueExpression',
                           'connection',
@@ -149,6 +150,7 @@ export default function ServiceDashboardEndpointSidePanel({
                     <DBTimeChart
                       sourceId={source.id}
                       config={{
+                        source: source.id,
                         ...pick(source, [
                           'timestampValueExpression',
                           'connection',

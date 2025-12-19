@@ -280,7 +280,8 @@ export default function SessionSubpanel({
         alias: 'http.url',
       },
       {
-        valueExpression: `cityHash64(${traceSource.traceIdExpression}, ${traceSource.parentSpanIdExpression}, ${traceSource.spanIdExpression}, ${traceSource.timestampValueExpression})`,
+        // Using toString here because Javascript does not have the precision to accurately represent this
+        valueExpression: `toString(cityHash64(${traceSource.traceIdExpression}, ${traceSource.parentSpanIdExpression}, ${traceSource.spanIdExpression}))`,
         alias: 'id',
       },
       {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import {
   MetricsDataType,
   SourceKind,
@@ -198,7 +198,7 @@ async function addOtelDemoSources({
   ]);
 }
 
-export default function OnboardingModal({
+function OnboardingModalComponent({
   requireSource = true,
 }: {
   requireSource?: boolean;
@@ -421,3 +421,5 @@ export default function OnboardingModal({
     </Modal>
   );
 }
+const OnboardingModal = memo(OnboardingModalComponent);
+export default OnboardingModal;

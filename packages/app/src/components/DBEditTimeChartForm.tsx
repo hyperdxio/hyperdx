@@ -94,6 +94,7 @@ import {
 import HDXMarkdownChart from '../HDXMarkdownChart';
 import type { NumberFormat } from '../types';
 
+import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { AggFnSelectControlled } from './AggFnSelect';
 import DBNumberChart from './DBNumberChart';
 import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
@@ -475,6 +476,8 @@ export default function EditTimeChartForm({
     name: 'series',
   });
 
+  const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
+
   const select = watch('select');
   const sourceId = watch('source');
   const whereLanguage = watch('whereLanguage');
@@ -535,6 +538,17 @@ export default function EditTimeChartForm({
   const [queriedConfig, setQueriedConfig] = useState<
     ChartConfigWithDateRange | undefined
   >(undefined);
+  const [queriedSource, setQueriedSource] = useState<TSource | undefined>(
+    undefined,
+  );
+
+  const setQueriedConfigAndSource = useCallback(
+    (config: ChartConfigWithDateRange, source: TSource) => {
+      setQueriedConfig(config);
+      setQueriedSource(source);
+    },
+    [],
+  );
 
   const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
     useState(false);
@@ -568,16 +582,23 @@ export default function EditTimeChartForm({
               ? config.orderBy
               : undefined,
         };
-        setQueriedConfig(
+        setQueriedConfigAndSource(
           // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
           // YOUR STATE IS AN OBJECT. YOU'RE COPYING BY REFERENCE WHICH MIGHT
           // ACCIDENTALLY CAUSE A useQuery SOMEWHERE TO FIRE A REQUEST EVERYTIME
           // AN INPUT CHANGES. USE structuredClone TO PERFORM A DEEP COPY INSTEAD
           structuredClone(newConfig),
+          tableSource,
         );
       }
     })();
-  }, [handleSubmit, setChartConfig, setQueriedConfig, tableSource, dateRange]);
+  }, [
+    handleSubmit,
+    setChartConfig,
+    setQueriedConfigAndSource,
+    tableSource,
+    dateRange,
+  ]);
 
   const onTableSortingChange = useCallback(
     (sortState: SortingState | null) => {
@@ -671,6 +692,29 @@ export default function EditTimeChartForm({
   }, [compareToPreviousPeriod]);
 
   const queryReady = isQueryReady(queriedConfig);
+
+  // The chart config to use when explaining to to the user whether and why
+  // their query is or is not being executed against a materialized view.
+  const chartConfigForMvOptimizationExplanation:
+    | ChartConfigWithDateRange
+    | undefined = useMemo(() => {
+    // If the user has submitted a query, us the submitted query, unless they have changed sources
+    if (queriedConfig && queriedSource?.id === tableSource?.id) {
+      return queriedConfig;
+    }
+
+    // If there is a chart config from the props (either a saved config or one from the URL params), use that,
+    // unless a different source has been selected.
+    return chartConfig && tableSource?.id === chartConfig.source
+      ? {
+          ...chartConfig,
+          dateRange,
+          timestampValueExpression: tableSource.timestampValueExpression,
+          from: tableSource.from,
+          connection: tableSource.connection,
+        }
+      : undefined;
+  }, [chartConfig, dateRange, tableSource, queriedConfig, queriedSource]);
 
   const previousDateRange = getPreviousDateRange(dateRange);
 
@@ -784,19 +828,27 @@ export default function EditTimeChartForm({
         </div>
       ) : (
         <>
-          <Flex mb="md" align="center" gap="sm">
-            <Text pe="md" size="sm">
-              Data Source
-            </Text>
-            <SourceSelectControlled
-              size="xs"
-              control={control}
-              name="source"
-              data-testid="source-selector"
-              sourceSchemaPreview={
-                <SourceSchemaPreview source={tableSource} variant="text" />
-              }
-            />
+          <Flex mb="md" align="center" gap="sm" justify="space-between">
+            <Group>
+              <Text pe="md" size="sm">
+                Data Source
+              </Text>
+              <SourceSelectControlled
+                size="xs"
+                control={control}
+                name="source"
+                data-testid="source-selector"
+                sourceSchemaPreview={
+                  <SourceSchemaPreview source={tableSource} variant="text" />
+                }
+              />
+            </Group>
+            {tableSource && activeTab !== 'search' && (
+              <MVOptimizationIndicator
+                source={tableSource}
+                config={chartConfigForMvOptimizationExplanation}
+              />
+            )}
           </Flex>
 
           {displayType !== DisplayType.Search && Array.isArray(select) ? (
@@ -1234,7 +1286,10 @@ export default function EditTimeChartForm({
         <>
           <Divider mt="md" />
           {showSampleEvents && (
-            <Accordion defaultValue="sample">
+            <Accordion
+              value={isSampleEventsOpen ? 'sample' : null}
+              onChange={value => setIsSampleEventsOpen(value === 'sample')}
+            >
               <Accordion.Item value="sample">
                 <Accordion.Control icon={<IconList size={16} />}>
                   <Text size="sm" style={{ alignSelf: 'center' }}>
@@ -1250,7 +1305,7 @@ export default function EditTimeChartForm({
                       <DBSqlRowTableWithSideBar
                         sourceId={sourceId}
                         config={sampleEventsConfig}
-                        enabled
+                        enabled={isSampleEventsOpen}
                         isLive={false}
                         queryKeyPrefix={'search'}
                       />

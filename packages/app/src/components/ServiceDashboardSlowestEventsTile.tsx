@@ -31,6 +31,7 @@ export default function SlowestEventsTile({
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     {
+      source: source.id,
       ...pick(source, ['timestampValueExpression', 'connection', 'from']),
       where: '',
       whereLanguage: 'sql',
@@ -110,6 +111,7 @@ export default function SlowestEventsTile({
               breadcrumbPath={[{ label: 'Endpoint' }]}
               sourceId={source.id}
               config={{
+                source: source.id,
                 ...pick(source, [
                   'timestampValueExpression',
                   'connection',

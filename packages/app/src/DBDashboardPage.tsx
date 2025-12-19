@@ -75,6 +75,7 @@ import {
 } from '@/dashboard';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
+import MVOptimizationIndicator from './components/MaterializedViews/MVOptimizationIndicator';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
@@ -256,66 +257,77 @@ const Tile = forwardRef(
           <Text size="sm" ms="xs">
             {chart.config.name}
           </Text>
-          {hovered ? (
-            <Flex gap="0px">
-              {(chart.config.displayType === DisplayType.Line ||
-                chart.config.displayType === DisplayType.StackedBar) && (
-                <Indicator
-                  size={alert?.state === AlertState.OK ? 6 : 8}
-                  zIndex={1}
-                  color={alertIndicatorColor}
-                  processing={alert?.state === AlertState.ALERT}
-                  label={!alert && <span className="fs-8">+</span>}
-                  mr={4}
-                >
-                  <Tooltip label={alertTooltip} withArrow>
-                    <Button
-                      data-testid={`tile-alerts-button-${chart.id}`}
-                      variant="subtle"
-                      color="gray"
-                      size="xxs"
-                      onClick={onEditClick}
-                    >
-                      <IconBell size={16} />
-                    </Button>
-                  </Tooltip>
-                </Indicator>
-              )}
+          <Group>
+            {hovered ? (
+              <Flex gap="0px" onMouseDown={e => e.stopPropagation()}>
+                {(chart.config.displayType === DisplayType.Line ||
+                  chart.config.displayType === DisplayType.StackedBar) && (
+                  <Indicator
+                    size={alert?.state === AlertState.OK ? 6 : 8}
+                    zIndex={1}
+                    color={alertIndicatorColor}
+                    processing={alert?.state === AlertState.ALERT}
+                    label={!alert && <span className="fs-8">+</span>}
+                    mr={4}
+                  >
+                    <Tooltip label={alertTooltip} withArrow>
+                      <Button
+                        data-testid={`tile-alerts-button-${chart.id}`}
+                        variant="subtle"
+                        color="gray"
+                        size="xxs"
+                        onClick={onEditClick}
+                      >
+                        <IconBell size={16} />
+                      </Button>
+                    </Tooltip>
+                  </Indicator>
+                )}
 
-              <Button
-                data-testid={`tile-duplicate-button-${chart.id}`}
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={onDuplicateClick}
-                title="Duplicate"
-              >
-                <IconCopy size={14} />
-              </Button>
-              <Button
-                data-testid={`tile-edit-button-${chart.id}`}
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={onEditClick}
-                title="Edit"
-              >
-                <IconPencil size={14} />
-              </Button>
-              <Button
-                data-testid={`tile-delete-button-${chart.id}`}
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={onDeleteClick}
-                title="Delete"
-              >
-                <IconTrash size={14} />
-              </Button>
-            </Flex>
-          ) : (
-            <Box h={22} />
-          )}
+                <Button
+                  data-testid={`tile-duplicate-button-${chart.id}`}
+                  variant="subtle"
+                  color="gray"
+                  size="xxs"
+                  onClick={onDuplicateClick}
+                  title="Duplicate"
+                >
+                  <IconCopy size={14} />
+                </Button>
+                <Button
+                  data-testid={`tile-edit-button-${chart.id}`}
+                  variant="subtle"
+                  color="gray"
+                  size="xxs"
+                  onClick={onEditClick}
+                  title="Edit"
+                >
+                  <IconPencil size={14} />
+                </Button>
+                <Button
+                  data-testid={`tile-delete-button-${chart.id}`}
+                  variant="subtle"
+                  color="gray"
+                  size="xxs"
+                  onClick={onDeleteClick}
+                  title="Delete"
+                >
+                  <IconTrash size={14} />
+                </Button>
+              </Flex>
+            ) : (
+              <Box h={22} />
+            )}
+            {source?.materializedViews?.length && queriedConfig && (
+              <Box onMouseDown={e => e.stopPropagation()}>
+                <MVOptimizationIndicator
+                  config={queriedConfig}
+                  source={source}
+                  variant="icon"
+                />
+              </Box>
+            )}
+          </Group>
         </div>
         <div
           className="fs-7 text-muted flex-grow-1 overflow-hidden"
