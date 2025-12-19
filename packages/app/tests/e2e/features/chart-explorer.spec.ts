@@ -17,6 +17,9 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
     await test.step('Can run basic query and display chart', async () => {
       // Use chart editor component to run query
       await expect(chartExplorerPage.chartEditor.runButton).toBeVisible();
+      // wait for network idle
+      await chartExplorerPage.page.waitForLoadState('networkidle');
+
       await chartExplorerPage.chartEditor.runQuery();
 
       // Verify chart is rendered

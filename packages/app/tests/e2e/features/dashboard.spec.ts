@@ -35,6 +35,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           'Persistence Test Chart',
         );
 
+        // wait for network idle
+        await dashboardPage.page.waitForLoadState('networkidle');
         // Verify chart was added
         const chartContainers = dashboardPage.getChartContainers();
         await expect(chartContainers).toHaveCount(1);
@@ -100,6 +102,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       // Create basic chart
       await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
       await dashboardPage.chartEditor.createBasicChart('Test Chart');
+
+      // wait for network idle
+      await dashboardPage.page.waitForLoadState('networkidle');
 
       // Verify chart was added
       const chartContainers = dashboardPage.getChartContainers();

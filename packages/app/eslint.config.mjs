@@ -124,6 +124,7 @@ export default [
       'no-empty': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@next/next/no-html-link-for-pages': 'off',
+      'playwright/no-networkidle': 'off',
     },
   },
   ...storybook.configs['flat/recommended'],

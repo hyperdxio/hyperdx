@@ -115,7 +115,6 @@ export class KubernetesPage {
 
     // Wait for React event handlers to be attached
     // This is a workaround for tables that render before handlers are ready
-    // eslint-disable-next-line playwright/no-networkidle
     await this.page.waitForLoadState('networkidle');
 
     await firstNodeRow.click();

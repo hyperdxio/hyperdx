@@ -1,6 +1,11 @@
 /**
  * Global setup for full-stack E2E tests
- * Creates a test user and saves authentication state
+ *
+ * This setup:
+ * 1. Clears MongoDB database to ensure clean state
+ * 2. Creates a test user and team
+ * 3. Applies DEFAULT_SOURCES from .env.e2e
+ * 4. Saves authentication state for tests
  *
  * Full-stack mode uses:
  * - MongoDB (local) for authentication, teams, users, persistence
@@ -8,6 +13,7 @@
  * - Demo ClickHouse (remote) for telemetry data (logs, traces, metrics, K8s)
  */
 
+import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { chromium, FullConfig } from '@playwright/test';
@@ -30,8 +36,40 @@ const DEFAULT_TEST_USER = {
 const API_URL = process.env.E2E_API_URL || 'http://localhost:29000';
 const APP_URL = process.env.E2E_APP_URL || 'http://localhost:28081';
 const AUTH_FILE = path.join(__dirname, '.auth/user.json');
+const MONGO_URI =
+  process.env.MONGO_URI || 'mongodb://localhost:29998/hyperdx-e2e';
 
-async function globalSetup(config: FullConfig) {
+/**
+ * Clears the MongoDB database to ensure a clean slate for tests
+ */
+function clearDatabase() {
+  console.log('Clearing MongoDB database for fresh test run...');
+
+  try {
+    const dockerComposeFile = path.join(__dirname, 'docker-compose.yml');
+    if (fs.existsSync(dockerComposeFile)) {
+      execSync(
+        `docker compose -p e2e -f "${dockerComposeFile}" exec -T db mongosh --port 29998 --quiet --eval "use hyperdx-e2e; db.dropDatabase()" 2>&1`,
+        { encoding: 'utf-8', stdio: 'pipe' },
+      );
+      console.log('  ✓ Database cleared successfully (via Docker)');
+      return;
+    }
+
+    throw new Error('Could not connect to MongoDB');
+  } catch (error) {
+    console.warn('  ⚠ Warning: Could not clear database');
+    console.warn(`  ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(
+      '  This may cause issues if old data exists from previous test runs',
+    );
+    console.warn(
+      '  Consider manually clearing the database or setting E2E_UNIQUE_USER=true',
+    );
+  }
+}
+
+async function globalSetup(_config: FullConfig) {
   console.log('Setting up full-stack E2E environment');
   console.log('  MongoDB: local (auth, teams, persistence)');
   console.log('  ClickHouse: demo instance (telemetry data)');
@@ -68,7 +106,7 @@ async function globalSetup(config: FullConfig) {
         console.log('  API server is ready');
         break;
       }
-    } catch (error) {
+    } catch {
       // Continue retrying
     }
 
@@ -82,6 +120,9 @@ async function globalSetup(config: FullConfig) {
       setTimeout(resolve, API_HEALTH_CHECK_RETRY_DELAY_MS),
     );
   }
+
+  // Clear MongoDB database to ensure DEFAULT_SOURCES is applied
+  clearDatabase();
 
   // Create test user and save auth state
   console.log('Creating test user and logging in');
@@ -108,24 +149,23 @@ async function globalSetup(config: FullConfig) {
       const status = registerResponse.status();
       const body = await registerResponse.text();
 
-      // 409 Conflict indicates user/team already exists - this is acceptable
+      // 409 Conflict should not happen since we cleared the database
+      // If it does, it indicates the database clear failed
       if (status === 409) {
-        console.log('  User/team already exists (409 Conflict), continuing');
-        console.log(
+        console.warn(
+          '  ⚠ Warning: User/team already exists (409 Conflict) - database may not have been cleared',
+        );
+        console.warn(
           '  DEFAULT_SOURCES will NOT be applied (only happens on new team creation)',
         );
-        console.log(
-          '  Sources must already exist in the database from a previous run',
-        );
+        console.warn('  Tests may fail due to stale or incorrect sources');
       } else {
         // Any other error is a real failure
         throw new Error(`Registration failed: ${status} ${body}`);
       }
     } else {
-      console.log('  User registered successfully');
-      console.log(
-        '  DEFAULT_SOURCES should have been applied to this new team',
-      );
+      console.log('  ✓ User registered successfully');
+      console.log('  ✓ DEFAULT_SOURCES applied to new team');
     }
 
     // Login
@@ -184,13 +224,18 @@ async function globalSetup(config: FullConfig) {
     const sources = await sourcesResponse.json();
     console.log(`  Found ${sources.length} default sources`);
     if (sources.length === 0) {
-      console.warn('  WARNING: No sources found');
-      console.warn(
-        '  This may happen if the team already existed from a previous run',
+      console.error('  ❌ ERROR: No sources found');
+      console.error(
+        '  This should not happen since we just created a fresh team',
       );
-      console.warn('  DEFAULT_SOURCES only applies to newly created teams');
-      console.warn('  Tests may fail if sources are not configured');
+      console.error(
+        '  Check that DEFAULT_SOURCES is properly configured in packages/api/.env.e2e',
+      );
+      throw new Error(
+        'No sources found - DEFAULT_SOURCES may be misconfigured',
+      );
     } else {
+      console.log('  ✓ Sources configured:');
       sources.forEach((source: any) => {
         console.log(`    - ${source.name} (${source.kind})`);
       });
