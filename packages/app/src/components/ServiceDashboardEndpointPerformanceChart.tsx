@@ -96,6 +96,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
           groupColumn="group"
           valueColumn="Total Time Spent"
           config={{
+            source: source.id,
             ...pick(source, ['timestampValueExpression', 'connection', 'from']),
             where: '',
             whereLanguage: 'sql',

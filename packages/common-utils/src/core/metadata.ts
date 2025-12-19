@@ -146,6 +146,34 @@ export class Metadata {
     );
   }
 
+  /** Queries and returns the list of materialized views which insert into the given target table */
+  async queryMaterializedViewsByTarget({
+    databaseName,
+    tableName,
+    connectionId,
+  }: TableConnection) {
+    return this.cache.getOrFetch(
+      `${connectionId}.${databaseName}.${tableName}.sourceMaterializedViews`,
+      async () => {
+        const toDatabaseTable = `%TO ${databaseName}.${tableName}%`;
+        const sql = chSql`
+          SELECT database as databaseName, name as tableName
+          FROM system.tables
+          WHERE engine = 'MaterializedView' 
+            AND create_table_query LIKE ${{ String: toDatabaseTable }}`;
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ databaseName: string; tableName: string }>());
+        return json.data;
+      },
+    );
+  }
+
   async getColumns({
     databaseName,
     tableName,
