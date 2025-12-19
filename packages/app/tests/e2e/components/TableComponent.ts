@@ -22,6 +22,13 @@ export class TableComponent {
   }
 
   /**
+   * Wait for at least one row to populate
+   */
+  async waitForRowsToPopulate(timeout: number = 5000) {
+    await this.firstRow.waitFor({ state: 'visible', timeout });
+  }
+
+  /**
    * Get specific row by index (0-based)
    */
   getRow(index: number) {

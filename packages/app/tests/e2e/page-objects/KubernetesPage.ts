@@ -23,16 +23,19 @@ export class KubernetesPage {
   async goto() {
     await this.page.goto('/kubernetes');
     // Wait for initial data to load (charts, tables, etc.)
-    await this.page.waitForLoadState('networkidle');
+    await this.waitForLoadState();
   }
 
+  async waitForLoadState() {
+    await this.page.waitForLoadState('networkidle');
+  }
   /**
    * Switch to a specific tab (Pod, Node, Namespaces)
    */
   async switchToTab(tabName: string) {
     await this.page.getByRole('tab', { name: tabName }).click();
     // Wait for tab content to load (charts, tables, etc.)
-    await this.page.waitForLoadState('networkidle');
+    await this.waitForLoadState();
   }
 
   /**
@@ -89,7 +92,7 @@ export class KubernetesPage {
 
     // Wait for network to settle first - ensures table data is fully loaded
     // and React won't re-render and replace DOM elements
-    await this.page.waitForLoadState('networkidle');
+    await this.waitForLoadState();
 
     // Now get the row reference (after table is stable)
     const firstPodRow = podsTable
@@ -105,7 +108,7 @@ export class KubernetesPage {
     await firstPodRow.click();
 
     // Wait for details panel to load
-    await this.page.waitForLoadState('networkidle');
+    await this.waitForLoadState();
   }
 
   /**
@@ -117,7 +120,7 @@ export class KubernetesPage {
 
     // Wait for network to settle first - ensures table data is fully loaded
     // and React won't re-render and replace DOM elements
-    await this.page.waitForLoadState('networkidle');
+    await this.waitForLoadState();
 
     // Match row by content (Ready/Not Ready status) to avoid virtual list padding rows
     const firstNodeRow = nodesTable
@@ -133,7 +136,7 @@ export class KubernetesPage {
     await firstNodeRow.click();
 
     // Wait for details panel to load
-    await this.page.waitForLoadState('networkidle');
+    await this.waitForLoadState();
   }
 
   /**
@@ -141,7 +144,7 @@ export class KubernetesPage {
    */
   async clickNamespaceRow(namespace: string) {
     // Wait for network to settle first
-    await this.page.waitForLoadState('networkidle');
+    await this.waitForLoadState();
 
     const namespaceRow = this.getNamespacesTable().getByRole('row', {
       name: new RegExp(namespace),
@@ -149,7 +152,7 @@ export class KubernetesPage {
     await namespaceRow.click();
 
     // Wait for details panel to load
-    await this.page.waitForLoadState('networkidle');
+    await this.waitForLoadState();
   }
 
   /**

@@ -19,7 +19,7 @@ export class SearchPage {
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
-
+  readonly defaultTimeout: number = 3000;
   // Page-specific locators
   private readonly searchForm: Locator;
   private readonly searchInput: Locator;
@@ -28,9 +28,9 @@ export class SearchPage {
   private readonly luceneTab: Locator;
   private readonly sqlTab: Locator;
 
-  constructor(page: Page) {
+  constructor(page: Page, defaultTimeout: number = 3000) {
     this.page = page;
-
+    this.defaultTimeout = defaultTimeout;
     // Initialize reusable components
     this.table = new TableComponent(
       page,
@@ -57,29 +57,34 @@ export class SearchPage {
   async goto() {
     await this.page.goto('/search');
     // Wait for page to load
-    await this.page.waitForLoadState('networkidle');
+    await this.table.waitForRowsToPopulate();
   }
 
   /**
    * Perform a search with the given query
    */
   async performSearch(query: string) {
+    // Store reference to current first row (if exists) to detect when results refresh
+    const hadExistingRows = (await this.table.getRows().count()) > 0;
+    const oldFirstRowTestId = hadExistingRows
+      ? await this.table.firstRow.getAttribute('data-testid')
+      : null;
+
     await this.searchInput.fill(query);
     await this.searchButton.click();
-    // Wait for search results to load
-    await this.page.waitForLoadState('networkidle');
-  }
 
-  /**
-   * Perform search and wait for API response
-   */
-  async performSearchAndWaitForResults(query: string) {
-    const responsePromise = this.page.waitForResponse(
-      resp => resp.url().includes('/clickhouse-proxy') && resp.status() === 200,
-    );
+    if (oldFirstRowTestId) {
+      // Wait for old first row to disappear (indicates results are refreshing)
+      await this.page
+        .locator(`[data-testid="${oldFirstRowTestId}"]`)
+        .waitFor({ state: 'hidden', timeout: this.defaultTimeout })
+        .catch(() => {
+          // Old row might already be gone, that's fine
+        });
+    }
 
-    await this.performSearch(query);
-    await responsePromise;
+    // Wait for new results to populate
+    await this.table.waitForRowsToPopulate();
   }
 
   /**
@@ -108,19 +113,33 @@ export class SearchPage {
    */
   async executeSQLQuery(query: string) {
     await this.switchToSQLMode();
-    await this.searchInput.fill(query);
-    await this.searchButton.click();
-    // Wait for search results to load
-    await this.page.waitForLoadState('networkidle');
+    await this.performSearch(query);
   }
 
   /**
    * Submit search without query (empty search)
    */
   async submitEmptySearch() {
+    // Store reference to current first row (if exists) to detect when results refresh
+    const hadExistingRows = (await this.table.getRows().count()) > 0;
+    const oldFirstRowTestId = hadExistingRows
+      ? await this.table.firstRow.getAttribute('data-testid')
+      : null;
+
     await this.searchButton.click();
-    // Wait for search results to load
-    await this.page.waitForLoadState('networkidle');
+
+    if (oldFirstRowTestId) {
+      // Wait for old first row to disappear (indicates results are refreshing)
+      await this.page
+        .locator(`[data-testid="${oldFirstRowTestId}"]`)
+        .waitFor({ state: 'hidden', timeout: this.defaultTimeout })
+        .catch(() => {
+          // Old row might already be gone, that's fine
+        });
+    }
+
+    // Wait for new results to populate
+    await this.table.waitForRowsToPopulate();
   }
 
   /**

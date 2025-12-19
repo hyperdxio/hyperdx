@@ -8,11 +8,16 @@ export class SidePanelComponent {
   readonly page: Page;
   private readonly panelContainer: Locator;
   private readonly tabsContainer: Locator;
-
-  constructor(page: Page, panelTestId: string = 'side-panel') {
+  private readonly defaultTimeout: number = 3000;
+  constructor(
+    page: Page,
+    panelTestId: string = 'side-panel',
+    defaultTimeout: number = 3000,
+  ) {
     this.page = page;
-    this.panelContainer = page.locator(`[data-testid="${panelTestId}"]`);
-    this.tabsContainer = page.locator('[data-testid="side-panel-tabs"]');
+    this.panelContainer = page.getByTestId(panelTestId);
+    this.tabsContainer = page.getByTestId('side-panel-tabs');
+    this.defaultTimeout = defaultTimeout;
   }
 
   /**
@@ -35,14 +40,17 @@ export class SidePanelComponent {
    * Usage in spec: await expect(sidePanel.getTab('overview')).toBeVisible()
    */
   getTab(tabName: string) {
-    return this.page.locator(`[data-testid="tab-${tabName}"]`);
+    return this.page.getByTestId(`tab-${tabName}`);
   }
 
   /**
-   * Click on a specific tab
+   * Click on a specific tab with proper waiting
    */
   async clickTab(tabName: string) {
-    await this.getTab(tabName).click();
+    const tab = this.getTab(tabName);
+    // Wait for tab to be visible before clicking (fail fast if missing)
+    await tab.waitFor({ state: 'visible', timeout: this.defaultTimeout });
+    await tab.click({ timeout: this.defaultTimeout });
   }
 
   /**
@@ -58,13 +66,15 @@ export class SidePanelComponent {
    * Close the side panel (if it has a close button)
    */
   async close() {
-    await this.page.locator('[data-testid="side-panel-close"]').click();
+    await this.page
+      .getByTestId('side-panel-close')
+      .click({ timeout: this.defaultTimeout });
   }
 
   /**
    * Get content area of the side panel
    */
   get content() {
-    return this.panelContainer.locator('[data-testid="side-panel-content"]');
+    return this.panelContainer.getByTestId('side-panel-content');
   }
 }

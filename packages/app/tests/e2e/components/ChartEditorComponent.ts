@@ -70,8 +70,6 @@ export class ChartEditorComponent {
    */
   async runQuery() {
     await this.runQueryButton.click();
-    // Wait for network to settle
-    await this.page.waitForLoadState('networkidle');
   }
 
   /**

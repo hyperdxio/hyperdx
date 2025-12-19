@@ -269,8 +269,6 @@ test.describe('Relative Time Picker', { tag: '@relative-time' }, () => {
 
       await test.step('Perform search', async () => {
         await searchPage.submitEmptySearch();
-        // Wait for network idle to ensure URL parameters have stabilized
-        await searchPage.page.waitForLoadState('networkidle');
       });
 
       await test.step('Verify search results or empty state', async () => {

@@ -118,10 +118,13 @@ export class TimePickerComponent {
   async selectTimeInterval(label: string) {
     // Wait for DOM to stabilize before clicking
     await this.page.waitForLoadState('networkidle');
-    // Use getByRole for more reliable selection than text= selector
-    const intervalButton = this.page.getByRole('button', { name: label });
-    // Add timeout to fail faster instead of waiting for full test timeout
-    await intervalButton.click({ timeout: 10000 });
+    // Scope button search within the popover to avoid matching buttons elsewhere on the page
+    const intervalButton = this.pickerPopover.getByRole('button', {
+      name: label,
+    });
+    // Wait for the specific button to be visible before clicking
+    await intervalButton.waitFor({ state: 'visible', timeout: 5000 });
+    await intervalButton.click({ timeout: 5000 });
   }
 
   /**

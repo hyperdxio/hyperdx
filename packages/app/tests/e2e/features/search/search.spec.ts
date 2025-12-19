@@ -72,26 +72,24 @@ test.describe('Search', { tag: '@search' }, () => {
 
     test('Search with Different Query Types - Lucene', async () => {
       await test.step('Test multiple search query types', async () => {
-        const queries = ['error', 'status:200', '*exception*', 'level:"error"'];
+        const queries = [
+          'error',
+          'status:200',
+          '*exception*',
+          'SeverityText:"error"',
+        ];
 
         for (const query of queries) {
           // Use page object methods for interactions
           await searchPage.clearSearch();
           await searchPage.performSearch(query);
-
-          // Use web-first assertion instead of synchronous check
-          const resultsTable = searchPage.getSearchResultsTable();
-          await expect(resultsTable).toBeAttached();
         }
       });
     });
 
     test('Comprehensive Search Workflow - Search, View Results, Navigate Side Panel', async () => {
       await test.step('Setup and perform search', async () => {
-        // Use page object method for search
-        await searchPage.performSearch(
-          'ResourceAttributes.k8s.pod.name:* ResourceAttributes.k8s.node.name:* ',
-        );
+        await searchPage.performSearch('ResourceAttributes.k8s.pod.name:*');
       });
 
       await test.step('Verify search results and interact with table rows', async () => {
@@ -101,7 +99,9 @@ test.describe('Search', { tag: '@search' }, () => {
         // Use table component for row operations
         const rows = searchPage.table.getRows();
         // Verify at least one row exists (count can vary based on data)
-        await expect(rows.first()).toBeVisible({ timeout: 10000 });
+        await expect(rows.first()).toBeVisible({
+          timeout: searchPage.defaultTimeout,
+        });
 
         // Click second row (index 1) using component method
         await searchPage.table.clickRow(1);
@@ -116,8 +116,13 @@ test.describe('Search', { tag: '@search' }, () => {
         // Use side panel component with proper waiting
         for (const tabName of tabs) {
           const tab = searchPage.sidePanel.getTab(tabName);
+          // Wait for tab to exist before scrolling (fail fast if missing)
+          await tab.waitFor({
+            state: 'visible',
+            timeout: searchPage.defaultTimeout,
+          });
           await tab.scrollIntoViewIfNeeded();
-          await tab.click({ timeout: 5000 });
+          await tab.click({ timeout: searchPage.defaultTimeout });
           await expect(tab).toBeVisible();
         }
       });
