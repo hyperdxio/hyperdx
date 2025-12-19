@@ -4,14 +4,14 @@ exports[`renderChartConfig HAVING clause should not render HAVING clause when ha
 
 exports[`renderChartConfig HAVING clause should not render HAVING clause when not provided 1`] = `"SELECT count(),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY severity"`;
 
-exports[`renderChartConfig HAVING clause should render HAVING clause with SQL language 1`] = `"SELECT count(),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY severity HAVING count(*) > 100"`;
+exports[`renderChartConfig HAVING clause should render HAVING clause with SQL language 1`] = `"SELECT count(),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY severity HAVING COUNT(*) > 100"`;
 
-exports[`renderChartConfig HAVING clause should render HAVING clause with granularity and groupBy 1`] = `"SELECT count(),event_type,toStartOfInterval(toDateTime(timestamp), INTERVAL 5 minute) AS \`__hdx_time_bucket\` FROM default.events WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY event_type,toStartOfInterval(toDateTime(timestamp), INTERVAL 5 minute) AS \`__hdx_time_bucket\` HAVING count(*) > 50 ORDER BY toStartOfInterval(toDateTime(timestamp), INTERVAL 5 minute) AS \`__hdx_time_bucket\`"`;
+exports[`renderChartConfig HAVING clause should render HAVING clause with granularity and groupBy 1`] = `"SELECT count(),event_type,toStartOfInterval(toDateTime(timestamp), INTERVAL 5 minute) AS \`__hdx_time_bucket\` FROM default.events WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY event_type,toStartOfInterval(toDateTime(timestamp), INTERVAL 5 minute) AS \`__hdx_time_bucket\` HAVING COUNT(*) > 50 ORDER BY toStartOfInterval(toDateTime(timestamp), INTERVAL 5 minute) AS \`__hdx_time_bucket\`"`;
 
 exports[`renderChartConfig HAVING clause should render HAVING clause with multiple conditions 1`] = `
 "SELECT avg(
       toFloat64OrDefault(toString(response_time))
-    ),count(),endpoint FROM default.metrics WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY endpoint HAVING avg(response_time) > 500 AND count(*) > 10"
+    ),count(),endpoint FROM default.metrics WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY endpoint HAVING AVG(response_time) > 500 AND COUNT(*) > 10"
 `;
 
 exports[`renderChartConfig containing CTE clauses should render a ChSql CTE configuration correctly 1`] = `"WITH TestCte AS (SELECT TimeUnix, Line FROM otel_logs) SELECT Line FROM TestCte"`;
@@ -546,6 +546,20 @@ exports[`renderChartConfig k8s semantic convention migrations should handle metr
       toFloat64OrDefault(toString(LastValue))
     ),toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` FROM Bucketed WHERE (__hdx_time_bucket2 >= fromUnixTimestamp64Milli(1739318400000) AND __hdx_time_bucket2 <= fromUnixTimestamp64Milli(1765670400000)) GROUP BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` ORDER BY toStartOfInterval(toDateTime(__hdx_time_bucket2), INTERVAL 1 minute) AS \`__hdx_time_bucket\` LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable'"
 `;
+
+exports[`renderChartConfig mapContains optimization should add mapContains for materialized columns based on their map source 1`] = `"SELECT count() FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) AND (materialized_log_level = 'error' AND mapContains(\`LogAttributes\`, 'level'))"`;
+
+exports[`renderChartConfig mapContains optimization should add mapContains for multiple different map keys 1`] = `"SELECT count() FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) AND (LogAttributes['level'] = 'error' AND ResourceAttributes['service.name'] = 'api' AND mapContains(\`LogAttributes\`, 'level') AND mapContains(\`ResourceAttributes\`, 'service.name'))"`;
+
+exports[`renderChartConfig mapContains optimization should add mapContains when checking map values exact match 1`] = `"SELECT count() FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) AND (ResourceAttributes['service.name'] = 'api' AND mapContains(\`ResourceAttributes\`, 'service.name'))"`;
+
+exports[`renderChartConfig mapContains optimization should handle notEmpty map value null checks properly 1`] = `"SELECT count() FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) AND (notEmpty(LogAttributes['level']) != 1 AND mapContains(\`LogAttributes\`, 'level') != 1)"`;
+
+exports[`renderChartConfig mapContains optimization should not add mapContains for CTE queries 1`] = `"WITH TestCte AS (SELECT timestamp, LogAttributes FROM otel_logs) SELECT count() FROM TestCte WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) AND (LogAttributes['level'] = 'error')"`;
+
+exports[`renderChartConfig mapContains optimization should not add mapContains when no maps are accessed 1`] = `"SELECT count() FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) AND (timestamp > '2025-01-01')"`;
+
+exports[`renderChartConfig mapContains optimization should not duplicate mapContains for the same map key used multiple times 1`] = `"SELECT count() FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) AND (LogAttributes['level'] = 'error' OR LogAttributes['level'] = 'warn' AND mapContains(\`LogAttributes\`, 'level'))"`;
 
 exports[`renderChartConfig should generate sql for a single gauge metric 1`] = `
 "WITH Source AS (
