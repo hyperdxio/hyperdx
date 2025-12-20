@@ -6,6 +6,7 @@ import {
   useForm,
   UseFormSetValue,
   UseFormWatch,
+  useWatch,
 } from 'react-hook-form';
 import { z } from 'zod';
 import {
@@ -18,25 +19,32 @@ import {
 import {
   ActionIcon,
   Anchor,
+  Badge,
   Box,
   Button,
+  Center,
   Divider,
   Flex,
   Grid,
   Group,
   Radio,
+  Select,
   Slider,
   Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconTrash } from '@tabler/icons-react';
+import {
+  IconCirclePlus,
+  IconHelpCircle,
+  IconSettings,
+  IconTrash,
+} from '@tabler/icons-react';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
-import SearchInputV2 from '@/SearchInputV2';
 import {
   inferTableSourceConfig,
   isValidMetricTable,
@@ -47,15 +55,34 @@ import {
   useSources,
   useUpdateSource,
 } from '@/source';
+import {
+  inferMaterializedViewConfig,
+  MV_AGGREGATE_FUNCTIONS,
+} from '@/utils/materializedViews';
 
 import ConfirmDeleteMenu from './ConfirmDeleteMenu';
 import { ConnectionSelectControlled } from './ConnectionSelect';
 import { DatabaseSelectControlled } from './DatabaseSelect';
 import { DBTableSelectControlled } from './DBTableSelect';
 import { InputControlled } from './InputControlled';
+import SelectControlled from './SelectControlled';
 import { SQLInlineEditorControlled } from './SQLInlineEditor';
 
 const DEFAULT_DATABASE = 'default';
+
+const MV_GRANULARITY_OPTIONS = [
+  { value: '1 second', label: '1 second' },
+  { value: '1 minute', label: '1 minute' },
+  { value: '5 minute', label: '5 minutes' },
+  { value: '15 minute', label: '15 minutes' },
+  { value: '1 hour', label: '1 hour' },
+  { value: '1 day', label: '1 day' },
+];
+
+const MV_AGGREGATE_FUNCTION_OPTIONS = MV_AGGREGATE_FUNCTIONS.map(fn => ({
+  value: fn,
+  label: fn,
+}));
 
 // TODO: maybe otel clickhouse export migrate the schema?
 const OTEL_CLICKHOUSE_EXPRESSIONS = {
@@ -125,16 +152,17 @@ function FormRow({
             label
           )}
         </Stack>
-        <Text
+        <Center
           me="sm"
+          ms="sm"
           style={{
             ...(!helpText ? { opacity: 0, pointerEvents: 'none' } : {}),
           }}
         >
           <Tooltip label={helpText} color="dark" c="white" multiline maw={600}>
-            <i className="bi bi-question-circle cursor-pointer" />
+            <IconHelpCircle size={20} className="cursor-pointer" />
           </Tooltip>
-        </Text>
+        </Center>
       </Flex>
       <Box
         w="100%"
@@ -229,7 +257,7 @@ function HighlightedAttributeExpressionsFormRow({
                   multiline
                   maw={600}
                 >
-                  <i className="bi bi-question-circle cursor-pointer" />
+                  <IconHelpCircle size={14} className="cursor-pointer" />
                 </Tooltip>
               </Text>
             </Grid.Col>
@@ -250,10 +278,392 @@ function HighlightedAttributeExpressionsFormRow({
           });
         }}
       >
-        <i className="bi bi-plus-circle me-2" />
+        <IconCirclePlus size={14} className="me-2" />
         Add expression
       </Button>
     </FormRow>
+  );
+}
+
+/** Component for configuring one or more materialized views */
+function MaterializedViewsFormSection({
+  control,
+  watch,
+  setValue,
+}: TableModelProps) {
+  const databaseName =
+    useWatch({ control, name: `from.databaseName` }) || DEFAULT_DATABASE;
+
+  const {
+    fields: materializedViews,
+    append: appendMaterializedView,
+    remove: removeMaterializedView,
+  } = useFieldArray({
+    control,
+    name: 'materializedViews',
+  });
+
+  return (
+    <Stack gap="md">
+      <FormRow
+        label={
+          <Group>
+            Materialized Views
+            <Badge size="sm" radius="sm" color="gray">
+              Beta
+            </Badge>
+          </Group>
+        }
+        helpText="Configure materialized views for query optimization. These pre-aggregated views can significantly improve query performance on aggregation queries."
+      >
+        <Stack gap="md">
+          {materializedViews.map((field, index) => (
+            <MaterializedViewFormSection
+              key={field.id}
+              watch={watch}
+              control={control}
+              mvIndex={index}
+              setValue={setValue}
+              onRemove={() => removeMaterializedView(index)}
+            />
+          ))}
+
+          <Button
+            variant="default"
+            onClick={() => {
+              appendMaterializedView({
+                databaseName: databaseName,
+                tableName: '',
+                dimensionColumns: '',
+                minGranularity: '',
+                timestampColumn: '',
+                aggregatedColumns: [],
+              });
+            }}
+          >
+            <Group>
+              <IconCirclePlus size={16} />
+              Add Materialized View
+            </Group>
+          </Button>
+        </Stack>
+      </FormRow>
+    </Stack>
+  );
+}
+
+/** Component for configuring a single materialized view */
+function MaterializedViewFormSection({
+  watch,
+  control,
+  mvIndex,
+  onRemove,
+  setValue,
+}: { mvIndex: number; onRemove: () => void } & TableModelProps) {
+  const connection = useWatch({ control, name: `connection` });
+  const sourceDatabaseName =
+    useWatch({ control, name: `from.databaseName` }) || DEFAULT_DATABASE;
+  const mvDatabaseName =
+    useWatch({ control, name: `materializedViews.${mvIndex}.databaseName` }) ||
+    sourceDatabaseName;
+  const mvTableName =
+    useWatch({ control, name: `materializedViews.${mvIndex}.tableName` }) || '';
+
+  return (
+    <Stack gap="sm">
+      <Grid columns={2} flex={1}>
+        <Grid.Col span={1}>
+          <DatabaseSelectControlled
+            control={control}
+            name={`materializedViews.${mvIndex}.databaseName`}
+            connectionId={connection}
+          />
+        </Grid.Col>
+        <Grid.Col span={1}>
+          <Group>
+            <Box flex={1}>
+              <DBTableSelectControlled
+                database={mvDatabaseName}
+                control={control}
+                name={`materializedViews.${mvIndex}.tableName`}
+                connectionId={connection}
+              />
+            </Box>
+            <ActionIcon size="sm" onClick={onRemove}>
+              <IconTrash size={16} />
+            </ActionIcon>
+          </Group>
+        </Grid.Col>
+
+        <Grid.Col span={1}>
+          <Text size="xs" fw={500} mb={4}>
+            Timestamp Column
+          </Text>
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName: mvDatabaseName,
+              tableName: mvTableName,
+              connectionId: connection,
+            }}
+            control={control}
+            placeholder="Timestamp"
+            name={`materializedViews.${mvIndex}.timestampColumn`}
+            disableKeywordAutocomplete
+          />
+        </Grid.Col>
+
+        <Grid.Col span={1}>
+          <Text size="xs" fw={500} mb={4}>
+            Granularity
+            <Tooltip
+              label={'The granularity of the timestamp column'}
+              color="dark"
+              c="white"
+              multiline
+              maw={600}
+            >
+              <IconHelpCircle size={14} className="cursor-pointer ms-1" />
+            </Tooltip>
+          </Text>
+          <Controller
+            control={control}
+            name={`materializedViews.${mvIndex}.minGranularity`}
+            render={({ field }) => (
+              <Select
+                {...field}
+                data={MV_GRANULARITY_OPTIONS}
+                placeholder="Granularity"
+                size="sm"
+              />
+            )}
+          />
+        </Grid.Col>
+      </Grid>
+
+      <Box>
+        <Text size="xs" fw={500} mb={4}>
+          Dimension Columns (comma-separated)
+          <Tooltip
+            label={
+              'Columns which are not pre-aggregated in the materialized view and can be used for filtering and grouping.'
+            }
+            color="dark"
+            c="white"
+            multiline
+            maw={600}
+          >
+            <IconHelpCircle size={14} className="cursor-pointer ms-1" />
+          </Tooltip>
+        </Text>
+        <SQLInlineEditorControlled
+          tableConnection={{
+            databaseName: mvDatabaseName,
+            tableName: mvTableName,
+            connectionId: connection,
+          }}
+          control={control}
+          name={`materializedViews.${mvIndex}.dimensionColumns`}
+          placeholder="ServiceName, StatusCode"
+          disableKeywordAutocomplete
+        />
+      </Box>
+
+      <AggregatedColumnsFormSection
+        control={control}
+        mvIndex={mvIndex}
+        watch={watch}
+        setValue={setValue}
+      />
+      <Divider />
+    </Stack>
+  );
+}
+
+/** Component for configuring the Aggregated Columns list for a single materialized view */
+function AggregatedColumnsFormSection({
+  control,
+  watch,
+  setValue,
+  mvIndex,
+}: TableModelProps & { mvIndex: number }) {
+  const {
+    fields: aggregates,
+    append: appendAggregate,
+    remove: removeAggregate,
+    replace: replaceAggregates,
+  } = useFieldArray({
+    control,
+    name: `materializedViews.${mvIndex}.aggregatedColumns`,
+  });
+
+  const addAggregate = useCallback(() => {
+    appendAggregate({ sourceColumn: '', aggFn: 'avg', mvColumn: '' });
+  }, [appendAggregate]);
+
+  useEffect(() => {
+    const { unsubscribe } = watch(async (value, { name, type }) => {
+      try {
+        if (
+          (value.kind === SourceKind.Log || value.kind === SourceKind.Trace) &&
+          value.connection &&
+          value.materializedViews?.[mvIndex] &&
+          value.materializedViews[mvIndex].databaseName &&
+          value.materializedViews[mvIndex].tableName &&
+          value.from?.databaseName &&
+          value.from?.tableName &&
+          name === `materializedViews.${mvIndex}.tableName` &&
+          type === 'change'
+        ) {
+          const mvDatabaseName = value.materializedViews[mvIndex].databaseName;
+          const mvTableName = value.materializedViews[mvIndex].tableName;
+
+          const config = await inferMaterializedViewConfig(
+            {
+              databaseName: mvDatabaseName,
+              tableName: mvTableName,
+              connectionId: value.connection,
+            },
+            {
+              databaseName: value.from.databaseName,
+              tableName: value.from.tableName,
+              connectionId: value.connection,
+            },
+          );
+
+          if (config) {
+            setValue(`materializedViews.${mvIndex}`, config);
+            replaceAggregates(config.aggregatedColumns ?? []);
+            notifications.show({
+              color: 'green',
+              message:
+                'Partially inferred materialized view configuration from view schema.',
+            });
+          } else {
+            notifications.show({
+              color: 'yellow',
+              message: 'Unable to infer materialized view configuration.',
+            });
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [watch, mvIndex, replaceAggregates, setValue]);
+
+  return (
+    <Box>
+      <Text size="xs" mb={4}>
+        Pre-aggregated Columns
+        <Tooltip
+          label={'Columns which are pre-aggregated by the materialized view'}
+          color="dark"
+          c="white"
+          multiline
+          maw={600}
+        >
+          <IconHelpCircle size={14} className="cursor-pointer ms-1" />
+        </Tooltip>
+      </Text>
+      <Grid columns={10}>
+        {aggregates.map((field, colIndex) => (
+          <AggregatedColumnRow
+            key={field.id}
+            watch={watch}
+            setValue={setValue}
+            control={control}
+            mvIndex={mvIndex}
+            colIndex={colIndex}
+            onRemove={() => removeAggregate(colIndex)}
+          />
+        ))}
+      </Grid>
+      <Button size="sm" variant="default" onClick={addAggregate} mt="lg">
+        <Group>
+          <IconCirclePlus size={16} />
+          Add Column
+        </Group>
+      </Button>
+    </Box>
+  );
+}
+
+/** Component to render one row in the MV Aggregated Columns section */
+function AggregatedColumnRow({
+  control,
+  mvIndex,
+  colIndex,
+  onRemove,
+}: TableModelProps & {
+  mvIndex: number;
+  colIndex: number;
+  onRemove: () => void;
+}) {
+  const connectionId = useWatch({ control, name: `connection` });
+  const sourceDatabaseName =
+    useWatch({ control, name: `from.databaseName` }) || DEFAULT_DATABASE;
+  const sourceTableName = useWatch({ control, name: `from.tableName` });
+  const mvDatabaseName =
+    useWatch({ control, name: `materializedViews.${mvIndex}.databaseName` }) ||
+    sourceDatabaseName;
+  const mvTableName = useWatch({
+    control,
+    name: `materializedViews.${mvIndex}.tableName`,
+  });
+  const isCount =
+    useWatch({
+      control,
+      name: `materializedViews.${mvIndex}.aggregatedColumns.${colIndex}.aggFn`,
+    }) === 'count';
+
+  return (
+    <>
+      <Grid.Col span={2}>
+        <SelectControlled
+          control={control}
+          name={`materializedViews.${mvIndex}.aggregatedColumns.${colIndex}.aggFn`}
+          data={MV_AGGREGATE_FUNCTION_OPTIONS}
+          size="sm"
+        />
+      </Grid.Col>
+      {!isCount && (
+        <Grid.Col span={4}>
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName: sourceDatabaseName,
+              tableName: sourceTableName,
+              connectionId,
+            }}
+            control={control}
+            name={`materializedViews.${mvIndex}.aggregatedColumns.${colIndex}.sourceColumn`}
+            placeholder="Source Column"
+            disableKeywordAutocomplete
+          />
+        </Grid.Col>
+      )}
+      <Grid.Col span={!isCount ? 4 : 8}>
+        <Group wrap="nowrap">
+          <Box flex={1}>
+            <SQLInlineEditorControlled
+              tableConnection={{
+                databaseName: mvDatabaseName,
+                tableName: mvTableName,
+                connectionId,
+              }}
+              control={control}
+              name={`materializedViews.${mvIndex}.aggregatedColumns.${colIndex}.mvColumn`}
+              placeholder="View Column"
+              disableKeywordAutocomplete
+            />
+          </Box>
+          <ActionIcon size="sm" onClick={onRemove}>
+            <IconTrash size={16} />
+          </ActionIcon>
+        </Group>
+      </Grid.Col>
+    </>
   );
 }
 
@@ -313,10 +723,10 @@ export function LogTableModelForm(props: TableModelProps) {
               onClick={() => setShowOptionalFields(true)}
               size="xs"
             >
-              <Text me="sm" span>
-                <i className="bi bi-gear" />
-              </Text>
-              Configure Optional Fields
+              <Group gap="xs">
+                <IconSettings size={14} />
+                Configure Optional Fields
+              </Group>
             </Anchor>
           )}
           {showOptionalFields && (
@@ -507,6 +917,8 @@ export function LogTableModelForm(props: TableModelProps) {
           label="Highlighted Trace Attributes"
           helpText="Expressions defining trace-level attributes which are displayed in the trace view for the selected trace."
         />
+        <Divider />
+        <MaterializedViewsFormSection {...props} />
       </Stack>
     </>
   );
@@ -787,6 +1199,8 @@ export function TraceTableModelForm(props: TableModelProps) {
         label="Highlighted Trace Attributes"
         helpText="Expressions defining trace-level attributes which are displayed in the trace view for the selected trace."
       />
+      <Divider />
+      <MaterializedViewsFormSection {...props} />
     </Stack>
   );
 }

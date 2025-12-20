@@ -49,9 +49,11 @@ import {
 import {
   IconCode,
   IconDownload,
+  IconRefresh,
   IconRotateClockwise,
   IconSettings,
   IconTextWrap,
+  IconTextWrapDisabled,
 } from '@tabler/icons-react';
 import { FetchNextPageOptions, useQuery } from '@tanstack/react-query';
 import {
@@ -272,8 +274,8 @@ const SqlModal = ({
         <SQLPreview data={sql} enableCopy={true} />
       ) : isLoadingSql ? (
         <div className="text-center my-2">
-          <div className="spin-animate d-inline-block me-2">
-            <i className="bi bi-arrow-repeat" />
+          <div className="d-inline-block me-2">
+            <IconRefresh size={14} className="spin-animate" />
           </div>
           Loading SQL...
         </div>
@@ -644,7 +646,10 @@ export const RawLogTable = memo(
     // Scroll to log id if it's not in window yet
     const [scrolledToHighlightedLine, setScrolledToHighlightedLine] =
       useState(false);
-    const [wrapLinesEnabled, setWrapLinesEnabled] = useState(wrapLines);
+    const [wrapLinesEnabled, setWrapLinesEnabled] = useLocalStorage<boolean>(
+      `${tableId}-wrap-lines`,
+      wrapLines ?? false,
+    );
     const [showSql, setShowSql] = useState(false);
 
     const handleSqlModalOpen = (open: boolean) => {
@@ -773,30 +778,36 @@ export const RawLogTable = memo(
                             {config && (
                               <UnstyledButton
                                 onClick={() => handleSqlModalOpen(true)}
-                                title="Show generated SQL"
+                                title="Show Generated SQL"
                                 tabIndex={0}
                               >
-                                <MantineTooltip label="Show generated SQL">
+                                <MantineTooltip label="Show Generated SQL">
                                   <IconCode size={16} />
                                 </MantineTooltip>
                               </UnstyledButton>
                             )}
                             <UnstyledButton
                               onClick={() => setWrapLinesEnabled(prev => !prev)}
-                              title="Wrap lines"
+                              title={`${wrapLinesEnabled ? 'Disable' : 'Enable'}  Wrap Lines`}
                             >
-                              <MantineTooltip label="Wrap lines">
-                                <IconTextWrap size={16} />
+                              <MantineTooltip
+                                label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} Wrap Lines`}
+                              >
+                                {wrapLinesEnabled ? (
+                                  <IconTextWrapDisabled size={16} />
+                                ) : (
+                                  <IconTextWrap size={16} />
+                                )}
                               </MantineTooltip>
                             </UnstyledButton>
 
                             <CsvExportButton
                               data={csvData}
                               filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
-                              className="fs-6 text-muted-hover "
+                              className="fs-6"
                             >
                               <MantineTooltip
-                                label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+                                label={`Download Table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
                               >
                                 <IconDownload size={16} />
                               </MantineTooltip>
@@ -928,6 +939,10 @@ export const RawLogTable = memo(
                             row={row.original}
                             getRowWhere={getRowWhere}
                             sourceId={source?.id}
+                            isWrapped={wrapLinesEnabled}
+                            onToggleWrap={() =>
+                              setWrapLinesEnabled(!wrapLinesEnabled)
+                            }
                           />
                         )}
                       </button>
@@ -956,8 +971,8 @@ export const RawLogTable = memo(
                 <div className="rounded fs-7 bg-muted text-center d-flex align-items-center justify-content-center mt-3">
                   {isLoading ? (
                     <div className="my-3">
-                      <div className="spin-animate d-inline-block">
-                        <i className="bi bi-arrow-repeat" />
+                      <div className="d-inline-block">
+                        <IconRefresh size={14} className="spin-animate" />
                       </div>{' '}
                       {loadingDate != null && (
                         <>

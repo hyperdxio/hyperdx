@@ -5,9 +5,11 @@ import {
   DashboardFilter,
   MetricsDataType,
   SourceKind,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
+  Center,
   Group,
   Input,
   Modal,
@@ -20,7 +22,14 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { IconFilter, IconPencil, IconTrash } from '@tabler/icons-react';
+import {
+  IconFilter,
+  IconInfoCircle,
+  IconPencil,
+  IconRefresh,
+  IconStack,
+  IconTrash,
+} from '@tabler/icons-react';
 
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
@@ -55,7 +64,7 @@ const CustomInputWrapper = ({
       <Input.Label>{label}</Input.Label>
       {tooltipText && (
         <Tooltip label={tooltipText}>
-          <i className="bi bi-info-circle ms-2" />
+          <IconInfoCircle size={14} className="ms-2" />
         </Tooltip>
       )}
       {errorMessage && (
@@ -71,6 +80,7 @@ const CustomInputWrapper = ({
 interface DashboardFilterEditFormProps {
   filter: DashboardFilter;
   isNew: boolean;
+  source: TSource | undefined;
   onSave: (definition: DashboardFilter) => void;
   onClose: () => void;
   onCancel: () => void;
@@ -79,6 +89,7 @@ interface DashboardFilterEditFormProps {
 const DashboardFilterEditForm = ({
   filter,
   isNew,
+  source: presetSource,
   onSave,
   onClose,
   onCancel,
@@ -144,6 +155,7 @@ const DashboardFilterEditForm = ({
                 sourceSchemaPreview={
                   <SourceSchemaPreview source={source} variant="text" />
                 }
+                disabled={!!presetSource}
               />
             </CustomInputWrapper>
             {sourceIsMetric && (
@@ -190,7 +202,7 @@ const DashboardFilterEditForm = ({
               />
             </CustomInputWrapper>
 
-            <Group justify="flex-end" my="xs">
+            <Group justify="space-between" my="xs">
               <Button variant="default" onClick={onCancel}>
                 Cancel
               </Button>
@@ -280,7 +292,7 @@ const DashboardFiltersList = ({
               </Group>
             </Group>
             <Group gap="xs">
-              <i className="bi bi-collection"></i>
+              <IconStack size={14} />
               <Text size="xs">
                 {sources?.find(s => s.id === filter.source)?.name}
               </Text>
@@ -288,14 +300,16 @@ const DashboardFiltersList = ({
           </Paper>
         ))}
         {isLoading && (
-          <div
-            className="spinner-border mx-auto"
-            style={{ width: 14, height: 14 }}
-          />
+          <Center>
+            <IconRefresh className="spin-animate" />
+          </Center>
         )}
       </Stack>
 
-      <Group justify="center" my="sm">
+      <Group justify="space-between" my="sm">
+        <Button variant="default" onClick={onClose}>
+          Close
+        </Button>
         <Button variant="filled" onClick={onAddNew}>
           Add new filter
         </Button>
@@ -308,6 +322,7 @@ interface DashboardFiltersEditModalProps {
   opened: boolean;
   filters: DashboardFilter[];
   isLoading?: boolean;
+  source?: TSource;
   onClose: () => void;
   onSaveFilter: (filter: DashboardFilter) => void;
   onRemoveFilter: (id: string) => void;
@@ -319,6 +334,7 @@ const DashboardFiltersModal = ({
   opened,
   filters,
   isLoading,
+  source,
   onClose,
   onSaveFilter,
   onRemoveFilter,
@@ -329,7 +345,6 @@ const DashboardFiltersModal = ({
     if (opened) {
       setSelectedFilter(undefined);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened]);
 
   const handleRemoveFilter = (id: string) => {
@@ -345,7 +360,7 @@ const DashboardFiltersModal = ({
       type: 'QUERY_EXPRESSION',
       name: '',
       expression: '',
-      source: '',
+      source: source?.id ?? '',
     });
   };
 
@@ -373,6 +388,7 @@ const DashboardFiltersModal = ({
         onCancel={() => setSelectedFilter(undefined)}
         onClose={onClose}
         isNew={selectedFilter.id === NEW_FILTER_ID}
+        source={source}
       />
     );
   } else {

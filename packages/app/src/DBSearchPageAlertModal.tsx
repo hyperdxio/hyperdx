@@ -28,6 +28,12 @@ import {
   Text,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import {
+  IconBrandSlack,
+  IconChartLine,
+  IconInfoCircleFilled,
+  IconPlus,
+} from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useCreateSavedSearch } from '@/savedSearch';
@@ -56,7 +62,7 @@ const SavedSearchAlertFormSchema = z
   .passthrough();
 
 const CHANNEL_ICONS = {
-  webhook: <i className="bi bi-slack fs-7 " />,
+  webhook: <IconBrandSlack size={14} />,
 };
 
 const AlertForm = ({
@@ -166,7 +172,7 @@ const AlertForm = ({
         </Paper>
         {groupBy && thresholdType === AlertThresholdType.BELOW && (
           <MantineAlert
-            icon={<i className="bi bi-info-circle-fill " />}
+            icon={<IconInfoCircleFilled size={16} />}
             bg="dark"
             py="xs"
           >
@@ -181,7 +187,7 @@ const AlertForm = ({
 
       <Accordion defaultValue={'chart'} mt="sm" mx={-16}>
         <Accordion.Item value="chart">
-          <Accordion.Control icon={<i className="bi bi-chart"></i>}>
+          <Accordion.Control icon={<IconChartLine size={16} />}>
             <Text size="sm">Threshold chart</Text>
           </Accordion.Control>
           <Accordion.Panel>
@@ -417,7 +423,7 @@ export const DBSearchPageAlertModal = ({
             ))}
             <Tabs.Tab value="stage">
               <Group gap={4}>
-                <i className="bi bi-plus fs-5 " style={{ marginLeft: -8 }} />
+                <IconPlus size={18} style={{ marginLeft: -8 }} />
                 New Alert
               </Group>
             </Tabs.Tab>

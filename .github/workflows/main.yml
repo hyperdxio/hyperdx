@@ -99,14 +99,28 @@ jobs:
         working-directory: ./smoke-tests/otel-collector
         run: bats .
   e2e-tests:
-    name: End-to-End Tests
+    name: E2E Tests - Shard ${{ matrix.shard }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     container:
       image: mcr.microsoft.com/playwright:v1.57.0-jammy
+      options: --network-alias playwright
+    services:
+      mongodb:
+        image: mongo:5.0.14-focal
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping: 1});
+          db.getSiblingDB(\"test\").test.insertOne({_id: \"hc\"});
+          db.getSiblingDB(\"test\").test.deleteOne({_id: \"hc\"})'"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+          --health-start-period 10s
     permissions:
       contents: read
       pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     steps:
       - name: Checkout
@@ -125,16 +139,24 @@ jobs:
       - name: Build dependencies
         run: npx nx run-many -t ci:build
 
-      - name: Run Playwright tests
+      - name: Run Playwright tests (full-stack mode)
+        # MongoDB service health check ensures it's ready before this step runs
+        # Note: Tests use ClickHouse demo instance (otel_demo with empty password)
+        # This is intentionally public - it's ClickHouse's read-only demo instance
+        env:
+          E2E_FULLSTACK: 'true'
+          E2E_UNIQUE_USER: 'true'
+          E2E_API_HEALTH_CHECK_MAX_RETRIES: '60'
+          MONGO_URI: mongodb://mongodb:27017/hyperdx-e2e
         run: |
           cd packages/app
-          yarn test:e2e
+          yarn test:e2e --shard=${{ matrix.shard }}/4
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: packages/app/playwright-report/
           retention-days: 30
 
@@ -142,13 +164,29 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results
+          name: test-results-${{ matrix.shard }}
           path: packages/app/test-results/
           retention-days: 30
 
-      - name: Generate test results message
+  e2e-report:
+    name: End-to-End Tests
+    if: always()
+    needs: e2e-tests
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-*
+          path: all-test-results
+
+      - name: Aggregate test results
         id: test-results
-        if: always() && github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           result-encoding: string
@@ -156,32 +194,50 @@ jobs:
             const fs = require('fs');
             const path = require('path');
 
+            let totalPassed = 0;
+            let totalFailed = 0;
+            let totalFlaky = 0;
+            let totalSkipped = 0;
+            let totalDuration = 0;
+            let foundResults = false;
+
             try {
-              const resultsPath = path.join('packages/app/test-results/results.json');
-              if (fs.existsSync(resultsPath)) {
-                const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
-                const { stats } = results;
+              const resultsDir = 'all-test-results';
+              const shards = fs.readdirSync(resultsDir);
 
-                const failed = stats.unexpected || 0;
-                const passed = stats.expected || 0;
-                const flaky = stats.flaky || 0;
-                const skipped = stats.skipped || 0;
-                const duration = Math.round((stats.duration || 0) / 1000);
+              for (const shard of shards) {
+                const resultsPath = path.join(resultsDir, shard, 'results.json');
+                if (fs.existsSync(resultsPath)) {
+                  foundResults = true;
+                  const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+                  const { stats } = results;
 
-                const summary = failed > 0
-                  ? `❌ **${failed} test${failed > 1 ? 's' : ''} failed**`
+                  totalPassed += stats.expected || 0;
+                  totalFailed += stats.unexpected || 0;
+                  totalFlaky += stats.flaky || 0;
+                  totalSkipped += stats.skipped || 0;
+                  totalDuration += stats.duration || 0;
+                }
+              }
+
+              if (foundResults) {
+                const duration = Math.round(totalDuration / 1000);
+                const summary = totalFailed > 0
+                  ? `❌ **${totalFailed} test${totalFailed > 1 ? 's' : ''} failed**`
                   : `✅ **All tests passed**`;
 
                 return `## E2E Test Results
 
-            ${summary} • ${passed} passed • ${skipped} skipped • ${duration}s
+            ${summary} • ${totalPassed} passed • ${totalSkipped} skipped • ${duration}s
 
             | Status | Count |
             |--------|-------|
-            | ✅ Passed | ${passed} |
-            | ❌ Failed | ${failed} |
-            | ⚠️ Flaky | ${flaky} |
-            | ⏭️ Skipped | ${skipped} |
+            | ✅ Passed | ${totalPassed} |
+            | ❌ Failed | ${totalFailed} |
+            | ⚠️ Flaky | ${totalFlaky} |
+            | ⏭️ Skipped | ${totalSkipped} |
+
+            Tests ran across ${shards.length} shards in parallel.
 
             [View full report →](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
               } else {
@@ -195,7 +251,7 @@ jobs:
               console.log('Could not parse test results:', error.message);
               return `## E2E Test Results
 
-            ❌ **Error reading test results**
+            ❌ **Error reading test results**: ${error.message}
 
             [View full report →](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
             }
@@ -206,3 +262,31 @@ jobs:
         with:
           message: ${{ steps.test-results.outputs.result }}
           message-id: e2e-test-results
+
+      - name: Check test results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            let totalFailed = 0;
+
+            try {
+              const resultsDir = 'all-test-results';
+              const shards = fs.readdirSync(resultsDir);
+
+              for (const shard of shards) {
+                const resultsPath = path.join(resultsDir, shard, 'results.json');
+                if (fs.existsSync(resultsPath)) {
+                  const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+                  totalFailed += results.stats.unexpected || 0;
+                }
+              }
+
+              if (totalFailed > 0) {
+                core.setFailed(`${totalFailed} test(s) failed`);
+              }
+            } catch (error) {
+              core.setFailed(`Failed to read test results: ${error.message}`);
+            }

@@ -16,6 +16,7 @@ import {
   CteChartConfig,
   DisplayType,
   Filter,
+  PresetDashboard,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -29,7 +30,14 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconPlayerPlay } from '@tabler/icons-react';
+import {
+  IconChartLine,
+  IconFilter,
+  IconFilterEdit,
+  IconPlayerPlay,
+  IconRefresh,
+  IconTable,
+} from '@tabler/icons-react';
 
 import {
   convertDateRangeToGranularityString,
@@ -63,13 +71,21 @@ import { Histogram } from '@/SVGIcons';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { ServiceDirectoryTab } from '@/components/ServiceReadiness/ServiceDirectory';
 
+import usePresetDashboardFilters from './hooks/usePresetDashboardFilters';
+import { IS_LOCAL_MODE } from './config';
+import DashboardFilters from './DashboardFilters';
+import DashboardFiltersModal from './DashboardFiltersModal';
 import { HARD_LINES_LIMIT } from './HDXMultiSeriesTimeChart';
 
-type AppliedConfig = {
+type AppliedConfigParams = {
   source?: string | null;
   service?: string | null;
   where?: string | null;
   whereLanguage?: 'sql' | 'lucene' | null;
+};
+
+type AppliedConfig = AppliedConfigParams & {
+  additionalFilters?: Filter[];
 };
 
 const MAX_NUM_SERIES = HARD_LINES_LIMIT;
@@ -85,7 +101,7 @@ function getScopedFilters({
   includeIsSpanKindServer?: boolean;
   includeNonEmptyEndpointFilter?: boolean;
 }): Filter[] {
-  const filters: Filter[] = [];
+  const filters: Filter[] = [...(appliedConfig.additionalFilters || [])];
   // Database spans are of kind Client. To be cleaned up in HDX-1219
   if (includeIsSpanKindServer) {
     filters.push({
@@ -123,7 +139,8 @@ function ServiceSelectControlled({
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const queriedConfig = {
-    ...source,
+    source: source?.id,
+    timestampValueExpression: source?.timestampValueExpression || '',
     from: {
       databaseName: source?.from.databaseName || '',
       tableName: source?.from.tableName || '',
@@ -208,7 +225,7 @@ export function EndpointLatencyChart({
               title="Line Chart"
               onClick={() => setLatencyChartType('line')}
             >
-              <i className="bi bi-graph-up" />
+              <IconChartLine size={14} />
             </Button>
 
             <Button
@@ -235,7 +252,12 @@ export function EndpointLatencyChart({
               'avg_duration_ns',
             ]}
             config={{
-              ...source,
+              source: source.id,
+              ...pick(source, [
+                'timestampValueExpression',
+                'connection',
+                'from',
+              ]),
               where: appliedConfig.where || '',
               whereLanguage: appliedConfig.whereLanguage || 'sql',
               select: [
@@ -284,13 +306,24 @@ export function EndpointLatencyChart({
         ) : (
           <DBHistogramChart
             config={{
-              ...source,
+              source: source.id,
+              ...pick(source, [
+                'timestampValueExpression',
+                'connection',
+                'from',
+              ]),
               where: appliedConfig.where || '',
               whereLanguage: appliedConfig.whereLanguage || 'sql',
               select: [
                 {
+                  alias: 'data_nanoseconds',
+                  aggFn: 'histogram',
+                  level: 20,
+                  valueExpression: expressions.duration,
+                },
+                {
                   alias: 'data',
-                  valueExpression: `histogram(20)(${expressions.durationInMillis})`,
+                  valueExpression: `arrayMap(bin -> (bin.1 / ${expressions.durationDivisorForMillis}, bin.2 / ${expressions.durationDivisorForMillis}, bin.3), data_nanoseconds)`,
                 },
               ],
               filters: [
@@ -338,13 +371,27 @@ function HttpTab({
       if (!source || !expressions) return null;
       if (reqChartType === 'overall') {
         return {
-          ...source,
+          source: source.id,
+          ...pick(source, ['timestampValueExpression', 'connection', 'from']),
           where: appliedConfig.where || '',
           whereLanguage: appliedConfig.whereLanguage || 'sql',
           displayType: DisplayType.Line,
           select: [
+            // Separate the aggregations from the rate calculation so that AggregatingMergeTree MVs can be used
             {
-              valueExpression: `countIf(${expressions.isError}) / count()`,
+              valueExpression: '',
+              aggFn: 'count',
+              alias: 'total_requests',
+            },
+            {
+              valueExpression: '',
+              aggFn: 'count',
+              aggCondition: expressions.isError,
+              aggConditionLanguage: 'sql',
+              alias: 'error_requests',
+            },
+            {
+              valueExpression: `error_requests / total_requests`,
               alias: 'error_rate',
             },
           ],
@@ -356,6 +403,7 @@ function HttpTab({
       return {
         timestampValueExpression: 'series_time_bucket',
         connection: source.connection,
+        source: source.id,
         with: [
           {
             name: 'error_series',
@@ -503,6 +551,7 @@ function HttpTab({
           {source && requestErrorRateConfig && (
             <DBTimeChart
               sourceId={source.id}
+              hiddenSeries={['total_requests', 'error_requests']}
               config={requestErrorRateConfig}
               showDisplaySwitcher={false}
               disableQueryChunking
@@ -520,13 +569,15 @@ function HttpTab({
             <DBTimeChart
               sourceId={source.id}
               config={{
-                ...source,
+                source: source.id,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
-                displayType:
-                  reqChartType === 'overall'
-                    ? DisplayType.Line
-                    : DisplayType.StackedBar,
+                displayType: DisplayType.Line,
                 select: [
                   {
                     aggFn: 'count' as const,
@@ -563,7 +614,12 @@ function HttpTab({
                 'error_requests',
               ]}
               config={{
-                ...source,
+                source: source.id,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 select: [
@@ -684,7 +740,12 @@ function HttpTab({
                 'error_count',
               ]}
               config={{
-                ...source,
+                source: source.id,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 select: [
@@ -905,6 +966,7 @@ function DatabaseTab({
         dateRange: searchedTimeRange,
         timestampValueExpression: 'series_time_bucket',
         connection: source.connection,
+        source: source.id,
       } satisfies ChartConfigWithDateRange;
     }, [appliedConfig, expressions, searchedTimeRange, source]);
 
@@ -1025,6 +1087,7 @@ function DatabaseTab({
         dateRange: searchedTimeRange,
         timestampValueExpression: 'series_time_bucket',
         connection: source.connection,
+        source: source.id,
       } satisfies ChartConfigWithDateRange;
     }, [appliedConfig, expressions, searchedTimeRange, source]);
 
@@ -1073,7 +1136,7 @@ function DatabaseTab({
                   title="List"
                   onClick={() => setChartType('list')}
                 >
-                  <i className="bi bi-filter-left" />
+                  <IconFilter size={14} />
                 </Button>
 
                 <Button
@@ -1083,7 +1146,7 @@ function DatabaseTab({
                   title="Table"
                   onClick={() => setChartType('table')}
                 >
-                  <i className="bi bi-table" />
+                  <IconTable size={14} />
                 </Button>
               </Button.Group>
             </Box>
@@ -1103,7 +1166,12 @@ function DatabaseTab({
                   'p50_duration_ns',
                 ]}
                 config={{
-                  ...source,
+                  source: source.id,
+                  ...pick(source, [
+                    'timestampValueExpression',
+                    'connection',
+                    'from',
+                  ]),
                   where: appliedConfig.where || '',
                   whereLanguage: appliedConfig.whereLanguage || 'sql',
                   dateRange: searchedTimeRange,
@@ -1179,7 +1247,12 @@ function DatabaseTab({
                   'p50_duration_ns',
                 ]}
                 config={{
-                  ...source,
+                  source: source.id,
+                  ...pick(source, [
+                    'timestampValueExpression',
+                    'connection',
+                    'from',
+                  ]),
                   where: appliedConfig.where || '',
                   whereLanguage: appliedConfig.whereLanguage || 'sql',
                   dateRange: searchedTimeRange,
@@ -1273,13 +1346,19 @@ function ErrorsTab({
             <DBTimeChart
               sourceId={source.id}
               config={{
-                ...source,
+                source: source.id,
+                ...pick(source, [
+                  'timestampValueExpression',
+                  'connection',
+                  'from',
+                ]),
                 where: appliedConfig.where || '',
                 whereLanguage: appliedConfig.whereLanguage || 'sql',
                 displayType: DisplayType.StackedBar,
                 select: [
                   {
-                    valueExpression: `count()`,
+                    valueExpression: '',
+                    aggFn: 'count',
                   },
                 ],
                 numberFormat: INTEGER_NUMBER_FORMAT,
@@ -1321,13 +1400,34 @@ function ServicesDashboardPage() {
 
   const { data: sources } = useSources();
 
-  const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
+  const [appliedConfigParams, setAppliedConfigParams] =
+    useQueryStates(appliedConfigMap);
+
+  // Only use the source from the URL params if it is a trace source
+  const appliedConfigWithoutFilters = useMemo(() => {
+    if (!sources?.length) return appliedConfigParams;
+
+    const traceSources = sources?.filter(s => s.kind === SourceKind.Trace);
+    const paramsSourceIdIsTraceSource = traceSources?.find(
+      s => s.id === appliedConfigParams.source,
+    );
+
+    const effectiveSourceId = paramsSourceIdIsTraceSource
+      ? appliedConfigParams.source
+      : traceSources?.[0]?.id || '';
+
+    return {
+      ...appliedConfigParams,
+      source: effectiveSourceId,
+    };
+  }, [appliedConfigParams, sources]);
+
   const { control, watch, setValue, handleSubmit } = useForm({
-    values: {
+    defaultValues: {
       where: '',
       whereLanguage: 'sql' as 'sql' | 'lucene',
-      service: appliedConfig?.service || '',
-      source: appliedConfig?.source || sources?.[0]?.id,
+      service: appliedConfigWithoutFilters?.service || '',
+      source: appliedConfigWithoutFilters?.source ?? '',
     },
   });
 
@@ -1337,11 +1437,42 @@ function ServicesDashboardPage() {
     id: watch('source'),
   });
 
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const {
+    filters,
+    filterValues,
+    setFilterValue,
+    filterQueries: additionalFilters,
+    handleSaveFilter,
+    handleRemoveFilter,
+    isFetching: isFetchingFilters,
+    isMutationPending: isFiltersMutationPending,
+  } = usePresetDashboardFilters({
+    presetDashboard: PresetDashboard.Services,
+    sourceId: sourceId || '',
+  });
+
+  const appliedConfig = useMemo(
+    () => ({
+      ...appliedConfigWithoutFilters,
+      additionalFilters,
+    }),
+    [appliedConfigWithoutFilters, additionalFilters],
+  );
+
+  // Update the `source` query parameter if the appliedConfig source changes
   useEffect(() => {
-    if (sourceId && !appliedConfig.source) {
-      setAppliedConfig({ source: sourceId });
+    if (
+      appliedConfigWithoutFilters.source &&
+      appliedConfigWithoutFilters.source !== appliedConfigParams.source
+    ) {
+      setAppliedConfigParams({ source: appliedConfigWithoutFilters.source });
     }
-  }, [appliedConfig.source, setAppliedConfig, sourceId]);
+  }, [
+    appliedConfigWithoutFilters.source,
+    appliedConfigParams.source,
+    setAppliedConfigParams,
+  ]);
 
   const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
@@ -1354,7 +1485,7 @@ function ServicesDashboardPage() {
   });
 
   // For future use if Live button is added
-  const [isLive, setIsLive] = useState(false);
+  const [isLive, _setIsLive] = useState(false);
 
   const { manualRefreshCooloff, refresh } = useDashboardRefresh({
     searchedTimeRange,
@@ -1365,30 +1496,38 @@ function ServicesDashboardPage() {
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(values => {
-      setAppliedConfig(values);
+      setAppliedConfigParams(values);
     })();
-  }, [handleSubmit, setAppliedConfig, onSearch, displayedTimeInputValue]);
+  }, [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue]);
 
-  // Auto submit when service or source changes
+  // Auto-submit when source changes
   useEffect(() => {
-    const normalizedService = service ?? '';
-    const appliedService = appliedConfig.service ?? '';
-    const normalizedSource = sourceId ?? '';
-    const appliedSource = appliedConfig.source ?? '';
+    const { unsubscribe } = watch((data, { name, type }) => {
+      if (
+        name === 'source' &&
+        type === 'change' &&
+        data.source &&
+        data.source !== appliedConfig.source
+      ) {
+        onSubmit();
+      }
+    });
+    return () => unsubscribe();
+  }, [appliedConfig.source, onSubmit, watch]);
 
-    if (
-      normalizedService !== appliedService ||
-      (normalizedSource && normalizedSource !== appliedSource)
-    ) {
-      onSubmit();
-    }
-  }, [
-    service,
-    sourceId,
-    appliedConfig.service,
-    appliedConfig.source,
-    onSubmit,
-  ]);
+  // Auto-submit when service changes
+  useEffect(() => {
+    const { unsubscribe } = watch((data, { name, type }) => {
+      if (
+        name === 'service' &&
+        type === 'change' &&
+        data.service !== appliedConfig.service
+      ) {
+        onSubmit();
+      }
+    });
+    return () => unsubscribe();
+  }, [appliedConfig.service, onSubmit, watch]);
 
   return (
     <Box p="sm">
@@ -1466,6 +1605,17 @@ function ServicesDashboardPage() {
               setInputValue={setDisplayedTimeInputValue}
               onSearch={onSearch}
             />
+            {!IS_LOCAL_MODE && (
+              <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+                <Button
+                  variant="default"
+                  px="xs"
+                  onClick={() => setShowFiltersModal(true)}
+                >
+                  <IconFilterEdit strokeWidth={1} />
+                </Button>
+              </Tooltip>
+            )}
             <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
               <Button
                 onClick={refresh}
@@ -1477,7 +1627,7 @@ function ServicesDashboardPage() {
                 aria-label="Refresh dashboard"
                 px="xs"
               >
-                <i className="bi bi-arrow-clockwise fs-5"></i>
+                <IconRefresh size={18} />
               </Button>
             </Tooltip>
             <Button variant="outline" type="submit" px="sm">
@@ -1550,7 +1700,7 @@ const ServicesDashboardPageDynamic = dynamic(
   },
 );
 
-// @ts-ignore
+// @ts-expect-error Next.js layout typing
 ServicesDashboardPageDynamic.getLayout = withAppNav;
 
 export default ServicesDashboardPageDynamic;

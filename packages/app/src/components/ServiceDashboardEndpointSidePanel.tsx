@@ -1,7 +1,9 @@
 import { useCallback, useMemo } from 'react';
+import { pick } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 import { Drawer, Grid, Group, Text } from '@mantine/core';
+import { IconServer } from '@tabler/icons-react';
 
 import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
@@ -45,7 +47,7 @@ export default function ServiceDashboardEndpointSidePanel({
     const filters: Filter[] = [
       {
         type: 'sql',
-        condition: `${expressions.spanName} IN ('${endpoint}') AND ${expressions.isSpanKindServer}`,
+        condition: `${expressions.endpoint} IN ('${endpoint}') AND ${expressions.isSpanKindServer}`,
       },
     ];
     if (service) {
@@ -83,7 +85,7 @@ export default function ServiceDashboardEndpointSidePanel({
                 Details for {endpoint}
                 {service && (
                   <Text component="span" c="gray" fz="xs">
-                    <i className="bi bi-hdd ms-3 me-1" />
+                    <IconServer size={14} className="ms-3 me-1" />
                     {service}
                   </Text>
                 )}
@@ -103,7 +105,12 @@ export default function ServiceDashboardEndpointSidePanel({
                       sourceId={source.id}
                       hiddenSeries={['total_count', 'error_count']}
                       config={{
-                        ...source,
+                        source: source.id,
+                        ...pick(source, [
+                          'timestampValueExpression',
+                          'connection',
+                          'from',
+                        ]),
                         where: '',
                         whereLanguage: 'sql',
                         select: [
@@ -143,7 +150,12 @@ export default function ServiceDashboardEndpointSidePanel({
                     <DBTimeChart
                       sourceId={source.id}
                       config={{
-                        ...source,
+                        source: source.id,
+                        ...pick(source, [
+                          'timestampValueExpression',
+                          'connection',
+                          'from',
+                        ]),
                         where: '',
                         whereLanguage: 'sql',
                         select: [

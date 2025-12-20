@@ -29,7 +29,20 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconSearch } from '@tabler/icons-react';
+import {
+  IconChartBar,
+  IconChartBarOff,
+  IconChevronDown,
+  IconChevronRight,
+  IconChevronUp,
+  IconFilterOff,
+  IconPin,
+  IconPinFilled,
+  IconRefresh,
+  IconSearch,
+  IconShadow,
+  IconSitemap,
+} from '@tabler/icons-react';
 
 import {
   useAllFields,
@@ -187,7 +200,7 @@ export const FilterCheckbox = ({
             gap="xs"
             wrap="nowrap"
             justify="space-between"
-            pe={'11px'}
+            pe={'4px'}
             miw={0}
           >
             <Text
@@ -227,16 +240,23 @@ export const FilterCheckbox = ({
             data-testid={`filter-exclude-${label}`}
           />
         )}
-        <TextButton
+        <ActionIcon
           onClick={onClickPin}
-          label={<i className={`bi bi-pin-angle${pinned ? '-fill' : ''}`}></i>}
+          size="xs"
+          variant="subtle"
+          color="gray"
+          aria-label={pinned ? 'Unpin field' : 'Pin field'}
+          role="checkbox"
+          aria-checked={pinned}
           data-testid={`filter-pin-${label}`}
-        />
+        >
+          {pinned ? <IconPinFilled size={12} /> : <IconPin size={12} />}
+        </ActionIcon>
       </div>
       {pinned && (
-        <Text size="xxs">
-          <i className="bi bi-pin-angle-fill"></i>
-        </Text>
+        <Center me="1px">
+          <IconPinFilled size={12} data-testid={`filter-pin-${label}-pinned`} />
+        </Center>
       )}
     </div>
   );
@@ -566,6 +586,7 @@ export const FilterGroup = ({
               p="0"
               pr="xxxs"
               data-testid="filter-group-control"
+              style={{ overflow: 'hidden' }}
               classNames={{
                 chevron: 'm-0',
                 label: 'p-0',
@@ -580,56 +601,87 @@ export const FilterGroup = ({
                 fz="xxs"
                 color="gray"
               >
-                <Text size="xs" fw="500">
+                <Text size="xs" fw="500" truncate="end">
                   {name}
                 </Text>
               </Tooltip>
             </Accordion.Control>
-            <Group gap="xxxs" wrap="nowrap">
+            <Group gap={0} wrap="nowrap">
               {!hasRange && (
                 <>
-                  <ActionIcon
-                    size="xs"
-                    variant="subtle"
-                    color="gray"
-                    onClick={toggleShowDistributions}
-                    title={
+                  <Tooltip
+                    label={
                       showDistributions
-                        ? 'Hide distribution'
-                        : 'Show distribution'
+                        ? 'Hide Distribution'
+                        : 'Show Distribution'
                     }
-                    data-testid={`toggle-distribution-button-${name}`}
-                    aria-checked={showDistributions}
-                    role="checkbox"
+                    position="top"
+                    withArrow
+                    fz="xxs"
+                    color="gray"
                   >
-                    <i
-                      className={`bi ${isFetchingDistribution ? 'spinner-border spinner-border-sm' : showDistributions ? 'bi-bar-chart-line-fill' : 'bi-bar-chart-line'}`}
-                    />
-                  </ActionIcon>
-                  {onFieldPinClick && (
                     <ActionIcon
                       size="xs"
                       variant="subtle"
                       color="gray"
-                      onClick={onFieldPinClick}
-                      title={isFieldPinned ? 'Unpin field' : 'Pin field'}
-                      me={'4px'}
+                      onClick={toggleShowDistributions}
+                      data-testid={`toggle-distribution-button-${name}`}
+                      aria-checked={showDistributions}
+                      role="checkbox"
                     >
-                      <i
-                        className={`bi bi-pin-angle${isFieldPinned ? '-fill' : ''}`}
-                      />
+                      {isFetchingDistribution ? (
+                        <span className="spinner-border spinner-border-sm" />
+                      ) : showDistributions ? (
+                        <IconChartBarOff size={14} />
+                      ) : (
+                        <IconChartBar size={14} />
+                      )}
                     </ActionIcon>
+                  </Tooltip>
+                  {onFieldPinClick && (
+                    <Tooltip
+                      label={isFieldPinned ? 'Unpin Field' : 'Pin Field'}
+                      position="top"
+                      withArrow
+                      fz="xxs"
+                      color="gray"
+                    >
+                      <ActionIcon
+                        size="xs"
+                        variant="subtle"
+                        color="gray"
+                        onClick={onFieldPinClick}
+                      >
+                        {isFieldPinned ? (
+                          <IconPinFilled size={14} />
+                        ) : (
+                          <IconPin size={14} />
+                        )}
+                      </ActionIcon>
+                    </Tooltip>
                   )}
                 </>
               )}
               {totalAppliedFiltersSize > 0 && (
-                <TextButton
-                  label="Clear"
-                  onClick={() => {
-                    onClearClick();
-                    setSearch('');
-                  }}
-                />
+                <Tooltip
+                  label="Clear Filters"
+                  position="top"
+                  withArrow
+                  fz="xxs"
+                  color="gray"
+                >
+                  <ActionIcon
+                    size="xs"
+                    variant="subtle"
+                    color="gray"
+                    onClick={() => {
+                      onClearClick();
+                      setSearch('');
+                    }}
+                  >
+                    <IconFilterOff size={14} />
+                  </ActionIcon>
+                </Tooltip>
               )}
             </Group>
           </Center>
@@ -729,11 +781,11 @@ export const FilterGroup = ({
                       label={
                         shouldShowMore ? (
                           <>
-                            <span className="bi-chevron-up" /> Less
+                            <IconChevronUp size={12} /> Less
                           </>
                         ) : (
                           <>
-                            <span className="bi-chevron-right" /> Show more
+                            <IconChevronRight size={12} /> Show more
                           </>
                         )
                       }
@@ -757,7 +809,7 @@ export const FilterGroup = ({
                         display={hasLoadedMore ? 'none' : undefined}
                         label={
                           <>
-                            <span className="bi-chevron-right" /> Load more
+                            <IconChevronRight size={12} /> Load more
                           </>
                         }
                         onClick={() => onLoadMore(name)}
@@ -1143,8 +1195,9 @@ const DBSearchPageFiltersComponent = ({
               {showRefreshButton && (
                 <TextButton
                   label={
-                    <i
-                      className="bi-arrow-clockwise ms-1 fs-7"
+                    <IconRefresh
+                      size={14}
+                      className="ms-1"
                       onClick={() => setDateRange(chartConfig.dateRange)}
                     />
                   }
@@ -1174,8 +1227,14 @@ const DBSearchPageFiltersComponent = ({
                   withArrow
                   label="Denoise results will visually remove events matching common event patterns from the results table."
                 >
-                  <Text size="xs" mt="-1px">
-                    <i className="bi bi-noise-reduction"></i> Denoise Results
+                  <Text size="xs" mt="-2px">
+                    <Group gap={2}>
+                      <IconShadow
+                        size={14}
+                        style={{ display: 'inline', verticalAlign: 'middle' }}
+                      />
+                      Denoise Results
+                    </Group>
                   </Text>
                 </Tooltip>
               }
@@ -1197,8 +1256,14 @@ const DBSearchPageFiltersComponent = ({
                     withArrow
                     label="Only show root spans (spans with no parent span)."
                   >
-                    <Text size="xs" mt="-1px">
-                      <i className="bi bi-diagram-3"></i> Root Spans Only
+                    <Text size="xs" mt="-2px">
+                      <Group gap={2}>
+                        <IconSitemap
+                          size={14}
+                          style={{ display: 'inline', verticalAlign: 'middle' }}
+                        />
+                        Root Spans Only
+                      </Group>
                     </Text>
                   </Tooltip>
                 }
@@ -1344,7 +1409,11 @@ const DBSearchPageFiltersComponent = ({
             size="compact-xs"
             loading={isFacetsFetching}
             rightSection={
-              <i className={`bi-chevron-${showMoreFields ? 'up' : 'down'}`} />
+              showMoreFields ? (
+                <IconChevronUp size={14} />
+              ) : (
+                <IconChevronDown size={14} />
+              )
             }
             onClick={() => setShowMoreFields(!showMoreFields)}
           >

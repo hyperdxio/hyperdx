@@ -5,6 +5,8 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
+import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
   isMetricChartConfig,
@@ -29,7 +31,9 @@ import {
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { getMetadata } from '@/metadata';
+import { useSource } from '@/source';
 import { generateTimeWindowsDescending } from '@/utils/searchWindows';
 
 interface AdditionalUseQueriedChartConfigOptions {
@@ -128,12 +132,14 @@ async function* fetchDataInChunks({
   signal,
   enableQueryChunking = false,
   enableParallelQueries = false,
+  metadata,
 }: {
   config: ChartConfigWithOptDateRange;
   clickhouseClient: ClickhouseClient;
   signal: AbortSignal;
   enableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
+  metadata: Metadata;
 }) {
   const windows =
     enableQueryChunking && shouldUseChunking(config)
@@ -153,23 +159,41 @@ async function* fetchDataInChunks({
 
   if (enableParallelQueries) {
     // fetch in parallel
-    const results = await Promise.all(
-      windows.map(w => {
-        const windowedConfig = {
-          ...config,
-          ...(w ?? {}),
-        };
-        return clickhouseClient.queryChartConfig({
+    const promises = windows.map(async (w, index) => {
+      const windowedConfig = {
+        ...config,
+        ...(w ?? {}),
+      };
+      return {
+        index,
+        queryResult: await clickhouseClient.queryChartConfig({
           config: windowedConfig,
-          metadata: getMetadata(),
+          metadata,
           opts: {
             abort_signal: signal,
           },
-        });
-      }),
-    );
-    for (let i = 0; i < results.length; i++) {
-      yield { chunk: results[i], isComplete: i === results.length - 1 };
+        }),
+      };
+    });
+    const remainingPromises = [...promises];
+    const bufferedChunks = new Array(windows.length);
+    let flushed = 0;
+    for (let i = 0; i < promises.length; i++) {
+      // receive any promise in the array that resolves
+      const { index, queryResult } = await Promise.race(remainingPromises);
+      // add to an ordered buffer array, keeping in mind the flushed count thus far
+      bufferedChunks[index - flushed] = queryResult;
+      // use promises array (doesn't change in size) to find the index in the ever-changing remainingPromises array
+      const resolvedPromiseIdx = remainingPromises.indexOf(promises[index]);
+      // use found index to remove entry from remainingPromises
+      remainingPromises.splice(resolvedPromiseIdx, 1);
+      // while bufferedChunks has in-ordered data, flush it
+      while (bufferedChunks.length > 0 && bufferedChunks[0] !== undefined) {
+        // remove data from front so that it always arrives in order
+        const chunk = bufferedChunks.shift();
+        yield { chunk, isComplete: bufferedChunks.length === 0 };
+        flushed += 1;
+      }
     }
     return;
   }
@@ -185,7 +209,7 @@ async function* fetchDataInChunks({
 
     const result = await clickhouseClient.queryChartConfig({
       config: windowedConfig,
-      metadata: getMetadata(),
+      metadata,
       opts: {
         abort_signal: signal,
       },
@@ -230,8 +254,14 @@ export function useQueriedChartConfig(
   options?: Partial<UseQueryOptions<TQueryFnData>> &
     AdditionalUseQueriedChartConfigOptions,
 ) {
+  const { enabled = true } = options ?? {};
   const clickhouseClient = useClickhouseClient();
   const queryClient = useQueryClient();
+  const metadata = useMetadataWithSettings();
+
+  const { data: source, isLoading: isLoadingSource } = useSource({
+    id: config.source,
+  });
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
@@ -244,6 +274,16 @@ export function useQueriedChartConfig(
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
+      const optimizedConfig = source?.materializedViews?.length
+        ? await tryOptimizeConfigWithMaterializedView(
+            config,
+            metadata,
+            clickhouseClient,
+            context.signal,
+            source,
+          )
+        : config;
+
       const query = queryClient
         .getQueryCache()
         .find({ queryKey: context.queryKey, exact: true });
@@ -257,11 +297,12 @@ export function useQueriedChartConfig(
       };
 
       const chunks = fetchDataInChunks({
-        config,
+        config: optimizedConfig,
         clickhouseClient,
         signal: context.signal,
         enableQueryChunking: options?.enableQueryChunking,
         enableParallelQueries: options?.enableParallelQueries,
+        metadata,
       });
 
       let accumulatedChunks: TQueryFnData = emptyValue;
@@ -293,25 +334,54 @@ export function useQueriedChartConfig(
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
+    enabled: enabled && !isLoadingSource,
   });
+
   if (query.isError && options?.onError) {
     options.onError(query.error);
   }
-  return query;
+  return {
+    ...query,
+    isLoading: query.isLoading || isLoadingSource,
+  };
 }
 
 export function useRenderedSqlChartConfig(
   config: ChartConfigWithOptDateRange,
   options?: UseQueryOptions<string>,
 ) {
-  return useQuery<string>({
+  const { enabled = true } = options ?? {};
+  const metadata = useMetadataWithSettings();
+  const clickhouseClient = useClickhouseClient();
+
+  const { data: source, isLoading: isLoadingSource } = useSource({
+    id: config.source,
+  });
+
+  const query = useQuery({
     queryKey: ['renderedSql', config],
-    queryFn: async () => {
-      const query = await renderChartConfig(config, getMetadata());
+    queryFn: async ({ signal }) => {
+      const optimizedConfig = source?.materializedViews?.length
+        ? await tryOptimizeConfigWithMaterializedView(
+            config,
+            metadata,
+            clickhouseClient,
+            signal,
+            source,
+          )
+        : config;
+
+      const query = await renderChartConfig(optimizedConfig, getMetadata());
       return format(parameterizedQueryToSql(query));
     },
     ...options,
+    enabled: enabled && !isLoadingSource,
   });
+
+  return {
+    ...query,
+    isLoading: query.isLoading || isLoadingSource,
+  };
 }
 
 export function useAliasMapFromChartConfig(

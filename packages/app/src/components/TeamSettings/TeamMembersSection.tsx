@@ -15,6 +15,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconLock, IconUserPlus } from '@tabler/icons-react';
 
 import api from '@/api';
 
@@ -215,7 +216,7 @@ export default function TeamMembersSection() {
             <div className="fs-7">Team Members</div>
             <Button
               variant="light"
-              leftSection={<i className="bi bi-person-plus-fill" />}
+              leftSection={<IconUserPlus size={16} />}
               onClick={() => setTeamInviteModalShow(true)}
             >
               Invite Team Member
@@ -244,7 +245,7 @@ export default function TeamMembersSection() {
                         <div>{member.email}</div>
                         {member.hasPasswordAuth && (
                           <div>
-                            <i className="bi bi-lock-fill" /> Password Auth
+                            <IconLock size={14} /> Password Auth
                           </div>
                         )}
                       </Group>
