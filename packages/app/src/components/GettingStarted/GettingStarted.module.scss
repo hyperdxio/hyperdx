@@ -49,6 +49,12 @@
   color: white;
 }
 
+.stepNumberCompleted {
+  background-color: white;
+  border: 2px solid #1f1f1c;
+  color: #1f1f1c;
+}
+
 .stepNumberInactive {
   background-color: white;
   border: 2px solid #c0c0c0;
@@ -66,6 +72,10 @@
   flex: 1 1 auto;
   width: 100%;
   background-color: #c0c0c0;
+}
+
+.connectorLineCompleted {
+  background-color: #1f1f1c;
 }
 
 .stepBody {
@@ -89,6 +99,10 @@
   color: #c0c0c0;
 }
 
+.stepTitleCompleted {
+  color: #696e79;
+}
+
 .stepDescription {
   margin-top: 0;
 }
@@ -102,6 +116,10 @@
 
 .sectionTitle {
   margin-top: 4px;
+}
+
+.sourcesCard {
+  width: 100%;
 }
 
 .statusItem {
@@ -245,6 +263,12 @@
     color: var(--color-bg-surface);
   }
 
+  .stepNumberCompleted {
+    background-color: var(--color-bg-surface);
+    border-color: var(--color-text);
+    color: var(--color-text);
+  }
+
   .stepNumberInactive {
     background-color: var(--color-bg-surface);
     border-color: var(--color-border);
@@ -255,11 +279,19 @@
     background-color: var(--color-border);
   }
 
+  .connectorLineCompleted {
+    background-color: var(--color-text);
+  }
+
   .stepTitle {
     color: var(--color-text);
   }
 
   .stepTitleInactive {
+    color: var(--color-text-muted);
+  }
+
+  .stepTitleCompleted {
     color: var(--color-text-muted);
   }
 

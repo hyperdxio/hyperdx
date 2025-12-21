@@ -1,9 +1,9 @@
 import React from 'react';
 import { NextAdapter } from 'next-query-params';
 import { initialize, mswLoader } from 'msw-storybook-addon';
-import { QueryClient, QueryClientProvider } from 'react-query';
 import { QueryParamProvider } from 'use-query-params';
 import type { Preview } from '@storybook/nextjs';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { ibmPlexMono, inter, roboto, robotoMono } from '../src/fonts';
 import { meHandler } from '../src/mocks/handlers';

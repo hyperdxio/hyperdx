@@ -1,14 +1,41 @@
 import React, { useState } from 'react';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { Anchor, Card, Text, Tooltip } from '@mantine/core';
+import {
+  Connection,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
+import {
+  Anchor,
+  Box,
+  Button,
+  Card,
+  Divider,
+  Flex,
+  Group,
+  Stack,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import {
   IconArrowRight,
   IconCheck,
+  IconChevronDown,
+  IconChevronUp,
   IconCopy,
+  IconDatabase,
   IconExternalLink,
   IconEye,
   IconEyeOff,
+  IconPlus,
+  IconServer,
 } from '@tabler/icons-react';
+
+import { TableSourceForm } from '@/components/SourceForm';
+import { IS_LOCAL_MODE } from '@/config';
+import { useConnections } from '@/connection';
+import { useSources } from '@/source';
+import { capitalizeFirstLetter } from '@/utils';
 
 import styles from './GettingStarted.module.scss';
 
@@ -19,14 +46,20 @@ interface SystemStatus {
 }
 
 interface GettingStartedProps {
-  endpoint: string;
-  apiKey: string;
+  activeStep?: 1 | 2;
+  endpoint?: string;
+  apiKey?: string;
   systemStatus?: SystemStatus;
   docsUrl?: string;
   onConfigureDataSources?: () => void;
+  onConfirmAndExplore?: () => void;
+  /** Mock sources for Storybook/testing */
+  mockSources?: TSource[];
+  /** Mock connections for Storybook/testing */
+  mockConnections?: Connection[];
 }
 
-const CheckIcon = () => (
+const CheckIconStatus = () => (
   <svg
     className={styles.statusIcon}
     viewBox="0 0 16 16"
@@ -60,6 +93,7 @@ interface StepProps {
   title: string;
   description?: React.ReactNode;
   isActive?: boolean;
+  isCompleted?: boolean;
   isLast?: boolean;
   children?: React.ReactNode;
 }
@@ -69,6 +103,7 @@ const Step: React.FC<StepProps> = ({
   title,
   description,
   isActive = false,
+  isCompleted = false,
   isLast = false,
   children,
 }) => {
@@ -78,14 +113,22 @@ const Step: React.FC<StepProps> = ({
         {/* Step number circle */}
         <div className={styles.stepIndicator}>
           <div
-            className={`${styles.stepNumber} ${isActive ? styles.stepNumberActive : styles.stepNumberInactive}`}
+            className={`${styles.stepNumber} ${
+              isCompleted
+                ? styles.stepNumberCompleted
+                : isActive
+                  ? styles.stepNumberActive
+                  : styles.stepNumberInactive
+            }`}
           >
-            {number}
+            {isCompleted ? <IconCheck size={12} stroke={2.5} /> : number}
           </div>
           {/* Connector line */}
           {!isLast && (
             <div className={styles.connector}>
-              <div className={styles.connectorLine} />
+              <div
+                className={`${styles.connectorLine} ${isCompleted ? styles.connectorLineCompleted : ''}`}
+              />
             </div>
           )}
         </div>
@@ -93,7 +136,13 @@ const Step: React.FC<StepProps> = ({
         {/* Step content */}
         <div className={styles.stepBody}>
           <div
-            className={`${styles.stepTitle} ${!isActive ? styles.stepTitleInactive : ''}`}
+            className={`${styles.stepTitle} ${
+              isCompleted
+                ? styles.stepTitleCompleted
+                : !isActive
+                  ? styles.stepTitleInactive
+                  : ''
+            }`}
           >
             {title}
           </div>
@@ -109,9 +158,116 @@ const Step: React.FC<StepProps> = ({
   );
 };
 
+/* Sources List for Step 2 */
+function SourcesList({
+  onAddSource,
+  mockSources,
+  mockConnections,
+}: {
+  onAddSource?: () => void;
+  mockSources?: TSource[];
+  mockConnections?: Connection[];
+}) {
+  const { data: fetchedConnections } = useConnections();
+  const { data: fetchedSources } = useSources();
+
+  // Use mock data if provided, otherwise use fetched data
+  const connections = mockConnections ?? fetchedConnections;
+  const sources = mockSources ?? fetchedSources;
+  const [editedSourceId, setEditedSourceId] = useState<string | null>(null);
+  const [isCreatingSource, setIsCreatingSource] = useState(false);
+
+  return (
+    <Card withBorder p="md" radius="sm" className={styles.sourcesCard}>
+      <Stack gap="md">
+        {sources?.map((s, index) => (
+          <React.Fragment key={s.id}>
+            <Flex justify="space-between" align="center">
+              <div>
+                <Text size="sm" fw={500}>
+                  {s.name}
+                </Text>
+                <Text size="xs" c="dimmed" mt={4}>
+                  <Group gap="xs">
+                    {capitalizeFirstLetter(s.kind)}
+                    <Group gap={4}>
+                      <IconServer size={11} />
+                      {connections?.find(c => c.id === s.connection)?.name}
+                    </Group>
+                    <Group gap={4}>
+                      {s.from && (
+                        <>
+                          <IconDatabase size={11} />
+                          {s.from.databaseName}
+                          {s.kind === SourceKind.Metric ? '' : '.'}
+                          {s.from.tableName}
+                        </>
+                      )}
+                    </Group>
+                  </Group>
+                </Text>
+              </div>
+              <Button
+                variant="subtle"
+                size="xs"
+                onClick={() =>
+                  setEditedSourceId(editedSourceId === s.id ? null : s.id)
+                }
+              >
+                {editedSourceId === s.id ? (
+                  <IconChevronUp size={13} />
+                ) : (
+                  <IconChevronDown size={13} />
+                )}
+              </Button>
+            </Flex>
+            {editedSourceId === s.id && (
+              <Box mt="xs">
+                <TableSourceForm
+                  sourceId={s.id}
+                  onSave={() => setEditedSourceId(null)}
+                />
+              </Box>
+            )}
+            {index < (sources?.length ?? 0) - 1 && <Divider />}
+          </React.Fragment>
+        ))}
+
+        {isCreatingSource && (
+          <>
+            <Divider />
+            <TableSourceForm
+              isNew
+              onCreate={() => setIsCreatingSource(false)}
+              onCancel={() => setIsCreatingSource(false)}
+            />
+          </>
+        )}
+
+        {!IS_LOCAL_MODE && (
+          <Flex justify="flex-end" pt="md">
+            <Button
+              variant="default"
+              size="sm"
+              leftSection={<IconPlus size={14} />}
+              onClick={() => {
+                setIsCreatingSource(true);
+                onAddSource?.();
+              }}
+            >
+              Add source
+            </Button>
+          </Flex>
+        )}
+      </Stack>
+    </Card>
+  );
+}
+
 export const GettingStarted: React.FC<GettingStartedProps> = ({
-  endpoint,
-  apiKey,
+  activeStep = 1,
+  endpoint = '',
+  apiKey = '',
   systemStatus = {
     storageReady: true,
     telemetryEndpointsReady: true,
@@ -119,6 +275,9 @@ export const GettingStarted: React.FC<GettingStartedProps> = ({
   },
   docsUrl = 'https://clickhouse.com/docs/use-cases/observability/clickstack/ingesting-data/overview',
   onConfigureDataSources,
+  onConfirmAndExplore,
+  mockSources,
+  mockConnections,
 }) => {
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedEndpoint, setCopiedEndpoint] = useState(false);
@@ -143,140 +302,202 @@ export const GettingStarted: React.FC<GettingStartedProps> = ({
         <Step
           number={1}
           title="Ingest data"
-          isActive
+          isActive={activeStep === 1}
+          isCompleted={activeStep > 1}
           description={
-            <Text size="sm" c="dimmed">
-              Start seeing logs, metrics, and traces from your application in
-              minutes. Need help?{' '}
-              <Anchor
-                href={docsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                size="sm"
-              >
-                Check out our documentation.
-              </Anchor>
-            </Text>
+            activeStep === 1 ? (
+              <Text size="sm" c="dimmed">
+                Start seeing logs, metrics, and traces from your application in
+                minutes. Need help?{' '}
+                <Anchor
+                  href={docsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="sm"
+                >
+                  Check out our documentation.
+                </Anchor>
+              </Text>
+            ) : undefined
           }
         >
-          <Text fw={600} size="sm" className={styles.sectionTitle}>
-            System status
-          </Text>
+          {activeStep === 1 && (
+            <>
+              <Text fw={600} size="sm" className={styles.sectionTitle}>
+                System status
+              </Text>
 
-          <div className={styles.statusItem}>
-            {systemStatus.storageReady ? <CheckIcon /> : <PendingIcon />}
-            <Text size="sm">Storage is ready</Text>
-          </div>
+              <div className={styles.statusItem}>
+                {systemStatus.storageReady ? (
+                  <CheckIconStatus />
+                ) : (
+                  <PendingIcon />
+                )}
+                <Text size="sm">Storage is ready</Text>
+              </div>
 
-          <div className={styles.statusItem}>
-            {systemStatus.telemetryEndpointsReady ? (
-              <CheckIcon />
-            ) : (
-              <PendingIcon />
-            )}
-            <Text size="sm">Telemetry endpoints are ready</Text>
-          </div>
+              <div className={styles.statusItem}>
+                {systemStatus.telemetryEndpointsReady ? (
+                  <CheckIconStatus />
+                ) : (
+                  <PendingIcon />
+                )}
+                <Text size="sm">Telemetry endpoints are ready</Text>
+              </div>
 
-          <div className={styles.statusItem}>
-            {systemStatus.dataReceived ? <CheckIcon /> : <PendingIcon />}
-            <Text size="sm">Data received</Text>
-          </div>
+              <div className={styles.statusItem}>
+                {systemStatus.dataReceived ? (
+                  <CheckIconStatus />
+                ) : (
+                  <PendingIcon />
+                )}
+                <Text size="sm">Data received</Text>
+              </div>
 
-          <Text size="sm" mt="sm">
-            Use the endpoint and API key below to send logs, metrics, or traces.
-          </Text>
+              <Text size="sm" mt="sm">
+                Use the endpoint and API key below to send logs, metrics, or
+                traces.
+              </Text>
 
-          {/* Credentials Table */}
-          <div className={styles.credentialsTable}>
-            <div className={styles.credentialsRow}>
-              <div className={styles.credentialsLabel}>Endpoint</div>
-              <div className={styles.credentialsValue}>{endpoint}</div>
-              <div className={styles.credentialsActions}>
-                <CopyToClipboard text={endpoint} onCopy={handleCopyEndpoint}>
-                  <Tooltip
-                    label={copiedEndpoint ? 'Copied!' : 'Copy endpoint'}
-                    withArrow
-                  >
-                    <button
-                      className={styles.iconButton}
-                      aria-label="Copy endpoint"
+              {/* Credentials Table */}
+              <div className={styles.credentialsTable}>
+                <div className={styles.credentialsRow}>
+                  <div className={styles.credentialsLabel}>Endpoint</div>
+                  <div className={styles.credentialsValue}>{endpoint}</div>
+                  <div className={styles.credentialsActions}>
+                    <CopyToClipboard
+                      text={endpoint}
+                      onCopy={handleCopyEndpoint}
                     >
-                      {copiedEndpoint ? (
-                        <IconCheck size={16} />
-                      ) : (
-                        <IconCopy size={16} />
-                      )}
-                    </button>
-                  </Tooltip>
-                </CopyToClipboard>
+                      <Tooltip
+                        label={copiedEndpoint ? 'Copied!' : 'Copy endpoint'}
+                        withArrow
+                      >
+                        <button
+                          className={styles.iconButton}
+                          aria-label="Copy endpoint"
+                        >
+                          {copiedEndpoint ? (
+                            <IconCheck size={16} />
+                          ) : (
+                            <IconCopy size={16} />
+                          )}
+                        </button>
+                      </Tooltip>
+                    </CopyToClipboard>
+                  </div>
+                </div>
+                <div className={styles.credentialsRow}>
+                  <div className={styles.credentialsLabel}>API key</div>
+                  <div className={styles.credentialsValue}>
+                    {showApiKey ? apiKey : maskedApiKey}
+                  </div>
+                  <div className={styles.credentialsActions}>
+                    <Tooltip
+                      label={showApiKey ? 'Hide API key' : 'Show API key'}
+                      withArrow
+                    >
+                      <button
+                        className={styles.iconButton}
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        aria-label={
+                          showApiKey ? 'Hide API key' : 'Show API key'
+                        }
+                      >
+                        {showApiKey ? (
+                          <IconEyeOff size={16} />
+                        ) : (
+                          <IconEye size={16} />
+                        )}
+                      </button>
+                    </Tooltip>
+                    <CopyToClipboard text={apiKey} onCopy={handleCopyApiKey}>
+                      <Tooltip
+                        label={copiedApiKey ? 'Copied!' : 'Copy API key'}
+                        withArrow
+                      >
+                        <button
+                          className={styles.iconButton}
+                          aria-label="Copy API key"
+                        >
+                          {copiedApiKey ? (
+                            <IconCheck size={16} />
+                          ) : (
+                            <IconCopy size={16} />
+                          )}
+                        </button>
+                      </Tooltip>
+                    </CopyToClipboard>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className={styles.credentialsRow}>
-              <div className={styles.credentialsLabel}>API key</div>
-              <div className={styles.credentialsValue}>
-                {showApiKey ? apiKey : maskedApiKey}
-              </div>
-              <div className={styles.credentialsActions}>
-                <Tooltip
-                  label={showApiKey ? 'Hide API key' : 'Show API key'}
-                  withArrow
+
+              {/* Buttons */}
+              <div className={styles.buttonGroup}>
+                <a
+                  href={docsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.secondaryButton}
                 >
-                  <button
-                    className={styles.iconButton}
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
-                  >
-                    {showApiKey ? (
-                      <IconEyeOff size={16} />
-                    ) : (
-                      <IconEye size={16} />
-                    )}
-                  </button>
-                </Tooltip>
-                <CopyToClipboard text={apiKey} onCopy={handleCopyApiKey}>
-                  <Tooltip
-                    label={copiedApiKey ? 'Copied!' : 'Copy API key'}
-                    withArrow
-                  >
-                    <button
-                      className={styles.iconButton}
-                      aria-label="Copy API key"
-                    >
-                      {copiedApiKey ? (
-                        <IconCheck size={16} />
-                      ) : (
-                        <IconCopy size={16} />
-                      )}
-                    </button>
-                  </Tooltip>
-                </CopyToClipboard>
+                  View ingest data docs
+                  <IconExternalLink size={15.5} />
+                </a>
+                <button
+                  className={styles.primaryButton}
+                  onClick={onConfigureDataSources}
+                >
+                  Configure data sources
+                  <IconArrowRight size={15.5} />
+                </button>
               </div>
-            </div>
-          </div>
-
-          {/* Buttons */}
-          <div className={styles.buttonGroup}>
-            <a
-              href={docsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.secondaryButton}
-            >
-              View ingest data docs
-              <IconExternalLink size={15.5} />
-            </a>
-            <button
-              className={styles.primaryButton}
-              onClick={onConfigureDataSources}
-            >
-              Configure data sources
-              <IconArrowRight size={15.5} />
-            </button>
-          </div>
+            </>
+          )}
         </Step>
 
         {/* Step 2: Configure data sources */}
-        <Step number={2} title="Configure data sources" isLast />
+        <Step
+          number={2}
+          title="Configure data sources"
+          isActive={activeStep === 2}
+          isLast
+          description={
+            activeStep === 2 ? (
+              <Text size="sm" c="dimmed">
+                We've pre-configured the default OpenTelemetry (OTel) schema for
+                you. Review the sources below or add custom tables if you use a
+                different schema. Need help?{' '}
+                <Anchor
+                  href="https://clickhouse.com/docs/use-cases/observability/clickstack"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="sm"
+                >
+                  Check out our documentation.
+                </Anchor>
+              </Text>
+            ) : undefined
+          }
+        >
+          {activeStep === 2 && (
+            <>
+              <SourcesList
+                mockSources={mockSources}
+                mockConnections={mockConnections}
+              />
+
+              {/* Confirm button */}
+              <div className={styles.buttonGroup}>
+                <button
+                  className={styles.primaryButton}
+                  onClick={onConfirmAndExplore}
+                >
+                  Confirm and explore
+                </button>
+              </div>
+            </>
+          )}
+        </Step>
       </div>
     </Card>
   );

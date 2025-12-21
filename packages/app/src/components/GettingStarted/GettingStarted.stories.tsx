@@ -1,7 +1,69 @@
 import React from 'react';
+import {
+  Connection,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { GettingStarted } from './GettingStarted';
+
+// Mock data for sources and connections
+const mockConnections: Connection[] = [
+  {
+    id: 'conn-1',
+    name: 'Local ClickHouse',
+    host: 'localhost:8123',
+    username: 'default',
+  },
+];
+
+const mockSources: TSource[] = [
+  {
+    id: 'source-logs',
+    name: 'Logs',
+    kind: SourceKind.Log,
+    connection: 'conn-1',
+    from: {
+      databaseName: 'default',
+      tableName: 'otel_logs',
+    },
+    timestampValueExpression: 'Timestamp',
+  },
+  {
+    id: 'source-traces',
+    name: 'Traces',
+    kind: SourceKind.Trace,
+    connection: 'conn-1',
+    from: {
+      databaseName: 'default',
+      tableName: 'otel_traces',
+    },
+    timestampValueExpression: 'Timestamp',
+  },
+  {
+    id: 'source-metrics',
+    name: 'Metrics',
+    kind: SourceKind.Metric,
+    connection: 'conn-1',
+    from: {
+      databaseName: 'default',
+      tableName: '',
+    },
+    timestampValueExpression: 'Timestamp',
+  },
+  {
+    id: 'source-sessions',
+    name: 'Sessions',
+    kind: SourceKind.Session,
+    connection: 'conn-1',
+    from: {
+      databaseName: 'default',
+      tableName: 'hyperdx_sessions',
+    },
+    timestampValueExpression: 'Timestamp',
+  },
+];
 
 const meta = {
   title: 'Components/GettingStarted',
@@ -9,7 +71,16 @@ const meta = {
   parameters: {
     layout: 'padded',
   },
+  args: {
+    mockSources,
+    mockConnections,
+  },
   argTypes: {
+    activeStep: {
+      control: { type: 'radio' },
+      options: [1, 2],
+      description: 'The currently active step',
+    },
     endpoint: {
       control: 'text',
       description: 'The endpoint URL to display',
@@ -30,6 +101,10 @@ const meta = {
       action: 'onConfigureDataSources',
       description: 'Callback when "Configure data sources" button is clicked',
     },
+    onConfirmAndExplore: {
+      action: 'onConfirmAndExplore',
+      description: 'Callback when "Confirm and explore" button is clicked',
+    },
   },
 } satisfies Meta<typeof GettingStarted>;
 
@@ -37,8 +112,11 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {
+/* Step 1 Stories */
+export const Step1Default: Story = {
+  name: 'Step 1: Default',
   args: {
+    activeStep: 1,
     endpoint: 'https://xz0bwno7ub.us-east1.gcp.clickhouse-dev.com',
     apiKey: 'ck_abc123xyz789secretkey',
     systemStatus: {
@@ -49,20 +127,10 @@ export const Default: Story = {
   },
 };
 
-export const AllSystemsReady: Story = {
+export const Step1WaitingForData: Story = {
+  name: 'Step 1: Waiting for Data',
   args: {
-    endpoint: 'https://production.clickhouse.cloud',
-    apiKey: 'ck_prod_super_secret_api_key_12345',
-    systemStatus: {
-      storageReady: true,
-      telemetryEndpointsReady: true,
-      dataReceived: true,
-    },
-  },
-};
-
-export const WaitingForData: Story = {
-  args: {
+    activeStep: 1,
     endpoint: 'https://staging.clickhouse.cloud',
     apiKey: 'ck_staging_api_key_67890',
     systemStatus: {
@@ -73,8 +141,10 @@ export const WaitingForData: Story = {
   },
 };
 
-export const InitialSetup: Story = {
+export const Step1InitialSetup: Story = {
+  name: 'Step 1: Initial Setup',
   args: {
+    activeStep: 1,
     endpoint: 'https://new-instance.clickhouse.cloud',
     apiKey: 'ck_new_api_key_abcdef',
     systemStatus: {
@@ -85,14 +155,12 @@ export const InitialSetup: Story = {
   },
 };
 
-export const PartiallyReady: Story = {
+/* Step 2 Stories */
+export const Step2ConfigureDataSources: Story = {
+  name: 'Step 2: Configure Data Sources',
   args: {
-    endpoint: 'https://partial.clickhouse.cloud',
-    apiKey: 'ck_partial_api_key_xyz',
-    systemStatus: {
-      storageReady: true,
-      telemetryEndpointsReady: false,
-      dataReceived: false,
-    },
+    activeStep: 2,
+    endpoint: 'https://xz0bwno7ub.us-east1.gcp.clickhouse-dev.com',
+    apiKey: 'ck_abc123xyz789secretkey',
   },
 };
