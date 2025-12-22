@@ -59,6 +59,7 @@ e2e/cypress/results
 **/test-results/
 **/playwright-report/
 **/playwright/.cache/
+**/.auth/
 
 # scripts
 scripts/*.csv

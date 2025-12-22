@@ -59,7 +59,7 @@ export default function DBSqlRowTableWithSideBar({
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere');
-  const [, setRowSource] = useQueryState('rowSource');
+  const [rowSource, setRowSource] = useQueryState('rowSource');
 
   const onOpenSidebar = useCallback(
     (rowWhere: string) => {
@@ -88,7 +88,7 @@ export default function DBSqlRowTableWithSideBar({
 
   return (
     <RowSidePanelContext.Provider value={context ?? {}}>
-      {sourceData && (
+      {sourceData && (rowSource === sourceId || !rowSource) && (
         <DBRowSidePanel
           source={sourceData}
           rowId={rowId ?? undefined}

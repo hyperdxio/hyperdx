@@ -12,13 +12,23 @@ describe('renderChartConfig', () => {
   let mockMetadata: jest.Mocked<Metadata>;
 
   beforeEach(() => {
+    const columns = [
+      { name: 'timestamp', type: 'DateTime' },
+      { name: 'value', type: 'Float64' },
+      { name: 'TraceId', type: 'String' },
+      { name: 'ServiceName', type: 'String' },
+    ];
     mockMetadata = {
       getColumns: jest.fn().mockResolvedValue([
         { name: 'timestamp', type: 'DateTime' },
         { name: 'value', type: 'Float64' },
       ]),
       getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
-      getColumn: jest.fn().mockResolvedValue({ type: 'DateTime' }),
+      getColumn: jest
+        .fn()
+        .mockImplementation(async ({ column }) =>
+          columns.find(col => col.name === column),
+        ),
       getTableMetadata: jest
         .fn()
         .mockResolvedValue({ primary_key: 'timestamp' }),
@@ -1116,5 +1126,123 @@ describe('renderChartConfig', () => {
         expect(actualSql).toBe(expected);
       },
     );
+  });
+
+  describe('Aggregate Merge Functions', () => {
+    it('should generate SQL for an aggregate merge function', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'avgMerge',
+            valueExpression: 'Duration',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        groupBy: 'severity',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('avgMerge(Duration)');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should generate SQL for an aggregate merge function with a condition', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'avgMerge',
+            valueExpression: 'Duration',
+            aggCondition: 'severity:"ERROR"',
+            aggConditionLanguage: 'lucene',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        groupBy: 'severity',
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        "avgMergeIf(Duration, ((severity = 'ERROR')) AND toFloat64OrDefault(toString(Duration)) IS NOT NULL)",
+      );
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should generate SQL for an quantile merge function with a condition', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'quantileMerge',
+            aggCondition: 'severity:"ERROR"',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Duration',
+            level: 0.95,
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        groupBy: 'severity',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        "quantileMergeIf(0.95)(Duration, ((severity = 'ERROR')) AND toFloat64OrDefault(toString(Duration)) IS NOT NULL)",
+      );
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should generate SQL for an histogram merge function', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'histogramMerge',
+            valueExpression: 'Duration',
+            level: 20,
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        groupBy: 'severity',
+        timestampValueExpression: 'timestamp',
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      };
+
+      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('histogramMerge(20)(Duration)');
+      expect(actual).toMatchSnapshot();
+    });
   });
 });

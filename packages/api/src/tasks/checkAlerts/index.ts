@@ -101,6 +101,11 @@ const fireChannelEvent = async ({
     throw new Error('Team not found');
   }
 
+  // KNOWN LIMITATION: Alert data (including silenced state) is fetched when the
+  // task is queued via AlertProvider, not when it processes. If a user silences
+  // an alert after it's queued but before it processes, this execution may still
+  // send a notification. Subsequent alert checks will respect the silenced state.
+  // This trade-off maintains architectural separation from direct database access.
   if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
     logger.info(
       {
@@ -284,7 +289,10 @@ const getChartConfigFromAlert = (
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
     // Doesn't work for metric alerts yet
-    if (tile.config.displayType === DisplayType.Line) {
+    if (
+      tile.config.displayType === DisplayType.Line ||
+      tile.config.displayType === DisplayType.StackedBar
+    ) {
       return {
         connection,
         dateRange,

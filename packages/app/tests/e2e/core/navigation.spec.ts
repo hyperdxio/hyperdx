@@ -11,7 +11,6 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     { tag: '@smoke' },
     async ({ page }) => {
       await test.step('Wait for page to load', async () => {
-        await page.waitForLoadState('networkidle');
         // Wait for the first navigation link to be visible instead of using a fixed timeout
         await expect(
           page.locator('[data-testid="nav-link-search"]'),
@@ -37,7 +36,6 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
   test('should open user menu', async ({ page }) => {
     await test.step('Navigate to and click user menu trigger', async () => {
       // Wait for page to be fully loaded first
-      await page.waitForLoadState('networkidle');
       await expect(
         page.locator('[data-testid="nav-link-search"]'),
       ).toBeVisible();
@@ -69,7 +67,6 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
   test('should open help menu', async ({ page }) => {
     await test.step('Navigate to and click help menu trigger', async () => {
       // Wait for page to be fully loaded first
-      await page.waitForLoadState('networkidle');
       await expect(
         page.locator('[data-testid="nav-link-search"]'),
       ).toBeVisible();

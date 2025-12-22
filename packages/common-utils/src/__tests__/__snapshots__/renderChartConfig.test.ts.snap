@@ -1,5 +1,13 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
+exports[`renderChartConfig Aggregate Merge Functions should generate SQL for an aggregate merge function 1`] = `"SELECT avgMerge(Duration),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY severity"`;
+
+exports[`renderChartConfig Aggregate Merge Functions should generate SQL for an aggregate merge function with a condition 1`] = `"SELECT avgMergeIf(Duration, ((severity = 'ERROR')) AND toFloat64OrDefault(toString(Duration)) IS NOT NULL),severity FROM default.logs WHERE (((severity = 'ERROR'))) GROUP BY severity"`;
+
+exports[`renderChartConfig Aggregate Merge Functions should generate SQL for an histogram merge function 1`] = `"SELECT histogramMerge(20)(Duration),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY severity"`;
+
+exports[`renderChartConfig Aggregate Merge Functions should generate SQL for an quantile merge function with a condition 1`] = `"SELECT quantileMergeIf(0.95)(Duration, ((severity = 'ERROR')) AND toFloat64OrDefault(toString(Duration)) IS NOT NULL),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) AND (((severity = 'ERROR'))) GROUP BY severity"`;
+
 exports[`renderChartConfig HAVING clause should not render HAVING clause when having is empty string 1`] = `"SELECT count(),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY severity"`;
 
 exports[`renderChartConfig HAVING clause should not render HAVING clause when not provided 1`] = `"SELECT count(),severity FROM default.logs WHERE (timestamp >= fromUnixTimestamp64Milli(1739318400000) AND timestamp <= fromUnixTimestamp64Milli(1739491200000)) GROUP BY severity"`;

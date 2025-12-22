@@ -1,10 +1,13 @@
-import React from 'react';
 import Router from 'next/router';
 import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
-import type { Alert } from '@hyperdx/common-utils/dist/types';
+import type {
+  Alert,
+  PresetDashboard,
+  PresetDashboardFilter,
+} from '@hyperdx/common-utils/dist/types';
 import type { UseQueryOptions } from '@tanstack/react-query';
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
 import type { AlertsPageItem } from './types';
@@ -92,6 +95,23 @@ const api = {
         }),
     });
   },
+  useSilenceAlert() {
+    return useMutation<any, Error, { alertId: string; mutedUntil: string }>({
+      mutationFn: async ({ alertId, mutedUntil }) =>
+        server(`alerts/${alertId}/silenced`, {
+          method: 'POST',
+          json: { mutedUntil },
+        }),
+    });
+  },
+  useUnsilenceAlert() {
+    return useMutation<any, Error, string>({
+      mutationFn: async (alertId: string) =>
+        server(`alerts/${alertId}/silenced`, {
+          method: 'DELETE',
+        }),
+    });
+  },
   useDashboards(options?: UseQueryOptions<any, Error>) {
     return useQuery({
       queryKey: [`dashboards`],
@@ -148,6 +168,52 @@ const api = {
     return useMutation({
       mutationFn: async ({ id }: { id: string }) =>
         hdxServer(`dashboards/${id}`, {
+          method: 'DELETE',
+        }).json(),
+    });
+  },
+  usePresetDashboardFilters(
+    presetDashboard: PresetDashboard,
+    sourceId: string,
+  ) {
+    return useQuery({
+      queryKey: [`dashboards`, `preset`, presetDashboard, `filters`, sourceId],
+      queryFn: () =>
+        hdxServer(`dashboards/preset/${presetDashboard}/filters/`, {
+          method: 'GET',
+          searchParams: { sourceId },
+        }).json() as Promise<PresetDashboardFilter[]>,
+      enabled: !!sourceId,
+    });
+  },
+  useCreatePresetDashboardFilter() {
+    return useMutation({
+      mutationFn: async (filter: PresetDashboardFilter) =>
+        hdxServer(`dashboards/preset/${filter.presetDashboard}/filter`, {
+          method: 'POST',
+          json: { filter },
+        }).json(),
+    });
+  },
+  useUpdatePresetDashboardFilter() {
+    return useMutation({
+      mutationFn: async (filter: PresetDashboardFilter) =>
+        hdxServer(`dashboards/preset/${filter.presetDashboard}/filter`, {
+          method: 'PUT',
+          json: { filter },
+        }).json(),
+    });
+  },
+  useDeletePresetDashboardFilter() {
+    return useMutation({
+      mutationFn: async ({
+        id,
+        presetDashboard,
+      }: {
+        id: string;
+        presetDashboard: PresetDashboard;
+      }) =>
+        hdxServer(`dashboards/preset/${presetDashboard}/filter/${id}`, {
           method: 'DELETE',
         }).json(),
     });

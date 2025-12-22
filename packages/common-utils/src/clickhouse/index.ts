@@ -646,6 +646,52 @@ export abstract class BaseClickhouseClient {
     }
     throw new Error('No result sets');
   }
+
+  /**
+   * Checks whether the given chart config is valid by running an
+   * EXPLAIN query and returning whether the EXPLAIN succeeded
+   **/
+  async testChartConfigValidity({
+    config,
+    metadata,
+    opts,
+  }: {
+    config: ChartConfigWithOptDateRange;
+    metadata: Metadata;
+    opts?: {
+      abort_signal?: AbortSignal;
+      clickhouse_settings?: Record<string, any>;
+    };
+  }): Promise<{ isValid: boolean; rowEstimate?: number; error?: string }> {
+    try {
+      const renderedConfig = await renderChartConfig(config, metadata);
+      const explainedQuery = chSql`EXPLAIN ESTIMATE ${renderedConfig}`;
+
+      const result = await this.query<'JSON'>({
+        query: explainedQuery.sql,
+        query_params: explainedQuery.params,
+        format: 'JSON',
+        abort_signal: opts?.abort_signal,
+        connectionId: config.connection,
+        clickhouse_settings: opts?.clickhouse_settings,
+      });
+
+      const jsonResult = await result.json<{ rows: string | number }>();
+      const rowEstimate = Number(jsonResult.data[0]?.rows);
+      return {
+        isValid: true,
+        rowEstimate: Number.isNaN(rowEstimate) ? undefined : rowEstimate,
+      };
+    } catch (error: ClickHouseQueryError | unknown) {
+      return {
+        isValid: false,
+        error:
+          error instanceof ClickHouseQueryError
+            ? error.message
+            : String('Error while constructing materialized view query'),
+      };
+    }
+  }
 }
 
 export const tableExpr = ({

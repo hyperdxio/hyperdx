@@ -9,6 +9,7 @@ import {
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { formatRelative } from 'date-fns';
 import produce from 'immer';
 import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -45,7 +46,19 @@ import {
 } from '@mantine/core';
 import { useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconFilterEdit, IconPlayerPlay } from '@tabler/icons-react';
+import {
+  IconBell,
+  IconCopy,
+  IconDotsVertical,
+  IconDownload,
+  IconFilterEdit,
+  IconPencil,
+  IconPlayerPlay,
+  IconRefresh,
+  IconTags,
+  IconTrash,
+  IconUpload,
+} from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
@@ -62,6 +75,7 @@ import {
 } from '@/dashboard';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
+import MVOptimizationIndicator from './components/MaterializedViews/MVOptimizationIndicator';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
@@ -207,6 +221,18 @@ const Tile = forwardRef(
       return 'red';
     }, [alert]);
 
+    const alertTooltip = useMemo(() => {
+      if (!alert) {
+        return 'Add alert';
+      }
+      let tooltip = `Has alert and is in ${alert.state} state`;
+      if (alert.silenced?.at) {
+        const silencedAt = new Date(alert.silenced.at);
+        tooltip += `. Ack'd ${formatRelative(silencedAt, new Date())}`;
+      }
+      return tooltip;
+    }, [alert]);
+
     const { data: me } = api.useMe();
 
     return (
@@ -231,63 +257,77 @@ const Tile = forwardRef(
           <Text size="sm" ms="xs">
             {chart.config.name}
           </Text>
-          {hovered ? (
-            <Flex gap="0px">
-              {chart.config.displayType === DisplayType.Line && (
-                <Indicator
-                  size={5}
-                  zIndex={1}
-                  color={alertIndicatorColor}
-                  label={!alert && <span className="fs-8">+</span>}
-                  mr={4}
-                >
-                  <Button
-                    data-testid={`tile-alerts-button-${chart.id}`}
-                    variant="subtle"
-                    color="gray"
-                    size="xxs"
-                    onClick={onEditClick}
-                    title="Alerts"
+          <Group>
+            {hovered ? (
+              <Flex gap="0px" onMouseDown={e => e.stopPropagation()}>
+                {(chart.config.displayType === DisplayType.Line ||
+                  chart.config.displayType === DisplayType.StackedBar) && (
+                  <Indicator
+                    size={alert?.state === AlertState.OK ? 6 : 8}
+                    zIndex={1}
+                    color={alertIndicatorColor}
+                    processing={alert?.state === AlertState.ALERT}
+                    label={!alert && <span className="fs-8">+</span>}
+                    mr={4}
                   >
-                    <i className="bi bi-bell fs-7"></i>
-                  </Button>
-                </Indicator>
-              )}
+                    <Tooltip label={alertTooltip} withArrow>
+                      <Button
+                        data-testid={`tile-alerts-button-${chart.id}`}
+                        variant="subtle"
+                        color="gray"
+                        size="xxs"
+                        onClick={onEditClick}
+                      >
+                        <IconBell size={16} />
+                      </Button>
+                    </Tooltip>
+                  </Indicator>
+                )}
 
-              <Button
-                data-testid={`tile-duplicate-button-${chart.id}`}
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={onDuplicateClick}
-                title="Duplicate"
-              >
-                <i className="bi bi-copy fs-8"></i>
-              </Button>
-              <Button
-                data-testid={`tile-edit-button-${chart.id}`}
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={onEditClick}
-                title="Edit"
-              >
-                <i className="bi bi-pencil"></i>
-              </Button>
-              <Button
-                data-testid={`tile-delete-button-${chart.id}`}
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={onDeleteClick}
-                title="Delete"
-              >
-                <i className="bi bi-trash"></i>
-              </Button>
-            </Flex>
-          ) : (
-            <Box h={22} />
-          )}
+                <Button
+                  data-testid={`tile-duplicate-button-${chart.id}`}
+                  variant="subtle"
+                  color="gray"
+                  size="xxs"
+                  onClick={onDuplicateClick}
+                  title="Duplicate"
+                >
+                  <IconCopy size={14} />
+                </Button>
+                <Button
+                  data-testid={`tile-edit-button-${chart.id}`}
+                  variant="subtle"
+                  color="gray"
+                  size="xxs"
+                  onClick={onEditClick}
+                  title="Edit"
+                >
+                  <IconPencil size={14} />
+                </Button>
+                <Button
+                  data-testid={`tile-delete-button-${chart.id}`}
+                  variant="subtle"
+                  color="gray"
+                  size="xxs"
+                  onClick={onDeleteClick}
+                  title="Delete"
+                >
+                  <IconTrash size={14} />
+                </Button>
+              </Flex>
+            ) : (
+              <Box h={22} />
+            )}
+            {source?.materializedViews?.length && queriedConfig && (
+              <Box onMouseDown={e => e.stopPropagation()}>
+                <MVOptimizationIndicator
+                  config={queriedConfig}
+                  source={source}
+                  variant="icon"
+                />
+              </Box>
+            )}
+          </Group>
         </div>
         <div
           className="fs-7 text-muted flex-grow-1 overflow-hidden"
@@ -490,7 +530,7 @@ function DashboardName({
               size="xs"
               onClick={() => setEditing(true)}
             >
-              <i className="bi bi-pencil"></i>
+              <IconPencil size={14} />
             </Button>
           )}
         </div>
@@ -929,7 +969,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 size="xs"
                 style={{ flexShrink: 0 }}
               >
-                <i className="bi bi-tags-fill me-2"></i>
+                <IconTags size={14} className="me-2" />
                 {dashboard?.tags?.length || 0}{' '}
                 {dashboard?.tags?.length === 1 ? 'Tag' : 'Tags'}
               </Button>
@@ -939,14 +979,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <Menu width={250}>
               <Menu.Target>
                 <Button variant="default" px="xs" size="xs">
-                  <i className="bi bi-three-dots-vertical" />
+                  <IconDotsVertical size={14} />
                 </Button>
               </Menu.Target>
 
               <Menu.Dropdown>
                 {hasTiles && (
                   <Menu.Item
-                    leftSection={<i className="bi bi-download" />}
+                    leftSection={<IconDownload size={16} />}
                     onClick={() => {
                       if (!sources || !dashboard) {
                         notifications.show({
@@ -969,7 +1009,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   </Menu.Item>
                 )}
                 <Menu.Item
-                  leftSection={<i className="bi bi-upload" />}
+                  leftSection={<IconUpload size={16} />}
                   onClick={() => {
                     if (dashboard && !dashboard.tiles.length) {
                       router.push(
@@ -983,7 +1023,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
                 </Menu.Item>
                 <Menu.Item
-                  leftSection={<i className="bi bi-trash-fill" />}
+                  leftSection={<IconTrash size={16} />}
                   color="red"
                   onClick={() =>
                     deleteDashboard.mutate(dashboard?.id ?? '', {
@@ -1082,19 +1122,21 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             title="Refresh dashboard"
             px="xs"
           >
-            <i className="bi bi-arrow-clockwise fs-5"></i>
+            <IconRefresh size={18} />
           </Button>
         </Tooltip>
-        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-          <Button
-            variant="default"
-            px="xs"
-            mr={6}
-            onClick={() => setShowFiltersModal(true)}
-          >
-            <IconFilterEdit strokeWidth={1} />
-          </Button>
-        </Tooltip>
+        {!IS_LOCAL_MODE && (
+          <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+            <Button
+              variant="default"
+              px="xs"
+              mr={6}
+              onClick={() => setShowFiltersModal(true)}
+            >
+              <IconFilterEdit strokeWidth={1} />
+            </Button>
+          </Tooltip>
+        )}
         <Button
           data-testid="search-submit-button"
           variant="outline"

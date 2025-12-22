@@ -256,8 +256,11 @@ function DBTimeChartComponent({
         queryKeyPrefix,
         queriedConfig,
         'chunked',
-        disableQueryChunking,
-        enableParallelQueries && me?.team?.parallelizeWhenPossible,
+        {
+          disableQueryChunking,
+          enableParallelQueries,
+          parallelizeWhenPossible: me?.team?.parallelizeWhenPossible,
+        },
       ],
       enabled: enabled && !isLoadingMe,
       enableQueryChunking: !disableQueryChunking,
@@ -607,7 +610,7 @@ function DBTimeChartComponent({
                   } groups are hidden. Try grouping by a different field.`}
                 >
                   <span className="text-muted-hover text-decoration-none fs-8">
-                    <i className="bi bi-exclamation-triangle"></i> Only top{' '}
+                    <IconAlertTriangle size={14} style={{ display: 'inline' }} /> Only top{' '}
                     {groupKeys.length} groups shown
                   </span>
                 </div>

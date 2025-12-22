@@ -24,6 +24,11 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import {
+  IconCaretDownFilled,
+  IconCaretUpFilled,
+  IconRefresh,
+} from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { TimePicker } from '@/components/TimePicker';
@@ -81,13 +86,12 @@ const Th = React.memo<{
       onClick={() => onSort?.(sort === 'asc' ? 'desc' : 'asc')}
     >
       {children}
-      {!!sort && (
-        <i
-          className={`ps-1 fs-8.5 bi bi-caret-${
-            sort === 'asc' ? 'up-fill' : 'down-fill'
-          }`}
-        />
-      )}
+      {!!sort &&
+        (sort === 'asc' ? (
+          <IconCaretUpFilled size={12} className="ps-1" />
+        ) : (
+          <IconCaretDownFilled size={12} className="ps-1" />
+        ))}
     </Table.Th>
   );
 });
@@ -1213,7 +1217,7 @@ function KubernetesDashboardPage() {
               aria-label="Refresh dashboard"
               px="xs"
             >
-              <i className="bi bi-arrow-clockwise fs-5"></i>
+              <IconRefresh size={18} />
             </Button>
           </Tooltip>
         </Group>
@@ -1350,7 +1354,7 @@ function KubernetesDashboardPage() {
                         legacyBehavior
                       >
                         <Anchor size="xs" color="dimmed">
-                          Search <i className="bi bi-box-arrow-up-right"></i>
+                          Search <IconExternalLink size={12} style={{ display: 'inline' }} />
                         </Anchor>
                       </Link>
                       */}

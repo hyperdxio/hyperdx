@@ -2,7 +2,6 @@ name: Release
 on:
   push:
     branches: [main]
-concurrency: ${{ github.workflow }}-${{ github.ref }}
 permissions:
   contents: write
   packages: write
@@ -47,6 +46,10 @@ jobs:
     name: Release
     needs: check_changesets
     runs-on: ubuntu-24.04
+    concurrency:
+      group:
+        ${{ github.workflow }}-release-${{ matrix.release }}-${{ github.ref }}
+      cancel-in-progress: false
     strategy:
       matrix:
         release:
