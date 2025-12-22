@@ -22,12 +22,14 @@ import {
   IconCheck,
   IconChevronDown,
   IconChevronUp,
+  IconCircleCheckFilled,
   IconCopy,
   IconDatabase,
   IconExternalLink,
   IconEye,
   IconEyeOff,
   IconPlus,
+  IconRefresh,
   IconServer,
 } from '@tabler/icons-react';
 
@@ -60,32 +62,11 @@ interface GettingStartedProps {
 }
 
 const CheckIconStatus = () => (
-  <svg
-    className={styles.statusIcon}
-    viewBox="0 0 16 16"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <circle cx="8" cy="8" r="8" fill="#22c55e" />
-    <path
-      d="M5 8l2 2 4-4"
-      stroke="white"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
+  <IconCircleCheckFilled size={16} className={styles.statusIconSuccess} />
 );
 
 const PendingIcon = () => (
-  <svg
-    className={styles.statusIcon}
-    viewBox="0 0 16 16"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <circle cx="8" cy="8" r="7" stroke="#c0c0c0" strokeWidth="2" fill="none" />
-  </svg>
+  <IconRefresh size={16} className={styles.statusIconPending} />
 );
 
 interface StepProps {
@@ -247,7 +228,8 @@ function SourcesList({
         {!IS_LOCAL_MODE && (
           <Flex justify="flex-end" pt="md">
             <Button
-              variant="default"
+              variant="light"
+              color="gray"
               size="sm"
               leftSection={<IconPlus size={14} />}
               onClick={() => {
@@ -284,6 +266,10 @@ export const GettingStarted: React.FC<GettingStartedProps> = ({
   const [copiedApiKey, setCopiedApiKey] = useState(false);
 
   const maskedApiKey = '••••••••••••••••';
+  const allSystemsReady =
+    systemStatus.storageReady &&
+    systemStatus.telemetryEndpointsReady &&
+    systemStatus.dataReceived;
 
   const handleCopyEndpoint = () => {
     setCopiedEndpoint(true);
@@ -329,7 +315,9 @@ export const GettingStarted: React.FC<GettingStartedProps> = ({
 
               <div className={styles.statusItem}>
                 {systemStatus.storageReady ? (
-                  <CheckIconStatus />
+                  <>
+                    <CheckIconStatus />
+                  </>
                 ) : (
                   <PendingIcon />
                 )}
@@ -434,22 +422,25 @@ export const GettingStarted: React.FC<GettingStartedProps> = ({
 
               {/* Buttons */}
               <div className={styles.buttonGroup}>
-                <a
+                <Button
+                  component="a"
                   href={docsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={styles.secondaryButton}
+                  variant="default"
+                  size="sm"
+                  rightSection={<IconExternalLink size={15.5} />}
                 >
                   View ingest data docs
-                  <IconExternalLink size={15.5} />
-                </a>
-                <button
-                  className={styles.primaryButton}
+                </Button>
+                <Button
+                  variant="light"
                   onClick={onConfigureDataSources}
+                  disabled={!allSystemsReady}
                 >
                   Configure data sources
                   <IconArrowRight size={15.5} />
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -488,12 +479,9 @@ export const GettingStarted: React.FC<GettingStartedProps> = ({
 
               {/* Confirm button */}
               <div className={styles.buttonGroup}>
-                <button
-                  className={styles.primaryButton}
-                  onClick={onConfirmAndExplore}
-                >
+                <Button onClick={onConfirmAndExplore} variant="light">
                   Confirm and explore
-                </button>
+                </Button>
               </div>
             </>
           )}

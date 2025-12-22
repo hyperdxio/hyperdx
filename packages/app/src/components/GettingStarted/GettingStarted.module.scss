@@ -25,6 +25,7 @@
   flex-direction: column;
   align-items: center;
   flex-shrink: 0;
+
   /* Ensure the indicator column stretches to full height */
 }
 
@@ -44,21 +45,21 @@
 }
 
 .stepNumberActive {
-  background-color: #1f1f1c;
-  border: 2px solid #1f1f1c;
-  color: white;
+  background-color: var(--color-text);
+  border: 2px solid var(--color-text);
+  color: var(--color-bg-surface);
 }
 
 .stepNumberCompleted {
-  background-color: white;
-  border: 2px solid #1f1f1c;
-  color: #1f1f1c;
+  background-color: var(--color-bg-surface);
+  border: 2px solid var(--color-text);
+  color: var(--color-text);
 }
 
 .stepNumberInactive {
-  background-color: white;
-  border: 2px solid #c0c0c0;
-  color: #1f1f1c;
+  background-color: var(--color-bg-surface);
+  border: 2px solid var(--color-border);
+  color: var(--color-text);
 }
 
 .connector {
@@ -71,11 +72,11 @@
 .connectorLine {
   flex: 1 1 auto;
   width: 100%;
-  background-color: #c0c0c0;
+  background-color: var(--color-border);
 }
 
 .connectorLineCompleted {
-  background-color: #1f1f1c;
+  background-color: var(--color-text);
 }
 
 .stepBody {
@@ -91,16 +92,16 @@
   font-size: 16px;
   font-weight: 600;
   line-height: 1.5;
-  color: #1e1d1f;
+  color: var(--color-text);
 }
 
 .stepTitleInactive {
   font-weight: 700;
-  color: #c0c0c0;
+  color: var(--color-text-muted);
 }
 
 .stepTitleCompleted {
-  color: #696e79;
+  color: var(--color-text-muted);
 }
 
 .stepDescription {
@@ -134,9 +135,30 @@
   flex-shrink: 0;
 }
 
+.statusIconSuccess {
+  color: var(--color-text-success);
+  flex-shrink: 0;
+}
+
+.statusIconPending {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Credentials Table */
 .credentialsTable {
-  border: 1px solid #e6e7e9;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   overflow: hidden;
   width: 100%;
@@ -147,8 +169,8 @@
 .credentialsRow {
   display: flex;
   min-height: 48px;
-  border-bottom: 1px solid #e6e7e9;
-  background-color: white;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg-surface);
 
   &:last-child {
     border-bottom: none;
@@ -163,7 +185,7 @@
   align-items: center;
   font-size: 14px;
   line-height: 1.5;
-  color: #696e79;
+  color: var(--color-text-muted);
 }
 
 .credentialsValue {
@@ -173,7 +195,7 @@
   align-items: center;
   font-size: 14px;
   line-height: 1.5;
-  color: #161517;
+  color: var(--color-text);
   word-break: break-all;
   min-width: 0;
 }
@@ -195,10 +217,10 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #161517;
+  color: var(--color-text);
 
   &:hover {
-    background-color: rgb(0 0 0 / 5%);
+    background-color: var(--color-bg-hover);
   }
 }
 
@@ -211,131 +233,4 @@
   margin-top: 6px;
 }
 
-.secondaryButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 32px;
-  min-width: 64px;
-  padding: 5.5px 17px;
-  border: 1px solid #e6e7e9;
-  border-radius: 4px;
-  background: transparent;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #161517;
-  cursor: pointer;
-  text-decoration: none;
-
-  &:hover {
-    background-color: rgb(0 0 0 / 5%);
-  }
-}
-
-.primaryButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 32px;
-  min-width: 64px;
-  padding: 5.5px 17px;
-  border: 1px solid #302e32;
-  border-radius: 4px;
-  background: #302e32;
-  font-size: 14px;
-  line-height: 1.5;
-  color: white;
-  cursor: pointer;
-  text-decoration: none;
-
-  &:hover {
-    background: #1f1d21;
-  }
-}
-
-/* Dark mode adjustments */
-[data-mantine-color-scheme='dark'] {
-  .stepNumberActive {
-    background-color: var(--color-text);
-    border-color: var(--color-text);
-    color: var(--color-bg-surface);
-  }
-
-  .stepNumberCompleted {
-    background-color: var(--color-bg-surface);
-    border-color: var(--color-text);
-    color: var(--color-text);
-  }
-
-  .stepNumberInactive {
-    background-color: var(--color-bg-surface);
-    border-color: var(--color-border);
-    color: var(--color-text-muted);
-  }
-
-  .connectorLine {
-    background-color: var(--color-border);
-  }
-
-  .connectorLineCompleted {
-    background-color: var(--color-text);
-  }
-
-  .stepTitle {
-    color: var(--color-text);
-  }
-
-  .stepTitleInactive {
-    color: var(--color-text-muted);
-  }
-
-  .stepTitleCompleted {
-    color: var(--color-text-muted);
-  }
-
-  .credentialsTable {
-    border-color: var(--color-border);
-  }
-
-  .credentialsRow {
-    background-color: var(--color-bg-surface);
-    border-color: var(--color-border);
-  }
-
-  .credentialsLabel {
-    color: var(--color-text-muted);
-  }
-
-  .credentialsValue {
-    color: var(--color-text);
-  }
-
-  .iconButton {
-    color: var(--color-text);
-
-    &:hover {
-      background-color: var(--color-bg-hover);
-    }
-  }
-
-  .secondaryButton {
-    border-color: var(--color-border);
-    color: var(--color-text);
-
-    &:hover {
-      background-color: var(--color-bg-hover);
-    }
-  }
-
-  .primaryButton {
-    background-color: var(--color-text);
-    border-color: var(--color-text);
-    color: var(--color-bg-body);
-
-    &:hover {
-      background-color: var(--color-text-muted);
-    }
-  }
-}
+/* Dark mode adjustments are now automatic via semantic color variables */
