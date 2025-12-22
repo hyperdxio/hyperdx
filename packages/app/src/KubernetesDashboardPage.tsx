@@ -421,7 +421,11 @@ export const InfraPodsStatusTable = ({
                 {virtualItems.map(virtualRow => {
                   const pod = podsList[virtualRow.index];
                   return (
-                    <Link key={pod.id} href={getLink(pod.name)} legacyBehavior>
+                    <Link
+                      key={pod.id}
+                      href={getLink(pod.name)}
+                      style={{ display: 'contents' }}
+                    >
                       <Table.Tr
                         className="cursor-pointer"
                         ref={rowVirtualizer.measureElement}
@@ -657,9 +661,9 @@ const NodesTable = ({
                   const node = nodesList[virtualRow.index];
                   return (
                     <Link
-                      key={node.name}
                       href={getLink(node.name)}
-                      legacyBehavior
+                      key={node.name}
+                      style={{ display: 'contents' }}
                     >
                       <Table.Tr
                         className="cursor-pointer"
@@ -857,7 +861,7 @@ const NamespacesTable = ({
                     <Link
                       key={namespace.name}
                       href={getLink(namespace.name)}
-                      legacyBehavior
+                      style={{ display: 'contents' }}
                     >
                       <Table.Tr
                         className="cursor-pointer"
