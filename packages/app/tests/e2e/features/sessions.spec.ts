@@ -31,6 +31,9 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
 
       // Then navigate to sessions page
       await sessionsPage.goto();
+
+      // Select the default data source
+      await sessionsPage.selectDataSource();
     });
 
     await test.step('Find and interact with session cards', async () => {

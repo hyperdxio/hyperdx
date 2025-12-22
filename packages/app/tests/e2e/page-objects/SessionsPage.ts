@@ -4,6 +4,8 @@
  */
 import { Locator, Page } from '@playwright/test';
 
+import { DEFAULT_SESSIONS_SOURCE_NAME } from '../utils/constants';
+
 export class SessionsPage {
   readonly page: Page;
   private readonly searchForm: Locator;
@@ -20,6 +22,14 @@ export class SessionsPage {
    */
   async goto() {
     await this.page.goto('/sessions');
+  }
+
+  async selectDataSource(
+    dataSourceName: string = DEFAULT_SESSIONS_SOURCE_NAME,
+  ) {
+    await this.dataSourceInput.click();
+    const dataSourceOption = this.page.locator(`text=${dataSourceName}`);
+    await dataSourceOption.click();
   }
 
   /**

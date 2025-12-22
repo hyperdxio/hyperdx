@@ -1,5 +1,6 @@
 import { SearchPage } from '../page-objects/SearchPage';
 import { expect, test } from '../utils/base-test';
+import { DEFAULT_TRACES_SOURCE_NAME } from '../utils/constants';
 
 test.describe('Advanced Search Workflow - Traces', { tag: '@traces' }, () => {
   let searchPage: SearchPage;
@@ -17,7 +18,9 @@ test.describe('Advanced Search Workflow - Traces', { tag: '@traces' }, () => {
       await expect(sourceSelector).toBeVisible();
       await sourceSelector.click();
 
-      const demoTracesOption = searchPage.page.locator('text=Demo Traces');
+      const demoTracesOption = searchPage.page.locator(
+        `text=${DEFAULT_TRACES_SOURCE_NAME}`,
+      );
       await expect(demoTracesOption).toBeVisible();
       await demoTracesOption.click();
     });
