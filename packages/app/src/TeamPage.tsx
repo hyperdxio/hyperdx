@@ -10,6 +10,7 @@ import {
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Box,
   Button,
   Card,
@@ -69,7 +70,7 @@ function ConnectionsSection() {
     <Box id="connections">
       <Text size="md">Connections</Text>
       <Divider my="md" />
-      <Card variant="muted">
+      <Card>
         <Stack mb="md">
           {connections?.map(c => (
             <Box key={c.id}>
@@ -164,7 +165,7 @@ function SourcesSection() {
     <Box id="sources">
       <Text size="md">Sources</Text>
       <Divider my="md" />
-      <Card variant="muted">
+      <Card>
         <Stack>
           {sources?.map(s => (
             <>
@@ -196,22 +197,22 @@ function SourcesSection() {
                   </Text>
                 </div>
                 {editedSourceId !== s.id && (
-                  <Button
-                    variant="subtle"
+                  <ActionIcon
+                    variant="secondary"
                     onClick={() => setEditedSourceId(s.id)}
                     size="sm"
                   >
                     <IconChevronDown size={14} />
-                  </Button>
+                  </ActionIcon>
                 )}
                 {editedSourceId === s.id && (
-                  <Button
-                    variant="subtle"
+                  <ActionIcon
+                    variant="secondary"
                     onClick={() => setEditedSourceId(null)}
                     size="sm"
                   >
                     <IconChevronUp size={14} />
-                  </Button>
+                  </ActionIcon>
                 )}
               </Flex>
               {editedSourceId === s.id && (
@@ -318,7 +319,7 @@ function IntegrationsSection() {
     <Box id="integrations">
       <Text size="md">Integrations</Text>
       <Divider my="md" />
-      <Card variant="muted">
+      <Card>
         <Text mb="xs">Webhooks</Text>
 
         <Stack>
@@ -439,7 +440,7 @@ function TeamNameSection() {
     <Box id="team_name">
       <Text size="md">Team Name</Text>
       <Divider my="md" />
-      <Card variant="muted">
+      <Card>
         {isEditingTeamName ? (
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <Group gap="xs">
@@ -702,7 +703,7 @@ function TeamQueryConfigSection() {
     <Box id="team_name">
       <Text size="md">ClickHouse Client Settings</Text>
       <Divider my="md" />
-      <Card variant="muted">
+      <Card>
         <Stack>
           <ClickhouseSettingForm
             settingKey="searchRowLimit"
@@ -820,7 +821,7 @@ function ApiKeysSection() {
     <Box id="api_keys">
       <Text size="md">API Keys</Text>
       <Divider my="md" />
-      <Card variant="muted" mb="md">
+      <Card mb="md">
         <Text mb="md">Ingestion API Key</Text>
         <Group gap="xs">
           {team?.apiKey && (
@@ -876,7 +877,7 @@ function ApiKeysSection() {
         </Modal>
       </Card>
       {!isLoadingMe && me != null && (
-        <Card variant="muted">
+        <Card>
           <Card.Section p="md">
             <Text mb="md">Personal API Access Key</Text>
             <APIKeyCopyButton value={me.accessKey} dataTestId="api-key" />
