@@ -27,7 +27,7 @@ export class SessionsPage {
   async selectDataSource(
     dataSourceName: string = DEFAULT_SESSIONS_SOURCE_NAME,
   ) {
-    await this.dataSource.click();
+    await this.dataSourceInput.click();
     const dataSourceOption = this.page.locator(`text=${dataSourceName}`);
     await dataSourceOption.click();
   }
