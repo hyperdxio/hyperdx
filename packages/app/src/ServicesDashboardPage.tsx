@@ -7,7 +7,7 @@ import {
   useQueryState,
   useQueryStates,
 } from 'nuqs';
-import { UseControllerProps, useForm } from 'react-hook-form';
+import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
@@ -1421,7 +1421,7 @@ function ServicesDashboardPage() {
     };
   }, [appliedConfigParams, sources]);
 
-  const { control, watch, setValue, handleSubmit } = useForm({
+  const { control, setValue, handleSubmit } = useForm({
     defaultValues: {
       where: '',
       whereLanguage: 'sql' as 'sql' | 'lucene',
@@ -1430,10 +1430,10 @@ function ServicesDashboardPage() {
     },
   });
 
-  const service = watch('service');
-  const sourceId = watch('source');
+  const service = useWatch({ control, name: 'service' });
+  const sourceId = useWatch({ control, name: 'source' });
   const { data: source } = useSource({
-    id: watch('source'),
+    id: sourceId,
   });
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
@@ -1501,32 +1501,17 @@ function ServicesDashboardPage() {
 
   // Auto-submit when source changes
   useEffect(() => {
-    const { unsubscribe } = watch((data, { name, type }) => {
-      if (
-        name === 'source' &&
-        type === 'change' &&
-        data.source &&
-        data.source !== appliedConfig.source
-      ) {
-        onSubmit();
-      }
-    });
-    return () => unsubscribe();
-  }, [appliedConfig.source, onSubmit, watch]);
+    if (sourceId && sourceId !== appliedConfig.source) {
+      onSubmit();
+    }
+  }, [sourceId, appliedConfig.source, onSubmit]);
 
   // Auto-submit when service changes
   useEffect(() => {
-    const { unsubscribe } = watch((data, { name, type }) => {
-      if (
-        name === 'service' &&
-        type === 'change' &&
-        data.service !== appliedConfig.service
-      ) {
-        onSubmit();
-      }
-    });
-    return () => unsubscribe();
-  }, [appliedConfig.service, onSubmit, watch]);
+    if (service !== appliedConfig.service) {
+      onSubmit();
+    }
+  }, [service, appliedConfig.service, onSubmit]);
 
   return (
     <Box p="sm">

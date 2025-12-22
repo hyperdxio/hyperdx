@@ -5,7 +5,7 @@ import Link from 'next/link';
 import cx from 'classnames';
 import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -1032,12 +1032,19 @@ function KubernetesDashboardPage() {
   const logSource = sources?.find(s => s.id === logSourceId);
   const metricSource = sources?.find(s => s.id === metricSourceId);
 
-  const { control, watch } = useForm({
+  const { control } = useForm({
     values: {
       logSourceId,
       metricSourceId,
     },
   });
+
+  const watchedLogSourceId = useWatch({ control, name: 'logSourceId' });
+  const watchedMetricSourceId = useWatch({ control, name: 'metricSourceId' });
+
+  // Track previous values to detect user-initiated changes
+  const prevLogSourceIdRef = useRef(logSourceId);
+  const prevMetricSourceIdRef = useRef(metricSourceId);
 
   useEffect(() => {
     if (logSourceId && logSourceId !== _logSourceId) {
@@ -1051,54 +1058,72 @@ function KubernetesDashboardPage() {
     }
   }, [metricSourceId, _metricSourceId, setMetricSourceId]);
 
-  watch((data, { name, type }) => {
-    if (name === 'logSourceId' && type === 'change') {
-      setLogSourceId(data.logSourceId ?? null);
+  // Handle log source changes
+  useEffect(() => {
+    if (watchedLogSourceId === prevLogSourceIdRef.current) {
+      return;
+    }
+    prevLogSourceIdRef.current = watchedLogSourceId;
 
-      // Default to the log source's correlated metric source
-      if (data.logSourceId && sources) {
-        const logSource = findSource(sources, { id: data.logSourceId });
-        const correlatedMetricSource = logSource?.metricSourceId
-          ? findSource(sources, { id: logSource.metricSourceId })
-          : undefined;
-        if (
-          correlatedMetricSource &&
-          correlatedMetricSource.id !== data.metricSourceId
-        ) {
-          setMetricSourceId(correlatedMetricSource.id);
-          notifications.show({
-            id: `${correlatedMetricSource.id}-auto-correlated-metric-source`,
-            title: 'Updated Metrics Source',
-            message: `Using correlated metrics source: ${correlatedMetricSource.name}`,
-          });
-        } else if (logSource && !correlatedMetricSource) {
-          notifications.show({
-            id: `${logSource.id}-not-correlated`,
-            title: 'Warning',
-            message: `The selected logs source is not correlated with a metrics source. Source correlations can be configured in Team Settings.`,
-            color: 'yellow',
-          });
-        }
-      }
-    } else if (name === 'metricSourceId' && type === 'change') {
-      setMetricSourceId(data.metricSourceId ?? null);
-      const metricSource = data.metricSourceId
-        ? findSource(sources, { id: data.metricSourceId })
+    setLogSourceId(watchedLogSourceId ?? null);
+
+    // Default to the log source's correlated metric source
+    if (watchedLogSourceId && sources) {
+      const logSource = findSource(sources, { id: watchedLogSourceId });
+      const correlatedMetricSource = logSource?.metricSourceId
+        ? findSource(sources, { id: logSource.metricSourceId })
         : undefined;
       if (
-        metricSource &&
-        data.logSourceId &&
-        metricSource.logSourceId !== data.logSourceId
+        correlatedMetricSource &&
+        correlatedMetricSource.id !== watchedMetricSourceId
       ) {
+        setMetricSourceId(correlatedMetricSource.id);
         notifications.show({
-          id: `${metricSource.id}-not-correlated`,
+          id: `${correlatedMetricSource.id}-auto-correlated-metric-source`,
+          title: 'Updated Metrics Source',
+          message: `Using correlated metrics source: ${correlatedMetricSource.name}`,
+        });
+      } else if (logSource && !correlatedMetricSource) {
+        notifications.show({
+          id: `${logSource.id}-not-correlated`,
           title: 'Warning',
-          message: `The selected metrics source is not correlated with the selected logs source. Source correlations can be configured in Team Settings.`,
+          message: `The selected logs source is not correlated with a metrics source. Source correlations can be configured in Team Settings.`,
           color: 'yellow',
         });
       }
     }
-  });
+  }, [
+    watchedLogSourceId,
+    watchedMetricSourceId,
+    sources,
+    setLogSourceId,
+    setMetricSourceId,
+  ]);
+
+  // Handle metric source changes
+  useEffect(() => {
+    if (watchedMetricSourceId === prevMetricSourceIdRef.current) {
+      return;
+    }
+    prevMetricSourceIdRef.current = watchedMetricSourceId;
+
+    setMetricSourceId(watchedMetricSourceId ?? null);
+    const metricSource = watchedMetricSourceId
+      ? findSource(sources, { id: watchedMetricSourceId })
+      : undefined;
+    if (
+      metricSource &&
+      watchedLogSourceId &&
+      metricSource.logSourceId !== watchedLogSourceId
+    ) {
+      notifications.show({
+        id: `${metricSource.id}-not-correlated`,
+        title: 'Warning',
+        message: `The selected metrics source is not correlated with the selected logs source. Source correlations can be configured in Team Settings.`,
+        color: 'yellow',
+      });
+    }
+  }, [watchedMetricSourceId, watchedLogSourceId, sources, setMetricSourceId]);
 
   const [activeTab, setActiveTab] = useQueryState('tab', {
     defaultValue: 'pods',
