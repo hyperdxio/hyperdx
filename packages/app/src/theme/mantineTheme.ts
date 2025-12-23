@@ -6,6 +6,7 @@ import {
   rem,
   Select,
   Text,
+  Tooltip,
 } from '@mantine/core';
 
 export const makeTheme = ({
@@ -78,6 +79,13 @@ export const makeTheme = ({
     fontFamily,
   },
   components: {
+    Tooltip: Tooltip.extend({
+      styles: () => ({
+        tooltip: {
+          fontFamily: 'var(--mantine-font-family)',
+        },
+      }),
+    }),
     Modal: {
       styles: {
         header: {

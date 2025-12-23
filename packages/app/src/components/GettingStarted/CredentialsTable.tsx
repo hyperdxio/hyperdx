@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { Tooltip } from '@mantine/core';
+import { ActionIcon, Tooltip } from '@mantine/core';
 import { IconCheck, IconCopy, IconEye, IconEyeOff } from '@tabler/icons-react';
 
 import styles from './GettingStarted.module.scss';
@@ -65,13 +65,13 @@ export const CredentialsTable: React.FC<CredentialsTableProps> = ({
               label={copiedEndpoint ? 'Copied!' : 'Copy endpoint'}
               withArrow
             >
-              <button className={styles.iconButton} aria-label="Copy endpoint">
+              <ActionIcon aria-label="Copy endpoint">
                 {copiedEndpoint ? (
                   <IconCheck size={16} />
                 ) : (
                   <IconCopy size={16} />
                 )}
-              </button>
+              </ActionIcon>
             </Tooltip>
           </CopyToClipboard>
         </div>
@@ -86,26 +86,25 @@ export const CredentialsTable: React.FC<CredentialsTableProps> = ({
             label={showApiKey ? 'Hide API key' : 'Show API key'}
             withArrow
           >
-            <button
-              className={styles.iconButton}
+            <ActionIcon
               onClick={() => setShowApiKey(!showApiKey)}
               aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
             >
               {showApiKey ? <IconEyeOff size={16} /> : <IconEye size={16} />}
-            </button>
+            </ActionIcon>
           </Tooltip>
           <CopyToClipboard text={apiKey} onCopy={handleCopyApiKey}>
             <Tooltip
               label={copiedApiKey ? 'Copied!' : 'Copy API key'}
               withArrow
             >
-              <button className={styles.iconButton} aria-label="Copy API key">
+              <ActionIcon aria-label="Copy API key">
                 {copiedApiKey ? (
                   <IconCheck size={16} />
                 ) : (
                   <IconCopy size={16} />
                 )}
-              </button>
+              </ActionIcon>
             </Tooltip>
           </CopyToClipboard>
         </div>

@@ -72,12 +72,16 @@ const preview: Preview = {
     (Story, context) => {
       const selectedFont = context.globals.font || 'inter';
       const font = fontMap[selectedFont as keyof typeof fontMap] || inter;
+      const fontFamily = font.style.fontFamily;
 
       return (
         <div className={font.className}>
           <QueryClientProvider client={queryClient}>
             <QueryParamProvider adapter={NextAdapter}>
-              <ThemeWrapper colorScheme={context.globals.theme || 'light'}>
+              <ThemeWrapper
+                colorScheme={context.globals.theme || 'light'}
+                fontFamily={fontFamily}
+              >
                 <Story />
               </ThemeWrapper>
             </QueryParamProvider>
