@@ -82,7 +82,7 @@ ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 
 # all-in-one base ############################################################################################
 FROM hairyhenderson/gomplate:v4.3.3-alpine AS gomplate
-FROM clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}-alpine AS all-in-one-base 
+FROM clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}-alpine AS all-in-one-base
 
 ARG CODE_VERSION
 ARG USER_UID=10001
@@ -110,9 +110,8 @@ COPY --from=hyperdx ./clickhouseConfig.xml /etc/clickhouse-server/config.xml
 COPY --from=otel-collector ./config.yaml /etc/otelcol-contrib/config.yaml
 COPY --from=otel-collector ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
-# Copy otel-collector entrypoint and log rotation scripts
+# Copy otel-collector entrypoint script
 COPY --from=otel-collector --chmod=755 ./entrypoint.sh /otel-entrypoint.sh
-COPY --from=otel-collector --chmod=755 ./log-rotator.sh /log-rotator.sh
 
 # Copy gomplate binary from the gomplate image
 COPY --from=gomplate /bin/gomplate /usr/local/bin/gomplate
