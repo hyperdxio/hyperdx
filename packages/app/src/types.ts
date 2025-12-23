@@ -251,19 +251,6 @@ export enum KubePhase {
   Unknown = 5,
 }
 
-export type Webhook = {
-  _id: string;
-  name: string;
-  service: WebhookService;
-  url: string;
-  description?: string;
-  headers?: Record<string, string>;
-  queryParams?: Record<string, string>;
-  body?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type NextApiConfigResponseData = {
   apiKey: string;
   collectorUrl: string;

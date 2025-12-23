@@ -37,6 +37,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PageHeader } from '@/components/PageHeader';
 
 import { isAlertSilenceExpired } from './utils/alerts';
+import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { withAppNav } from './layout';
 import type { AlertsPageItem } from './types';
@@ -367,13 +368,11 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
   }, [alert]);
 
   const notificationMethod = React.useMemo(() => {
-    if (alert.channel.type === 'webhook') {
-      return (
-        <Group gap={2}>
-          Notify via <IconBrandSlack size={16} /> Webhook
-        </Group>
-      );
-    }
+    return (
+      <Group gap={5}>
+        Notify via {getWebhookChannelIcon(alert.channel.type)} Webhook
+      </Group>
+    );
   }, [alert]);
 
   const linkTitle = React.useMemo(() => {

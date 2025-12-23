@@ -244,6 +244,23 @@ export enum WebhookService {
   IncidentIO = 'incidentio',
 }
 
+// Base webhook interface (matches backend IWebhook but with JSON-serialized types)
+export interface IWebhook {
+  _id: string;
+  createdAt: string;
+  name: string;
+  service: WebhookService;
+  updatedAt: string;
+  url?: string;
+  description?: string;
+  queryParams?: Record<string, string>;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+// Webhook API response type (excludes team field for security)
+export type WebhookApiData = Omit<IWebhook, 'team'>;
+
 // -------------------------
 // ALERTS
 // -------------------------

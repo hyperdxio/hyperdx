@@ -48,6 +48,7 @@ import {
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
+import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { AlertWithCreatedBy, SearchConfig } from './types';
 import { optionsToSelectData } from './utils';
@@ -60,10 +61,6 @@ const SavedSearchAlertFormSchema = z
     channel: zAlertChannel,
   })
   .passthrough();
-
-const CHANNEL_ICONS = {
-  webhook: <IconBrandSlack size={14} />,
-};
 
 const AlertForm = ({
   sourceId,
@@ -422,7 +419,7 @@ export const DBSearchPageAlertModal = ({
             {(savedSearch?.alerts || []).map((alert, index) => (
               <Tabs.Tab key={alert.id} value={`${index}`}>
                 <Group gap="xs">
-                  {CHANNEL_ICONS[alert.channel.type]} Alert {index + 1}
+                  {getWebhookChannelIcon(alert.channel.type)} Alert {index + 1}
                 </Group>
               </Tabs.Tab>
             ))}

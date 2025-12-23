@@ -31,6 +31,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import {
+  IconChartHistogram,
   IconChartLine,
   IconFilter,
   IconFilterEdit,
@@ -67,7 +68,6 @@ import {
   useServiceDashboardExpressions,
 } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
-import { Histogram } from '@/SVGIcons';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import usePresetDashboardFilters from './hooks/usePresetDashboardFilters';
@@ -234,7 +234,7 @@ export function EndpointLatencyChart({
               title="Histogram"
               onClick={() => setLatencyChartType('histogram')}
             >
-              <Histogram width={12} color="currentColor" />
+              <IconChartHistogram size={14} />
             </Button>
           </Button.Group>
         </Box>
