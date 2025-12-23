@@ -4,7 +4,11 @@ import { Controller, SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { ZodIssue } from 'zod';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
-import { AlertState, WebhookService } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertState,
+  WebhookApiData,
+  WebhookService,
+} from '@hyperdx/common-utils/dist/types';
 import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import {
   Alert,
@@ -23,7 +27,6 @@ import ReactCodeMirror, {
 } from '@uiw/react-codemirror';
 
 import api from '@/api';
-import { Webhook } from '@/types';
 import { isValidUrl } from '@/utils';
 
 const DEFAULT_GENERIC_WEBHOOK_BODY = [
@@ -47,7 +50,7 @@ const jsonLinterWithEmptyCheck = () => (editorView: EditorView) => {
 type WebhookForm = {
   name: string;
   url: string;
-  service: string;
+  service: WebhookService;
   description?: string;
   body?: string;
   headers?: string;
@@ -58,7 +61,7 @@ export function WebhookForm({
   onClose,
   onSuccess,
 }: {
-  webhook?: Webhook;
+  webhook?: WebhookApiData;
   onClose: VoidFunction;
   onSuccess: (webhookId?: string) => void;
 }) {
@@ -280,14 +283,12 @@ export function WebhookForm({
           label="Service Type"
           required
           value={service}
-          onChange={value => {
-            form.setValue('service', value);
-          }}
+          onChange={value => form.setValue('service', value as WebhookService)}
         >
           <Group mt="xs">
             <Radio value={WebhookService.Slack} label="Slack" />
+            <Radio value={WebhookService.IncidentIO} label="incident.io" />
             <Radio value={WebhookService.Generic} label="Generic" />
-            <Radio value={WebhookService.IncidentIO} label="Incident.io" />
           </Group>
         </Radio.Group>
         <TextInput
@@ -297,6 +298,7 @@ export function WebhookForm({
           error={form.formState.errors.name?.message}
           {...form.register('name', { required: true })}
         />
+
         <TextInput
           label="Webhook URL"
           placeholder={
@@ -318,6 +320,7 @@ export function WebhookForm({
                 : isValidUrl(value) || 'URL must be valid',
           })}
         />
+
         <TextInput
           label="Webhook Description (optional)"
           placeholder="To be used for dev alerts"
