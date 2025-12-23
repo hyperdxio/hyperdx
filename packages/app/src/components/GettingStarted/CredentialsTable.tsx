@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { ActionIcon, Tooltip } from '@mantine/core';
 import { IconCheck, IconCopy, IconEye, IconEyeOff } from '@tabler/icons-react';
@@ -35,7 +35,7 @@ export const CredentialsTable: React.FC<CredentialsTableProps> = ({
     };
   }, []);
 
-  const handleCopyEndpoint = () => {
+  const handleCopyEndpoint = useCallback(() => {
     setCopiedEndpoint(true);
     if (endpointTimeoutRef.current) {
       clearTimeout(endpointTimeoutRef.current);
@@ -44,15 +44,19 @@ export const CredentialsTable: React.FC<CredentialsTableProps> = ({
       () => setCopiedEndpoint(false),
       2000,
     );
-  };
+  }, []);
 
-  const handleCopyApiKey = () => {
+  const handleCopyApiKey = useCallback(() => {
     setCopiedApiKey(true);
     if (apiKeyTimeoutRef.current) {
       clearTimeout(apiKeyTimeoutRef.current);
     }
     apiKeyTimeoutRef.current = setTimeout(() => setCopiedApiKey(false), 2000);
-  };
+  }, []);
+
+  const toggleShowApiKey = useCallback(() => {
+    setShowApiKey(prev => !prev);
+  }, []);
 
   return (
     <div className={styles.credentialsTable}>
@@ -87,7 +91,7 @@ export const CredentialsTable: React.FC<CredentialsTableProps> = ({
             withArrow
           >
             <ActionIcon
-              onClick={() => setShowApiKey(!showApiKey)}
+              onClick={toggleShowApiKey}
               aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
             >
               {showApiKey ? <IconEyeOff size={16} /> : <IconEye size={16} />}
