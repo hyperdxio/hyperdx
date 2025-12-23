@@ -7,6 +7,7 @@ import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import prettierConfig from 'eslint-config-prettier';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import prettierPlugin from 'eslint-plugin-prettier/recommended';
+import playwrightPlugin from 'eslint-plugin-playwright';
 
 export default [
   js.configs.recommended,
@@ -116,11 +117,14 @@ export default [
   },
   {
     files: ['tests/e2e/**/*.{ts,js}'],
+    ...playwrightPlugin.configs['flat/recommended'],
     rules: {
+      ...playwrightPlugin.configs['flat/recommended'].rules,
       'no-console': 'off',
       'no-empty': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@next/next/no-html-link-for-pages': 'off',
+      'playwright/no-networkidle': 'off', // temporary until we have a better way to deal with react re-renders
     },
   },
   ...storybook.configs['flat/recommended'],

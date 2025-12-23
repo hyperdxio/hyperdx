@@ -111,14 +111,25 @@ export const Table = ({
             const link = getRowSearchLink(row.original);
 
             if (!link) {
-              return formattedValue;
+              return (
+                <div
+                  className={cx('align-top overflow-hidden py-1 pe-3', {
+                    'text-break': wrapLinesEnabled,
+                    'text-truncate': !wrapLinesEnabled,
+                  })}
+                >
+                  {formattedValue}
+                </div>
+              );
             }
 
             return (
               <Link
                 href={link}
-                passHref
-                className={'align-top overflow-hidden py-1 pe-3'}
+                className={cx('align-top overflow-hidden py-1 pe-3', {
+                  'text-break': wrapLinesEnabled,
+                  'text-truncate': !wrapLinesEnabled,
+                })}
                 style={{
                   display: 'block',
                   color: 'inherit',
@@ -256,7 +267,6 @@ export const Table = ({
           )}
           {items.map(virtualRow => {
             const row = rows[virtualRow.index] as TableRow<any>;
-            const link = getRowSearchLink?.(row.original);
             return (
               <tr
                 key={virtualRow.key}
@@ -267,34 +277,9 @@ export const Table = ({
                 {row.getVisibleCells().map(cell => {
                   return (
                     <td key={cell.id} title={`${cell.getValue()}`}>
-                      {!link ? (
-                        <div
-                          className={cx('align-top overflow-hidden py-1 pe-3', {
-                            'text-break': wrapLinesEnabled,
-                            'text-truncate': !wrapLinesEnabled,
-                          })}
-                        >
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext(),
-                          )}
-                        </div>
-                      ) : (
-                        <Link
-                          href={link}
-                          passHref
-                          className="align-top overflow-hidden py-1 pe-3"
-                          style={{
-                            display: 'block',
-                            color: 'inherit',
-                            textDecoration: 'none',
-                          }}
-                        >
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext(),
-                          )}
-                        </Link>
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
                       )}
                     </td>
                   );

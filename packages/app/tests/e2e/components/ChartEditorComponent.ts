@@ -1,0 +1,141 @@
+/**
+ * ChartEditorComponent - Reusable component for chart/tile editor
+ * Used for creating and configuring dashboard tiles and chart explorer
+ */
+import { Locator, Page } from '@playwright/test';
+
+export class ChartEditorComponent {
+  readonly page: Page;
+  private readonly chartNameInput: Locator;
+  private readonly sourceSelector: Locator;
+  private readonly metricSelector: Locator;
+  private readonly runQueryButton: Locator;
+  private readonly saveButton: Locator;
+
+  constructor(page: Page) {
+    this.page = page;
+    this.chartNameInput = page.getByTestId('chart-name-input');
+    this.sourceSelector = page.getByTestId('source-selector');
+    this.metricSelector = page.getByTestId('metric-name-selector');
+    this.runQueryButton = page.getByTestId('chart-run-query-button');
+    this.saveButton = page.getByTestId('chart-save-button');
+  }
+
+  /**
+   * Set chart name
+   */
+  async setChartName(name: string) {
+    await this.chartNameInput.fill(name);
+  }
+
+  /**
+   * Select a data source
+   */
+  async selectSource(sourceName: string) {
+    await this.sourceSelector.click();
+    // Use getByRole for more reliable selection
+    const sourceOption = this.page.getByRole('option', { name: sourceName });
+    await sourceOption.click({ timeout: 5000 });
+  }
+
+  /**
+   * Select a metric by name
+   */
+  async selectMetric(metricName: string, metricValue?: string) {
+    // Wait for metric selector to be visible
+    await this.metricSelector.waitFor({ state: 'visible', timeout: 5000 });
+
+    // Click to open dropdown
+    await this.metricSelector.click();
+
+    // Type to filter
+    await this.metricSelector.fill(metricName);
+
+    // If a specific metric value is provided, wait for and click it
+    if (metricValue) {
+      // Use attribute selector for combobox options
+      const targetMetricOption = this.page.locator(
+        `[data-combobox-option="true"][value="${metricValue}"]`,
+      );
+      await targetMetricOption.waitFor({ state: 'visible', timeout: 5000 });
+      await targetMetricOption.click({ timeout: 5000 });
+    } else {
+      // Otherwise just press Enter to select the first match
+      await this.page.keyboard.press('Enter');
+    }
+  }
+
+  /**
+   * Run the query and wait for it to complete
+   */
+  async runQuery() {
+    await this.runQueryButton.click();
+  }
+
+  /**
+   * Save the chart/tile and wait for modal to close
+   */
+  async save() {
+    await this.saveButton.click();
+    // Wait for save button to disappear (modal closes)
+    await this.saveButton.waitFor({ state: 'hidden', timeout: 2000 });
+  }
+
+  /**
+   * Wait for chart editor data to load (sources, metrics, etc.)
+   */
+  async waitForDataToLoad() {
+    await this.runQueryButton.waitFor({ state: 'visible', timeout: 2000 });
+    await this.page.waitForLoadState('networkidle');
+  }
+
+  /**
+   * Complete workflow: create a basic chart with name and save
+   */
+  async createBasicChart(name: string) {
+    // Wait for data sources to load before interacting
+    await this.waitForDataToLoad();
+    await this.setChartName(name);
+    await this.runQuery();
+    await this.save();
+  }
+
+  /**
+   * Complete workflow: create a chart with specific source and metric
+   */
+  async createChartWithMetric(
+    chartName: string,
+    sourceName: string,
+    metricName: string,
+    metricValue?: string,
+  ) {
+    // Wait for data sources to load before interacting
+    await this.waitForDataToLoad();
+    await this.selectSource(sourceName);
+    await this.selectMetric(metricName, metricValue);
+    await this.runQuery();
+    await this.save();
+  }
+
+  // Getters for assertions
+
+  get nameInput() {
+    return this.chartNameInput;
+  }
+
+  get source() {
+    return this.sourceSelector;
+  }
+
+  get metric() {
+    return this.metricSelector;
+  }
+
+  get runButton() {
+    return this.runQueryButton;
+  }
+
+  get saveBtn() {
+    return this.saveButton;
+  }
+}
