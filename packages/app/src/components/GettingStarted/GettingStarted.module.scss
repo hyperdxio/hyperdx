@@ -230,3 +230,55 @@
   flex-wrap: wrap;
   margin-top: 6px;
 }
+
+/* Wrapper for main card + demo banner */
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+/* Demo Banner */
+.demoBannerButton {
+  width: 100%;
+}
+
+.demoBanner {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  gap: 16px;
+  width: 100%;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background-color: var(--color-bg-hover);
+  }
+}
+
+.demoBannerIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 4px 0;
+  color: var(--color-text);
+}
+
+.demoBannerContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.demoBannerTitle {
+  color: var(--color-text);
+}
+
+.demoBannerArrow {
+  flex-shrink: 0;
+  color: var(--color-text);
+}

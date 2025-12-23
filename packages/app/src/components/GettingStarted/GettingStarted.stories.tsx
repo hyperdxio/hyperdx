@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   Connection,
   SourceKind,
@@ -105,6 +104,10 @@ const meta = {
       action: 'onConfirmAndExplore',
       description: 'Callback when "Confirm and explore" button is clicked',
     },
+    onExploreDemoProject: {
+      action: 'onExploreDemoProject',
+      description: 'Callback when "Explore demo project" banner is clicked',
+    },
   },
 } satisfies Meta<typeof GettingStarted>;
 
@@ -152,6 +155,21 @@ export const Step1InitialSetup: Story = {
       telemetryEndpointsReady: false,
       dataReceived: false,
     },
+  },
+};
+
+export const Step1WithDemoBanner: Story = {
+  name: 'Step 1: With Demo Banner',
+  args: {
+    activeStep: 1,
+    endpoint: 'https://xz0bwno7ub.us-east1.gcp.clickhouse-dev.com',
+    apiKey: 'ck_abc123xyz789secretkey',
+    systemStatus: {
+      storageReady: true,
+      telemetryEndpointsReady: true,
+      dataReceived: true,
+    },
+    onExploreDemoProject: () => alert('Navigating to demo project!'),
   },
 };
 
