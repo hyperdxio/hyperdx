@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -46,7 +46,7 @@ export default function SaveToDashboardModal({
   const createDashboard = useCreateDashboard();
   const updateDashboard = useUpdateDashboard();
 
-  const { control, handleSubmit, reset, watch, formState } = useForm<{
+  const { control, handleSubmit, reset, formState } = useForm<{
     dashboardId: string;
     newDashboardName: string;
   }>({
@@ -56,7 +56,7 @@ export default function SaveToDashboardModal({
     },
   });
 
-  const dashboardId = watch('dashboardId');
+  const dashboardId = useWatch({ control, name: 'dashboardId' });
   const isCreatingNew = dashboardId === CREATE_NEW_DASHBOARD_VALUE;
 
   // Reset form when modal is closed

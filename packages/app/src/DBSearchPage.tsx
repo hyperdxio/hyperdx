@@ -843,7 +843,6 @@ function DBSearchPage() {
 
   const {
     control,
-    watch,
     setValue,
     reset,
     handleSubmit,
@@ -1004,31 +1003,31 @@ function DBSearchPage() {
     onFilterChange: handleSetFilters,
   });
 
-  useEffect(() => {
-    const { unsubscribe } = watch((data, { name, type }) => {
-      // If the user changes the source dropdown, reset the select and orderby fields
-      // to match the new source selected
-      if (name === 'source' && type === 'change') {
-        const newInputSourceObj = inputSourceObjs?.find(
-          s => s.id === data.source,
-        );
-        if (newInputSourceObj != null) {
-          // Save the selected source ID to localStorage
-          setLastSelectedSourceId(newInputSourceObj.id);
+  const watchedSource = useWatch({ control, name: 'source' });
+  const prevSourceRef = useRef(watchedSource);
 
-          setValue(
-            'select',
-            newInputSourceObj?.defaultTableSelectExpression ?? '',
-          );
-          // Clear all search filters
-          searchFilters.clearAllFilters();
-        }
+  useEffect(() => {
+    // If the user changes the source dropdown, reset the select and orderby fields
+    // to match the new source selected
+    if (watchedSource !== prevSourceRef.current) {
+      prevSourceRef.current = watchedSource;
+      const newInputSourceObj = inputSourceObjs?.find(
+        s => s.id === watchedSource,
+      );
+      if (newInputSourceObj != null) {
+        // Save the selected source ID to localStorage
+        setLastSelectedSourceId(newInputSourceObj.id);
+
+        setValue(
+          'select',
+          newInputSourceObj?.defaultTableSelectExpression ?? '',
+        );
+        // Clear all search filters
+        searchFilters.clearAllFilters();
       }
-    });
-    return () => unsubscribe();
+    }
   }, [
-    watch,
-    inputSourceObj,
+    watchedSource,
     setValue,
     inputSourceObjs,
     searchFilters,

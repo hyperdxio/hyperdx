@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { HTTPError } from 'ky';
-import { Controller, SubmitHandler, useForm } from 'react-hook-form';
+import { Controller, SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { ZodIssue } from 'zod';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
@@ -270,7 +270,7 @@ export function WebhookForm({
     }
   };
 
-  const service = form.watch('service');
+  const service = useWatch({ control: form.control, name: 'service' });
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>

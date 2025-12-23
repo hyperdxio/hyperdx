@@ -192,4 +192,44 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await expect(dashboardTiles).toHaveCount(tileCountBefore - 1);
     });
   });
+
+  test(
+    'should update charts when granularity is changed',
+    { tag: '@dashboard' },
+    async () => {
+      await test.step('Create dashboard with a time series chart', async () => {
+        await dashboardPage.createNewDashboard();
+
+        // Add a time series tile
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart(
+          'Time Series Test Chart',
+        );
+
+        // Wait for chart to render
+        const chartContainers = dashboardPage.getChartContainers();
+        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
+      });
+
+      await test.step('Change granularity and verify UI updates', async () => {
+        // Find granularity dropdown (typically labeled "Granularity" or shows current value like "Auto")
+        const granularityDropdown = dashboardPage.granularityPicker;
+        await expect(granularityDropdown).toBeVisible();
+
+        // Get current value
+        const currentValue = await granularityDropdown.inputValue();
+
+        // Change to a different granularity (e.g., "1m")
+        await dashboardPage.changeGranularity('1 Minute Granularity');
+
+        // Verify the value changed
+        const newValue = granularityDropdown;
+        await expect(newValue).not.toHaveValue(currentValue);
+
+        // Verify chart is still visible (validates that the change worked)
+        const chartContainers = dashboardPage.getChartContainers();
+        await expect(chartContainers).toHaveCount(1);
+      });
+    },
+  );
 });
