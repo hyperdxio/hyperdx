@@ -130,10 +130,17 @@ const renderKubeEvent = (source: TSource) => (event: KubeEvent) => {
 
   return (
     <Timeline.Item key={event.id}>
-      <Link href={href} passHref legacyBehavior>
-        <Anchor size="xs" fz={11} title={event.timestamp}>
+      <Link href={href}>
+        <Text
+          size="xs"
+          fz={11}
+          title={event.timestamp}
+          c="green"
+          td="underline"
+          fw="bold"
+        >
           <FormatTime value={event.timestamp} />
-        </Anchor>
+        </Text>
       </Link>
       <Group gap="xs" my={4}>
         <Text size="sm" fz={12} c="white" fw="bold">

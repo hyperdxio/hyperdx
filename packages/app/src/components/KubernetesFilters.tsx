@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithDateRange,
@@ -84,25 +84,29 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
   const [namespaceName, setNamespaceName] = useState<string | null>(null);
   const [clusterName, setClusterName] = useState<string | null>(null);
 
-  const { control, watch, setValue } = useForm({
+  const { control, setValue } = useForm({
     defaultValues: {
       searchQuery: searchQuery,
     },
   });
 
-  // Watch for changes in the search query field
-  useEffect(() => {
-    const subscription = watch((value, { name }) => {
-      if (name === 'searchQuery') {
-        setSearchQuery(value.searchQuery ?? '');
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, setSearchQuery]);
+  const watchedSearchQuery = useWatch({ control, name: 'searchQuery' });
+  const prevSearchQueryRef = useRef(searchQuery);
 
-  // Update search form value when search query changes
+  // Sync form changes to parent state
   useEffect(() => {
-    setValue('searchQuery', searchQuery);
+    if (watchedSearchQuery !== prevSearchQueryRef.current) {
+      prevSearchQueryRef.current = watchedSearchQuery ?? '';
+      setSearchQuery(watchedSearchQuery ?? '');
+    }
+  }, [watchedSearchQuery, setSearchQuery]);
+
+  // Update search form value when search query changes from parent
+  useEffect(() => {
+    if (searchQuery !== prevSearchQueryRef.current) {
+      prevSearchQueryRef.current = searchQuery;
+      setValue('searchQuery', searchQuery);
+    }
   }, [searchQuery, setValue]);
 
   // Helper function to extract value from search query

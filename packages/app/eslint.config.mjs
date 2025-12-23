@@ -7,6 +7,9 @@ import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import prettierConfig from 'eslint-config-prettier';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import prettierPlugin from 'eslint-plugin-prettier/recommended';
+import playwrightPlugin from 'eslint-plugin-playwright';
+import reactHookFormPlugin from 'eslint-plugin-react-hook-form';
+import { fixupPluginRules } from '@eslint/compat';
 
 export default [
   js.configs.recommended,
@@ -38,6 +41,7 @@ export default [
       react: reactPlugin,
       'react-hooks': reactHooksPlugin,
       'simple-import-sort': simpleImportSort,
+      'react-hook-form': fixupPluginRules(reactHookFormPlugin), // not compatible with eslint 9 yet
     },
     rules: {
       ...nextPlugin.configs.recommended.rules,
@@ -80,6 +84,7 @@ export default [
       ],
       'react-hooks/exhaustive-deps': 'error',
       'no-console': ['error', { allow: ['warn', 'error'] }],
+      'react-hook-form/no-use-watch': 'error',
     },
     languageOptions: {
       parser: tseslint.parser,
@@ -116,11 +121,14 @@ export default [
   },
   {
     files: ['tests/e2e/**/*.{ts,js}'],
+    ...playwrightPlugin.configs['flat/recommended'],
     rules: {
+      ...playwrightPlugin.configs['flat/recommended'].rules,
       'no-console': 'off',
       'no-empty': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@next/next/no-html-link-for-pages': 'off',
+      'playwright/no-networkidle': 'off', // temporary until we have a better way to deal with react re-renders
     },
   },
   ...storybook.configs['flat/recommended'],

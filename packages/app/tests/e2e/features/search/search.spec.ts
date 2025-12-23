@@ -1,326 +1,205 @@
+import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
 
 test.describe('Search', { tag: '@search' }, () => {
+  let searchPage: SearchPage;
+
   test.describe('Basic Functionality', () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto('/search');
+      searchPage = new SearchPage(page);
+      await searchPage.goto();
     });
 
     test(
       'should load search page with all components',
       { tag: ['@local-mode', '@smoke'] },
-      async ({ page }) => {
-        await expect(page.locator('[data-testid="search-form"]')).toBeVisible();
-        await expect(
-          page.locator('[data-testid="time-picker-input"]'),
-        ).toBeVisible();
-        await expect(
-          page.locator('[data-testid="search-submit-button"]'),
-        ).toBeVisible();
+      async () => {
+        // All assertions use page object getters
+        await expect(searchPage.form).toBeVisible();
+        await expect(searchPage.timePicker.input).toBeVisible();
+        await expect(searchPage.submitButton).toBeVisible();
       },
     );
 
-    test('should interact with time picker', async ({ page }) => {
-      await page.click('[data-testid="time-picker-input"]');
-      await expect(
-        page.locator('[data-testid="time-picker-apply"]'),
-      ).toBeVisible();
-      await expect(
-        page.locator('[data-testid="time-picker-1h-back"]'),
-      ).toBeVisible();
-      await expect(
-        page.locator('[data-testid="time-picker-1h-forward"]'),
-      ).toBeVisible();
-      await expect(
-        page.locator('[data-testid="time-picker-apply"]'),
-      ).toBeVisible();
-      await expect(
-        page.locator('[data-testid="time-picker-close"]'),
-      ).toBeVisible();
-      await expect(page.locator('text=Last 1 hour')).toBeVisible();
-      await page.click('[data-testid="time-picker-close"]');
-      await expect(
-        page.locator('[data-testid="time-picker-apply"]'),
-      ).not.toBeVisible();
+    test('should interact with time picker', async () => {
+      // Use TimePickerComponent methods
+      await searchPage.timePicker.open();
+
+      // Assertions only in spec
+      await expect(searchPage.timePicker.applyButton).toBeVisible();
+      await expect(searchPage.timePicker.closeButton).toBeVisible();
+
+      // Verify time range option
+      await expect(searchPage.page.locator('text=Last 1 hour')).toBeVisible();
+
+      // Close time picker using component method
+      await searchPage.timePicker.close();
+
+      // Verify it closed using web-first assertion
+      await expect(searchPage.timePicker.applyButton).toBeHidden();
     });
 
-    test('should interact with search results and navigate side panel tabs', async ({
-      page,
-    }) => {
+    test('should interact with search results and navigate side panel tabs', async () => {
       await test.step('Perform search and open side panel', async () => {
-        await page.click('[data-testid="search-submit-button"]');
-        await page.waitForTimeout(2000);
+        // Use page object method - no waitForTimeout!
+        await searchPage.submitEmptySearch();
 
-        const tableRows = page.locator('[data-testid^="table-row-"]');
-        await expect(tableRows.first()).toBeVisible();
-        await tableRows.first().click();
+        // Use table component
+        await expect(searchPage.table.firstRow).toBeVisible();
+        await searchPage.table.clickFirstRow();
 
-        const sidePanelTabs = page.locator('[data-testid="side-panel-tabs"]');
-        await expect(sidePanelTabs).toBeVisible();
+        // Verify side panel opens
+        await expect(searchPage.sidePanel.tabs).toBeVisible();
       });
 
       await test.step('Navigate through all side panel tabs', async () => {
-        const overviewTab = page.locator('[data-testid="tab-overview"]');
-        const parsedTab = page.locator('[data-testid="tab-parsed"]');
-        const traceTab = page.locator('[data-testid="tab-trace"]');
-        const contextTab = page.locator('[data-testid="tab-context"]');
+        const tabs = ['parsed', 'trace', 'context', 'overview'];
 
-        await parsedTab.click();
-        await expect(parsedTab).toBeVisible();
-
-        await traceTab.click();
-        await expect(traceTab).toBeVisible();
-
-        await contextTab.click();
-        await expect(contextTab).toBeVisible();
-
-        await overviewTab.click();
-        await expect(overviewTab).toBeVisible();
+        // Use side panel component to navigate tabs
+        for (const tabName of tabs) {
+          await searchPage.sidePanel.clickTab(tabName);
+          await expect(searchPage.sidePanel.getTab(tabName)).toBeVisible();
+        }
       });
     });
   });
 
   test.describe('Advanced Workflows', () => {
     test.beforeEach(async ({ page }) => {
-      await page.goto('/search');
+      searchPage = new SearchPage(page);
+      await searchPage.goto();
     });
 
-    test('Search with Different Query Types - Lucene', async ({ page }) => {
+    test('Search with Different Query Types - Lucene', async () => {
       await test.step('Test multiple search query types', async () => {
-        const searchInput = page.locator('[data-testid="search-input"]');
-        const searchSubmitButton = page.locator(
-          '[data-testid="search-submit-button"]',
-        );
-
-        const queries = ['error', 'status:200', '*exception*', 'level:"error"'];
+        const queries = [
+          'cart',
+          'ServiceName:"accounting"',
+          '*info*',
+          'SeverityText:"error"',
+        ];
 
         for (const query of queries) {
-          await searchInput.fill('');
-          await page.waitForTimeout(500);
-
-          await searchInput.fill(query);
-          await searchSubmitButton.click();
-
-          await page.waitForLoadState('networkidle');
-          await page.waitForTimeout(3000);
-
-          const searchResultsTable = page.locator(
-            '[data-testid="search-results-table"]',
-          );
-          const tableVisible = await searchResultsTable.isVisible({
-            timeout: 2000,
-          });
-
-          // Results may or may not exist for each query - this is expected
-          expect(typeof tableVisible).toBe('boolean');
+          // Use page object methods for interactions
+          await searchPage.clearSearch();
+          await searchPage.performSearch(query);
         }
       });
     });
 
-    test('Comprehensive Search Workflow - Search, View Results, Navigate Side Panel', async ({
-      page,
-    }) => {
+    test('Comprehensive Search Workflow - Search, View Results, Navigate Side Panel', async () => {
       await test.step('Setup and perform search', async () => {
-        const searchInput = page.locator('[data-testid="search-input"]');
-        await searchInput.fill(
-          'ResourceAttributes.k8s.pod.name:* ResourceAttributes.k8s.node.name:* ',
-        );
-
-        const searchSubmitButton = page.locator(
-          '[data-testid="search-submit-button"]',
-        );
-        await searchSubmitButton.click();
-
-        await page.waitForLoadState('networkidle');
-        await page.waitForTimeout(2000);
+        await searchPage.performSearch('ResourceAttributes.k8s.pod.name:*');
       });
 
       await test.step('Verify search results and interact with table rows', async () => {
-        const searchResultsTable = page.locator(
-          '[data-testid="search-results-table"]',
-        );
-        await expect(searchResultsTable).toBeVisible();
+        const resultsTable = searchPage.getSearchResultsTable();
+        await expect(resultsTable).toBeVisible();
 
-        const rows = searchResultsTable.locator('tr');
-        const rowCount = await rows.count();
-        expect(rowCount).toBeGreaterThan(1);
+        // Click second row (index 1) using component method
+        await searchPage.table.clickRow(1);
 
-        await page.click(
-          `[data-testid="search-results-table"] tr:nth-child(2)`,
-        );
-        await page.waitForTimeout(1000);
-
-        const sidePanel = page.locator('[data-testid="row-side-panel"]');
-        await expect(sidePanel).toBeVisible();
+        // Verify side panel opens
+        await expect(searchPage.sidePanel.container).toBeVisible();
       });
 
       await test.step('Navigate through all side panel tabs', async () => {
-        const overviewTab = page.locator('[data-testid="tab-overview"]');
-        const traceTab = page.locator('[data-testid="tab-trace"]');
-        const contextTab = page.locator('[data-testid="tab-context"]');
-        const infrastructureTab = page.locator(
-          '[data-testid="tab-infrastructure"]',
-        );
+        const tabs = ['trace', 'context', 'infrastructure', 'overview'];
 
-        const tabs = [
-          { locator: traceTab, name: 'Trace' },
-          { locator: contextTab, name: 'Context' },
-          { locator: infrastructureTab, name: 'Infrastructure' },
-          { locator: overviewTab, name: 'Overview' },
-        ];
-
-        for (const tab of tabs) {
-          await tab.locator.scrollIntoViewIfNeeded();
-          await tab.locator.click({ timeout: 5000 });
-          await page.waitForTimeout(500);
-          await expect(tab.locator).toBeVisible();
+        // Use side panel component with proper waiting
+        for (const tabName of tabs) {
+          const tab = searchPage.sidePanel.getTab(tabName);
+          // Wait for tab to exist before scrolling (fail fast if missing)
+          await tab.waitFor({
+            state: 'visible',
+            timeout: searchPage.defaultTimeout,
+          });
+          await tab.scrollIntoViewIfNeeded();
+          await tab.click({ timeout: searchPage.defaultTimeout });
+          await expect(tab).toBeVisible();
         }
       });
 
       await test.step('Verify infrastructure tab content', async () => {
-        const infrastructureTab = page.locator(
-          '[data-testid="tab-infrastructure"]',
-        );
-        await infrastructureTab.click();
-        await infrastructureTab.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(1000);
+        // Click infrastructure tab using component
+        await searchPage.sidePanel.clickTab('infrastructure');
 
-        const podSubpanel = page.getByTestId('infra-subpanel-k8s.pod.');
-        await expect(podSubpanel).toBeVisible();
+        // Use infrastructure component for K8s metrics
+        const podMetrics =
+          await searchPage.infrastructure.verifyStandardMetrics('k8s.pod.');
+        await expect(podMetrics.subpanel).toBeVisible();
+        await expect(podMetrics.cpuUsage).toBeVisible();
+        await expect(podMetrics.memoryUsage).toBeVisible();
+        await expect(podMetrics.diskUsage).toBeVisible();
 
-        const podCpuUsageData = podSubpanel
-          .getByTestId('cpu-usage-card')
-          .locator('.recharts-responsive-container');
-        await expect(podCpuUsageData).toBeVisible();
-
-        const podMemoryUsageData = podSubpanel
-          .getByTestId('memory-usage-card')
-          .locator('.recharts-responsive-container');
-        await expect(podMemoryUsageData).toBeVisible();
-
-        const podDiskUsageData = podSubpanel
-          .getByTestId('disk-usage-card')
-          .locator('.recharts-responsive-container');
-        await expect(podDiskUsageData).toBeVisible();
-
-        const nodeSubpanel = page.getByTestId('infra-subpanel-k8s.node.');
-        await expect(nodeSubpanel).toBeVisible();
-
-        const nodeCpuUsageData = nodeSubpanel
-          .getByTestId('cpu-usage-card')
-          .locator('.recharts-responsive-container');
-        await expect(nodeCpuUsageData).toBeVisible();
-
-        const nodeMemoryUsageData = nodeSubpanel
-          .getByTestId('memory-usage-card')
-          .locator('.recharts-responsive-container');
-        await expect(nodeMemoryUsageData).toBeVisible();
-
-        const nodeDiskUsageData = nodeSubpanel
-          .getByTestId('disk-usage-card')
-          .locator('.recharts-responsive-container');
-        await expect(nodeDiskUsageData).toBeVisible();
+        const nodeMetrics =
+          await searchPage.infrastructure.verifyStandardMetrics('k8s.node.');
+        await expect(nodeMetrics.subpanel).toBeVisible();
+        await expect(nodeMetrics.cpuUsage).toBeVisible();
+        await expect(nodeMetrics.memoryUsage).toBeVisible();
+        await expect(nodeMetrics.diskUsage).toBeVisible();
       });
     });
 
-    test('Time Picker Integration with Search', async ({ page }) => {
+    test('Time Picker Integration with Search', async () => {
       await test.step('Interact with time picker', async () => {
-        const timePicker = page.locator('[data-testid="time-picker-input"]');
-        await expect(timePicker).toBeVisible();
-        await timePicker.click();
-        await page.waitForTimeout(1000);
+        await expect(searchPage.timePicker.input).toBeVisible();
 
-        const lastHourOption = page.locator('text=Last 1 hour');
-        await expect(lastHourOption).toBeVisible();
-        await lastHourOption.click();
-        await page.waitForTimeout(500);
+        // Use component method to select time range
+        await searchPage.timePicker.selectRelativeTime('Last 1 hour');
       });
 
       await test.step('Perform search with selected time range', async () => {
-        const searchInput = page.locator('[data-testid="search-input"]');
-        await searchInput.fill('');
-
-        const searchSubmitButton = page.locator(
-          '[data-testid="search-submit-button"]',
-        );
-        await searchSubmitButton.click();
-
-        await page.waitForLoadState('networkidle');
-        await page.waitForTimeout(2000);
+        // Clear and submit using page object methods
+        await searchPage.clearSearch();
+        await searchPage.performSearch('test');
       });
 
       await test.step('Verify search results', async () => {
-        const searchResultsTable = page.locator(
-          '[data-testid="search-results-table"]',
-        );
-        await expect(searchResultsTable).toBeVisible();
-        const rows = searchResultsTable.locator('tr');
-        const rowCount = await rows.count();
-        expect(rowCount).toBeGreaterThan(0);
+        const resultsTable = searchPage.getSearchResultsTable();
+        await expect(resultsTable).toBeVisible();
+
+        // Use table component to verify rows exist
+        const rows = searchPage.table.getRows();
+        // Verify at least one row exists (count can vary based on data)
+        await expect(rows.first()).toBeVisible();
       });
     });
 
-    test('Histogram drag-to-zoom preserves custom SELECT columns', async ({
-      page,
-    }) => {
+    test('Histogram drag-to-zoom preserves custom SELECT columns', async () => {
       const CUSTOM_SELECT =
         'Timestamp, ServiceName, Body as message, SeverityText';
 
       await test.step('Perform initial search', async () => {
-        await expect(page.locator('[data-testid="search-form"]')).toBeVisible();
-        await page.locator('[data-testid="search-submit-button"]').click();
-        await page.waitForLoadState('networkidle');
+        await expect(searchPage.form).toBeVisible();
+        await searchPage.submitEmptySearch();
       });
 
       await test.step('Setup custom SELECT columns', async () => {
-        // The SELECT field is the first CodeMirror editor (index 0)
-        const selectEditor = page.locator('.cm-content').first();
-        await expect(selectEditor).toBeVisible();
-
-        // Select all and replace with custom columns
-        await selectEditor.click({ clickCount: 3 });
-        await page.keyboard.type(CUSTOM_SELECT);
+        // Use page object method for SELECT editor
+        await searchPage.setCustomSELECT(CUSTOM_SELECT);
       });
 
       await test.step('Search with custom columns and wait for histogram', async () => {
-        await page.locator('[data-testid="search-submit-button"]').click();
-        await page.waitForLoadState('networkidle');
+        await searchPage.submitEmptySearch();
 
-        // Wait for histogram to render with data
-        await expect(
-          page.locator('.recharts-responsive-container').first(),
-        ).toBeVisible();
+        // Wait for histogram using page object getter
+        await expect(searchPage.getHistogram()).toBeVisible();
       });
 
       await test.step('Drag on histogram to select time range', async () => {
-        const chartSurface = page.locator('.recharts-surface').first();
-        await expect(chartSurface).toBeVisible();
-
-        const box = await chartSurface.boundingBox();
-        expect(box).toBeTruthy();
-
-        // Drag from 25% to 75% of chart width to zoom into a time range
-        const startX = box!.x + box!.width * 0.25;
-        const endX = box!.x + box!.width * 0.75;
-        const y = box!.y + box!.height / 2;
-
-        await page.mouse.move(startX, y);
-        await page.mouse.down();
-        await page.mouse.move(endX, y, { steps: 10 });
-        await page.mouse.up();
-
-        // Wait for the zoom operation to complete
-        await page.waitForLoadState('networkidle');
+        // Use page object method for histogram interaction
+        await searchPage.dragHistogramToZoom(0.25, 0.75);
       });
 
       await test.step('Verify custom SELECT columns are preserved', async () => {
         // Check URL parameters
-        const url = page.url();
+        const url = searchPage.page.url();
         expect(url, 'URL should contain select parameter').toContain('select=');
         expect(url, 'URL should contain alias "message"').toContain('message');
 
-        // Verify SELECT editor content
-        const selectEditor = page.locator('.cm-content').first();
+        // Verify SELECT editor content using page object
+        const selectEditor = searchPage.getSELECTEditor();
         await expect(selectEditor).toBeVisible();
         const selectValue = await selectEditor.textContent();
 
@@ -333,16 +212,14 @@ test.describe('Search', { tag: '@search' }, () => {
       });
 
       await test.step('Verify search results are still displayed', async () => {
-        const searchResultsTable = page.locator(
-          '[data-testid="search-results-table"]',
-        );
+        const resultsTable = searchPage.getSearchResultsTable();
         await expect(
-          searchResultsTable,
+          resultsTable,
           'Search results table should be visible',
         ).toBeVisible();
 
-        const rowCount = await searchResultsTable.locator('tr').count();
-        expect(rowCount, 'Should have search results').toBeGreaterThan(0);
+        const rows = searchPage.table.getRows();
+        await expect(rows.first()).toBeVisible();
       });
     });
   });

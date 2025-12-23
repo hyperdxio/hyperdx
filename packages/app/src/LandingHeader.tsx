@@ -80,25 +80,15 @@ export default function LandingHeader({
               {!isLoggedIn &&
                 activeKey !== '/register' &&
                 installation?.isTeamExisting === false && (
-                  <Link href="/register" passHref legacyBehavior>
-                    <Button
-                      component="a"
-                      variant="outline"
-                      color="green"
-                      size="sm"
-                    >
+                  <Link href="/register">
+                    <Button variant="outline" color="green" size="sm">
                       Setup Account
                     </Button>
                   </Link>
                 )}
               {isLoggedIn && (
-                <Link href="/search" passHref legacyBehavior>
-                  <Button
-                    component="a"
-                    variant="outline"
-                    color="green"
-                    size="sm"
-                  >
+                <Link href="/search">
+                  <Button variant="outline" color="green" size="sm">
                     Go to Search
                   </Button>
                 </Link>
@@ -135,27 +125,15 @@ export default function LandingHeader({
               {!isLoggedIn &&
                 activeKey !== '/register' &&
                 installation?.isTeamExisting === false && (
-                  <Link href="/register" passHref legacyBehavior>
-                    <Button
-                      component="a"
-                      variant="outline"
-                      color="green"
-                      size="sm"
-                      fullWidth
-                    >
+                  <Link href="/register">
+                    <Button variant="outline" color="green" size="sm" fullWidth>
                       Setup Account
                     </Button>
                   </Link>
                 )}
               {isLoggedIn && (
-                <Link href="/search" passHref legacyBehavior>
-                  <Button
-                    component="a"
-                    variant="outline"
-                    color="green"
-                    size="sm"
-                    fullWidth
-                  >
+                <Link href="/search">
+                  <Button variant="outline" color="green" size="sm" fullWidth>
                     Go to Search
                   </Button>
                 </Link>

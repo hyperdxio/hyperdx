@@ -1,11 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Control,
   Controller,
   useFieldArray,
   useForm,
   UseFormSetValue,
-  UseFormWatch,
   useWatch,
 } from 'react-hook-form';
 import { z } from 'zod';
@@ -178,20 +177,23 @@ function FormRow({
 
 function HighlightedAttributeExpressionsFormRow({
   control,
-  watch,
   name,
   label,
   helpText,
-}: TableModelProps & {
+}: Omit<TableModelProps, 'setValue'> & {
   name:
     | 'highlightedTraceAttributeExpressions'
     | 'highlightedRowAttributeExpressions';
   label: string;
   helpText?: string;
 }) {
-  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
-  const tableName = watch(`from.tableName`);
-  const connectionId = watch(`connection`);
+  const databaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: DEFAULT_DATABASE,
+  });
+  const tableName = useWatch({ control, name: 'from.tableName' });
+  const connectionId = useWatch({ control, name: 'connection' });
 
   const {
     fields: highlightedAttributes,
@@ -286,11 +288,7 @@ function HighlightedAttributeExpressionsFormRow({
 }
 
 /** Component for configuring one or more materialized views */
-function MaterializedViewsFormSection({
-  control,
-  watch,
-  setValue,
-}: TableModelProps) {
+function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
   const databaseName =
     useWatch({ control, name: `from.databaseName` }) || DEFAULT_DATABASE;
 
@@ -320,7 +318,6 @@ function MaterializedViewsFormSection({
           {materializedViews.map((field, index) => (
             <MaterializedViewFormSection
               key={field.id}
-              watch={watch}
               control={control}
               mvIndex={index}
               setValue={setValue}
@@ -354,7 +351,6 @@ function MaterializedViewsFormSection({
 
 /** Component for configuring a single materialized view */
 function MaterializedViewFormSection({
-  watch,
   control,
   mvIndex,
   onRemove,
@@ -471,7 +467,6 @@ function MaterializedViewFormSection({
       <AggregatedColumnsFormSection
         control={control}
         mvIndex={mvIndex}
-        watch={watch}
         setValue={setValue}
       />
       <Divider />
@@ -482,7 +477,6 @@ function MaterializedViewFormSection({
 /** Component for configuring the Aggregated Columns list for a single materialized view */
 function AggregatedColumnsFormSection({
   control,
-  watch,
   setValue,
   mvIndex,
 }: TableModelProps & { mvIndex: number }) {
@@ -500,58 +494,78 @@ function AggregatedColumnsFormSection({
     appendAggregate({ sourceColumn: '', aggFn: 'avg', mvColumn: '' });
   }, [appendAggregate]);
 
+  const kind = useWatch({ control, name: 'kind' });
+  const connection = useWatch({ control, name: 'connection' });
+  const mvTableName = useWatch({
+    control,
+    name: `materializedViews.${mvIndex}.tableName`,
+  });
+  const mvDatabaseName = useWatch({
+    control,
+    name: `materializedViews.${mvIndex}.databaseName`,
+  });
+  const fromDatabaseName = useWatch({ control, name: 'from.databaseName' });
+  const fromTableName = useWatch({ control, name: 'from.tableName' });
+  const prevMvTableNameRef = useRef(mvTableName);
+
   useEffect(() => {
-    const { unsubscribe } = watch(async (value, { name, type }) => {
+    (async () => {
       try {
-        if (
-          (value.kind === SourceKind.Log || value.kind === SourceKind.Trace) &&
-          value.connection &&
-          value.materializedViews?.[mvIndex] &&
-          value.materializedViews[mvIndex].databaseName &&
-          value.materializedViews[mvIndex].tableName &&
-          value.from?.databaseName &&
-          value.from?.tableName &&
-          name === `materializedViews.${mvIndex}.tableName` &&
-          type === 'change'
-        ) {
-          const mvDatabaseName = value.materializedViews[mvIndex].databaseName;
-          const mvTableName = value.materializedViews[mvIndex].tableName;
+        if (mvTableName !== prevMvTableNameRef.current) {
+          prevMvTableNameRef.current = mvTableName;
 
-          const config = await inferMaterializedViewConfig(
-            {
-              databaseName: mvDatabaseName,
-              tableName: mvTableName,
-              connectionId: value.connection,
-            },
-            {
-              databaseName: value.from.databaseName,
-              tableName: value.from.tableName,
-              connectionId: value.connection,
-            },
-          );
+          if (
+            (kind === SourceKind.Log || kind === SourceKind.Trace) &&
+            connection &&
+            mvDatabaseName &&
+            mvTableName &&
+            fromDatabaseName &&
+            fromTableName
+          ) {
+            const config = await inferMaterializedViewConfig(
+              {
+                databaseName: mvDatabaseName,
+                tableName: mvTableName,
+                connectionId: connection,
+              },
+              {
+                databaseName: fromDatabaseName,
+                tableName: fromTableName,
+                connectionId: connection,
+              },
+            );
 
-          if (config) {
-            setValue(`materializedViews.${mvIndex}`, config);
-            replaceAggregates(config.aggregatedColumns ?? []);
-            notifications.show({
-              color: 'green',
-              message:
-                'Partially inferred materialized view configuration from view schema.',
-            });
-          } else {
-            notifications.show({
-              color: 'yellow',
-              message: 'Unable to infer materialized view configuration.',
-            });
+            if (config) {
+              setValue(`materializedViews.${mvIndex}`, config);
+              replaceAggregates(config.aggregatedColumns ?? []);
+              notifications.show({
+                color: 'green',
+                message:
+                  'Partially inferred materialized view configuration from view schema.',
+              });
+            } else {
+              notifications.show({
+                color: 'yellow',
+                message: 'Unable to infer materialized view configuration.',
+              });
+            }
           }
         }
       } catch (e) {
         console.error(e);
       }
-    });
-
-    return () => unsubscribe();
-  }, [watch, mvIndex, replaceAggregates, setValue]);
+    })();
+  }, [
+    mvTableName,
+    kind,
+    connection,
+    mvDatabaseName,
+    fromDatabaseName,
+    fromTableName,
+    mvIndex,
+    replaceAggregates,
+    setValue,
+  ]);
 
   return (
     <Box>
@@ -571,7 +585,6 @@ function AggregatedColumnsFormSection({
         {aggregates.map((field, colIndex) => (
           <AggregatedColumnRow
             key={field.id}
-            watch={watch}
             setValue={setValue}
             control={control}
             mvIndex={mvIndex}
@@ -676,10 +689,14 @@ function AggregatedColumnRow({
 // custom always points towards the url param
 
 export function LogTableModelForm(props: TableModelProps) {
-  const { control, watch } = props;
-  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
-  const tableName = watch(`from.tableName`);
-  const connectionId = watch(`connection`);
+  const { control } = props;
+  const databaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: DEFAULT_DATABASE,
+  });
+  const tableName = useWatch({ control, name: 'from.tableName' });
+  const connectionId = useWatch({ control, name: 'connection' });
 
   const [showOptionalFields, setShowOptionalFields] = useState(false);
 
@@ -926,10 +943,14 @@ export function LogTableModelForm(props: TableModelProps) {
 }
 
 export function TraceTableModelForm(props: TableModelProps) {
-  const { control, watch } = props;
-  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
-  const tableName = watch(`from.tableName`);
-  const connectionId = watch(`connection`);
+  const { control } = props;
+  const databaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: DEFAULT_DATABASE,
+  });
+  const tableName = useWatch({ control, name: 'from.tableName' });
+  const connectionId = useWatch({ control, name: 'connection' });
 
   return (
     <Stack gap="sm">
@@ -1206,19 +1227,21 @@ export function TraceTableModelForm(props: TableModelProps) {
   );
 }
 
-export function SessionTableModelForm({
-  control,
-  watch,
-  setValue,
-}: TableModelProps) {
-  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
-  const connectionId = watch(`connection`);
+export function SessionTableModelForm({ control, setValue }: TableModelProps) {
+  const databaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: DEFAULT_DATABASE,
+  });
+  const connectionId = useWatch({ control, name: 'connection' });
+  const tableName = useWatch({ control, name: 'from.tableName' });
+  const prevTableNameRef = useRef(tableName);
 
   useEffect(() => {
-    const { unsubscribe } = watch(async (value, { name, type }) => {
+    (async () => {
       try {
-        const tableName = value.from?.tableName;
-        if (tableName && name === 'from.tableName' && type === 'change') {
+        if (tableName && tableName !== prevTableNameRef.current) {
+          prevTableNameRef.current = tableName;
           const isValid = await isValidSessionsTable({
             databaseName,
             tableName,
@@ -1239,10 +1262,8 @@ export function SessionTableModelForm({
           message: e.message,
         });
       }
-    });
-
-    return () => unsubscribe();
-  }, [setValue, watch, databaseName, connectionId]);
+    })();
+  }, [tableName, databaseName, connectionId]);
 
   return (
     <>
@@ -1260,48 +1281,55 @@ export function SessionTableModelForm({
 
 interface TableModelProps {
   control: Control<TSourceUnion>;
-  watch: UseFormWatch<TSourceUnion>;
   setValue: UseFormSetValue<TSourceUnion>;
 }
 
-export function MetricTableModelForm({
-  control,
-  watch,
-  setValue,
-}: TableModelProps) {
-  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
-  const connectionId = watch(`connection`);
+export function MetricTableModelForm({ control, setValue }: TableModelProps) {
+  const databaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: DEFAULT_DATABASE,
+  });
+  const connectionId = useWatch({ control, name: 'connection' });
+  const metricTables = useWatch({ control, name: 'metricTables' });
+  const prevMetricTablesRef = useRef(metricTables);
 
   useEffect(() => {
     for (const [_key, _value] of Object.entries(OTEL_CLICKHOUSE_EXPRESSIONS)) {
       setValue(_key as any, _value);
     }
-    const { unsubscribe } = watch(async (value, { name, type }) => {
+  }, [setValue]);
+
+  useEffect(() => {
+    (async () => {
       try {
-        if (name && type === 'change') {
-          const [prefix, suffix] = name.split('.');
-          if (prefix === 'metricTables') {
-            const tableName =
-              value.kind === SourceKind.Metric
-                ? value?.metricTables?.[
-                    suffix as keyof typeof value.metricTables
-                  ]
-                : '';
-            const metricType = suffix as MetricsDataType;
-            const isValid = await isValidMetricTable({
-              databaseName,
-              tableName,
-              connectionId,
-              metricType,
-            });
-            if (!isValid) {
-              notifications.show({
-                color: 'red',
-                message: `${tableName} is not a valid OTEL ${metricType} schema.`,
+        if (metricTables && prevMetricTablesRef.current) {
+          // Check which metric table changed
+          for (const metricType of Object.values(MetricsDataType)) {
+            const newValue =
+              metricTables[metricType as keyof typeof metricTables];
+            const prevValue =
+              prevMetricTablesRef.current[
+                metricType as keyof typeof prevMetricTablesRef.current
+              ];
+
+            if (newValue !== prevValue) {
+              const isValid = await isValidMetricTable({
+                databaseName,
+                tableName: newValue as string,
+                connectionId,
+                metricType: metricType as MetricsDataType,
               });
+              if (!isValid) {
+                notifications.show({
+                  color: 'red',
+                  message: `${newValue} is not a valid OTEL ${metricType} schema.`,
+                });
+              }
             }
           }
         }
+        prevMetricTablesRef.current = metricTables;
       } catch (e) {
         console.error(e);
         notifications.show({
@@ -1309,10 +1337,8 @@ export function MetricTableModelForm({
           message: e.message,
         });
       }
-    });
-
-    return () => unsubscribe();
-  }, [setValue, watch, databaseName, connectionId]);
+    })();
+  }, [metricTables, databaseName, connectionId]);
 
   return (
     <>
@@ -1349,48 +1375,22 @@ export function MetricTableModelForm({
 
 function TableModelForm({
   control,
-  watch,
   setValue,
   kind,
 }: {
   control: Control<TSourceUnion>;
-  watch: UseFormWatch<TSourceUnion>;
   setValue: UseFormSetValue<TSourceUnion>;
   kind: SourceKind;
 }) {
   switch (kind) {
     case SourceKind.Log:
-      return (
-        <LogTableModelForm
-          control={control}
-          watch={watch}
-          setValue={setValue}
-        />
-      );
+      return <LogTableModelForm control={control} setValue={setValue} />;
     case SourceKind.Trace:
-      return (
-        <TraceTableModelForm
-          control={control}
-          watch={watch}
-          setValue={setValue}
-        />
-      );
+      return <TraceTableModelForm control={control} setValue={setValue} />;
     case SourceKind.Session:
-      return (
-        <SessionTableModelForm
-          control={control}
-          watch={watch}
-          setValue={setValue}
-        />
-      );
+      return <SessionTableModelForm control={control} setValue={setValue} />;
     case SourceKind.Metric:
-      return (
-        <MetricTableModelForm
-          control={control}
-          watch={watch}
-          setValue={setValue}
-        />
-      );
+      return <MetricTableModelForm control={control} setValue={setValue} />;
   }
 }
 
@@ -1413,7 +1413,6 @@ export function TableSourceForm({
   const { data: connections } = useConnections();
 
   const {
-    watch,
     control,
     setValue,
     formState,
@@ -1439,45 +1438,55 @@ export function TableSourceForm({
     },
   });
 
+  const watchedConnection = useWatch({ control, name: 'connection' });
+  const watchedDatabaseName = useWatch({ control, name: 'from.databaseName' });
+  const watchedTableName = useWatch({ control, name: 'from.tableName' });
+  const watchedKind = useWatch({ control, name: 'kind' });
+  const prevTableNameRef = useRef(watchedTableName);
+
   useEffect(() => {
-    const { unsubscribe } = watch(async (_value, { name, type }) => {
+    (async () => {
       try {
-        // TODO: HDX-1768 get rid of this type assertion
-        const value = _value as TSourceUnion;
-        if (
-          value.connection != null &&
-          value.from?.databaseName != null &&
-          (value.kind === SourceKind.Metric || value.from.tableName != null) &&
-          name === 'from.tableName' &&
-          type === 'change'
-        ) {
-          const config = await inferTableSourceConfig({
-            databaseName: value.from.databaseName,
-            tableName:
-              value.kind !== SourceKind.Metric ? value.from.tableName : '',
-            connectionId: value.connection,
-          });
-          if (Object.keys(config).length > 0) {
-            notifications.show({
-              color: 'green',
-              message:
-                'Automatically inferred source configuration from table schema.',
+        if (watchedTableName !== prevTableNameRef.current) {
+          prevTableNameRef.current = watchedTableName;
+
+          if (
+            watchedConnection != null &&
+            watchedDatabaseName != null &&
+            (watchedKind === SourceKind.Metric || watchedTableName != null)
+          ) {
+            const config = await inferTableSourceConfig({
+              databaseName: watchedDatabaseName,
+              tableName:
+                watchedKind !== SourceKind.Metric ? watchedTableName : '',
+              connectionId: watchedConnection,
+            });
+            if (Object.keys(config).length > 0) {
+              notifications.show({
+                color: 'green',
+                message:
+                  'Automatically inferred source configuration from table schema.',
+              });
+            }
+            Object.entries(config).forEach(([key, value]) => {
+              resetField(key as any, {
+                keepDirty: true,
+                defaultValue: value,
+              });
             });
           }
-          Object.entries(config).forEach(([key, value]) => {
-            resetField(key as any, {
-              keepDirty: true,
-              defaultValue: value,
-            });
-          });
         }
       } catch (e) {
         console.error(e);
       }
-    });
-
-    return () => unsubscribe();
-  }, [watch, resetField]);
+    })();
+  }, [
+    watchedTableName,
+    watchedConnection,
+    watchedDatabaseName,
+    watchedKind,
+    resetField,
+  ]);
 
   // Sets the default connection field to the first connection after the
   // connections have been loaded
@@ -1485,7 +1494,7 @@ export function TableSourceForm({
     resetField('connection', { defaultValue: connections?.[0]?.id });
   }, [connections, resetField]);
 
-  const kind: SourceKind = watch('kind');
+  const kind: SourceKind = useWatch({ control, name: 'kind' });
 
   const createSource = useCreateSource();
   const updateSource = useUpdateSource();
@@ -1493,59 +1502,119 @@ export function TableSourceForm({
 
   // Bidirectional source linking
   const { data: sources } = useSources();
-  const currentSourceId = watch('id');
+  const currentSourceId = useWatch({ control, name: 'id' });
+
+  // Watch all potential correlation fields
+  const logSourceId = useWatch({ control, name: 'logSourceId' });
+  const traceSourceId = useWatch({ control, name: 'traceSourceId' });
+  const metricSourceId = useWatch({ control, name: 'metricSourceId' });
+  const sessionTraceSourceId = useWatch({ control, name: 'traceSourceId' }); // For sessions
+
+  const prevLogSourceIdRef = useRef(logSourceId);
+  const prevTraceSourceIdRef = useRef(traceSourceId);
+  const prevMetricSourceIdRef = useRef(metricSourceId);
+  const prevSessionTraceSourceIdRef = useRef(sessionTraceSourceId);
 
   useEffect(() => {
-    const { unsubscribe } = watch(async (_value, { name, type }) => {
-      const value = _value as TSourceUnion;
-      if (!currentSourceId || !sources || type !== 'change') return;
+    (async () => {
+      if (!currentSourceId || !sources || !kind) return;
 
       const correlationFields = CORRELATION_FIELD_MAP[kind];
-      if (!correlationFields || !name || !(name in correlationFields)) return;
+      if (!correlationFields) return;
 
-      const fieldName = name as keyof TSourceUnion;
-      const newTargetSourceId = value[fieldName] as string | undefined;
-      const targetConfigs = correlationFields[fieldName];
+      // Check each field for changes
+      const changedFields: Array<{
+        name: keyof TSourceUnion;
+        value: string | undefined;
+      }> = [];
 
-      for (const { targetKind, targetField } of targetConfigs) {
-        // Find the previously linked source if any
-        const previouslyLinkedSource = sources.find(
-          s => s.kind === targetKind && s[targetField] === currentSourceId,
-        );
+      if (logSourceId !== prevLogSourceIdRef.current) {
+        prevLogSourceIdRef.current = logSourceId;
+        changedFields.push({
+          name: 'logSourceId' as keyof TSourceUnion,
+          value: logSourceId ?? undefined,
+        });
+      }
+      if (traceSourceId !== prevTraceSourceIdRef.current) {
+        prevTraceSourceIdRef.current = traceSourceId;
+        changedFields.push({
+          name: 'traceSourceId' as keyof TSourceUnion,
+          value: traceSourceId ?? undefined,
+        });
+      }
+      if (metricSourceId !== prevMetricSourceIdRef.current) {
+        prevMetricSourceIdRef.current = metricSourceId;
+        changedFields.push({
+          name: 'metricSourceId' as keyof TSourceUnion,
+          value: metricSourceId ?? undefined,
+        });
+      }
+      if (
+        sessionTraceSourceId !== prevSessionTraceSourceIdRef.current &&
+        kind === SourceKind.Session
+      ) {
+        prevSessionTraceSourceIdRef.current = sessionTraceSourceId;
+        changedFields.push({
+          name: 'traceSourceId' as keyof TSourceUnion,
+          value: sessionTraceSourceId ?? undefined,
+        });
+      }
 
-        // If there was a previously linked source and it's different from the new one, unlink it
-        if (
-          previouslyLinkedSource &&
-          previouslyLinkedSource.id !== newTargetSourceId
-        ) {
-          await updateSource.mutateAsync({
-            source: {
-              ...previouslyLinkedSource,
-              [targetField]: undefined,
-            } as TSource,
-          });
-        }
+      for (const {
+        name: fieldName,
+        value: newTargetSourceId,
+      } of changedFields) {
+        if (!(fieldName in correlationFields)) continue;
 
-        // If a new source is selected, link it back
-        if (newTargetSourceId) {
-          const targetSource = sources.find(s => s.id === newTargetSourceId);
-          if (targetSource && targetSource.kind === targetKind) {
-            // Only update if the target field is empty to avoid overwriting existing correlations
-            if (!targetSource[targetField]) {
-              await updateSource.mutateAsync({
-                source: {
-                  ...targetSource,
-                  [targetField]: currentSourceId,
-                } as TSource,
-              });
+        const targetConfigs = correlationFields[fieldName];
+
+        for (const { targetKind, targetField } of targetConfigs) {
+          // Find the previously linked source if any
+          const previouslyLinkedSource = sources.find(
+            s => s.kind === targetKind && s[targetField] === currentSourceId,
+          );
+
+          // If there was a previously linked source and it's different from the new one, unlink it
+          if (
+            previouslyLinkedSource &&
+            previouslyLinkedSource.id !== newTargetSourceId
+          ) {
+            await updateSource.mutateAsync({
+              source: {
+                ...previouslyLinkedSource,
+                [targetField]: undefined,
+              } as TSource,
+            });
+          }
+
+          // If a new source is selected, link it back
+          if (newTargetSourceId) {
+            const targetSource = sources.find(s => s.id === newTargetSourceId);
+            if (targetSource && targetSource.kind === targetKind) {
+              // Only update if the target field is empty to avoid overwriting existing correlations
+              if (!targetSource[targetField]) {
+                await updateSource.mutateAsync({
+                  source: {
+                    ...targetSource,
+                    [targetField]: currentSourceId,
+                  } as TSource,
+                });
+              }
             }
           }
         }
       }
-    });
-
-    return () => unsubscribe();
-  }, [watch, kind, currentSourceId, sources, updateSource]);
+    })();
+  }, [
+    logSourceId,
+    traceSourceId,
+    metricSourceId,
+    sessionTraceSourceId,
+    kind,
+    currentSourceId,
+    sources,
+    updateSource,
+  ]);
 
   const sourceFormSchema = sourceSchemaWithout({ id: true });
   const handleError = useCallback(
@@ -1680,8 +1749,12 @@ export function TableSourceForm({
     sourceFormSchema,
   ]);
 
-  const databaseName = watch(`from.databaseName`, DEFAULT_DATABASE);
-  const connectionId = watch(`connection`);
+  const databaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: DEFAULT_DATABASE,
+  });
+  const connectionId = useWatch({ control, name: 'connection' });
 
   return (
     <div
@@ -1748,43 +1821,7 @@ export function TableSourceForm({
           </FormRow>
         )}
       </Stack>
-      <TableModelForm
-        control={control}
-        watch={watch}
-        setValue={setValue}
-        kind={kind}
-      />
-      <Flex justify="flex-end" mt="md" gap="sm">
-        {onCancel && (
-          <Button variant="secondary" onClick={onCancel} size="xs">
-            Cancel
-          </Button>
-        )}
-        {isNew ? (
-          <Button
-            variant="primary"
-            onClick={_onCreate}
-            size="xs"
-            loading={createSource.isPending}
-          >
-            Save New Source
-          </Button>
-        ) : (
-          <>
-            <ConfirmDeleteMenu
-              onDelete={() => deleteSource.mutate({ id: sourceId ?? '' })}
-            />
-            <Button
-              variant="light"
-              onClick={_onSave}
-              size="xs"
-              loading={createSource.isPending}
-            >
-              Save Source
-            </Button>
-          </>
-        )}
-      </Flex>
+      <TableModelForm control={control} setValue={setValue} kind={kind} />
     </div>
   );
 }

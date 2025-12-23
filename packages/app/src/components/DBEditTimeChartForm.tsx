@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { omit } from 'lodash';
 import {
   Control,
@@ -459,7 +459,7 @@ export default function EditTimeChartForm({
     [chartConfig],
   );
 
-  const { control, watch, setValue, handleSubmit, register } =
+  const { control, setValue, handleSubmit, register } =
     useForm<SavedChartConfigWithSeries>({
       defaultValues: configWithSeries,
       values: configWithSeries,
@@ -478,13 +478,21 @@ export default function EditTimeChartForm({
 
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
 
-  const select = watch('select');
-  const sourceId = watch('source');
-  const whereLanguage = watch('whereLanguage');
-  const alert = watch('alert');
-  const seriesReturnType = watch('seriesReturnType');
-  const compareToPreviousPeriod = watch('compareToPreviousPeriod');
-  const groupBy = watch('groupBy');
+  const select = useWatch({ control, name: 'select' });
+  const sourceId = useWatch({ control, name: 'source' });
+  const whereLanguage = useWatch({ control, name: 'whereLanguage' });
+  const alert = useWatch({ control, name: 'alert' });
+  const seriesReturnType = useWatch({ control, name: 'seriesReturnType' });
+  const compareToPreviousPeriod = useWatch({
+    control,
+    name: 'compareToPreviousPeriod',
+  });
+  const groupBy = useWatch({ control, name: 'groupBy' });
+  const displayType =
+    useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
+  const markdown = useWatch({ control, name: 'markdown' });
+  const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
+  const granularity = useWatch({ control, name: 'granularity' });
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -493,8 +501,6 @@ export default function EditTimeChartForm({
   // const tableSource = tableSourceWatch();
   // const databaseName = tableSourceWatch('from.databaseName');
   // const tableName = tableSourceWatch('from.tableName');
-
-  const displayType = watch('displayType') ?? DisplayType.Line;
   const activeTab = useMemo(() => {
     switch (displayType) {
       case DisplayType.Search:
@@ -636,17 +642,27 @@ export default function EditTimeChartForm({
     [onSave, displayType],
   );
 
-  watch((_, { name, type }) => {
+  // Track previous values for detecting changes
+  const prevGranularityRef = useRef(granularity);
+  const prevDisplayTypeRef = useRef(displayType);
+
+  useEffect(() => {
     // Emulate the granularity picker auto-searching similar to dashboards
-    if (name === 'granularity' && type === 'change') {
+    if (granularity !== prevGranularityRef.current) {
+      prevGranularityRef.current = granularity;
       onSubmit();
     }
-    if (name === 'displayType' && type === 'change') {
-      if (_.displayType === DisplayType.Search && typeof select !== 'string') {
+  }, [granularity, onSubmit]);
+
+  useEffect(() => {
+    if (displayType !== prevDisplayTypeRef.current) {
+      prevDisplayTypeRef.current = displayType;
+
+      if (displayType === DisplayType.Search && typeof select !== 'string') {
         setValue('select', '');
         setValue('series', []);
       }
-      if (_.displayType !== DisplayType.Search && typeof select === 'string') {
+      if (displayType !== DisplayType.Search && typeof select === 'string') {
         const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
           {
             aggFn: 'count',
@@ -661,7 +677,7 @@ export default function EditTimeChartForm({
       }
       onSubmit();
     }
-  });
+  }, [displayType, select, setValue, onSubmit]);
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
@@ -821,7 +837,7 @@ export default function EditTimeChartForm({
           <Box p="md" mb="md">
             <HDXMarkdownChart
               config={{
-                markdown: watch('markdown') || 'Preview',
+                markdown: markdown || 'Preview',
               }}
             />
           </Box>
@@ -1059,7 +1075,7 @@ export default function EditTimeChartForm({
               </Text>
               <AlertChannelForm
                 control={control}
-                type={watch('alert.channel.type')}
+                type={alertChannelType}
                 namePrefix="alert."
               />
             </Paper>
