@@ -1108,22 +1108,39 @@ function KubernetesDashboardPage() {
     prevMetricSourceIdRef.current = watchedMetricSourceId;
 
     setMetricSourceId(watchedMetricSourceId ?? null);
-    const metricSource = watchedMetricSourceId
-      ? findSource(sources, { id: watchedMetricSourceId })
-      : undefined;
-    if (
-      metricSource &&
-      watchedLogSourceId &&
-      metricSource.logSourceId !== watchedLogSourceId
-    ) {
-      notifications.show({
-        id: `${metricSource.id}-not-correlated`,
-        title: 'Warning',
-        message: `The selected metrics source is not correlated with the selected logs source. Source correlations can be configured in Team Settings.`,
-        color: 'yellow',
-      });
+
+    // Default to the metric source's correlated log source
+    if (watchedMetricSourceId && sources) {
+      const metricSource = findSource(sources, { id: watchedMetricSourceId });
+      const correlatedLogSource = metricSource?.logSourceId
+        ? findSource(sources, { id: metricSource.logSourceId })
+        : undefined;
+      if (
+        correlatedLogSource &&
+        correlatedLogSource.id !== watchedLogSourceId
+      ) {
+        setLogSourceId(correlatedLogSource.id);
+        notifications.show({
+          id: `${correlatedLogSource.id}-auto-correlated-log-source`,
+          title: 'Updated Logs Source',
+          message: `Using correlated logs source: ${correlatedLogSource.name}`,
+        });
+      } else if (metricSource && !correlatedLogSource) {
+        notifications.show({
+          id: `${metricSource.id}-not-correlated`,
+          title: 'Warning',
+          message: `The selected metrics source is not correlated with a logs source. Source correlations can be configured in Team Settings.`,
+          color: 'yellow',
+        });
+      }
     }
-  }, [watchedMetricSourceId, watchedLogSourceId, sources, setMetricSourceId]);
+  }, [
+    watchedMetricSourceId,
+    watchedLogSourceId,
+    sources,
+    setMetricSourceId,
+    setLogSourceId,
+  ]);
 
   const [activeTab, setActiveTab] = useQueryState('tab', {
     defaultValue: 'pods',
