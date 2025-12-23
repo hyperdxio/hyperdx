@@ -1756,13 +1756,13 @@ export function TableSourceForm({
       />
       <Flex justify="flex-end" mt="md" gap="sm">
         {onCancel && (
-          <Button variant="light" onClick={onCancel} size="xs" color="gray">
+          <Button variant="secondary" onClick={onCancel} size="xs">
             Cancel
           </Button>
         )}
         {isNew ? (
           <Button
-            variant="light"
+            variant="primary"
             onClick={_onCreate}
             size="xs"
             loading={createSource.isPending}

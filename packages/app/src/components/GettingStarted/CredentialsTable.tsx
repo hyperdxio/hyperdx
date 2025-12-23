@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { Tooltip } from '@mantine/core';
 import { IconCheck, IconCopy, IconEye, IconEyeOff } from '@tabler/icons-react';
@@ -18,16 +18,40 @@ export const CredentialsTable: React.FC<CredentialsTableProps> = ({
   const [copiedEndpoint, setCopiedEndpoint] = useState(false);
   const [copiedApiKey, setCopiedApiKey] = useState(false);
 
+  const endpointTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const apiKeyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const maskedApiKey = '••••••••••••••••';
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (endpointTimeoutRef.current) {
+        clearTimeout(endpointTimeoutRef.current);
+      }
+      if (apiKeyTimeoutRef.current) {
+        clearTimeout(apiKeyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleCopyEndpoint = () => {
     setCopiedEndpoint(true);
-    setTimeout(() => setCopiedEndpoint(false), 2000);
+    if (endpointTimeoutRef.current) {
+      clearTimeout(endpointTimeoutRef.current);
+    }
+    endpointTimeoutRef.current = setTimeout(
+      () => setCopiedEndpoint(false),
+      2000,
+    );
   };
 
   const handleCopyApiKey = () => {
     setCopiedApiKey(true);
-    setTimeout(() => setCopiedApiKey(false), 2000);
+    if (apiKeyTimeoutRef.current) {
+      clearTimeout(apiKeyTimeoutRef.current);
+    }
+    apiKeyTimeoutRef.current = setTimeout(() => setCopiedApiKey(false), 2000);
   };
 
   return (

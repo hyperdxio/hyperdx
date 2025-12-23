@@ -81,7 +81,7 @@ export function SourcesList({
                 </Text>
               </div>
               <Button
-                variant="subtle"
+                variant="secondary"
                 size="xs"
                 onClick={() =>
                   setEditedSourceId(editedSourceId === s.id ? null : s.id)
@@ -120,8 +120,7 @@ export function SourcesList({
         {!IS_LOCAL_MODE && (
           <Flex justify="flex-end" pt="md">
             <Button
-              variant="light"
-              color="gray"
+              variant="secondary"
               size="sm"
               leftSection={<IconPlus size={14} />}
               onClick={() => {
