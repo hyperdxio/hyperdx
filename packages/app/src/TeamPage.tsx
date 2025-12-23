@@ -155,7 +155,6 @@ function SourcesSection() {
         withBorder={false}
         variant="default"
         showEmptyState={false}
-        cardClassName={undefined}
       />
     </Box>
   );
