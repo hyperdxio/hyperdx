@@ -60,13 +60,13 @@ import {
   MV_AGGREGATE_FUNCTIONS,
 } from '@/utils/materializedViews';
 
-import ConfirmDeleteMenu from './ConfirmDeleteMenu';
-import { ConnectionSelectControlled } from './ConnectionSelect';
-import { DatabaseSelectControlled } from './DatabaseSelect';
-import { DBTableSelectControlled } from './DBTableSelect';
-import { InputControlled } from './InputControlled';
-import SelectControlled from './SelectControlled';
-import { SQLInlineEditorControlled } from './SQLInlineEditor';
+import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
+import { ConnectionSelectControlled } from '../ConnectionSelect';
+import { DatabaseSelectControlled } from '../DatabaseSelect';
+import { DBTableSelectControlled } from '../DBTableSelect';
+import { InputControlled } from '../InputControlled';
+import SelectControlled from '../SelectControlled';
+import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
 const DEFAULT_DATABASE = 'default';
 

@@ -1,6 +1,6 @@
 import { delay, http, HttpResponse } from 'msw';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { Card } from '@mantine/core';
+import { Box } from '@mantine/core';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { SourcesList } from './SourcesList';
@@ -36,30 +36,65 @@ const mockSources = [
 ];
 
 const meta: Meta<typeof SourcesList> = {
-  title: 'Components/GettingStarted/SourcesList',
+  title: 'Components/Sources/SourcesList',
   component: SourcesList,
   parameters: {
     layout: 'padded',
   },
   decorators: [
     Story => (
-      <Card withBorder p="md" style={{ maxWidth: 800 }}>
+      <Box style={{ maxWidth: 800 }}>
         <Story />
-      </Card>
+      </Box>
     ),
   ],
+  argTypes: {
+    variant: {
+      control: 'select',
+      options: ['compact', 'default'],
+      description: 'Visual variant for text/icon sizing',
+    },
+    withCard: {
+      control: 'boolean',
+      description: 'Whether to wrap in a Card component',
+    },
+    withBorder: {
+      control: 'boolean',
+      description: 'Whether the card has a border',
+    },
+    showEmptyState: {
+      control: 'boolean',
+      description: 'Whether to show empty state UI',
+    },
+  },
 };
 
 export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/* Default with mock data (no API calls) */
+/* Default with mock data - compact variant (for GettingStarted) */
 export const Default: Story = {
-  name: 'Default (Mock Data)',
+  name: 'Compact Variant (GettingStarted)',
   args: {
     mockSources,
     mockConnections,
+    variant: 'compact',
+    withCard: true,
+    withBorder: true,
+  },
+};
+
+/* Default variant (for TeamPage) */
+export const DefaultVariant: Story = {
+  name: 'Default Variant (TeamPage)',
+  args: {
+    mockSources,
+    mockConnections,
+    variant: 'default',
+    withCard: true,
+    withBorder: false,
+    showEmptyState: false,
   },
 };
 
@@ -111,5 +146,16 @@ export const Empty: Story = {
   args: {
     mockSources: [],
     mockConnections: [],
+    showEmptyState: true,
+  },
+};
+
+/* Empty without empty state UI */
+export const EmptyNoUI: Story = {
+  name: 'Empty (No Empty State UI)',
+  args: {
+    mockSources: [],
+    mockConnections: [],
+    showEmptyState: false,
   },
 };

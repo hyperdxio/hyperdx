@@ -5,6 +5,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Alert,
   Box,
   Button,
@@ -15,6 +16,7 @@ import {
   Loader,
   Stack,
   Text,
+  Title,
 } from '@mantine/core';
 import {
   IconAlertCircle,
@@ -26,24 +28,43 @@ import {
   IconStack,
 } from '@tabler/icons-react';
 
-import { TableSourceForm } from '@/components/SourceForm';
 import { IS_LOCAL_MODE } from '@/config';
 import { useConnections } from '@/connection';
 import { useSources } from '@/source';
 import { capitalizeFirstLetter } from '@/utils';
 
-import styles from './GettingStarted.module.scss';
+import { TableSourceForm } from './SourceForm';
+
+import styles from './Sources.module.scss';
 
 export interface SourcesListProps {
+  /** Callback when add source button is clicked */
   onAddSource?: () => void;
+  /** Mock sources for Storybook/testing */
   mockSources?: TSource[];
+  /** Mock connections for Storybook/testing */
   mockConnections?: Connection[];
+  /** Whether to wrap content in a Card component (default: true) */
+  withCard?: boolean;
+  /** Whether the card has a border (default: true) */
+  withBorder?: boolean;
+  /** Custom className for the card */
+  cardClassName?: string;
+  /** Visual variant: 'compact' for smaller text, 'default' for standard sizing */
+  variant?: 'compact' | 'default';
+  /** Whether to show empty state UI (default: true) */
+  showEmptyState?: boolean;
 }
 
 export function SourcesList({
   onAddSource,
   mockSources,
   mockConnections,
+  withCard = true,
+  withBorder = true,
+  cardClassName,
+  variant = 'compact',
+  showEmptyState = true,
 }: SourcesListProps) {
   const {
     data: fetchedConnections,
@@ -72,27 +93,43 @@ export function SourcesList({
   const error =
     !mockSources && !mockConnections && (connectionsError || sourcesError);
 
+  const handleRetry = () => {
+    refetchConnections();
+    refetchSources();
+  };
+
+  // Sizing based on variant
+  const textSize = variant === 'compact' ? 'sm' : 'md';
+  const subtextSize = variant === 'compact' ? 'xs' : 'sm';
+  const iconSize = variant === 'compact' ? 11 : 14;
+  const buttonSize = variant === 'compact' ? 'xs' : 'sm';
+
+  const Wrapper = withCard ? Card : React.Fragment;
+  const wrapperProps = withCard
+    ? {
+        withBorder,
+        p: 'md',
+        radius: 'sm',
+        className: cardClassName ?? styles.sourcesCard,
+      }
+    : {};
+
   if (isLoading) {
     return (
-      <Card withBorder p="xl" radius="sm" className={styles.sourcesCard}>
+      <Wrapper {...wrapperProps}>
         <Flex justify="center" align="center" py="xl">
           <Loader size="sm" />
           <Text size="sm" c="dimmed" ml="sm">
             Loading sources...
           </Text>
         </Flex>
-      </Card>
+      </Wrapper>
     );
   }
 
   if (error) {
-    const handleRetry = () => {
-      refetchConnections();
-      refetchSources();
-    };
-
     return (
-      <Card withBorder p="md" radius="sm" className={styles.sourcesCard}>
+      <Wrapper {...wrapperProps}>
         <Alert
           icon={<IconAlertCircle size={16} />}
           title="Failed to load sources"
@@ -114,22 +151,22 @@ export function SourcesList({
             Retry
           </Button>
         </Alert>
-      </Card>
+      </Wrapper>
     );
   }
 
   const isEmpty = !sources || sources.length === 0;
 
   return (
-    <Card withBorder p="md" radius="sm" className={styles.sourcesCard}>
+    <Wrapper {...wrapperProps}>
       <Stack gap="md">
-        {isEmpty && !isCreatingSource && (
+        {isEmpty && !isCreatingSource && showEmptyState && (
           <Flex direction="column" align="center" py="xl" gap="sm">
             <IconStack size={32} color="var(--color-text-muted)" />
-            <Text size="sm" c="dimmed" ta="center">
+            <Title size="sm" ta="center" c="var(--color-text-muted)">
               No data sources configured yet.
-            </Text>
-            <Text size="xs" c="dimmed" ta="center">
+            </Title>
+            <Text size="xs" ta="center" c="var(--color-text-muted)">
               Add a source to start querying your data.
             </Text>
           </Flex>
@@ -139,20 +176,20 @@ export function SourcesList({
           <React.Fragment key={s.id}>
             <Flex justify="space-between" align="center">
               <div>
-                <Text size="sm" fw={500}>
+                <Text size={textSize} fw={500}>
                   {s.name}
                 </Text>
-                <Text size="xs" c="dimmed" mt={4}>
+                <Text size={subtextSize} c="dimmed" mt={4}>
                   <Group gap="xs">
                     {capitalizeFirstLetter(s.kind)}
                     <Group gap={4}>
-                      <IconServer size={11} />
+                      <IconServer size={iconSize} />
                       {connections?.find(c => c.id === s.connection)?.name}
                     </Group>
                     <Group gap={4}>
                       {s.from && (
                         <>
-                          <IconStack size={11} />
+                          <IconStack size={iconSize} />
                           {s.from.databaseName}
                           {s.kind === SourceKind.Metric ? '' : '.'}
                           {s.from.tableName}
@@ -162,19 +199,19 @@ export function SourcesList({
                   </Group>
                 </Text>
               </div>
-              <Button
+              <ActionIcon
                 variant="secondary"
-                size="xs"
+                size={buttonSize}
                 onClick={() =>
                   setEditedSourceId(editedSourceId === s.id ? null : s.id)
                 }
               >
                 {editedSourceId === s.id ? (
-                  <IconChevronUp size={13} />
+                  <IconChevronUp size={iconSize + 2} />
                 ) : (
-                  <IconChevronDown size={13} />
+                  <IconChevronDown size={iconSize + 2} />
                 )}
-              </Button>
+              </ActionIcon>
             </Flex>
             {editedSourceId === s.id && (
               <Box mt="xs">
@@ -190,7 +227,7 @@ export function SourcesList({
 
         {isCreatingSource && (
           <>
-            <Divider />
+            {sources && sources.length > 0 && <Divider />}
             <TableSourceForm
               isNew
               onCreate={() => setIsCreatingSource(false)}
@@ -199,11 +236,14 @@ export function SourcesList({
           </>
         )}
 
-        {!IS_LOCAL_MODE && (
-          <Flex justify="flex-end" pt="md">
+        {!IS_LOCAL_MODE && !isCreatingSource && (
+          <Flex
+            justify="flex-end"
+            pt={sources && sources.length > 0 ? 'md' : 0}
+          >
             <Button
               variant="secondary"
-              size="sm"
+              size={buttonSize}
               leftSection={<IconPlus size={14} />}
               onClick={() => {
                 setIsCreatingSource(true);
@@ -215,6 +255,6 @@ export function SourcesList({
           </Flex>
         )}
       </Stack>
-    </Card>
+    </Wrapper>
   );
 }

@@ -8,9 +8,10 @@ import {
   IconRefresh,
 } from '@tabler/icons-react';
 
+import { SourcesList } from '@/components/Sources/SourcesList';
+
 import { CredentialsTable } from './CredentialsTable';
 import { DemoBanner } from './DemoBanner';
-import { SourcesList } from './SourcesList';
 import { Step } from './Step';
 
 import styles from './GettingStarted.module.scss';
@@ -191,7 +192,10 @@ export const GettingStarted: React.FC<GettingStartedProps> = ({
                 />
 
                 {/* Confirm button */}
-                <div className={styles.buttonGroup}>
+                <div
+                  className={styles.buttonGroup}
+                  style={{ justifyContent: 'flex-end' }}
+                >
                   <Button onClick={onConfirmAndExplore} variant="light">
                     Confirm and explore
                   </Button>
