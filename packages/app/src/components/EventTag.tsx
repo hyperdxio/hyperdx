@@ -113,11 +113,7 @@ export default function EventTag({
             </Button>
           )}
           {generateSearchUrl && (
-            <Link
-              href={generateSearchUrl(searchCondition, nameLanguage)}
-              passHref
-              legacyBehavior
-            >
+            <Link href={generateSearchUrl(searchCondition, nameLanguage)}>
               <Button
                 justify="space-between"
                 color="gray"

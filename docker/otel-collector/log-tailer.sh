@@ -1,6 +1,5 @@
 #!/bin/sh
 # Generic log tailer script that follows a log file and echoes new lines to stdout
-# Handles file rotation and truncation (e.g., when used with log-rotator.sh)
 # Usage: log-tailer.sh <log_file_path> [sleep_interval]
 
 # Parse arguments

@@ -1,6 +1,6 @@
 import React from 'react';
 import router from 'next/router';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -48,6 +48,7 @@ import {
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
+import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { AlertWithCreatedBy, SearchConfig } from './types';
 import { optionsToSelectData } from './utils';
@@ -60,10 +61,6 @@ const SavedSearchAlertFormSchema = z
     channel: zAlertChannel,
   })
   .passthrough();
-
-const CHANNEL_ICONS = {
-  webhook: <IconBrandSlack size={14} />,
-};
 
 const AlertForm = ({
   sourceId,
@@ -92,7 +89,7 @@ const AlertForm = ({
 }) => {
   const { data: source } = useSource({ id: sourceId });
 
-  const { control, handleSubmit, watch } = useForm<Alert>({
+  const { control, handleSubmit } = useForm<Alert>({
     defaultValues: defaultValues || {
       interval: '5m',
       threshold: 1,
@@ -106,8 +103,13 @@ const AlertForm = ({
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
 
-  const groupBy = watch('groupBy');
-  const thresholdType = watch('thresholdType');
+  const groupBy = useWatch({ control, name: 'groupBy' });
+  const thresholdType = useWatch({ control, name: 'thresholdType' });
+  const channelType = useWatch({ control, name: 'channel.type' });
+  const interval = useWatch({ control, name: 'interval' });
+  const groupByValue = useWatch({ control, name: 'groupBy' });
+  const threshold = useWatch({ control, name: 'threshold' });
+  const thresholdTypeValue = useWatch({ control, name: 'thresholdType' });
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
@@ -168,7 +170,7 @@ const AlertForm = ({
           <Text size="xxs" opacity={0.5} mb={4}>
             Send to
           </Text>
-          <AlertChannelForm control={control} type={watch('channel.type')} />
+          <AlertChannelForm control={control} type={channelType} />
         </Paper>
         {groupBy && thresholdType === AlertThresholdType.BELOW && (
           <MantineAlert
@@ -197,10 +199,10 @@ const AlertForm = ({
                 where={where}
                 whereLanguage={whereLanguage}
                 select={select}
-                interval={watch('interval')}
-                groupBy={watch('groupBy')}
-                threshold={watch('threshold')}
-                thresholdType={watch('thresholdType')}
+                interval={interval}
+                groupBy={groupByValue}
+                threshold={threshold}
+                thresholdType={thresholdTypeValue}
               />
             )}
           </Accordion.Panel>
@@ -417,7 +419,7 @@ export const DBSearchPageAlertModal = ({
             {(savedSearch?.alerts || []).map((alert, index) => (
               <Tabs.Tab key={alert.id} value={`${index}`}>
                 <Group gap="xs">
-                  {CHANNEL_ICONS[alert.channel.type]} Alert {index + 1}
+                  {getWebhookChannelIcon(alert.channel.type)} Alert {index + 1}
                 </Group>
               </Tabs.Tab>
             ))}

@@ -3,7 +3,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { filter } from 'lodash';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { StringParam, useQueryParam } from 'use-query-params';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -191,7 +191,7 @@ function Mapping({ input }: { input: Input }) {
   const { data: sources } = useSources();
   const [dashboardId] = useQueryParam('dashboardId', StringParam);
 
-  const { handleSubmit, getFieldState, control, setValue, watch } =
+  const { handleSubmit, getFieldState, control, setValue } =
     useForm<SourceResolutionFormValues>({
       resolver: zodResolver(SourceResolutionForm),
       defaultValues: {
@@ -226,16 +226,24 @@ function Mapping({ input }: { input: Input }) {
   }, [setValue, sources, input]);
 
   const isUpdatingRef = useRef(false);
-  watch((a, { name }) => {
-    if (isUpdatingRef.current) return;
-    if (!a.sourceMappings || !input.tiles) return;
-    const [, inputIdx] = name?.split('.') || [];
-    if (!inputIdx) return;
+  const sourceMappings = useWatch({ control, name: 'sourceMappings' });
+  const prevSourceMappingsRef = useRef(sourceMappings);
 
-    const idx = Number(inputIdx);
-    const inputTile = input.tiles[idx];
+  useEffect(() => {
+    if (isUpdatingRef.current) return;
+    if (!sourceMappings || !input.tiles) return;
+
+    // Find which mapping changed
+    const changedIdx = sourceMappings.findIndex(
+      (mapping, idx) => mapping !== prevSourceMappingsRef.current?.[idx],
+    );
+    if (changedIdx === -1) return;
+
+    prevSourceMappingsRef.current = sourceMappings;
+
+    const inputTile = input.tiles[changedIdx];
     if (!inputTile) return;
-    const sourceId = a.sourceMappings[idx] ?? '';
+    const sourceId = sourceMappings[changedIdx] ?? '';
     const keysForTilesWithMatchingSource = input.tiles
       .map((tile, index) => ({ ...tile, index }))
       .filter(tile => tile.config.source === inputTile.config.source)
@@ -263,7 +271,7 @@ function Mapping({ input }: { input: Input }) {
     }
 
     isUpdatingRef.current = false;
-  });
+  }, [sourceMappings, input.tiles, input.filters, getFieldState, setValue]);
 
   const createDashboard = useCreateDashboard();
   const updateDashboard = useUpdateDashboard();
