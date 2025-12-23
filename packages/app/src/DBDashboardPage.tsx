@@ -14,7 +14,7 @@ import produce from 'immer';
 import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -644,7 +644,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [isLive, setIsLive] = useState(false);
 
-  const { control, watch, setValue, handleSubmit } = useForm<{
+  const { control, setValue, handleSubmit } = useForm<{
     granularity: SQLInterval | 'auto';
     where: SearchCondition;
     whereLanguage: SearchConditionLanguage;
@@ -660,11 +660,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       whereLanguage: (whereLanguage as SearchConditionLanguage) ?? 'lucene',
     },
   });
-  watch((data, { name, type }) => {
-    if (name === 'granularity' && type === 'change') {
-      setGranularity(data.granularity as SQLInterval);
+
+  const watchedGranularity = useWatch({ control, name: 'granularity' });
+
+  useEffect(() => {
+    if (watchedGranularity && watchedGranularity !== granularity) {
+      setGranularity(watchedGranularity as SQLInterval);
     }
-  });
+  }, [watchedGranularity, granularity, setGranularity]);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Past 1h');

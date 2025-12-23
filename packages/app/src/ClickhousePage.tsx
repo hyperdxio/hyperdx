@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import {
   parseAsFloat,
@@ -6,7 +6,7 @@ import {
   useQueryState,
   useQueryStates,
 } from 'nuqs';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { sql } from '@codemirror/lang-sql';
 import { format as formatSql } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
@@ -436,17 +436,19 @@ function ClickhousePage() {
 
   const connection = _connection ?? connections?.[0]?.id ?? '';
 
-  const { control, watch } = useForm({
+  const { control } = useForm({
     values: {
       connection,
     },
   });
 
-  watch((data, { name, type }) => {
-    if (name === 'connection' && type === 'change') {
-      setConnection(data.connection ?? null);
+  const watchedConnection = useWatch({ control, name: 'connection' });
+
+  useEffect(() => {
+    if (watchedConnection !== connection) {
+      setConnection(watchedConnection ?? null);
     }
-  });
+  }, [watchedConnection, connection, setConnection]);
   const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);

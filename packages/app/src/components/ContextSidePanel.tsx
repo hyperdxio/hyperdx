@@ -2,7 +2,7 @@ import { useCallback, useContext, useMemo, useState } from 'react';
 import { sq } from 'date-fns/locale';
 import ms from 'ms';
 import { parseAsString, useQueryState } from 'nuqs';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithDateRange,
@@ -82,14 +82,14 @@ export default function ContextSubpanel({
     dbSqlRowTableConfig ?? {};
   const [range, setRange] = useState<number>(ms('30s'));
   const [contextBy, setContextBy] = useState<ContextBy>(ContextBy.All);
-  const { control, watch } = useForm({
+  const { control } = useForm({
     defaultValues: {
       where: '',
       whereLanguage: originalLanguage ?? ('lucene' as 'lucene' | 'sql'),
     },
   });
 
-  const formWhere = watch('where');
+  const formWhere = useWatch({ control, name: 'where' });
   const [debouncedWhere] = useDebouncedValue(formWhere, 1000);
 
   // State management for nested panels

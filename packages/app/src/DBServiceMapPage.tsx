@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { parseAsInteger, useQueryState } from 'nuqs';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Box, Group, Slider, Text } from '@mantine/core';
 
@@ -67,17 +67,19 @@ function DBServiceMapPage() {
         ) ?? defaultSource)
       : defaultSource;
 
-  const { control, watch } = useForm({
+  const { control } = useForm({
     values: {
       source: source?.id,
     },
   });
 
-  watch((data, { name, type }) => {
-    if (name === 'source' && type === 'change') {
-      setSourceId(data.source ?? null);
+  const watchedSource = useWatch({ control, name: 'source' });
+
+  useEffect(() => {
+    if (watchedSource !== sourceId) {
+      setSourceId(watchedSource ?? null);
     }
-  });
+  }, [watchedSource, sourceId, setSourceId]);
 
   const [samplingFactor, setSamplingFactor] = useQueryState(
     'samplingFactor',

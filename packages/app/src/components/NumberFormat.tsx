@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import {
   Button,
   Checkbox as MCheckbox,
@@ -44,7 +44,7 @@ export const NumberFormatForm: React.FC<{
   onApply: (value: NumberFormat) => void;
   onClose: () => void;
 }> = ({ value, onApply, onClose }) => {
-  const { register, handleSubmit, watch, setValue } = useForm<NumberFormat>({
+  const { register, handleSubmit, control, setValue } = useForm<NumberFormat>({
     values: value,
     defaultValues: {
       factor: 1,
@@ -56,7 +56,15 @@ export const NumberFormatForm: React.FC<{
     },
   });
 
-  const values = watch();
+  const values = useWatch({ control });
+  const valuesWithDefaults = values ?? {
+    factor: 1,
+    output: 'number' as const,
+    mantissa: 2,
+    thousandSeparated: true,
+    average: false,
+    decimalBytes: false,
+  };
 
   const testNumber = 1234;
 
@@ -91,7 +99,10 @@ export const NumberFormatForm: React.FC<{
         >
           <NativeSelect
             label="Output format"
-            leftSection={values.output && FORMAT_ICONS[values.output]}
+            leftSection={
+              valuesWithDefaults.output &&
+              FORMAT_ICONS[valuesWithDefaults.output]
+            }
             style={{ flex: 1 }}
             data={[
               { value: 'number', label: 'Number' },
@@ -102,7 +113,7 @@ export const NumberFormatForm: React.FC<{
             ]}
             {...register('output')}
           />
-          {values.output === 'currency' && (
+          {valuesWithDefaults.output === 'currency' && (
             <TextInput
               w={80}
               label="Symbol"
@@ -127,11 +138,11 @@ export const NumberFormatForm: React.FC<{
             >
               Example
             </div>
-            {formatNumber(testNumber || 0, values)}
+            {formatNumber(testNumber || 0, valuesWithDefaults as NumberFormat)}
           </Paper>
         </div>
 
-        {values.output !== 'time' && (
+        {valuesWithDefaults.output !== 'time' && (
           <div>
             <div className="fs-8 mt-2 fw-bold mb-1">Decimals</div>
             <Slider

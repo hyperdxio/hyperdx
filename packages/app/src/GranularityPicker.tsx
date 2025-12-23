@@ -16,6 +16,7 @@ export default function GranularityPicker({
   return (
     <Select
       disabled={disabled}
+      data-testid="granularity-picker"
       data={[
         {
           value: 'auto' as const,

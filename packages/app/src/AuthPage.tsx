@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
 import cx from 'classnames';
-import { SubmitHandler, useForm } from 'react-hook-form';
+import { SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import {
   Button,
   Notification,
@@ -45,7 +45,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
     handleSubmit,
     formState: { errors, isSubmitting },
     setError,
-    watch,
+    control,
   } = useForm<FormData>({
     reValidateMode: 'onSubmit',
   });
@@ -67,8 +67,16 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
     }
   }, [installation, isRegister, router]);
 
-  const currentPassword = watch('password', '');
-  const confirmPassword = watch('confirmPassword', '');
+  const currentPassword = useWatch({
+    control,
+    name: 'password',
+    defaultValue: '',
+  });
+  const confirmPassword = useWatch({
+    control,
+    name: 'confirmPassword',
+    defaultValue: '',
+  });
 
   const confirmPass = () => {
     return currentPassword === confirmPassword;

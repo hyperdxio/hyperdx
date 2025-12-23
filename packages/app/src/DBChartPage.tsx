@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { parseAsJson, parseAsStringEnum, useQueryState } from 'nuqs';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
@@ -57,7 +57,7 @@ function AIAssistant({
     'ai-assistant-alert-dismissed',
     false,
   );
-  const { control, watch, setValue, handleSubmit } = useForm<{
+  const { control, setValue, handleSubmit } = useForm<{
     text: string;
     source: string;
   }>({

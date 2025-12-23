@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
@@ -53,15 +53,17 @@ export default function DBTracePanel({
   };
   'data-testid'?: string;
 }) {
-  const { control, watch } = useForm({
+  const { control } = useForm({
     defaultValues: {
       source: childSourceId,
     },
   });
 
+  const sourceId = useWatch({ control, name: 'source' });
+
   const { data: childSourceData, isLoading: isChildSourceDataLoading } =
     useSource({
-      id: watch('source'),
+      id: sourceId,
     });
 
   const { data: parentSourceData, isLoading: isParentSourceDataLoading } =

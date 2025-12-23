@@ -7,7 +7,7 @@ import {
   useQueryState,
   useQueryStates,
 } from 'nuqs';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { NumberParam } from 'serialize-query-params';
 import {
   StringParam,
@@ -245,7 +245,7 @@ const appliedConfigMap = {
 export default function SessionsPage() {
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
 
-  const { control, watch, setValue, handleSubmit } = useForm({
+  const { control, setValue, handleSubmit } = useForm({
     values: {
       where: appliedConfig.where,
       whereLanguage: appliedConfig.whereLanguage,
@@ -253,11 +253,11 @@ export default function SessionsPage() {
     },
   });
 
-  const where = watch('where');
-  const whereLanguage = watch('whereLanguage');
-  const sourceId = watch('source');
+  const where = useWatch({ control, name: 'where' });
+  const whereLanguage = useWatch({ control, name: 'whereLanguage' });
+  const sourceId = useWatch({ control, name: 'source' });
   const { data: sessionSource, isPending: isSessionSourceLoading } = useSource({
-    id: watch('source'),
+    id: sourceId,
   });
 
   const { data: traceTrace } = useSource({

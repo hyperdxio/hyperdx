@@ -2,7 +2,7 @@ import { Fragment, useCallback, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { HTTPError } from 'ky';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { SubmitHandler, useForm } from 'react-hook-form';
+import { SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   SourceKind,
@@ -604,7 +604,7 @@ function ClickhouseSettingForm({
               <SelectControlled
                 control={form.control}
                 name="value"
-                value={form.watch('value')}
+                value={useWatch({ control: form.control, name: 'value' })}
                 data={[displayValue(true), displayValue(false)]}
                 size="xs"
                 placeholder="Please select"

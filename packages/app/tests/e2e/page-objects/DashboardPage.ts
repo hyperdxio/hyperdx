@@ -11,6 +11,7 @@ export class DashboardPage {
   readonly page: Page;
   readonly timePicker: TimePickerComponent;
   readonly chartEditor: ChartEditorComponent;
+  readonly granularityPicker: Locator;
 
   private readonly createDashboardButton: Locator;
   private readonly addTileButton: Locator;
@@ -34,6 +35,7 @@ export class DashboardPage {
     );
     this.liveButton = page.locator('button:has-text("Live")');
     this.dashboardNameHeading = page.getByRole('heading', { level: 3 });
+    this.granularityPicker = page.getByTestId('granularity-picker');
   }
 
   /**
@@ -56,6 +58,15 @@ export class DashboardPage {
   async createNewDashboard() {
     await this.createDashboardButton.click();
     await this.page.waitForURL('**/dashboards**');
+  }
+
+  async changeGranularity(granularity: string) {
+    await this.granularityPicker.click();
+
+    // Wait for dropdown options to appear and click the desired option
+    await this.page
+      .locator('[role="option"]', { hasText: granularity })
+      .click();
   }
 
   /**

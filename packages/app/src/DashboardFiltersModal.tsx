@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Controller, FieldError, useForm } from 'react-hook-form';
+import { Controller, FieldError, useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   DashboardFilter,
@@ -94,7 +94,7 @@ const DashboardFilterEditForm = ({
   onClose,
   onCancel,
 }: DashboardFilterEditFormProps) => {
-  const { handleSubmit, register, formState, control, watch, reset } =
+  const { handleSubmit, register, formState, control, reset } =
     useForm<DashboardFilter>({
       defaultValues: filter,
     });
@@ -103,10 +103,10 @@ const DashboardFilterEditForm = ({
     reset(filter);
   }, [filter, reset]);
 
-  const sourceId = watch('source');
+  const sourceId = useWatch({ control, name: 'source' });
   const { data: source } = useSource({ id: sourceId });
 
-  const metricType = watch('sourceMetricType');
+  const metricType = useWatch({ control, name: 'sourceMetricType' });
   const tableName = source && getMetricTableName(source, metricType);
   const tableConnection: TableConnection | undefined = tableName
     ? {
