@@ -76,7 +76,7 @@ test.describe('Search', { tag: '@search' }, () => {
           'cart',
           'ServiceName:"accounting"',
           '*info*',
-          'SeverityText:"error"',
+          'SeverityText:"info"',
         ];
 
         for (const query of queries) {
