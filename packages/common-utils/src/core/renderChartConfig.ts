@@ -3,23 +3,8 @@ import * as SQLParser from 'node-sql-parser';
 import SqlString from 'sqlstring';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
+import { translateHistogram } from '@/core/histogram';
 import { Metadata } from '@/core/metadata';
-import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
-
-/**
- * Helper function to create a MetricName filter condition.
- * Uses metricNameSql if available (which handles both old and new metric names via OR),
- * otherwise falls back to a simple equality check.
- */
-function createMetricNameFilter(
-  metricName: string,
-  metricNameSql?: string,
-): string {
-  if (metricNameSql) {
-    return metricNameSql;
-  }
-  return SqlString.format('MetricName = ?', [metricName]);
-}
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -28,6 +13,7 @@ import {
   parseToStartOfFunction,
   splitAndTrimWithBracket,
 } from '@/core/utils';
+import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
@@ -46,6 +32,21 @@ import {
   SqlAstFilter,
   SQLInterval,
 } from '@/types';
+
+/**
+ * Helper function to create a MetricName filter condition.
+ * Uses metricNameSql if available (which handles both old and new metric names via OR),
+ * otherwise falls back to a simple equality check.
+ */
+function createMetricNameFilter(
+  metricName: string,
+  metricNameSql?: string,
+): string {
+  if (metricNameSql) {
+    return metricNameSql;
+  }
+  return SqlString.format('MetricName = ?', [metricName]);
+}
 
 /** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
 export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
@@ -1261,17 +1262,7 @@ async function translateMetricChartConfig(
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
   } else if (metricType === MetricsDataType.Histogram && metricName) {
-    // histograms are only valid for quantile selections
-    const { aggFn, level, alias, ..._selectRest } = _select as {
-      aggFn: string;
-      level?: number;
-      alias?: string;
-    };
-
-    if (aggFn !== 'quantile' || level == null) {
-      throw new Error('quantile must be specified for histogram metrics');
-    }
-
+    const { alias } = _select;
     // Use the alias from the select, defaulting to 'Value' for backwards compatibility
     const valueAlias = alias || 'Value';
 
@@ -1322,100 +1313,21 @@ async function translateMetricChartConfig(
 
     return {
       ...restChartConfig,
-      with: [
-        {
-          name: 'source',
-          sql: chSql`
-          SELECT
-            MetricName,
-            ExplicitBounds,
-            ${timeBucketSelect.sql ? chSql`${timeBucketSelect},` : 'TimeUnix AS `__hdx_time_bucket`'}
-            ${groupBy ? chSql`[${groupBy}] as group,` : ''}
-            sumForEach(deltas) as rates
-          FROM (
-            SELECT
-              TimeUnix,
-              MetricName,
-              ResourceAttributes,
-              Attributes,
-              ExplicitBounds,
-              attr_hash,
-              any(attr_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_attr_hash,
-              any(bounds_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_bounds_hash,
-              any(counts) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_counts,
-              counts,
-              IF(
-                  AggregationTemporality = 1 ${'' /* denotes a metric that is not monotonic e.g. already a delta */}
-                      OR prev_attr_hash != attr_hash ${'' /* the attributes have changed so this is a different metric */}
-                      OR bounds_hash != prev_bounds_hash ${'' /* the bucketing has changed so should be treated as different metric */}
-                      OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)), ${'' /* a data point has gone down, probably a reset event */}
-                  counts,
-                  counts - prev_counts
-              ) AS deltas
-            FROM (
-              SELECT
-                  TimeUnix,
-                  MetricName,
-                  AggregationTemporality,
-                  ExplicitBounds,
-                  ResourceAttributes,
-                  Attributes,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
-                  cityHash64(ExplicitBounds) AS bounds_hash,
-                  CAST(BucketCounts AS Array(Int64)) counts
-              FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Histogram] } })}
-              WHERE ${where}
-              ORDER BY attr_hash, TimeUnix ASC
-            )
-          )
-          GROUP BY \`__hdx_time_bucket\`, MetricName, ${groupBy ? 'group, ' : ''}ExplicitBounds
-          ORDER BY \`__hdx_time_bucket\`
-          `,
-        },
-        {
-          name: 'points',
-          sql: chSql`
-          SELECT
-            \`__hdx_time_bucket\`,
-            MetricName,
-            ${groupBy ? 'group,' : ''}
-            arrayZipUnaligned(arrayCumSum(rates), ExplicitBounds) as point,
-            length(point) as n
-          FROM source
-          `,
-        },
-        {
-          name: 'metrics',
-          sql: chSql`
-          SELECT
-            \`__hdx_time_bucket\`,
-            MetricName,
-            ${groupBy ? 'group,' : ''}
-            point[n].1 AS total,
-            ${{ Float64: level }} * total AS rank,
-            arrayFirstIndex(x -> if(x.1 > rank, 1, 0), point) AS upper_idx,
-            point[upper_idx].1 AS upper_count,
-            ifNull(point[upper_idx].2, inf) AS upper_bound,
-            CASE
-              WHEN upper_idx > 1 THEN point[upper_idx - 1].2
-              WHEN point[upper_idx].2 > 0 THEN 0
-              ELSE inf
-            END AS lower_bound,
-            if (
-              lower_bound = 0,
-              0,
-              point[upper_idx - 1].1
-            ) AS lower_count,
-            CASE
-                WHEN upper_bound = inf THEN point[upper_idx - 1].2
-                WHEN lower_bound = inf THEN point[1].2
-                ELSE lower_bound + (upper_bound - lower_bound) * ((rank - lower_count) / (upper_count - lower_count))
-            END AS "${valueAlias}"
-          FROM points
-          WHERE length(point) > 1 AND total > 0
-          `,
-        },
-      ],
+      with: translateHistogram({
+        select: _select,
+        timeBucketSelect: timeBucketSelect.sql
+          ? chSql`${timeBucketSelect}`
+          : 'TimeUnix AS `__hdx_time_bucket`',
+        groupBy,
+        from: renderFrom({
+          from: {
+            ...from,
+            tableName: metricTables[MetricsDataType.Histogram],
+          },
+        }),
+        where,
+        valueAlias,
+      }),
       select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, "${valueAlias}"`,
       from: {
         databaseName: '',

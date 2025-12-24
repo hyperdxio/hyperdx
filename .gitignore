@@ -77,3 +77,6 @@ docker-compose.prod.yml
 
 # NX
 .nx/
+
+# webstorm
+.idea

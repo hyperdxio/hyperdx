@@ -1,13 +1,9 @@
-import { Fragment, useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Head from 'next/head';
-import { HTTPError } from 'ky';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  TeamClickHouseSettings,
-  WebhookService,
-} from '@hyperdx/common-utils/dist/types';
+import { TeamClickHouseSettings } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
@@ -25,7 +21,6 @@ import {
   TextInput,
   Tooltip,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconCheck,
@@ -42,13 +37,11 @@ import { IS_LOCAL_MODE } from '@/config';
 
 import { PageHeader } from './components/PageHeader';
 import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
-import { WebhookForm } from './components/TeamSettings/WebhookForm';
+import WebhooksSection from './components/TeamSettings/WebhooksSection';
 import api from './api';
 import { useConnections } from './connection';
 import { DEFAULT_QUERY_TIMEOUT, DEFAULT_SEARCH_ROW_LIMIT } from './defaults';
 import { withAppNav } from './layout';
-import type { Webhook } from './types';
-import { useConfirm } from './useConfirm';
 
 function ConnectionsSection() {
   const { data: connections } = useConnections();
@@ -159,159 +152,15 @@ function SourcesSection() {
     </Box>
   );
 }
-
-function DeleteWebhookButton({
-  webhookId,
-  webhookName,
-  onSuccess,
-}: {
-  webhookId: string;
-  webhookName: string;
-  onSuccess: VoidFunction;
-}) {
-  const confirm = useConfirm();
-  const deleteWebhook = api.useDeleteWebhook();
-
-  const handleDelete = async () => {
-    if (
-      await confirm(
-        `Are you sure you want to delete ${webhookName} webhook?`,
-        'Delete',
-      )
-    ) {
-      try {
-        await deleteWebhook.mutateAsync({ id: webhookId });
-        notifications.show({
-          color: 'green',
-          message: 'Webhook deleted successfully',
-        });
-        onSuccess();
-      } catch (e) {
-        console.error(e);
-        const message =
-          (e instanceof HTTPError
-            ? (await e.response.json())?.message
-            : null) || 'Something went wrong. Please contact HyperDX team.';
-        notifications.show({
-          message,
-          color: 'red',
-          autoClose: 5000,
-        });
-      }
-    }
-  };
-
-  return (
-    <Button
-      color="red"
-      size="compact-xs"
-      variant="outline"
-      onClick={handleDelete}
-      loading={deleteWebhook.isPending}
-    >
-      Delete
-    </Button>
-  );
-}
-
 function IntegrationsSection() {
-  const { data: webhookData, refetch: refetchWebhooks } = api.useWebhooks([
-    WebhookService.Slack,
-    WebhookService.Generic,
-    WebhookService.IncidentIO,
-  ]);
-
-  const allWebhooks = useMemo<Webhook[]>(() => {
-    return Array.isArray(webhookData?.data) ? webhookData.data : [];
-  }, [webhookData]);
-
-  const [editedWebhookId, setEditedWebhookId] = useState<string | null>(null);
-  const [
-    isAddWebhookModalOpen,
-    { open: openWebhookModal, close: closeWebhookModal },
-  ] = useDisclosure();
-
   return (
     <Box id="integrations">
       <Text size="md">Integrations</Text>
       <Divider my="md" />
       <Card>
-        <Text mb="xs">Webhooks</Text>
-
-        <Stack>
-          {allWebhooks.map(webhook => (
-            <Fragment key={webhook._id}>
-              <Group justify="space-between" align="flex-start">
-                <Stack gap={0}>
-                  <Text size="sm">
-                    {webhook.name} ({webhook.service})
-                  </Text>
-                  <Text size="xs" opacity={0.7}>
-                    {webhook.url}
-                  </Text>
-                  {webhook.description && (
-                    <Text size="xxs" opacity={0.7}>
-                      {webhook.description}
-                    </Text>
-                  )}
-                </Stack>
-                <Group gap="xs">
-                  {editedWebhookId !== webhook._id && (
-                    <>
-                      <Button
-                        variant="subtle"
-                        onClick={() => setEditedWebhookId(webhook._id)}
-                        size="compact-xs"
-                        leftSection={<IconPencil size={14} />}
-                      >
-                        Edit
-                      </Button>
-                      <DeleteWebhookButton
-                        webhookId={webhook._id}
-                        webhookName={webhook.name}
-                        onSuccess={refetchWebhooks}
-                      />
-                    </>
-                  )}
-                  {editedWebhookId === webhook._id && (
-                    <Button
-                      variant="subtle"
-                      onClick={() => setEditedWebhookId(null)}
-                      size="compact-xs"
-                    >
-                      <IconX size={14} className="me-2" /> Cancel
-                    </Button>
-                  )}
-                </Group>
-              </Group>
-              {editedWebhookId === webhook._id && (
-                <WebhookForm
-                  webhook={webhook}
-                  onClose={() => setEditedWebhookId(null)}
-                  onSuccess={() => {
-                    setEditedWebhookId(null);
-                    refetchWebhooks();
-                  }}
-                />
-              )}
-              <Divider />
-            </Fragment>
-          ))}
+        <Stack gap="md">
+          <WebhooksSection />
         </Stack>
-
-        {!isAddWebhookModalOpen ? (
-          <Button variant="outline" onClick={openWebhookModal}>
-            Add Webhook
-          </Button>
-        ) : (
-          <WebhookForm
-            onClose={closeWebhookModal}
-            onSuccess={() => {
-              refetchWebhooks();
-              closeWebhookModal();
-            }}
-          />
-        )}
       </Card>
     </Box>
   );
