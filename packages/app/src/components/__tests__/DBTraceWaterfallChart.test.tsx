@@ -89,7 +89,7 @@ describe('DBTraceWaterfallChartContainer', () => {
     data: [
       {
         Body: 'test span',
-        Timestamp: '1704088800000000000',
+        Timestamp: '2024-01-01T06:00:00.000000000Z',
         Duration: 0.1,
         SpanId: 'span-1',
         ParentSpanId: '',
@@ -105,7 +105,7 @@ describe('DBTraceWaterfallChartContainer', () => {
     data: [
       {
         Body: 'test log',
-        Timestamp: '1704088800000000000',
+        Timestamp: '2024-01-01T06:00:00.000000000Z',
         SpanId: 'span-1', // same span id to test correlation
         SeverityText: 'warn',
         HyperDXEventType: 'log',
@@ -160,12 +160,19 @@ describe('DBTraceWaterfallChartContainer', () => {
 
     mockUseOffsetPaginatedQuery.mockReset();
 
-    // Mock all four query calls in sequence (trace before/after, log before/after)
-    mockUseOffsetPaginatedQuery
-      .mockReturnValueOnce({ data: traceData, isFetching }) // trace before
-      .mockReturnValueOnce({ data: emptyData, isFetching }) // trace after
-      .mockReturnValueOnce({ data: logData, isFetching }) // log before
-      .mockReturnValueOnce({ data: emptyData, isFetching }); // log after
+    // Use mockImplementation to handle all calls consistently
+    let callCount = 0;
+    mockUseOffsetPaginatedQuery.mockImplementation(() => {
+      const responses = [
+        { data: traceData, isFetching, error: undefined }, // trace before
+        { data: emptyData, isFetching, error: undefined }, // trace after
+        { data: logData, isFetching, error: undefined }, // log before
+        { data: emptyData, isFetching, error: undefined }, // log after
+      ];
+      const response = responses[callCount % responses.length];
+      callCount++;
+      return response;
+    });
   };
 
   // Test cases
@@ -224,7 +231,7 @@ describe('DBTraceWaterfallChartContainer', () => {
       data: [
         {
           Body: 'http span',
-          Timestamp: '1704088800000000000',
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
           Duration: 0.15,
           SpanId: 'span-http',
           ParentSpanId: '',

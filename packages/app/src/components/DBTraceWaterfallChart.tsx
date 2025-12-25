@@ -768,7 +768,7 @@ export function DBTraceWaterfallChartContainer({
           id,
           start,
           end,
-          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''} | Started at ${formatTime(new Date(result.Timestamp), { format: 'withMs' })}`,
+          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
           color: barColor({ isError, isWarn, isHighlighted }),
           body: <span>{displayText}</span>,
           minWidthPerc: 1,
