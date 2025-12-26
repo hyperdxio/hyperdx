@@ -1,5 +1,17 @@
 # @hyperdx/common-utils
 
+## 0.10.0
+
+### Minor Changes
+
+- ca693c0f: Add support for visualizing histogram counts
+- a5a04aa9: feat: Add materialized view support (Beta)
+
+### Patch Changes
+
+- 50ba92ac: feat: Add custom filters to the services dashboard"
+- b58c52eb: fix: Fix bugs in the Services dashboard
+
 ## 0.9.0
 
 ### Minor Changes

@@ -1,5 +1,25 @@
 # @hyperdx/api
 
+## 2.10.0
+
+### Minor Changes
+
+- a5a04aa9: feat: Add materialized view support (Beta)
+
+### Patch Changes
+
+- 96f0539e: feat: Add silence alerts feature
+- e0c23d4e: feat: flush chunk data as it arrives if in order
+- 50ba92ac: feat: Add custom filters to the services dashboard"
+- b58c52eb: fix: Fix bugs in the Services dashboard
+- 0d3da6f7: fix: case sensitivity issue with email invites
+- 6d4fc318: feat: add teamsetting for paralellizing queries when possible
+- Updated dependencies [ca693c0f]
+- Updated dependencies [50ba92ac]
+- Updated dependencies [a5a04aa9]
+- Updated dependencies [b58c52eb]
+  - @hyperdx/common-utils@0.10.0
+
 ## 2.9.0
 
 ### Minor Changes
