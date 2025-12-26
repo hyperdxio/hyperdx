@@ -88,7 +88,7 @@ async function getServiceMapQuery({
           ...baseCTEConfig.filters,
           {
             type: 'sql',
-            condition: `${source.spanKindExpression} IN ('Server', 'Consumer')`,
+            condition: `${source.spanKindExpression} IN ('Server', 'Consumer', 'SPAN_KIND_SERVER', 'SPAN_KIND_CONSUMER')`,
           },
         ],
         where: '',
@@ -102,7 +102,7 @@ async function getServiceMapQuery({
           ...baseCTEConfig.filters,
           {
             type: 'sql',
-            condition: `${source.spanKindExpression} IN ('Client', 'Producer')`,
+            condition: `${source.spanKindExpression} IN ('Client', 'Producer', 'SPAN_KIND_CLIENT', 'SPAN_KIND_PRODUCER')`,
           },
         ],
         where: '',
