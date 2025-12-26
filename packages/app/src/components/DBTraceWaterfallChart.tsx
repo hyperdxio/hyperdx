@@ -10,7 +10,16 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Anchor, Box, Center, Code, Divider, Group, Text } from '@mantine/core';
+import {
+  Anchor,
+  Box,
+  Center,
+  Checkbox,
+  Code,
+  Divider,
+  Group,
+  Text,
+} from '@mantine/core';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -29,6 +38,7 @@ import {
   getSpanEventBody,
 } from '@/source';
 import TimelineChart from '@/TimelineChart';
+import { useFormatTime } from '@/useFormatTime';
 import {
   getHighlightedAttributesFromData,
   getSelectExpressionsForHighlightedAttributes,
@@ -51,6 +61,11 @@ export type SpanRow = {
   HyperDXEventType: 'span';
   type?: string;
   SpanAttributes?: Record<string, any>;
+  SpanEvents?: Array<{
+    Timestamp: string;
+    Name: string;
+    Attributes: Record<string, any>;
+  }>;
   __hdx_hidden?: boolean | 1 | 0;
 };
 
@@ -102,6 +117,7 @@ function getConfig(
     ServiceName: source.serviceNameExpression ?? '',
     SeverityText: source.severityTextExpression ?? '',
     SpanAttributes: source.eventAttributesExpression ?? '',
+    SpanEvents: source.spanEventsValueExpression ?? '',
   };
 
   // Aliases for trace attributes must be added here to ensure
@@ -183,6 +199,14 @@ function getConfig(
               {
                 valueExpression: alias.SpanAttributes,
                 alias: 'SpanAttributes',
+              },
+            ]
+          : []),
+        ...(alias.SpanEvents
+          ? [
+              {
+                valueExpression: alias.SpanEvents,
+                alias: 'SpanEvents',
               },
             ]
           : []),
@@ -297,9 +321,11 @@ export function useEventsAroundFocus({
         SpanId: cd?.SpanId,
         __hdx_hidden: cd?.__hdx_hidden,
         type,
-        // Omit SpanAttributes and __hdx_hidden from rowWhere id generation.
-        // SpanAttributes can be large objects, and __hdx_hidden may be a lucene expression.
-        id: rowWhere(omit(cd, ['SpanAttributes', '__hdx_hidden'])),
+        // Omit SpanAttributes, SpanEvents and __hdx_hidden from rowWhere id generation.
+        // SpanAttributes and SpanEvents can be large objects, and __hdx_hidden may be a lucene expression.
+        id: rowWhere(
+          omit(cd, ['SpanAttributes', 'SpanEvents', '__hdx_hidden']),
+        ),
       };
     });
   }, [afterSpanData, beforeSpanData, meta, rowWhere, type]);
@@ -337,6 +363,7 @@ export function DBTraceWaterfallChartContainer({
   };
 }) {
   const { size, startResize } = useResizable(30, 'bottom');
+  const formatTime = useFormatTime();
 
   const {
     traceWhere,
@@ -551,6 +578,7 @@ export function DBTraceWaterfallChartContainer({
   }
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const [showSpanEvents, setShowSpanEvents] = useState(true);
 
   const toggleCollapse = useCallback(
     (id: string) => {
@@ -633,6 +661,16 @@ export function DBTraceWaterfallChartContainer({
 
     const displayText =
       hasHttpAttributes && httpUrl ? `${body} ${httpUrl}` : body;
+
+    // Process span events into markers (only if showSpanEvents is enabled)
+    const markers =
+      showSpanEvents && result.SpanEvents
+        ? result.SpanEvents.map(spanEvent => ({
+            timestamp: new Date(spanEvent.Timestamp).getTime() - minOffset,
+            name: spanEvent.Name,
+            attributes: spanEvent.Attributes || {},
+          }))
+        : [];
 
     // Extract status logic
     // TODO: Legacy schemas will have STATUS_CODE_ERROR
@@ -730,11 +768,12 @@ export function DBTraceWaterfallChartContainer({
           id,
           start,
           end,
-          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}`,
+          tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
           color: barColor({ isError, isWarn, isHighlighted }),
           body: <span>{displayText}</span>,
           minWidthPerc: 1,
           isError,
+          markers,
         },
       ],
     };
@@ -793,12 +832,20 @@ export function DBTraceWaterfallChartContainer({
         </form>
       )}
       <Group my="xs" justify="space-between">
-        <Text size="xs">
-          {spanCountString},{' '}
-          <span className={errorCount ? 'text-danger' : ''}>
-            {errorCountString}
-          </span>
-        </Text>
+        <Group gap="md">
+          <Text size="xs">
+            {spanCountString},{' '}
+            <span className={errorCount ? 'text-danger' : ''}>
+              {errorCountString}
+            </span>
+          </Text>
+          <Checkbox
+            size="xs"
+            label="Show span events"
+            checked={showSpanEvents}
+            onChange={() => setShowSpanEvents(!showSpanEvents)}
+          />
+        </Group>
         <span>
           <Anchor
             underline="always"
