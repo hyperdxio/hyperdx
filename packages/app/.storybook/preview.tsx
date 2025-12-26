@@ -1,10 +1,11 @@
 import React from 'react';
 import { NextAdapter } from 'next-query-params';
 import { initialize, mswLoader } from 'msw-storybook-addon';
-import { QueryClient, QueryClientProvider } from 'react-query';
 import { QueryParamProvider } from 'use-query-params';
 import type { Preview } from '@storybook/nextjs';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { ibmPlexMono, inter, roboto, robotoMono } from '../src/fonts';
 import { meHandler } from '../src/mocks/handlers';
 import { ThemeWrapper } from '../src/ThemeWrapper';
 
@@ -31,9 +32,25 @@ export const globalTypes = {
     defaultValue: 'light',
     toolbar: {
       icon: 'mirror',
+      title: 'Theme',
       items: [
         { value: 'light', title: 'Light' },
         { value: 'dark', title: 'Dark' },
+      ],
+    },
+  },
+  font: {
+    name: 'Font',
+    description: 'App font family',
+    defaultValue: 'inter',
+    toolbar: {
+      icon: 'typography',
+      title: 'Font',
+      items: [
+        { value: 'inter', title: 'Inter' },
+        { value: 'roboto', title: 'Roboto' },
+        { value: 'ibm-plex-mono', title: 'IBM Plex Mono' },
+        { value: 'roboto-mono', title: 'Roboto Mono' },
       ],
     },
   },
@@ -43,17 +60,35 @@ initialize();
 
 const queryClient = new QueryClient();
 
+const fontMap = {
+  inter: inter,
+  roboto: roboto,
+  'ibm-plex-mono': ibmPlexMono,
+  'roboto-mono': robotoMono,
+};
+
 const preview: Preview = {
   decorators: [
-    (Story, context) => (
-      <QueryClientProvider client={queryClient}>
-        <QueryParamProvider adapter={NextAdapter}>
-          <ThemeWrapper colorScheme={context.globals.theme || 'light'}>
-            <Story />
-          </ThemeWrapper>
-        </QueryParamProvider>
-      </QueryClientProvider>
-    ),
+    (Story, context) => {
+      const selectedFont = context.globals.font || 'inter';
+      const font = fontMap[selectedFont as keyof typeof fontMap] || inter;
+      const fontFamily = font.style.fontFamily;
+
+      return (
+        <div className={font.className}>
+          <QueryClientProvider client={queryClient}>
+            <QueryParamProvider adapter={NextAdapter}>
+              <ThemeWrapper
+                colorScheme={context.globals.theme || 'light'}
+                fontFamily={fontFamily}
+              >
+                <Story />
+              </ThemeWrapper>
+            </QueryParamProvider>
+          </QueryClientProvider>
+        </div>
+      );
+    },
   ],
   loaders: [mswLoader],
   parameters: {

@@ -59,13 +59,13 @@ import {
   MV_AGGREGATE_FUNCTIONS,
 } from '@/utils/materializedViews';
 
-import ConfirmDeleteMenu from './ConfirmDeleteMenu';
-import { ConnectionSelectControlled } from './ConnectionSelect';
-import { DatabaseSelectControlled } from './DatabaseSelect';
-import { DBTableSelectControlled } from './DBTableSelect';
-import { InputControlled } from './InputControlled';
-import SelectControlled from './SelectControlled';
-import { SQLInlineEditorControlled } from './SQLInlineEditor';
+import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
+import { ConnectionSelectControlled } from '../ConnectionSelect';
+import { DatabaseSelectControlled } from '../DatabaseSelect';
+import { DBTableSelectControlled } from '../DBTableSelect';
+import { InputControlled } from '../InputControlled';
+import SelectControlled from '../SelectControlled';
+import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
 const DEFAULT_DATABASE = 'default';
 
@@ -739,6 +739,7 @@ export function LogTableModelForm(props: TableModelProps) {
               underline="always"
               onClick={() => setShowOptionalFields(true)}
               size="xs"
+              c="gray"
             >
               <Group gap="xs">
                 <IconSettings size={14} />
@@ -1764,42 +1765,9 @@ export function TableSourceForm({
       }
     >
       <Stack gap="md" mb="md">
-        <Flex justify="space-between" align="center" mb="lg">
-          <Text>Source Settings</Text>
-          <Group>
-            {onCancel && (
-              <Button variant="outline" onClick={onCancel} size="xs">
-                Cancel
-              </Button>
-            )}
-            {isNew ? (
-              <Button
-                variant="outline"
-                color="green"
-                onClick={_onCreate}
-                size="xs"
-                loading={createSource.isPending}
-              >
-                Save New Source
-              </Button>
-            ) : (
-              <>
-                <ConfirmDeleteMenu
-                  onDelete={() => deleteSource.mutate({ id: sourceId ?? '' })}
-                />
-                <Button
-                  variant="outline"
-                  color="green"
-                  onClick={_onSave}
-                  size="xs"
-                  loading={createSource.isPending}
-                >
-                  Save Source
-                </Button>
-              </>
-            )}
-          </Group>
-        </Flex>
+        <Text fw={500} mb="xs">
+          Source Settings
+        </Text>
         <FormRow label={'Name'}>
           <InputControlled
             control={control}

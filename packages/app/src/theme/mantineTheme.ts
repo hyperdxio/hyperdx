@@ -6,6 +6,7 @@ import {
   rem,
   Select,
   Text,
+  Tooltip,
 } from '@mantine/core';
 
 export const makeTheme = ({
@@ -78,6 +79,13 @@ export const makeTheme = ({
     fontFamily,
   },
   components: {
+    Tooltip: Tooltip.extend({
+      styles: () => ({
+        tooltip: {
+          fontFamily: 'var(--mantine-font-family)',
+        },
+      }),
+    }),
     Modal: {
       styles: {
         header: {
@@ -221,6 +229,49 @@ export const makeTheme = ({
 
         return { root: {} };
       },
+      styles: (_theme, props) => {
+        // Primary variant - light green style
+        if (props.variant === 'primary') {
+          return {
+            root: {
+              backgroundColor: 'var(--mantine-color-green-light)',
+              color: 'var(--mantine-color-green-light-color)',
+              '&:hover': {
+                backgroundColor: 'var(--mantine-color-green-light-hover)',
+              },
+            },
+          };
+        }
+
+        // Secondary variant - similar to default
+        if (props.variant === 'secondary') {
+          return {
+            root: {
+              backgroundColor: 'var(--color-bg-body)',
+              color: 'var(--color-text)',
+              border: '1px solid var(--color-border)',
+              '&:hover': {
+                backgroundColor: 'var(--color-bg-hover)',
+              },
+            },
+          };
+        }
+
+        // Danger variant - light red style
+        if (props.variant === 'danger') {
+          return {
+            root: {
+              backgroundColor: 'var(--mantine-color-red-light)',
+              color: 'var(--mantine-color-red-light-color)',
+              '&:hover': {
+                backgroundColor: 'var(--mantine-color-red-light-hover)',
+              },
+            },
+          };
+        }
+
+        return {};
+      },
     }),
     SegmentedControl: {
       styles: {
@@ -237,7 +288,7 @@ export const makeTheme = ({
         variant: 'subtle',
         color: 'gray',
       },
-      styles: (theme, props) => {
+      styles: (_theme, props) => {
         // Subtle variant stays transparent
         if (props.variant === 'subtle') {
           return {
@@ -266,6 +317,46 @@ export const makeTheme = ({
               },
               '&:active': {
                 backgroundColor: 'var(--color-bg-muted)',
+              },
+            },
+          };
+        }
+
+        // Primary variant - light green style
+        if (props.variant === 'primary') {
+          return {
+            root: {
+              backgroundColor: 'var(--mantine-color-green-light)',
+              color: 'var(--mantine-color-green-light-color)',
+              '&:hover': {
+                backgroundColor: 'var(--mantine-color-green-light-hover)',
+              },
+            },
+          };
+        }
+
+        // Secondary variant - similar to default
+        if (props.variant === 'secondary') {
+          return {
+            root: {
+              backgroundColor: 'var(--color-bg-surface)',
+              color: 'var(--color-text)',
+              border: '1px solid var(--color-border)',
+              '&:hover': {
+                backgroundColor: 'var(--color-bg-hover)',
+              },
+            },
+          };
+        }
+
+        // Danger variant - light red style
+        if (props.variant === 'danger') {
+          return {
+            root: {
+              backgroundColor: 'var(--mantine-color-red-light)',
+              color: 'var(--mantine-color-red-light-color)',
+              '&:hover': {
+                backgroundColor: 'var(--mantine-color-red-light-hover)',
               },
             },
           };

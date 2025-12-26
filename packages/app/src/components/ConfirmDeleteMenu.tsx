@@ -9,7 +9,7 @@ export default function ConfirmDeleteMenu({
   return (
     <Menu withArrow>
       <Menu.Target>
-        <Button variant="outline" size="xs">
+        <Button variant="danger" size="xs">
           Delete
         </Button>
       </Menu.Target>
