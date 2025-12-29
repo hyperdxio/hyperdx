@@ -81,8 +81,13 @@ import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { parseAsStringWithNewLines } from './utils/queryParsers';
-import api from './api';
-import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
+import {
+  buildTableRowSearchUrl,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
+  convertToTimeChartConfig,
+  DEFAULT_CHART_CONFIG,
+} from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
@@ -120,7 +125,6 @@ const Tile = forwardRef(
       onEditClick,
       onDeleteClick,
       onUpdateChart,
-      onSettled,
       granularity,
       onTimeRangeSelect,
       filters,
@@ -132,7 +136,7 @@ const Tile = forwardRef(
       onMouseUp,
       onTouchEnd,
       children,
-      isHighlighed,
+      isHighlighted,
     }: {
       chart: Tile;
       dateRange: [Date, Date];
@@ -153,31 +157,44 @@ const Tile = forwardRef(
       onMouseUp?: (e: React.MouseEvent) => void;
       onTouchEnd?: (e: React.TouchEvent) => void;
       children?: React.ReactNode; // Resizer tooltip
-      isHighlighed?: boolean;
+      isHighlighted?: boolean;
     },
     ref: ForwardedRef<HTMLDivElement>,
   ) => {
     useEffect(() => {
-      if (isHighlighed) {
+      if (isHighlighted) {
         document
           .getElementById(`chart-${chart.id}`)
           ?.scrollIntoView({ behavior: 'smooth' });
       }
-    }, [chart.id, isHighlighed]);
+    }, [chart.id, isHighlighted]);
 
     const [queriedConfig, setQueriedConfig] = useState<
       ChartConfigWithDateRange | undefined
     >(undefined);
 
+    // Transform the queried config to match what will be queried by the
+    // child components, so that the MV Optimization indicator is accurate.
+    const configForMVOptimizationIndicator = useMemo(() => {
+      if (!queriedConfig) return undefined;
+
+      if (
+        queriedConfig.displayType === DisplayType.Line ||
+        queriedConfig.displayType === DisplayType.StackedBar
+      ) {
+        return convertToTimeChartConfig(queriedConfig);
+      } else if (queriedConfig.displayType === DisplayType.Number) {
+        return convertToNumberChartConfig(queriedConfig);
+      } else if (queriedConfig.displayType === DisplayType.Table) {
+        return convertToTableChartConfig(queriedConfig);
+      }
+
+      return queriedConfig;
+    }, [queriedConfig]);
+
     const { data: source } = useSource({
       id: chart.config.source,
     });
-
-    // const prevSource = usePrevious(source);
-    // const prevChart = usePrevious(chart);
-    // const prevDateRange = usePrevious(dateRange);
-    // const prevGranularity = usePrevious(granularity);
-    // const prevFilters = usePrevious(filters);
 
     useEffect(() => {
       if (source != null) {
@@ -233,13 +250,11 @@ const Tile = forwardRef(
       return tooltip;
     }, [alert]);
 
-    const { data: me } = api.useMe();
-
     return (
       <div
         data-testid={`dashboard-tile-${chart.id}`}
         className={`p-2 ${className} d-flex flex-column bg-muted rounded ${
-          isHighlighed && 'dashboard-chart-highlighted'
+          isHighlighted && 'dashboard-chart-highlighted'
         }`}
         id={`chart-${chart.id}`}
         onMouseEnter={() => setHovered(true)}
@@ -321,7 +336,7 @@ const Tile = forwardRef(
             {source?.materializedViews?.length && queriedConfig && (
               <Box onMouseDown={e => e.stopPropagation()}>
                 <MVOptimizationIndicator
-                  config={queriedConfig}
+                  config={configForMVOptimizationIndicator}
                   source={source}
                   variant="icon"
                 />
@@ -446,7 +461,6 @@ const EditTileModal = ({
           <EditTimeChartForm
             dashboardId={dashboardId}
             chartConfig={chart.config}
-            setChartConfig={config => {}}
             dateRange={dateRange}
             isSaving={isSaving}
             onSave={config => {
@@ -754,7 +768,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               ...(filterQueries ?? []),
             ]}
             onTimeRangeSelect={onTimeRangeSelect}
-            isHighlighed={highlightedTileId === chart.id}
+            isHighlighted={highlightedTileId === chart.id}
             onUpdateChart={newChart => {
               if (!dashboard) {
                 return;
@@ -826,15 +840,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   const deleteDashboard = useDeleteDashboard();
-
-  // Search tile
-  const [rowId, setRowId] = useQueryState('rowWhere');
-  const [rowSource, setRowSource] = useQueryState('rowSource');
-  const { data: rowSidePanelSource } = useSource({ id: rowSource });
-  const handleSidePanelClose = useCallback(() => {
-    setRowId(null);
-    setRowSource(null);
-  }, [setRowId, setRowSource]);
 
   const handleUpdateTags = useCallback(
     (newTags: string[]) => {
@@ -1232,7 +1237,7 @@ const DBDashboardPageDynamic = dynamic(async () => DBDashboardPage, {
   ssr: false,
 });
 
-// @ts-ignore
+// @ts-expect-error for getLayout
 DBDashboardPageDynamic.getLayout = withAppNav;
 
 export default DBDashboardPageDynamic;
