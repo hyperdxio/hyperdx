@@ -187,11 +187,11 @@ function HighlightedAttributeExpressionsFormRow({
   label: string;
   helpText?: string;
 }) {
-  const databaseName =
-    useWatch({
-      control,
-      name: 'from.databaseName',
-    }) || DEFAULT_DATABASE;
+  const databaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: DEFAULT_DATABASE,
+  });
   const tableName = useWatch({ control, name: 'from.tableName' });
   const connectionId = useWatch({ control, name: 'connection' });
 
@@ -289,8 +289,11 @@ function HighlightedAttributeExpressionsFormRow({
 
 /** Component for configuring one or more materialized views */
 function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
-  const databaseName =
-    useWatch({ control, name: `from.databaseName` }) || DEFAULT_DATABASE;
+  const databaseName = useWatch({
+    control,
+    name: `from.databaseName`,
+    defaultValue: DEFAULT_DATABASE,
+  });
 
   const {
     fields: materializedViews,
@@ -357,13 +360,21 @@ function MaterializedViewFormSection({
   setValue,
 }: { mvIndex: number; onRemove: () => void } & TableModelProps) {
   const connection = useWatch({ control, name: `connection` });
-  const sourceDatabaseName =
-    useWatch({ control, name: `from.databaseName` }) || DEFAULT_DATABASE;
-  const mvDatabaseName =
-    useWatch({ control, name: `materializedViews.${mvIndex}.databaseName` }) ||
-    sourceDatabaseName;
-  const mvTableName =
-    useWatch({ control, name: `materializedViews.${mvIndex}.tableName` }) || '';
+  const sourceDatabaseName = useWatch({
+    control,
+    name: `from.databaseName`,
+    defaultValue: DEFAULT_DATABASE,
+  });
+  const mvDatabaseName = useWatch({
+    control,
+    name: `materializedViews.${mvIndex}.databaseName`,
+    defaultValue: sourceDatabaseName,
+  });
+  const mvTableName = useWatch({
+    control,
+    name: `materializedViews.${mvIndex}.tableName`,
+    defaultValue: '',
+  });
 
   return (
     <Stack gap="sm">
@@ -615,12 +626,17 @@ function AggregatedColumnRow({
   onRemove: () => void;
 }) {
   const connectionId = useWatch({ control, name: `connection` });
-  const sourceDatabaseName =
-    useWatch({ control, name: `from.databaseName` }) || DEFAULT_DATABASE;
+  const sourceDatabaseName = useWatch({
+    control,
+    name: `from.databaseName`,
+    defaultValue: DEFAULT_DATABASE,
+  });
   const sourceTableName = useWatch({ control, name: `from.tableName` });
-  const mvDatabaseName =
-    useWatch({ control, name: `materializedViews.${mvIndex}.databaseName` }) ||
-    sourceDatabaseName;
+  const mvDatabaseName = useWatch({
+    control,
+    name: `materializedViews.${mvIndex}.databaseName`,
+    defaultValue: sourceDatabaseName,
+  });
   const mvTableName = useWatch({
     control,
     name: `materializedViews.${mvIndex}.tableName`,
@@ -690,11 +706,11 @@ function AggregatedColumnRow({
 
 export function LogTableModelForm(props: TableModelProps) {
   const { control } = props;
-  const databaseName =
-    useWatch({
-      control,
-      name: 'from.databaseName',
-    }) || DEFAULT_DATABASE;
+  const databaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: DEFAULT_DATABASE,
+  });
   const tableName = useWatch({ control, name: 'from.tableName' });
   const connectionId = useWatch({ control, name: 'connection' });
 
@@ -943,11 +959,11 @@ export function LogTableModelForm(props: TableModelProps) {
 
 export function TraceTableModelForm(props: TableModelProps) {
   const { control } = props;
-  const databaseName =
-    useWatch({
-      control,
-      name: 'from.databaseName',
-    }) || DEFAULT_DATABASE;
+  const databaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: DEFAULT_DATABASE,
+  });
   const tableName = useWatch({ control, name: 'from.tableName' });
   const connectionId = useWatch({ control, name: 'connection' });
 
@@ -1227,11 +1243,11 @@ export function TraceTableModelForm(props: TableModelProps) {
 }
 
 export function SessionTableModelForm({ control }: TableModelProps) {
-  const databaseName =
-    useWatch({
-      control,
-      name: 'from.databaseName',
-    }) || DEFAULT_DATABASE;
+  const databaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: DEFAULT_DATABASE,
+  });
   const connectionId = useWatch({ control, name: 'connection' });
   const tableName = useWatch({ control, name: 'from.tableName' });
   const prevTableNameRef = useRef(tableName);
@@ -1284,11 +1300,11 @@ interface TableModelProps {
 }
 
 export function MetricTableModelForm({ control, setValue }: TableModelProps) {
-  const databaseName =
-    useWatch({
-      control,
-      name: 'from.databaseName',
-    }) || DEFAULT_DATABASE;
+  const databaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: DEFAULT_DATABASE,
+  });
   const connectionId = useWatch({ control, name: 'connection' });
   const metricTables = useWatch({ control, name: 'metricTables' });
   const prevMetricTablesRef = useRef(metricTables);
