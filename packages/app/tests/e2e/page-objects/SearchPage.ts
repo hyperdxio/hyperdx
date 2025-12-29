@@ -27,6 +27,10 @@ export class SearchPage {
   private readonly saveSearchButton: Locator;
   private readonly luceneTab: Locator;
   private readonly sqlTab: Locator;
+  private readonly sourceSelector: Locator;
+  private readonly sourceSettingsMenu: Locator;
+  private readonly editSourceMenuItem: Locator;
+  private readonly createNewSourceMenuItem: Locator;
 
   constructor(page: Page, defaultTimeout: number = 3000) {
     this.page = page;
@@ -43,12 +47,32 @@ export class SearchPage {
     this.savedSearchModal = new SavedSearchModalComponent(page);
 
     // Define page-specific locators
-    this.searchForm = page.locator('[data-testid="search-form"]');
-    this.searchInput = page.locator('[data-testid="search-input"]');
-    this.searchButton = page.locator('[data-testid="search-submit-button"]');
-    this.saveSearchButton = page.locator('[data-testid="save-search-button"]');
+    this.searchForm = page.getByTestId('search-form');
+    this.searchInput = page.getByTestId('search-input');
+    this.searchButton = page.getByTestId('search-submit-button');
+    this.saveSearchButton = page.getByTestId('save-search-button');
     this.luceneTab = page.getByRole('button', { name: 'Lucene', exact: true });
     this.sqlTab = page.getByRole('button', { name: 'SQL', exact: true });
+    this.sourceSelector = page.getByTestId('source-selector');
+    this.sourceSettingsMenu = page.getByTestId('source-settings-menu');
+    this.editSourceMenuItem = page.getByTestId('edit-source-menu-item');
+    this.createNewSourceMenuItem = page.getByTestId(
+      'create-new-source-menu-item',
+    );
+  }
+
+  get sourceMenu() {
+    return this.sourceSettingsMenu;
+  }
+
+  get createNewSourceItem() {
+    return this.createNewSourceMenuItem;
+  }
+
+  get editSourceItems() {
+    return this.page.locator(
+      '[data-testid="edit-source-menu-item"], [data-testid="edit-sources-menu-item"]',
+    );
   }
 
   /**
@@ -58,6 +82,27 @@ export class SearchPage {
     await this.page.goto('/search');
     // Wait for page to load
     await this.table.waitForRowsToPopulate();
+  }
+
+  async selectSource(sourceName: string) {
+    await this.sourceSelector.click();
+    await this.page
+      .getByRole('option', { name: sourceName, exact: true })
+      .click();
+  }
+
+  async openEditSourceModal() {
+    await this.sourceSettingsMenu.click();
+    await this.editSourceMenuItem.click();
+  }
+
+  async sourceModalShowOptionalFields() {
+    const optionalFieldsButton = this.page.getByText(
+      'Configure Optional Fields',
+    );
+    if (await optionalFieldsButton.isVisible()) {
+      await optionalFieldsButton.click();
+    }
   }
 
   /**
@@ -217,5 +262,9 @@ export class SearchPage {
 
   get sqlModeTab() {
     return this.sqlTab;
+  }
+
+  get sourceDropdown() {
+    return this.sourceSelector;
   }
 }

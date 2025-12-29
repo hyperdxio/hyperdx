@@ -187,11 +187,11 @@ function HighlightedAttributeExpressionsFormRow({
   label: string;
   helpText?: string;
 }) {
-  const databaseName = useWatch({
-    control,
-    name: 'from.databaseName',
-    defaultValue: DEFAULT_DATABASE,
-  });
+  const databaseName =
+    useWatch({
+      control,
+      name: 'from.databaseName',
+    }) || DEFAULT_DATABASE;
   const tableName = useWatch({ control, name: 'from.tableName' });
   const connectionId = useWatch({ control, name: 'connection' });
 
@@ -690,11 +690,11 @@ function AggregatedColumnRow({
 
 export function LogTableModelForm(props: TableModelProps) {
   const { control } = props;
-  const databaseName = useWatch({
-    control,
-    name: 'from.databaseName',
-    defaultValue: DEFAULT_DATABASE,
-  });
+  const databaseName =
+    useWatch({
+      control,
+      name: 'from.databaseName',
+    }) || DEFAULT_DATABASE;
   const tableName = useWatch({ control, name: 'from.tableName' });
   const connectionId = useWatch({ control, name: 'connection' });
 
@@ -943,11 +943,11 @@ export function LogTableModelForm(props: TableModelProps) {
 
 export function TraceTableModelForm(props: TableModelProps) {
   const { control } = props;
-  const databaseName = useWatch({
-    control,
-    name: 'from.databaseName',
-    defaultValue: DEFAULT_DATABASE,
-  });
+  const databaseName =
+    useWatch({
+      control,
+      name: 'from.databaseName',
+    }) || DEFAULT_DATABASE;
   const tableName = useWatch({ control, name: 'from.tableName' });
   const connectionId = useWatch({ control, name: 'connection' });
 
@@ -1226,12 +1226,12 @@ export function TraceTableModelForm(props: TableModelProps) {
   );
 }
 
-export function SessionTableModelForm({ control, setValue }: TableModelProps) {
-  const databaseName = useWatch({
-    control,
-    name: 'from.databaseName',
-    defaultValue: DEFAULT_DATABASE,
-  });
+export function SessionTableModelForm({ control }: TableModelProps) {
+  const databaseName =
+    useWatch({
+      control,
+      name: 'from.databaseName',
+    }) || DEFAULT_DATABASE;
   const connectionId = useWatch({ control, name: 'connection' });
   const tableName = useWatch({ control, name: 'from.tableName' });
   const prevTableNameRef = useRef(tableName);
@@ -1284,11 +1284,11 @@ interface TableModelProps {
 }
 
 export function MetricTableModelForm({ control, setValue }: TableModelProps) {
-  const databaseName = useWatch({
-    control,
-    name: 'from.databaseName',
-    defaultValue: DEFAULT_DATABASE,
-  });
+  const databaseName =
+    useWatch({
+      control,
+      name: 'from.databaseName',
+    }) || DEFAULT_DATABASE;
   const connectionId = useWatch({ control, name: 'connection' });
   const metricTables = useWatch({ control, name: 'metricTables' });
   const prevMetricTablesRef = useRef(metricTables);
@@ -1411,36 +1411,45 @@ export function TableSourceForm({
   const { data: source } = useSource({ id: sourceId });
   const { data: connections } = useConnections();
 
-  const {
-    control,
-    setValue,
-    formState,
-    handleSubmit,
-    resetField,
-    setError,
-    clearErrors,
-  } = useForm<TSourceUnion>({
-    defaultValues: {
-      kind: SourceKind.Log,
-      name: defaultName,
-      connection: connections?.[0]?.id,
-      from: {
-        databaseName: 'default',
-        tableName: '',
+  const { control, setValue, handleSubmit, resetField, setError, clearErrors } =
+    useForm<TSourceUnion>({
+      defaultValues: {
+        kind: SourceKind.Log,
+        name: defaultName,
+        connection: connections?.[0]?.id,
+        from: {
+          databaseName: 'default',
+          tableName: '',
+        },
       },
-    },
-    // TODO: HDX-1768 remove type assertion
-    values: source as TSourceUnion,
-    resetOptions: {
-      keepDirtyValues: true,
-      keepErrors: true,
-    },
-  });
+      // TODO: HDX-1768 remove type assertion
+      values: source as TSourceUnion,
+      resetOptions: {
+        keepDirtyValues: true,
+        keepErrors: true,
+      },
+    });
 
-  const watchedConnection = useWatch({ control, name: 'connection' });
-  const watchedDatabaseName = useWatch({ control, name: 'from.databaseName' });
-  const watchedTableName = useWatch({ control, name: 'from.tableName' });
-  const watchedKind = useWatch({ control, name: 'kind' });
+  const watchedConnection = useWatch({
+    control,
+    name: 'connection',
+    defaultValue: source?.connection,
+  });
+  const watchedDatabaseName = useWatch({
+    control,
+    name: 'from.databaseName',
+    defaultValue: source?.from?.databaseName || DEFAULT_DATABASE,
+  });
+  const watchedTableName = useWatch({
+    control,
+    name: 'from.tableName',
+    defaultValue: source?.from?.tableName,
+  });
+  const watchedKind = useWatch({
+    control,
+    name: 'kind',
+    defaultValue: source?.kind || SourceKind.Log,
+  });
   const prevTableNameRef = useRef(watchedTableName);
 
   useEffect(() => {
@@ -1493,7 +1502,11 @@ export function TableSourceForm({
     resetField('connection', { defaultValue: connections?.[0]?.id });
   }, [connections, resetField]);
 
-  const kind: SourceKind = useWatch({ control, name: 'kind' });
+  const kind = useWatch({
+    control,
+    name: 'kind',
+    defaultValue: source?.kind || SourceKind.Log,
+  });
 
   const createSource = useCreateSource();
   const updateSource = useUpdateSource();
@@ -1751,9 +1764,13 @@ export function TableSourceForm({
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
-    defaultValue: DEFAULT_DATABASE,
+    defaultValue: source?.from?.databaseName || DEFAULT_DATABASE,
   });
-  const connectionId = useWatch({ control, name: 'connection' });
+  const connectionId = useWatch({
+    control,
+    name: 'connection',
+    defaultValue: source?.connection,
+  });
 
   return (
     <div
