@@ -285,7 +285,7 @@ function DBTimeChartComponent({
     useQueriedChartConfig(previousPeriodChartConfig, {
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, previousPeriodChartConfig, 'chunked'],
-      enabled: enabled && config.compareToPreviousPeriod,
+      enabled: !!(enabled && config.compareToPreviousPeriod),
       enableQueryChunking: true,
     });
 
