@@ -1,5 +1,46 @@
 # @hyperdx/app
 
+## 2.10.0
+
+### Minor Changes
+
+- a5a04aa9: feat: Add materialized view support (Beta)
+
+### Patch Changes
+
+- 12cd6433: Improvements to Webhooks rendering (grouping, icons, etc)
+- 99e7ce25: Reduce instrumentation trace events when search results shown
+- 5062d80d: fix: Prevent dashboard infinite re-render
+- d5181b6a: fix: Add SPAN*KIND* values to service map filters
+- 21427340: Improve light mode contrast for DBRowTableIconButton by removing hardcoded gray color and text-muted-hover class
+- 215b9bf7: Add prop to disable drilldown if not supported
+- 6d4fc318: feat: parallelize DBSearchPage's histogram query
+- 8241ffea: Make line wrapping in search page persistent
+- 96f0539e: feat: Add silence alerts feature
+- e0c23d4e: feat: flush chunk data as it arrives if in order
+- 4ba37e55: Swap out bootstrap icons for tabler icons across app
+- 80117ebf: Minor UI Improvements in Search Filters UI
+- b564a369: fix: Ensure adequate SQL/Schema Preview modal height
+- 50ba92ac: feat: Add custom filters to the services dashboard"
+- dc846011: fix: show alert indicator for bar charts too
+- b99052ad: fix: cityHash64 in sessions cast to string due to number precision issues in the browser
+- 141b4969: fix: Correctly disable previous period query
+- b58c52eb: fix: Fix bugs in the Services dashboard
+- 19b710fb: fix: Update Request Error Rate config to use MVs
+- 84d60a64: fix: Fix double value for isRootSpan facet
+- 61cb9425: Performance Improvement to only run sample query when the table is visible
+- ae4c8765: fix: error loading row data by multiple search panel in dashboard
+- 776e3927: fix: Fix queries/minute calculation in Services Dashboard
+- 6d4fc318: feat: add teamsetting for paralellizing queries when possible
+- 69d9a418: feat: Filter on isRootSpan column if present
+- 780279fd: feat: Save tile to dashboard from chart explorer
+- 468eb924: Update some forms to work better with React 19
+- Updated dependencies [ca693c0f]
+- Updated dependencies [50ba92ac]
+- Updated dependencies [a5a04aa9]
+- Updated dependencies [b58c52eb]
+  - @hyperdx/common-utils@0.10.0
+
 ## 2.9.0
 
 ### Minor Changes
