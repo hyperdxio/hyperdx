@@ -23,7 +23,7 @@ const spanEventColumns: ColumnDef<SpanEventData>[] = [
     header: 'Timestamp',
     size: 120,
     cell: ({ row }) => (
-      <span className="text-muted">
+      <span className="text-muted" title={row.original.Timestamp}>
         <FormatTime
           value={new Date(row.original.Timestamp).getTime()}
           format="withMs"
