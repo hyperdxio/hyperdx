@@ -10,6 +10,7 @@ import type { UseQueryOptions } from '@tanstack/react-query';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
+import { Dashboard } from './dashboard';
 import type { AlertsPageItem } from './types';
 
 type ServicesResponse = {
@@ -112,14 +113,14 @@ const api = {
         }),
     });
   },
-  useDashboards(options?: UseQueryOptions<any, Error>) {
+  useDashboards(options?: UseQueryOptions<Dashboard[] | null, Error>) {
     return useQuery({
       queryKey: [`dashboards`],
       queryFn: () => {
         if (IS_LOCAL_MODE) {
           return null;
         }
-        return hdxServer(`dashboards`, { method: 'GET' }).json();
+        return hdxServer(`dashboards`, { method: 'GET' }).json<Dashboard[]>();
       },
       ...options,
     });
@@ -501,8 +502,15 @@ const api = {
   },
   useRegisterPassword() {
     return useMutation({
-      // @ts-ignore
-      mutationFn: async ({ email, password, confirmPassword }) =>
+      mutationFn: async ({
+        email,
+        password,
+        confirmPassword,
+      }: {
+        email: string;
+        password: string;
+        confirmPassword: string;
+      }) =>
         hdxServer(`register/password`, {
           method: 'POST',
           json: {
