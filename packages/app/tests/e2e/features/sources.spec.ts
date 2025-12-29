@@ -96,6 +96,10 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     'should show the correct source form when modal is open',
     { tag: ['@sources'] },
     async () => {
+      test.skip(
+        process.env.E2E_FULLSTACK === 'true',
+        'Skipping source form tests in fullstack mode due to UI differences',
+      );
       for (const sourceData of editableSourcesData) {
         await test.step(`Verify ${sourceData.name} fields`, async () => {
           // Demo Logs is selected by default, so we don't need to select it again
