@@ -1,5 +1,3 @@
-// @ts-nocheck TODO: remove this line
-
 import Link from 'next/link';
 import { Anchor, Burger, Button, Container, Group } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';

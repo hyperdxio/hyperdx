@@ -1,10 +1,8 @@
-// @ts-nocheck TODO: remove this line
-
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
-import cx from 'classnames';
+import { HTTPError } from 'ky';
 import { SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import {
   Button,
@@ -92,17 +90,18 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
       {
         onSuccess: () => router.push('/search'),
         onError: async error => {
-          const jsonData = await error.response.json();
+          if (error instanceof HTTPError) {
+            const jsonData = await error.response.json();
 
-          if (Array.isArray(jsonData) && jsonData[0]?.errors?.issues) {
-            return jsonData[0].errors.issues.forEach((issue: any) => {
-              setError(issue.path[0], {
-                type: issue.code,
-                message: issue.message,
+            if (Array.isArray(jsonData) && jsonData[0]?.errors?.issues) {
+              return jsonData[0].errors.issues.forEach((issue: any) => {
+                setError(issue.path[0], {
+                  type: issue.code,
+                  message: issue.message,
+                });
               });
-            });
+            }
           }
-
           setError('root', {
             type: 'manual',
             message: 'An unexpected error occurred, please try again later.',
