@@ -1,15 +1,16 @@
 import { SearchPage } from '../page-objects/SearchPage';
 import { expect, test } from '../utils/base-test';
 
-const commonFields = [
+const COMMON_FIELDS = [
   'Name',
   'Source Data Type',
   'Server Connection',
   'Database',
   'Table',
 ];
-const logFields = [
-  ...commonFields,
+
+const LOG_FIELDS = [
+  ...COMMON_FIELDS,
   'Service Name Expression',
   'Log Level Expression',
   'Body Expression',
@@ -23,8 +24,8 @@ const logFields = [
   'Implicit Column Expression',
 ];
 
-const traceFields = [
-  ...commonFields,
+const TRACE_FIELDS = [
+  ...COMMON_FIELDS,
   'Duration Expression',
   'Duration Precision',
   'Trace Id Expression',
@@ -45,23 +46,31 @@ const traceFields = [
   'Displayed Timestamp Column',
 ];
 
-const sessionFields = [...commonFields, 'Correlated Trace Source'];
+const SESSION_FIELDS = [...COMMON_FIELDS, 'Correlated Trace Source'];
 
-const metricFields = [
-  ...commonFields.slice(0, -1), // Remove Table
-  'Gauge Table',
-  'Histogram Table',
-  'Sum Table',
-  'Summary Table',
-  'Exponential Histogram Table',
+const METRIC_FIELDS = [
+  ...COMMON_FIELDS.slice(0, -1), // Remove Table
+  'gauge Table',
+  'histogram Table',
+  'sum Table',
+  'summary Table',
+  'exponential histogram Table',
   'Correlated Log Source',
 ];
 
-const sourcesData = [
-  { name: 'Demo Logs', fields: logFields },
-  { name: 'Demo Traces', fields: traceFields },
-  { name: 'Demo Sessions', fields: sessionFields },
-  { name: 'Demo Metrics', fields: metricFields },
+const editableSourcesData = [
+  { name: 'Demo Logs', fields: LOG_FIELDS, radioButtonName: 'Log' },
+  { name: 'Demo Traces', fields: TRACE_FIELDS, radioButtonName: 'Trace' },
+];
+
+const allSourcesData = [
+  ...editableSourcesData,
+  {
+    name: 'Demo Metrics',
+    fields: METRIC_FIELDS,
+    radioButtonName: 'OTEL Metrics',
+  },
+  { name: 'Demo Sessions', fields: SESSION_FIELDS, radioButtonName: 'Session' },
 ];
 
 test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
@@ -87,7 +96,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     'should show the correct source form when modal is open',
     { tag: ['@sources'] },
     async () => {
-      for (const sourceData of sourcesData) {
+      for (const sourceData of editableSourcesData) {
         await test.step(`Verify ${sourceData.name} fields`, async () => {
           // Demo Logs is selected by default, so we don't need to select it again
           if (sourceData.name !== 'Demo Logs') {
@@ -108,4 +117,33 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
       }
     },
   );
+
+  test('should show proper fields when creating a new source', async () => {
+    await searchPage.sourceMenu.click();
+    await searchPage.createNewSourceItem.click();
+    // for each source type (log, trace, session, metric), verify the correct fields are shown
+    for (const sourceData of allSourcesData) {
+      await test.step(`Verify ${sourceData.radioButtonName} source type`, async () => {
+        // Find the radio button by its label
+        const radioButton = searchPage.page.getByLabel(
+          sourceData.radioButtonName,
+          { exact: true },
+        );
+
+        // Click the radio button
+        await radioButton.click();
+
+        // Show optional fields if the button exists
+        await searchPage.sourceModalShowOptionalFields();
+
+        // Verify fields
+        for (const field of sourceData.fields) {
+          await expect(
+            searchPage.page.getByText(field, { exact: true }),
+          ).toBeVisible();
+        }
+      });
+    }
+    await searchPage.page.keyboard.press('Escape');
+  });
 });
