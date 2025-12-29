@@ -216,7 +216,7 @@ function SourceEditMenu({
         </Menu.Item>
         {IS_LOCAL_MODE ? (
           <Menu.Item
-            data-testid="edit-source-menu-item"
+            data-testid="edit-sources-menu-item"
             leftSection={<IconSettings size={14} />}
             onClick={() => setModelFormExpanded(v => !v)}
           >
