@@ -89,7 +89,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     await expect(searchPage.createNewSourceItem).toBeVisible();
 
     // Verify edit source menu items are visible
-    await expect(searchPage.editSourceItems.first()).toBeVisible();
+    await expect(searchPage.editSourceMenuItem).toBeVisible();
   });
 
   test(

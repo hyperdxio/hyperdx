@@ -20,6 +20,8 @@ export class SearchPage {
   readonly filters: FilterComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
   readonly defaultTimeout: number = 3000;
+  readonly editSourceMenuItem: Locator;
+
   // Page-specific locators
   private readonly searchForm: Locator;
   private readonly searchInput: Locator;
@@ -29,7 +31,6 @@ export class SearchPage {
   private readonly sqlTab: Locator;
   private readonly sourceSelector: Locator;
   private readonly sourceSettingsMenu: Locator;
-  private readonly editSourceMenuItem: Locator;
   private readonly createNewSourceMenuItem: Locator;
 
   constructor(page: Page, defaultTimeout: number = 3000) {
@@ -55,7 +56,7 @@ export class SearchPage {
     this.sqlTab = page.getByRole('button', { name: 'SQL', exact: true });
     this.sourceSelector = page.getByTestId('source-selector');
     this.sourceSettingsMenu = page.getByTestId('source-settings-menu');
-    this.editSourceMenuItem = page.getByTestId('edit-source-menu-item');
+    this.editSourceMenuItem = page.getByTestId('edit-sources-menu-item');
     this.createNewSourceMenuItem = page.getByTestId(
       'create-new-source-menu-item',
     );
@@ -67,12 +68,6 @@ export class SearchPage {
 
   get createNewSourceItem() {
     return this.createNewSourceMenuItem;
-  }
-
-  get editSourceItems() {
-    return this.page.locator(
-      '[data-testid="edit-source-menu-item"], [data-testid="edit-sources-menu-item"]',
-    );
   }
 
   /**
