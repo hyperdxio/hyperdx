@@ -650,11 +650,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     whereLanguage: SearchConditionLanguage;
   }>({
     defaultValues: {
-      granularity: 'auto',
-      where: '',
-      whereLanguage: 'lucene',
-    },
-    values: {
       granularity: granularity ?? 'auto',
       where: where ?? '',
       whereLanguage: (whereLanguage as SearchConditionLanguage) ?? 'lucene',
@@ -672,17 +667,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Past 1h');
 
-  const {
-    searchedTimeRange,
-    // displayedTimeInputValue,
-    // setDisplayedTimeInputValue,
-    onSearch,
-    onTimeRangeSelect,
-  } = useNewTimeQuery({
+  const { searchedTimeRange, onSearch, onTimeRangeSelect } = useNewTimeQuery({
     initialDisplayValue: 'Past 1h',
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
-    // showRelativeInterval: isLive,
   });
 
   const {
