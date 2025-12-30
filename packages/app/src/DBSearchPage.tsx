@@ -1003,7 +1003,12 @@ function DBSearchPage() {
     onFilterChange: handleSetFilters,
   });
 
-  const watchedSource = useWatch({ control, name: 'source' });
+  const watchedSource = useWatch({
+    control,
+    name: 'source',
+    // Watch will reset when changing saved search, so we need to default to the URL
+    defaultValue: searchedConfig.source ?? undefined,
+  });
   const prevSourceRef = useRef(watchedSource);
 
   useEffect(() => {
