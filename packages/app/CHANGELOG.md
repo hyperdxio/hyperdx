@@ -1,5 +1,22 @@
 # @hyperdx/app
 
+## 2.11.0
+
+### Minor Changes
+
+- 39633f3a: feat: Add span event annotations to waterfall view
+
+### Patch Changes
+
+- 4889205a: fix: Prevent crashes on Services and ClickHouse dashboards
+- 103c63cc: chore(eslint): enable @typescript-eslint/no-unsafe-type-assertion rule (warn)
+- e78960f3: style: Fix style inconsistencies
+- 11bd8e3d: Fix issue where select is not updating when loading saved searches
+- 8584b4a4: fix: source form was not loading properly for all sources
+- Updated dependencies [103c63cc]
+- Updated dependencies [103c63cc]
+  - @hyperdx/common-utils@0.10.1
+
 ## 2.10.0
 
 ### Minor Changes
