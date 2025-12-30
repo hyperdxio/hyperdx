@@ -919,7 +919,7 @@ export default function EditTimeChartForm({
               )}
               <Divider mt="md" mb="sm" />
               <Flex mt={4} align="center" justify="space-between">
-                <Group gap={0}>
+                <Group gap="xs">
                   {displayType !== DisplayType.Number && (
                     <Button
                       variant="subtle"
