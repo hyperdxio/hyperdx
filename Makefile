@@ -69,19 +69,12 @@ ci-unit:
 e2e:
 	@# Run full-stack by default (MongoDB + API + demo ClickHouse)
 	@# Use 'make e2e local=true' to skip MongoDB and run local mode only
-	@if [ "$(local)" = "true" ]; then \
-		if [ -z "$(tags)" ]; then \
-			./scripts/test-e2e.sh --local; \
-		else \
-			./scripts/test-e2e.sh --local --tags "$(tags)"; \
-		fi; \
-	else \
-		if [ -z "$(tags)" ]; then \
-			./scripts/test-e2e.sh; \
-		else \
-			./scripts/test-e2e.sh --tags "$(tags)"; \
-		fi; \
-	fi
+	@# Use 'make e2e ui=true' to run tests with UI
+	if [ "$(local)" = "true" ]; then set -- "$$@" --local; fi; \
+	if [ -n "$(tags)" ]; then set -- "$$@" --tags "$(tags)"; fi; \
+	if [ "$(ui)" = "true" ]; then set -- "$$@" --ui; fi; \
+	./scripts/test-e2e.sh "$$@"
+
 
 
 # TODO: check db connections before running the migration CLIs

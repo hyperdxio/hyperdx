@@ -1023,10 +1023,15 @@ function DBSearchPage() {
         // Save the selected source ID to localStorage
         setLastSelectedSourceId(newInputSourceObj.id);
 
-        setValue(
-          'select',
-          newInputSourceObj?.defaultTableSelectExpression ?? '',
-        );
+        // If the user is in a saved search, prefer the saved search's select if available
+        if (savedSearchId == null || savedSearch?.source !== watchedSource) {
+          setValue(
+            'select',
+            newInputSourceObj?.defaultTableSelectExpression ?? '',
+          );
+        } else {
+          setValue('select', savedSearch?.select ?? '');
+        }
         // Clear all search filters
         searchFilters.clearAllFilters();
       }
@@ -1034,6 +1039,8 @@ function DBSearchPage() {
   }, [
     watchedSource,
     setValue,
+    savedSearch,
+    savedSearchId,
     inputSourceObjs,
     searchFilters,
     setLastSelectedSourceId,
