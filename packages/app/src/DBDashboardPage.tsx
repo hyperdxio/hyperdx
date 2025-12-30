@@ -875,7 +875,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const hasTiles = dashboard && dashboard.tiles.length > 0;
 
   return (
-    <Box p="sm">
+    <Box p="sm" data-testid="dashboard-page">
       <Head>
         <title>Dashboard – HyperDX</title>
       </Head>
