@@ -630,7 +630,9 @@ export const FilterGroup = ({
                       role="checkbox"
                     >
                       {isFetchingDistribution ? (
-                        <span className="spinner-border spinner-border-sm" />
+                        <Center>
+                          <IconRefresh className="spin-animate" size={12} />
+                        </Center>
                       ) : showDistributions ? (
                         <IconChartBarOff size={14} />
                       ) : (

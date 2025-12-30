@@ -3,7 +3,7 @@ import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Replayer } from 'rrweb';
-import { ActionIcon, CopyButton, HoverCard } from '@mantine/core';
+import { ActionIcon, CopyButton, Group, HoverCard } from '@mantine/core';
 import {
   IconArrowsMaximize,
   IconCheck,
@@ -11,6 +11,7 @@ import {
   IconGlobe,
   IconLink,
   IconList,
+  IconRefresh,
 } from '@tabler/icons-react';
 
 import { useRRWebEventStream } from '@/sessions';
@@ -507,12 +508,10 @@ export default function DOMPlayer({
 
       <div className={styles.playerContainer}>
         {isLoading || isBuffering ? (
-          <div className="text-center">
-            <div className="spinner-border" role="status" />
-            <div className="mt-2">
-              {isBuffering ? 'Buffering to time...' : 'Loading replay...'}
-            </div>
-          </div>
+          <Group align="center" justify="center" gap="xs">
+            <IconRefresh className="spin-animate" size={14} />
+            {isBuffering ? 'Buffering to time...' : 'Loading replay...'}
+          </Group>
         ) : isReplayFullyLoaded && replayer.current == null ? (
           <div className="text-center">
             No replay available for this session, most likely due to this
