@@ -37,7 +37,7 @@ export default [
       '@typescript-eslint/no-empty-object-type': 'warn',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'error',
-      '@typescript-eslint/no-unsafe-type-assertion': 'warn',
+      '@typescript-eslint/no-unsafe-type-assertion': 'error',
       '@typescript-eslint/no-namespace': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'warn',
@@ -89,6 +89,13 @@ export default [
         clearImmediate: 'readonly',
         global: 'readonly',
       },
+    },
+  },
+  {
+    // Disable unsafe type assertion rule for test files (mocking requires type assertions)
+    files: ['src/**/*.test.ts', 'src/**/__tests__/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-type-assertion': 'off',
     },
   },
 ];
