@@ -1152,7 +1152,7 @@ export default function EditTimeChartForm({
           {!IS_LOCAL_MODE && !dashboardId && (
             <Menu width={250}>
               <Menu.Target>
-                <Button variant="outline" color="gray" px="xs" size="xs">
+                <Button variant="outline" color="gray" px="xs" size="sm">
                   <IconDotsVertical size={14} />
                 </Button>
               </Menu.Target>
