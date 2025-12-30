@@ -77,6 +77,7 @@ import { IS_LOCAL_MODE } from './config';
 import DashboardFilters from './DashboardFilters';
 import DashboardFiltersModal from './DashboardFiltersModal';
 import { HARD_LINES_LIMIT } from './HDXMultiSeriesTimeChart';
+import { usePrevious } from './utils';
 
 type AppliedConfigParams = {
   source?: string | null;
@@ -1438,7 +1439,11 @@ function ServicesDashboardPage() {
   });
 
   const service = useWatch({ control, name: 'service' });
+  const previousService = usePrevious(service);
+
   const sourceId = useWatch({ control, name: 'source' });
+  const previousSourceId = usePrevious(sourceId);
+
   const { data: source } = useSource({
     id: sourceId,
   });
@@ -1507,18 +1512,22 @@ function ServicesDashboardPage() {
   }, [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue]);
 
   // Auto-submit when source changes
+  // Note: do not include appliedConfig.source in the deps,
+  // to avoid infinite render loops when navigating away from the page
   useEffect(() => {
-    if (sourceId && sourceId !== appliedConfig.source) {
+    if (sourceId && sourceId != previousSourceId) {
       onSubmit();
     }
-  }, [sourceId, appliedConfig.source, onSubmit]);
+  }, [sourceId, onSubmit, previousSourceId]);
 
   // Auto-submit when service changes
+  // Note: do not include appliedConfig.service in the deps,
+  // to avoid infinite render loops when navigating away from the page
   useEffect(() => {
-    if (service !== appliedConfig.service) {
+    if (service != previousService) {
       onSubmit();
     }
-  }, [service, appliedConfig.service, onSubmit]);
+  }, [service, onSubmit, previousService]);
 
   return (
     <Box p="sm">
