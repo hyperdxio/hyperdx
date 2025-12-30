@@ -1095,7 +1095,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         >
           <Button
             onClick={() => setIsLive(prev => !prev)}
-            mr={6}
             size="sm"
             variant={isLive ? 'filled' : 'default'}
             title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
@@ -1108,7 +1107,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             onClick={refresh}
             loading={manualRefreshCooloff}
             disabled={manualRefreshCooloff}
-            mr={6}
             variant="default"
             title="Refresh dashboard"
             px="xs"
@@ -1121,7 +1119,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <Button
               variant="default"
               px="xs"
-              mr={6}
               onClick={() => setShowFiltersModal(true)}
             >
               <IconFilterEdit strokeWidth={1} />
