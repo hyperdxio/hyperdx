@@ -37,6 +37,7 @@ export default [
       '@typescript-eslint/no-empty-object-type': 'warn',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-unsafe-type-assertion': 'warn',
       '@typescript-eslint/no-namespace': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'warn',
