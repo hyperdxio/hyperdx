@@ -1519,7 +1519,12 @@ function DBSearchPage() {
   );
 
   return (
-    <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
+    <Flex
+      direction="column"
+      h="100vh"
+      style={{ overflow: 'hidden' }}
+      data-testid="search-page"
+    >
       <Head>
         <title>
           {savedSearch ? `${savedSearch.name} Search` : 'Search'} - HyperDX

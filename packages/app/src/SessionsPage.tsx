@@ -377,7 +377,7 @@ export default function SessionsPage() {
   const targetSession = sessions.find(s => s.sessionId === selectedSession?.id);
 
   return (
-    <div className="SessionsPage">
+    <div className="SessionsPage" data-testid="sessions-page">
       <Head>
         <title>Client Sessions - HyperDX</title>
       </Head>

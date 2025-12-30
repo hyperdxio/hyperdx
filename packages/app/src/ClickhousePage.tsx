@@ -497,7 +497,7 @@ function ClickhousePage() {
   }, [latencyFilter]);
 
   return (
-    <Box p="sm">
+    <Box p="sm" data-testid="clickhouse-dashboard-page">
       <OnboardingModal requireSource={false} />
       <Group justify="space-between">
         <Group>

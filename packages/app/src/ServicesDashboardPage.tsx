@@ -1530,7 +1530,7 @@ function ServicesDashboardPage() {
   }, [service, onSubmit, previousService]);
 
   return (
-    <Box p="sm">
+    <Box p="sm" data-testid="services-dashboard-page">
       <OnboardingModal requireSource={false} />
       <ServiceDashboardEndpointSidePanel
         service={service}
