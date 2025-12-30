@@ -168,6 +168,7 @@ const fastifySQL = ({
   // Parse the SQL AST
   try {
     const parser = new SQLParser.Parser();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type, we expect Select
     const ast = parser.astify(rawSQL, {
       database: 'Postgresql',
     }) as SQLParser.Select;
@@ -187,9 +188,11 @@ const fastifySQL = ({
       }
 
       let colExpr;
+
       switch (node.type) {
         case 'column_ref': {
           // FIXME: handle 'Value' type?
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const _n = node as ColumnRef;
           // @ts-ignore
           if (typeof _n.column !== 'string') {
@@ -199,6 +202,7 @@ const fastifySQL = ({
           break;
         }
         case 'binary_expr': {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const _n = node as SQLParser.Expr;
           if (Array.isArray(_n.left)) {
             for (const left of _n.left) {
@@ -218,6 +222,7 @@ const fastifySQL = ({
           break;
         }
         case 'function': {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const _n = node as SQLParser.Function;
 
           if (_n.args?.type === 'expr_list') {
@@ -231,6 +236,7 @@ const fastifySQL = ({
                 _n.args?.value?.[0]?.type === 'column_ref' &&
                 _n.args?.value?.[1]?.type === 'single_quote_string'
               ) {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- incomplete library types
                 colExpr = `${_n.name?.name?.[0]?.value}(${(_n.args?.value?.[0] as any)?.column.expr.value}, '${_n.args?.value?.[1]?.value}')`;
               }
             }
@@ -250,6 +256,7 @@ const fastifySQL = ({
       if (colExpr) {
         const materializedField = materializedFields.get(colExpr);
         if (materializedField) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const _n = node as ColumnRef;
           // reset the node ref
           for (const key in _n) {
@@ -971,7 +978,8 @@ async function renderWith(
           // results in schema conformance.
           const resolvedSql = sql
             ? sql
-            : await renderChartConfig(chartConfig as ChartConfig, metadata);
+            : // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see comment above
+              await renderChartConfig(chartConfig as ChartConfig, metadata);
 
           if (clause.isSubquery === false) {
             return chSql`(${resolvedSql}) AS ${{ Identifier: clause.name }}`;
@@ -1269,6 +1277,7 @@ async function translateMetricChartConfig(
     // Render the various clauses from the user input so they can be woven into the CTE queries. The dateRange
     // is manipulated to search forward/back one bucket window to ensure that there is enough data to compute
     // a reasonable value on the ends of the series.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const cteChartConfig = {
       ...chartConfig,
       from: {
@@ -1374,6 +1383,7 @@ export async function renderChartConfig(
     chSql`${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''}`,
     //chSql`${fill?.sql ? chSql`WITH FILL ${fill}` : ''}`,
     chSql`${limit?.sql ? chSql`LIMIT ${limit}` : ''}`,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- settings type narrowing
     chSql`${'settings' in chartConfig ? chSql`SETTINGS ${chartConfig.settings as ChSql}` : []}`,
   ]);
 }

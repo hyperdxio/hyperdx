@@ -25,6 +25,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
 
   protected async __query<Format extends DataFormat>({
     query,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- default generic value
     format = 'JSON' as Format,
     query_params = {},
     abort_signal,
@@ -38,6 +39,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
     );
 
     // TODO: Custom error handling
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- client library type mismatch
     return this.getClient().query({
       query,
       query_params,
