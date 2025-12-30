@@ -151,19 +151,21 @@ export const getAlertReferenceLines = ({
     );
   }
   if (threshold != null) {
-    <ReferenceLine
-      y={threshold}
-      label={
-        <Label
-          value="Alert Threshold"
-          fill={'white'}
-          fontSize={11}
-          opacity={0.7}
-        />
-      }
-      stroke="red"
-      strokeDasharray="3 3"
-    />;
+    return (
+      <ReferenceLine
+        y={threshold}
+        label={
+          <Label
+            value="Alert Threshold"
+            fill={'white'}
+            fontSize={11}
+            opacity={0.7}
+          />
+        }
+        stroke="red"
+        strokeDasharray="3 3"
+      />
+    );
   }
   return null;
 };
