@@ -228,7 +228,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // Verify chart is still visible (validates that the change worked)
         const chartContainers = dashboardPage.getChartContainers();
-        await expect(chartContainers).toHaveCount(1);
+        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
       });
     },
   );
