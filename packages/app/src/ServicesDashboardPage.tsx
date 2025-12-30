@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import cx from 'classnames';
 import { pick } from 'lodash';
 import {
   parseAsString,
@@ -21,6 +22,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Box,
   Button,
   Grid,
@@ -215,29 +217,34 @@ export function EndpointLatencyChart({
     <ChartBox style={{ height: 350 }}>
       <Group justify="space-between" align="center" mb="sm">
         <Text size="sm">Request Latency</Text>
-        <Box>
-          <Button.Group>
-            <Button
-              variant="subtle"
-              color={latencyChartType === 'line' ? 'green' : 'gray'}
+        <div className="bg-muted px-2 py-1 rounded fs-8">
+          <Tooltip label="Display as Line Chart">
+            <ActionIcon
               size="xs"
-              title="Line Chart"
+              me={2}
+              className={cx({
+                'text-success': latencyChartType === 'line',
+                'text-muted-hover': latencyChartType !== 'line',
+              })}
               onClick={() => setLatencyChartType('line')}
             >
-              <IconChartLine size={14} />
-            </Button>
+              <IconChartLine />
+            </ActionIcon>
+          </Tooltip>
 
-            <Button
-              variant="subtle"
-              color={latencyChartType === 'histogram' ? 'green' : 'gray'}
+          <Tooltip label="Display as Histogram">
+            <ActionIcon
               size="xs"
-              title="Histogram"
+              className={cx({
+                'text-success': latencyChartType === 'histogram',
+                'text-muted-hover': latencyChartType !== 'histogram',
+              })}
               onClick={() => setLatencyChartType('histogram')}
             >
-              <IconChartHistogram size={14} />
-            </Button>
-          </Button.Group>
-        </Box>
+              <IconChartHistogram />
+            </ActionIcon>
+          </Tooltip>
+        </div>
       </Group>
       {source &&
         expressions &&
