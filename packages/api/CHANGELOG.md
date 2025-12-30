@@ -1,5 +1,14 @@
 # @hyperdx/api
 
+## 2.11.0
+
+### Patch Changes
+
+- 103c63cc: chore(eslint): enable @typescript-eslint/no-unsafe-type-assertion rule (warn)
+- Updated dependencies [103c63cc]
+- Updated dependencies [103c63cc]
+  - @hyperdx/common-utils@0.10.1
+
 ## 2.10.0
 
 ### Minor Changes
