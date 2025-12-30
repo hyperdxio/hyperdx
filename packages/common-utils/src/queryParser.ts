@@ -29,6 +29,29 @@ export function parse(query: string): lucene.AST {
 
 const IMPLICIT_FIELD = '<implicit>';
 
+// Type guards for lucene AST types
+function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
+  return 'term' in node && node.term != null;
+}
+
+function isNodeRangedTerm(
+  node: lucene.Node | lucene.AST,
+): node is lucene.NodeRangedTerm {
+  return 'inclusive' in node && node.inclusive != null;
+}
+
+function isBinaryAST(ast: lucene.AST | lucene.Node): ast is lucene.BinaryAST {
+  return 'right' in ast && ast.right != null;
+}
+
+function isLeftOnlyAST(
+  ast: lucene.AST | lucene.Node,
+): ast is lucene.LeftOnlyAST {
+  return (
+    'left' in ast && ast.left != null && !('right' in ast && ast.right != null)
+  );
+}
+
 const CLICK_HOUSE_JSON_NUMBER_TYPES = [
   'Int8',
   'Int16',
@@ -641,8 +664,8 @@ async function nodeTerm(
   const isImplicitField = node.field === IMPLICIT_FIELD;
 
   // NodeTerm
-  if ((node as lucene.NodeTerm).term != null) {
-    const nodeTerm = node as lucene.NodeTerm;
+  if (isNodeTerm(node)) {
+    const nodeTerm = node;
     let term = decodeSpecialTokens(nodeTerm.term);
     // We should only negate the search for negated bare terms (ex. '-5')
     // This meeans the field is implicit and the prefix is -
@@ -714,8 +737,8 @@ async function nodeTerm(
     // TODO: Handle regex, similarity, boost, prefix
   }
   // NodeRangedTerm
-  if ((node as lucene.NodeRangedTerm).inclusive != null) {
-    const rangedTerm = node as lucene.NodeRangedTerm;
+  if (isNodeRangedTerm(node)) {
+    const rangedTerm = node;
     return serializer.range(
       field,
       rangedTerm.term_min,
@@ -760,18 +783,18 @@ async function serialize(
   // Node Scenarios:
   // 1. NodeTerm: Single term ex. "foo:bar"
   // 2. NodeRangedTerm: Two terms ex. "foo:[bar TO qux]"
-  if ((ast as lucene.NodeTerm).term != null) {
-    return await nodeTerm(ast as lucene.NodeTerm, serializer, context);
+  if (isNodeTerm(ast)) {
+    return await nodeTerm(ast, serializer, context);
   }
-  if ((ast as lucene.NodeRangedTerm).inclusive != null) {
-    return await nodeTerm(ast as lucene.NodeTerm, serializer, context);
+  if (isNodeRangedTerm(ast)) {
+    return await nodeTerm(ast, serializer, context);
   }
 
   // AST Scenarios:
   // 1. BinaryAST: Two terms ex. "foo:bar AND baz:qux"
   // 2. LeftOnlyAST: Single term ex. "foo:bar"
-  if ((ast as lucene.BinaryAST).right != null) {
-    const binaryAST = ast as lucene.BinaryAST;
+  if (isBinaryAST(ast)) {
+    const binaryAST = ast;
     const operator = serializer.operator(binaryAST.operator, context);
     const parenthesized = binaryAST.parenthesized;
 
@@ -786,8 +809,8 @@ async function serialize(
     return serialized;
   }
 
-  if ((ast as lucene.LeftOnlyAST).left != null) {
-    const leftOnlyAST = ast as lucene.LeftOnlyAST;
+  if (isLeftOnlyAST(ast)) {
+    const leftOnlyAST = ast;
     const parenthesized = leftOnlyAST.parenthesized;
 
     const newContext = createSerializerContext(context, leftOnlyAST);

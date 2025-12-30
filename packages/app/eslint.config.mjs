@@ -21,6 +21,7 @@ export default [
       'next-env.d.ts',
       'playwright-report/**',
       '.next/**',
+      '.storybook/**',
       'node_modules/**',
       'out/**',
       'build/**',
@@ -32,6 +33,8 @@ export default [
       '**/*.config.mjs',
       'eslint.config.mjs',
       'public/__ENV.js',
+      'global-setup.js',
+      'scripts/**',
     ],
   },
   {
@@ -50,6 +53,7 @@ export default [
       '@typescript-eslint/no-empty-function': 'warn',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-function-type': 'warn',
+      '@typescript-eslint/no-unsafe-type-assertion': 'warn',
       '@typescript-eslint/no-unused-expressions': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'warn',
@@ -94,6 +98,7 @@ export default [
         ecmaFeatures: {
           jsx: true,
         },
+        project: './tsconfig.json',
         tsconfigRootDir: import.meta.dirname,
       },
       globals: {
@@ -117,6 +122,13 @@ export default [
         exports: 'readonly',
         Buffer: 'readonly',
       },
+    },
+  },
+  {
+    // Disable type-checked rules for JS files (not part of TypeScript project)
+    files: ['**/*.{js,jsx}'],
+    rules: {
+      '@typescript-eslint/no-unsafe-type-assertion': 'off',
     },
   },
   {

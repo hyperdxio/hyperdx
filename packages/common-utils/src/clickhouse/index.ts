@@ -470,11 +470,10 @@ export abstract class BaseClickhouseClient {
       debugSql = query;
     }
 
-    // eslint-disable-next-line no-console
     console.debug('--------------------------------------------------------');
-    // eslint-disable-next-line no-console
+
     console.debug('Sending Query:', debugSql);
-    // eslint-disable-next-line no-console
+
     console.debug('--------------------------------------------------------');
   }
 
@@ -742,6 +741,7 @@ export function chSqlToAliasMap(
       replaceJsonExpressions(sql);
 
     const parser = new SQLParser.Parser();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type
     const ast = parser.astify(sqlWithReplacements, {
       database: 'Postgresql',
       parseOptions: { includeLocations: true },
@@ -795,9 +795,10 @@ export function filterColumnMetaByType(
   meta: Array<ColumnMetaType>,
   types: JSDataType[],
 ): Array<ColumnMetaType> | undefined {
-  return meta.filter(column =>
-    types.includes(convertCHDataTypeToJSType(column.type) as JSDataType),
-  );
+  return meta.filter(column => {
+    const jsType = convertCHDataTypeToJSType(column.type);
+    return jsType != null && types.includes(jsType);
+  });
 }
 
 export function inferTimestampColumn(

@@ -31,6 +31,7 @@ export const MetricTableSchema = z
         ...acc,
         [key]: z.string().optional(),
       }),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- reduce builds complete object at runtime
       {} as Record<MetricsDataType, z.ZodString>,
     ),
   )
