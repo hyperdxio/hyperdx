@@ -24,6 +24,9 @@ make e2e
 # Run specific tests (full-stack)
 make e2e tags="@kubernetes"
 make e2e tags="@smoke"
+
+# Run tests with UI
+make e2e ui=true
 ```
 
 ### Optional: Local Mode (Frontend Only)
@@ -34,6 +37,9 @@ run frontend-only tests:
 ```bash
 # Run all tests in local mode (no MongoDB, frontend only)
 make e2e local=true
+
+# Run tests with UI
+make e2e local=true ui=true
 
 # Run specific tests in local mode
 make e2e local=true tags="@search"

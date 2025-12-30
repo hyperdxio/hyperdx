@@ -16,6 +16,7 @@ readonly MONGODB_WAIT_DELAY_SECONDS=1
 # Parse arguments
 LOCAL_MODE=false
 TAGS=""
+UI_MODE=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -26,6 +27,10 @@ while [[ $# -gt 0 ]]; do
     --tags)
       TAGS="$2"
       shift 2
+      ;;
+    --ui)
+      UI_MODE=true
+      shift
       ;;
     *)
       echo "Unknown option: $1"
@@ -94,9 +99,9 @@ run_local_mode() {
   echo "Running E2E tests in local mode (frontend only)..."
   cd "$REPO_ROOT/packages/app"
   if [ -n "$TAGS" ]; then
-    yarn test:e2e --local --grep "$TAGS"
+    yarn test:e2e --local --grep "$TAGS" ${UI_MODE:+--ui}
   else
-    yarn test:e2e --local
+    yarn test:e2e --local ${UI_MODE:+--ui}
   fi
 }
 
@@ -118,9 +123,9 @@ run_fullstack_mode() {
   # Run tests in full-stack mode (default for yarn test:e2e)
   cd "$REPO_ROOT/packages/app"
   if [ -n "$TAGS" ]; then
-    yarn test:e2e --grep "$TAGS"
+    yarn test:e2e --grep "$TAGS" ${UI_MODE:+--ui}
   else
-    yarn test:e2e
+    yarn test:e2e ${UI_MODE:+--ui}
   fi
 }
 
