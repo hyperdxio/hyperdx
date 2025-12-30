@@ -126,9 +126,9 @@ export const getAlertReferenceLines = ({
 }: {
   thresholdType: 'above' | 'below';
   threshold: number;
-}) => (
-  <>
-    {threshold != null && thresholdType === 'below' && (
+}) => {
+  if (threshold != null && thresholdType === 'below') {
+    return (
       <ReferenceArea
         y1={0}
         y2={threshold}
@@ -137,8 +137,10 @@ export const getAlertReferenceLines = ({
         strokeWidth={0}
         fillOpacity={0.05}
       />
-    )}
-    {threshold != null && thresholdType === 'above' && (
+    );
+  }
+  if (threshold != null && thresholdType === 'above') {
+    return (
       <ReferenceArea
         y1={threshold}
         ifOverflow="extendDomain"
@@ -146,21 +148,22 @@ export const getAlertReferenceLines = ({
         strokeWidth={0}
         fillOpacity={0.05}
       />
-    )}
-    {threshold != null && (
-      <ReferenceLine
-        y={threshold}
-        label={
-          <Label
-            value="Alert Threshold"
-            fill={'white'}
-            fontSize={11}
-            opacity={0.7}
-          />
-        }
-        stroke="red"
-        strokeDasharray="3 3"
-      />
-    )}
-  </>
-);
+    );
+  }
+  if (threshold != null) {
+    <ReferenceLine
+      y={threshold}
+      label={
+        <Label
+          value="Alert Threshold"
+          fill={'white'}
+          fontSize={11}
+          opacity={0.7}
+        />
+      }
+      stroke="red"
+      strokeDasharray="3 3"
+    />;
+  }
+  return null;
+};

@@ -417,12 +417,7 @@ export default function SessionsPage() {
             return false;
           }}
         >
-          <Flex
-            gap="xs"
-            direction="column"
-            wrap="nowrap"
-            style={{ overflow: 'hidden' }}
-          >
+          <Flex gap="xs" direction="column" wrap="nowrap">
             <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
               <SourceSelectControlled
                 control={control}
