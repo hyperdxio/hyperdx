@@ -1105,7 +1105,7 @@ export default function EditTimeChartForm({
             </Button>
           )}
         </Flex>
-        <Flex gap="sm" my="sm" align="center" justify="end">
+        <Flex gap="sm" mb="sm" align="center" justify="end">
           {activeTab === 'table' && (
             <div style={{ minWidth: 300 }}>
               <SQLInlineEditorControlled
