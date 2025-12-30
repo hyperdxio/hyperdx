@@ -262,4 +262,16 @@ export class SearchPage {
   get sourceDropdown() {
     return this.sourceSelector;
   }
+
+  get sourceOptions() {
+    return this.page.getByRole('option');
+  }
+
+  get currentSource() {
+    return this.page.locator('[data-testid="source-selector"]');
+  }
+
+  get otherSources() {
+    return this.page.getByRole('option', { selected: false });
+  }
 }
