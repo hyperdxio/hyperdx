@@ -17,19 +17,73 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
         ).toBeVisible();
       });
 
-      await test.step('Verify all main navigation links are present and have correct hrefs', async () => {
-        const navLinks = [
-          { testId: 'nav-link-search', href: '/search' },
-          { testId: 'nav-link-chart', href: '/chart' },
-          { testId: 'nav-link-sessions', href: '/sessions' },
-          { testId: 'nav-link-dashboards', href: '/dashboards' },
-        ];
+      const navLinks = [
+        {
+          testId: 'nav-link-search',
+          href: '/search',
+          contentTestId: 'search-page',
+        },
+        {
+          testId: 'nav-link-chart',
+          href: '/chart',
+          contentTestId: 'chart-explorer-page',
+        },
+        {
+          testId: 'nav-link-sessions',
+          href: '/sessions',
+          contentTestId: 'sessions-page',
+        },
+        {
+          testId: 'nav-link-service-map',
+          href: '/service-map',
+          contentTestId: 'service-map-page',
+        },
+        {
+          testId: 'nav-link-dashboards',
+          href: '/dashboards',
+          contentTestId: 'dashboard-page',
+        },
+        {
+          testId: 'nav-link-clickhouse-dashboard',
+          href: '/clickhouse',
+          contentTestId: 'clickhouse-dashboard-page',
+        },
+        {
+          testId: 'nav-link-services-dashboard',
+          href: '/services',
+          contentTestId: 'services-dashboard-page',
+        },
+        {
+          testId: 'nav-link-k8s-dashboard',
+          href: '/kubernetes',
+          contentTestId: 'kubernetes-dashboard-page',
+        },
+      ];
 
+      await test.step('Verify all main navigation links are present and have correct hrefs', async () => {
         for (const { testId, href } of navLinks) {
           const locator = page.locator(`[data-testid="${testId}"]`);
           await expect(locator).toBeVisible();
           await expect(locator).toHaveAttribute('href', href);
         }
+      });
+
+      await test.step('Navigate between each page', async () => {
+        for (const { testId, contentTestId } of navLinks) {
+          const link = page.locator(`[data-testid="${testId}"]`);
+          await link.click();
+
+          const content = page.locator(`[data-testid="${contentTestId}"]`);
+          await expect(content).toBeVisible();
+        }
+
+        // Navigate back to first page at the end to test navigation away from the last page
+        const firstLink = page.locator(`[data-testid="${navLinks[0].testId}"]`);
+        await firstLink.click();
+        const firstContent = page.locator(
+          `[data-testid="${navLinks[0].contentTestId}"]`,
+        );
+        await expect(firstContent).toBeVisible();
       });
     },
   );

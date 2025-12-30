@@ -838,6 +838,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                           [styles.nestedLinkActive]:
                             pathname.startsWith('/clickhouse'),
                         })}
+                        data-testid="nav-link-clickhouse-dashboard"
                       >
                         ClickHouse
                       </Link>
@@ -848,6 +849,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                           [styles.nestedLinkActive]:
                             pathname.startsWith('/services'),
                         })}
+                        data-testid="nav-link-services-dashboard"
                       >
                         Services
                       </Link>
@@ -859,7 +861,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                             [styles.nestedLinkActive]:
                               pathname.startsWith('/kubernetes'),
                           })}
-                          data-testid="k8s-dashboard-nav-link"
+                          data-testid="nav-link-k8s-dashboard"
                         >
                           Kubernetes
                         </Link>
