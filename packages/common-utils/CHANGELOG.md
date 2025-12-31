@@ -1,5 +1,24 @@
 # @hyperdx/common-utils
 
+## 0.10.1
+
+### Patch Changes
+
+- 103c63cc: chore(eslint): enable @typescript-eslint/no-unsafe-type-assertion rule (warn)
+- 103c63cc: refactor(common-utils): improve type safety and linting for type assertions
+
+## 0.10.0
+
+### Minor Changes
+
+- ca693c0f: Add support for visualizing histogram counts
+- a5a04aa9: feat: Add materialized view support (Beta)
+
+### Patch Changes
+
+- 50ba92ac: feat: Add custom filters to the services dashboard"
+- b58c52eb: fix: Fix bugs in the Services dashboard
+
 ## 0.9.0
 
 ### Minor Changes

@@ -1,5 +1,3 @@
-// @ts-nocheck TODO: remove this line
-
 import * as React from 'react';
 import { useRouter } from 'next/router';
 import { Spotlight, SpotlightActionData } from '@mantine/spotlight';
@@ -11,7 +9,6 @@ import {
   IconGridDots,
   IconHelpCircle,
   IconLayout,
-  IconLayoutSidebar,
   IconLogs,
   IconSearch,
   IconSettings,
@@ -38,14 +35,13 @@ export const useSpotlightActions = () => {
     // Saved searches
     logViews.forEach(logView => {
       logViewActions.push({
-        id: logView._id,
+        id: logView.id,
         group: 'Saved searches',
         leftSection: <IconLogs size={16} />,
-        description: logView.query,
         label: logView.name,
         keywords: ['search', 'log', 'saved'],
         onClick: () => {
-          router.push(`/search/${logView._id}`);
+          router.push(`/search/${logView.id}`);
         },
       });
     });
@@ -53,13 +49,13 @@ export const useSpotlightActions = () => {
     // Dashboards
     dashboards.forEach(dashboard => {
       logViewActions.push({
-        id: dashboard._id,
+        id: dashboard.id,
         group: 'Dashboards',
         leftSection: <IconLayout size={16} />,
         label: dashboard.name,
         keywords: ['dashboard'],
         onClick: () => {
-          router.push(`/dashboards/${dashboard._id}`);
+          router.push(`/dashboards/${dashboard.id}`);
         },
       });
     });

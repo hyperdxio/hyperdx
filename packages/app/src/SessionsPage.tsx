@@ -1,51 +1,36 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import { sub } from 'date-fns';
-import {
-  parseAsString,
-  parseAsStringEnum,
-  useQueryState,
-  useQueryStates,
-} from 'nuqs';
+import { parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { NumberParam } from 'serialize-query-params';
-import {
-  StringParam,
-  useQueryParam,
-  useQueryParams,
-  withDefault,
-} from 'use-query-params';
+import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  DateRange,
   SearchCondition,
   SearchConditionLanguage,
   SourceKind,
-  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
   Box,
   Button,
+  Center,
   Flex,
-  Grid,
   Group,
-  SegmentedControl,
   Stack,
-  Tabs,
   Text,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import {
   IconDeviceLaptop,
   IconInfoCircleFilled,
   IconPlayerPlay,
+  IconRefresh,
 } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
-import { getMetadata } from '@/metadata';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
@@ -137,14 +122,10 @@ function SessionCardList({
   return (
     <>
       {isSessionLoading === true && (
-        <div className="text-center mt-8">
-          <div
-            className="spinner-border me-2"
-            role="status"
-            style={{ width: 14, height: 14 }}
-          />
+        <Group mt="md" align="center" justify="center" gap="xs">
+          <IconRefresh className="spin-animate" size={14} />
           Searching sessions...
-        </div>
+        </Group>
       )}
       {!isSessionLoading && sessions.length === 0 && (
         <div className="text-center align-items-center justify-content-center my-3">
@@ -396,7 +377,7 @@ export default function SessionsPage() {
   const targetSession = sessions.find(s => s.sessionId === selectedSession?.id);
 
   return (
-    <div className="SessionsPage">
+    <div className="SessionsPage" data-testid="sessions-page">
       <Head>
         <title>Client Sessions - HyperDX</title>
       </Head>
@@ -436,12 +417,7 @@ export default function SessionsPage() {
             return false;
           }}
         >
-          <Flex
-            gap="xs"
-            direction="column"
-            wrap="nowrap"
-            style={{ overflow: 'hidden' }}
-          >
+          <Flex gap="xs" direction="column" wrap="nowrap">
             <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
               <SourceSelectControlled
                 control={control}
@@ -503,14 +479,10 @@ export default function SessionsPage() {
         </form>
 
         {isSessionsLoading || isSessionSourceLoading ? (
-          <div className="text-center mt-8">
-            <div
-              className="spinner-border me-2"
-              role="status"
-              style={{ width: 14, height: 14 }}
-            />
+          <Group mt="md" align="center" justify="center" gap="xs">
+            <IconRefresh className="spin-animate" size={14} />
             {isSessionSourceLoading ? 'Loading...' : 'Searching sessions...'}
-          </div>
+          </Group>
         ) : (
           <>
             {sessionSource && sessionSource.kind !== SourceKind.Session && (

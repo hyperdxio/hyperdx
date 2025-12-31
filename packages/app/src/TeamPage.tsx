@@ -370,7 +370,6 @@ function ClickhouseSettingForm({
               <SelectControlled
                 control={form.control}
                 name="value"
-                value={useWatch({ control: form.control, name: 'value' })}
                 data={[displayValue(true), displayValue(false)]}
                 size="xs"
                 placeholder="Please select"

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import cx from 'classnames';
 import { pick } from 'lodash';
 import {
   parseAsString,
@@ -21,6 +22,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Box,
   Button,
   Grid,
@@ -75,6 +77,7 @@ import { IS_LOCAL_MODE } from './config';
 import DashboardFilters from './DashboardFilters';
 import DashboardFiltersModal from './DashboardFiltersModal';
 import { HARD_LINES_LIMIT } from './HDXMultiSeriesTimeChart';
+import { usePrevious } from './utils';
 
 type AppliedConfigParams = {
   source?: string | null;
@@ -215,29 +218,34 @@ export function EndpointLatencyChart({
     <ChartBox style={{ height: 350 }}>
       <Group justify="space-between" align="center" mb="sm">
         <Text size="sm">Request Latency</Text>
-        <Box>
-          <Button.Group>
-            <Button
-              variant="subtle"
-              color={latencyChartType === 'line' ? 'green' : 'gray'}
+        <div className="bg-muted px-2 py-1 rounded fs-8">
+          <Tooltip label="Display as Line Chart">
+            <ActionIcon
               size="xs"
-              title="Line Chart"
+              me={2}
+              className={cx({
+                'text-success': latencyChartType === 'line',
+                'text-muted-hover': latencyChartType !== 'line',
+              })}
               onClick={() => setLatencyChartType('line')}
             >
-              <IconChartLine size={14} />
-            </Button>
+              <IconChartLine />
+            </ActionIcon>
+          </Tooltip>
 
-            <Button
-              variant="subtle"
-              color={latencyChartType === 'histogram' ? 'green' : 'gray'}
+          <Tooltip label="Display as Histogram">
+            <ActionIcon
               size="xs"
-              title="Histogram"
+              className={cx({
+                'text-success': latencyChartType === 'histogram',
+                'text-muted-hover': latencyChartType !== 'histogram',
+              })}
               onClick={() => setLatencyChartType('histogram')}
             >
-              <IconChartHistogram size={14} />
-            </Button>
-          </Button.Group>
-        </Box>
+              <IconChartHistogram />
+            </ActionIcon>
+          </Tooltip>
+        </div>
       </Group>
       {source &&
         expressions &&
@@ -1431,7 +1439,11 @@ function ServicesDashboardPage() {
   });
 
   const service = useWatch({ control, name: 'service' });
+  const previousService = usePrevious(service);
+
   const sourceId = useWatch({ control, name: 'source' });
+  const previousSourceId = usePrevious(sourceId);
+
   const { data: source } = useSource({
     id: sourceId,
   });
@@ -1500,21 +1512,25 @@ function ServicesDashboardPage() {
   }, [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue]);
 
   // Auto-submit when source changes
+  // Note: do not include appliedConfig.source in the deps,
+  // to avoid infinite render loops when navigating away from the page
   useEffect(() => {
-    if (sourceId && sourceId !== appliedConfig.source) {
+    if (sourceId && sourceId != previousSourceId) {
       onSubmit();
     }
-  }, [sourceId, appliedConfig.source, onSubmit]);
+  }, [sourceId, onSubmit, previousSourceId]);
 
   // Auto-submit when service changes
+  // Note: do not include appliedConfig.service in the deps,
+  // to avoid infinite render loops when navigating away from the page
   useEffect(() => {
-    if (service !== appliedConfig.service) {
+    if (service != previousService) {
       onSubmit();
     }
-  }, [service, appliedConfig.service, onSubmit]);
+  }, [service, onSubmit, previousService]);
 
   return (
-    <Box p="sm">
+    <Box p="sm" data-testid="services-dashboard-page">
       <OnboardingModal requireSource={false} />
       <ServiceDashboardEndpointSidePanel
         service={service}
