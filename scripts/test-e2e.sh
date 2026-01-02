@@ -40,6 +40,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+
+# Build additional flags
+ADDITIONAL_FLAGS=""
+if [ -n "$TAGS" ]; then
+  ADDITIONAL_FLAGS="--grep $TAGS"
+fi
+if [ "$UI_MODE" = true ]; then
+  ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --ui"
+fi
+
+
 cleanup_mongodb() {
   echo "Stopping MongoDB..."
   docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" down -v
@@ -120,15 +131,6 @@ run_fullstack_mode() {
   cd "$REPO_ROOT/packages/app"
   yarn test:e2e $ADDITIONAL_FLAGS
 }
-
-# Build additional flags
-ADDITIONAL_FLAGS=""
-if [ -n "$TAGS" ]; then
-  ADDITIONAL_FLAGS="--grep $TAGS"
-fi
-if [ "$UI_MODE" = true ]; then
-  ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --ui"
-fi
 
 # Main execution
 if [ "$LOCAL_MODE" = true ]; then
