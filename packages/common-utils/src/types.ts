@@ -646,6 +646,7 @@ export const MaterializedViewConfigurationSchema = z.object({
   tableName: z.string().min(1, 'Materialized View Table is required'),
   dimensionColumns: z.string(),
   minGranularity: SQLIntervalSchema,
+  minDate: z.string().datetime().nullish(),
   timestampColumn: z
     .string()
     .min(1, 'Materialized View Timestamp column is required'),
