@@ -153,6 +153,24 @@ function mvConfigSupportsGranularity(
   return chartGranularitySeconds >= mvGranularitySeconds;
 }
 
+function mvConfigSupportsDateRange(
+  mvConfig: MaterializedViewConfiguration,
+  chartConfig: ChartConfigWithOptDateRange,
+) {
+  if (mvConfig.minDate && !chartConfig.dateRange) {
+    return false;
+  }
+
+  if (!mvConfig.minDate || !chartConfig.dateRange) {
+    return true;
+  }
+
+  const [startDate] = chartConfig.dateRange;
+  const minDate = new Date(mvConfig.minDate);
+
+  return startDate >= minDate;
+}
+
 const COUNT_FUNCTION_PATTERN = /\bcount(If)?\s*\(/i;
 export function isUnsupportedCountFunction(selectItem: SelectItem): boolean {
   return COUNT_FUNCTION_PATTERN.test(selectItem.valueExpression);
@@ -265,6 +283,14 @@ export async function tryConvertConfigToMaterializedViewSelect<
   if (!Array.isArray(chartConfig.select)) {
     return {
       errors: ['Only array-based select statements are supported.'],
+    };
+  }
+
+  if (mvConfig.minDate && !mvConfigSupportsDateRange(mvConfig, chartConfig)) {
+    return {
+      errors: [
+        'The selected date range includes dates for which this view does not contain data.',
+      ],
     };
   }
 

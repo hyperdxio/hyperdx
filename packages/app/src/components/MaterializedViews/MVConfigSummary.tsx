@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { MaterializedViewConfiguration } from '@hyperdx/common-utils/dist/types';
-import { Group, Pill, Stack, Table, Text } from '@mantine/core';
+import { Grid, Group, Pill, Stack, Table, Text } from '@mantine/core';
+
+import { FormatTime } from '@/useFormatTime';
 
 export default function MVConfigSummary({
   config,
@@ -29,12 +31,24 @@ export default function MVConfigSummary({
 
   return (
     <Stack gap="md">
-      <div>
-        <Text size="sm" fw={500} mb="xs">
-          Minimum Granularity
-        </Text>
-        <Pill>{config.minGranularity}</Pill>
-      </div>
+      <Grid columns={2}>
+        <Grid.Col span={1}>
+          <Text size="sm" fw={500} mb="xs">
+            Granularity
+          </Text>
+          <Pill>{config.minGranularity}</Pill>
+        </Grid.Col>
+        {config.minDate && (
+          <Grid.Col span={1}>
+            <Text size="sm" fw={500} mb="xs">
+              Minimum Date
+            </Text>
+            <Pill>
+              <FormatTime value={config.minDate} format="withYear" />
+            </Pill>
+          </Grid.Col>
+        )}
+      </Grid>
 
       <div>
         <Text size="sm" fw={500} mb="xs">

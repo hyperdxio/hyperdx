@@ -781,6 +781,122 @@ describe('materializedViews', () => {
         'Custom count() expressions are not supported with materialized views.',
       ]);
     });
+
+    it("should not use the materialized view when the chart config references a date range prior to the MV's date range", async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: '',
+            aggFn: 'count',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        dateRange: [
+          new Date('2022-12-01T00:00:00Z'),
+          new Date('2022-12-31T23:59:59Z'),
+        ],
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        {
+          ...MV_CONFIG_METRIC_ROLLUP_1M,
+          minDate: '2023-01-01T00:00:00Z',
+        },
+        metadata,
+      );
+
+      expect(result.optimizedConfig).toBeUndefined();
+      expect(result.errors).toEqual([
+        'The selected date range includes dates for which this view does not contain data.',
+      ]);
+    });
+
+    it('should not use the materialized view when the chart config has no date range and the MV has a minimum date', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: '',
+            aggFn: 'count',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        {
+          ...MV_CONFIG_METRIC_ROLLUP_1M,
+          minDate: '2023-01-01T00:00:00Z',
+        },
+        metadata,
+      );
+
+      expect(result.optimizedConfig).toBeUndefined();
+      expect(result.errors).toEqual([
+        'The selected date range includes dates for which this view does not contain data.',
+      ]);
+    });
+
+    it("should use the materialized view when the chart config's date range is after the MV's minimum date", async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: '',
+            aggFn: 'count',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        dateRange: [
+          new Date('2023-12-01T00:00:00Z'),
+          new Date('2023-12-31T23:59:59Z'),
+        ],
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        {
+          ...MV_CONFIG_METRIC_ROLLUP_1M,
+          minDate: '2023-01-01T00:00:00Z',
+        },
+        metadata,
+      );
+
+      expect(result.optimizedConfig).toEqual({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        dateRange: [
+          new Date('2023-12-01T00:00:00Z'),
+          new Date('2023-12-31T23:59:59Z'),
+        ],
+        select: [
+          {
+            valueExpression: 'count',
+            aggFn: 'sum',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+      });
+      expect(result.errors).toBeUndefined();
+    });
   });
 
   describe('isUnsupportedCountFunction', () => {
