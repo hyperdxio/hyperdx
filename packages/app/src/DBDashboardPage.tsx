@@ -563,7 +563,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setDashboard,
     dashboardHash,
     isLocalDashboard,
-    isLocalDashboardEmpty,
     isFetching: isFetchingDashboard,
     isSetting: isSavingDashboard,
   } = useDashboard({
@@ -917,8 +916,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           );
         }}
       />
-      {IS_LOCAL_MODE === false && isLocalDashboard && isLocalDashboardEmpty && (
-        <Paper my="lg" p="md">
+      {IS_LOCAL_MODE === false && isLocalDashboard && (
+        <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
           <Flex justify="space-between" align="center">
             <Text size="sm">
               This is a temporary dashboard and can not be saved.
