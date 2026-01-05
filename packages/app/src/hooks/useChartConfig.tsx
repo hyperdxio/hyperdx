@@ -8,11 +8,11 @@ import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser'
 import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
   isMetricChartConfig,
   isUsingGranularity,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import {
   ChartConfigWithDateRange,
@@ -24,10 +24,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
-import {
-  convertDateRangeToGranularityString,
-  toStartOfInterval,
-} from '@/ChartUtils';
+import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
@@ -93,10 +90,7 @@ export const getGranularityAlignedTimeWindows = (
 
   const granularity =
     config.granularity === 'auto'
-      ? convertDateRangeToGranularityString(
-          config.dateRange,
-          DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-        )
+      ? convertDateRangeToGranularityString(config.dateRange)
       : config.granularity;
 
   const windows = [];
