@@ -19,6 +19,7 @@ export class DashboardPage {
   private readonly searchInput: Locator;
   private readonly searchSubmitButton: Locator;
   private readonly liveButton: Locator;
+  private readonly tempDashboardBanner: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -36,6 +37,9 @@ export class DashboardPage {
     this.liveButton = page.locator('button:has-text("Live")');
     this.dashboardNameHeading = page.getByRole('heading', { level: 3 });
     this.granularityPicker = page.getByTestId('granularity-picker');
+    this.tempDashboardBanner = page.locator(
+      '[data-testid="temporary-dashboard-banner"]',
+    );
   }
 
   /**
@@ -242,5 +246,9 @@ export class DashboardPage {
 
   get filterSubmitButton() {
     return this.searchSubmitButton;
+  }
+
+  get temporaryDashboardBanner() {
+    return this.tempDashboardBanner;
   }
 }

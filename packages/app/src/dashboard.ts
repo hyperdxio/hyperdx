@@ -166,7 +166,6 @@ export function useDashboard({
     setDashboard,
     dashboardHash,
     isLocalDashboard,
-    isLocalDashboardEmpty: localDashboard == null,
     isFetching: isFetchingRemoteDashboard,
     isSetting,
   };
