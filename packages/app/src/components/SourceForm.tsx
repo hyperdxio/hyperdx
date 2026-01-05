@@ -33,6 +33,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
+import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
 import {
   IconCirclePlus,
@@ -402,7 +403,7 @@ function MaterializedViewFormSection({
           </Group>
         </Grid.Col>
 
-        <Grid.Col span={1}>
+        <Grid.Col span={2}>
           <Text size="xs" fw={500} mb={4}>
             Timestamp Column
           </Text>
@@ -441,6 +442,38 @@ function MaterializedViewFormSection({
                 data={MV_GRANULARITY_OPTIONS}
                 placeholder="Granularity"
                 size="sm"
+              />
+            )}
+          />
+        </Grid.Col>
+
+        <Grid.Col span={1}>
+          <Text size="xs" fw={500} mb={4}>
+            Minimum Date
+            <Tooltip
+              label="(Optional) The earliest date and time (in the local timezone) for which the materialized view contains data. If not provided, then HyperDX will assume that the materialized view contains data for all dates for which the source table contains data."
+              color="dark"
+              c="white"
+              multiline
+              maw={600}
+            >
+              <IconHelpCircle size={14} className="cursor-pointer ms-1" />
+            </Tooltip>
+          </Text>
+          <Controller
+            control={control}
+            name={`materializedViews.${mvIndex}.minDate`}
+            render={({ field }) => (
+              <DateInput
+                {...field}
+                value={field.value ? new Date(field.value) : undefined}
+                onChange={dateStr =>
+                  field.onChange(dateStr ? dateStr.toISOString() : null)
+                }
+                clearable
+                highlightToday
+                placeholder="YYYY-MM-DD HH:mm:ss"
+                valueFormat="YYYY-MM-DD HH:mm:ss"
               />
             )}
           />
