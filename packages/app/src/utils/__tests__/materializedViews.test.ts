@@ -446,7 +446,12 @@ describe('inferTimestampColumnGranularity', () => {
     {
       expected: '5 minute',
       asSelect:
-        'SELECT toStartOfInterval(Timestamp, interval 5 minute) AS Timestamp, ServiceName, quantileState(0.9)(Duration) AS p90__Duration FROM default.otel_traces GROUP BY Timestamp, ServiceName',
+        'SELECT toStartOfInterval(Timestamp, interval 5 minutes) AS Timestamp, ServiceName, quantileState(0.9)(Duration) AS p90__Duration FROM default.otel_traces GROUP BY Timestamp, ServiceName',
+    },
+    {
+      expected: '30 minute',
+      asSelect:
+        'SELECT toStartOfInterval(Timestamp, toIntervalMinute(30)) AS Timestamp, ServiceName, quantileState(0.9)(Duration) AS p90__Duration FROM default.otel_traces GROUP BY Timestamp, ServiceName',
     },
   ])(
     'should handle a toStartOfInterval function with a dynamic interval: $expected',

@@ -7,7 +7,10 @@ import {
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  Granularity,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   InternalAggregateFunction,
   MaterializedViewConfiguration,
@@ -24,6 +27,37 @@ export const MV_AGGREGATE_FUNCTIONS = [
   'sum',
   'histogram',
 ];
+
+/**
+ * To maximize the number of queries which are compatible with materialized views,
+ * every granularity should be a multiple of every smaller granularity.
+ *
+ * Further, these should match the granularities supported by charts, defined
+ * in convertDateRangeToGranularityString().
+ * */
+export const MV_GRANULARITY_OPTIONS = [
+  { value: '1 second', label: '1 second' },
+  { value: Granularity.FifteenSecond, label: '15 seconds' },
+  { value: Granularity.ThirtySecond, label: '30 seconds' },
+  { value: Granularity.OneMinute, label: '1 minute' },
+  { value: Granularity.FiveMinute, label: '5 minutes' },
+  { value: Granularity.FifteenMinute, label: '15 minutes' },
+  { value: Granularity.ThirtyMinute, label: '30 minutes' },
+  { value: Granularity.OneHour, label: '1 hour' },
+  { value: Granularity.TwoHour, label: '2 hours' },
+  { value: Granularity.SixHour, label: '6 hours' },
+  { value: Granularity.TwelveHour, label: '12 hours' },
+  { value: Granularity.OneDay, label: '1 day' },
+  { value: Granularity.TwoDay, label: '2 days' },
+  { value: Granularity.SevenDay, label: '7 days' },
+  { value: Granularity.ThirtyDay, label: '30 days' },
+];
+
+const isGranularity = (value: string): value is Granularity => {
+  return MV_GRANULARITY_OPTIONS.map(option => option.value as string).includes(
+    value,
+  );
+};
 
 const MV_DDL_PATTERN = /MATERIALIZED VIEW [^\s]+\.[^\s]+ TO ([^\s]+)\.([^\s]+)/;
 function getViewTargetTable(meta: TableMetadata) {
@@ -183,14 +217,20 @@ export function inferTimestampColumnGranularity(
     // Only accept specific granularities matching the ones defined above
     if (timestampExpression.includes(`toStartOfInterval(`)) {
       const intervalMatch = timestampExpression.match(
-        /INTERVAL\s+(\d+)\s+(SECOND|MINUTE|HOUR|DAY)\)/i,
+        /INTERVAL\s+(\d+)\s+(SECOND|MINUTE|HOUR|DAY)S?\)/i,
+      );
+      const intervalFunctionMatch = timestampExpression.match(
+        /toInterval(Second|Minute|Hour|Day)\((\d+)\)/,
       );
       const granularity = intervalMatch
         ? `${intervalMatch[1]} ${intervalMatch[2].toLowerCase()}`
-        : '';
+        : intervalFunctionMatch
+          ? `${intervalFunctionMatch[2]} ${intervalFunctionMatch[1].toLowerCase()}`
+          : null;
       if (
         granularity &&
-        Object.values(intervalToGranularityMap).includes(granularity)
+        isGranularity(granularity) &&
+        MV_GRANULARITY_OPTIONS.map(option => option.value).includes(granularity)
       ) {
         return granularity;
       }
