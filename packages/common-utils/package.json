@@ -11,9 +11,9 @@
     "node": ">=22.16.0"
   },
   "dependencies": {
-    "@clickhouse/client": "1.23.0-head.fae5998.1",
-    "@clickhouse/client-common": "1.23.0-head.fae5998.1",
-    "@clickhouse/client-web": "1.23.0-head.fae5998.1",
+    "@clickhouse/client": "head",
+    "@clickhouse/client-common": "head",
+    "@clickhouse/client-web": "head",
     "@hyperdx/lucene": "^3.1.1",
     "@lezer/highlight": "^1.1.2",
     "@lezer/lr": "^1.2.3",
