@@ -50,6 +50,10 @@ function isAggregatingMergeTree(meta: TableMetadata) {
   return meta.engine?.includes('AggregatingMergeTree') ?? false;
 }
 
+function isSummingMergeTree(meta: TableMetadata) {
+  return meta.engine?.includes('SummingMergeTree') ?? false;
+}
+
 /**
  * Given a table that is either a materialized view or a table targeted by a materialized view,
  * fetches the metadata for both the materialized view and the target table.
@@ -80,11 +84,15 @@ async function getMetadataForMaterializedViewAndTable({
           connectionId,
         });
 
-        return isAggregatingMergeTree(mvTableMetadata)
+        return isAggregatingMergeTree(mvTableMetadata) ||
+          isSummingMergeTree(mvTableMetadata)
           ? { mvMetadata, mvTableMetadata }
           : undefined;
       }
-    } else if (isAggregatingMergeTree(givenMetadata)) {
+    } else if (
+      isAggregatingMergeTree(givenMetadata) ||
+      isSummingMergeTree(givenMetadata)
+    ) {
       const mvTableMetadata = givenMetadata;
       const sourceViews = await metadata.queryMaterializedViewsByTarget({
         databaseName,
@@ -192,6 +200,40 @@ export function inferTimestampColumnGranularity(
   }
 }
 
+/** Returns the set of columns that are summed in the given SummingMergeTree engine table. */
+export function parseSummedColumns(mvTableMetadata: TableMetadata) {
+  if (!isSummingMergeTree(mvTableMetadata)) {
+    return undefined;
+  }
+
+  // Extract the column list from the engine parameters
+  const engineParamStr = mvTableMetadata.engine_full?.match(
+    /SummingMergeTree\((\(?[^(]*)\)/,
+  )?.[1];
+
+  // Remove surrounding parentheses if present
+  const engineParamStripped =
+    engineParamStr?.at(0) === '(' && engineParamStr?.at(-1) === ')'
+      ? engineParamStr.slice(1, -1)
+      : engineParamStr;
+
+  if (engineParamStripped) {
+    return new Set(splitAndTrimWithBracket(engineParamStripped));
+  }
+}
+
+function getSourceTableColumn(
+  mvColumnName: string,
+  aggFn: string,
+  sourceTableColumnNames: Set<string>,
+) {
+  // By convention: MV Columns are named "<aggFn>__<sourceColumn>"
+  const nameSuffix = mvColumnName.split('__')[1];
+  return sourceTableColumnNames.has(nameSuffix) && aggFn !== 'count'
+    ? nameSuffix
+    : '';
+}
+
 /**
  * Attempts to a MaterializedViewConfiguration object from the given TableConnections
  * by introspecting the view, target table, and source table.
@@ -260,12 +302,11 @@ export async function inferMaterializedViewConfig(
           return undefined;
         }
 
-        // Convention: MV Columns are named "<aggFn>__<sourceColumn>"
-        const nameSuffix = col.name.split('__')[1];
-        const sourceColumn =
-          sourceTableColumnNames.has(nameSuffix) && aggFn !== 'count'
-            ? nameSuffix
-            : '';
+        const sourceColumn = getSourceTableColumn(
+          col.name,
+          aggFn,
+          sourceTableColumnNames,
+        );
 
         return {
           mvColumn: col.name,
@@ -274,6 +315,29 @@ export async function inferMaterializedViewConfig(
         };
       })
       .filter(c => c != undefined);
+
+  // Add Aggregated columns from the SummingMergeTree engine, if applicable
+  const summedColumnNames = isSummingMergeTree(mvTableMetadata)
+    ? parseSummedColumns(mvTableMetadata)
+    : undefined;
+  for (const summedColumn of summedColumnNames ?? []) {
+    const aggFn: InternalAggregateFunction = summedColumn
+      .toLowerCase()
+      .includes('count')
+      ? 'count'
+      : 'sum';
+
+    const sourceColumn = getSourceTableColumn(
+      summedColumn,
+      aggFn,
+      sourceTableColumnNames,
+    );
+    aggregatedColumns.push({
+      mvColumn: summedColumn,
+      aggFn,
+      sourceColumn,
+    });
+  }
 
   // Infer the timestamp column
   const primaryKeyColumns = new Set(
@@ -296,6 +360,7 @@ export async function inferMaterializedViewConfig(
     .filter(
       col =>
         !col.type.includes('AggregateFunction') &&
+        !summedColumnNames?.has(col.name) &&
         !timestampColumns.includes(col),
     )
     .map(col => col.name)
