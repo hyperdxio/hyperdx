@@ -293,8 +293,8 @@ export const Table = ({
             </tr>
           )}
         </tbody>
-        {tableBottom && tableBottom}
       </table>
+      {tableBottom && tableBottom}
     </div>
   );
 };
