@@ -121,6 +121,53 @@ async function addOtelDemoSources({
       spanEventsValueExpression: 'Events',
       highlightedTraceAttributeExpressions:
         traceSourceHighlightedTraceAttributes,
+      materializedViews: [
+        {
+          databaseName: 'otel_v2',
+          tableName: 'otel_traces_1m',
+          dimensionColumns: 'ServiceName, StatusCode',
+          minGranularity: '1 minute',
+          timestampColumn: 'Timestamp',
+          aggregatedColumns: [
+            { mvColumn: 'count', aggFn: 'count', sourceColumn: '' },
+            {
+              mvColumn: 'max__Duration',
+              aggFn: 'max',
+              sourceColumn: 'Duration',
+            },
+            {
+              mvColumn: 'avg__Duration',
+              aggFn: 'avg',
+              sourceColumn: 'Duration',
+            },
+          ],
+        },
+        {
+          databaseName: 'otel_v2',
+          tableName: 'otel_traces_1m_v2',
+          dimensionColumns: 'ServiceName, SpanName, SpanKind',
+          minGranularity: '1 minute',
+          timestampColumn: 'Timestamp',
+          aggregatedColumns: [
+            { mvColumn: 'count', aggFn: 'count', sourceColumn: '' },
+            {
+              mvColumn: 'max__Duration',
+              aggFn: 'max',
+              sourceColumn: 'Duration',
+            },
+            {
+              mvColumn: 'avg__Duration',
+              aggFn: 'avg',
+              sourceColumn: 'Duration',
+            },
+            {
+              mvColumn: 'quantile__Duration',
+              aggFn: 'quantile',
+              sourceColumn: 'Duration',
+            },
+          ],
+        },
+      ],
     },
   });
   let metricsSource: TSource | undefined;
