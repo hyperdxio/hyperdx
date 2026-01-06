@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { Fragment, useCallback, useState } from 'react';
 import Head from 'next/head';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm, useWatch } from 'react-hook-form';
@@ -162,11 +162,11 @@ function SourcesSection() {
       <Card variant="muted">
         <Stack>
           {sources?.map(s => (
-            <>
-              <Flex key={s.id} justify="space-between" align="center">
+            <Fragment key={s.id}>
+              <Flex justify="space-between" align="center">
                 <div>
                   <Text>{s.name}</Text>
-                  <Text size="xxs" c="dimmed" mt="xs">
+                  <Text size="xxs" c="dimmed" mt="xs" component="div">
                     <Group gap="xs">
                       {capitalizeFirstLetter(s.kind)}
                       <Group gap={2}>
@@ -216,7 +216,7 @@ function SourcesSection() {
                 />
               )}
               <Divider />
-            </>
+            </Fragment>
           ))}
           {!IS_LOCAL_MODE && isCreatingSource && (
             <TableSourceForm

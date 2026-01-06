@@ -220,7 +220,7 @@ function SessionCardList({
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const appliedConfigMap = {
   sessionSource: parseAsString,
-  where: parseAsString,
+  where: parseAsString.withDefault(''),
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
 export default function SessionsPage() {
