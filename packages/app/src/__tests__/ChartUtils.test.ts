@@ -1,6 +1,21 @@
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 
-import { formatResponseForTimeChart } from '@/ChartUtils';
+import {
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
+  convertToTimeChartConfig,
+  formatResponseForTimeChart,
+} from '@/ChartUtils';
+
+if (!globalThis.structuredClone) {
+  globalThis.structuredClone = (obj: any) => {
+    return JSON.parse(JSON.stringify(obj));
+  };
+}
 
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
@@ -527,6 +542,114 @@ describe('ChartUtils', () => {
           isDashed: true,
         },
       ]);
+    });
+  });
+
+  describe('convertToTimeChartConfig', () => {
+    it('should set granularity when granularity is auto', () => {
+      const config = {
+        granularity: 'auto',
+        dateRange: [
+          new Date('2025-11-26T00:00:00Z'),
+          new Date('2025-11-27T00:00:00Z'),
+        ],
+      } as ChartConfigWithDateRange;
+
+      const granularityFromFunction =
+        convertToTimeChartConfig(config).granularity;
+
+      expect(granularityFromFunction).toBe('30 minute');
+    });
+
+    it('should set granularity when granularity is undefined', () => {
+      const config = {
+        dateRange: [
+          new Date('2025-11-26T00:00:00Z'),
+          new Date('2025-11-27T00:00:00Z'),
+        ],
+      } as ChartConfigWithDateRange;
+
+      const granularityFromFunction =
+        convertToTimeChartConfig(config).granularity;
+
+      expect(granularityFromFunction).toBe('30 minute');
+    });
+
+    it('should retain the specified granularity when not auto', () => {
+      const config = {
+        granularity: '5 minute',
+        dateRange: [
+          new Date('2025-11-26T00:00:00Z'),
+          new Date('2025-11-27T00:00:00Z'),
+        ],
+      } as ChartConfigWithDateRange;
+
+      const granularityFromFunction =
+        convertToTimeChartConfig(config).granularity;
+
+      expect(granularityFromFunction).toBe('5 minute');
+    });
+  });
+
+  describe('convertToNumberChartConfig', () => {
+    it('should remove granularity and groupBy from the config', () => {
+      const config = {
+        granularity: '5 minute',
+        groupBy: 'ServiceName',
+        dateRange: [
+          new Date('2025-11-26T00:00:00Z'),
+          new Date('2025-11-27T00:00:00Z'),
+        ],
+      } as ChartConfigWithDateRange;
+
+      const convertedConfig = convertToNumberChartConfig(config);
+
+      expect(convertedConfig.granularity).toBeUndefined();
+      expect(convertedConfig.groupBy).toBeUndefined();
+    });
+  });
+
+  describe('convertToTableChartConfig', () => {
+    it('should remove granularity from the config', () => {
+      const config = {
+        granularity: '5 minute',
+        dateRange: [
+          new Date('2025-11-26T00:00:00Z'),
+          new Date('2025-11-27T00:00:00Z'),
+        ],
+      } as ChartConfigWithDateRange;
+
+      const convertedConfig = convertToTableChartConfig(config);
+
+      expect(convertedConfig.granularity).toBeUndefined();
+    });
+
+    it('should apply a default sort if none is provided', () => {
+      const config = {
+        groupBy: 'ServiceName',
+        dateRange: [
+          new Date('2025-11-26T00:00:00Z'),
+          new Date('2025-11-27T00:00:00Z'),
+        ],
+      } as ChartConfigWithDateRange;
+
+      const convertedConfig = convertToTableChartConfig(config);
+
+      expect(convertedConfig.orderBy).toEqual('ServiceName');
+    });
+
+    it('should apply a default limit if none is provided', () => {
+      const config = {
+        groupBy: 'ServiceName',
+        dateRange: [
+          new Date('2025-11-26T00:00:00Z'),
+          new Date('2025-11-27T00:00:00Z'),
+        ],
+      } as ChartConfigWithDateRange;
+
+      const convertedConfig = convertToTableChartConfig(config);
+
+      expect(convertedConfig.limit).toEqual({ limit: 200 });
     });
   });
 });

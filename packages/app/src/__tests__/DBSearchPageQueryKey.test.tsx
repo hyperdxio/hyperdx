@@ -4,7 +4,6 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
@@ -38,7 +37,7 @@ jest.mock('@/ChartUtils', () => ({
   useTimeChartSettings: () => ({
     displayType: DisplayType.StackedBar,
     dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
-    granularity: 'auto',
+    granularity: '30 minutes',
     fillNulls: true,
   }),
   formatResponseForTimeChart: () => ({
@@ -54,21 +53,14 @@ jest.mock('@/ChartUtils', () => ({
     new Date('2024-01-01'),
   ],
   getPreviousPeriodOffsetSeconds: () => 86400,
+  convertToTimeChartConfig:
+    jest.requireActual('@/ChartUtils').convertToTimeChartConfig,
 }));
 
 describe('DBSearchPage QueryKey Consistency', () => {
-  let queryClient: QueryClient;
   let mockUseQueriedChartConfig: jest.Mock;
 
   beforeEach(async () => {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-        },
-      },
-    });
-
     mockUseQueriedChartConfig = (await import('@/hooks/useChartConfig'))
       .useQueriedChartConfig as any;
     mockUseQueriedChartConfig.mockClear();

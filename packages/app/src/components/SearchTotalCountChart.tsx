@@ -4,7 +4,7 @@ import { Text } from '@mantine/core';
 import { keepPreviousData } from '@tanstack/react-query';
 
 import api from '@/api';
-import { useTimeChartSettings } from '@/ChartUtils';
+import { convertToTimeChartConfig } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
 export function useSearchTotalCount(
@@ -19,12 +19,11 @@ export function useSearchTotalCount(
   } = {},
 ) {
   // queriedConfig, queryKey, and enableQueryChunking match DBTimeChart so that react query can de-dupe these queries.
-  const { granularity } = useTimeChartSettings(config);
-  const queriedConfig = {
-    ...config,
-    granularity,
-    limit: { limit: 100000 },
-  };
+  const queriedConfig = useMemo(
+    () => convertToTimeChartConfig(config),
+    [config],
+  );
+
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const {
     data: totalCountData,

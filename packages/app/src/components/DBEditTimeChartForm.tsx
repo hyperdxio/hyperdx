@@ -15,6 +15,7 @@ import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
+  ChartConfigWithOptTimestamp,
   DateRange,
   DisplayType,
   Filter,
@@ -61,6 +62,9 @@ import { SortingState } from '@tanstack/react-table';
 import {
   AGG_FNS,
   buildTableRowSearchUrl,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
+  convertToTimeChartConfig,
   getPreviousDateRange,
 } from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
@@ -74,7 +78,6 @@ import { GranularityPickerControlled } from '@/GranularityPicker';
 import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
-import { parseTimeQuery } from '@/timeQuery';
 import { FormatTime } from '@/useFormatTime';
 import {
   getMetricTableName,
@@ -114,7 +117,7 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
   ((queriedConfig?.select?.length ?? 0) > 0 ||
     typeof queriedConfig?.select === 'string') &&
   queriedConfig?.from?.databaseName &&
-  // tableName is emptry for metric sources
+  // tableName is empty for metric sources
   (queriedConfig?.from?.tableName || queriedConfig?.metricTables) &&
   queriedConfig?.timestampValueExpression;
 
@@ -397,11 +400,6 @@ function ChartSeriesEditorComponent({
 }
 const ChartSeriesEditor = ChartSeriesEditorComponent;
 
-// Autocomplete can focus on column/map keys
-
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
-
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
@@ -441,7 +439,7 @@ export default function EditTimeChartForm({
   dateRange: [Date, Date];
   isSaving?: boolean;
   onTimeRangeSearch?: (value: string) => void;
-  setChartConfig: (chartConfig: SavedChartConfig) => void;
+  setChartConfig?: (chartConfig: SavedChartConfig) => void;
   setDisplayedTimeInputValue?: (value: string) => void;
   onSave?: (chart: SavedChartConfig) => void;
   onClose?: () => void;
@@ -556,6 +554,22 @@ export default function EditTimeChartForm({
     [],
   );
 
+  const dbTimeChartConfig = useMemo(() => {
+    if (!queriedConfig) {
+      return undefined;
+    }
+
+    return {
+      ...queriedConfig,
+      granularity: alert
+        ? intervalToGranularity(alert.interval)
+        : queriedConfig.granularity,
+      dateRange: alert
+        ? extendDateRangeToInterval(queriedConfig.dateRange, alert.interval)
+        : queriedConfig.dateRange,
+    };
+  }, [queriedConfig, alert]);
+
   const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
     useState(false);
 
@@ -568,7 +582,7 @@ export default function EditTimeChartForm({
           form.displayType === DisplayType.Search ? form.select : form.series,
       };
 
-      setChartConfig(config);
+      setChartConfig?.(config);
       if (tableSource != null) {
         const isSelectEmpty = !config.select || config.select.length === 0; // select is string or array
         const newConfig = {
@@ -591,7 +605,7 @@ export default function EditTimeChartForm({
         setQueriedConfigAndSource(
           // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
           // YOUR STATE IS AN OBJECT. YOU'RE COPYING BY REFERENCE WHICH MIGHT
-          // ACCIDENTALLY CAUSE A useQuery SOMEWHERE TO FIRE A REQUEST EVERYTIME
+          // ACCIDENTALLY CAUSE A useQuery SOMEWHERE TO FIRE A REQUEST EVERY TIME
           // AN INPUT CHANGES. USE structuredClone TO PERFORM A DEEP COPY INSTEAD
           structuredClone(newConfig),
           tableSource,
@@ -709,28 +723,57 @@ export default function EditTimeChartForm({
 
   const queryReady = isQueryReady(queriedConfig);
 
-  // The chart config to use when explaining to to the user whether and why
-  // their query is or is not being executed against a materialized view.
-  const chartConfigForMvOptimizationExplanation:
-    | ChartConfigWithDateRange
-    | undefined = useMemo(() => {
-    // If the user has submitted a query, us the submitted query, unless they have changed sources
-    if (queriedConfig && queriedSource?.id === tableSource?.id) {
-      return queriedConfig;
-    }
+  // The chart config to use when showing the user the generated SQL
+  // and explaining whether a MV can be used.
+  const chartConfigForExplanations: ChartConfigWithOptTimestamp | undefined =
+    useMemo(() => {
+      const userHasSubmittedQuery = !!queriedConfig;
+      const queriedSourceMatchesSelectedSource =
+        queriedSource?.id === tableSource?.id;
+      const urlParamsSourceMatchesSelectedSource =
+        chartConfig?.source === tableSource?.id;
 
-    // If there is a chart config from the props (either a saved config or one from the URL params), use that,
-    // unless a different source has been selected.
-    return chartConfig && tableSource?.id === chartConfig.source
-      ? {
-          ...chartConfig,
-          dateRange,
-          timestampValueExpression: tableSource.timestampValueExpression,
-          from: tableSource.from,
-          connection: tableSource.connection,
-        }
-      : undefined;
-  }, [chartConfig, dateRange, tableSource, queriedConfig, queriedSource]);
+      const effectiveQueriedConfig =
+        activeTab === 'time' ? dbTimeChartConfig : queriedConfig;
+
+      const config =
+        userHasSubmittedQuery && queriedSourceMatchesSelectedSource
+          ? effectiveQueriedConfig
+          : chartConfig && urlParamsSourceMatchesSelectedSource
+            ? {
+                ...chartConfig,
+                dateRange,
+                timestampValueExpression: tableSource.timestampValueExpression,
+                from: tableSource.from,
+                connection: tableSource.connection,
+              }
+            : undefined;
+
+      if (!config) {
+        return undefined;
+      }
+
+      // Apply the transformations that child components will apply,
+      // so that the MV optimization explanation and generated SQL preview
+      // are accurate.
+      if (activeTab === 'time') {
+        return convertToTimeChartConfig(config);
+      } else if (activeTab === 'number') {
+        return convertToNumberChartConfig(config);
+      } else if (activeTab === 'table') {
+        return convertToTableChartConfig(config);
+      }
+
+      return config;
+    }, [
+      queriedConfig,
+      queriedSource?.id,
+      tableSource,
+      chartConfig,
+      dateRange,
+      activeTab,
+      dbTimeChartConfig,
+    ]);
 
   const previousDateRange = getPreviousDateRange(dateRange);
 
@@ -862,7 +905,7 @@ export default function EditTimeChartForm({
             {tableSource && activeTab !== 'search' && (
               <MVOptimizationIndicator
                 source={tableSource}
-                config={chartConfigForMvOptimizationExplanation}
+                config={chartConfigForExplanations}
               />
             )}
           </Flex>
@@ -1220,25 +1263,14 @@ export default function EditTimeChartForm({
           />
         </div>
       )}
-      {queryReady && queriedConfig != null && activeTab === 'time' && (
+      {queryReady && dbTimeChartConfig != null && activeTab === 'time' && (
         <div
           className="flex-grow-1 d-flex flex-column"
           style={{ minHeight: 400 }}
         >
           <DBTimeChart
             sourceId={sourceId}
-            config={{
-              ...queriedConfig,
-              granularity: alert
-                ? intervalToGranularity(alert.interval)
-                : queriedConfig.granularity,
-              dateRange: alert
-                ? extendDateRangeToInterval(
-                    queriedConfig.dateRange,
-                    alert.interval,
-                  )
-                : queriedConfig.dateRange,
-            }}
+            config={dbTimeChartConfig}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={
               alert &&
@@ -1339,8 +1371,8 @@ export default function EditTimeChartForm({
                 </Text>
               </Accordion.Control>
               <Accordion.Panel>
-                {queryReady && queriedConfig != null && (
-                  <ChartSQLPreview config={queriedConfig} />
+                {queryReady && chartConfigForExplanations != null && (
+                  <ChartSQLPreview config={chartConfigForExplanations} />
                 )}
               </Accordion.Panel>
             </Accordion.Item>

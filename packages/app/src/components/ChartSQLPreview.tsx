@@ -2,7 +2,7 @@ import { useState } from 'react';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import { sql } from '@codemirror/lang-sql';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { Button, Paper } from '@mantine/core';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
 import CodeMirror from '@uiw/react-codemirror';
@@ -15,7 +15,7 @@ function tryFormat(data?: string) {
       return format(data);
     }
     return data;
-  } catch (_) {
+  } catch {
     return data;
   }
 }
@@ -87,7 +87,7 @@ export function SQLPreview({
 export default function ChartSQLPreview({
   config,
 }: {
-  config: ChartConfigWithDateRange;
+  config: ChartConfigWithOptDateRange;
 }) {
   const { data } = useRenderedSqlChartConfig(config);
 

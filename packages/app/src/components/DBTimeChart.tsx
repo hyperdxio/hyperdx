@@ -33,6 +33,7 @@ import {
   buildEventsSearchUrl,
   ChartKeyJoiner,
   convertGranularityToSeconds,
+  convertToTimeChartConfig,
   formatResponseForTimeChart,
   getPreviousDateRange,
   getPreviousPeriodOffsetSeconds,
@@ -240,12 +241,8 @@ function DBTimeChartComponent({
   } = useTimeChartSettings(config);
 
   const queriedConfig = useMemo(
-    () => ({
-      ...config,
-      granularity,
-      limit: { limit: 100000 },
-    }),
-    [config, granularity],
+    () => convertToTimeChartConfig(config),
+    [config],
   );
 
   const { data: me, isLoading: isLoadingMe } = api.useMe();
