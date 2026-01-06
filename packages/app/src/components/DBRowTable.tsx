@@ -1236,14 +1236,12 @@ function DBSqlRowTableComponent({
     const currentSort = initialSortBy?.[0] ?? null;
     const prevSort = prevInitialSortBy?.[0] ?? null;
 
-    // Only sync if initialSortBy actually changed
-    if (
-      JSON.stringify(currentSort) !== JSON.stringify(prevSort) &&
-      JSON.stringify(currentSort) !== JSON.stringify(orderBy)
-    ) {
+    // Only sync if initialSortBy actually changed (not orderBy)
+    // We don't include orderBy in deps to avoid infinite loop
+    if (JSON.stringify(currentSort) !== JSON.stringify(prevSort)) {
       setOrderBy(currentSort);
     }
-  }, [initialSortBy, prevInitialSortBy, orderBy]);
+  }, [initialSortBy, prevInitialSortBy]);
 
   const mergedConfigObj = useMemo(() => {
     const base = {
