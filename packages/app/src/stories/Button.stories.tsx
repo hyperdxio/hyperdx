@@ -87,12 +87,6 @@ export const Sizes = () => (
       <Button variant="primary" size="md">
         MD
       </Button>
-      <Button variant="primary" size="lg">
-        LG
-      </Button>
-      <Button variant="primary" size="xl">
-        XL
-      </Button>
     </Group>
   </Stack>
 );

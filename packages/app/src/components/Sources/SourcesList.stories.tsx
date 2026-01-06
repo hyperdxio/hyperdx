@@ -149,13 +149,3 @@ export const Empty: Story = {
     showEmptyState: true,
   },
 };
-
-/* Empty without empty state UI */
-export const EmptyNoUI: Story = {
-  name: 'Empty (No Empty State UI)',
-  args: {
-    mockSources: [],
-    mockConnections: [],
-    showEmptyState: false,
-  },
-};

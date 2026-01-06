@@ -98,12 +98,6 @@ export const Sizes = () => (
       <ActionIcon variant="primary" size="md">
         <IconPlus size={18} />
       </ActionIcon>
-      <ActionIcon variant="primary" size="lg">
-        <IconPlus size={20} />
-      </ActionIcon>
-      <ActionIcon variant="primary" size="xl">
-        <IconPlus size={24} />
-      </ActionIcon>
     </Group>
   </Stack>
 );
