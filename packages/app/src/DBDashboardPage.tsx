@@ -577,7 +577,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setDashboard,
     dashboardHash,
     isLocalDashboard,
-    isLocalDashboardEmpty,
     isFetching: isFetchingDashboard,
     isSetting: isSavingDashboard,
   } = useDashboard({
@@ -664,11 +663,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     whereLanguage: SearchConditionLanguage;
   }>({
     defaultValues: {
-      granularity: 'auto',
-      where: '',
-      whereLanguage: 'lucene',
-    },
-    values: {
       granularity: granularity ?? 'auto',
       where: where ?? '',
       whereLanguage: (whereLanguage as SearchConditionLanguage) ?? 'lucene',
@@ -686,17 +680,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Past 1h');
 
-  const {
-    searchedTimeRange,
-    // displayedTimeInputValue,
-    // setDisplayedTimeInputValue,
-    onSearch,
-    onTimeRangeSelect,
-  } = useNewTimeQuery({
+  const { searchedTimeRange, onSearch, onTimeRangeSelect } = useNewTimeQuery({
     initialDisplayValue: 'Past 1h',
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
-    // showRelativeInterval: isLive,
   });
 
   const {
@@ -892,7 +879,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const hasTiles = dashboard && dashboard.tiles.length > 0;
 
   return (
-    <Box p="sm">
+    <Box p="sm" data-testid="dashboard-page">
       <Head>
         <title>Dashboard – HyperDX</title>
       </Head>
@@ -934,8 +921,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           );
         }}
       />
-      {IS_LOCAL_MODE === false && isLocalDashboard && isLocalDashboardEmpty && (
-        <Paper my="lg" p="md">
+      {IS_LOCAL_MODE === false && isLocalDashboard && (
+        <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
           <Flex justify="space-between" align="center">
             <Text size="sm">
               This is a temporary dashboard and can not be saved.
@@ -1112,7 +1099,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         >
           <Button
             onClick={() => setIsLive(prev => !prev)}
-            mr={6}
             size="sm"
             variant={isLive ? 'filled' : 'default'}
             title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
@@ -1125,7 +1111,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             onClick={refresh}
             loading={manualRefreshCooloff}
             disabled={manualRefreshCooloff}
-            mr={6}
             variant="default"
             title="Refresh dashboard"
             px="xs"
@@ -1138,7 +1123,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <Button
               variant="default"
               px="xs"
-              mr={6}
               onClick={() => setShowFiltersModal(true)}
             >
               <IconFilterEdit strokeWidth={1} />

@@ -16,6 +16,7 @@ readonly MONGODB_WAIT_DELAY_SECONDS=1
 # Parse arguments
 LOCAL_MODE=false
 TAGS=""
+UI_MODE=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -27,6 +28,10 @@ while [[ $# -gt 0 ]]; do
       TAGS="$2"
       shift 2
       ;;
+    --ui)
+      UI_MODE=true
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
       echo "Usage: $0 [--local] [--tags <tag>]"
@@ -34,6 +39,17 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+
+# Build additional flags
+ADDITIONAL_FLAGS=""
+if [ -n "$TAGS" ]; then
+  ADDITIONAL_FLAGS="--grep $TAGS"
+fi
+if [ "$UI_MODE" = true ]; then
+  ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --ui"
+fi
+
 
 cleanup_mongodb() {
   echo "Stopping MongoDB..."
@@ -93,11 +109,7 @@ wait_for_mongodb() {
 run_local_mode() {
   echo "Running E2E tests in local mode (frontend only)..."
   cd "$REPO_ROOT/packages/app"
-  if [ -n "$TAGS" ]; then
-    yarn test:e2e --local --grep "$TAGS"
-  else
-    yarn test:e2e --local
-  fi
+  yarn test:e2e --local $ADDITIONAL_FLAGS
 }
 
 run_fullstack_mode() {
@@ -117,11 +129,7 @@ run_fullstack_mode() {
 
   # Run tests in full-stack mode (default for yarn test:e2e)
   cd "$REPO_ROOT/packages/app"
-  if [ -n "$TAGS" ]; then
-    yarn test:e2e --grep "$TAGS"
-  else
-    yarn test:e2e
-  fi
+  yarn test:e2e $ADDITIONAL_FLAGS
 }
 
 # Main execution

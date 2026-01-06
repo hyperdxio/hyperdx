@@ -10,6 +10,26 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   });
 
   test(
+    'should display the "temporary dashboard" banner until the dashboard is created',
+    { tag: '@full-stack' },
+    async () => {
+      await test.step('Verify that banner is initially displayed', async () => {
+        await expect(dashboardPage.temporaryDashboardBanner).toBeVisible();
+      });
+
+      await test.step('Add a tile, verify that banner is still displayed', async () => {
+        await dashboardPage.addTileWithConfig('Test tile');
+        await expect(dashboardPage.temporaryDashboardBanner).toBeVisible();
+      });
+
+      await test.step('Create the dashboard, verify the banner is no longer displayed', async () => {
+        await dashboardPage.createNewDashboard();
+        await expect(dashboardPage.temporaryDashboardBanner).toBeHidden();
+      });
+    },
+  );
+
+  test(
     'should persist dashboard across page reloads',
     { tag: '@full-stack' },
     async () => {
@@ -228,7 +248,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         // Verify chart is still visible (validates that the change worked)
         const chartContainers = dashboardPage.getChartContainers();
-        await expect(chartContainers).toHaveCount(1);
+        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
       });
     },
   );

@@ -30,7 +30,7 @@ export class MetadataCache {
 
   async getOrFetch<T>(key: string, query: () => Promise<T>): Promise<T> {
     // Check if value exists in cache
-    const cachedValue = this.cache.get(key) as T | undefined;
+    const cachedValue: T | undefined = this.cache.get(key);
     if (cachedValue != null) {
       return cachedValue;
     }
@@ -194,9 +194,9 @@ export class Metadata {
             connectionId,
             clickhouse_settings: this.getClickHouseSettings(),
           })
-          .then(res => res.json())
+          .then(res => res.json<ColumnMeta>())
           .then(d => d.data);
-        return columns as ColumnMeta[];
+        return columns;
       },
     );
   }
@@ -353,13 +353,15 @@ export class Metadata {
             max_rows_to_read: '0',
           },
         })
-        .then(res => res.json<Record<string, unknown>>())
+        .then(res => res.json<{ keysArr?: string[]; key?: string }>())
         .then(d => {
           let output: string[];
           if (strategy === 'groupUniqArrayArray') {
-            output = d.data[0].keysArr as string[];
+            output = d.data[0].keysArr ?? [];
           } else {
-            output = d.data.map(row => row.key) as string[];
+            output = d.data
+              .map(row => row.key)
+              .filter((k): k is string => Boolean(k));
           }
 
           return output.filter(r => r);
@@ -496,8 +498,8 @@ export class Metadata {
             ...this.getClickHouseSettings(),
           },
         })
-        .then(res => res.json<Record<string, unknown>>())
-        .then(d => d.data.map(row => row.value as string));
+        .then(res => res.json<{ value: string }>())
+        .then(d => d.data.map(row => row.value));
       return values;
     });
   }
@@ -765,10 +767,11 @@ export class Metadata {
           })
           .then(res => res.json<any>());
 
-        // TODO: Fix type issues mentioned in HDX-1548. value is not acually a
+        // TODO: Fix type issues mentioned in HDX-1548. value is not actually a
         // string[], sometimes it's { [key: string]: string; }
         return Object.entries(json?.data?.[0]).map(([key, value]) => ({
           key: keys[parseInt(key.replace('param', ''))],
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see HDX-1548
           value: (value as string[])?.filter(Boolean), // remove nulls
         }));
       },

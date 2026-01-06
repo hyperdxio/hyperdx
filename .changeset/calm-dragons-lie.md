@@ -1,7 +1,6 @@
 ---
 "@hyperdx/common-utils": patch
-"@hyperdx/api": patch
 "@hyperdx/app": patch
 ---
 
-fix: Fix bugs in the Services dashboard
+feat: Add a minimum date to MV configuration

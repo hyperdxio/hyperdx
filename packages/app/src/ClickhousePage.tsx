@@ -12,7 +12,6 @@ import { format as formatSql } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
-  BoxComponentProps,
   Button,
   Flex,
   Grid,
@@ -38,6 +37,7 @@ import OnboardingModal from './components/OnboardingModal';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useConnections } from './connection';
 import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
+import { usePrevious } from './utils';
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
@@ -443,12 +443,13 @@ function ClickhousePage() {
   });
 
   const watchedConnection = useWatch({ control, name: 'connection' });
+  const previousWatchedConnection = usePrevious(watchedConnection);
 
   useEffect(() => {
-    if (watchedConnection !== connection) {
+    if (previousWatchedConnection !== watchedConnection) {
       setConnection(watchedConnection ?? null);
     }
-  }, [watchedConnection, connection, setConnection]);
+  }, [watchedConnection, setConnection, previousWatchedConnection]);
   const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
@@ -496,7 +497,7 @@ function ClickhousePage() {
   }, [latencyFilter]);
 
   return (
-    <Box p="sm">
+    <Box p="sm" data-testid="clickhouse-dashboard-page">
       <OnboardingModal requireSource={false} />
       <Group justify="space-between">
         <Group>

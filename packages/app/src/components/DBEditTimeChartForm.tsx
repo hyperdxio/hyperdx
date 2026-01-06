@@ -962,7 +962,7 @@ export default function EditTimeChartForm({
               )}
               <Divider mt="md" mb="sm" />
               <Flex mt={4} align="center" justify="space-between">
-                <Group gap={0}>
+                <Group gap="xs">
                   {displayType !== DisplayType.Number && (
                     <Button
                       variant="subtle"
@@ -1148,7 +1148,7 @@ export default function EditTimeChartForm({
             </Button>
           )}
         </Flex>
-        <Flex gap="sm" my="sm" align="center" justify="end">
+        <Flex gap="sm" mb="sm" align="center" justify="end">
           {activeTab === 'table' && (
             <div style={{ minWidth: 300 }}>
               <SQLInlineEditorControlled
@@ -1195,7 +1195,7 @@ export default function EditTimeChartForm({
           {!IS_LOCAL_MODE && !dashboardId && (
             <Menu width={250}>
               <Menu.Target>
-                <Button variant="outline" color="gray" px="xs" size="xs">
+                <Button variant="outline" color="gray" px="xs" size="sm">
                   <IconDotsVertical size={14} />
                 </Button>
               </Menu.Target>

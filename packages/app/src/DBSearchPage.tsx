@@ -216,7 +216,7 @@ function SourceEditMenu({
         </Menu.Item>
         {IS_LOCAL_MODE ? (
           <Menu.Item
-            data-testid="edit-source-menu-item"
+            data-testid="edit-sources-menu-item"
             leftSection={<IconSettings size={14} />}
             onClick={() => setModelFormExpanded(v => !v)}
           >
@@ -1003,7 +1003,12 @@ function DBSearchPage() {
     onFilterChange: handleSetFilters,
   });
 
-  const watchedSource = useWatch({ control, name: 'source' });
+  const watchedSource = useWatch({
+    control,
+    name: 'source',
+    // Watch will reset when changing saved search, so we need to default to the URL
+    defaultValue: searchedConfig.source ?? undefined,
+  });
   const prevSourceRef = useRef(watchedSource);
 
   useEffect(() => {
@@ -1018,10 +1023,15 @@ function DBSearchPage() {
         // Save the selected source ID to localStorage
         setLastSelectedSourceId(newInputSourceObj.id);
 
-        setValue(
-          'select',
-          newInputSourceObj?.defaultTableSelectExpression ?? '',
-        );
+        // If the user is in a saved search, prefer the saved search's select if available
+        if (savedSearchId == null || savedSearch?.source !== watchedSource) {
+          setValue(
+            'select',
+            newInputSourceObj?.defaultTableSelectExpression ?? '',
+          );
+        } else {
+          setValue('select', savedSearch?.select ?? '');
+        }
         // Clear all search filters
         searchFilters.clearAllFilters();
       }
@@ -1029,6 +1039,8 @@ function DBSearchPage() {
   }, [
     watchedSource,
     setValue,
+    savedSearch,
+    savedSearchId,
     inputSourceObjs,
     searchFilters,
     setLastSelectedSourceId,
@@ -1514,7 +1526,12 @@ function DBSearchPage() {
   );
 
   return (
-    <Flex direction="column" h="100vh" style={{ overflow: 'hidden' }}>
+    <Flex
+      direction="column"
+      h="100vh"
+      style={{ overflow: 'hidden' }}
+      data-testid="search-page"
+    >
       <Head>
         <title>
           {savedSearch ? `${savedSearch.name} Search` : 'Search'} - HyperDX

@@ -31,6 +31,7 @@ export const MetricTableSchema = z
         ...acc,
         [key]: z.string().optional(),
       }),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- reduce builds complete object at runtime
       {} as Record<MetricsDataType, z.ZodString>,
     ),
   )
@@ -645,6 +646,7 @@ export const MaterializedViewConfigurationSchema = z.object({
   tableName: z.string().min(1, 'Materialized View Table is required'),
   dimensionColumns: z.string(),
   minGranularity: SQLIntervalSchema,
+  minDate: z.string().datetime().nullish(),
   timestampColumn: z
     .string()
     .min(1, 'Materialized View Timestamp column is required'),
