@@ -8,6 +8,7 @@ import {
 import { getMetadata } from '@/metadata';
 
 import {
+  getSourceTableColumn,
   inferMaterializedViewConfig,
   inferTimestampColumnGranularity,
   parseSummedColumns,
@@ -88,11 +89,15 @@ describe('inferMaterializedViewConfig', () => {
         type: 'LowCardinality(String)',
       }),
       createMockColumnMeta({
+        name: 'quantileDuration',
+        type: 'AggregateFunction(quantile(0.5), UInt64)',
+      }),
+      createMockColumnMeta({
         name: 'count',
         type: 'UInt64',
       }),
       createMockColumnMeta({
-        name: 'sum__Duration',
+        name: 'sumDuration',
         type: 'UInt64',
       }),
     ] as ColumnMeta[],
@@ -100,7 +105,7 @@ describe('inferMaterializedViewConfig', () => {
     meta: {
       engine: 'SummingMergeTree',
       engine_full:
-        'SummingMergeTree((count, sum__Duration)) ORDER BY (Timestamp, ServiceName, SpanKind) SETTINGS index_granularity = 8192',
+        'SummingMergeTree((count, sumDuration)) ORDER BY (Timestamp, ServiceName, SpanKind) SETTINGS index_granularity = 8192',
       database: 'test_db',
       name: 'test_mv_target_table_summing',
       primary_key: 'Timestamp, ServiceName, SpanKind',
@@ -131,11 +136,27 @@ describe('inferMaterializedViewConfig', () => {
       name: 'test_mv',
       create_table_query: `CREATE MATERIALIZED VIEW test_db.test_mv TO test_db.test_mv_target_table AS 
           SELECT toStartOfHour(Timestamp) AS Timestamp, ServiceName, SpanKind, 
-            count(*) AS count, sum(Duration) AS sum__Duration, quantileState(0.5)(Duration) AS quantile__Duration
+            count(*) AS count, sum(Duration) AS sum__Duration, histogram(20)(Duration) as histogram__Duration, quantileState(0.5)(Duration) AS quantile__Duration
           FROM test_source_table
           GROUP BY Timestamp, ServiceName, SpanKind`,
       as_select: `SELECT toStartOfHour(Timestamp) AS Timestamp, ServiceName, SpanKind, 
-            count(*) AS count, sum(Duration) AS sum__Duration, quantileState(0.5)(Duration) AS quantile__Duration
+            count(*) AS count, sum(Duration) AS sum__Duration, histogram(20)(Duration) as histogram__Duration, quantileState(0.5)(Duration) AS quantile__Duration
+          FROM test_source_table
+          GROUP BY Timestamp, ServiceName, SpanKind`,
+    } as unknown as TableMetadata,
+  };
+
+  const summingMergeTreeMV = {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    meta: {
+      engine: 'MaterializedView',
+      database: 'test_db',
+      name: 'test_mv_summing',
+      create_table_query: `CREATE MATERIALIZED VIEW test_db.test_mv_summing TO test_db.test_mv_target_table_summing AS 
+          SELECT toStartOfHour(Timestamp) AS Timestamp, ServiceName, SpanKind, count() AS count, sum(Duration) AS sumDuration, quantileState(0.5)(Duration) AS quantileDuration
+          FROM test_source_table
+          GROUP BY Timestamp, ServiceName, SpanKind`,
+      as_select: `SELECT toStartOfHour(Timestamp) AS Timestamp, ServiceName, SpanKind, count() AS count, sum(Duration) AS sumDuration, quantileState(0.5)(Duration) AS quantileDuration
           FROM test_source_table
           GROUP BY Timestamp, ServiceName, SpanKind`,
     } as unknown as TableMetadata,
@@ -148,6 +169,8 @@ describe('inferMaterializedViewConfig', () => {
       .mockImplementation(({ tableName }) => {
         if (tableName === 'test_mv') {
           return Promise.resolve(mv.meta);
+        } else if (tableName === 'test_mv_summing') {
+          return Promise.resolve(summingMergeTreeMV.meta);
         } else if (tableName === 'test_mv_target_table') {
           return Promise.resolve(mvTargetTable.meta);
         } else if (tableName === 'test_mv_target_table_summing') {
@@ -170,7 +193,17 @@ describe('inferMaterializedViewConfig', () => {
 
     mockMetadata.queryMaterializedViewsByTarget = jest
       .fn()
-      .mockResolvedValue([{ tableName: 'test_mv', databaseName: 'test_db' }]);
+      .mockImplementation(({ tableName }) => {
+        return Promise.resolve([
+          {
+            databaseName: 'test_db',
+            tableName:
+              tableName === 'test_mv_target_table_summing'
+                ? 'test_mv_summing'
+                : 'test_mv',
+          },
+        ]);
+      });
   });
 
   afterEach(() => {
@@ -301,13 +334,18 @@ describe('inferMaterializedViewConfig', () => {
       minGranularity: '1 hour',
       aggregatedColumns: [
         {
+          aggFn: 'quantile',
+          mvColumn: 'quantileDuration',
+          sourceColumn: 'Duration',
+        },
+        {
           aggFn: 'count',
           mvColumn: 'count',
           sourceColumn: '',
         },
         {
           aggFn: 'sum',
-          mvColumn: 'sum__Duration',
+          mvColumn: 'sumDuration',
           sourceColumn: 'Duration',
         },
       ],
@@ -531,5 +569,130 @@ describe('parseSummedColumns', () => {
 
     const parsed = parseSummedColumns(metadata);
     expect(parsed).toEqual(new Set(['count', 'sum__Duration']));
+  });
+});
+
+describe('getSourceTableColumn', () => {
+  it('should return empty string if no matching source column is found', () => {
+    const sourceTableColumns: ColumnMeta[] = [
+      createMockColumnMeta({ name: 'Duration', type: 'UInt64' }),
+      createMockColumnMeta({ name: 'Value', type: 'UInt64' }),
+    ];
+
+    const targetTableColumn = createMockColumnMeta({
+      name: 'sum__NonExistentColumn',
+      type: 'SimpleAggregateFunction(sum, UInt64)',
+    });
+    const sourceColumn = getSourceTableColumn(
+      'sum',
+      targetTableColumn,
+      sourceTableColumns,
+    );
+    expect(sourceColumn).toBe('');
+  });
+
+  it('should return empty string if the aggFn is count', () => {
+    const sourceTableColumns: ColumnMeta[] = [
+      createMockColumnMeta({ name: 'Duration', type: 'UInt64' }),
+      createMockColumnMeta({ name: 'Value', type: 'UInt64' }),
+    ];
+
+    const targetTableColumn = createMockColumnMeta({
+      name: 'count',
+      type: 'SimpleAggregateFunction(count, UInt64)',
+    });
+    const sourceColumn = getSourceTableColumn(
+      'count',
+      targetTableColumn,
+      sourceTableColumns,
+    );
+    expect(sourceColumn).toBe('');
+  });
+
+  it('should match source columns based on convention', () => {
+    const sourceTableColumns: ColumnMeta[] = [
+      createMockColumnMeta({ name: 'Duration', type: 'UInt64' }),
+      createMockColumnMeta({ name: 'Value', type: 'UInt64' }),
+    ];
+
+    const targetTableColumnSum = createMockColumnMeta({
+      name: 'sum__Duration',
+      type: 'SimpleAggregateFunction(sum, UInt64)',
+    });
+    const sourceColumnForSum = getSourceTableColumn(
+      'sum',
+      targetTableColumnSum,
+      sourceTableColumns,
+    );
+    expect(sourceColumnForSum).toBe('Duration');
+  });
+
+  it('should match source column based on MV DDL expressions', () => {
+    const sourceTableColumns: ColumnMeta[] = [
+      createMockColumnMeta({ name: 'Duration', type: 'UInt64' }),
+      createMockColumnMeta({ name: 'Value', type: 'UInt64' }),
+    ];
+
+    const targetTableColumnQuantile = createMockColumnMeta({
+      name: 'quantileDuration',
+      type: 'AggregateFunction(quantile(0.5), UInt64)',
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const mvMetadata: TableMetadata = {
+      as_select:
+        'SELECT toStartOfHour(Timestamp) AS Timestamp, ServiceName, SpanKind, count() AS count, sum(Duration) AS sumDuration, quantileState(0.5)(Duration) AS quantileDuration FROM test_source_table GROUP BY Timestamp, ServiceName, SpanKind',
+    } as unknown as TableMetadata;
+
+    const sourceColumnForQuantile = getSourceTableColumn(
+      'quantile',
+      targetTableColumnQuantile,
+      sourceTableColumns,
+      mvMetadata,
+    );
+
+    expect(sourceColumnForQuantile).toBe('Duration');
+  });
+
+  it('should match source column based on MV DDL expressions when there are overlapping source column names', () => {
+    const sourceTableColumns: ColumnMeta[] = [
+      createMockColumnMeta({ name: 'MaxDuration', type: 'UInt64' }),
+      createMockColumnMeta({ name: 'Duration', type: 'UInt64' }),
+      createMockColumnMeta({ name: 'Value', type: 'UInt64' }),
+    ];
+
+    const targetTableColumnMaxMax = createMockColumnMeta({
+      name: 'maxMaxDuration',
+      type: 'AggregateFunction(max, UInt64)',
+    });
+
+    const targetTableColumnMax = createMockColumnMeta({
+      name: 'maxDuration',
+      type: 'AggregateFunction(max, UInt64)',
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const mvMetadata: TableMetadata = {
+      as_select:
+        'SELECT toStartOfHour(Timestamp) AS Timestamp, ServiceName, SpanKind, count() AS count, max(MaxDuration) AS maxMaxDuration, max(Duration) AS maxDuration FROM test_source_table GROUP BY Timestamp, ServiceName, SpanKind',
+    } as unknown as TableMetadata;
+
+    const sourceColumnForMax = getSourceTableColumn(
+      'max',
+      targetTableColumnMax,
+      sourceTableColumns,
+      mvMetadata,
+    );
+
+    expect(sourceColumnForMax).toBe('Duration');
+
+    const sourceColumnForMaxMax = getSourceTableColumn(
+      'max',
+      targetTableColumnMaxMax,
+      sourceTableColumns,
+      mvMetadata,
+    );
+
+    expect(sourceColumnForMaxMax).toBe('MaxDuration');
   });
 });

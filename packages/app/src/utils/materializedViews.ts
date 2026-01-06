@@ -1,4 +1,5 @@
 import {
+  ColumnMeta,
   extractColumnReferencesFromKey,
   filterColumnMetaByType,
   JSDataType,
@@ -247,6 +248,7 @@ export function parseSummedColumns(mvTableMetadata: TableMetadata) {
   }
 
   // Extract the column list from the engine parameters
+  // SummingMergeTree(col1) or SummingMergeTree((col1, col2, ...))
   const engineParamStr = mvTableMetadata.engine_full?.match(
     /SummingMergeTree\((\(?[^(]*)\)/,
   )?.[1];
@@ -262,20 +264,53 @@ export function parseSummedColumns(mvTableMetadata: TableMetadata) {
   }
 }
 
-function getSourceTableColumn(
-  mvColumnName: string,
+function escapeRegExp(s: string) {
+  // $& means the whole matched string
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function getSourceTableColumn(
   aggFn: string,
-  sourceTableColumnNames: Set<string>,
+  targetTableColumn: ColumnMeta,
+  sourceTableColumns: ColumnMeta[],
+  mvMetadata?: TableMetadata,
 ) {
+  if (aggFn === 'count') {
+    // Count may not have a source column
+    return '';
+  }
+
   // By convention: MV Columns are named "<aggFn>__<sourceColumn>"
-  const nameSuffix = mvColumnName.split('__')[1];
-  return sourceTableColumnNames.has(nameSuffix) && aggFn !== 'count'
-    ? nameSuffix
-    : '';
+  const nameSuffix = targetTableColumn.name.split('__')[1];
+  if (sourceTableColumns.find(col => col.name === nameSuffix)) {
+    return nameSuffix;
+  }
+
+  // Try to infer from the MV's SELECT expression
+  if (mvMetadata) {
+    const selectExpressions = extractSelectExpressions(mvMetadata);
+    const matchingSelectExpression = selectExpressions.find(expr =>
+      // Use endsWith because the expression must have an alias
+      // matching the target column name.
+      expr.endsWith(targetTableColumn.name),
+    );
+    const matchingSourceColumn =
+      matchingSelectExpression &&
+      sourceTableColumns.find(col =>
+        new RegExp(`\\b${escapeRegExp(col.name)}\\b`).test(
+          matchingSelectExpression,
+        ),
+      );
+    if (matchingSourceColumn) {
+      return matchingSourceColumn.name;
+    }
+  }
+
+  return '';
 }
 
 /**
- * Attempts to a MaterializedViewConfiguration object from the given TableConnections
+ * Attempts to create a MaterializedViewConfiguration object from the given TableConnections
  * by introspecting the view, target table, and source table.
  *
  * @param mvTableOrView - A TableConnection representing either the materialized view or the target table.
@@ -321,18 +356,19 @@ export async function inferMaterializedViewConfig(
     }),
   ]);
 
-  const sourceTableColumnNames = new Set(
-    sourceTableColumns.map(col => col.name),
-  );
-
   const aggregatedColumns: MaterializedViewConfiguration['aggregatedColumns'] =
     mvTableColumns
-      .filter(col => col.type.includes('AggregateFunction'))
-      .map(col => {
-        let aggFn: string | undefined = col.type.match(
+      .filter(targetTableColumn =>
+        targetTableColumn.type.includes('AggregateFunction'),
+      )
+      .map(targetTableColumn => {
+        let aggFn: string | undefined = targetTableColumn.type.match(
           /AggregateFunction\(([a-zA-Z0-9_]+)/,
         )?.[1];
-        if (aggFn === 'sum' && col.name.toLowerCase().includes('count')) {
+        if (
+          aggFn === 'sum' &&
+          targetTableColumn.name.toLowerCase().includes('count')
+        ) {
           aggFn = 'count';
         } else if (aggFn?.startsWith('quantile')) {
           aggFn = 'quantile';
@@ -343,13 +379,14 @@ export async function inferMaterializedViewConfig(
         }
 
         const sourceColumn = getSourceTableColumn(
-          col.name,
           aggFn,
-          sourceTableColumnNames,
+          targetTableColumn,
+          sourceTableColumns,
+          mvMetadata,
         );
 
         return {
-          mvColumn: col.name,
+          mvColumn: targetTableColumn.name,
           aggFn,
           sourceColumn,
         };
@@ -367,16 +404,23 @@ export async function inferMaterializedViewConfig(
       ? 'count'
       : 'sum';
 
-    const sourceColumn = getSourceTableColumn(
-      summedColumn,
-      aggFn,
-      sourceTableColumnNames,
+    const summedColumnMeta = mvTableColumns.find(
+      col => col.name === summedColumn,
     );
-    aggregatedColumns.push({
-      mvColumn: summedColumn,
-      aggFn,
-      sourceColumn,
-    });
+
+    if (summedColumnMeta) {
+      const sourceColumn = getSourceTableColumn(
+        aggFn,
+        summedColumnMeta,
+        sourceTableColumns,
+        mvMetadata,
+      );
+      aggregatedColumns.push({
+        mvColumn: summedColumn,
+        aggFn,
+        sourceColumn,
+      });
+    }
   }
 
   // Infer the timestamp column
