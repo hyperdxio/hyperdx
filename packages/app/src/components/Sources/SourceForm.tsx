@@ -58,6 +58,7 @@ import {
 import {
   inferMaterializedViewConfig,
   MV_AGGREGATE_FUNCTIONS,
+  MV_GRANULARITY_OPTIONS,
 } from '@/utils/materializedViews';
 
 import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
@@ -69,15 +70,6 @@ import SelectControlled from '../SelectControlled';
 import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
 const DEFAULT_DATABASE = 'default';
-
-const MV_GRANULARITY_OPTIONS = [
-  { value: '1 second', label: '1 second' },
-  { value: '1 minute', label: '1 minute' },
-  { value: '5 minute', label: '5 minutes' },
-  { value: '15 minute', label: '15 minutes' },
-  { value: '1 hour', label: '1 hour' },
-  { value: '1 day', label: '1 day' },
-];
 
 const MV_AGGREGATE_FUNCTION_OPTIONS = MV_AGGREGATE_FUNCTIONS.map(fn => ({
   value: fn,
@@ -584,12 +576,14 @@ function AggregatedColumnsFormSection({
               replaceAggregates(config.aggregatedColumns ?? []);
               notifications.show({
                 color: 'green',
+                id: 'mv-infer-success',
                 message:
                   'Partially inferred materialized view configuration from view schema.',
               });
             } else {
               notifications.show({
                 color: 'yellow',
+                id: 'mv-infer-failure',
                 message: 'Unable to infer materialized view configuration.',
               });
             }
