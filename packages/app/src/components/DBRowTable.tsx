@@ -1229,6 +1229,22 @@ function DBSqlRowTableComponent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceId]);
 
+  // Sync local orderBy state with initialSortBy when it changes
+  // (e.g., when loading a saved search)
+  const prevInitialSortBy = usePrevious(initialSortBy);
+  useEffect(() => {
+    const currentSort = initialSortBy?.[0] ?? null;
+    const prevSort = prevInitialSortBy?.[0] ?? null;
+
+    // Only sync if initialSortBy actually changed
+    if (
+      JSON.stringify(currentSort) !== JSON.stringify(prevSort) &&
+      JSON.stringify(currentSort) !== JSON.stringify(orderBy)
+    ) {
+      setOrderBy(currentSort);
+    }
+  }, [initialSortBy, prevInitialSortBy, orderBy]);
+
   const mergedConfigObj = useMemo(() => {
     const base = {
       ...searchChartConfigDefaults(me?.team),
