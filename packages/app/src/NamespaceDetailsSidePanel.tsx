@@ -151,7 +151,7 @@ function NamespaceLogs({
 
   return (
     <Card p="md">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         <Flex justify="space-between" align="center">
           Latest Namespace Logs & Spans
           <Flex gap="xs" align="center">
@@ -359,11 +359,9 @@ export default function NamespaceDetailsSidePanel({
               />
               <Grid.Col span={6}>
                 <Card p="md" data-testid="namespace-details-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage by Pod
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="CPU Usage by Pod"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
@@ -394,11 +392,9 @@ export default function NamespaceDetailsSidePanel({
               </Grid.Col>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="namespace-details-memory-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage by Pod
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="Memory Usage by Pod"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
