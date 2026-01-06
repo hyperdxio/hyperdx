@@ -294,7 +294,7 @@ export const Table = ({
           )}
         </tbody>
       </table>
-      {tableBottom && tableBottom}
+      {tableBottom}
     </div>
   );
 };
