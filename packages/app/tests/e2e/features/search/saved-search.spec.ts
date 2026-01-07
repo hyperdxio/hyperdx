@@ -409,9 +409,13 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         const orderByContent = await orderByEditor.textContent();
 
         // Should not contain the custom ORDER BY from the saved search
-        expect(orderByContent).not.toContain('Body DESC');
-        // Should contain timestamp ordering (typical default)
-        expect(orderByContent).toMatch(/(Timestamp|timestamp)/i);
+
+        await expect(orderByEditor).not.toHaveText('Body DESC', {
+          timeout: 5000,
+        });
+        await expect(orderByEditor).toHaveText(/(Timestamp|timestamp)/i, {
+          timeout: 5000,
+        });
       });
 
       await test.step('Switch back to original source', async () => {
