@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
-import { add } from 'date-fns';
+import { add, differenceInSeconds } from 'date-fns';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
@@ -35,8 +35,8 @@ import {
   convertGranularityToSeconds,
   convertToTimeChartConfig,
   formatResponseForTimeChart,
+  getAlignedDateRange,
   getPreviousDateRange,
-  getPreviousPeriodOffsetSeconds,
   PreviousPeriodSuffix,
   useTimeChartSettings,
 } from '@/ChartUtils';
@@ -233,6 +233,8 @@ function DBTimeChartComponent({
   hiddenSeries,
 }: DBTimeChartComponentProps) {
   const [isErrorExpanded, errorExpansion] = useDisclosure(false);
+
+  const originalDateRange = config.dateRange;
   const {
     displayType: displayTypeProp,
     dateRange,
@@ -266,17 +268,32 @@ function DBTimeChartComponent({
     });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
+    const previousPeriodDateRange =
+      queriedConfig.alignDateRangeToGranularity === false
+        ? getPreviousDateRange(originalDateRange)
+        : getAlignedDateRange(
+            getPreviousDateRange(originalDateRange),
+            queriedConfig.granularity,
+          );
+
     return {
       ...queriedConfig,
-      dateRange: getPreviousDateRange(dateRange),
+      dateRange: previousPeriodDateRange,
     };
-  }, [queriedConfig, dateRange]);
+  }, [queriedConfig, originalDateRange]);
 
   const previousPeriodOffsetSeconds = useMemo(() => {
     return config.compareToPreviousPeriod
-      ? getPreviousPeriodOffsetSeconds(dateRange)
+      ? differenceInSeconds(
+          dateRange[0],
+          previousPeriodChartConfig.dateRange[0],
+        )
       : undefined;
-  }, [dateRange, config.compareToPreviousPeriod]);
+  }, [
+    config.compareToPreviousPeriod,
+    dateRange,
+    previousPeriodChartConfig.dateRange,
+  ]);
 
   const { data: previousPeriodData, isLoading: isPreviousPeriodLoading } =
     useQueriedChartConfig(previousPeriodChartConfig, {
@@ -332,6 +349,7 @@ function DBTimeChartComponent({
         generateEmptyBuckets: fillNulls !== false,
         source,
         hiddenSeries,
+        previousPeriodOffsetSeconds,
       });
     } catch (e) {
       console.error(e);
@@ -347,6 +365,7 @@ function DBTimeChartComponent({
     config.compareToPreviousPeriod,
     previousPeriodData,
     hiddenSeries,
+    previousPeriodOffsetSeconds,
   ]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType
