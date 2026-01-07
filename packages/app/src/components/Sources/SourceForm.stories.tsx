@@ -5,8 +5,6 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { TableSourceForm } from './SourceForm';
 
-const API_URL = 'http://localhost:8000';
-
 // Mock data
 const mockConnections = [
   {
@@ -46,39 +44,39 @@ const mockTables = [
   'otel_metrics_histogram',
 ];
 
-// MSW handlers for API mocking
-const defaultHandlers = [
-  http.get(`${API_URL}/team/connections`, () => {
+// MSW handlers for API mocking (using named handlers for easy per-story overrides)
+const defaultHandlers = {
+  connections: http.get('*/api/connections', () => {
     return HttpResponse.json(mockConnections);
   }),
-  http.get(`${API_URL}/team/sources`, () => {
+  sources: http.get('*/api/sources', () => {
     return HttpResponse.json(mockSources);
   }),
-  http.get(`${API_URL}/team/sources/:id`, ({ params }) => {
+  sourceById: http.get('*/api/sources/:id', ({ params }) => {
     const source = mockSources.find(s => s.id === params.id);
     if (source) {
       return HttpResponse.json(source);
     }
     return new HttpResponse(null, { status: 404 });
   }),
-  http.get(`${API_URL}/clickhouse/databases`, () => {
+  databases: http.get('*/api/clickhouse/databases', () => {
     return HttpResponse.json(mockDatabases);
   }),
-  http.get(`${API_URL}/clickhouse/tables`, () => {
+  tables: http.get('*/api/clickhouse/tables', () => {
     return HttpResponse.json(mockTables);
   }),
-  http.post(`${API_URL}/team/sources`, async ({ request }) => {
+  createSource: http.post('*/api/sources', async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     return HttpResponse.json({ id: 'new-source-id', ...body });
   }),
-  http.put(`${API_URL}/team/sources/:id`, async ({ request }) => {
+  updateSource: http.put('*/api/sources/:id', async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     return HttpResponse.json(body);
   }),
-  http.delete(`${API_URL}/team/sources/:id`, () => {
+  deleteSource: http.delete('*/api/sources/:id', () => {
     return HttpResponse.json({ success: true });
   }),
-];
+};
 
 const meta: Meta<typeof TableSourceForm> = {
   title: 'Components/Sources/SourceForm',

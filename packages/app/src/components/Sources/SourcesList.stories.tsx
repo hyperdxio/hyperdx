@@ -5,8 +5,6 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import { SourcesList } from './SourcesList';
 
-const API_URL = 'http://localhost:8000';
-
 const mockConnections = [
   {
     id: 'conn-1',
@@ -35,11 +33,24 @@ const mockSources = [
   },
 ];
 
+// Default handlers that return mock data
+const defaultHandlers = {
+  connections: http.get('*/api/connections', () => {
+    return HttpResponse.json(mockConnections);
+  }),
+  sources: http.get('*/api/sources', () => {
+    return HttpResponse.json(mockSources);
+  }),
+};
+
 const meta: Meta<typeof SourcesList> = {
   title: 'Components/Sources/SourcesList',
   component: SourcesList,
   parameters: {
     layout: 'padded',
+    msw: {
+      handlers: defaultHandlers,
+    },
   },
   decorators: [
     Story => (
@@ -77,8 +88,6 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   name: 'Compact Variant (GettingStarted)',
   args: {
-    mockSources,
-    mockConnections,
     variant: 'compact',
     withCard: true,
     withBorder: true,
@@ -89,8 +98,6 @@ export const Default: Story = {
 export const DefaultVariant: Story = {
   name: 'Default Variant (TeamPage)',
   args: {
-    mockSources,
-    mockConnections,
     variant: 'default',
     withCard: true,
     withBorder: false,
@@ -103,16 +110,16 @@ export const Loading: Story = {
   name: 'Loading State',
   parameters: {
     msw: {
-      handlers: [
-        http.get(`/api/connections`, async () => {
+      handlers: {
+        connections: http.get('*/api/connections', async () => {
           await delay('infinite');
           return HttpResponse.json([]);
         }),
-        http.get(`/api/sources`, async () => {
+        sources: http.get('*/api/sources', async () => {
           await delay('infinite');
           return HttpResponse.json([]);
         }),
-      ],
+      },
     },
   },
 };
@@ -122,20 +129,20 @@ export const Error: Story = {
   name: 'Error State',
   parameters: {
     msw: {
-      handlers: [
-        http.get(`${API_URL}/team/connections`, () => {
+      handlers: {
+        connections: http.get('*/api/connections', () => {
           return HttpResponse.json(
             { message: 'Failed to connect to database' },
             { status: 500 },
           );
         }),
-        http.get(`${API_URL}/team/sources`, () => {
+        sources: http.get('*/api/sources', () => {
           return HttpResponse.json(
             { message: 'Failed to fetch sources' },
             { status: 500 },
           );
         }),
-      ],
+      },
     },
   },
 };
@@ -144,8 +151,18 @@ export const Error: Story = {
 export const Empty: Story = {
   name: 'Empty (No Sources)',
   args: {
-    mockSources: [],
-    mockConnections: [],
     showEmptyState: true,
+  },
+  parameters: {
+    msw: {
+      handlers: {
+        connections: http.get('*/api/connections', () => {
+          return HttpResponse.json([]);
+        }),
+        sources: http.get('*/api/sources', () => {
+          return HttpResponse.json([]);
+        }),
+      },
+    },
   },
 };

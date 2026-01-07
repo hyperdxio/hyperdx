@@ -1,9 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Connection,
-  SourceKind,
-  TSource,
-} from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,
@@ -40,10 +36,6 @@ import styles from './Sources.module.scss';
 export interface SourcesListProps {
   /** Callback when add source button is clicked */
   onAddSource?: () => void;
-  /** Mock sources for Storybook/testing */
-  mockSources?: TSource[];
-  /** Mock connections for Storybook/testing */
-  mockConnections?: Connection[];
   /** Whether to wrap content in a Card component (default: true) */
   withCard?: boolean;
   /** Whether the card has a border (default: true) */
@@ -58,8 +50,6 @@ export interface SourcesListProps {
 
 export function SourcesList({
   onAddSource,
-  mockSources,
-  mockConnections,
   withCard = true,
   withBorder = true,
   cardClassName,
@@ -67,31 +57,23 @@ export function SourcesList({
   showEmptyState = true,
 }: SourcesListProps) {
   const {
-    data: fetchedConnections,
+    data: connections,
     isLoading: isLoadingConnections,
     error: connectionsError,
     refetch: refetchConnections,
   } = useConnections();
   const {
-    data: fetchedSources,
+    data: sources,
     isLoading: isLoadingSources,
     error: sourcesError,
     refetch: refetchSources,
   } = useSources();
 
-  // Use mock data if provided, otherwise use fetched data
-  const connections = mockConnections ?? fetchedConnections;
-  const sources = mockSources ?? fetchedSources;
   const [editedSourceId, setEditedSourceId] = useState<string | null>(null);
   const [isCreatingSource, setIsCreatingSource] = useState(false);
 
-  // Skip loading/error states if using mock data
-  const isLoading =
-    !mockSources &&
-    !mockConnections &&
-    (isLoadingConnections || isLoadingSources);
-  const error =
-    !mockSources && !mockConnections && (connectionsError || sourcesError);
+  const isLoading = isLoadingConnections || isLoadingSources;
+  const error = connectionsError || sourcesError;
 
   const handleRetry = () => {
     refetchConnections();

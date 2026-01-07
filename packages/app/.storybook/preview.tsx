@@ -58,8 +58,6 @@ export const globalTypes = {
 
 initialize();
 
-const queryClient = new QueryClient();
-
 const fontMap = {
   inter: inter,
   roboto: roboto,
@@ -67,9 +65,23 @@ const fontMap = {
   'roboto-mono': robotoMono,
 };
 
+// Create a new QueryClient for each story to avoid cache pollution between stories
+const createQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        staleTime: 0,
+      },
+    },
+  });
+
 const preview: Preview = {
   decorators: [
     (Story, context) => {
+      // Create a fresh QueryClient for each story render
+      const [queryClient] = React.useState(() => createQueryClient());
+
       const selectedFont = context.globals.font || 'inter';
       const font = fontMap[selectedFont as keyof typeof fontMap] || inter;
       const fontFamily = font.style.fontFamily;
