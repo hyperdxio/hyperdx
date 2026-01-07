@@ -107,7 +107,7 @@ jobs:
       options: --network-alias playwright
     services:
       mongodb:
-        image: mongo:5.0.14-focal
+        image: mongo:5.0.32-focal
         options: >-
           --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping: 1});
           db.getSiblingDB(\"test\").test.insertOne({_id: \"hc\"});

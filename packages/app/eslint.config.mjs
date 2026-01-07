@@ -33,6 +33,7 @@ export default [
       '**/*.config.mjs',
       'eslint.config.mjs',
       'public/__ENV.js',
+      'public/pyodide/**',
       'global-setup.js',
       'scripts/**',
     ],

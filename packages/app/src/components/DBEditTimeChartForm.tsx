@@ -485,6 +485,10 @@ export default function EditTimeChartForm({
     control,
     name: 'compareToPreviousPeriod',
   });
+  const alignDateRangeToGranularity = useWatch({
+    control,
+    name: 'alignDateRangeToGranularity',
+  });
   const groupBy = useWatch({ control, name: 'groupBy' });
   const displayType =
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
@@ -496,9 +500,6 @@ export default function EditTimeChartForm({
   const databaseName = tableSource?.from.databaseName;
   const tableName = tableSource?.from.tableName;
 
-  // const tableSource = tableSourceWatch();
-  // const databaseName = tableSourceWatch('from.databaseName');
-  // const tableName = tableSourceWatch('from.tableName');
   const activeTab = useMemo(() => {
     switch (displayType) {
       case DisplayType.Search:
@@ -522,19 +523,6 @@ export default function EditTimeChartForm({
 
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
   const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
-
-  // const queriedConfig: ChartConfigWithDateRange | undefined = useMemo(() => {
-  //   if (queriedTableSource == null) {
-  //     return undefined;
-  //   }
-
-  //   return {
-  //     ...chartConfig,
-  //     from: queriedTableSource.from,
-  //     timestampValueExpression: queriedTableSource?.timestampValueExpression,
-  //     dateRange,
-  //   };
-  // }, [dateRange, chartConfig, queriedTableSource]);
 
   // Only update this on submit, otherwise we'll have issues
   // with using the source value from the last submit
@@ -706,6 +694,20 @@ export default function EditTimeChartForm({
       };
     });
   }, [dateRange]);
+
+  // Trigger a search when "Show Complete Intervals" changes
+  useEffect(() => {
+    setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
+      if (config == null) {
+        return config;
+      }
+
+      return {
+        ...config,
+        alignDateRangeToGranularity,
+      };
+    });
+  }, [alignDateRangeToGranularity]);
 
   // Trigger a search when "compare to previous period" changes
   useEffect(() => {
@@ -1213,6 +1215,11 @@ export default function EditTimeChartForm({
       </Flex>
       {activeTab === 'time' && (
         <Group justify="end" mb="xs">
+          <SwitchControlled
+            control={control}
+            name="alignDateRangeToGranularity"
+            label="Show Complete Intervals"
+          />
           <SwitchControlled
             control={control}
             name="compareToPreviousPeriod"

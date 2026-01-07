@@ -5,6 +5,7 @@ import PQueue from '@esm2cjs/p-queue';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
   getMetadata,
   Metadata,
@@ -430,10 +431,22 @@ export const processAlert = async (
       return;
     }
 
-    // Query for alert data
     const metadata = getMetadata(clickhouseClient);
+
+    // Optimize chart config with materialized views, if available
+    const optimizedChartConfig = source?.materializedViews?.length
+      ? await tryOptimizeConfigWithMaterializedView(
+          chartConfig,
+          metadata,
+          clickhouseClient,
+          undefined,
+          source,
+        )
+      : chartConfig;
+
+    // Query for alert data
     const checksData = await clickhouseClient.queryChartConfig({
-      config: chartConfig,
+      config: optimizedChartConfig,
       metadata,
     });
 
@@ -441,6 +454,7 @@ export const processAlert = async (
       {
         alertId: alert.id,
         chartConfig,
+        optimizedChartConfig,
         checksData,
         checkStartTime: dateRange[0],
         checkEndTime: dateRange[1],
