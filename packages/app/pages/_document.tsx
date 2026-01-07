@@ -16,7 +16,7 @@ export default function Document() {
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script src="/__ENV.js" />
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+        <script src="/pyodide/pyodide.js"></script>
       </Head>
       <body>
         <Main />
