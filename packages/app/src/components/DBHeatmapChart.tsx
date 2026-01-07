@@ -9,15 +9,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import {
-  Button,
-  Code,
-  Divider,
-  Group,
-  Modal,
-  Paper,
-  Text,
-} from '@mantine/core';
+import { Box, Button, Code, Divider, Group, Modal, Text } from '@mantine/core';
 import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { IconArrowsDiagonal } from '@tabler/icons-react';
 
@@ -31,6 +23,7 @@ import { NumberFormat } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatNumber } from '@/utils';
 
+import ChartContainer from './charts/ChartContainer';
 import { SQLPreview } from './ChartSQLPreview';
 
 type Mode2DataArray = [number[], number[], number[]];
@@ -294,10 +287,16 @@ function HeatmapContainer({
   config,
   enabled = true,
   onFilter,
+  title,
+  toolbarPrefix,
+  toolbarSuffix,
 }: {
   config: HeatmapChartConfig;
   enabled?: boolean;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
+  title?: React.ReactNode;
+  toolbarPrefix?: React.ReactNode[];
+  toolbarSuffix?: React.ReactNode[];
 }) {
   const dateRange = config.dateRange;
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
@@ -478,82 +477,90 @@ function HeatmapContainer({
     }
   }
 
-  if (isLoading || isMinMaxLoading) {
-    return (
-      <Paper shadow="xs" p="xl">
-        <Text size="sm" ta="center">
+  const toolbarItemsMemo = useMemo(() => {
+    const allToolbarItems = [];
+
+    if (toolbarPrefix && toolbarPrefix.length > 0) {
+      allToolbarItems.push(...toolbarPrefix);
+    }
+
+    if (toolbarSuffix && toolbarSuffix.length > 0) {
+      allToolbarItems.push(...toolbarSuffix);
+    }
+
+    return allToolbarItems;
+  }, [toolbarPrefix, toolbarSuffix]);
+
+  const _error = error || minMaxError;
+
+  return (
+    <ChartContainer
+      title={title}
+      toolbarItems={toolbarItemsMemo}
+      disableReactiveContainer
+    >
+      {isLoading || isMinMaxLoading ? (
+        <Text size="sm" ta="center" p="xl">
           Loading...
         </Text>
-      </Paper>
-    );
-  }
-  if (error || minMaxError) {
-    const _error: Error = error || minMaxError!;
-    return (
-      <Paper shadow="xs" p="xl" ta="center" h="100%">
-        <Text size="sm" mt="sm">
-          Error loading chart, please check your query or try again later.
-        </Text>
-        <Button
-          className="mx-auto"
-          variant="subtle"
-          color="red"
-          onClick={() => errorModalControls.open()}
-        >
-          <Group gap="xxs">
-            <IconArrowsDiagonal size={16} />
-            See Error Details
-          </Group>
-        </Button>
-        <Modal
-          opened={errorModal}
-          onClose={() => errorModalControls.close()}
-          title="Error Details"
-        >
-          <Group align="start">
-            <Text size="sm" ta="center">
-              Error Message:
-            </Text>
-            <Code
-              block
-              style={{
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {_error.message}
-            </Code>
-            {_error instanceof ClickHouseQueryError && (
-              <>
-                <Text my="sm" size="sm" ta="center">
-                  Sent Query:
-                </Text>
-                <SQLPreview data={_error?.query} enableCopy />
-              </>
-            )}
-          </Group>
-        </Modal>
-      </Paper>
-    );
-  }
-
-  if (time.length < 2 || generatedTsBuckets?.length < 2) {
-    return (
-      <Paper shadow="xs" p="xl">
-        <Text size="sm" ta="center">
+      ) : _error ? (
+        <Box p="xl" ta="center" h="100%">
+          <Text size="sm" mt="sm">
+            Error loading chart, please check your query or try again later.
+          </Text>
+          <Button
+            className="mx-auto"
+            variant="subtle"
+            color="red"
+            onClick={() => errorModalControls.open()}
+          >
+            <Group gap="xxs">
+              <IconArrowsDiagonal size={16} />
+              See Error Details
+            </Group>
+          </Button>
+          <Modal
+            opened={errorModal}
+            onClose={() => errorModalControls.close()}
+            title="Error Details"
+          >
+            <Group align="start">
+              <Text size="sm" ta="center">
+                Error Message:
+              </Text>
+              <Code
+                block
+                style={{
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                {_error.message}
+              </Code>
+              {_error instanceof ClickHouseQueryError && (
+                <>
+                  <Text my="sm" size="sm" ta="center">
+                    Sent Query:
+                  </Text>
+                  <SQLPreview data={_error?.query} enableCopy />
+                </>
+              )}
+            </Group>
+          </Modal>
+        </Box>
+      ) : time.length < 2 || generatedTsBuckets?.length < 2 ? (
+        <Text size="sm" ta="center" p="xl">
           Not enough data points to render heatmap. Try expanding your search
           criteria.
         </Text>
-      </Paper>
-    );
-  }
-
-  return (
-    <Heatmap
-      key={JSON.stringify(config)}
-      data={[time, bucket, count]}
-      numberFormat={config.numberFormat}
-      onFilter={onFilter}
-    />
+      ) : (
+        <Heatmap
+          key={JSON.stringify(config)}
+          data={[time, bucket, count]}
+          numberFormat={config.numberFormat}
+          onFilter={onFilter}
+        />
+      )}
+    </ChartContainer>
   );
 }
 

@@ -344,7 +344,7 @@ export const InfraPodsStatusTable = ({
 
   return (
     <Card p="md" data-testid="k8s-pods-table">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         <Group align="center" justify="space-between">
           Pods
           <SegmentedControl
@@ -616,7 +616,7 @@ const NodesTable = ({
 
   return (
     <Card p="md" data-testid="k8s-nodes-table">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         Nodes
       </Card.Section>
       <Card.Section>
@@ -815,7 +815,7 @@ const NamespacesTable = ({
 
   return (
     <Card p="md" data-testid="k8s-namespaces-table">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         Namespaces
       </Card.Section>
       <Card.Section>
@@ -1297,12 +1297,10 @@ function KubernetesDashboardPage() {
             <Grid>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="pod-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="CPU Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -1336,12 +1334,10 @@ function KubernetesDashboardPage() {
               </Grid.Col>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="pod-memory-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="Memory Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -1384,7 +1380,7 @@ function KubernetesDashboardPage() {
               </Grid.Col>
               <Grid.Col span={12}>
                 <Card p="md" data-testid="k8s-warning-events-table">
-                  <Card.Section p="md" py="xs" withBorder>
+                  <Card.Section p="md" py="xs">
                     <Flex justify="space-between">
                       Latest Kubernetes Warning Events
                       {/* 
@@ -1464,12 +1460,10 @@ function KubernetesDashboardPage() {
             <Grid>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="nodes-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="CPU Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -1503,12 +1497,10 @@ function KubernetesDashboardPage() {
               </Grid.Col>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="nodes-memory-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="Memory Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -1555,12 +1547,10 @@ function KubernetesDashboardPage() {
             <Grid>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="namespaces-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="CPU Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
@@ -1594,12 +1584,10 @@ function KubernetesDashboardPage() {
               </Grid.Col>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="namespaces-memory-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     {metricSource && (
                       <DBTimeChart
+                        title="Memory Usage"
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,

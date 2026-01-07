@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import { pick } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
-import type { Filter } from '@hyperdx/common-utils/dist/types';
-import { Drawer, Grid, Group, Text } from '@mantine/core';
+import { DisplayType, type Filter } from '@hyperdx/common-utils/dist/types';
+import { Drawer, Grid, Text } from '@mantine/core';
 import { IconServer } from '@tabler/icons-react';
 
 import { INTEGER_NUMBER_FORMAT, MS_NUMBER_FORMAT } from '@/ChartUtils';
@@ -90,11 +90,9 @@ export default function ServiceDashboardDbQuerySidePanel({
             <Grid grow={false} w="100%" maw="100%" overflow="hidden">
               <Grid.Col span={6}>
                 <ChartBox style={{ height: 350 }}>
-                  <Group justify="space-between" align="center" mb="sm">
-                    <Text size="sm">Total Query Time</Text>
-                  </Group>
                   {source && expressions && (
                     <DBTimeChart
+                      title="Total Query Time"
                       sourceId={sourceId}
                       hiddenSeries={['total_duration_ns']}
                       config={{
@@ -119,6 +117,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                             alias: 'Total Query Time',
                           },
                         ],
+                        displayType: DisplayType.Line,
                         numberFormat: MS_NUMBER_FORMAT,
                         filters: dbQueryFilters,
                         dateRange: searchedTimeRange,
@@ -129,11 +128,9 @@ export default function ServiceDashboardDbQuerySidePanel({
               </Grid.Col>
               <Grid.Col span={6}>
                 <ChartBox style={{ height: 350 }}>
-                  <Group justify="space-between" align="center" mb="sm">
-                    <Text size="sm">Query Throughput</Text>
-                  </Group>
                   {source && expressions && (
                     <DBTimeChart
+                      title="Query Throughput"
                       sourceId={sourceId}
                       config={{
                         source: source.id,
@@ -157,6 +154,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                           ...INTEGER_NUMBER_FORMAT,
                           unit: 'requests',
                         },
+                        displayType: DisplayType.Line,
                         filters: dbQueryFilters,
                         dateRange: searchedTimeRange,
                       }}

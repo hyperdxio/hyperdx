@@ -183,7 +183,7 @@ function PodLogs({
 
   return (
     <Card p="md">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         <Flex justify="space-between" align="center">
           Latest Pod Logs & Spans
           <Flex gap="xs" align="center">
@@ -368,11 +368,9 @@ export default function PodDetailsSidePanel({
               />
               <Grid.Col span={6}>
                 <Card p="md" data-testid="pod-details-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="CPU Usage by Pod"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
@@ -404,11 +402,9 @@ export default function PodDetailsSidePanel({
               </Grid.Col>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="pod-details-memory-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="Memory Usage"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
@@ -440,7 +436,7 @@ export default function PodDetailsSidePanel({
               </Grid.Col>
               <Grid.Col span={12}>
                 <Card p="md">
-                  <Card.Section p="md" py="xs" withBorder>
+                  <Card.Section p="md" py="xs">
                     Latest Pod Events
                   </Card.Section>
                   <Card.Section>

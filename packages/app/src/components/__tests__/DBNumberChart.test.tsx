@@ -1,23 +1,19 @@
 import React from 'react';
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { act, screen } from '@testing-library/react';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { formatNumber } from '@/utils';
 
 import { NumberFormat } from '../../types';
 import DBNumberChart from '../DBNumberChart';
-import { NumberFormatInput } from '../NumberFormat';
 
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
+}));
+
+jest.mock('@/source', () => ({
+  useSource: jest.fn().mockReturnValue({ data: null }),
 }));
 
 jest.mock('@/utils', () => ({

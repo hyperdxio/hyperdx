@@ -13,7 +13,6 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
-  Flex,
   Grid,
   Group,
   SegmentedControl,
@@ -59,11 +58,9 @@ function InfrastructureTab({
   return (
     <Grid mt="md">
       <Grid.Col span={6}>
-        <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" mb="sm">
-            CPU Usage (Cores)
-          </Text>
+        <ChartBox style={{ height: 400 }}>
           <DBTimeChart
+            title="CPU Usage (Cores)"
             config={{
               select: [
                 {
@@ -80,17 +77,16 @@ function InfrastructureTab({
               connection,
               dateRange: searchedTimeRange,
               timestampValueExpression: 'event_time',
+              displayType: DisplayType.Line,
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
         </ChartBox>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" mb="sm">
-            Memory Usage
-          </Text>
+        <ChartBox style={{ height: 400 }}>
           <DBTimeChart
+            title="Memory Usage"
             config={{
               select: [
                 {
@@ -106,17 +102,16 @@ function InfrastructureTab({
               connection,
               dateRange: searchedTimeRange,
               timestampValueExpression: 'event_time',
+              displayType: DisplayType.Line,
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
         </ChartBox>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" mb="sm">
-            Disk
-          </Text>
+        <ChartBox style={{ height: 400 }}>
           <DBTimeChart
+            title="Disk"
             config={{
               select: [
                 {
@@ -140,17 +135,16 @@ function InfrastructureTab({
               connection,
               dateRange: searchedTimeRange,
               timestampValueExpression: 'event_time',
+              displayType: DisplayType.Line,
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
         </ChartBox>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" mb="sm">
-            S3 Requests
-          </Text>
+        <ChartBox style={{ height: 400 }}>
           <DBTimeChart
+            title="S3 Requests"
             config={{
               select: [
                 {
@@ -192,20 +186,25 @@ function InfrastructureTab({
               where: '',
               dateRange: searchedTimeRange,
               timestampValueExpression: 'event_time',
+              displayType: DisplayType.Line,
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
         </ChartBox>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ minHeight: 400 }}>
-          <Text size="sm" mb="xs">
-            Network
-          </Text>
-          <Text size="xs" mb="sm">
-            Network activity for the entire machine, not only Clickhouse.
-          </Text>
+        <ChartBox style={{ height: 400 }}>
           <DBTimeChart
+            title={
+              <>
+                <Text size="sm" mb="xs">
+                  Network
+                </Text>
+                <Text size="xs" mb="sm">
+                  Network activity for the entire machine, not only Clickhouse.
+                </Text>
+              </>
+            }
             config={{
               select: [
                 {
@@ -223,6 +222,7 @@ function InfrastructureTab({
               connection,
               dateRange: searchedTimeRange,
               timestampValueExpression: 'event_time',
+              displayType: DisplayType.Line,
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
@@ -248,32 +248,34 @@ function InsertsTab({
   return (
     <Grid mt="md">
       <Grid.Col span={12}>
-        <ChartBox style={{ minHeight: 400 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">
-              Insert{' '}
-              {insertsBy === 'queries'
-                ? 'Queries'
-                : insertsBy === 'rows'
-                  ? 'Rows'
-                  : 'Bytes'}{' '}
-              Per Table
-            </Text>
-            <SegmentedControl
-              size="xs"
-              value={insertsBy ?? 'queries'}
-              onChange={value => {
-                // @ts-ignore
-                setInsertsBy(value);
-              }}
-              data={[
-                { label: 'Queries', value: 'queries' },
-                { label: 'Rows', value: 'rows' },
-                { label: 'Bytes', value: 'bytes' },
-              ]}
-            />
-          </Group>
+        <ChartBox style={{ height: 400 }}>
           <DBTimeChart
+            title={
+              <Text size="sm">
+                Insert{' '}
+                {insertsBy === 'queries'
+                  ? 'Queries'
+                  : insertsBy === 'rows'
+                    ? 'Rows'
+                    : 'Bytes'}{' '}
+                Per Table
+              </Text>
+            }
+            toolbarPrefix={[
+              <SegmentedControl
+                size="xs"
+                value={insertsBy ?? 'queries'}
+                onChange={value => {
+                  // @ts-ignore
+                  setInsertsBy(value);
+                }}
+                data={[
+                  { label: 'Queries', value: 'queries' },
+                  { label: 'Rows', value: 'rows' },
+                  { label: 'Bytes', value: 'bytes' },
+                ]}
+              />,
+            ]}
             config={{
               select:
                 insertsBy === 'queries'
@@ -306,6 +308,7 @@ function InsertsTab({
               where: '',
               timestampValueExpression: 'event_time',
               dateRange: searchedTimeRange,
+              displayType: DisplayType.Line,
               filters: [
                 {
                   type: 'sql_ast',
@@ -322,11 +325,9 @@ function InsertsTab({
         </ChartBox>
       </Grid.Col>
       <Grid.Col span={12}>
-        <ChartBox style={{ minHeight: 200, height: 200 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Max Active Parts per Partition</Text>
-          </Group>
+        <ChartBox style={{ height: 200 }}>
           <DBTimeChart
+            title="Max Active Parts per Partition"
             config={{
               select: [
                 {
@@ -354,15 +355,19 @@ function InsertsTab({
       </Grid.Col>
       <Grid.Col span={12}>
         <ChartBox style={{ height: 400 }}>
-          <Text size="sm" mb="sm">
-            Active Parts Per Partition
-          </Text>
-          <Text size="xs" mb="md">
-            Recommended to stay under 300, ClickHouse will automatically
-            throttle inserts after 1,000 parts per partition and stop inserts at
-            3,000 parts per partition.
-          </Text>
           <DBTableChart
+            title={
+              <>
+                <Text size="sm" mb="sm">
+                  Active Parts Per Partition
+                </Text>
+                <Text size="xs" mb="md">
+                  Recommended to stay under 300, ClickHouse will automatically
+                  throttle inserts after 1,000 parts per partition and stop
+                  inserts at 3,000 parts per partition.
+                </Text>
+              </>
+            }
             config={{
               dateRange: searchedTimeRange,
               select: [
@@ -496,6 +501,29 @@ function ClickhousePage() {
     ];
   }, [latencyFilter]);
 
+  const heatmapToolbarItems = useMemo(() => {
+    if (latencyFilter.latencyMin != null || latencyFilter.latencyMax != null) {
+      return [
+        <Button
+          key="heatmap-reset-latency-filter"
+          size="xs"
+          variant="subtle"
+          onClick={() => {
+            // Clears the min/max latency filters that are used to filter the query results
+            setLatencyFilter({
+              latencyMin: null,
+              latencyMax: null,
+            });
+            // Updates the URL state and triggers a new data fetch
+            onSearch(DEFAULT_INTERVAL);
+          }}
+        >
+          Reset
+        </Button>,
+      ];
+    }
+  }, [latencyFilter, onSearch, setLatencyFilter]);
+
   return (
     <Box p="sm" data-testid="clickhouse-dashboard-page">
       <OnboardingModal requireSource={false} />
@@ -554,75 +582,11 @@ function ClickhousePage() {
         </Tabs.List>
         <Tabs.Panel value="selects">
           <Grid mt="md">
-            {/* <Grid.Col span={12}>
-          <ChartBox style={{ minHeight: 300, height: 300 }}>
-            <Group justify="space-between" align="center" mb="md">
-              <Text size="sm"  ms="xs">
-                Select P95 Query Latency
-              </Text>
-              <SegmentedControl
-                size="xs"
-                data={[
-                  { label: 'Latency', value: 'latency' },
-                  { label: 'Throughput', value: 'throughput' },
-                  { label: 'Errors', value: 'errors' },
-                ]}
-              />
-            </Group>
-            <DBTimeChart
-              config={{
-                select: [
-                  {
-                    aggFn: 'quantile',
-                    level: 0.95,
-                    valueExpression: 'query_duration_ms',
-                    aggCondition: '',
-                    alias: `"Query P95 (ms)"`,
-                  },
-                ],
-                displayType: DisplayType.Line,
-                dateRange: searchedTimeRange,
-                connection,
-                timestampValueExpression: 'event_time',
-                from,
-                granularity: 'auto',
-                where: `query_kind='Select' AND (
-                  type='ExceptionWhileProcessing' OR type='QueryFinish' 
-                )`,
-                filters,
-              }}
-              onTimeRangeSelect={(start, end) => {
-                onTimeRangeSelect(start, end);
-              }}
-            />
-          </ChartBox>
-        </Grid.Col> */}
             <Grid.Col span={12}>
               <ChartBox style={{ height: 250 }}>
-                <Flex justify="space-between" align="center">
-                  <Text size="sm" ms="xs">
-                    Query Latency
-                  </Text>
-                  {latencyFilter.latencyMin != null ||
-                  latencyFilter.latencyMax != null ? (
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      onClick={() => {
-                        // Clears the min/max latency filters that are used to filter the query results
-                        setLatencyFilter({
-                          latencyMin: null,
-                          latencyMax: null,
-                        });
-                        // Updates the URL state and triggers a new data fetch
-                        onSearch(DEFAULT_INTERVAL);
-                      }}
-                    >
-                      Reset
-                    </Button>
-                  ) : null}
-                </Flex>
                 <DBHeatmapChart
+                  title="Query Latency"
+                  toolbarSuffix={heatmapToolbarItems}
                   config={{
                     displayType: DisplayType.Heatmap,
                     select: [
@@ -656,11 +620,8 @@ function ClickhousePage() {
             </Grid.Col>
             <Grid.Col span={12}>
               <ChartBox style={{ height: 400 }}>
-                <Text size="sm" mb="md">
-                  Query Count by Table
-                </Text>
-
                 <DBTimeChart
+                  title="Query Count by Table"
                   config={{
                     select: [
                       {
@@ -688,6 +649,7 @@ function ClickhousePage() {
                 )`,
                     filters,
                     limit: { limit: 1000 }, // TODO: Cut off more intelligently
+                    displayType: DisplayType.Line,
                   }}
                   onTimeRangeSelect={(start, end) => {
                     onTimeRangeSelect(start, end);
@@ -697,10 +659,8 @@ function ClickhousePage() {
             </Grid.Col>
             <Grid.Col span={12}>
               <ChartBox style={{ height: 400 }}>
-                <Text size="sm" mb="md">
-                  Most Time Consuming Query Patterns
-                </Text>
                 <DBTableChart
+                  title="Most Time Consuming Query Patterns"
                   config={{
                     select: [
                       {

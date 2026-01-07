@@ -1826,6 +1826,7 @@ function DBSearchPage() {
                           config={histogramTimeChartConfig}
                           enabled={isReady}
                           showDisplaySwitcher={false}
+                          showMVOptimizationIndicator={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
                         />
@@ -1899,6 +1900,7 @@ function DBSearchPage() {
                             config={histogramTimeChartConfig}
                             enabled={isReady}
                             showDisplaySwitcher={false}
+                            showMVOptimizationIndicator={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
                             enableParallelQueries

@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import { pick } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
-import type { Filter } from '@hyperdx/common-utils/dist/types';
-import { Drawer, Grid, Group, Text } from '@mantine/core';
+import { DisplayType, type Filter } from '@hyperdx/common-utils/dist/types';
+import { Drawer, Grid, Text } from '@mantine/core';
 import { IconServer } from '@tabler/icons-react';
 
 import {
@@ -97,11 +97,9 @@ export default function ServiceDashboardEndpointSidePanel({
             <Grid grow={false} w="100%" maw="100%" overflow="hidden">
               <Grid.Col span={6}>
                 <ChartBox style={{ height: 350 }}>
-                  <Group justify="space-between" align="center" mb="sm">
-                    <Text size="sm">Request Error Rate</Text>
-                  </Group>
                   {source && expressions && (
                     <DBTimeChart
+                      title="Request Error Rate"
                       sourceId={source.id}
                       hiddenSeries={['total_count', 'error_count']}
                       config={{
@@ -143,11 +141,9 @@ export default function ServiceDashboardEndpointSidePanel({
               </Grid.Col>
               <Grid.Col span={6}>
                 <ChartBox style={{ height: 350 }}>
-                  <Group justify="space-between" align="center" mb="sm">
-                    <Text size="sm">Request Throughput</Text>
-                  </Group>
                   {source && expressions && (
                     <DBTimeChart
+                      title="Request Throughput"
                       sourceId={source.id}
                       config={{
                         source: source.id,
@@ -167,6 +163,7 @@ export default function ServiceDashboardEndpointSidePanel({
                             aggConditionLanguage: 'sql',
                           },
                         ],
+                        displayType: DisplayType.Line,
                         numberFormat: {
                           ...INTEGER_NUMBER_FORMAT,
                           unit: 'requests',

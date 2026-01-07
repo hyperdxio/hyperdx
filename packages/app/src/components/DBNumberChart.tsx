@@ -5,18 +5,29 @@ import { Box, Code, Flex, Text } from '@mantine/core';
 
 import { convertToNumberChartConfig } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useSource } from '@/source';
 import { formatNumber } from '@/utils';
 
+import ChartContainer from './charts/ChartContainer';
+import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
 export default function DBNumberChart({
   config,
   enabled = true,
   queryKeyPrefix,
+  title,
+  toolbarPrefix,
+  toolbarSuffix,
+  showMVOptimizationIndicator = true,
 }: {
   config: ChartConfigWithDateRange;
   queryKeyPrefix?: string;
   enabled?: boolean;
+  title?: React.ReactNode;
+  toolbarPrefix?: React.ReactNode[];
+  toolbarSuffix?: React.ReactNode[];
+  showMVOptimizationIndicator?: boolean;
 }) {
   const queriedConfig = useMemo(
     () => convertToNumberChartConfig(config),
@@ -37,44 +48,81 @@ export default function DBNumberChart({
     config.numberFormat,
   );
 
-  return isLoading && !data ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      Loading Chart Data...
-    </div>
-  ) : isError ? (
-    <div className="h-100 w-100 align-items-center justify-content-center text-muted">
-      <Text ta="center" size="sm" mt="sm">
-        Error loading chart, please check your query or try again later.
-      </Text>
-      <Box mt="sm">
-        <Text my="sm" size="sm" ta="center">
-          Error Message:
-        </Text>
-        <Code
-          block
-          style={{
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {error.message}
-        </Code>
-        {error instanceof ClickHouseQueryError && (
-          <>
+  const { data: source } = useSource({ id: config.source });
+
+  const toolbarItemsMemo = useMemo(() => {
+    const allToolbarItems = [];
+
+    if (toolbarPrefix && toolbarPrefix.length > 0) {
+      allToolbarItems.push(...toolbarPrefix);
+    }
+
+    if (source && showMVOptimizationIndicator) {
+      allToolbarItems.push(
+        <MVOptimizationIndicator
+          key="db-number-chart-mv-indicator"
+          config={config}
+          source={source}
+          variant="icon"
+        />,
+      );
+    }
+
+    if (toolbarSuffix && toolbarSuffix.length > 0) {
+      allToolbarItems.push(...toolbarSuffix);
+    }
+
+    return allToolbarItems;
+  }, [
+    config,
+    toolbarPrefix,
+    toolbarSuffix,
+    source,
+    showMVOptimizationIndicator,
+  ]);
+
+  return (
+    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+      {isLoading && !data ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          Loading Chart Data...
+        </div>
+      ) : isError ? (
+        <div className="h-100 w-100 align-items-center justify-content-center text-muted">
+          <Text ta="center" size="sm" mt="sm">
+            Error loading chart, please check your query or try again later.
+          </Text>
+          <Box mt="sm">
             <Text my="sm" size="sm" ta="center">
-              Sent Query:
+              Error Message:
             </Text>
-            <SQLPreview data={error?.query} />
-          </>
-        )}
-      </Box>
-    </div>
-  ) : data?.data.length === 0 ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      No data found within time range.
-    </div>
-  ) : (
-    <Flex align="center" justify="center" h="100%" style={{ flexGrow: 1 }}>
-      <Text size="4rem">{number ?? 'N/A'}</Text>
-    </Flex>
+            <Code
+              block
+              style={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {error.message}
+            </Code>
+            {error instanceof ClickHouseQueryError && (
+              <>
+                <Text my="sm" size="sm" ta="center">
+                  Sent Query:
+                </Text>
+                <SQLPreview data={error?.query} />
+              </>
+            )}
+          </Box>
+        </div>
+      ) : data?.data.length === 0 ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          No data found within time range.
+        </div>
+      ) : (
+        <Flex align="center" justify="center" h="100%" style={{ flexGrow: 1 }}>
+          <Text size="4rem">{number ?? 'N/A'}</Text>
+        </Flex>
+      )}
+    </ChartContainer>
   );
 }

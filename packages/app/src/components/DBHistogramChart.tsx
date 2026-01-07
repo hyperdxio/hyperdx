@@ -15,9 +15,11 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useSource } from '@/source';
 import { omit } from '@/utils';
-import { generateSearchUrl } from '@/utils';
 
+import ChartContainer from './charts/ChartContainer';
+import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
 function HistogramChart({
@@ -190,11 +192,19 @@ export default function DBHistogramChart({
   onSettled,
   queryKeyPrefix,
   enabled,
+  title,
+  toolbarPrefix,
+  toolbarSuffix,
+  showMVOptimizationIndicator = true,
 }: {
   config: ChartConfigWithDateRange;
   onSettled?: () => void;
   queryKeyPrefix?: string;
   enabled?: boolean;
+  title?: React.ReactNode;
+  toolbarPrefix?: React.ReactNode[];
+  toolbarSuffix?: React.ReactNode[];
+  showMVOptimizationIndicator?: boolean;
 }) {
   const queriedConfig = omit(config, ['granularity']);
   const { data, isLoading, isError, error } = useQueriedChartConfig(
@@ -206,66 +216,82 @@ export default function DBHistogramChart({
     },
   );
 
-  const genSearchUrl = () => {};
-
   // Don't ask me why...
   const buckets = data?.data?.[0]?.data;
 
-  return isLoading ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      Loading Chart Data...
-    </div>
-  ) : isError ? (
-    <div className="h-100 w-100 align-items-center justify-content-center text-muted">
-      <Text ta="center" size="sm" mt="sm">
-        Error loading chart, please check your query or try again later.
-      </Text>
-      <Box mt="sm">
-        <Text my="sm" size="sm" ta="center">
-          Error Message:
-        </Text>
-        <Code
-          block
-          style={{
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {error.message}
-        </Code>
-        {error instanceof ClickHouseQueryError && (
-          <>
+  const { data: source } = useSource({ id: config.source });
+
+  const toolbarItemsMemo = useMemo(() => {
+    const allToolbarItems = [];
+
+    if (toolbarPrefix && toolbarPrefix.length > 0) {
+      allToolbarItems.push(...toolbarPrefix);
+    }
+
+    if (source && showMVOptimizationIndicator) {
+      allToolbarItems.push(
+        <MVOptimizationIndicator
+          key="db-histogram-chart-mv-indicator"
+          config={config}
+          source={source}
+          variant="icon"
+        />,
+      );
+    }
+
+    if (toolbarSuffix && toolbarSuffix.length > 0) {
+      allToolbarItems.push(...toolbarSuffix);
+    }
+
+    return allToolbarItems;
+  }, [
+    config,
+    toolbarPrefix,
+    toolbarSuffix,
+    source,
+    showMVOptimizationIndicator,
+  ]);
+
+  return (
+    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+      {isLoading ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          Loading Chart Data...
+        </div>
+      ) : isError ? (
+        <div className="h-100 w-100 align-items-center justify-content-center text-muted">
+          <Text ta="center" size="sm" mt="sm">
+            Error loading chart, please check your query or try again later.
+          </Text>
+          <Box mt="sm">
             <Text my="sm" size="sm" ta="center">
-              Sent Query:
+              Error Message:
             </Text>
-            <SQLPreview data={error?.query} />
-          </>
-        )}
-      </Box>
-    </div>
-  ) : data?.data.length === 0 ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      No data found within time range.
-    </div>
-  ) : (
-    <div
-      // Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          top: 0,
-        }}
-      >
+            <Code
+              block
+              style={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {error.message}
+            </Code>
+            {error instanceof ClickHouseQueryError && (
+              <>
+                <Text my="sm" size="sm" ta="center">
+                  Sent Query:
+                </Text>
+                <SQLPreview data={error?.query} />
+              </>
+            )}
+          </Box>
+        </div>
+      ) : data?.data.length === 0 ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          No data found within time range.
+        </div>
+      ) : (
         <HistogramChart graphResults={buckets} />
-      </div>
-    </div>
+      )}
+    </ChartContainer>
   );
 }
