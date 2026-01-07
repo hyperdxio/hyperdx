@@ -1,7 +1,7 @@
 import React from 'react';
 import { ErrorBoundary as ReactErrorBoundary } from 'react-error-boundary';
 import { Alert, Button, Stack, Text } from '@mantine/core';
-import { IconInfoCircleFilled } from '@tabler/icons-react';
+import { IconExclamationCircle } from '@tabler/icons-react';
 
 type ErrorBoundaryProps = {
   children: React.ReactNode;
@@ -31,8 +31,8 @@ export const ErrorBoundary = ({
       fallbackRender={({ error, resetErrorBoundary }) => (
         <Alert
           p="xs"
-          color="orange"
-          icon={<IconInfoCircleFilled size={16} />}
+          color="red"
+          icon={<IconExclamationCircle size={16} />}
           title={message || 'Something went wrong'}
         >
           {(showErrorMessage || showRetry) && (
@@ -42,7 +42,7 @@ export const ErrorBoundary = ({
                 <Button
                   onClick={onRetry || resetErrorBoundary}
                   size="compact-xs"
-                  color="orange"
+                  variant="danger"
                 >
                   Retry
                 </Button>

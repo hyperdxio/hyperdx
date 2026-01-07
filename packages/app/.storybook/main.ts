@@ -21,6 +21,15 @@ const config: StorybookConfig = {
     options: {},
   },
   staticDirs: ['./public'],
+  webpackFinal: async config => {
+    if (config.resolve) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        'next/router': require.resolve('next/router'),
+      };
+    }
+    return config;
+  },
 };
 
 export default config;
