@@ -1,4 +1,9 @@
 import { useMemo } from 'react';
+import {
+  filterColumnMetaByType,
+  JSDataType,
+  ResponseJSON,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 import { keepPreviousData } from '@tanstack/react-query';
@@ -6,6 +11,18 @@ import { keepPreviousData } from '@tanstack/react-query';
 import api from '@/api';
 import { convertToTimeChartConfig } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+
+function inferCountColumn(meta: ResponseJSON['meta'] | undefined): string {
+  if (!meta) return 'count()';
+  if (meta.find(col => col.name === 'count()')) {
+    return 'count()';
+  }
+
+  // The column may be named differently, particularly when using Materialized Views.
+  return (
+    filterColumnMetaByType(meta, [JSDataType.Number])?.[0].name ?? 'count()'
+  );
+}
 
 export function useSearchTotalCount(
   config: ChartConfigWithDateRange,
@@ -50,8 +67,9 @@ export function useSearchTotalCount(
   const isTotalCountComplete = !!totalCountData?.isComplete;
 
   const totalCount = useMemo(() => {
+    const countColumn = inferCountColumn(totalCountData?.meta);
     return totalCountData?.data?.reduce(
-      (p: number, v: any) => p + Number.parseInt(v['count()']),
+      (p: number, v: any) => p + Number.parseInt(v[countColumn]),
       0,
     );
   }, [totalCountData]);
