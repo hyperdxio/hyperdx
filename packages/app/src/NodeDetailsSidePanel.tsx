@@ -1,20 +1,13 @@
 import * as React from 'react';
-import Link from 'next/link';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
-  SearchConditionLanguage,
-  TSource,
-} from '@hyperdx/common-utils/dist/types';
-import {
-  Anchor,
   Badge,
-  Box,
   Card,
   Drawer,
   Flex,
   Grid,
-  ScrollArea,
   SegmentedControl,
   Text,
 } from '@mantine/core';
@@ -167,7 +160,7 @@ function NodeLogs({
 
   return (
     <Card p="md">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         <Flex justify="space-between" align="center">
           Latest Node Logs & Spans
           <Flex gap="xs" align="center">
@@ -375,11 +368,9 @@ export default function NodeDetailsSidePanel({
               />
               <Grid.Col span={6}>
                 <Card p="md" data-testid="nodes-details-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage by Pod
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="CPU Usage by Pod"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
@@ -410,11 +401,9 @@ export default function NodeDetailsSidePanel({
               </Grid.Col>
               <Grid.Col span={6} data-testid="nodes-details-memory-usage-chart">
                 <Card p="md">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage by Pod
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="Memory Usage by Pod"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,

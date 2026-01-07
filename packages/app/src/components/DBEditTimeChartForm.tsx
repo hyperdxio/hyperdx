@@ -1251,10 +1251,7 @@ export default function EditTimeChartForm({
         </Paper>
       ) : undefined}
       {queryReady && queriedConfig != null && activeTab === 'table' && (
-        <div
-          className="flex-grow-1 d-flex flex-column"
-          style={{ minHeight: 400 }}
-        >
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBTableChart
             config={queriedConfig}
             getRowSearchLink={row =>
@@ -1267,14 +1264,12 @@ export default function EditTimeChartForm({
             }
             onSortingChange={onTableSortingChange}
             sort={tableSortState}
+            showMVOptimizationIndicator={false}
           />
         </div>
       )}
       {queryReady && dbTimeChartConfig != null && activeTab === 'time' && (
-        <div
-          className="flex-grow-1 d-flex flex-column"
-          style={{ minHeight: 400 }}
-        >
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBTimeChart
             sourceId={sourceId}
             config={dbTimeChartConfig}
@@ -1286,15 +1281,16 @@ export default function EditTimeChartForm({
                 thresholdType: alert.thresholdType,
               })
             }
+            showMVOptimizationIndicator={false}
           />
         </div>
       )}
       {queryReady && queriedConfig != null && activeTab === 'number' && (
-        <div
-          className="flex-grow-1 d-flex flex-column"
-          style={{ minHeight: 400 }}
-        >
-          <DBNumberChart config={queriedConfig} />
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBNumberChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+          />
         </div>
       )}
       {queryReady &&

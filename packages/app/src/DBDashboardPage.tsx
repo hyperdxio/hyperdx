@@ -75,19 +75,12 @@ import {
 } from '@/dashboard';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
-import MVOptimizationIndicator from './components/MaterializedViews/MVOptimizationIndicator';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { parseAsStringWithNewLines } from './utils/queryParsers';
-import {
-  buildTableRowSearchUrl,
-  convertToNumberChartConfig,
-  convertToTableChartConfig,
-  convertToTimeChartConfig,
-  DEFAULT_CHART_CONFIG,
-} from './ChartUtils';
+import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
@@ -173,25 +166,6 @@ const Tile = forwardRef(
       ChartConfigWithDateRange | undefined
     >(undefined);
 
-    // Transform the queried config to match what will be queried by the
-    // child components, so that the MV Optimization indicator is accurate.
-    const configForMVOptimizationIndicator = useMemo(() => {
-      if (!queriedConfig) return undefined;
-
-      if (
-        queriedConfig.displayType === DisplayType.Line ||
-        queriedConfig.displayType === DisplayType.StackedBar
-      ) {
-        return convertToTimeChartConfig(queriedConfig);
-      } else if (queriedConfig.displayType === DisplayType.Number) {
-        return convertToNumberChartConfig(queriedConfig);
-      } else if (queriedConfig.displayType === DisplayType.Table) {
-        return convertToTableChartConfig(queriedConfig);
-      }
-
-      return queriedConfig;
-    }, [queriedConfig]);
-
     const { data: source } = useSource({
       id: chart.config.source,
     });
@@ -250,10 +224,96 @@ const Tile = forwardRef(
       return tooltip;
     }, [alert]);
 
+    const hoverToolbar = useMemo(() => {
+      return hovered ? (
+        <Flex
+          gap="0px"
+          onMouseDown={e => e.stopPropagation()}
+          key="hover-toolbar"
+        >
+          {(chart.config.displayType === DisplayType.Line ||
+            chart.config.displayType === DisplayType.StackedBar) && (
+            <Indicator
+              size={alert?.state === AlertState.OK ? 6 : 8}
+              zIndex={1}
+              color={alertIndicatorColor}
+              processing={alert?.state === AlertState.ALERT}
+              label={!alert && <span className="fs-8">+</span>}
+              mr={4}
+            >
+              <Tooltip label={alertTooltip} withArrow>
+                <Button
+                  data-testid={`tile-alerts-button-${chart.id}`}
+                  variant="subtle"
+                  color="gray"
+                  size="xxs"
+                  onClick={onEditClick}
+                >
+                  <IconBell size={16} />
+                </Button>
+              </Tooltip>
+            </Indicator>
+          )}
+
+          <Button
+            data-testid={`tile-duplicate-button-${chart.id}`}
+            variant="subtle"
+            color="gray"
+            size="xxs"
+            onClick={onDuplicateClick}
+            title="Duplicate"
+          >
+            <IconCopy size={14} />
+          </Button>
+          <Button
+            data-testid={`tile-edit-button-${chart.id}`}
+            variant="subtle"
+            color="gray"
+            size="xxs"
+            onClick={onEditClick}
+            title="Edit"
+          >
+            <IconPencil size={14} />
+          </Button>
+          <Button
+            data-testid={`tile-delete-button-${chart.id}`}
+            variant="subtle"
+            color="gray"
+            size="xxs"
+            onClick={onDeleteClick}
+            title="Delete"
+          >
+            <IconTrash size={14} />
+          </Button>
+        </Flex>
+      ) : (
+        <Box h={22} key="hover-empty-box" />
+      );
+    }, [
+      alert,
+      alertIndicatorColor,
+      alertTooltip,
+      chart.config.displayType,
+      chart.id,
+      hovered,
+      onDeleteClick,
+      onDuplicateClick,
+      onEditClick,
+    ]);
+
+    const title = useMemo(
+      () => (
+        <Text size="sm" ms="xs">
+          {chart.config.name}
+        </Text>
+      ),
+      [chart.config.name],
+    );
+
     return (
       <div
         data-testid={`dashboard-tile-${chart.id}`}
-        className={`p-2 ${className} d-flex flex-column bg-muted rounded ${
+        className={`p-2 pt-0 ${className} d-flex flex-column bg-muted cursor-grab rounded ${
           isHighlighted && 'dashboard-chart-highlighted'
         }`}
         id={`chart-${chart.id}`}
@@ -268,84 +328,11 @@ const Tile = forwardRef(
         onMouseUp={onMouseUp}
         onTouchEnd={onTouchEnd}
       >
-        <div className="d-flex justify-content-between align-items-center mb-2 cursor-grab">
-          <Text size="sm" ms="xs">
-            {chart.config.name}
-          </Text>
-          <Group>
-            {hovered ? (
-              <Flex gap="0px" onMouseDown={e => e.stopPropagation()}>
-                {(chart.config.displayType === DisplayType.Line ||
-                  chart.config.displayType === DisplayType.StackedBar) && (
-                  <Indicator
-                    size={alert?.state === AlertState.OK ? 6 : 8}
-                    zIndex={1}
-                    color={alertIndicatorColor}
-                    processing={alert?.state === AlertState.ALERT}
-                    label={!alert && <span className="fs-8">+</span>}
-                    mr={4}
-                  >
-                    <Tooltip label={alertTooltip} withArrow>
-                      <Button
-                        data-testid={`tile-alerts-button-${chart.id}`}
-                        variant="subtle"
-                        color="gray"
-                        size="xxs"
-                        onClick={onEditClick}
-                      >
-                        <IconBell size={16} />
-                      </Button>
-                    </Tooltip>
-                  </Indicator>
-                )}
-
-                <Button
-                  data-testid={`tile-duplicate-button-${chart.id}`}
-                  variant="subtle"
-                  color="gray"
-                  size="xxs"
-                  onClick={onDuplicateClick}
-                  title="Duplicate"
-                >
-                  <IconCopy size={14} />
-                </Button>
-                <Button
-                  data-testid={`tile-edit-button-${chart.id}`}
-                  variant="subtle"
-                  color="gray"
-                  size="xxs"
-                  onClick={onEditClick}
-                  title="Edit"
-                >
-                  <IconPencil size={14} />
-                </Button>
-                <Button
-                  data-testid={`tile-delete-button-${chart.id}`}
-                  variant="subtle"
-                  color="gray"
-                  size="xxs"
-                  onClick={onDeleteClick}
-                  title="Delete"
-                >
-                  <IconTrash size={14} />
-                </Button>
-              </Flex>
-            ) : (
-              <Box h={22} />
-            )}
-            {source?.materializedViews?.length && queriedConfig && (
-              <Box onMouseDown={e => e.stopPropagation()}>
-                <MVOptimizationIndicator
-                  config={configForMVOptimizationIndicator}
-                  source={source}
-                  variant="icon"
-                />
-              </Box>
-            )}
-          </Group>
-        </div>
+        <Group justify="center" py={4}>
+          <Box bg={hovered ? 'gray' : undefined} w={100} h={2}></Box>
+        </Group>
         <div
-          className="fs-7 text-muted flex-grow-1 overflow-hidden"
+          className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default"
           onMouseDown={e => e.stopPropagation()}
         >
           <ErrorBoundary
@@ -359,6 +346,8 @@ const Tile = forwardRef(
             {(queriedConfig?.displayType === DisplayType.Line ||
               queriedConfig?.displayType === DisplayType.StackedBar) && (
               <DBTimeChart
+                title={title}
+                toolbarPrefix={[hoverToolbar]}
                 sourceId={chart.config.source}
                 showDisplaySwitcher={true}
                 config={queriedConfig}
@@ -377,6 +366,8 @@ const Tile = forwardRef(
             {queriedConfig?.displayType === DisplayType.Table && (
               <Box p="xs" h="100%">
                 <DBTableChart
+                  title={title}
+                  toolbarPrefix={[hoverToolbar]}
                   config={queriedConfig}
                   getRowSearchLink={row =>
                     buildTableRowSearchUrl({
@@ -390,10 +381,18 @@ const Tile = forwardRef(
               </Box>
             )}
             {queriedConfig?.displayType === DisplayType.Number && (
-              <DBNumberChart config={queriedConfig} />
+              <DBNumberChart
+                title={title}
+                toolbarPrefix={[hoverToolbar]}
+                config={queriedConfig}
+              />
             )}
             {queriedConfig?.displayType === DisplayType.Markdown && (
-              <HDXMarkdownChart config={queriedConfig} />
+              <HDXMarkdownChart
+                title={title}
+                toolbarItems={[hoverToolbar]}
+                config={queriedConfig}
+              />
             )}
             {queriedConfig?.displayType === DisplayType.Search && (
               <DBSqlRowTableWithSideBar
