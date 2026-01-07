@@ -18,7 +18,7 @@ import {
   useUpdateSource,
 } from '@/source';
 
-import { TableSourceForm } from './SourceForm';
+import { TableSourceForm } from './Sources/SourceForm';
 
 async function addOtelDemoSources({
   connectionId,
