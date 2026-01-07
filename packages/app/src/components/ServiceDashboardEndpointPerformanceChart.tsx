@@ -1,6 +1,5 @@
 import { pick } from 'lodash';
 import { TSource } from '@hyperdx/common-utils/dist/types';
-import { Group, Text } from '@mantine/core';
 
 import { MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartBox } from '@/components/ChartBox';
@@ -88,11 +87,9 @@ export default function ServiceDashboardEndpointPerformanceChart({
 
   return (
     <ChartBox style={{ height: 350, overflow: 'auto' }}>
-      <Group justify="space-between" align="center" mb="sm">
-        <Text size="sm">20 Top Most Time Consuming Operations</Text>
-      </Group>
       {source && (
         <DBListBarChart
+          title="20 Top Most Time Consuming Operations"
           groupColumn="group"
           valueColumn="Total Time Spent"
           config={{

@@ -10,8 +10,11 @@ import { SortingState } from '@tanstack/react-table';
 import { convertToTableChartConfig } from '@/ChartUtils';
 import { Table } from '@/HDXMultiSeriesTableChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import { useSource } from '@/source';
 import { useIntersectionObserver } from '@/utils';
 
+import ChartContainer from './charts/ChartContainer';
+import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
 // TODO: Support clicking in to view matched events
@@ -23,6 +26,10 @@ export default function DBTableChart({
   onSortingChange,
   sort: controlledSort,
   hiddenColumns = [],
+  title,
+  toolbarPrefix,
+  toolbarSuffix,
+  showMVOptimizationIndicator = true,
 }: {
   config: ChartConfigWithOptTimestamp;
   getRowSearchLink?: (row: any) => string | null;
@@ -31,8 +38,14 @@ export default function DBTableChart({
   onSortingChange?: (sort: SortingState) => void;
   sort?: SortingState;
   hiddenColumns?: string[];
+  title?: React.ReactNode;
+  toolbarPrefix?: React.ReactNode[];
+  toolbarSuffix?: React.ReactNode[];
+  showMVOptimizationIndicator?: boolean;
 }) {
   const [sort, setSort] = useState<SortingState>([]);
+
+  const { data: source } = useSource({ id: config.source });
 
   const effectiveSort = useMemo(
     () => controlledSort || sort,
@@ -115,55 +128,90 @@ export default function DBTableChart({
     hiddenColumns,
   ]);
 
-  return isLoading && !data ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      Loading Chart Data...
-    </div>
-  ) : isError && error ? (
-    <div className="h-100 w-100 align-items-center justify-content-center text-muted">
-      <Text ta="center" size="sm" mt="sm">
-        Error loading chart, please check your query or try again later.
-      </Text>
-      <Box mt="sm">
-        <Text my="sm" size="sm" ta="center">
-          Error Message:
-        </Text>
-        <Code
-          block
-          style={{
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {error.message}
-        </Code>
-        {error instanceof ClickHouseQueryError && (
-          <>
-            <Text my="sm" size="sm" ta="center">
-              Sent Query:
-            </Text>
-            <SQLPreview data={error?.query} />
-          </>
-        )}
-      </Box>
-    </div>
-  ) : data?.data.length === 0 ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      No data found within time range.
-    </div>
-  ) : (
-    <Table
-      data={data?.data ?? []}
-      columns={columns}
-      getRowSearchLink={getRowSearchLink}
-      sorting={effectiveSort}
-      onSortingChange={handleSortingChange}
-      tableBottom={
-        hasNextPage && (
-          <Text ref={fetchMoreRef} ta="center">
-            Loading...
+  const toolbarItemsMemo = useMemo(() => {
+    const allToolbarItems = [];
+
+    if (toolbarPrefix && toolbarPrefix.length > 0) {
+      allToolbarItems.push(...toolbarPrefix);
+    }
+
+    if (source && showMVOptimizationIndicator) {
+      allToolbarItems.push(
+        <MVOptimizationIndicator
+          key="db-table-chart-mv-indicator"
+          config={config}
+          source={source}
+          variant="icon"
+        />,
+      );
+    }
+
+    if (toolbarSuffix && toolbarSuffix.length > 0) {
+      allToolbarItems.push(...toolbarSuffix);
+    }
+
+    return allToolbarItems;
+  }, [
+    config,
+    toolbarPrefix,
+    toolbarSuffix,
+    source,
+    showMVOptimizationIndicator,
+  ]);
+
+  return (
+    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+      {isLoading && !data ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          Loading Chart Data...
+        </div>
+      ) : isError && error ? (
+        <div className="h-100 w-100 align-items-center justify-content-center text-muted">
+          <Text ta="center" size="sm" mt="sm">
+            Error loading chart, please check your query or try again later.
           </Text>
-        )
-      }
-    />
+          <Box mt="sm">
+            <Text my="sm" size="sm" ta="center">
+              Error Message:
+            </Text>
+            <Code
+              block
+              style={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {error.message}
+            </Code>
+            {error instanceof ClickHouseQueryError && (
+              <>
+                <Text my="sm" size="sm" ta="center">
+                  Sent Query:
+                </Text>
+                <SQLPreview data={error?.query} />
+              </>
+            )}
+          </Box>
+        </div>
+      ) : data?.data.length === 0 ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          No data found within time range.
+        </div>
+      ) : (
+        <Table
+          data={data?.data ?? []}
+          columns={columns}
+          getRowSearchLink={getRowSearchLink}
+          sorting={effectiveSort}
+          onSortingChange={handleSortingChange}
+          tableBottom={
+            hasNextPage && (
+              <Text ref={fetchMoreRef} ta="center">
+                Loading...
+              </Text>
+            )
+          }
+        />
+      )}
+    </ChartContainer>
   );
 }

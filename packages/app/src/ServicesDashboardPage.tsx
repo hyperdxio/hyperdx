@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import cx from 'classnames';
 import { pick } from 'lodash';
 import {
   parseAsString,
@@ -22,7 +21,6 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
-  ActionIcon,
   Box,
   Button,
   Grid,
@@ -72,6 +70,7 @@ import {
 import { useSource, useSources } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
+import DisplaySwitcher from './components/charts/DisplaySwitcher';
 import usePresetDashboardFilters from './hooks/usePresetDashboardFilters';
 import { IS_LOCAL_MODE } from './config';
 import DashboardFilters from './DashboardFilters';
@@ -214,43 +213,34 @@ export function EndpointLatencyChart({
     'line' | 'histogram'
   >('line');
 
+  const displaySwitcher = (
+    <DisplaySwitcher
+      key="display-switcher"
+      value={latencyChartType}
+      onChange={setLatencyChartType}
+      options={[
+        {
+          value: 'line',
+          label: 'Display as Line Chart',
+          icon: <IconChartLine />,
+        },
+        {
+          value: 'histogram',
+          label: 'Display as Histogram',
+          icon: <IconChartHistogram />,
+        },
+      ]}
+    />
+  );
+
   return (
     <ChartBox style={{ height: 350 }}>
-      <Group justify="space-between" align="center" mb="sm">
-        <Text size="sm">Request Latency</Text>
-        <div className="bg-muted px-2 py-1 rounded fs-8">
-          <Tooltip label="Display as Line Chart">
-            <ActionIcon
-              size="xs"
-              me={2}
-              className={cx({
-                'text-success': latencyChartType === 'line',
-                'text-muted-hover': latencyChartType !== 'line',
-              })}
-              onClick={() => setLatencyChartType('line')}
-            >
-              <IconChartLine />
-            </ActionIcon>
-          </Tooltip>
-
-          <Tooltip label="Display as Histogram">
-            <ActionIcon
-              size="xs"
-              className={cx({
-                'text-success': latencyChartType === 'histogram',
-                'text-muted-hover': latencyChartType !== 'histogram',
-              })}
-              onClick={() => setLatencyChartType('histogram')}
-            >
-              <IconChartHistogram />
-            </ActionIcon>
-          </Tooltip>
-        </div>
-      </Group>
       {source &&
         expressions &&
         (latencyChartType === 'line' ? (
           <DBTimeChart
+            title="Request Latency"
+            toolbarSuffix={[displaySwitcher]}
             showDisplaySwitcher={false}
             sourceId={source.id}
             hiddenSeries={[
@@ -312,6 +302,8 @@ export function EndpointLatencyChart({
           />
         ) : (
           <DBHistogramChart
+            title="Request Latency"
+            toolbarSuffix={[displaySwitcher]}
             config={{
               source: source.id,
               ...pick(source, [
@@ -543,20 +535,21 @@ function HttpTab({
     <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Request Error Rate</Text>
-            <SegmentedControl
-              size="xs"
-              value={reqChartType}
-              onChange={setReqChartType}
-              data={[
-                { label: 'Overall', value: 'overall' },
-                { label: 'By Endpoint', value: 'endpoint' },
-              ]}
-            />
-          </Group>
           {source && requestErrorRateConfig && (
             <DBTimeChart
+              title="Request Error Rate"
+              toolbarSuffix={[
+                <SegmentedControl
+                  key="request-error-rate-segmented-control"
+                  size="xs"
+                  value={reqChartType}
+                  onChange={setReqChartType}
+                  data={[
+                    { label: 'Overall', value: 'overall' },
+                    { label: 'By Endpoint', value: 'endpoint' },
+                  ]}
+                />,
+              ]}
               sourceId={source.id}
               hiddenSeries={['total_requests', 'error_requests']}
               config={requestErrorRateConfig}
@@ -569,11 +562,9 @@ function HttpTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Request Throughput</Text>
-          </Group>
           {source && expressions && (
             <DBTimeChart
+              title="Request Throughput"
               sourceId={source.id}
               config={{
                 source: source.id,
@@ -604,12 +595,9 @@ function HttpTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350, overflow: 'auto' }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">20 Top Most Time Consuming Endpoints</Text>
-          </Group>
-
           {source && expressions && (
             <DBListBarChart
+              title="Top 20 Most Time Consuming Endpoints"
               groupColumn="Endpoint"
               valueColumn="Total (ms)"
               getRowSearchLink={getRowSearchLink}
@@ -715,29 +703,32 @@ function HttpTab({
       </Grid.Col>
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">
-              Top 20{' '}
-              {topEndpointsChartType === 'time'
-                ? 'Most Time Consuming'
-                : 'Highest Error Rate'}
-            </Text>
-            <SegmentedControl
-              size="xs"
-              value={topEndpointsChartType}
-              onChange={(value: string) => {
-                if (value === 'time' || value === 'error') {
-                  setTopEndpointsChartType(value);
-                }
-              }}
-              data={[
-                { label: 'Sort by Time', value: 'time' },
-                { label: 'Sort by Errors', value: 'error' },
-              ]}
-            />
-          </Group>
           {source && expressions && (
             <DBTableChart
+              title={
+                <Text size="sm">
+                  Top 20{' '}
+                  {topEndpointsChartType === 'time'
+                    ? 'Most Time Consuming'
+                    : 'Highest Error Rate'}
+                </Text>
+              }
+              toolbarSuffix={[
+                <SegmentedControl
+                  key="top-endpoints-chart-segmented-control"
+                  size="xs"
+                  value={topEndpointsChartType}
+                  onChange={(value: string) => {
+                    if (value === 'time' || value === 'error') {
+                      setTopEndpointsChartType(value);
+                    }
+                  }}
+                  data={[
+                    { label: 'Sort by Time', value: 'time' },
+                    { label: 'Sort by Errors', value: 'error' },
+                  ]}
+                />,
+              ]}
               getRowSearchLink={getRowSearchLink}
               hiddenColumns={[
                 'total_count',
@@ -1098,15 +1089,33 @@ function DatabaseTab({
       } satisfies ChartConfigWithDateRange;
     }, [appliedConfig, expressions, searchedTimeRange, source]);
 
+  const displaySwitcher = (
+    <DisplaySwitcher
+      key="display-switcher"
+      value={chartType}
+      onChange={setChartType}
+      options={[
+        {
+          label: 'Show as List',
+          icon: <IconFilter size={14} />,
+          value: 'list',
+        },
+        {
+          label: 'Show as Table',
+          icon: <IconTable size={14} />,
+          value: 'table',
+        },
+      ]}
+    />
+  );
+
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Total Time Consumed per Query</Text>
-          </Group>
           {source && totalTimePerQueryConfig && (
             <DBTimeChart
+              title="Total Time Consumed per Query"
               sourceId={source.id}
               config={totalTimePerQueryConfig}
               disableDrillDown
@@ -1117,11 +1126,9 @@ function DatabaseTab({
       </Grid.Col>
       <Grid.Col span={6}>
         <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Throughput per Query</Text>
-          </Group>
           {source && totalThroughputPerQueryConfig && (
             <DBTimeChart
+              title="Throughput per Query"
               sourceId={source.id}
               config={totalThroughputPerQueryConfig}
               disableQueryChunking
@@ -1132,36 +1139,12 @@ function DatabaseTab({
       </Grid.Col>
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350, overflow: 'auto' }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Top 20 Most Time Consuming Queries</Text>
-            <Box>
-              <Button.Group>
-                <Button
-                  variant="subtle"
-                  color={chartType === 'list' ? 'green' : 'gray'}
-                  size="xs"
-                  title="List"
-                  onClick={() => setChartType('list')}
-                >
-                  <IconFilter size={14} />
-                </Button>
-
-                <Button
-                  variant="subtle"
-                  color={chartType === 'table' ? 'green' : 'gray'}
-                  size="xs"
-                  title="Table"
-                  onClick={() => setChartType('table')}
-                >
-                  <IconTable size={14} />
-                </Button>
-              </Button.Group>
-            </Box>
-          </Group>
           {source &&
             expressions &&
             (chartType === 'list' ? (
               <DBListBarChart
+                title="Top 20 Most Time Consuming Queries"
+                toolbarItems={[displaySwitcher]}
                 groupColumn="Statement"
                 valueColumn="Total"
                 hoverCardPosition="top-start"
@@ -1246,6 +1229,8 @@ function DatabaseTab({
               />
             ) : (
               <DBTableChart
+                title="Top 20 Most Time Consuming Queries"
+                toolbarSuffix={[displaySwitcher]}
                 getRowSearchLink={getRowSearchLink}
                 hiddenColumns={[
                   'duration_ns',
@@ -1346,11 +1331,9 @@ function ErrorsTab({
     <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
       <Grid.Col span={12}>
         <ChartBox style={{ height: 350 }}>
-          <Group justify="space-between" align="center" mb="sm">
-            <Text size="sm">Error Events per Service</Text>
-          </Group>
           {source && expressions && (
             <DBTimeChart
+              title="Error Events per Service"
               sourceId={source.id}
               config={{
                 source: source.id,

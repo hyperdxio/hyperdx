@@ -1367,6 +1367,9 @@ function DBSearchPage() {
       with: aliasWith,
       // Preserve the original table select string for "View Events" links
       eventTableSelect: searchedConfig.select,
+      // In live mode, when the end date is aligned to the granularity, the end date does
+      // not change on every query, resulting in cached data being re-used.
+      alignDateRangeToGranularity: !isLive,
       ...variableConfig,
     };
   }, [
@@ -1375,6 +1378,7 @@ function DBSearchPage() {
     aliasWith,
     searchedTimeRange,
     searchedConfig.select,
+    isLive,
   ]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
@@ -1822,6 +1826,7 @@ function DBSearchPage() {
                           config={histogramTimeChartConfig}
                           enabled={isReady}
                           showDisplaySwitcher={false}
+                          showMVOptimizationIndicator={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
                         />
@@ -1895,6 +1900,7 @@ function DBSearchPage() {
                             config={histogramTimeChartConfig}
                             enabled={isReady}
                             showDisplaySwitcher={false}
+                            showMVOptimizationIndicator={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
                             enableParallelQueries
