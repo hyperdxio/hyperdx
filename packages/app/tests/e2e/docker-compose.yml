@@ -1,7 +1,7 @@
 name: hdx-e2e
 services:
   db:
-    image: mongo:5.0.14-focal
+    image: mongo:5.0.32-focal
     command: --port 29998
     ports:
       - 29998:29998

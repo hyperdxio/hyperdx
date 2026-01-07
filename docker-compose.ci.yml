@@ -37,7 +37,7 @@ services:
     networks:
       - internal
   db:
-    image: mongo:5.0.14-focal
+    image: mongo:5.0.32-focal
     command: --port 29999
     ports:
       - 29999:29999
