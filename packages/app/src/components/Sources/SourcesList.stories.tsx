@@ -104,11 +104,11 @@ export const Loading: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.get(`${API_URL}/team/connections`, async () => {
+        http.get(`/api/connections`, async () => {
           await delay('infinite');
           return HttpResponse.json([]);
         }),
-        http.get(`${API_URL}/team/sources`, async () => {
+        http.get(`/api/sources`, async () => {
           await delay('infinite');
           return HttpResponse.json([]);
         }),
