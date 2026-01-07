@@ -1048,14 +1048,14 @@ function DBSearchPage() {
         // Save the selected source ID to localStorage
         setLastSelectedSourceId(newInputSourceObj.id);
 
-        // If the user is in a saved search, prefer the saved search's select/orderBy if available
+        // If the user isn't in a saved search (or the source is different from the saved search source), reset fields
         if (savedSearchId == null || savedSearch?.source !== watchedSource) {
-          setValue(
-            'select',
-            newInputSourceObj?.defaultTableSelectExpression ?? '',
-          );
+          setValue('select', '');
+          setValue('orderBy', '');
+          // If the user is in a saved search, prefer the saved search's select/orderBy if available
         } else {
           setValue('select', savedSearch?.select ?? '');
+          setValue('orderBy', savedSearch?.orderBy ?? '');
         }
         // Clear all search filters
         searchFilters.clearAllFilters();
