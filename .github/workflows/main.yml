@@ -102,9 +102,6 @@ jobs:
     name: E2E Tests - Shard ${{ matrix.shard }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    container:
-      image: mcr.microsoft.com/playwright:v1.57.0-jammy
-      options: --network-alias playwright
     services:
       mongodb:
         image: mongo:5.0.32-focal
@@ -114,6 +111,8 @@ jobs:
           db.getSiblingDB(\"test\").test.deleteOne({_id: \"hc\"})'"
           --health-interval 10s --health-timeout 5s --health-retries 10
           --health-start-period 10s
+        ports:
+          - 27017:27017
     permissions:
       contents: read
       pull-requests: write
@@ -139,6 +138,9 @@ jobs:
       - name: Build dependencies
         run: npx nx run-many -t ci:build
 
+      - name: Install Playwright browsers
+        run: cd packages/app && npx playwright install --with-deps chromium
+
       - name: Run Playwright tests (full-stack mode)
         # MongoDB service health check ensures it's ready before this step runs
         # Note: Tests use ClickHouse demo instance (otel_demo with empty password)
@@ -147,7 +149,7 @@ jobs:
           E2E_FULLSTACK: 'true'
           E2E_UNIQUE_USER: 'true'
           E2E_API_HEALTH_CHECK_MAX_RETRIES: '60'
-          MONGO_URI: mongodb://mongodb:27017/hyperdx-e2e
+          MONGO_URI: mongodb://localhost:27017/hyperdx-e2e
         run: |
           cd packages/app
           yarn test:e2e --shard=${{ matrix.shard }}/4
