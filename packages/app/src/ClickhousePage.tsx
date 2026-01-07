@@ -13,7 +13,6 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
-  Flex,
   Grid,
   Group,
   SegmentedControl,
@@ -502,6 +501,29 @@ function ClickhousePage() {
     ];
   }, [latencyFilter]);
 
+  const heatmapToolbarItems = useMemo(() => {
+    if (latencyFilter.latencyMin != null || latencyFilter.latencyMax != null) {
+      return [
+        <Button
+          key="heatmap-reset-latency-filter"
+          size="xs"
+          variant="subtle"
+          onClick={() => {
+            // Clears the min/max latency filters that are used to filter the query results
+            setLatencyFilter({
+              latencyMin: null,
+              latencyMax: null,
+            });
+            // Updates the URL state and triggers a new data fetch
+            onSearch(DEFAULT_INTERVAL);
+          }}
+        >
+          Reset
+        </Button>,
+      ];
+    }
+  }, [latencyFilter, onSearch, setLatencyFilter]);
+
   return (
     <Box p="sm" data-testid="clickhouse-dashboard-page">
       <OnboardingModal requireSource={false} />
@@ -560,75 +582,11 @@ function ClickhousePage() {
         </Tabs.List>
         <Tabs.Panel value="selects">
           <Grid mt="md">
-            {/* <Grid.Col span={12}>
-          <ChartBox style={{ minHeight: 300, height: 300 }}>
-            <Group justify="space-between" align="center" mb="md">
-              <Text size="sm"  ms="xs">
-                Select P95 Query Latency
-              </Text>
-              <SegmentedControl
-                size="xs"
-                data={[
-                  { label: 'Latency', value: 'latency' },
-                  { label: 'Throughput', value: 'throughput' },
-                  { label: 'Errors', value: 'errors' },
-                ]}
-              />
-            </Group>
-            <DBTimeChart
-              config={{
-                select: [
-                  {
-                    aggFn: 'quantile',
-                    level: 0.95,
-                    valueExpression: 'query_duration_ms',
-                    aggCondition: '',
-                    alias: `"Query P95 (ms)"`,
-                  },
-                ],
-                displayType: DisplayType.Line,
-                dateRange: searchedTimeRange,
-                connection,
-                timestampValueExpression: 'event_time',
-                from,
-                granularity: 'auto',
-                where: `query_kind='Select' AND (
-                  type='ExceptionWhileProcessing' OR type='QueryFinish' 
-                )`,
-                filters,
-              }}
-              onTimeRangeSelect={(start, end) => {
-                onTimeRangeSelect(start, end);
-              }}
-            />
-          </ChartBox>
-        </Grid.Col> */}
             <Grid.Col span={12}>
               <ChartBox style={{ height: 250 }}>
-                <Flex justify="space-between" align="center">
-                  <Text size="sm" ms="xs">
-                    Query Latency
-                  </Text>
-                  {latencyFilter.latencyMin != null ||
-                  latencyFilter.latencyMax != null ? (
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      onClick={() => {
-                        // Clears the min/max latency filters that are used to filter the query results
-                        setLatencyFilter({
-                          latencyMin: null,
-                          latencyMax: null,
-                        });
-                        // Updates the URL state and triggers a new data fetch
-                        onSearch(DEFAULT_INTERVAL);
-                      }}
-                    >
-                      Reset
-                    </Button>
-                  ) : null}
-                </Flex>
                 <DBHeatmapChart
+                  title="Query Latency"
+                  toolbarSuffix={heatmapToolbarItems}
                   config={{
                     displayType: DisplayType.Heatmap,
                     select: [
