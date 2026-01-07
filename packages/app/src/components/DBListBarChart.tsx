@@ -229,6 +229,7 @@ export default function DBListBarChart({
     if (source && showMVOptimizationIndicator) {
       allToolbarItems.push(
         <MVOptimizationIndicator
+          key="db-list-bar-chart-mv-indicator"
           config={config}
           source={source}
           variant="icon"

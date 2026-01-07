@@ -138,6 +138,7 @@ export default function DBTableChart({
     if (source && showMVOptimizationIndicator) {
       allToolbarItems.push(
         <MVOptimizationIndicator
+          key="db-table-chart-mv-indicator"
           config={config}
           source={source}
           variant="icon"

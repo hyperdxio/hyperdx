@@ -60,6 +60,7 @@ export default function DBNumberChart({
     if (source && showMVOptimizationIndicator) {
       allToolbarItems.push(
         <MVOptimizationIndicator
+          key="db-number-chart-mv-indicator"
           config={config}
           source={source}
           variant="icon"

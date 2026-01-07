@@ -231,6 +231,7 @@ export default function DBHistogramChart({
     if (source && showMVOptimizationIndicator) {
       allToolbarItems.push(
         <MVOptimizationIndicator
+          key="db-histogram-chart-mv-indicator"
           config={config}
           source={source}
           variant="icon"

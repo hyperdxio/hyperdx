@@ -215,6 +215,7 @@ export function EndpointLatencyChart({
 
   const displaySwitcher = (
     <DisplaySwitcher
+      key="display-switcher"
       value={latencyChartType}
       onChange={setLatencyChartType}
       options={[
@@ -539,6 +540,7 @@ function HttpTab({
               title="Request Error Rate"
               toolbarSuffix={[
                 <SegmentedControl
+                  key="request-error-rate-segmented-control"
                   size="xs"
                   value={reqChartType}
                   onChange={setReqChartType}
@@ -713,6 +715,7 @@ function HttpTab({
               }
               toolbarSuffix={[
                 <SegmentedControl
+                  key="top-endpoints-chart-segmented-control"
                   size="xs"
                   value={topEndpointsChartType}
                   onChange={(value: string) => {
@@ -1088,6 +1091,7 @@ function DatabaseTab({
 
   const displaySwitcher = (
     <DisplaySwitcher
+      key="display-switcher"
       value={chartType}
       onChange={setChartType}
       options={[

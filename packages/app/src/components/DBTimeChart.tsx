@@ -539,6 +539,7 @@ function DBTimeChartComponent({
     if (source && showMVOptimizationIndicator) {
       allToolbarItems.push(
         <MVOptimizationIndicator
+          key="db-time-chart-mv-indicator"
           config={config}
           source={source}
           variant="icon"
@@ -549,6 +550,7 @@ function DBTimeChartComponent({
     if (showDisplaySwitcher) {
       allToolbarItems.push(
         <DisplaySwitcher
+          key="db-time-chart-display-switcher"
           value={displayType}
           onChange={handleSetDisplayType}
           options={[
