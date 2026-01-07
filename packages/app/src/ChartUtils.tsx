@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { add } from 'date-fns';
+import { add, differenceInSeconds } from 'date-fns';
 import { omit } from 'lodash';
 import SqlString from 'sqlstring';
 import { z } from 'zod';
@@ -135,11 +135,29 @@ export const DEFAULT_CHART_CONFIG: Omit<
   whereLanguage: 'lucene',
   displayType: DisplayType.Line,
   granularity: 'auto',
+  alignDateRangeToGranularity: true,
 };
 
 export const isGranularity = (value: string): value is Granularity => {
   return Object.values(Granularity).includes(value as Granularity);
 };
+
+export function getAlignedDateRange(
+  [originalStart, originalEnd]: [Date, Date],
+  granularity: SQLInterval,
+): [Date, Date] {
+  // Round the start time down to the previous interval boundary
+  const alignedStart = toStartOfInterval(originalStart, granularity);
+
+  // Round the end time up to the next interval boundary
+  let alignedEnd = toStartOfInterval(originalEnd, granularity);
+  if (alignedEnd.getTime() < originalEnd.getTime()) {
+    const intervalSeconds = convertGranularityToSeconds(granularity);
+    alignedEnd = add(alignedEnd, { seconds: intervalSeconds });
+  }
+
+  return [alignedStart, alignedEnd];
+}
 
 export function convertToTimeChartConfig(config: ChartConfigWithDateRange) {
   const granularity =
@@ -147,8 +165,15 @@ export function convertToTimeChartConfig(config: ChartConfigWithDateRange) {
       ? convertDateRangeToGranularityString(config.dateRange, 80)
       : config.granularity;
 
+  const dateRange =
+    config.alignDateRangeToGranularity === false
+      ? config.dateRange
+      : getAlignedDateRange(config.dateRange, granularity);
+
   return {
     ...config,
+    dateRange,
+    dateRangeEndInclusive: false,
     granularity,
     limit: { limit: 100000 },
   };
@@ -549,16 +574,9 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
-export function getPreviousPeriodOffsetSeconds(
-  dateRange: [Date, Date],
-): number {
-  const [start, end] = dateRange;
-  return Math.round((end.getTime() - start.getTime()) / 1000);
-}
-
 export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
   const [start, end] = currentRange;
-  const offsetSeconds = getPreviousPeriodOffsetSeconds(currentRange);
+  const offsetSeconds = differenceInSeconds(end, start);
   return [
     new Date(start.getTime() - offsetSeconds * 1000),
     new Date(end.getTime() - offsetSeconds * 1000),
@@ -622,7 +640,7 @@ function addResponseToFormattedData({
   lineDataMap,
   tsBucketMap,
   source,
-  currentPeriodDateRange,
+  previousPeriodOffsetSeconds,
   isPreviousPeriod,
   hiddenSeries = [],
 }: {
@@ -631,7 +649,7 @@ function addResponseToFormattedData({
   response: ResponseJSON<Record<string, any>>;
   source?: TSource;
   isPreviousPeriod: boolean;
-  currentPeriodDateRange: [Date, Date];
+  previousPeriodOffsetSeconds: number;
   hiddenSeries?: string[];
 }) {
   const { meta, data } = response;
@@ -655,9 +673,7 @@ function addResponseToFormattedData({
     const date = new Date(row[timestampColumn.name]);
 
     // Previous period data needs to be shifted forward to align with current period
-    const offsetSeconds = isPreviousPeriod
-      ? getPreviousPeriodOffsetSeconds(currentPeriodDateRange)
-      : 0;
+    const offsetSeconds = isPreviousPeriod ? previousPeriodOffsetSeconds : 0;
     const ts = Math.round(date.getTime() / 1000 + offsetSeconds);
 
     for (const valueColumn of valueColumns) {
@@ -712,6 +728,7 @@ export function formatResponseForTimeChart({
   generateEmptyBuckets = true,
   source,
   hiddenSeries = [],
+  previousPeriodOffsetSeconds = 0,
 }: {
   dateRange: [Date, Date];
   granularity?: SQLInterval;
@@ -720,6 +737,7 @@ export function formatResponseForTimeChart({
   generateEmptyBuckets?: boolean;
   source?: TSource;
   hiddenSeries?: string[];
+  previousPeriodOffsetSeconds?: number;
 }) {
   const meta = currentPeriodResponse.meta;
 
@@ -750,7 +768,7 @@ export function formatResponseForTimeChart({
     tsBucketMap,
     source,
     isPreviousPeriod: false,
-    currentPeriodDateRange: dateRange,
+    previousPeriodOffsetSeconds,
     hiddenSeries,
   });
 
@@ -761,7 +779,7 @@ export function formatResponseForTimeChart({
       tsBucketMap,
       source,
       isPreviousPeriod: true,
-      currentPeriodDateRange: dateRange,
+      previousPeriodOffsetSeconds,
       hiddenSeries,
     });
   }

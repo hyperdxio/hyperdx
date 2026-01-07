@@ -24,11 +24,21 @@ function usePyodide(options: { enabled: boolean }) {
       const pyodide = await window.loadPyodide();
       await pyodide.loadPackage('micropip');
       const micropip = pyodide.pyimport('micropip');
-      const url = new URL(
+
+      // Install jsonpickle first (drain3 dependency)
+      const jsonpickleUrl = new URL(
+        '/jsonpickle-4.1.1-py3-none-any.whl',
+        window.location.origin,
+      );
+      await micropip.install(jsonpickleUrl.href);
+
+      // Then install drain3
+      const drain3Url = new URL(
         '/drain3-0.9.11-py3-none-any.whl',
         window.location.origin,
       );
-      await micropip.install(url.href);
+      await micropip.install(drain3Url.href);
+
       return pyodide;
     },
     refetchOnWindowFocus: false,

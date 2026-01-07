@@ -485,6 +485,10 @@ export default function EditTimeChartForm({
     control,
     name: 'compareToPreviousPeriod',
   });
+  const alignDateRangeToGranularity = useWatch({
+    control,
+    name: 'alignDateRangeToGranularity',
+  });
   const groupBy = useWatch({ control, name: 'groupBy' });
   const displayType =
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
@@ -496,9 +500,6 @@ export default function EditTimeChartForm({
   const databaseName = tableSource?.from.databaseName;
   const tableName = tableSource?.from.tableName;
 
-  // const tableSource = tableSourceWatch();
-  // const databaseName = tableSourceWatch('from.databaseName');
-  // const tableName = tableSourceWatch('from.tableName');
   const activeTab = useMemo(() => {
     switch (displayType) {
       case DisplayType.Search:
@@ -522,19 +523,6 @@ export default function EditTimeChartForm({
 
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
   const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
-
-  // const queriedConfig: ChartConfigWithDateRange | undefined = useMemo(() => {
-  //   if (queriedTableSource == null) {
-  //     return undefined;
-  //   }
-
-  //   return {
-  //     ...chartConfig,
-  //     from: queriedTableSource.from,
-  //     timestampValueExpression: queriedTableSource?.timestampValueExpression,
-  //     dateRange,
-  //   };
-  // }, [dateRange, chartConfig, queriedTableSource]);
 
   // Only update this on submit, otherwise we'll have issues
   // with using the source value from the last submit
@@ -706,6 +694,20 @@ export default function EditTimeChartForm({
       };
     });
   }, [dateRange]);
+
+  // Trigger a search when "Show Complete Intervals" changes
+  useEffect(() => {
+    setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
+      if (config == null) {
+        return config;
+      }
+
+      return {
+        ...config,
+        alignDateRangeToGranularity,
+      };
+    });
+  }, [alignDateRangeToGranularity]);
 
   // Trigger a search when "compare to previous period" changes
   useEffect(() => {
@@ -1215,6 +1217,11 @@ export default function EditTimeChartForm({
         <Group justify="end" mb="xs">
           <SwitchControlled
             control={control}
+            name="alignDateRangeToGranularity"
+            label="Show Complete Intervals"
+          />
+          <SwitchControlled
+            control={control}
             name="compareToPreviousPeriod"
             label={
               <>
@@ -1244,10 +1251,7 @@ export default function EditTimeChartForm({
         </Paper>
       ) : undefined}
       {queryReady && queriedConfig != null && activeTab === 'table' && (
-        <div
-          className="flex-grow-1 d-flex flex-column"
-          style={{ minHeight: 400 }}
-        >
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBTableChart
             config={queriedConfig}
             getRowSearchLink={row =>
@@ -1260,14 +1264,12 @@ export default function EditTimeChartForm({
             }
             onSortingChange={onTableSortingChange}
             sort={tableSortState}
+            showMVOptimizationIndicator={false}
           />
         </div>
       )}
       {queryReady && dbTimeChartConfig != null && activeTab === 'time' && (
-        <div
-          className="flex-grow-1 d-flex flex-column"
-          style={{ minHeight: 400 }}
-        >
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBTimeChart
             sourceId={sourceId}
             config={dbTimeChartConfig}
@@ -1279,15 +1281,16 @@ export default function EditTimeChartForm({
                 thresholdType: alert.thresholdType,
               })
             }
+            showMVOptimizationIndicator={false}
           />
         </div>
       )}
       {queryReady && queriedConfig != null && activeTab === 'number' && (
-        <div
-          className="flex-grow-1 d-flex flex-column"
-          style={{ minHeight: 400 }}
-        >
-          <DBNumberChart config={queriedConfig} />
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBNumberChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+          />
         </div>
       )}
       {queryReady &&

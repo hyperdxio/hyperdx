@@ -1,14 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import cx from 'classnames';
-import { add } from 'date-fns';
+import { add, differenceInSeconds } from 'date-fns';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import {
-  ActionIcon,
   Button,
   Code,
   Group,
@@ -24,6 +22,7 @@ import {
   IconArrowsDiagonal,
   IconChartBar,
   IconChartLine,
+  IconClock,
   IconSearch,
 } from '@tabler/icons-react';
 
@@ -35,8 +34,8 @@ import {
   convertGranularityToSeconds,
   convertToTimeChartConfig,
   formatResponseForTimeChart,
+  getAlignedDateRange,
   getPreviousDateRange,
-  getPreviousPeriodOffsetSeconds,
   PreviousPeriodSuffix,
   useTimeChartSettings,
 } from '@/ChartUtils';
@@ -44,6 +43,9 @@ import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useSource } from '@/source';
 
+import ChartContainer from './charts/ChartContainer';
+import DisplaySwitcher from './charts/DisplaySwitcher';
+import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
 type ActiveClickPayload = {
@@ -214,6 +216,10 @@ type DBTimeChartComponentProps = {
   sourceId?: string;
   /** Names of series that should not be shown in the chart */
   hiddenSeries?: string[];
+  title?: React.ReactNode;
+  toolbarPrefix?: React.ReactNode[];
+  toolbarSuffix?: React.ReactNode[];
+  showMVOptimizationIndicator?: boolean;
 };
 
 function DBTimeChartComponent({
@@ -231,8 +237,14 @@ function DBTimeChartComponent({
   showLegend = true,
   sourceId,
   hiddenSeries,
+  title,
+  toolbarPrefix,
+  toolbarSuffix,
+  showMVOptimizationIndicator = true,
 }: DBTimeChartComponentProps) {
   const [isErrorExpanded, errorExpansion] = useDisclosure(false);
+
+  const originalDateRange = config.dateRange;
   const {
     displayType: displayTypeProp,
     dateRange,
@@ -266,17 +278,32 @@ function DBTimeChartComponent({
     });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
+    const previousPeriodDateRange =
+      queriedConfig.alignDateRangeToGranularity === false
+        ? getPreviousDateRange(originalDateRange)
+        : getAlignedDateRange(
+            getPreviousDateRange(originalDateRange),
+            queriedConfig.granularity,
+          );
+
     return {
       ...queriedConfig,
-      dateRange: getPreviousDateRange(dateRange),
+      dateRange: previousPeriodDateRange,
     };
-  }, [queriedConfig, dateRange]);
+  }, [queriedConfig, originalDateRange]);
 
   const previousPeriodOffsetSeconds = useMemo(() => {
     return config.compareToPreviousPeriod
-      ? getPreviousPeriodOffsetSeconds(dateRange)
+      ? differenceInSeconds(
+          dateRange[0],
+          previousPeriodChartConfig.dateRange[0],
+        )
       : undefined;
-  }, [dateRange, config.compareToPreviousPeriod]);
+  }, [
+    config.compareToPreviousPeriod,
+    dateRange,
+    previousPeriodChartConfig.dateRange,
+  ]);
 
   const { data: previousPeriodData, isLoading: isPreviousPeriodLoading } =
     useQueriedChartConfig(previousPeriodChartConfig, {
@@ -298,7 +325,7 @@ function DBTimeChartComponent({
     !data?.isComplete ||
     (config.compareToPreviousPeriod && !previousPeriodData?.isComplete) ||
     isPlaceholderData;
-  const { data: source } = useSource({ id: sourceId });
+  const { data: source } = useSource({ id: sourceId || config.source });
 
   const {
     graphResults,
@@ -332,6 +359,7 @@ function DBTimeChartComponent({
         generateEmptyBuckets: fillNulls !== false,
         source,
         hiddenSeries,
+        previousPeriodOffsetSeconds,
       });
     } catch (e) {
       console.error(e);
@@ -347,6 +375,7 @@ function DBTimeChartComponent({
     config.compareToPreviousPeriod,
     previousPeriodData,
     hiddenSeries,
+    previousPeriodOffsetSeconds,
   ]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType
@@ -360,13 +389,16 @@ function DBTimeChartComponent({
     }
   }, [displayTypeLocal, displayTypeProp, setDisplayType]);
 
-  const handleSetDisplayType = (type: DisplayType) => {
-    if (setDisplayType) {
-      setDisplayType(type);
-    } else {
-      setDisplayTypeLocal(type);
-    }
-  };
+  const handleSetDisplayType = useCallback(
+    (type: DisplayType) => {
+      if (setDisplayType) {
+        setDisplayType(type);
+      } else {
+        setDisplayTypeLocal(type);
+      }
+    },
+    [setDisplayType],
+  );
 
   useEffect(() => {
     if (config.compareToPreviousPeriod) {
@@ -516,166 +548,145 @@ function DBTimeChartComponent({
     ],
   );
 
-  return isLoading && !data ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      Loading Chart Data...
-    </div>
-  ) : isError ? (
-    <div className="h-100 w-100 d-flex g-1 flex-column align-items-center justify-content-center text-muted overflow-auto">
-      <Text ta="center" size="sm" mt="sm">
-        Error loading chart, please check your query or try again later.
-      </Text>
-      <Button
-        className="mx-auto"
-        variant="subtle"
-        color="red"
-        onClick={() => errorExpansion.open()}
-      >
-        <Group gap="xxs">
-          <IconArrowsDiagonal size={16} />
-          See Error Details
-        </Group>
-      </Button>
-      <Modal
-        opened={isErrorExpanded}
-        onClose={() => errorExpansion.close()}
-        title="Error Details"
-      >
-        <Group align="start">
-          <Text size="sm" ta="center">
-            Error Message:
-          </Text>
-          <Code
-            block
-            style={{
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {error.message}
-          </Code>
-          {error instanceof ClickHouseQueryError && (
-            <>
-              <Text my="sm" size="sm" ta="center">
-                Sent Query:
-              </Text>
-              <SQLPreview data={error?.query} />
-            </>
-          )}
-        </Group>
-      </Modal>
-    </div>
-  ) : graphResults.length === 0 ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      No data found within time range.
-    </div>
-  ) : (
-    <div
-      // Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        flexGrow: 1,
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          top: 0,
-        }}
-      >
-        <ActiveTimeTooltip
-          activeClickPayload={activeClickPayload}
-          buildSearchUrl={buildSearchUrl}
-          onDismiss={() => setActiveClickPayload(undefined)}
-        />
-        {/* {totalGroups > groupKeys.length ? (
-                <div
-                  className="bg-muted px-3 py-2 rounded fs-8"
-                  style={{
-                    zIndex: 5,
-                    position: 'absolute',
-                    top: 0,
-                    left: 50,
-                    visibility: 'visible',
-                  }}
-                  title={`Only the top ${groupKeys.length} groups are shown, ${
-                    totalGroups - groupKeys.length
-                  } groups are hidden. Try grouping by a different field.`}
-                >
-                  <span className="text-muted-hover text-decoration-none fs-8">
-                    <IconAlertTriangle size={14} style={{ display: 'inline' }} /> Only top{' '}
-                    {groupKeys.length} groups shown
-                  </span>
-                </div>
-                ) : null*/}
-        {showDisplaySwitcher && (
-          <div
-            className="bg-muted px-2 py-1 rounded fs-8"
-            style={{
-              zIndex: 5,
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              visibility: 'visible',
-            }}
-          >
-            <Tooltip label="Display as Line Chart">
-              <ActionIcon
-                size="xs"
-                me={2}
-                className={cx({
-                  'text-success': displayType === 'line',
-                  'text-muted-hover': displayType !== 'line',
-                })}
-                onClick={() => handleSetDisplayType(DisplayType.Line)}
-              >
-                <IconChartLine />
-              </ActionIcon>
-            </Tooltip>
+  const toolbarItemsMemo = useMemo(() => {
+    const allToolbarItems = [];
 
-            <Tooltip
-              label={
-                config.compareToPreviousPeriod
-                  ? 'Bar Chart Unavailable When Comparing to Previous Period'
-                  : 'Display as Bar Chart'
-              }
-            >
-              <ActionIcon
-                size="xs"
-                className={cx({
-                  'text-success': displayType === 'stacked_bar',
-                  'text-muted-hover': displayType !== 'stacked_bar',
-                })}
-                disabled={config.compareToPreviousPeriod}
-                onClick={() => handleSetDisplayType(DisplayType.StackedBar)}
+    if (toolbarPrefix && toolbarPrefix.length > 0) {
+      allToolbarItems.push(...toolbarPrefix);
+    }
+
+    if (source && showMVOptimizationIndicator) {
+      allToolbarItems.push(
+        <MVOptimizationIndicator
+          key="db-time-chart-mv-indicator"
+          config={config}
+          source={source}
+          variant="icon"
+        />,
+      );
+    }
+
+    if (showDisplaySwitcher) {
+      allToolbarItems.push(
+        <DisplaySwitcher
+          key="db-time-chart-display-switcher"
+          value={displayType}
+          onChange={handleSetDisplayType}
+          options={[
+            {
+              value: DisplayType.Line,
+              label: 'Display as Line Chart',
+              icon: <IconChartLine />,
+            },
+            {
+              value: DisplayType.StackedBar,
+              label: config.compareToPreviousPeriod
+                ? 'Bar Chart Unavailable When Comparing to Previous Period'
+                : 'Display as Bar Chart',
+              icon: <IconChartBar />,
+              disabled: config.compareToPreviousPeriod,
+            },
+          ]}
+        />,
+      );
+    }
+
+    if (toolbarSuffix && toolbarSuffix.length > 0) {
+      allToolbarItems.push(...toolbarSuffix);
+    }
+
+    return allToolbarItems;
+  }, [
+    config,
+    displayType,
+    handleSetDisplayType,
+    showDisplaySwitcher,
+    source,
+    toolbarPrefix,
+    toolbarSuffix,
+    showMVOptimizationIndicator,
+  ]);
+
+  return (
+    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+      {isLoading && !data ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          Loading Chart Data...
+        </div>
+      ) : isError ? (
+        <div className="h-100 w-100 d-flex g-1 flex-column align-items-center justify-content-center text-muted overflow-auto">
+          <Text ta="center" size="sm" mt="sm">
+            Error loading chart, please check your query or try again later.
+          </Text>
+          <Button
+            className="mx-auto"
+            variant="subtle"
+            color="red"
+            onClick={() => errorExpansion.open()}
+          >
+            <Group gap="xxs">
+              <IconArrowsDiagonal size={16} />
+              See Error Details
+            </Group>
+          </Button>
+          <Modal
+            opened={isErrorExpanded}
+            onClose={() => errorExpansion.close()}
+            title="Error Details"
+          >
+            <Group align="start">
+              <Text size="sm" ta="center">
+                Error Message:
+              </Text>
+              <Code
+                block
+                style={{
+                  whiteSpace: 'pre-wrap',
+                }}
               >
-                <IconChartBar />
-              </ActionIcon>
-            </Tooltip>
-          </div>
-        )}
-        <MemoChart
-          dateRange={dateRange}
-          displayType={displayType}
-          graphResults={graphResults}
-          isClickActive={activeClickPayload}
-          lineData={lineData}
-          isLoading={isLoadingOrPlaceholder}
-          logReferenceTimestamp={logReferenceTimestamp}
-          numberFormat={config.numberFormat}
-          onTimeRangeSelect={onTimeRangeSelect}
-          referenceLines={referenceLines}
-          setIsClickActive={setActiveClickPayloadIfSourceAvailable}
-          showLegend={showLegend}
-          timestampKey={timestampColumn?.name}
-          previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
-        />
-      </div>
-    </div>
+                {error.message}
+              </Code>
+              {error instanceof ClickHouseQueryError && (
+                <>
+                  <Text my="sm" size="sm" ta="center">
+                    Sent Query:
+                  </Text>
+                  <SQLPreview data={error?.query} />
+                </>
+              )}
+            </Group>
+          </Modal>
+        </div>
+      ) : graphResults.length === 0 ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          No data found within time range.
+        </div>
+      ) : (
+        <>
+          <ActiveTimeTooltip
+            activeClickPayload={activeClickPayload}
+            buildSearchUrl={buildSearchUrl}
+            onDismiss={() => setActiveClickPayload(undefined)}
+          />
+          <MemoChart
+            dateRange={dateRange}
+            displayType={displayType}
+            graphResults={graphResults}
+            isClickActive={activeClickPayload}
+            lineData={lineData}
+            isLoading={isLoadingOrPlaceholder}
+            logReferenceTimestamp={logReferenceTimestamp}
+            numberFormat={config.numberFormat}
+            onTimeRangeSelect={onTimeRangeSelect}
+            referenceLines={referenceLines}
+            setIsClickActive={setActiveClickPayloadIfSourceAvailable}
+            showLegend={showLegend}
+            timestampKey={timestampColumn?.name}
+            previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+          />
+        </>
+      )}
+    </ChartContainer>
   );
 }
 

@@ -98,12 +98,10 @@ const InfraSubpanelGroup = ({
         </Group>
       </Group>
       <SimpleGrid mt="md" cols={cols}>
-        <Card p="md" data-testid="cpu-usage-card">
-          <Card.Section p="md" py="xs" withBorder>
-            CPU Usage (%)
-          </Card.Section>
-          <Card.Section py={8} px={4} h={height}>
+        <Card data-testid="cpu-usage-card">
+          <Card.Section py={8} px={8} h={height}>
             <DBTimeChart
+              title="CPU Usage (%)"
               config={convertV1ChartConfigToV2(
                 {
                   dateRange,
@@ -130,12 +128,10 @@ const InfraSubpanelGroup = ({
             />
           </Card.Section>
         </Card>
-        <Card p="md" data-testid="memory-usage-card">
-          <Card.Section p="md" py="xs" withBorder>
-            Memory Used
-          </Card.Section>
-          <Card.Section py={8} px={4} h={height}>
+        <Card data-testid="memory-usage-card">
+          <Card.Section py={8} px={8} h={height}>
             <DBTimeChart
+              title="Memory Used"
               config={convertV1ChartConfigToV2(
                 {
                   dateRange,
@@ -162,12 +158,10 @@ const InfraSubpanelGroup = ({
             />
           </Card.Section>
         </Card>
-        <Card p="md" data-testid="disk-usage-card">
-          <Card.Section p="md" py="xs" withBorder>
-            Disk Available
-          </Card.Section>
-          <Card.Section py={8} px={4} h={height}>
+        <Card data-testid="disk-usage-card">
+          <Card.Section py={8} px={8} h={height}>
             <DBTimeChart
+              title="Disk Available"
               config={convertV1ChartConfigToV2(
                 {
                   dateRange,
@@ -230,7 +224,7 @@ export default ({
           )}
           {source && (
             <Card p="md" mt="xl">
-              <Card.Section p="md" py="xs" withBorder>
+              <Card.Section p="md" py="xs">
                 Pod Timeline
               </Card.Section>
               <Card.Section>

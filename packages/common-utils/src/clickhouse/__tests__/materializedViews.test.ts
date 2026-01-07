@@ -105,7 +105,7 @@ describe('materializedViews', () => {
       });
     });
 
-    it('should return mvConfig and errors if selecting a column which is not in the materialized view', async () => {
+    it('should return errors if selecting a column which is not in the materialized view', async () => {
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {
           databaseName: 'default',
@@ -133,7 +133,7 @@ describe('materializedViews', () => {
       ]);
     });
 
-    it('should return mvConfig and errors if selecting an aggregation which is not supported for the specified column', async () => {
+    it('should return errors if selecting an aggregation which is not supported for the specified column', async () => {
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {
           databaseName: 'default',
@@ -627,7 +627,7 @@ describe('materializedViews', () => {
       expect(result.errors).toBeUndefined();
     });
 
-    it('should return mvConfig and errors if the granularity of the query is less than the materialized view granularity', async () => {
+    it('should return errors if the granularity of the query is less than the materialized view granularity', async () => {
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {
           databaseName: 'default',
@@ -641,7 +641,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
-        granularity: '30 seconds',
+        granularity: '30 second',
       };
 
       const result = await tryConvertConfigToMaterializedViewSelect(
@@ -651,10 +651,41 @@ describe('materializedViews', () => {
       );
 
       expect(result.optimizedConfig).toBeUndefined();
-      expect(result.errors).toEqual(['Granularity must be at least 1 minute.']);
+      expect(result.errors).toEqual([
+        "Granularity must be a multiple of the view's granularity (1 minute).",
+      ]);
     });
 
-    it('should return mvConfig and errors if no granularity is specified but the date range is too short for the MV granularity', async () => {
+    it('should return errors if the granularity of the query is greater than but not a multiple of the materialized view granularity', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: '',
+            aggFn: 'count',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        granularity: '90 second',
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        metadata,
+      );
+
+      expect(result.optimizedConfig).toBeUndefined();
+      expect(result.errors).toEqual([
+        "Granularity must be a multiple of the view's granularity (1 minute).",
+      ]);
+    });
+
+    it('should return errors if no granularity is specified but the date range is too short for the MV granularity', async () => {
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {
           databaseName: 'default',
@@ -894,6 +925,54 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        dateRangeEndInclusive: false,
+      });
+      expect(result.errors).toBeUndefined();
+    });
+
+    it('should set dateRangeEndInclusive to false when optimizing a config with dateRange', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: '',
+            aggFn: 'count',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        granularity: '1 minute',
+        dateRange: [
+          new Date('2023-01-01T00:00:00Z'),
+          new Date('2023-01-02T01:00:00Z'),
+        ],
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        metadata,
+      );
+
+      expect(result.optimizedConfig).toEqual({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'count',
+            aggFn: 'sum',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        granularity: '1 minute',
+        dateRange: chartConfig.dateRange,
+        dateRangeEndInclusive: false,
       });
       expect(result.errors).toBeUndefined();
     });
@@ -1371,7 +1450,7 @@ describe('materializedViews', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('should return mvConfig and errors if the generated MV config is not valid', async () => {
+    it('should return errors if the generated MV config is not valid', async () => {
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {
           databaseName: 'default',
@@ -1539,7 +1618,9 @@ describe('materializedViews', () => {
       expect(result.explanations).toEqual([
         {
           mvConfig: MV_CONFIG_METRIC_ROLLUP_1M,
-          errors: ['Granularity must be at least 1 minute.'],
+          errors: [
+            "Granularity must be a multiple of the view's granularity (1 minute).",
+          ],
           success: false,
         },
         {

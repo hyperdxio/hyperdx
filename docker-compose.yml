@@ -15,7 +15,7 @@ services:
   #   depends_on:
   #     - app
   db:
-    image: mongo:5.0.14-focal
+    image: mongo:5.0.32-focal
     volumes:
       - .volumes/db:/data/db
     # WARNING: Exposing the database port will make it accessible from outside the container,

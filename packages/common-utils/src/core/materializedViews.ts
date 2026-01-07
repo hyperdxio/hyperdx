@@ -150,7 +150,13 @@ function mvConfigSupportsGranularity(
     mvConfig.minGranularity,
   );
 
-  return chartGranularitySeconds >= mvGranularitySeconds;
+  // The chart granularity must be a multiple of the MV granularity,
+  // to avoid unequal distribution of data across chart time buckets
+  // which don't align with the MV time buckets.
+  return (
+    chartGranularitySeconds >= mvGranularitySeconds &&
+    chartGranularitySeconds % mvGranularitySeconds === 0
+  );
 }
 
 function mvConfigSupportsDateRange(
@@ -296,7 +302,7 @@ export async function tryConvertConfigToMaterializedViewSelect<
 
   if (!mvConfigSupportsGranularity(mvConfig, chartConfig)) {
     const error = chartConfig.granularity
-      ? `Granularity must be at least ${mvConfig.minGranularity}.`
+      ? `Granularity must be a multiple of the view's granularity (${mvConfig.minGranularity}).`
       : 'The selected date range is too short for the granularity of this materialized view.';
     return { errors: [error] };
   }
@@ -334,13 +340,15 @@ export async function tryConvertConfigToMaterializedViewSelect<
     };
   }
 
-  const clonedConfig = {
+  const clonedConfig: C = {
     ...structuredClone(chartConfig),
     select,
     from: {
       databaseName: mvConfig.databaseName,
       tableName: mvConfig.tableName,
     },
+    // Make the date range end exclusive to avoid selecting the entire next time bucket from the MV
+    ...('dateRange' in chartConfig ? { dateRangeEndInclusive: false } : {}),
   };
 
   return {
@@ -353,7 +361,7 @@ async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
   config: C,
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
   mvConfig: MaterializedViewConfiguration,
   sourceFrom: TSource['from'],
 ) {
@@ -457,7 +465,7 @@ export async function tryOptimizeConfigWithMaterializedViewWithExplanations<
   config: C,
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
   source: Pick<TSource, 'from'> & Partial<Pick<TSource, 'materializedViews'>>,
 ): Promise<{
   optimizedConfig?: C;
@@ -511,7 +519,7 @@ export async function tryOptimizeConfigWithMaterializedView<
   config: C,
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
   source: Pick<TSource, 'from'> & Partial<Pick<TSource, 'materializedViews'>>,
 ) {
   const { optimizedConfig } =
