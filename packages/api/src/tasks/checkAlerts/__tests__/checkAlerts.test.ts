@@ -123,6 +123,37 @@ describe('checkAlerts', () => {
   });
 
   describe('Alert Templates', () => {
+    // Create a mock metadata object with the necessary methods
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const mockMetadata = {
+      getColumn: jest.fn().mockImplementation(({ column }) => {
+        // Provide basic column definitions for common columns to avoid warnings
+        const columnMap = {
+          Timestamp: { name: 'Timestamp', type: 'DateTime' },
+          Body: { name: 'Body', type: 'String' },
+          SeverityText: { name: 'SeverityText', type: 'String' },
+          ServiceName: { name: 'ServiceName', type: 'String' },
+        };
+        return Promise.resolve(columnMap[column]);
+      }),
+      getColumns: jest.fn().mockResolvedValue([]),
+      getMapKeys: jest.fn().mockResolvedValue([]),
+      getMapValues: jest.fn().mockResolvedValue([]),
+      getAllFields: jest.fn().mockResolvedValue([]),
+      getTableMetadata: jest.fn().mockResolvedValue({}),
+      getClickHouseSettings: jest.fn().mockReturnValue({}),
+      setClickHouseSettings: jest.fn(),
+    } as any;
+
+    // Create a mock clickhouse client
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const mockClickhouseClient = {
+      query: jest.fn().mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ data: [] }),
+        text: jest.fn().mockResolvedValue(''),
+      }),
+    } as any;
+
     const defaultSearchView: AlertMessageTemplateDefaultView = {
       alert: {
         thresholdType: AlertThresholdType.ABOVE,
@@ -525,8 +556,8 @@ describe('checkAlerts', () => {
 
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.ALERT,
         template: 'Custom body @webhook-My_Web', // partial name should work
         view: {
@@ -560,8 +591,8 @@ describe('checkAlerts', () => {
 
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.ALERT,
         template: 'Custom body @webhook-My_Web', // partial name should work
         view: {
@@ -617,8 +648,8 @@ describe('checkAlerts', () => {
 
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.ALERT,
         template: 'Custom body @webhook-{{attributes.webhookName}}', // partial name should work
         view: {
@@ -687,8 +718,8 @@ describe('checkAlerts', () => {
 
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.ALERT,
         template: `
 {{#is_match "attributes.k8s.pod.name" "otel-collector-123"}}
@@ -725,8 +756,8 @@ describe('checkAlerts', () => {
       // @webhook should not be called
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.ALERT,
         template:
           '{{#is_match "attributes.host" "web"}} @webhook-My_Web {{/is_match}}', // partial name should work
@@ -818,8 +849,8 @@ describe('checkAlerts', () => {
 
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.OK, // Resolved state
         template: '@webhook-My_Webhook',
         view: {

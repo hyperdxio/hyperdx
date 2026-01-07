@@ -54,7 +54,9 @@ if (!config.IS_LOCAL_APP_MODE) {
   app.use(passport.session());
 }
 
-app.use(expressLogger);
+if (!config.IS_CI) {
+  app.use(expressLogger);
+}
 // Allows timing data from frontend package
 // see: https://github.com/expressjs/cors/issues/102
 app.use(function (req, res, next) {

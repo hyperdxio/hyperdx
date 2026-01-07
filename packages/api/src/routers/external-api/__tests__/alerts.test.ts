@@ -231,6 +231,11 @@ describe('External API Alerts', () => {
     });
 
     it('should handle validation errors when creating alerts', async () => {
+      // Spy on console.error to suppress error output in tests
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
       // Missing required fields
       const invalidInput = {
         name: 'Invalid Alert',
@@ -243,6 +248,9 @@ describe('External API Alerts', () => {
         .expect(500);
 
       expect(response.body).toHaveProperty('message');
+
+      // Restore console.error
+      consoleErrorSpy.mockRestore();
     });
 
     it('should create multiple alerts for different tiles', async () => {

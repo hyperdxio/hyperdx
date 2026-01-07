@@ -414,6 +414,11 @@ describe('External API v2 Charts', () => {
     });
 
     it('should handle lucene query errors gracefully', async () => {
+      // Spy on console.error to suppress expected error output
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
       const payload = createSeriesRequestPayload(logSource.id.toString(), {
         series: [{ aggFn: 'count', where: '(invalid query', groupBy: [] }],
       });
@@ -421,9 +426,17 @@ describe('External API v2 Charts', () => {
         .send(payload)
         .expect(500);
       expect(response.body).toHaveProperty('error');
+
+      // Restore console.error
+      consoleErrorSpy.mockRestore();
     });
 
     it('should handle sql query errors gracefully', async () => {
+      // Spy on console.error to suppress expected error output
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
       const payload = createSeriesRequestPayload(logSource.id.toString(), {
         series: [
           {
@@ -438,6 +451,9 @@ describe('External API v2 Charts', () => {
         .send(payload)
         .expect(500);
       expect(response.body).toHaveProperty('error');
+
+      // Restore console.error
+      consoleErrorSpy.mockRestore();
     });
 
     it('should return data grouped by a single field', async () => {
