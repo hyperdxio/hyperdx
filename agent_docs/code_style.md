@@ -23,6 +23,22 @@
 - Define TypeScript interfaces for props
 - Use proper keys for lists, memoization for expensive computations
 
+## Mantine UI Components
+
+The project uses Mantine UI with **custom variants** defined in `packages/app/src/theme/mantineTheme.ts`:
+
+### Custom Button Variants
+- `variant="primary"` - Light green button for primary actions
+- `variant="secondary"` - Default styled button for secondary actions  
+- `variant="danger"` - Light red button for destructive actions
+
+### Custom ActionIcon Variants
+- `variant="primary"` - Light green action icon
+- `variant="secondary"` - Default styled action icon
+- `variant="danger"` - Light red action icon for destructive actions
+
+These are valid variants - do not replace them with standard Mantine variants like `variant="light" color="red"`.
+
 ## Refactoring
 
 - Edit files directly - don't create `component-v2.tsx` copies

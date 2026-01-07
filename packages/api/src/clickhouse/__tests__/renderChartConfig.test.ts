@@ -108,7 +108,6 @@ describe('renderChartConfig', () => {
   });
 
   afterEach(async () => {
-    console.log('running db cleanup code');
     await server.clearDBs();
     jest.clearAllMocks();
   });

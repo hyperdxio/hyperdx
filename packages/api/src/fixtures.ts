@@ -36,7 +36,7 @@ export const DEFAULT_METRICS_TABLE = {
 
 let clickhouseClient: any;
 
-const getClickhouseClient = async () => {
+export const getTestFixtureClickHouseClient = async () => {
   if (!clickhouseClient) {
     clickhouseClient = createNativeClient({
       url: config.CLICKHOUSE_HOST,
@@ -60,7 +60,7 @@ const getClickhouseClient = async () => {
 };
 
 const healthCheck = async () => {
-  const client = await getClickhouseClient();
+  const client = await getTestFixtureClickHouseClient();
   const result = await client.ping();
   if (!result.success) {
     logger.error({ error: result.error }, 'ClickHouse health check failed');
@@ -72,7 +72,7 @@ const connectClickhouse = async () => {
   // health check
   await healthCheck();
 
-  const client = await getClickhouseClient();
+  const client = await getTestFixtureClickHouseClient();
   await client.command({
     query: `
       CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}
@@ -371,7 +371,7 @@ export const getLoggedInAgent = async (server: MockServer) => {
 // ------------------ Clickhouse ------------------
 // ------------------------------------------------
 export const executeSqlCommand = async (sql: string) => {
-  const client = await getClickhouseClient();
+  const client = await getTestFixtureClickHouseClient();
   return await client.command({
     query: sql,
     clickhouse_settings: {
@@ -393,7 +393,7 @@ export const clearClickhouseTables = async () => {
   ];
 
   const promises: any = [];
-  const client = await getClickhouseClient();
+  const client = await getTestFixtureClickHouseClient();
   for (const table of tables) {
     promises.push(
       client.command({
@@ -419,11 +419,14 @@ export const selectAllLogs = async () => {
     .then(res => res.json());
 };
 
-const _bulkInsertData = async (table: string, data: Record<string, any>[]) => {
+export const bulkInsertData = async (
+  table: string,
+  data: Record<string, any>[],
+) => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  const client = await getClickhouseClient();
+  const client = await getTestFixtureClickHouseClient();
   await client.insert({
     table,
     values: data,
@@ -447,7 +450,7 @@ export const bulkInsertLogs = async (
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  await _bulkInsertData(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`, events);
+  await bulkInsertData(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`, events);
 };
 
 export const bulkInsertMetricsGauge = async (
@@ -462,7 +465,7 @@ export const bulkInsertMetricsGauge = async (
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  await _bulkInsertData(
+  await bulkInsertData(
     `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}`,
     metrics,
   );
@@ -482,7 +485,7 @@ export const bulkInsertMetricsSum = async (
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  await _bulkInsertData(
+  await bulkInsertData(
     `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}`,
     metrics,
   );
@@ -501,7 +504,7 @@ export const bulkInsertMetricsHistogram = async (
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  await _bulkInsertData(
+  await bulkInsertData(
     `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}`,
     metrics,
   );

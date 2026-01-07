@@ -361,7 +361,7 @@ async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
   config: C,
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
   mvConfig: MaterializedViewConfiguration,
   sourceFrom: TSource['from'],
 ) {
@@ -465,7 +465,7 @@ export async function tryOptimizeConfigWithMaterializedViewWithExplanations<
   config: C,
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
   source: Pick<TSource, 'from'> & Partial<Pick<TSource, 'materializedViews'>>,
 ): Promise<{
   optimizedConfig?: C;
@@ -519,7 +519,7 @@ export async function tryOptimizeConfigWithMaterializedView<
   config: C,
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
   source: Pick<TSource, 'from'> & Partial<Pick<TSource, 'materializedViews'>>,
 ) {
   const { optimizedConfig } =
