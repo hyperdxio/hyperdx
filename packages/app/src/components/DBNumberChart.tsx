@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Flex, Text } from '@mantine/core';
 
+import { convertToNumberChartConfig } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { formatNumber, omit } from '@/utils';
+import { formatNumber } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -16,7 +18,11 @@ export default function DBNumberChart({
   queryKeyPrefix?: string;
   enabled?: boolean;
 }) {
-  const queriedConfig = omit(config, ['granularity', 'groupBy']);
+  const queriedConfig = useMemo(
+    () => convertToNumberChartConfig(config),
+    [config],
+  );
+
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     queriedConfig,
     {

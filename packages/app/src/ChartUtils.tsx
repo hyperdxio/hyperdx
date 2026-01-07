@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { add } from 'date-fns';
+import { omit } from 'lodash';
 import SqlString from 'sqlstring';
 import { z } from 'zod';
 import {
@@ -13,6 +14,7 @@ import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChart
 import {
   AggregateFunction as AggFnV2,
   ChartConfigWithDateRange,
+  ChartConfigWithOptTimestamp,
   DisplayType,
   Filter,
   MetricsDataType as MetricsDataTypeV2,
@@ -139,22 +141,30 @@ export const isGranularity = (value: string): value is Granularity => {
   return Object.values(Granularity).includes(value as Granularity);
 };
 
-export function useTimeChartSettings(chartConfig: ChartConfigWithDateRange) {
-  const autoGranularity = useMemo(() => {
-    return convertDateRangeToGranularityString(chartConfig.dateRange, 80);
-  }, [chartConfig.dateRange]);
-
+export function convertToTimeChartConfig(config: ChartConfigWithDateRange) {
   const granularity =
-    chartConfig.granularity === 'auto' || chartConfig.granularity == null
-      ? autoGranularity
-      : chartConfig.granularity;
+    config.granularity === 'auto' || config.granularity == null
+      ? convertDateRangeToGranularityString(config.dateRange, 80)
+      : config.granularity;
 
   return {
-    displayType: chartConfig.displayType,
-    dateRange: chartConfig.dateRange,
-    fillNulls: chartConfig.fillNulls,
+    ...config,
     granularity,
+    limit: { limit: 100000 },
   };
+}
+
+export function useTimeChartSettings(chartConfig: ChartConfigWithDateRange) {
+  return useMemo(() => {
+    const convertedConfig = convertToTimeChartConfig(chartConfig);
+
+    return {
+      displayType: convertedConfig.displayType,
+      dateRange: convertedConfig.dateRange,
+      fillNulls: convertedConfig.fillNulls,
+      granularity: convertedConfig.granularity,
+    };
+  }, [chartConfig]);
 }
 
 export function seriesToSearchQuery({
@@ -1148,4 +1158,33 @@ export function buildTableRowSearchUrl({
     groupFilters,
     valueRangeFilter,
   });
+}
+
+export function convertToNumberChartConfig(
+  config: ChartConfigWithDateRange,
+): ChartConfigWithOptTimestamp {
+  return omit(config, ['granularity', 'groupBy']);
+}
+
+export function convertToTableChartConfig(
+  config: ChartConfigWithOptTimestamp,
+): ChartConfigWithOptTimestamp {
+  const convertedConfig = structuredClone(omit(config, ['granularity']));
+
+  // Set a default limit if not already set
+  if (!convertedConfig.limit) {
+    convertedConfig.limit = { limit: 200 };
+  }
+
+  // Set a default orderBy if groupBy is set but orderBy is not,
+  // so that the set of rows within the limit is stable.
+  if (
+    convertedConfig.groupBy &&
+    typeof convertedConfig.groupBy === 'string' &&
+    !convertedConfig.orderBy
+  ) {
+    convertedConfig.orderBy = convertedConfig.groupBy;
+  }
+
+  return convertedConfig;
 }

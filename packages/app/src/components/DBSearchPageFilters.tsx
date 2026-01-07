@@ -1229,7 +1229,7 @@ const DBSearchPageFiltersComponent = ({
                   withArrow
                   label="Denoise results will visually remove events matching common event patterns from the results table."
                 >
-                  <Text size="xs" mt="-2px">
+                  <Text size="xs" mt="-2px" component="div">
                     <Group gap={2}>
                       <IconShadow
                         size={14}
@@ -1258,7 +1258,7 @@ const DBSearchPageFiltersComponent = ({
                     withArrow
                     label="Only show root spans (spans with no parent span)."
                   >
-                    <Text size="xs" mt="-2px">
+                    <Text size="xs" mt="-2px" component="div">
                       <Group gap={2}>
                         <IconSitemap
                           size={14}

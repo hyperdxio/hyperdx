@@ -3,10 +3,7 @@ import Head from 'next/head';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  SourceKind,
-  TeamClickHouseSettings,
-} from '@hyperdx/common-utils/dist/types';
+import { TeamClickHouseSettings } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
@@ -27,19 +24,15 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconCheck,
-  IconChevronDown,
-  IconChevronUp,
   IconClipboard,
-  IconDatabase,
   IconHelpCircle,
   IconPencil,
-  IconServer,
   IconX,
 } from '@tabler/icons-react';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
 import SelectControlled from '@/components/SelectControlled';
-import { TableSourceForm } from '@/components/SourceForm';
+import { SourcesList } from '@/components/Sources/SourcesList';
 import { IS_LOCAL_MODE } from '@/config';
 
 import { PageHeader } from './components/PageHeader';
@@ -49,8 +42,6 @@ import api from './api';
 import { useConnections } from './connection';
 import { DEFAULT_QUERY_TIMEOUT, DEFAULT_SEARCH_ROW_LIMIT } from './defaults';
 import { withAppNav } from './layout';
-import { useSources } from './source';
-import { capitalizeFirstLetter } from './utils';
 
 function ConnectionsSection() {
   const { data: connections } = useConnections();
@@ -64,7 +55,7 @@ function ConnectionsSection() {
     <Box id="connections">
       <Text size="md">Connections</Text>
       <Divider my="md" />
-      <Card variant="muted">
+      <Card>
         <Stack mb="md">
           {connections?.map(c => (
             <Box key={c.id}>
@@ -149,91 +140,15 @@ function ConnectionsSection() {
 }
 
 function SourcesSection() {
-  const { data: connections } = useConnections();
-  const { data: sources } = useSources();
-
-  const [editedSourceId, setEditedSourceId] = useState<string | null>(null);
-  const [isCreatingSource, setIsCreatingSource] = useState(false);
-
   return (
     <Box id="sources">
       <Text size="md">Sources</Text>
       <Divider my="md" />
-      <Card variant="muted">
-        <Stack>
-          {sources?.map(s => (
-            <>
-              <Flex key={s.id} justify="space-between" align="center">
-                <div>
-                  <Text>{s.name}</Text>
-                  <Text size="xxs" c="dimmed" mt="xs">
-                    <Group gap="xs">
-                      {capitalizeFirstLetter(s.kind)}
-                      <Group gap={2}>
-                        <IconServer size={14} />
-                        {connections?.find(c => c.id === s.connection)?.name}
-                      </Group>
-                      <Group gap={2}>
-                        {s.from && (
-                          <>
-                            <IconDatabase size={14} />
-                            {s.from.databaseName}
-                            {
-                              s.kind === SourceKind.Metric
-                                ? ''
-                                : '.' /** Metrics dont have table names */
-                            }
-                            {s.from.tableName}
-                          </>
-                        )}
-                      </Group>
-                    </Group>
-                  </Text>
-                </div>
-                {editedSourceId !== s.id && (
-                  <Button
-                    variant="subtle"
-                    onClick={() => setEditedSourceId(s.id)}
-                    size="sm"
-                  >
-                    <IconChevronDown size={14} />
-                  </Button>
-                )}
-                {editedSourceId === s.id && (
-                  <Button
-                    variant="subtle"
-                    onClick={() => setEditedSourceId(null)}
-                    size="sm"
-                  >
-                    <IconChevronUp size={14} />
-                  </Button>
-                )}
-              </Flex>
-              {editedSourceId === s.id && (
-                <TableSourceForm
-                  sourceId={s.id}
-                  onSave={() => setEditedSourceId(null)}
-                />
-              )}
-              <Divider />
-            </>
-          ))}
-          {!IS_LOCAL_MODE && isCreatingSource && (
-            <TableSourceForm
-              isNew
-              onCreate={() => {
-                setIsCreatingSource(false);
-              }}
-              onCancel={() => setIsCreatingSource(false)}
-            />
-          )}
-          {!IS_LOCAL_MODE && !isCreatingSource && (
-            <Button variant="default" onClick={() => setIsCreatingSource(true)}>
-              Add Source
-            </Button>
-          )}
-        </Stack>
-      </Card>
+      <SourcesList
+        withBorder={false}
+        variant="default"
+        showEmptyState={false}
+      />
     </Box>
   );
 }
@@ -242,7 +157,7 @@ function IntegrationsSection() {
     <Box id="integrations">
       <Text size="md">Integrations</Text>
       <Divider my="md" />
-      <Card variant="muted">
+      <Card>
         <Stack gap="md">
           <WebhooksSection />
         </Stack>
@@ -290,7 +205,7 @@ function TeamNameSection() {
     <Box id="team_name">
       <Text size="md">Team Name</Text>
       <Divider my="md" />
-      <Card variant="muted">
+      <Card>
         {isEditingTeamName ? (
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <Group gap="xs">
@@ -552,7 +467,7 @@ function TeamQueryConfigSection() {
     <Box id="team_name">
       <Text size="md">ClickHouse Client Settings</Text>
       <Divider my="md" />
-      <Card variant="muted">
+      <Card>
         <Stack>
           <ClickhouseSettingForm
             settingKey="searchRowLimit"
@@ -670,7 +585,7 @@ function ApiKeysSection() {
     <Box id="api_keys">
       <Text size="md">API Keys</Text>
       <Divider my="md" />
-      <Card variant="muted" mb="md">
+      <Card mb="md">
         <Text mb="md">Ingestion API Key</Text>
         <Group gap="xs">
           {team?.apiKey && (
@@ -726,7 +641,7 @@ function ApiKeysSection() {
         </Modal>
       </Card>
       {!isLoadingMe && me != null && (
-        <Card variant="muted">
+        <Card>
           <Card.Section p="md">
             <Text mb="md">Personal API Access Key</Text>
             <APIKeyCopyButton value={me.accessKey} dataTestId="api-key" />

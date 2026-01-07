@@ -58,26 +58,18 @@ import {
 import {
   inferMaterializedViewConfig,
   MV_AGGREGATE_FUNCTIONS,
+  MV_GRANULARITY_OPTIONS,
 } from '@/utils/materializedViews';
 
-import ConfirmDeleteMenu from './ConfirmDeleteMenu';
-import { ConnectionSelectControlled } from './ConnectionSelect';
-import { DatabaseSelectControlled } from './DatabaseSelect';
-import { DBTableSelectControlled } from './DBTableSelect';
-import { InputControlled } from './InputControlled';
-import SelectControlled from './SelectControlled';
-import { SQLInlineEditorControlled } from './SQLInlineEditor';
+import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
+import { ConnectionSelectControlled } from '../ConnectionSelect';
+import { DatabaseSelectControlled } from '../DatabaseSelect';
+import { DBTableSelectControlled } from '../DBTableSelect';
+import { InputControlled } from '../InputControlled';
+import SelectControlled from '../SelectControlled';
+import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
 const DEFAULT_DATABASE = 'default';
-
-const MV_GRANULARITY_OPTIONS = [
-  { value: '1 second', label: '1 second' },
-  { value: '1 minute', label: '1 minute' },
-  { value: '5 minute', label: '5 minutes' },
-  { value: '15 minute', label: '15 minutes' },
-  { value: '1 hour', label: '1 hour' },
-  { value: '1 day', label: '1 day' },
-];
 
 const MV_AGGREGATE_FUNCTION_OPTIONS = MV_AGGREGATE_FUNCTIONS.map(fn => ({
   value: fn,
@@ -584,12 +576,14 @@ function AggregatedColumnsFormSection({
               replaceAggregates(config.aggregatedColumns ?? []);
               notifications.show({
                 color: 'green',
+                id: 'mv-infer-success',
                 message:
                   'Partially inferred materialized view configuration from view schema.',
               });
             } else {
               notifications.show({
                 color: 'yellow',
+                id: 'mv-infer-failure',
                 message: 'Unable to infer materialized view configuration.',
               });
             }
@@ -1830,42 +1824,7 @@ export function TableSourceForm({
       }
     >
       <Stack gap="md" mb="md">
-        <Flex justify="space-between" align="center" mb="lg">
-          <Text>Source Settings</Text>
-          <Group>
-            {onCancel && (
-              <Button variant="outline" onClick={onCancel} size="xs">
-                Cancel
-              </Button>
-            )}
-            {isNew ? (
-              <Button
-                variant="outline"
-                color="green"
-                onClick={_onCreate}
-                size="xs"
-                loading={createSource.isPending}
-              >
-                Save New Source
-              </Button>
-            ) : (
-              <>
-                <ConfirmDeleteMenu
-                  onDelete={() => deleteSource.mutate({ id: sourceId ?? '' })}
-                />
-                <Button
-                  variant="outline"
-                  color="green"
-                  onClick={_onSave}
-                  size="xs"
-                  loading={createSource.isPending}
-                >
-                  Save Source
-                </Button>
-              </>
-            )}
-          </Group>
-        </Flex>
+        <Text mb="lg">Source Settings</Text>
         <FormRow label={'Name'}>
           <InputControlled
             control={control}
@@ -1920,6 +1879,37 @@ export function TableSourceForm({
         )}
       </Stack>
       <TableModelForm control={control} setValue={setValue} kind={kind} />
+      <Group justify="flex-end" mt="lg">
+        {onCancel && (
+          <Button variant="secondary" onClick={onCancel} size="xs">
+            Cancel
+          </Button>
+        )}
+        {isNew ? (
+          <Button
+            variant="primary"
+            onClick={_onCreate}
+            size="xs"
+            loading={createSource.isPending}
+          >
+            Save New Source
+          </Button>
+        ) : (
+          <>
+            <ConfirmDeleteMenu
+              onDelete={() => deleteSource.mutate({ id: sourceId ?? '' })}
+            />
+            <Button
+              variant="primary"
+              onClick={_onSave}
+              size="xs"
+              loading={createSource.isPending}
+            >
+              Save Source
+            </Button>
+          </>
+        )}
+      </Group>
     </div>
   );
 }

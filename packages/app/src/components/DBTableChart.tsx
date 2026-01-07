@@ -7,9 +7,10 @@ import {
 import { Box, Code, Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
 
+import { convertToTableChartConfig } from '@/ChartUtils';
 import { Table } from '@/HDXMultiSeriesTableChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
-import { omit, useIntersectionObserver } from '@/utils';
+import { useIntersectionObserver } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -48,21 +49,8 @@ export default function DBTableChart({
     [onSortingChange],
   );
 
-  const queriedConfig = (() => {
-    const _config = omit(config, ['granularity']);
-    if (!_config.limit) {
-      _config.limit = { limit: 200 };
-    }
-
-    // Set a default orderBy if groupBy is set but orderBy is not,
-    // so that the set of rows within the limit is stable.
-    if (
-      _config.groupBy &&
-      typeof _config.groupBy === 'string' &&
-      !_config.orderBy
-    ) {
-      _config.orderBy = _config.groupBy;
-    }
+  const queriedConfig = useMemo(() => {
+    const _config = convertToTableChartConfig(config);
 
     if (effectiveSort.length) {
       _config.orderBy = effectiveSort.map(o => {
@@ -73,7 +61,7 @@ export default function DBTableChart({
       });
     }
     return _config;
-  })();
+  }, [config, effectiveSort]);
 
   const { data, fetchNextPage, hasNextPage, isLoading, isError, error } =
     useOffsetPaginatedQuery(queriedConfig as ChartConfigWithDateRange, {

@@ -1,4 +1,5 @@
 import _ from 'lodash';
+import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
@@ -60,7 +61,7 @@ Object {
       team: team.id,
       kind: 'log',
       name: 'My New Source',
-      connection: 'local',
+      connection: new ObjectId().toString(),
       from: {
         databaseName: 'system',
         tableName: 'query_log',
