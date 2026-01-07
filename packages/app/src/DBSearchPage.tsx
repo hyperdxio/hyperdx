@@ -875,15 +875,24 @@ function DBSearchPage() {
 
   // The default search config to use when the user hasn't changed the search config
   const defaultSearchConfig = useMemo(() => {
+    let _savedSearch = savedSearch;
+    // Ensure to not use the saved search if the saved search id is not the same as the current saved search id
+    if (!savedSearchId || savedSearch?.id !== savedSearchId) {
+      _savedSearch = undefined;
+    }
+    // Ensure to not use the saved search if the input source is not the same as the saved search source
+    if (inputSource !== savedSearch?.source) {
+      _savedSearch = undefined;
+    }
     return {
       select:
-        savedSearch?.select ?? searchedSource?.defaultTableSelectExpression,
-      where: savedSearch?.where ?? '',
-      whereLanguage: savedSearch?.whereLanguage ?? 'lucene',
-      source: savedSearch?.source,
-      orderBy: savedSearch?.orderBy || defaultOrderBy,
+        _savedSearch?.select ?? searchedSource?.defaultTableSelectExpression,
+      where: _savedSearch?.where ?? '',
+      whereLanguage: _savedSearch?.whereLanguage ?? 'lucene',
+      source: _savedSearch?.source,
+      orderBy: _savedSearch?.orderBy || defaultOrderBy,
     };
-  }, [searchedSource, savedSearch, defaultOrderBy]);
+  }, [searchedSource, inputSource, savedSearch, defaultOrderBy, savedSearchId]);
 
   // const { data: inputSourceObj } = useSource({ id: inputSource });
   const { data: inputSourceObjs } = useSources();
@@ -1039,7 +1048,7 @@ function DBSearchPage() {
         // Save the selected source ID to localStorage
         setLastSelectedSourceId(newInputSourceObj.id);
 
-        // If the user is in a saved search, prefer the saved search's select if available
+        // If the user is in a saved search, prefer the saved search's select/orderBy if available
         if (savedSearchId == null || savedSearch?.source !== watchedSource) {
           setValue(
             'select',

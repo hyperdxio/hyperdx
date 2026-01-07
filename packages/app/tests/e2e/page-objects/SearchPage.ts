@@ -211,6 +211,8 @@ export class SearchPage {
     const orderByEditor = this.getOrderByEditor();
     await orderByEditor.click({ clickCount: 3 }); // Select all
     await this.page.keyboard.type(orderByStatement);
+    // CLoses Autocomplete Modal if open
+    await this.page.keyboard.press('Escape');
   }
 
   /**

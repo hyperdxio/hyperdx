@@ -329,7 +329,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
        */
 
       await test.step('Create and save a search', async () => {
-        await searchPage.performSearch('SeverityText:error');
+        await searchPage.performSearch('SeverityText:info');
         await searchPage.openSaveSearchModal();
         await searchPage.savedSearchModal.saveSearch('Browser Navigation Test');
 
@@ -350,12 +350,85 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
       await test.step('Verify saved search loads correctly after back navigation', async () => {
         // Verify WHERE clause
         const whereInput = searchPage.input;
-        await expect(whereInput).toHaveValue('SeverityText:error');
+        await expect(whereInput).toHaveValue('SeverityText:info');
 
         // Verify results load
         await searchPage.table.waitForRowsToPopulate();
         const rowCount = await searchPage.table.getRows().count();
         expect(rowCount).toBeGreaterThan(0);
+      });
+    },
+  );
+
+  test(
+    'should update ORDER BY when switching sources multiple times',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      /**
+       * This test verifies the fix for the issue where ORDER BY does not update
+       * correctly after the first source change on saved search pages.
+       *
+       * Reproduction steps:
+       * 1. Create saved search with custom ORDER BY on Source A
+       * 2. Switch to Source B (ORDER BY should change to Source B's default)
+       * 3. Switch back to Source A (ORDER BY should restore to saved search's custom value)
+       */
+
+      let originalSourceName: string | null = null;
+      let secondSourceName: string | null = null;
+      const thirdSourceName: string | null = null;
+      const customOrderBy = 'Body DESC';
+
+      await test.step('Create saved search with custom ORDER BY', async () => {
+        originalSourceName = await searchPage.currentSource.inputValue();
+
+        // Set custom ORDER BY
+        await searchPage.setCustomOrderBy(customOrderBy);
+
+        // Submit and save the search
+        await searchPage.submitEmptySearch();
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.saveSearch(
+          'ORDER BY Multiple Source Switch Test',
+        );
+
+        await expect(searchPage.savedSearchModal.container).toBeHidden();
+        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+      });
+
+      await test.step('Switch to second source', async () => {
+        await searchPage.sourceDropdown.click();
+        secondSourceName = await searchPage.otherSources.first().textContent();
+        await searchPage.otherSources.first().click();
+        await page.waitForLoadState('networkidle');
+        await searchPage.table.waitForRowsToPopulate();
+      });
+
+      await test.step('Verify ORDER BY changed to second source default', async () => {
+        const orderByEditor = searchPage.getOrderByEditor();
+        const orderByContent = await orderByEditor.textContent();
+
+        // Should not contain the custom ORDER BY from the saved search
+        expect(orderByContent).not.toContain('Body DESC');
+        // Should contain timestamp ordering (typical default)
+        expect(orderByContent).toMatch(/(Timestamp|timestamp)/i);
+      });
+
+      await test.step('Switch back to original source', async () => {
+        await searchPage.sourceDropdown.click();
+        await page
+          .getByRole('option', {
+            name: originalSourceName || '',
+            exact: true,
+          })
+          .click();
+        await page.waitForLoadState('networkidle');
+        await searchPage.table.waitForRowsToPopulate();
+      });
+
+      await test.step('Verify ORDER BY restored to saved search custom value', async () => {
+        const orderByEditor = searchPage.getOrderByEditor();
+        await expect(orderByEditor).toHaveText('Body DESC', { timeout: 5000 });
       });
     },
   );
