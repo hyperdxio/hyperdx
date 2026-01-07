@@ -18,6 +18,16 @@ const MOCK_SAVED_SEARCH: any = {
   id: 'fake-saved-search-id',
 };
 
+// Mock logger to suppress error output in tests for this file
+jest.mock('@/utils/logger', () => ({
+  __esModule: true,
+  default: {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  },
+}));
 describe('DefaultAlertProvider', () => {
   let provider: AlertProvider;
   const server = getServer();
