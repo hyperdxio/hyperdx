@@ -10,7 +10,7 @@ services:
     logging: *hyperdx-logging
     labels:
       service.name: 'hdx-oss-dev-db'
-    image: mongo:5.0.14-focal
+    image: mongo:5.0.32-focal
     volumes:
       - .volumes/db_dev:/data/db
     ports:
