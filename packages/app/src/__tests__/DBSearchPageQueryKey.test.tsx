@@ -52,7 +52,7 @@ jest.mock('@/ChartUtils', () => ({
     new Date('2023-12-31'),
     new Date('2024-01-01'),
   ],
-  getPreviousPeriodOffsetSeconds: () => 86400,
+  getAlignedDateRange: (dateRange: [Date, Date]) => dateRange,
   convertToTimeChartConfig:
     jest.requireActual('@/ChartUtils').convertToTimeChartConfig,
 }));

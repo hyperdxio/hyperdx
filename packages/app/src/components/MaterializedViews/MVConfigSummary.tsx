@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { MaterializedViewConfiguration } from '@hyperdx/common-utils/dist/types';
-import { Grid, Group, Pill, Stack, Table, Text } from '@mantine/core';
+import { Grid, Group, Pill, Stack, Table, Text, Tooltip } from '@mantine/core';
+import { IconInfoCircle } from '@tabler/icons-react';
 
 import { FormatTime } from '@/useFormatTime';
 
@@ -33,9 +34,23 @@ export default function MVConfigSummary({
     <Stack gap="md">
       <Grid columns={2}>
         <Grid.Col span={1}>
-          <Text size="sm" fw={500} mb="xs">
-            Granularity
-          </Text>
+          <Group align="center" mb="xs" gap="xs">
+            <Text size="sm" fw={500}>
+              Granularity
+            </Text>
+            <Tooltip
+              multiline
+              maw={400}
+              label={`
+              The size of the time buckets into which data is pre-aggregated. 
+              Aggregate values can vary slightly between materialized views and the base source 
+              table when the selected time range does not align with the view's granularity.
+            `}
+            >
+              <IconInfoCircle size={16} />
+            </Tooltip>
+          </Group>
+
           <Pill>{config.minGranularity}</Pill>
         </Grid.Col>
         {config.minDate && (

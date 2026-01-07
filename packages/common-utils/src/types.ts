@@ -422,6 +422,7 @@ export const _ChartConfigSchema = z.object({
   eventTableSelect: z.string().optional(),
   compareToPreviousPeriod: z.boolean().optional(),
   source: z.string().optional(),
+  alignDateRangeToGranularity: z.boolean().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.
