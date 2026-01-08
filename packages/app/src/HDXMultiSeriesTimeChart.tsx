@@ -221,17 +221,44 @@ function CopyableLegendItem({ entry }: any) {
   );
 }
 
-function ExpandableLegendItem({ entry, expanded }: any) {
+function ExpandableLegendItem({
+  entry,
+  expanded,
+  isSelected,
+  isDisabled,
+  onToggle,
+}: {
+  entry: any;
+  expanded?: boolean;
+  isSelected?: boolean;
+  isDisabled?: boolean;
+  onToggle?: (isShiftKey: boolean) => void;
+}) {
   const [_expanded, setExpanded] = useState(false);
   const isExpanded = _expanded || expanded;
 
   return (
     <span
       className={`d-flex gap-1 items-center justify-center ${styles.legendItem}`}
-      style={{ color: entry.color }}
+      style={{
+        color: entry.color,
+        opacity: isDisabled ? 0.3 : 1,
+        fontWeight: isSelected ? 600 : 400,
+        cursor: 'pointer',
+      }}
       role="button"
-      onClick={() => setExpanded(v => !v)}
-      title="Click to expand"
+      onClick={e => {
+        if (onToggle) {
+          onToggle(e.shiftKey);
+        } else {
+          setExpanded(v => !v);
+        }
+      }}
+      title={
+        isSelected
+          ? 'Click to show all (Shift+click to deselect)'
+          : 'Click to show only this (Shift+click for multi-select)'
+      }
     >
       <div>
         <svg width="12" height="4">
@@ -241,8 +268,9 @@ function ExpandableLegendItem({ entry, expanded }: any) {
             x2="12"
             y2="2"
             stroke={entry.color}
-            opacity={entry.opacity}
+            opacity={isDisabled ? 0.3 : 1}
             strokeDasharray={entry.payload?.strokeDasharray}
+            strokeWidth={isSelected ? 2.5 : 1.5}
           />
         </svg>
       </div>
@@ -258,13 +286,37 @@ export const LegendRenderer = memo<{
     color: string;
   }[];
   lineDataMap: { [key: string]: LineData };
+  allLineData?: LineData[];
+  selectedSeries?: Set<string>;
+  onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
 }>(props => {
-  const { payload = [], lineDataMap } = props;
+  const {
+    payload = [],
+    lineDataMap,
+    allLineData = [],
+    selectedSeries = new Set(),
+    onToggleSeries,
+  } = props;
+
+  const hasSelection = selectedSeries.size > 0;
+
+  // Use allLineData to ensure all series are always shown in legend
+  const allSeriesPayload = useMemo(() => {
+    if (allLineData.length > 0) {
+      return allLineData.map(ld => ({
+        dataKey: ld.dataKey,
+        value: ld.displayName || ld.dataKey,
+        color: ld.color,
+        payload: { strokeDasharray: ld.isDashed ? '4 3' : '0' },
+      }));
+    }
+    return payload;
+  }, [allLineData, payload]);
 
   const sortedLegendItems = useMemo(() => {
     // Order items such that current and previous period lines are consecutive
     const currentPeriodKeyIndex = new Map<string, number>();
-    payload.forEach((line, index) => {
+    allSeriesPayload.forEach((line, index) => {
       const currentPeriodKey =
         lineDataMap[line.dataKey]?.currentPeriodKey || '';
       if (!currentPeriodKeyIndex.has(currentPeriodKey)) {
@@ -272,7 +324,7 @@ export const LegendRenderer = memo<{
       }
     });
 
-    return payload.sort((a, b) => {
+    return allSeriesPayload.sort((a, b) => {
       const keyA = lineDataMap[a.dataKey]?.currentPeriodKey ?? '';
       const keyB = lineDataMap[b.dataKey]?.currentPeriodKey ?? '';
 
@@ -281,20 +333,26 @@ export const LegendRenderer = memo<{
 
       return indexB - indexA || a.dataKey.localeCompare(b.dataKey);
     });
-  }, [payload, lineDataMap]);
+  }, [allSeriesPayload, lineDataMap]);
 
   const shownItems = sortedLegendItems.slice(0, MAX_LEGEND_ITEMS);
   const restItems = sortedLegendItems.slice(MAX_LEGEND_ITEMS);
 
   return (
     <div className={styles.legend}>
-      {shownItems.map((entry, index) => (
-        <ExpandableLegendItem
-          key={`item-${index}`}
-          value={entry.value}
-          entry={entry}
-        />
-      ))}
+      {shownItems.map((entry, index) => {
+        const isSelected = selectedSeries.has(entry.value);
+        const isDisabled = hasSelection && !isSelected;
+        return (
+          <ExpandableLegendItem
+            key={`item-${index}`}
+            entry={entry}
+            isSelected={isSelected}
+            isDisabled={isDisabled}
+            onToggle={isShiftKey => onToggleSeries?.(entry.value, isShiftKey)}
+          />
+        );
+      })}
       {restItems.length ? (
         <Popover withinPortal withArrow closeOnEscape closeOnClickOutside>
           <Popover.Target>
@@ -304,13 +362,21 @@ export const LegendRenderer = memo<{
           </Popover.Target>
           <Popover.Dropdown p="xs">
             <div className={styles.legendTooltipContent}>
-              {restItems.map((entry, index) => (
-                <CopyableLegendItem
-                  key={`item-${index}`}
-                  value={entry.value}
-                  entry={entry}
-                />
-              ))}
+              {restItems.map((entry, index) => {
+                const isSelected = selectedSeries.has(entry.value);
+                const isDisabled = hasSelection && !isSelected;
+                return (
+                  <ExpandableLegendItem
+                    key={`item-${index}`}
+                    entry={entry}
+                    isSelected={isSelected}
+                    isDisabled={isDisabled}
+                    onToggle={isShiftKey =>
+                      onToggleSeries?.(entry.value, isShiftKey)
+                    }
+                  />
+                );
+              })}
             </div>
           </Popover.Dropdown>
         </Popover>
@@ -336,6 +402,8 @@ export const MemoChart = memo(function MemoChart({
   onTimeRangeSelect,
   showLegend = true,
   previousPeriodOffsetSeconds,
+  selectedSeriesNames,
+  onToggleSeries,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -351,6 +419,8 @@ export const MemoChart = memo(function MemoChart({
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   showLegend?: boolean;
   previousPeriodOffsetSeconds?: number;
+  selectedSeriesNames?: Set<string>;
+  onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -361,13 +431,23 @@ export const MemoChart = memo(function MemoChart({
     displayType === DisplayType.StackedBar ? BarChart : AreaChart; // LineChart;
 
   const lines = useMemo(() => {
+    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
+
     const limitedGroupKeys = lineData
       .map(ld => ld.dataKey)
-      .slice(0, HARD_LINES_LIMIT);
+      .slice(0, HARD_LINES_LIMIT)
+      .filter((key, i) => {
+        const seriesName = lineData[i]?.displayName ?? key;
+        // If there's a selection, only show selected series
+        // If no selection, show all series
+        return !hasSelection || selectedSeriesNames.has(seriesName);
+      });
 
     return limitedGroupKeys.map((key, i) => {
-      const color = lineData[i]?.color;
-      const strokeDasharray = lineData[i]?.isDashed ? '4 3' : '0';
+      const lineDataIndex = lineData.findIndex(ld => ld.dataKey === key);
+      const color = lineData[lineDataIndex]?.color;
+      const strokeDasharray = lineData[lineDataIndex]?.isDashed ? '4 3' : '0';
+      const seriesName = lineData[lineDataIndex]?.displayName ?? key;
 
       const StackedBarWithOverlap = (props: BarProps) => {
         const { x, y, width, height, fill } = props;
@@ -388,7 +468,7 @@ export const MemoChart = memo(function MemoChart({
           key={key}
           type="monotone"
           dataKey={key}
-          name={lineData[i]?.displayName ?? key}
+          name={seriesName}
           fill={color}
           opacity={1}
           stackId="1"
@@ -408,12 +488,50 @@ export const MemoChart = memo(function MemoChart({
                 fill: `url(#time-chart-lin-grad-${id}-${color.replace('#', '').toLowerCase()})`,
                 strokeDasharray,
               })}
-          name={lineData[i]?.displayName ?? key}
+          name={seriesName}
           isAnimationActive={false}
         />
       );
     });
-  }, [lineData, displayType, id, isHovered]);
+  }, [lineData, displayType, id, isHovered, selectedSeriesNames]);
+
+  const yAxisDomain = useMemo(() => {
+    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
+
+    if (!hasSelection) {
+      // No selection, let Recharts auto-calculate based on all data
+      return ['auto', 'auto'];
+    }
+
+    // When series are selected, calculate domain based only on visible series
+    let minValue = Infinity;
+    let maxValue = -Infinity;
+
+    graphResults.forEach(dataPoint => {
+      lineData.forEach(ld => {
+        const seriesName = ld.displayName || ld.dataKey;
+        // Only consider selected series
+        if (selectedSeriesNames.has(seriesName)) {
+          const value = dataPoint[ld.dataKey];
+          if (typeof value === 'number' && !isNaN(value)) {
+            minValue = Math.min(minValue, value);
+            maxValue = Math.max(maxValue, value);
+          }
+        }
+      });
+    });
+
+    // If we found valid values, return them with some padding
+    if (minValue !== Infinity && maxValue !== -Infinity) {
+      const padding = (maxValue - minValue) * 0.1; // 10% padding
+      return [
+        Math.max(0, minValue - padding), // Don't go below 0
+        maxValue + padding,
+      ];
+    }
+
+    return ['auto', 'auto'];
+  }, [graphResults, lineData, selectedSeriesNames]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
 
@@ -606,6 +724,7 @@ export const MemoChart = memo(function MemoChart({
           minTickGap={25}
           tickFormatter={tickFormatter}
           tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
+          domain={yAxisDomain}
         />
         {lines}
         {isClickActive == null && (
@@ -635,7 +754,14 @@ export const MemoChart = memo(function MemoChart({
           <Legend
             iconSize={10}
             verticalAlign="bottom"
-            content={<LegendRenderer lineDataMap={lineDataMap} />}
+            content={
+              <LegendRenderer
+                lineDataMap={lineDataMap}
+                allLineData={lineData}
+                selectedSeries={selectedSeriesNames || new Set()}
+                onToggleSeries={onToggleSeries}
+              />
+            }
             offset={-100}
           />
         )}
