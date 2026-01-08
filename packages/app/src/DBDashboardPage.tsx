@@ -789,6 +789,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       (dashboard?.tiles ?? [])
         .map(chart => {
         const isHidden = selectedTag && !chart.tags?.includes(selectedTag);
+        console.log('Tile:', chart.config.name, 'Tags:', chart.tags, 'SelectedTag:', selectedTag, 'isHidden:', isHidden);
         return (
           <Tile
             key={chart.id}
