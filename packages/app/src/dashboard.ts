@@ -20,6 +20,7 @@ export type Tile = {
   w: number;
   h: number;
   config: SavedChartConfig;
+  tags?: string[];
 };
 
 export type Dashboard = {

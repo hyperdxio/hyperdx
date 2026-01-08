@@ -243,6 +243,34 @@ function DBTimeChartComponent({
   showMVOptimizationIndicator = true,
 }: DBTimeChartComponentProps) {
   const [isErrorExpanded, errorExpansion] = useDisclosure(false);
+  const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(new Set());
+  
+  const handleToggleSeries = useCallback((seriesName: string, isShiftKey?: boolean) => {
+    setSelectedSeriesSet(prev => {
+      const newSet = new Set(prev);
+      
+      if (isShiftKey) {
+        // Shift-click: add to selection
+        if (newSet.has(seriesName)) {
+          newSet.delete(seriesName);
+        } else {
+          newSet.add(seriesName);
+        }
+      } else {
+        // Regular click: toggle selection
+        if (newSet.has(seriesName) && newSet.size === 1) {
+          // If this is the only selected item, clear selection (show all)
+          newSet.clear();
+        } else {
+          // Otherwise, select only this one
+          newSet.clear();
+          newSet.add(seriesName);
+        }
+      }
+      
+      return newSet;
+    });
+  }, []);
 
   const originalDateRange = config.dateRange;
   const {
@@ -683,6 +711,8 @@ function DBTimeChartComponent({
             showLegend={showLegend}
             timestampKey={timestampColumn?.name}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+            selectedSeriesNames={selectedSeriesSet}
+            onToggleSeries={handleToggleSeries}
           />
         </>
       )}
