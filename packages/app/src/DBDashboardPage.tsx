@@ -225,11 +225,12 @@ const Tile = forwardRef(
     }, [alert]);
 
     const hoverToolbar = useMemo(() => {
-      return hovered ? (
+      return (
         <Flex
           gap="0px"
           onMouseDown={e => e.stopPropagation()}
           key="hover-toolbar"
+          style={{ visibility: hovered ? 'visible' : 'hidden' }}
         >
           {(chart.config.displayType === DisplayType.Line ||
             chart.config.displayType === DisplayType.StackedBar) && (
@@ -286,8 +287,6 @@ const Tile = forwardRef(
             <IconTrash size={14} />
           </Button>
         </Flex>
-      ) : (
-        <Box h={22} key="hover-empty-box" />
       );
     }, [
       alert,
