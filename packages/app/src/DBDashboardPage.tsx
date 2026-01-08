@@ -1237,6 +1237,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             }
           >
             <ReactGridLayout
+              key={selectedTag || 'all-tiles'}
               layout={layout}
               containerPadding={[0, 0]}
               onLayoutChange={newLayout => {
