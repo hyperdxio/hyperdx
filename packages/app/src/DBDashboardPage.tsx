@@ -140,6 +140,7 @@ const Tile = forwardRef(
       onTouchEnd,
       children,
       isHighlighted,
+      isHidden,
     }: {
       chart: Tile;
       dateRange: [Date, Date];
@@ -162,6 +163,7 @@ const Tile = forwardRef(
       onTouchEnd?: (e: React.TouchEvent) => void;
       children?: React.ReactNode; // Resizer tooltip
       isHighlighted?: boolean;
+      isHidden?: boolean;
     },
     ref: ForwardedRef<HTMLDivElement>,
   ) => {
@@ -267,6 +269,7 @@ const Tile = forwardRef(
         ref={ref}
         style={{
           ...style,
+          ...(isHidden ? { display: 'none' } : {}),
         }}
         onMouseDown={onMouseDown}
         onMouseUp={onMouseUp}
@@ -813,6 +816,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             onTagClick={(tag) => {
               setSelectedTag(tag === selectedTag ? null : tag);
             }}
+            isHidden={isHidden}
             style={{ display: isHidden ? 'none' : undefined }}
             onUpdateChart={newChart => {
               if (!dashboard) {
