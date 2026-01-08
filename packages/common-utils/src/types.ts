@@ -520,6 +520,7 @@ export const TileSchema = z.object({
   w: z.number(),
   h: z.number(),
   config: SavedChartConfigSchema,
+  tags: z.array(z.string()).optional(),
 });
 export const TileTemplateSchema = TileSchema.extend({
   config: TileSchema.shape.config.omit({ alert: true }),

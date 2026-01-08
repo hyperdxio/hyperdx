@@ -43,6 +43,7 @@ import {
   Text,
   Title,
   Tooltip,
+  Badge,
 } from '@mantine/core';
 import { useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -58,6 +59,7 @@ import {
   IconTags,
   IconTrash,
   IconUpload,
+  IconX,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -75,12 +77,19 @@ import {
 } from '@/dashboard';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
+import MVOptimizationIndicator from './components/MaterializedViews/MVOptimizationIndicator';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { parseAsStringWithNewLines } from './utils/queryParsers';
-import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
+import {
+  buildTableRowSearchUrl,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
+  convertToTimeChartConfig,
+  DEFAULT_CHART_CONFIG,
+} from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
@@ -121,6 +130,7 @@ const Tile = forwardRef(
       granularity,
       onTimeRangeSelect,
       filters,
+      onTagClick,
 
       // Properties forwarded by grid layout
       className,
@@ -142,6 +152,7 @@ const Tile = forwardRef(
       granularity: SQLInterval | undefined;
       onTimeRangeSelect: (start: Date, end: Date) => void;
       filters?: Filter[];
+      onTagClick?: (tag: string) => void;
 
       // Properties forwarded by grid layout
       className?: string;
@@ -165,6 +176,25 @@ const Tile = forwardRef(
     const [queriedConfig, setQueriedConfig] = useState<
       ChartConfigWithDateRange | undefined
     >(undefined);
+
+    // Transform the queried config to match what will be queried by the
+    // child components, so that the MV Optimization indicator is accurate.
+    const configForMVOptimizationIndicator = useMemo(() => {
+      if (!queriedConfig) return undefined;
+
+      if (
+        queriedConfig.displayType === DisplayType.Line ||
+        queriedConfig.displayType === DisplayType.StackedBar
+      ) {
+        return convertToTimeChartConfig(queriedConfig);
+      } else if (queriedConfig.displayType === DisplayType.Number) {
+        return convertToNumberChartConfig(queriedConfig);
+      } else if (queriedConfig.displayType === DisplayType.Table) {
+        return convertToTableChartConfig(queriedConfig);
+      }
+
+      return queriedConfig;
+    }, [queriedConfig]);
 
     const { data: source } = useSource({
       id: chart.config.source,
@@ -224,96 +254,10 @@ const Tile = forwardRef(
       return tooltip;
     }, [alert]);
 
-    const hoverToolbar = useMemo(() => {
-      return hovered ? (
-        <Flex
-          gap="0px"
-          onMouseDown={e => e.stopPropagation()}
-          key="hover-toolbar"
-        >
-          {(chart.config.displayType === DisplayType.Line ||
-            chart.config.displayType === DisplayType.StackedBar) && (
-            <Indicator
-              size={alert?.state === AlertState.OK ? 6 : 8}
-              zIndex={1}
-              color={alertIndicatorColor}
-              processing={alert?.state === AlertState.ALERT}
-              label={!alert && <span className="fs-8">+</span>}
-              mr={4}
-            >
-              <Tooltip label={alertTooltip} withArrow>
-                <Button
-                  data-testid={`tile-alerts-button-${chart.id}`}
-                  variant="subtle"
-                  color="gray"
-                  size="xxs"
-                  onClick={onEditClick}
-                >
-                  <IconBell size={16} />
-                </Button>
-              </Tooltip>
-            </Indicator>
-          )}
-
-          <Button
-            data-testid={`tile-duplicate-button-${chart.id}`}
-            variant="subtle"
-            color="gray"
-            size="xxs"
-            onClick={onDuplicateClick}
-            title="Duplicate"
-          >
-            <IconCopy size={14} />
-          </Button>
-          <Button
-            data-testid={`tile-edit-button-${chart.id}`}
-            variant="subtle"
-            color="gray"
-            size="xxs"
-            onClick={onEditClick}
-            title="Edit"
-          >
-            <IconPencil size={14} />
-          </Button>
-          <Button
-            data-testid={`tile-delete-button-${chart.id}`}
-            variant="subtle"
-            color="gray"
-            size="xxs"
-            onClick={onDeleteClick}
-            title="Delete"
-          >
-            <IconTrash size={14} />
-          </Button>
-        </Flex>
-      ) : (
-        <Box h={22} key="hover-empty-box" />
-      );
-    }, [
-      alert,
-      alertIndicatorColor,
-      alertTooltip,
-      chart.config.displayType,
-      chart.id,
-      hovered,
-      onDeleteClick,
-      onDuplicateClick,
-      onEditClick,
-    ]);
-
-    const title = useMemo(
-      () => (
-        <Text size="sm" ms="xs">
-          {chart.config.name}
-        </Text>
-      ),
-      [chart.config.name],
-    );
-
     return (
       <div
         data-testid={`dashboard-tile-${chart.id}`}
-        className={`p-2 pt-0 ${className} d-flex flex-column bg-muted cursor-grab rounded ${
+        className={`p-2 ${className} d-flex flex-column bg-muted rounded ${
           isHighlighted && 'dashboard-chart-highlighted'
         }`}
         id={`chart-${chart.id}`}
@@ -328,11 +272,104 @@ const Tile = forwardRef(
         onMouseUp={onMouseUp}
         onTouchEnd={onTouchEnd}
       >
-        <Group justify="center" py={4}>
-          <Box bg={hovered ? 'gray' : undefined} w={100} h={2}></Box>
-        </Group>
+        <div className="d-flex justify-content-between align-items-center mb-2 cursor-grab">
+          <Flex align="center" gap="xs" style={{ flex: 1, minWidth: 0 }}>
+            <Text size="sm" ms="xs">
+              {chart.config.name}
+            </Text>
+            {chart.tags && chart.tags.length > 0 && (
+              <Group gap={4} onMouseDown={e => e.stopPropagation()}>
+                {chart.tags.map(tag => (
+                  <Badge
+                    key={tag}
+                    size="xs"
+                    variant="light"
+                    style={{ cursor: 'pointer' }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      onTagClick?.(tag);
+                    }}
+                  >
+                    {tag}
+                  </Badge>
+                ))}
+              </Group>
+            )}
+          </Flex>
+          <Group>
+            {hovered ? (
+              <Flex gap="0px" onMouseDown={e => e.stopPropagation()}>
+                {(chart.config.displayType === DisplayType.Line ||
+                  chart.config.displayType === DisplayType.StackedBar) && (
+                  <Indicator
+                    size={alert?.state === AlertState.OK ? 6 : 8}
+                    zIndex={1}
+                    color={alertIndicatorColor}
+                    processing={alert?.state === AlertState.ALERT}
+                    label={!alert && <span className="fs-8">+</span>}
+                    mr={4}
+                  >
+                    <Tooltip label={alertTooltip} withArrow>
+                      <Button
+                        data-testid={`tile-alerts-button-${chart.id}`}
+                        variant="subtle"
+                        color="gray"
+                        size="xxs"
+                        onClick={onEditClick}
+                      >
+                        <IconBell size={16} />
+                      </Button>
+                    </Tooltip>
+                  </Indicator>
+                )}
+
+                <Button
+                  data-testid={`tile-duplicate-button-${chart.id}`}
+                  variant="subtle"
+                  color="gray"
+                  size="xxs"
+                  onClick={onDuplicateClick}
+                  title="Duplicate"
+                >
+                  <IconCopy size={14} />
+                </Button>
+                <Button
+                  data-testid={`tile-edit-button-${chart.id}`}
+                  variant="subtle"
+                  color="gray"
+                  size="xxs"
+                  onClick={onEditClick}
+                  title="Edit"
+                >
+                  <IconPencil size={14} />
+                </Button>
+                <Button
+                  data-testid={`tile-delete-button-${chart.id}`}
+                  variant="subtle"
+                  color="gray"
+                  size="xxs"
+                  onClick={onDeleteClick}
+                  title="Delete"
+                >
+                  <IconTrash size={14} />
+                </Button>
+              </Flex>
+            ) : (
+              <Box h={22} />
+            )}
+            {source?.materializedViews?.length && queriedConfig && (
+              <Box onMouseDown={e => e.stopPropagation()}>
+                <MVOptimizationIndicator
+                  config={configForMVOptimizationIndicator}
+                  source={source}
+                  variant="icon"
+                />
+              </Box>
+            )}
+          </Group>
+        </div>
         <div
-          className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default"
+          className="fs-7 text-muted flex-grow-1 overflow-hidden"
           onMouseDown={e => e.stopPropagation()}
         >
           <ErrorBoundary
@@ -346,8 +383,6 @@ const Tile = forwardRef(
             {(queriedConfig?.displayType === DisplayType.Line ||
               queriedConfig?.displayType === DisplayType.StackedBar) && (
               <DBTimeChart
-                title={title}
-                toolbarPrefix={[hoverToolbar]}
                 sourceId={chart.config.source}
                 showDisplaySwitcher={true}
                 config={queriedConfig}
@@ -366,8 +401,6 @@ const Tile = forwardRef(
             {queriedConfig?.displayType === DisplayType.Table && (
               <Box p="xs" h="100%">
                 <DBTableChart
-                  title={title}
-                  toolbarPrefix={[hoverToolbar]}
                   config={queriedConfig}
                   getRowSearchLink={row =>
                     buildTableRowSearchUrl({
@@ -381,18 +414,10 @@ const Tile = forwardRef(
               </Box>
             )}
             {queriedConfig?.displayType === DisplayType.Number && (
-              <DBNumberChart
-                title={title}
-                toolbarPrefix={[hoverToolbar]}
-                config={queriedConfig}
-              />
+              <DBNumberChart config={queriedConfig} />
             )}
             {queriedConfig?.displayType === DisplayType.Markdown && (
-              <HDXMarkdownChart
-                title={title}
-                toolbarItems={[hoverToolbar]}
-                config={queriedConfig}
-              />
+              <HDXMarkdownChart config={queriedConfig} />
             )}
             {queriedConfig?.displayType === DisplayType.Search && (
               <DBSqlRowTableWithSideBar
@@ -445,6 +470,15 @@ const EditTileModal = ({
 }) => {
   const contextZIndex = useZIndex();
   const modalZIndex = contextZIndex + 10;
+  const [tileTags, setTileTags] = useState<string[]>(chart?.tags || []);
+
+  // Update tileTags when chart changes
+  useEffect(() => {
+    if (chart) {
+      setTileTags(chart.tags || []);
+    }
+  }, [chart]);
+
   return (
     <Modal
       opened={chart != null}
@@ -457,6 +491,22 @@ const EditTileModal = ({
     >
       {chart != null && (
         <ZIndexContext.Provider value={modalZIndex + 10}>
+          <Box mb="sm" px="md">
+            <Text size="sm" fw={500} mb="xs">Tile Tags</Text>
+            <Tags
+              allowCreate
+              values={tileTags}
+              onChange={setTileTags}
+            >
+              <Button
+                variant="default"
+                size="xs"
+              >
+                <IconTags size={14} className="me-2" />
+                {tileTags.length || 0} {tileTags.length === 1 ? 'Tag' : 'Tags'}
+              </Button>
+            </Tags>
+          </Box>
           <EditTimeChartForm
             dashboardId={dashboardId}
             chartConfig={chart.config}
@@ -466,6 +516,7 @@ const EditTileModal = ({
               onSave({
                 ...chart,
                 config: config,
+                tags: tileTags,
               });
             }}
             onClose={onClose}
@@ -586,6 +637,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const { data: sources } = useSources();
 
   const [highlightedTileId] = useQueryState('highlightedTileId');
+  const [selectedTag, setSelectedTag] = useQueryState('selectedTag', parseAsString);
   const tableConnections = useMemo(() => {
     if (!dashboard) return [];
     const tc: TableConnection[] = [];
@@ -734,7 +786,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const tiles = useMemo(
     () =>
-      (dashboard?.tiles ?? []).map(chart => {
+      (dashboard?.tiles ?? [])
+        .filter(chart => {
+          // Filter tiles based on selected tag
+          if (!selectedTag) return true;
+          return chart.tags?.includes(selectedTag);
+        })
+        .map(chart => {
         return (
           <Tile
             key={chart.id}
@@ -755,6 +813,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             ]}
             onTimeRangeSelect={onTimeRangeSelect}
             isHighlighted={highlightedTileId === chart.id}
+            onTagClick={(tag) => {
+              setSelectedTag(tag === selectedTag ? null : tag);
+            }}
             onUpdateChart={newChart => {
               if (!dashboard) {
                 return;
@@ -822,6 +883,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       whereLanguage,
       onTimeRangeSelect,
       filterQueries,
+      selectedTag,
+      setSelectedTag,
     ],
   );
 
@@ -938,18 +1001,36 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </Paper>
       )}
       <Flex mt="xs" mb="md" justify="space-between" align="center">
-        <DashboardName
-          key={`${dashboardHash}`}
-          name={dashboard?.name ?? ''}
-          onSave={editedName => {
-            if (dashboard != null) {
-              setDashboard({
-                ...dashboard,
-                name: editedName,
-              });
-            }
-          }}
-        />
+        <Flex align="center" gap="sm">
+          <DashboardName
+            key={`${dashboardHash}`}
+            name={dashboard?.name ?? ''}
+            onSave={editedName => {
+              if (dashboard != null) {
+                setDashboard({
+                  ...dashboard,
+                  name: editedName,
+                });
+              }
+            }}
+          />
+          {selectedTag && (
+            <Badge
+              size="md"
+              variant="filled"
+              color="blue"
+              rightSection={
+                <IconX
+                  size={12}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setSelectedTag(null)}
+                />
+              }
+            >
+              Filtered by: {selectedTag}
+            </Badge>
+          )}
+        </Flex>
         <Group gap="xs">
           {!isLocalDashboard && dashboard?.id && (
             <Tags
