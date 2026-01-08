@@ -16,9 +16,21 @@ function ChartContainer({
   return (
     <Stack h="100%" w="100%" style={{ flexGrow: 1 }}>
       {(!!title || !!toolbarItems?.length) && (
-        <Group justify="space-between" align="start">
-          {title || <span />}
-          {toolbarItems && <Group>{toolbarItems}</Group>}
+        <Group justify="space-between" align="start" wrap="nowrap">
+          <span
+            style={{
+              flex: 1,
+              flexShrink: 1,
+              overflow: 'hidden',
+            }}
+          >
+            {title}
+          </span>
+          {toolbarItems && (
+            <Group flex={0} wrap="nowrap">
+              {toolbarItems}
+            </Group>
+          )}
         </Group>
       )}
       {disableReactiveContainer ? (
