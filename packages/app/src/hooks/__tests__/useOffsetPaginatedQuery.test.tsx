@@ -27,6 +27,15 @@ jest.mock('@hyperdx/app/src/metadata', () => ({
   getMetadata: jest.fn(),
 }));
 
+// Mock the useMVOptimizationExplanation hook
+jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
+  useMVOptimizationExplanation: jest.fn().mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isPlaceholderData: false,
+  }),
+}));
+
 // Mock the renderChartConfig function
 jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
   renderChartConfig: jest.fn(),

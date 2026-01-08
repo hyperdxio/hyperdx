@@ -19,6 +19,14 @@ jest.mock('@/api', () => ({
   },
 }));
 
+jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
+  useMVOptimizationExplanation: jest.fn().mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isPlaceholderData: false,
+  }),
+}));
+
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(() => ({
     data: { data: [], isComplete: true },

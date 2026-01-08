@@ -6,17 +6,13 @@ import {
   ClickHouseQueryError,
   ColumnMetaType,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
 } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  ChartConfigWithOptTimestamp,
-  TSource,
-} from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import {
   QueryClient,
   QueryFunction,
@@ -27,7 +23,7 @@ import {
 import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
-import { useSource } from '@/source';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { omit } from '@/utils';
 import {
   generateTimeWindowsAscending,
@@ -70,7 +66,7 @@ type QueryMeta = {
   queryClient: QueryClient;
   hasPreviousQueries: boolean;
   metadata: Metadata;
-  source?: TSource;
+  optimizedConfig?: ChartConfigWithOptTimestamp;
 };
 
 // Get time window from page param
@@ -145,7 +141,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     throw new Error('Query missing client meta');
   }
 
-  const { queryClient, metadata, hasPreviousQueries, source } =
+  const { queryClient, metadata, hasPreviousQueries, optimizedConfig } =
     meta as QueryMeta;
 
   // Only stream incrementally if this is a fresh query with no previous
@@ -158,15 +154,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   const clickhouseClient = getClickhouseClient({ queryTimeout });
 
   const rawConfig = queryKey[1];
-  const config = source?.materializedViews?.length
-    ? await tryOptimizeConfigWithMaterializedView(
-        rawConfig,
-        metadata,
-        clickhouseClient,
-        signal,
-        source,
-      )
-    : rawConfig;
+  const config = optimizedConfig ?? rawConfig;
 
   // Get the time window for this page
   const shouldUseWindowing = isTimestampExpressionInFirstOrderBy(config);
@@ -405,9 +393,11 @@ export default function useOffsetPaginatedQuery(
   const hasPreviousQueries =
     matchedQueries.filter(([_, data]) => data != null).length > 0;
 
-  const { data: source, isLoading: isLoadingSource } = useSource({
-    id: config.source,
-  });
+  const {
+    data: mvOptimizationData,
+    isLoading: isLoadingMVOptimization,
+    isPlaceholderData: isPlaceholderMVOptimization,
+  } = useMVOptimizationExplanation(config, { enabled: !!enabled });
 
   const {
     data,
@@ -429,7 +419,11 @@ export default function useOffsetPaginatedQuery(
       // Only preserve previous query in live mode
       return isLive ? prev : undefined;
     },
-    enabled: enabled && !isLoadingMe && !isLoadingSource,
+    enabled:
+      enabled &&
+      !isLoadingMe &&
+      !isLoadingMVOptimization &&
+      !isPlaceholderMVOptimization,
     initialPageParam: { windowIndex: 0, offset: 0 } as TPageParam,
     getNextPageParam: (lastPage, allPages) => {
       return getNextPageParam(lastPage, allPages, config);
@@ -439,7 +433,7 @@ export default function useOffsetPaginatedQuery(
       queryClient,
       hasPreviousQueries,
       metadata,
-      source,
+      optimizedConfig: mvOptimizationData?.optimizedConfig,
     } satisfies QueryMeta,
     queryFn,
     gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
@@ -456,7 +450,15 @@ export default function useOffsetPaginatedQuery(
     data: flattenedData,
     fetchNextPage,
     hasNextPage,
-    isFetching: isFetching || isLoadingMe || isLoadingSource,
-    isLoading: isLoading || isLoadingMe || isLoadingSource,
+    isFetching:
+      isFetching ||
+      isLoadingMe ||
+      isLoadingMVOptimization ||
+      isPlaceholderMVOptimization,
+    isLoading:
+      isLoading ||
+      isLoadingMe ||
+      isLoadingMVOptimization ||
+      isPlaceholderMVOptimization,
   };
 }
