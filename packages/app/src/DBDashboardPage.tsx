@@ -1023,7 +1023,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 <IconX
                   size={12}
                   style={{ cursor: 'pointer' }}
-                  onClick={() => setSelectedTag(null)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedTag(null);
+                  }}
                 />
               }
             >
