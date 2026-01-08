@@ -30,6 +30,7 @@ import {
   Select,
   Slider,
   Stack,
+  Switch,
   Text,
   Tooltip,
 } from '@mantine/core';
@@ -1453,6 +1454,37 @@ export function TableSourceForm({
 }) {
   const { data: source } = useSource({ id: sourceId });
   const { data: connections } = useConnections();
+  const updateSourceMutation = useUpdateSource();
+
+  const handleDisabledToggle = useCallback(
+    (newDisabledValue: boolean) => {
+      if (!source || isNew) return;
+
+      updateSourceMutation.mutate(
+        {
+          source: {
+            ...source,
+            disabled: newDisabledValue,
+          },
+        },
+        {
+          onSuccess: () => {
+            notifications.show({
+              color: 'green',
+              message: `Source ${newDisabledValue ? 'disabled' : 'enabled'} successfully`,
+            });
+          },
+          onError: error => {
+            notifications.show({
+              color: 'red',
+              message: `Failed to ${newDisabledValue ? 'disable' : 'enable'} source - ${error.message}`,
+            });
+          },
+        },
+      );
+    },
+    [source, isNew, updateSourceMutation],
+  );
 
   const { control, setValue, handleSubmit, resetField, setError, clearErrors } =
     useForm<TSourceUnion>({
@@ -1824,7 +1856,27 @@ export function TableSourceForm({
       }
     >
       <Stack gap="md" mb="md">
-        <Text mb="lg">Source Settings</Text>
+        <Flex justify="space-between" align="center" mb="lg">
+          <Text>Source Settings</Text>
+          {!isNew && (
+            <Controller
+              control={control}
+              name="disabled"
+              render={({ field: { value, onChange } }) => (
+                <Switch
+                  size="sm"
+                  checked={!value}
+                  onChange={(event) => {
+                    const newDisabledValue = !event.currentTarget.checked;
+                    onChange(newDisabledValue);
+                    handleDisabledToggle(newDisabledValue);
+                  }}
+                  label={value ? 'Disabled' : 'Enabled'}
+                />
+              )}
+            />
+          )}
+        </Flex>
         <FormRow label={'Name'}>
           <InputControlled
             control={control}

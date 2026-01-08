@@ -1,8 +1,5 @@
 // TODO: HDX-1768 Change TSource here to TSourceUnion and adjust as needed. Then, go to
 // SourceForm.tsx and remove type assertions for TSource and TSourceUnion
-import pick from 'lodash/pick';
-import objectHash from 'object-hash';
-import store from 'store2';
 import {
   ColumnMeta,
   extractColumnReferencesFromKey,
@@ -20,10 +17,12 @@ import {
   TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import pick from 'lodash/pick';
+import objectHash from 'object-hash';
+import store from 'store2';
 
 import { hdxServer } from '@/api';
-import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
-import { IS_LOCAL_MODE } from '@/config';
+import { HDX_LOCAL_DEFAULT_SOURCES, IS_LOCAL_MODE } from '@/config';
 import { getMetadata } from '@/metadata';
 import { parseJSON } from '@/utils';
 
@@ -136,14 +135,14 @@ export function useUpdateSource() {
   return useMutation({
     mutationFn: async ({ source }: { source: TSource }) => {
       if (IS_LOCAL_MODE) {
-        setLocalSources(prev => {
-          return prev.map(s => {
-            if (s.id === source.id) {
-              return source;
-            }
-            return s;
-          });
+        const updatedSources = getLocalSources().map(s => {
+          if (s.id === source.id) {
+            return source;
+          }
+          return s;
         });
+        setLocalSources(updatedSources);
+        return source;
       } else {
         return await hdxServer(`sources/${source.id}`, {
           method: 'PUT',
@@ -151,7 +150,14 @@ export function useUpdateSource() {
         });
       }
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      if (IS_LOCAL_MODE) {
+        // Directly update the cache with the new data
+        queryClient.setQueryData(['sources'], (oldData: TSource[] | undefined) => {
+          if (!oldData) return oldData;
+          return oldData.map(s => s.id === variables.source.id ? variables.source : s);
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['sources'] });
     },
   });

@@ -1414,7 +1414,9 @@ function ServicesDashboardPage() {
   const appliedConfigWithoutFilters = useMemo(() => {
     if (!sources?.length) return appliedConfigParams;
 
-    const traceSources = sources?.filter(s => s.kind === SourceKind.Trace);
+    const traceSources = sources?.filter(
+      s => s.kind === SourceKind.Trace && !s.disabled,
+    );
     const paramsSourceIdIsTraceSource = traceSources?.find(
       s => s.id === appliedConfigParams.source,
     );
