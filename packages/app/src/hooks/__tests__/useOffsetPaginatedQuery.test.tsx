@@ -1,7 +1,11 @@
 import React, { act } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  UseQueryResult,
+} from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
 import useOffsetPaginatedQuery from '../useOffsetPaginatedQuery';
@@ -43,7 +47,13 @@ jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
 
 // Import mocked modules after jest.mock calls
 import { getClickhouseClient } from '@hyperdx/app/src/clickhouse';
+import { MVOptimizationExplanation } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+
+import {
+  MVOptimizationExplanationResult,
+  useMVOptimizationExplanation,
+} from '@/hooks/useMVOptimizationExplanation';
 
 // Create a mock ChartConfig based on the Zod schema
 const createMockChartConfig = (
@@ -750,6 +760,185 @@ describe('useOffsetPaginatedQuery', () => {
 
       await waitFor(() => expect(result2.current.isLoading).toBe(false));
       expect(result2.current.data?.data[0].message).toBe('config2 log');
+    });
+  });
+
+  describe('MV Optimization Integration', () => {
+    it('should optimize queries using MVs when possible', async () => {
+      const config = createMockChartConfig({
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: 'Duration',
+            aggFn: 'avg',
+          },
+        ],
+      });
+
+      const optimizedConfig = createMockChartConfig({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'avg__Duration',
+            aggFn: 'avgMerge',
+          },
+        ],
+      });
+
+      // Mock MV optimization to return an optimized config
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      jest.mocked(useMVOptimizationExplanation).mockReturnValue({
+        data: {
+          optimizedConfig,
+          explanations: [],
+        },
+        isLoading: false,
+        isPlaceholderData: false,
+      } as unknown as UseQueryResult<MVOptimizationExplanationResult>);
+
+      // Mock the reader to return data
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['timestamp', 'avg_duration'] },
+            { json: () => ['DateTime', 'Float64'] },
+            { json: () => ['2024-01-01T01:00:00Z', 123.45] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      // Verify the query was executed with the optimized config
+      expect(renderChartConfig).toHaveBeenCalledTimes(1);
+      expect(
+        jest
+          .mocked(renderChartConfig)
+          .mock.calls.every(
+            call => call[0].from.tableName === 'metrics_rollup_1m',
+          ),
+      ).toBeTruthy();
+
+      // Verify data was returned successfully
+      expect(result.current.data?.data).toHaveLength(1);
+    });
+
+    it('should not use a chart config which is a placeholder from the previous query', async () => {
+      const config = createMockChartConfig({
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: 'Duration',
+            aggFn: 'avg',
+          },
+        ],
+      });
+
+      const placeholderOptimizedConfig = createMockChartConfig({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_5m',
+        },
+        select: [
+          {
+            valueExpression: 'avg__Duration',
+            aggFn: 'avgMerge',
+          },
+        ],
+      });
+
+      const updatedOptimizedConfig = createMockChartConfig({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'avg__Duration',
+            aggFn: 'avgMerge',
+          },
+        ],
+      });
+
+      // Mock MV optimization to return placeholder data from previous query
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      jest.mocked(useMVOptimizationExplanation).mockReturnValue({
+        data: {
+          optimizedConfig: placeholderOptimizedConfig,
+          explanations: [],
+        },
+        isLoading: false,
+        isPlaceholderData: true, // This is the key - it's placeholder data
+      } as unknown as UseQueryResult<MVOptimizationExplanationResult>);
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      // Verify the query is still in loading state because placeholder data prevents execution
+      expect(result.current.isLoading).toBe(true);
+
+      // Verify that renderChartConfig was NOT called because placeholder data prevents query execution
+      expect(renderChartConfig).not.toHaveBeenCalled();
+
+      // Now mock the MV optimization to return actual data (not placeholder)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      jest.mocked(useMVOptimizationExplanation).mockReturnValue({
+        data: {
+          optimizedConfig: updatedOptimizedConfig,
+          explanations: [],
+        },
+        isLoading: false,
+        isPlaceholderData: false, // No longer placeholder
+      } as unknown as UseQueryResult<MVOptimizationExplanationResult>);
+
+      // Mock the reader to return data
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['timestamp', 'avg_duration'] },
+            { json: () => ['DateTime', 'Float64'] },
+            { json: () => ['2024-01-01T01:00:00Z', 123.45] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      // Force a re-render to pick up the new mock value
+      const { result: result2 } = renderHook(
+        () => useOffsetPaginatedQuery(config),
+        {
+          wrapper,
+        },
+      );
+
+      await waitFor(() => expect(result2.current.isLoading).toBe(false));
+
+      // Verify the query was executed with the optimized config
+      expect(renderChartConfig).toHaveBeenCalledTimes(1);
+      expect(
+        jest
+          .mocked(renderChartConfig)
+          .mock.calls.every(
+            call => call[0].from.tableName === 'metrics_rollup_1m',
+          ),
+      ).toBeTruthy();
+
+      expect(result2.current.data?.data).toHaveLength(1);
     });
   });
 });

@@ -11,12 +11,6 @@ import {
   formatResponseForTimeChart,
 } from '@/ChartUtils';
 
-if (!globalThis.structuredClone) {
-  globalThis.structuredClone = (obj: any) => {
-    return JSON.parse(JSON.stringify(obj));
-  };
-}
-
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
     it('should throw an error if there is no timestamp column', () => {
