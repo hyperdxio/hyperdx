@@ -1,5 +1,5 @@
 // Port from ChartUtils + source.ts
-import { add, add as fnsAdd, format as fnsFormat } from 'date-fns';
+import { add as fnsAdd, format as fnsFormat } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { z } from 'zod';
 
@@ -674,7 +674,7 @@ export function getAlignedDateRange(
   let alignedEnd = toStartOfInterval(originalEnd, granularity);
   if (alignedEnd.getTime() < originalEnd.getTime()) {
     const intervalSeconds = convertGranularityToSeconds(granularity);
-    alignedEnd = add(alignedEnd, { seconds: intervalSeconds });
+    alignedEnd = fnsAdd(alignedEnd, { seconds: intervalSeconds });
   }
 
   return [alignedStart, alignedEnd];
