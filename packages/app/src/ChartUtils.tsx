@@ -11,6 +11,7 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AggregateFunction as AggFnV2,
   ChartConfigWithDateRange,
@@ -141,23 +142,6 @@ export const DEFAULT_CHART_CONFIG: Omit<
 export const isGranularity = (value: string): value is Granularity => {
   return Object.values(Granularity).includes(value as Granularity);
 };
-
-export function getAlignedDateRange(
-  [originalStart, originalEnd]: [Date, Date],
-  granularity: SQLInterval,
-): [Date, Date] {
-  // Round the start time down to the previous interval boundary
-  const alignedStart = toStartOfInterval(originalStart, granularity);
-
-  // Round the end time up to the next interval boundary
-  let alignedEnd = toStartOfInterval(originalEnd, granularity);
-  if (alignedEnd.getTime() < originalEnd.getTime()) {
-    const intervalSeconds = convertGranularityToSeconds(granularity);
-    alignedEnd = add(alignedEnd, { seconds: intervalSeconds });
-  }
-
-  return [alignedStart, alignedEnd];
-}
 
 export function convertToTimeChartConfig(config: ChartConfigWithDateRange) {
   const granularity =

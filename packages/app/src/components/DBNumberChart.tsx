@@ -5,10 +5,12 @@ import { Box, Code, Flex, Text } from '@mantine/core';
 
 import { convertToNumberChartConfig } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 import { formatNumber } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
+import DateRangeIndicator from './charts/DateRangeIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -33,6 +35,9 @@ export default function DBNumberChart({
     () => convertToNumberChartConfig(config),
     [config],
   );
+
+  const { data: mvOptimizationData } =
+    useMVOptimizationExplanation(queriedConfig);
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     queriedConfig,
@@ -61,9 +66,25 @@ export default function DBNumberChart({
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-number-chart-mv-indicator"
-          config={config}
+          config={queriedConfig}
           source={source}
           variant="icon"
+        />,
+      );
+    }
+
+    const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
+    if (mvDateRange) {
+      const mvGranularity = mvOptimizationData?.explanations.find(
+        e => e.success,
+      )?.mvConfig.minGranularity;
+
+      allToolbarItems.push(
+        <DateRangeIndicator
+          key="db-number-chart-date-range-indicator"
+          originalDateRange={queriedConfig.dateRange}
+          effectiveDateRange={mvDateRange}
+          mvGranularity={mvGranularity}
         />,
       );
     }
@@ -74,11 +95,12 @@ export default function DBNumberChart({
 
     return allToolbarItems;
   }, [
-    config,
     toolbarPrefix,
     toolbarSuffix,
     source,
     showMVOptimizationIndicator,
+    mvOptimizationData,
+    queriedConfig,
   ]);
 
   return (

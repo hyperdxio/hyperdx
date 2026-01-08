@@ -18,7 +18,7 @@ function ChartContainer({
       {(!!title || !!toolbarItems?.length) && (
         <Group justify="space-between" align="start">
           {title || <span />}
-          {toolbarItems && <Group>{toolbarItems}</Group>}
+          {toolbarItems && <Group gap={5}>{toolbarItems}</Group>}
         </Group>
       )}
       {disableReactiveContainer ? (

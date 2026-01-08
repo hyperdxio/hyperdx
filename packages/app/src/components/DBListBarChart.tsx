@@ -6,12 +6,14 @@ import type { FloatingPosition } from '@mantine/core';
 import { Box, Code, Flex, HoverCard, Text } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 import type { NumberFormat } from '@/types';
 import { omit } from '@/utils';
 import { formatNumber, semanticKeyedColor } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
+import DateRangeIndicator from './charts/DateRangeIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -206,6 +208,9 @@ export default function DBListBarChart({
     },
   );
 
+  const { data: mvOptimizationData } =
+    useMVOptimizationExplanation(queriedConfig);
+
   const { data: source } = useSource({ id: config.source });
 
   const columns = useMemo(() => {
@@ -230,9 +235,25 @@ export default function DBListBarChart({
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-list-bar-chart-mv-indicator"
-          config={config}
+          config={queriedConfig}
           source={source}
           variant="icon"
+        />,
+      );
+    }
+
+    const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
+    if (mvDateRange) {
+      const mvGranularity = mvOptimizationData?.explanations.find(
+        e => e.success,
+      )?.mvConfig.minGranularity;
+
+      allToolbarItems.push(
+        <DateRangeIndicator
+          key="db-list-bar-chart-date-range-indicator"
+          originalDateRange={queriedConfig.dateRange}
+          effectiveDateRange={mvDateRange}
+          mvGranularity={mvGranularity}
         />,
       );
     }
@@ -242,7 +263,13 @@ export default function DBListBarChart({
     }
 
     return allToolbarItems;
-  }, [config, source, toolbarItems, showMVOptimizationIndicator]);
+  }, [
+    queriedConfig,
+    source,
+    toolbarItems,
+    showMVOptimizationIndicator,
+    mvOptimizationData,
+  ]);
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>

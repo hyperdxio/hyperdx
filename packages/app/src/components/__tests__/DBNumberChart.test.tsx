@@ -12,6 +12,14 @@ jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
 }));
 
+jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
+  useMVOptimizationExplanation: jest.fn().mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isPlaceholderData: false,
+  }),
+}));
+
 jest.mock('@/source', () => ({
   useSource: jest.fn().mockReturnValue({ data: null }),
 }));

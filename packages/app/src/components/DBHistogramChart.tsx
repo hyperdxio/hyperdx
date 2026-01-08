@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -15,10 +15,12 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 import { omit } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
+import DateRangeIndicator from './charts/DateRangeIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -216,6 +218,9 @@ export default function DBHistogramChart({
     },
   );
 
+  const { data: mvOptimizationData } =
+    useMVOptimizationExplanation(queriedConfig);
+
   // Don't ask me why...
   const buckets = data?.data?.[0]?.data;
 
@@ -232,9 +237,25 @@ export default function DBHistogramChart({
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-histogram-chart-mv-indicator"
-          config={config}
+          config={queriedConfig}
           source={source}
           variant="icon"
+        />,
+      );
+    }
+
+    const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
+    if (mvDateRange) {
+      const mvGranularity = mvOptimizationData?.explanations.find(
+        e => e.success,
+      )?.mvConfig.minGranularity;
+
+      allToolbarItems.push(
+        <DateRangeIndicator
+          key="db-histogram-chart-date-range-indicator"
+          originalDateRange={queriedConfig.dateRange}
+          effectiveDateRange={mvDateRange}
+          mvGranularity={mvGranularity}
         />,
       );
     }
@@ -245,11 +266,12 @@ export default function DBHistogramChart({
 
     return allToolbarItems;
   }, [
-    config,
+    queriedConfig,
     toolbarPrefix,
     toolbarSuffix,
     source,
     showMVOptimizationIndicator,
+    mvOptimizationData,
   ]);
 
   return (
