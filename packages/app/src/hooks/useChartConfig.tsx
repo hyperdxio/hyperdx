@@ -348,36 +348,29 @@ export function useRenderedSqlChartConfig(
   options?: UseQueryOptions<string>,
 ) {
   const { enabled = true } = options ?? {};
-  const metadata = useMetadataWithSettings();
-  const clickhouseClient = useClickhouseClient();
 
-  const { data: source, isLoading: isLoadingSource } = useSource({
-    id: config.source,
-  });
+  const {
+    data: mvOptimizationData,
+    isLoading: isLoadingMVOptimization,
+    isPlaceholderData: isPlaceholderMVOptimization,
+  } = useMVOptimizationExplanation(config, { enabled: !!enabled });
 
   const query = useQuery({
     queryKey: ['renderedSql', config],
-    queryFn: async ({ signal }) => {
-      const optimizedConfig = source?.materializedViews?.length
-        ? await tryOptimizeConfigWithMaterializedView(
-            config,
-            metadata,
-            clickhouseClient,
-            signal,
-            source,
-          )
-        : config;
-
+    queryFn: async () => {
+      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
       const query = await renderChartConfig(optimizedConfig, getMetadata());
       return format(parameterizedQueryToSql(query));
     },
     ...options,
-    enabled: enabled && !isLoadingSource,
+    enabled:
+      enabled && !isLoadingMVOptimization && !isPlaceholderMVOptimization,
   });
 
   return {
     ...query,
-    isLoading: query.isLoading || isLoadingSource,
+    isLoading:
+      query.isLoading || isLoadingMVOptimization || isPlaceholderMVOptimization,
   };
 }
 
