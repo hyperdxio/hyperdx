@@ -787,31 +787,27 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const tiles = useMemo(
     () =>
       (dashboard?.tiles ?? [])
-        .filter(chart => {
-          // Filter tiles based on selected tag
-          if (!selectedTag) return true;
-          return chart.tags?.includes(selectedTag);
-        })
         .map(chart => {
+        const isHidden = selectedTag && !chart.tags?.includes(selectedTag);
         return (
-          <Tile
-            key={chart.id}
-            chart={chart}
-            dateRange={searchedTimeRange}
-            onEditClick={() => setEditedTile(chart)}
-            granularity={
-              isRefreshEnabled
-                ? granularityOverride
-                : (granularity ?? undefined)
-            }
-            filters={[
-              {
-                type: whereLanguage === 'sql' ? 'sql' : 'lucene',
-                condition: where,
-              },
-              ...(filterQueries ?? []),
-            ]}
-            onTimeRangeSelect={onTimeRangeSelect}
+          <div key={chart.id} style={{ display: isHidden ? 'none' : 'block' }}>
+            <Tile
+              chart={chart}
+              dateRange={searchedTimeRange}
+              onEditClick={() => setEditedTile(chart)}
+              granularity={
+                isRefreshEnabled
+                  ? granularityOverride
+                  : (granularity ?? undefined)
+              }
+              filters={[
+                {
+                  type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+                  condition: where,
+                },
+                ...(filterQueries ?? []),
+              ]}
+              onTimeRangeSelect={onTimeRangeSelect}
             isHighlighted={highlightedTileId === chart.id}
             onTagClick={(tag) => {
               setSelectedTag(tag === selectedTag ? null : tag);
@@ -868,6 +864,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               }
             }}
           />
+          </div>
         );
       }),
     [
@@ -1237,7 +1234,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             }
           >
             <ReactGridLayout
-              key={selectedTag || 'all-tiles'}
               layout={layout}
               containerPadding={[0, 0]}
               onLayoutChange={newLayout => {
