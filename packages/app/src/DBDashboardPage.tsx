@@ -790,28 +790,29 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         .map(chart => {
         const isHidden = selectedTag && !chart.tags?.includes(selectedTag);
         return (
-          <div key={chart.id} style={{ display: isHidden ? 'none' : 'block' }}>
-            <Tile
-              chart={chart}
-              dateRange={searchedTimeRange}
-              onEditClick={() => setEditedTile(chart)}
-              granularity={
-                isRefreshEnabled
-                  ? granularityOverride
-                  : (granularity ?? undefined)
-              }
-              filters={[
-                {
-                  type: whereLanguage === 'sql' ? 'sql' : 'lucene',
-                  condition: where,
-                },
-                ...(filterQueries ?? []),
-              ]}
-              onTimeRangeSelect={onTimeRangeSelect}
+          <Tile
+            key={chart.id}
+            chart={chart}
+            dateRange={searchedTimeRange}
+            onEditClick={() => setEditedTile(chart)}
+            granularity={
+              isRefreshEnabled
+                ? granularityOverride
+                : (granularity ?? undefined)
+            }
+            filters={[
+              {
+                type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+                condition: where,
+              },
+              ...(filterQueries ?? []),
+            ]}
+            onTimeRangeSelect={onTimeRangeSelect}
             isHighlighted={highlightedTileId === chart.id}
             onTagClick={(tag) => {
               setSelectedTag(tag === selectedTag ? null : tag);
             }}
+            style={{ display: isHidden ? 'none' : undefined }}
             onUpdateChart={newChart => {
               if (!dashboard) {
                 return;
@@ -864,7 +865,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               }
             }}
           />
-          </div>
         );
       }),
     [
