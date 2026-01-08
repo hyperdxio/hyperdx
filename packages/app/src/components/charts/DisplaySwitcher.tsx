@@ -18,7 +18,12 @@ function DisplaySwitcher<T extends string>({
   options,
 }: DisplaySwitcherProps<T>) {
   return (
-    <Group className="bg-muted px-2 py-2 rounded fs-8" align="center" gap={0}>
+    <Group
+      className="bg-muted px-2 py-2 rounded fs-8"
+      align="center"
+      gap={0}
+      wrap="nowrap"
+    >
       {options.map(({ icon, label, value: optionValue, disabled }) => (
         <Tooltip label={label} key={optionValue}>
           <ActionIcon

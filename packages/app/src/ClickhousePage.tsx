@@ -16,6 +16,7 @@ import {
   Grid,
   Group,
   SegmentedControl,
+  Stack,
   Tabs,
   Text,
   Tooltip,
@@ -196,14 +197,14 @@ function InfrastructureTab({
         <ChartBox style={{ height: 400 }}>
           <DBTimeChart
             title={
-              <>
+              <Stack gap={0}>
                 <Text size="sm" mb="xs">
                   Network
                 </Text>
                 <Text size="xs" mb="sm">
                   Network activity for the entire machine, not only Clickhouse.
                 </Text>
-              </>
+              </Stack>
             }
             config={{
               select: [
@@ -357,7 +358,7 @@ function InsertsTab({
         <ChartBox style={{ height: 400 }}>
           <DBTableChart
             title={
-              <>
+              <Stack gap={0}>
                 <Text size="sm" mb="sm">
                   Active Parts Per Partition
                 </Text>
@@ -366,7 +367,7 @@ function InsertsTab({
                   throttle inserts after 1,000 parts per partition and stop
                   inserts at 3,000 parts per partition.
                 </Text>
-              </>
+              </Stack>
             }
             config={{
               dateRange: searchedTimeRange,
