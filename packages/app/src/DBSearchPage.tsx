@@ -622,14 +622,14 @@ function useLiveUpdate({
   ]);
 }
 
-function useSearchedConfigToChartConfig({
-  select,
-  source,
-  whereLanguage,
-  where,
-  filters,
-  orderBy,
-}: SearchConfig) {
+/**
+ * Takes in a input search config (user edited search config) and a default search config (saved search or source default config)
+ * and returns a chart config.
+ */
+function useSearchedConfigToChartConfig(
+  { select, source, whereLanguage, where, filters, orderBy }: SearchConfig,
+  defaultSearchConfig?: Partial<SearchConfig>,
+) {
   const { data: sourceObj, isLoading } = useSource({
     id: source,
   });
@@ -639,7 +639,11 @@ function useSearchedConfigToChartConfig({
     if (sourceObj != null) {
       return {
         data: {
-          select: select || (sourceObj.defaultTableSelectExpression ?? ''),
+          select:
+            select ||
+            defaultSearchConfig?.select ||
+            sourceObj.defaultTableSelectExpression ||
+            '',
           from: sourceObj.from,
           source: sourceObj.id,
           ...(sourceObj.tableFilterExpression != null
@@ -660,7 +664,7 @@ function useSearchedConfigToChartConfig({
           implicitColumnExpression: sourceObj.implicitColumnExpression,
           connection: sourceObj.connection,
           displayType: DisplayType.Search,
-          orderBy: orderBy || defaultOrderBy,
+          orderBy: orderBy || defaultSearchConfig?.orderBy || defaultOrderBy,
         },
       };
     }
@@ -671,6 +675,7 @@ function useSearchedConfigToChartConfig({
     isLoading,
     select,
     filters,
+    defaultSearchConfig,
     where,
     whereLanguage,
     defaultOrderBy,
@@ -752,6 +757,9 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
   const { data: source } = useSource({ id: sourceID });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
+  // If no source, return undefined so that the orderBy is not set incorrectly
+  if (!source) return undefined;
+
   // When source changes, make sure select and orderby fields are set to default
   return useMemo(
     () =>
@@ -805,11 +813,6 @@ function DBSearchPage() {
       'delta',
       'pattern',
     ]).withDefault('results'),
-  );
-
-  const [outlierSqlCondition, setOutlierSqlCondition] = useQueryState(
-    'outlierSqlCondition',
-    parseAsString,
   );
 
   const [isLive, setIsLive] = useQueryState(
@@ -867,11 +870,33 @@ function DBSearchPage() {
   });
 
   const inputSource = useWatch({ name: 'source', control });
+
+  const defaultOrderBy = useDefaultOrderBy(inputSource);
+
+  // The default search config to use when the user hasn't changed the search config
+  const defaultSearchConfig = useMemo(() => {
+    let _savedSearch = savedSearch;
+    // Ensure to not use the saved search if the saved search id is not the same as the current saved search id
+    if (!savedSearchId || savedSearch?.id !== savedSearchId) {
+      _savedSearch = undefined;
+    }
+    // Ensure to not use the saved search if the input source is not the same as the saved search source
+    if (inputSource !== savedSearch?.source) {
+      _savedSearch = undefined;
+    }
+    return {
+      select:
+        _savedSearch?.select ?? searchedSource?.defaultTableSelectExpression,
+      where: _savedSearch?.where ?? '',
+      whereLanguage: _savedSearch?.whereLanguage ?? 'lucene',
+      source: _savedSearch?.source,
+      orderBy: _savedSearch?.orderBy || defaultOrderBy,
+    };
+  }, [searchedSource, inputSource, savedSearch, defaultOrderBy, savedSearchId]);
+
   // const { data: inputSourceObj } = useSource({ id: inputSource });
   const { data: inputSourceObjs } = useSources();
   const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
-
-  const defaultOrderBy = useDefaultOrderBy(inputSource);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Live Tail');
@@ -1023,14 +1048,14 @@ function DBSearchPage() {
         // Save the selected source ID to localStorage
         setLastSelectedSourceId(newInputSourceObj.id);
 
-        // If the user is in a saved search, prefer the saved search's select if available
+        // If the user isn't in a saved search (or the source is different from the saved search source), reset fields
         if (savedSearchId == null || savedSearch?.source !== watchedSource) {
-          setValue(
-            'select',
-            newInputSourceObj?.defaultTableSelectExpression ?? '',
-          );
+          setValue('select', '');
+          setValue('orderBy', '');
+          // If the user is in a saved search, prefer the saved search's select/orderBy if available
         } else {
           setValue('select', savedSearch?.select ?? '');
+          setValue('orderBy', savedSearch?.orderBy ?? '');
         }
         // Clear all search filters
         searchFilters.clearAllFilters();
@@ -1066,7 +1091,7 @@ function DBSearchPage() {
   >(undefined);
 
   const { data: chartConfig, isLoading: isChartConfigLoading } =
-    useSearchedConfigToChartConfig(searchedConfig);
+    useSearchedConfigToChartConfig(searchedConfig, defaultSearchConfig);
 
   // query error handling
   const { hasQueryError, queryError } = useMemo(() => {
@@ -1239,11 +1264,9 @@ function DBSearchPage() {
   const displayedColumns = useMemo(
     () =>
       splitAndTrimWithBracket(
-        dbSqlRowTableConfig?.select ??
-          searchedSource?.defaultTableSelectExpression ??
-          '',
+        dbSqlRowTableConfig?.select ?? defaultSearchConfig.select ?? '',
       ),
-    [dbSqlRowTableConfig?.select, searchedSource?.defaultTableSelectExpression],
+    [dbSqlRowTableConfig?.select, defaultSearchConfig.select],
   );
 
   const toggleColumn = useCallback(
@@ -1397,10 +1420,10 @@ function DBSearchPage() {
       setSearchedConfig({
         orderBy: sort
           ? `${sort.id} ${sort.desc ? 'DESC' : 'ASC'}`
-          : defaultOrderBy,
+          : defaultSearchConfig.orderBy,
       });
     },
-    [setIsLive, defaultOrderBy, setSearchedConfig],
+    [setIsLive, defaultSearchConfig.orderBy, setSearchedConfig],
   );
   // Parse the orderBy string into a SortingState. We need the string
   // version in other places so we keep this parser separate.
@@ -1578,10 +1601,8 @@ function DBSearchPage() {
               tableConnection={inputSourceTableConnection}
               control={control}
               name="select"
-              defaultValue={inputSourceObj?.defaultTableSelectExpression}
-              placeholder={
-                inputSourceObj?.defaultTableSelectExpression || 'SELECT Columns'
-              }
+              defaultValue={defaultSearchConfig.select}
+              placeholder={defaultSearchConfig.select || 'SELECT Columns'}
               onSubmit={onSubmit}
               label="SELECT"
               size="xs"
@@ -1592,7 +1613,7 @@ function DBSearchPage() {
               tableConnection={inputSourceTableConnection}
               control={control}
               name="orderBy"
-              defaultValue={defaultOrderBy}
+              defaultValue={defaultSearchConfig.orderBy}
               onSubmit={onSubmit}
               label="ORDER BY"
               size="xs"
@@ -1758,7 +1779,6 @@ function DBSearchPage() {
         <SaveSearchModal
           opened={saveSearchModalState != null}
           onClose={clearSaveSearchModalState}
-          // @ts-ignore FIXME: Do some sort of validation?
           searchedConfig={searchedConfig}
           isUpdate={saveSearchModalState === 'update'}
           savedSearchId={savedSearchId}

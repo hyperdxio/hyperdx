@@ -203,7 +203,7 @@ describe('useDefaultOrderBy', () => {
 
       const { result } = renderHook(() => useDefaultOrderBy(null));
 
-      expect(result.current).toBe(' DESC');
+      expect(result.current).toBe(undefined);
     });
 
     it('should handle undefined sourceID ungracefully', () => {
@@ -221,7 +221,7 @@ describe('useDefaultOrderBy', () => {
 
       const { result } = renderHook(() => useDefaultOrderBy(undefined));
 
-      expect(result.current).toBe(' DESC');
+      expect(result.current).toBe(undefined);
     });
 
     it('should handle complex Timestamp expressions', () => {
