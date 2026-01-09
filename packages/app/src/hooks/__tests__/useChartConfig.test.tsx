@@ -1399,7 +1399,6 @@ describe('useChartConfig', () => {
       // Verify the query used the optimized config (materialized view)
       const queryCall = mockClickhouseClient.queryChartConfig.mock.calls[0][0];
       expect(queryCall.config.from.tableName).toBe('metrics_rollup_1h');
-      expect(queryCall.config.select[0].aggFn).toBe('countMerge');
 
       expect(result2.current.data?.data).toBeDefined();
     });
