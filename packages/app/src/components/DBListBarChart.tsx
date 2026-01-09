@@ -5,7 +5,9 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import type { FloatingPosition } from '@mantine/core';
 import { Box, Code, Flex, HoverCard, Text } from '@mantine/core';
 
+import { buildMVDateRangeIndicator } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 import type { NumberFormat } from '@/types';
 import { omit } from '@/utils';
@@ -206,6 +208,9 @@ export default function DBListBarChart({
     },
   );
 
+  const { data: mvOptimizationData } =
+    useMVOptimizationExplanation(queriedConfig);
+
   const { data: source } = useSource({ id: config.source });
 
   const columns = useMemo(() => {
@@ -230,11 +235,20 @@ export default function DBListBarChart({
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-list-bar-chart-mv-indicator"
-          config={config}
+          config={queriedConfig}
           source={source}
           variant="icon"
         />,
       );
+    }
+
+    const dateRangeIndicator = buildMVDateRangeIndicator({
+      mvOptimizationData,
+      originalDateRange: queriedConfig.dateRange,
+    });
+
+    if (dateRangeIndicator) {
+      allToolbarItems.push(dateRangeIndicator);
     }
 
     if (toolbarItems && toolbarItems.length > 0) {
@@ -242,7 +256,13 @@ export default function DBListBarChart({
     }
 
     return allToolbarItems;
-  }, [config, source, toolbarItems, showMVOptimizationIndicator]);
+  }, [
+    queriedConfig,
+    source,
+    toolbarItems,
+    showMVOptimizationIndicator,
+    mvOptimizationData,
+  ]);
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>

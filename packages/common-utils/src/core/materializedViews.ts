@@ -13,6 +13,7 @@ import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from './renderChartConfig';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
+  getAlignedDateRange,
 } from './utils';
 
 type SelectItem = Exclude<
@@ -348,7 +349,16 @@ export async function tryConvertConfigToMaterializedViewSelect<
       tableName: mvConfig.tableName,
     },
     // Make the date range end exclusive to avoid selecting the entire next time bucket from the MV
-    ...('dateRange' in chartConfig ? { dateRangeEndInclusive: false } : {}),
+    // Align the date range to the MV granularity to avoid excluding the first time bucket
+    ...('dateRange' in chartConfig && chartConfig.dateRange
+      ? {
+          dateRangeEndInclusive: false,
+          dateRange: getAlignedDateRange(
+            chartConfig.dateRange,
+            mvConfig.minGranularity,
+          ),
+        }
+      : {}),
   };
 
   return {

@@ -14,14 +14,18 @@ import { useSource } from '@/source';
 
 import { useMetadataWithSettings } from './useMetadata';
 
-export interface MVOptimizationExplanationResult {
-  optimizedConfig?: ChartConfigWithOptDateRange;
+export interface MVOptimizationExplanationResult<
+  C extends ChartConfigWithOptDateRange = ChartConfigWithOptDateRange,
+> {
+  optimizedConfig?: C;
   explanations: MVOptimizationExplanation[];
 }
 
-export function useMVOptimizationExplanation(
-  config: ChartConfigWithOptDateRange | undefined,
-  options?: UseQueryOptions<MVOptimizationExplanationResult>,
+export function useMVOptimizationExplanation<
+  C extends ChartConfigWithOptDateRange,
+>(
+  config: C | undefined,
+  options?: Partial<UseQueryOptions<MVOptimizationExplanationResult<C>>>,
 ) {
   const { enabled = true } = options || {};
   const metadata = useMetadataWithSettings();
@@ -31,7 +35,7 @@ export function useMVOptimizationExplanation(
     id: config?.source,
   });
 
-  return useQuery<MVOptimizationExplanationResult>({
+  return useQuery<MVOptimizationExplanationResult<C>>({
     queryKey: ['optimizationExplanation', config],
     queryFn: async ({ signal }) => {
       if (!config || !source) {
@@ -49,6 +53,7 @@ export function useMVOptimizationExplanation(
       );
     },
     placeholderData: keepPreviousData,
+    staleTime: 5000,
     ...options,
     enabled: enabled && !isLoadingSource && !!config && !!source,
   });

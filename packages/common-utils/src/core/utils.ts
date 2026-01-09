@@ -662,3 +662,27 @@ export function optimizeTimestampValueExpression(
 
   return timestampValueExprs.join(', ');
 }
+
+export function getAlignedDateRange(
+  [originalStart, originalEnd]: [Date, Date],
+  granularity: SQLInterval,
+): [Date, Date] {
+  // Round the start time down to the previous interval boundary
+  const alignedStart = toStartOfInterval(originalStart, granularity);
+
+  // Round the end time up to the next interval boundary
+  let alignedEnd = toStartOfInterval(originalEnd, granularity);
+  if (alignedEnd.getTime() < originalEnd.getTime()) {
+    const intervalSeconds = convertGranularityToSeconds(granularity);
+    alignedEnd = fnsAdd(alignedEnd, { seconds: intervalSeconds });
+  }
+
+  return [alignedStart, alignedEnd];
+}
+
+export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
+  return (
+    range1[0].getTime() === range2[0].getTime() &&
+    range1[1].getTime() === range2[1].getTime()
+  );
+}
