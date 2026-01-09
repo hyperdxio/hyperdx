@@ -183,6 +183,66 @@ describe('sources router', () => {
     expect(updatedSource?.durationExpression).toBe('Duration');
   });
 
+  it('PUT /:id - preserves shared properties when switching between Log and Trace', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    // Create a log source with shared properties
+    const logSource = await Source.create({
+      kind: SourceKind.Log,
+      name: 'Test Log Source',
+      connection: new Types.ObjectId().toString(),
+      from: {
+        databaseName: 'test_db',
+        tableName: 'otel_logs',
+      },
+      timestampValueExpression: 'Timestamp',
+      defaultTableSelectExpression: 'Body, ServiceName',
+      serviceNameExpression: 'ServiceName',
+      severityTextExpression: 'SeverityText', // Log-specific
+      traceIdExpression: 'TraceId', // Shared with Trace
+      spanIdExpression: 'SpanId', // Shared with Trace
+      team: team._id,
+    });
+
+    // Update to trace source
+    const traceSource = {
+      id: logSource._id.toString(),
+      kind: SourceKind.Trace,
+      name: 'Test Trace Source',
+      connection: logSource.connection,
+      from: logSource.from,
+      timestampValueExpression: 'Timestamp',
+      defaultTableSelectExpression: 'SpanName, ServiceName', // Shared with Log
+      serviceNameExpression: 'ServiceName', // Shared with Log
+      traceIdExpression: 'TraceId', // Shared with Log
+      spanIdExpression: 'SpanId', // Shared with Log
+      durationExpression: 'Duration', // Trace-specific
+      durationPrecision: 9,
+      parentSpanIdExpression: 'ParentSpanId',
+      spanNameExpression: 'SpanName',
+      spanKindExpression: 'SpanKind',
+    };
+
+    await agent.put(`/sources/${logSource._id}`).send(traceSource).expect(200);
+
+    const updatedSource = await Source.findById(logSource._id).lean();
+
+    // Verify trace-specific properties exist
+    expect(updatedSource?.kind).toBe(SourceKind.Trace);
+    expect(updatedSource?.durationExpression).toBe('Duration');
+
+    // Verify log-specific properties are removed
+    expect(updatedSource?.severityTextExpression).toBeNull();
+
+    // Verify shared properties are preserved
+    expect(updatedSource?.traceIdExpression).toBe('TraceId');
+    expect(updatedSource?.spanIdExpression).toBe('SpanId');
+    expect(updatedSource?.serviceNameExpression).toBe('ServiceName');
+    expect(updatedSource?.defaultTableSelectExpression).toBe(
+      'SpanName, ServiceName',
+    );
+  });
+
   it('DELETE /:id - deletes a source', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
