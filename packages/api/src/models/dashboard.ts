@@ -26,6 +26,9 @@ export default mongoose.model<IDashboard>(
         default: [],
       },
       filters: { type: mongoose.Schema.Types.Array, default: [] },
+      savedQuery: { type: String, required: false },
+      savedQueryLanguage: { type: String, required: false },
+      savedFilterValues: { type: mongoose.Schema.Types.Array, required: false },
     },
     {
       timestamps: true,
