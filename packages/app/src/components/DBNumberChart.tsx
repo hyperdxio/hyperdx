@@ -3,8 +3,12 @@ import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Flex, Text } from '@mantine/core';
 
-import { convertToNumberChartConfig } from '@/ChartUtils';
+import {
+  buildMVDateRangeIndicator,
+  convertToNumberChartConfig,
+} from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 import { formatNumber } from '@/utils';
 
@@ -34,6 +38,9 @@ export default function DBNumberChart({
     [config],
   );
 
+  const { data: mvOptimizationData } =
+    useMVOptimizationExplanation(queriedConfig);
+
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     queriedConfig,
     {
@@ -61,11 +68,20 @@ export default function DBNumberChart({
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-number-chart-mv-indicator"
-          config={config}
+          config={queriedConfig}
           source={source}
           variant="icon"
         />,
       );
+    }
+
+    const dateRangeIndicator = buildMVDateRangeIndicator({
+      mvOptimizationData,
+      originalDateRange: queriedConfig.dateRange,
+    });
+
+    if (dateRangeIndicator) {
+      allToolbarItems.push(dateRangeIndicator);
     }
 
     if (toolbarSuffix && toolbarSuffix.length > 0) {
@@ -74,11 +90,12 @@ export default function DBNumberChart({
 
     return allToolbarItems;
   }, [
-    config,
     toolbarPrefix,
     toolbarSuffix,
     source,
     showMVOptimizationIndicator,
+    mvOptimizationData,
+    queriedConfig,
   ]);
 
   return (

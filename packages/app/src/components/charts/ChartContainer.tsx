@@ -27,7 +27,7 @@ function ChartContainer({
             {title}
           </span>
           {toolbarItems && (
-            <Group flex={0} wrap="nowrap">
+            <Group flex={0} wrap="nowrap" gap={5}>
               {toolbarItems}
             </Group>
           )}

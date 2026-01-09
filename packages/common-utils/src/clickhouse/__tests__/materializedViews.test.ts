@@ -895,7 +895,7 @@ describe('materializedViews', () => {
         connection: 'test-connection',
         dateRange: [
           new Date('2023-12-01T00:00:00Z'),
-          new Date('2023-12-31T23:59:59Z'),
+          new Date('2024-01-01T00:00:00Z'),
         ],
       };
 
@@ -915,7 +915,7 @@ describe('materializedViews', () => {
         },
         dateRange: [
           new Date('2023-12-01T00:00:00Z'),
-          new Date('2023-12-31T23:59:59Z'),
+          new Date('2024-01-01T00:00:00Z'),
         ],
         select: [
           {
@@ -975,6 +975,53 @@ describe('materializedViews', () => {
         dateRangeEndInclusive: false,
       });
       expect(result.errors).toBeUndefined();
+    });
+
+    it('should align dateRange to MV granularity when optimizing a config with dateRange', async () => {
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_spans',
+        },
+        select: [
+          {
+            valueExpression: '',
+            aggFn: 'count',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        dateRange: [
+          new Date('2023-01-01T00:00:30Z'),
+          new Date('2023-01-02T01:00:45Z'),
+        ],
+      };
+
+      const result = await tryConvertConfigToMaterializedViewSelect(
+        chartConfig,
+        MV_CONFIG_METRIC_ROLLUP_1M,
+        metadata,
+      );
+
+      expect(result.optimizedConfig).toEqual({
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1m',
+        },
+        select: [
+          {
+            valueExpression: 'count',
+            aggFn: 'sum',
+          },
+        ],
+        where: '',
+        connection: 'test-connection',
+        dateRange: [
+          new Date('2023-01-01T00:00:00Z'),
+          new Date('2023-01-02T01:01:00Z'),
+        ],
+        dateRangeEndInclusive: false,
+      });
     });
   });
 

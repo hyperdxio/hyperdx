@@ -12,6 +12,7 @@ import {
   convertToDashboardTemplate,
   findJsonExpressions,
   formatDate,
+  getAlignedDateRange,
   getFirstOrderingItem,
   isFirstOrderByAscending,
   isJsonExpression,
@@ -1314,5 +1315,112 @@ describe('utils', () => {
         expect(actual).toBe(expected);
       },
     );
+  });
+
+  describe('getAlignedDateRange', () => {
+    it('should align start time down to the previous minute boundary', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:37Z'), // 37 seconds
+        new Date('2025-11-26T12:25:00Z'),
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '1 minute',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:23:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T12:25:00.000Z');
+    });
+
+    it('should align end time up to the next minute boundary', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:00Z'),
+        new Date('2025-11-26T12:25:42Z'), // 42 seconds
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '1 minute',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:23:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T12:26:00.000Z');
+    });
+
+    it('should align both start and end times with 5 minute granularity', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:17Z'), // Should round down to 12:20:00
+        new Date('2025-11-26T12:27:42Z'), // Should round up to 12:30:00
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '5 minute',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:20:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T12:30:00.000Z');
+    });
+
+    it('should align with 30 second granularity', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:17Z'), // Should round down to 12:23:00
+        new Date('2025-11-26T12:25:42Z'), // Should round up to 12:26:00
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '30 second',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:23:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T12:26:00.000Z');
+    });
+
+    it('should align with 1 day granularity', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:17Z'), // Should round down to start of day
+        new Date('2025-11-28T08:15:00Z'), // Should round up to start of next day
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '1 day',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T00:00:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-29T00:00:00.000Z');
+    });
+
+    it('should not change range when already aligned to the interval', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:00Z'), // Already aligned
+        new Date('2025-11-26T12:25:00Z'), // Already aligned
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '1 minute',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:23:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T12:25:00.000Z');
+    });
+
+    it('should align with 15 minute granularity', () => {
+      const dateRange: [Date, Date] = [
+        new Date('2025-11-26T12:23:17Z'), // Should round down to 12:15:00
+        new Date('2025-11-26T12:47:42Z'), // Should round up to 13:00:00
+      ];
+
+      const [alignedStart, alignedEnd] = getAlignedDateRange(
+        dateRange,
+        '15 minute',
+      );
+
+      expect(alignedStart.toISOString()).toBe('2025-11-26T12:15:00.000Z');
+      expect(alignedEnd.toISOString()).toBe('2025-11-26T13:00:00.000Z');
+    });
   });
 });

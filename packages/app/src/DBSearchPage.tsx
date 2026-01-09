@@ -1847,6 +1847,7 @@ function DBSearchPage() {
                           enabled={isReady}
                           showDisplaySwitcher={false}
                           showMVOptimizationIndicator={false}
+                          showDateRangeIndicator={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
                         />
@@ -1921,6 +1922,7 @@ function DBSearchPage() {
                             enabled={isReady}
                             showDisplaySwitcher={false}
                             showMVOptimizationIndicator={false}
+                            showDateRangeIndicator={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
                             enableParallelQueries
