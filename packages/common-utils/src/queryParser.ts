@@ -2,7 +2,7 @@ import lucene from '@hyperdx/lucene';
 import SqlString from 'sqlstring';
 
 import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
-import { Metadata } from '@/core/metadata';
+import { Metadata, SkipIndexMetadata } from '@/core/metadata';
 import { splitAndTrimWithBracket } from '@/core/utils';
 
 function encodeSpecialTokens(query: string): string {
@@ -228,7 +228,7 @@ class EnglishSerializer implements Serializer {
 }
 
 export abstract class SQLSerializer implements Serializer {
-  private NOT_FOUND_QUERY = '(1 = 0)';
+  protected NOT_FOUND_QUERY = '(1 = 0)';
 
   abstract getColumnForField(
     field: string,
@@ -371,11 +371,11 @@ export abstract class SQLSerializer implements Serializer {
 
   // Ref: https://clickhouse.com/codebrowser/ClickHouse/src/Functions/HasTokenImpl.h.html#_ZN2DB12HasTokenImpl16isTokenSeparatorEDu
   // Split by anything that's ascii 0-128, that's not a letter or a number
-  private tokenizeTerm(term: string): string[] {
+  protected tokenizeTerm(term: string): string[] {
     return term.split(/[ -/:-@[-`{-~\t\n\r]+/).filter(t => t.length > 0);
   }
 
-  private termHasSeperators(term: string): boolean {
+  protected termHasSeperators(term: string): boolean {
     return term.match(/[ -/:-@[-`{-~\t\n\r]+/) != null;
   }
 
@@ -501,6 +501,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private databaseName: string;
   private implicitColumnExpression?: string;
   private connectionId: string;
+  private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
 
   constructor({
     metadata,
@@ -515,6 +516,132 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     this.tableName = tableName;
     this.implicitColumnExpression = implicitColumnExpression;
     this.connectionId = connectionId;
+
+    // Pre-fetch skip indices for potential bloom filter optimization
+    this.skipIndicesPromise = this.metadata
+      .getSkipIndices({
+        databaseName,
+        tableName,
+        connectionId,
+      })
+      .catch(error => {
+        console.error('Error fetching skip indices:', error);
+        return [];
+      });
+  }
+
+  /**
+   * Override fieldSearch to support bloom_filter tokens() indices optimization.
+   * Falls back to base class hasToken behavior when no suitable bloom_filter index is found.
+   */
+  async fieldSearch(
+    field: string,
+    term: string,
+    isNegatedField: boolean,
+    prefixWildcard: boolean,
+    suffixWildcard: boolean,
+    context: SerializerContext,
+  ) {
+    const isImplicitField = field === IMPLICIT_FIELD;
+    const { column, columnJSON, found, propertyType } =
+      await this.getColumnForField(field, context);
+    if (!found) {
+      return this.NOT_FOUND_QUERY;
+    }
+
+    if (propertyType === JSDataType.Bool) {
+      const normTerm = `${term}`.trim().toLowerCase();
+      return SqlString.format(`(?? ${isNegatedField ? '!' : ''}= ?)`, [
+        column,
+        normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
+      ]);
+    } else if (propertyType === JSDataType.Number) {
+      return SqlString.format(
+        `(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`,
+        [column, term],
+      );
+    } else if (propertyType === JSDataType.JSON) {
+      return SqlString.format(
+        `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}ILIKE ?)`,
+        [`%${term}%`],
+      );
+    }
+
+    if (term.length === 0) {
+      return '(1=1)';
+    }
+
+    if (isImplicitField) {
+      const shouldUseTokenBf = !context.implicitColumnExpression;
+
+      if (prefixWildcard || suffixWildcard) {
+        return SqlString.format(
+          `(lower(?) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
+          [
+            SqlString.raw(column ?? ''),
+            `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
+          ],
+        );
+      } else if (shouldUseTokenBf) {
+        // Check for bloom_filter tokens() index first
+        const bloomIndex = await this.findBloomFilterTokensIndex(column ?? '');
+
+        if (bloomIndex.found) {
+          // Use hasAll with tokens() - more efficient than hasToken
+          // Note: tokens('foo bar') automatically tokenizes, so we use a single hasAll call
+          const hasSeperators = this.termHasSeperators(term);
+          if (hasSeperators) {
+            // Multi-term: hasAll(tokens(...), tokens('foo bar')) AND LIKE fallback
+            return `(${isNegatedField ? 'NOT (' : ''}${[
+              SqlString.format(
+                `hasAll(${bloomIndex.indexExpression}, tokens(?))`,
+                [term],
+              ),
+              // If there are symbols in the term, try to match the whole term as well
+              SqlString.format(`(lower(?) LIKE lower(?))`, [
+                SqlString.raw(column ?? ''),
+                `%${term}%`,
+              ]),
+            ].join(' AND ')}${isNegatedField ? ')' : ''})`;
+          } else {
+            // Single term: hasAll(tokens(...), tokens('term'))
+            return SqlString.format(
+              `(${isNegatedField ? 'NOT ' : ''}hasAll(${bloomIndex.indexExpression}, tokens(?)))`,
+              [term],
+            );
+          }
+        }
+
+        // Fallback to existing hasToken logic for tokenbf_v1 indices
+        const hasSeperators = this.termHasSeperators(term);
+        if (hasSeperators) {
+          const tokens = this.tokenizeTerm(term);
+          return `(${isNegatedField ? 'NOT (' : ''}${[
+            ...tokens.map(token =>
+              SqlString.format(`hasToken(lower(?), lower(?))`, [
+                SqlString.raw(column ?? ''),
+                token,
+              ]),
+            ),
+            // If there are symbols in the term, try to match the whole term as well
+            SqlString.format(`(lower(?) LIKE lower(?))`, [
+              SqlString.raw(column ?? ''),
+              `%${term}%`,
+            ]),
+          ].join(' AND ')}${isNegatedField ? ')' : ''})`;
+        } else {
+          return SqlString.format(
+            `(${isNegatedField ? 'NOT ' : ''}hasToken(lower(?), lower(?)))`,
+            [SqlString.raw(column ?? ''), term],
+          );
+        }
+      }
+    }
+
+    return SqlString.format(`(${column} ${isNegatedField ? 'NOT ' : ''}? ?)`, [
+      SqlString.raw('ILIKE'),
+      `%${term}%`,
+    ]);
   }
 
   /**
@@ -609,6 +736,79 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       columnType: 'Unknown',
     };
     // throw new Error(`Column not found: ${field}`);
+  }
+
+  /**
+   * Finds a bloom_filter skip index that uses tokens() on the given column expression.
+   * Returns the full index expression if found, otherwise returns not found.
+   *
+   * Note: Ignores tokenbf_v1 indices (those are handled by existing hasToken logic).
+   */
+  private async findBloomFilterTokensIndex(columnExpression: string): Promise<{
+    found: boolean;
+    indexExpression?: string;
+  }> {
+    try {
+      const skipIndices = await this.skipIndicesPromise;
+
+      if (!skipIndices || skipIndices.length === 0) {
+        return { found: false };
+      }
+
+      // Look for bloom_filter indices (not tokenbf_v1)
+      const bloomFilterIndices = skipIndices.filter(
+        idx => idx.type === 'bloom_filter',
+      );
+
+      // Find index that uses tokens() on a matching column
+      for (const index of bloomFilterIndices) {
+        const parsed = Metadata.parseTokensExpression(index.expression);
+
+        if (parsed.hasTokens) {
+          // Match the inner expression against our column
+          if (this.columnsMatch(parsed.innerExpression!, columnExpression)) {
+            return {
+              found: true,
+              indexExpression: index.expression, // e.g., "tokens(lower(Body))"
+            };
+          }
+        }
+      }
+
+      return { found: false };
+    } catch (error) {
+      // If index lookup fails, fall back to default behavior
+      console.warn('Failed to fetch skip indices:', error);
+      return { found: false };
+    }
+  }
+
+  /**
+   * Compares two column expressions to determine if they refer to the same column.
+   * Handles cases where index expression may have transformations like lower(Body) vs Body.
+   */
+  private columnsMatch(indexColumn: string, searchColumn: string): boolean {
+    // Normalize expressions for comparison
+    const normalize = (expr: string) =>
+      expr.replace(/\s+/g, '').replace(/`/g, '').toLowerCase();
+
+    const normalizedIndex = normalize(indexColumn);
+    const normalizedSearch = normalize(searchColumn);
+
+    // Direct match
+    if (normalizedIndex === normalizedSearch) {
+      return true;
+    }
+
+    // Check if index expression contains the search column
+    // E.g., lower(Body) should match Body, concatWithSeparator(';',Body,Message) should match Body
+    // Extract potential column names (alphanumeric + underscore)
+    const searchColumnName = normalizedSearch.match(/\w+/)?.[0];
+    if (searchColumnName && normalizedIndex.includes(searchColumnName)) {
+      return true;
+    }
+
+    return false;
   }
 
   async getColumnForField(field: string, context: SerializerContext) {

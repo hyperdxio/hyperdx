@@ -324,3 +324,251 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     expect(actualSql).toBe(expectedSql);
   });
 });
+
+describe('CustomSchemaSQLSerializerV2 - bloom_filter tokens() indices', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+
+  const databaseName = 'default';
+  const tableName = 'otel_logs';
+  const connectionId = 'test';
+
+  beforeEach(() => {
+    // Mock getColumn to return Body as String column
+    metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+      if (column === 'Body') {
+        return { name: 'Body', type: 'String' };
+      } else if (column === 'ServiceName') {
+        return { name: 'ServiceName', type: 'String' };
+      }
+      return undefined;
+    });
+  });
+
+  it('should use hasAll when bloom_filter tokens() index exists', async () => {
+    // Mock getSkipIndices to return bloom_filter with tokens(lower(Body))
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower(Body))',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    expect(sql).toBe("((hasAll(tokens(lower(Body)), tokens('foo'))))");
+  });
+
+  it('should use hasAll for multi-token terms with single call', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower(Body))',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('"foo bar"', serializer);
+    const sql = await builder.build();
+
+    expect(sql).toContain("hasAll(tokens(lower(Body)), tokens('foo bar'))");
+    expect(sql).toContain("(lower(Body) LIKE lower('%foo bar%'))");
+  });
+
+  it('should fallback to hasToken when no bloom_filter tokens() index found', async () => {
+    // Mock getSkipIndices to return empty
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    // Should use hasToken (existing behavior)
+    expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+  });
+
+  it('should handle bloom_filter without tokens() expression', async () => {
+    // Mock index with type=bloom_filter but expression='TraceId' (not tokens)
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_trace_id',
+        type: 'bloom_filter',
+        expression: 'TraceId',
+        granularity: '1',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    // Should fallback to hasToken (index doesn't use tokens())
+    expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+  });
+
+  it('should ignore tokenbf_v1 indices and use hasToken', async () => {
+    // Mock getSkipIndices to return tokenbf_v1 (should be ignored)
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_lower_body',
+        type: 'tokenbf_v1',
+        expression: 'lower(Body)',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    // Should fallback to hasToken (tokenbf_v1 is ignored by findBloomFilterTokensIndex)
+    expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+  });
+
+  it('should handle negated searches with hasAll', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower(Body))',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('-foo', serializer);
+    const sql = await builder.build();
+
+    // Should use NOT hasAll
+    expect(sql).toBe("((NOT hasAll(tokens(lower(Body)), tokens('foo'))))");
+  });
+
+  it('should not use bloom_filter index for explicit field searches', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower(Body))',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    // Query: 'ServiceName:foo'
+    const builder = new SearchQueryBuilder('ServiceName:foo', serializer);
+    const sql = await builder.build();
+
+    // Should use ILIKE, not hasAll or hasToken
+    expect(sql).toContain('ILIKE');
+    expect(sql).not.toContain('hasAll');
+    expect(sql).not.toContain('hasToken');
+  });
+
+  it('should match index expression with different whitespace', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower( Body ))', // Extra whitespace
+        granularity: 8,
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    // Should match and use hasAll (columnsMatch normalizes whitespace)
+    expect(sql).toBe("((hasAll(tokens(lower( Body )), tokens('foo'))))");
+  });
+
+  it('should use hasAll for multiple separate terms', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower(Body))',
+        granularity: 8,
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo bar baz', serializer);
+    const sql = await builder.build();
+
+    // Should generate separate hasAll for each term (not single statement)
+    expect(sql).toContain("hasAll(tokens(lower(Body)), tokens('foo'))");
+    expect(sql).toContain("hasAll(tokens(lower(Body)), tokens('bar'))");
+    expect(sql).toContain("hasAll(tokens(lower(Body)), tokens('baz'))");
+  });
+});
