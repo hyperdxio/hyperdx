@@ -231,7 +231,7 @@ function getConfig(
     from: source.from,
     timestampValueExpression: alias.Timestamp,
     where: `${alias.TraceId} = '${traceId}'`,
-    limit: { limit: 10000 },
+    limit: { limit: 50000 },
     connection: source.connection,
   };
   return { config, alias, type: source.kind };
