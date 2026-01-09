@@ -834,7 +834,7 @@ describe('useOffsetPaginatedQuery', () => {
       expect(result.current.data?.data).toHaveLength(1);
     });
 
-    it('should not use a chart config which is a placeholder from the previous query', async () => {
+    it('should not execute query while useMVOptimizationExplanation is in loading state', async () => {
       const config = createMockChartConfig({
         from: {
           databaseName: 'default',
@@ -848,20 +848,7 @@ describe('useOffsetPaginatedQuery', () => {
         ],
       });
 
-      const placeholderOptimizedConfig = createMockChartConfig({
-        from: {
-          databaseName: 'default',
-          tableName: 'metrics_rollup_5m',
-        },
-        select: [
-          {
-            valueExpression: 'avg__Duration',
-            aggFn: 'avgMerge',
-          },
-        ],
-      });
-
-      const updatedOptimizedConfig = createMockChartConfig({
+      const optimizedConfig = createMockChartConfig({
         from: {
           databaseName: 'default',
           tableName: 'metrics_rollup_1m',
@@ -874,36 +861,34 @@ describe('useOffsetPaginatedQuery', () => {
         ],
       });
 
-      // Mock MV optimization to return placeholder data from previous query
+      // Mock MV optimization to be in loading state
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       jest.mocked(useMVOptimizationExplanation).mockReturnValue({
-        data: {
-          optimizedConfig: placeholderOptimizedConfig,
-          explanations: [],
-        },
-        isLoading: false,
-        isPlaceholderData: true, // This is the key - it's placeholder data
+        data: undefined,
+        isLoading: true, // MV optimization is still loading
       } as unknown as UseQueryResult<MVOptimizationExplanationResult>);
 
       const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
         wrapper,
       });
 
-      // Verify the query is still in loading state because placeholder data prevents execution
+      // Wait a bit to ensure query doesn't execute
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Verify the query is still in loading state because MV optimization is loading
       expect(result.current.isLoading).toBe(true);
 
-      // Verify that renderChartConfig was NOT called because placeholder data prevents query execution
+      // Verify that renderChartConfig was NOT called because MV optimization is still loading
       expect(renderChartConfig).not.toHaveBeenCalled();
 
-      // Now mock the MV optimization to return actual data (not placeholder)
+      // Now mock the MV optimization to finish loading
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       jest.mocked(useMVOptimizationExplanation).mockReturnValue({
         data: {
-          optimizedConfig: updatedOptimizedConfig,
+          optimizedConfig: optimizedConfig,
           explanations: [],
         },
-        isLoading: false,
-        isPlaceholderData: false, // No longer placeholder
+        isLoading: false, // MV optimization finished loading
       } as unknown as UseQueryResult<MVOptimizationExplanationResult>);
 
       // Mock the reader to return data
@@ -928,7 +913,7 @@ describe('useOffsetPaginatedQuery', () => {
 
       await waitFor(() => expect(result2.current.isLoading).toBe(false));
 
-      // Verify the query was executed with the optimized config
+      // Verify the query was executed with the optimized config after MV optimization finished
       expect(renderChartConfig).toHaveBeenCalledTimes(1);
       expect(
         jest

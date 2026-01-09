@@ -261,11 +261,11 @@ export function useQueriedChartConfig(
   const queryClient = useQueryClient();
   const metadata = useMetadataWithSettings();
 
-  const {
-    data: mvOptimizationData,
-    isLoading: isLoadingMVOptimization,
-    isPlaceholderData: isPlaceholderMVOptimization,
-  } = useMVOptimizationExplanation(config, { enabled: !!enabled });
+  const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
+    useMVOptimizationExplanation(config, {
+      enabled: !!enabled,
+      placeholderData: undefined,
+    });
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
@@ -329,8 +329,7 @@ export function useQueriedChartConfig(
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
-    enabled:
-      enabled && !isLoadingMVOptimization && !isPlaceholderMVOptimization,
+    enabled: enabled && !isLoadingMVOptimization,
   });
 
   if (query.isError && options?.onError) {
@@ -338,8 +337,7 @@ export function useQueriedChartConfig(
   }
   return {
     ...query,
-    isLoading:
-      query.isLoading || isLoadingMVOptimization || isPlaceholderMVOptimization,
+    isLoading: query.isLoading || isLoadingMVOptimization,
   };
 }
 
@@ -349,11 +347,11 @@ export function useRenderedSqlChartConfig(
 ) {
   const { enabled = true } = options ?? {};
 
-  const {
-    data: mvOptimizationData,
-    isLoading: isLoadingMVOptimization,
-    isPlaceholderData: isPlaceholderMVOptimization,
-  } = useMVOptimizationExplanation(config, { enabled: !!enabled });
+  const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
+    useMVOptimizationExplanation(config, {
+      enabled: !!enabled,
+      placeholderData: undefined,
+    });
 
   const query = useQuery({
     queryKey: ['renderedSql', config],
@@ -363,14 +361,12 @@ export function useRenderedSqlChartConfig(
       return format(parameterizedQueryToSql(query));
     },
     ...options,
-    enabled:
-      enabled && !isLoadingMVOptimization && !isPlaceholderMVOptimization,
+    enabled: enabled && !isLoadingMVOptimization,
   });
 
   return {
     ...query,
-    isLoading:
-      query.isLoading || isLoadingMVOptimization || isPlaceholderMVOptimization,
+    isLoading: query.isLoading || isLoadingMVOptimization,
   };
 }
 

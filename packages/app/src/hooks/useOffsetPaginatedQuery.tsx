@@ -393,11 +393,11 @@ export default function useOffsetPaginatedQuery(
   const hasPreviousQueries =
     matchedQueries.filter(([_, data]) => data != null).length > 0;
 
-  const {
-    data: mvOptimizationData,
-    isLoading: isLoadingMVOptimization,
-    isPlaceholderData: isPlaceholderMVOptimization,
-  } = useMVOptimizationExplanation(config, { enabled: !!enabled });
+  const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
+    useMVOptimizationExplanation(config, {
+      enabled: !!enabled,
+      placeholderData: undefined,
+    });
 
   const {
     data,
@@ -419,11 +419,7 @@ export default function useOffsetPaginatedQuery(
       // Only preserve previous query in live mode
       return isLive ? prev : undefined;
     },
-    enabled:
-      enabled &&
-      !isLoadingMe &&
-      !isLoadingMVOptimization &&
-      !isPlaceholderMVOptimization,
+    enabled: enabled && !isLoadingMe && !isLoadingMVOptimization,
     initialPageParam: { windowIndex: 0, offset: 0 } as TPageParam,
     getNextPageParam: (lastPage, allPages) => {
       return getNextPageParam(lastPage, allPages, config);
@@ -450,15 +446,7 @@ export default function useOffsetPaginatedQuery(
     data: flattenedData,
     fetchNextPage,
     hasNextPage,
-    isFetching:
-      isFetching ||
-      isLoadingMe ||
-      isLoadingMVOptimization ||
-      isPlaceholderMVOptimization,
-    isLoading:
-      isLoading ||
-      isLoadingMe ||
-      isLoadingMVOptimization ||
-      isPlaceholderMVOptimization,
+    isFetching: isFetching || isLoadingMe || isLoadingMVOptimization,
+    isLoading: isLoading || isLoadingMe || isLoadingMVOptimization,
   };
 }
