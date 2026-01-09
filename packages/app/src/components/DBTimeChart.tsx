@@ -750,6 +750,8 @@ function DBTimeChartComponent({
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
             selectedSeriesNames={selectedSeriesSet}
             onToggleSeries={handleToggleSeries}
+            granularity={granularity}
+            dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
           />
         </>
       )}

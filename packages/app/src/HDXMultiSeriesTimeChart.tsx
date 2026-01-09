@@ -1,5 +1,6 @@
 import { memo, useCallback, useId, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
+import { add, isSameSecond, sub } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
   Area,
@@ -16,6 +17,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { AxisDomain } from 'recharts/types/util/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -24,7 +26,11 @@ import { IconCaretDownFilled, IconCaretUpFilled } from '@tabler/icons-react';
 import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 
-import { LineData } from './ChartUtils';
+import {
+  convertGranularityToSeconds,
+  LineData,
+  toStartOfInterval,
+} from './ChartUtils';
 import { FormatTime, useFormatTime } from './useFormatTime';
 
 import styles from '../styles/HDXLineChart.module.scss';
@@ -404,6 +410,8 @@ export const MemoChart = memo(function MemoChart({
   previousPeriodOffsetSeconds,
   selectedSeriesNames,
   onToggleSeries,
+  granularity,
+  dateRangeEndInclusive = true,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -421,6 +429,8 @@ export const MemoChart = memo(function MemoChart({
   previousPeriodOffsetSeconds?: number;
   selectedSeriesNames?: Set<string>;
   onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
+  granularity: string;
+  dateRangeEndInclusive?: boolean;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -495,12 +505,12 @@ export const MemoChart = memo(function MemoChart({
     });
   }, [lineData, displayType, id, isHovered, selectedSeriesNames]);
 
-  const yAxisDomain = useMemo(() => {
+  const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
 
     if (!hasSelection) {
       // No selection, let Recharts auto-calculate based on all data
-      return ['auto', 'auto'];
+      return [0, 'auto'];
     }
 
     // When series are selected, calculate domain based only on visible series
@@ -573,6 +583,28 @@ export const MemoChart = memo(function MemoChart({
     });
     return map;
   }, [lineData]);
+
+  const xAxisDomain: AxisDomain = useMemo(() => {
+    let startTime = toStartOfInterval(dateRange[0], granularity);
+    let endTime = toStartOfInterval(dateRange[1], granularity);
+    const endTimeIsBoundaryAligned = isSameSecond(dateRange[1], endTime);
+    if (endTimeIsBoundaryAligned && !dateRangeEndInclusive) {
+      endTime = sub(endTime, {
+        seconds: convertGranularityToSeconds(granularity),
+      });
+    }
+
+    // For bar charts, extend the domain in both directions by half a granularity unit
+    // so that the full bar width is within the bounds of the chart
+    if (displayType === DisplayType.StackedBar) {
+      const halfGranularitySeconds =
+        convertGranularityToSeconds(granularity) / 2;
+      startTime = sub(startTime, { seconds: halfGranularitySeconds });
+      endTime = add(endTime, { seconds: halfGranularitySeconds });
+    }
+
+    return [startTime.getTime() / 1000, endTime.getTime() / 1000];
+  }, [dateRange, granularity, dateRangeEndInclusive, displayType]);
 
   return (
     <ResponsiveContainer
@@ -708,10 +740,7 @@ export const MemoChart = memo(function MemoChart({
         )}
         <XAxis
           dataKey={timestampKey ?? 'ts_bucket'}
-          domain={[
-            dateRange[0].getTime() / 1000,
-            dateRange[1].getTime() / 1000,
-          ]}
+          domain={xAxisDomain}
           interval="preserveStartEnd"
           scale="time"
           type="number"
