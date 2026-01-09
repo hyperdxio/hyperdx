@@ -125,6 +125,64 @@ describe('sources router', () => {
       .expect(404);
   });
 
+  it('PUT /:id - cleans up type-specific properties when changing source kind', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    // Create a metric source with metricTables property
+    const metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      name: 'Test Metric Source',
+      connection: new Types.ObjectId().toString(),
+      from: {
+        databaseName: 'test_db',
+        tableName: 'otel_metrics',
+      },
+      timestampValueExpression: 'TimeUnix',
+      resourceAttributesExpression: 'ResourceAttributes',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        sum: 'otel_metrics_sum',
+      },
+      team: team._id,
+    });
+
+    // Verify the metric source has metricTables
+    const createdSource = await Source.findById(metricSource._id).lean();
+    expect(createdSource?.metricTables).toBeDefined();
+
+    // Update the source to a trace source
+    const traceSource = {
+      id: metricSource._id.toString(),
+      kind: SourceKind.Trace,
+      name: 'Test Trace Source',
+      connection: metricSource.connection,
+      from: {
+        databaseName: 'test_db',
+        tableName: 'otel_traces',
+      },
+      timestampValueExpression: 'Timestamp',
+      durationExpression: 'Duration',
+      durationPrecision: 9,
+      traceIdExpression: 'TraceId',
+      spanIdExpression: 'SpanId',
+      parentSpanIdExpression: 'ParentSpanId',
+      spanNameExpression: 'SpanName',
+      spanKindExpression: 'SpanKind',
+      defaultTableSelectExpression: 'Timestamp, ServiceName',
+    };
+
+    await agent
+      .put(`/sources/${metricSource._id}`)
+      .send(traceSource)
+      .expect(200);
+
+    // Verify the trace source does NOT have metricTables property
+    const updatedSource = await Source.findById(metricSource._id).lean();
+    expect(updatedSource?.kind).toBe(SourceKind.Trace);
+    expect(updatedSource?.metricTables).toBeNull();
+    expect(updatedSource?.durationExpression).toBe('Duration');
+  });
+
   it('DELETE /:id - deletes a source', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
