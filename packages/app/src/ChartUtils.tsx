@@ -27,6 +27,8 @@ import {
 import { SegmentedControl } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import DateRangeIndicator from './components/charts/DateRangeIndicator';
+import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
 import { getMetricNameSql } from './otelSemanticConventions';
 import {
   AggFn,
@@ -1189,4 +1191,27 @@ export function convertToTableChartConfig(
   }
 
   return convertedConfig;
+}
+
+export function buildMVDateRangeIndicator({
+  mvOptimizationData,
+  originalDateRange,
+}: {
+  mvOptimizationData?: MVOptimizationExplanationResult;
+  originalDateRange: [Date, Date];
+}) {
+  const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
+  if (!mvDateRange) return null;
+
+  const mvGranularity = mvOptimizationData?.explanations.find(e => e.success)
+    ?.mvConfig.minGranularity;
+
+  return (
+    <DateRangeIndicator
+      key="date-range-indicator"
+      originalDateRange={originalDateRange}
+      effectiveDateRange={mvDateRange}
+      mvGranularity={mvGranularity}
+    />
+  );
 }

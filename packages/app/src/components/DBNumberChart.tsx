@@ -3,14 +3,16 @@ import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Flex, Text } from '@mantine/core';
 
-import { convertToNumberChartConfig } from '@/ChartUtils';
+import {
+  buildMVDateRangeIndicator,
+  convertToNumberChartConfig,
+} from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 import { formatNumber } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
-import DateRangeIndicator from './charts/DateRangeIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -73,20 +75,13 @@ export default function DBNumberChart({
       );
     }
 
-    const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
-    if (mvDateRange) {
-      const mvGranularity = mvOptimizationData?.explanations.find(
-        e => e.success,
-      )?.mvConfig.minGranularity;
+    const dateRangeIndicator = buildMVDateRangeIndicator({
+      mvOptimizationData,
+      originalDateRange: queriedConfig.dateRange,
+    });
 
-      allToolbarItems.push(
-        <DateRangeIndicator
-          key="db-number-chart-date-range-indicator"
-          originalDateRange={queriedConfig.dateRange}
-          effectiveDateRange={mvDateRange}
-          mvGranularity={mvGranularity}
-        />,
-      );
+    if (dateRangeIndicator) {
+      allToolbarItems.push(dateRangeIndicator);
     }
 
     if (toolbarSuffix && toolbarSuffix.length > 0) {

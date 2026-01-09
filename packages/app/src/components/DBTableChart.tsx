@@ -4,7 +4,10 @@ import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
 
-import { convertToTableChartConfig } from '@/ChartUtils';
+import {
+  buildMVDateRangeIndicator,
+  convertToTableChartConfig,
+} from '@/ChartUtils';
 import { Table } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -12,7 +15,6 @@ import { useSource } from '@/source';
 import { useIntersectionObserver } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
-import DateRangeIndicator from './charts/DateRangeIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -148,20 +150,13 @@ export default function DBTableChart({
       );
     }
 
-    const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
-    if (mvDateRange) {
-      const mvGranularity = mvOptimizationData?.explanations.find(
-        e => e.success,
-      )?.mvConfig.minGranularity;
+    const dateRangeIndicator = buildMVDateRangeIndicator({
+      mvOptimizationData,
+      originalDateRange: queriedConfig.dateRange,
+    });
 
-      allToolbarItems.push(
-        <DateRangeIndicator
-          key="db-table-chart-date-range-indicator"
-          originalDateRange={queriedConfig.dateRange}
-          effectiveDateRange={mvDateRange}
-          mvGranularity={mvGranularity}
-        />,
-      );
+    if (dateRangeIndicator) {
+      allToolbarItems.push(dateRangeIndicator);
     }
 
     if (toolbarSuffix && toolbarSuffix.length > 0) {
