@@ -80,7 +80,8 @@ router.patch(
         return res.sendStatus(404);
       }
 
-      const updates = _.omitBy(req.body, _.isNil);
+      // Only omit undefined values, keep null (which signals field removal)
+      const updates = _.omitBy(req.body, _.isUndefined);
 
       const updatedDashboard = await updateDashboard(
         dashboardId,

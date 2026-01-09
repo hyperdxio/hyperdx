@@ -108,6 +108,7 @@ describe('usePresetDashboardFilters', () => {
       filterValues: mockFilterValues,
       setFilterValue: mockSetFilterValue,
       filterQueries: mockFilterQueries,
+      setFilterQueries: jest.fn(),
     });
   });
 
