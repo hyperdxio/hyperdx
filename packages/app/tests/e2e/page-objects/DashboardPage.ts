@@ -12,11 +12,11 @@ export class DashboardPage {
   readonly timePicker: TimePickerComponent;
   readonly chartEditor: ChartEditorComponent;
   readonly granularityPicker: Locator;
+  readonly searchInput: Locator;
 
   private readonly createDashboardButton: Locator;
   private readonly addTileButton: Locator;
   private readonly dashboardNameHeading: Locator;
-  private readonly searchInput: Locator;
   private readonly searchSubmitButton: Locator;
   private readonly liveButton: Locator;
   private readonly tempDashboardBanner: Locator;
