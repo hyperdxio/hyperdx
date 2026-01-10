@@ -1,5 +1,40 @@
 # @hyperdx/app
 
+## 2.12.0
+
+### Minor Changes
+
+- 8b5e80da: Add chart legend series filtering with click and shift-click selection
+- 5dded38f: Refactor Sources components and add custom Mantine UI variants
+
+  - Move SourceForm to Sources/ subfolder with reusable SourcesList component
+  - Add primary, secondary, and danger button/action icon variants
+  - Improve Storybook with font switching and component stories
+  - Update ErrorBoundary styling with danger variant
+
+### Patch Changes
+
+- e9650e86: Fix hydration errors across a variety of pages
+- ab7645de: feat: Add a minimum date to MV configuration
+- 9f9629e4: fix: Increase span waterfall limit to 50 - 100k spans
+- 99863885: fix: Fix missing dashboard edit icons on search tile
+- 1a9362e7: Fix bug where loading saved search from another page might use default values instead
+- 2c288b1e: Fix threshold on alerts not visible, fix sessions page overflow bug
+- 8927f9e2: chore: bundle drain3 wasm deps
+- 725dbc2f: feat: Align line/bar chart date ranges to chart granularity
+- 1e6987e4: fix: Set better Chart Axis Bounds
+- 158ccefa: refactor: Add ChartContainer component with toolbar
+- 8213d69b: fix: Ensure displayed queries and MV indicators match queried configs
+- ae12ca16: feat: Add MV granularities and infer config from SummingMergeTree
+- 3b71fecb: fix: display "temporary dashboard" banner until dashboard is created
+- 8172fba9: fix: Fix a couple of visual bugs in Chart titles
+- 0c16a4b3: feat: Align date ranges to MV Granularity
+- Updated dependencies [ab7645de]
+- Updated dependencies [ebaebc14]
+- Updated dependencies [725dbc2f]
+- Updated dependencies [0c16a4b3]
+  - @hyperdx/common-utils@0.10.2
+
 ## 2.11.0
 
 ### Minor Changes
