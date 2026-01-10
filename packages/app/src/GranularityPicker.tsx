@@ -1,8 +1,7 @@
 import { memo } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import { Select } from '@mantine/core';
-
-import { Granularity } from './ChartUtils';
 
 export default function GranularityPicker({
   value,
@@ -37,6 +36,10 @@ export default function GranularityPicker({
         {
           value: Granularity.TenMinute,
           label: '10 Minutes Granularity',
+        },
+        {
+          value: Granularity.FifteenMinute,
+          label: '15 Minutes Granularity',
         },
         {
           value: Granularity.ThirtyMinute,

@@ -7,17 +7,14 @@ import {
   ClickHouseQueryError,
   inferTimestampColumn,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Code, Divider, Group, Modal, Text } from '@mantine/core';
 import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { IconArrowsDiagonal } from '@tabler/icons-react';
 
-import {
-  convertDateRangeToGranularityString,
-  isAggregateFunction,
-  timeBucketByGranularity,
-} from '@/ChartUtils';
+import { isAggregateFunction, timeBucketByGranularity } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { NumberFormat } from '@/types';
 import { FormatTime } from '@/useFormatTime';
