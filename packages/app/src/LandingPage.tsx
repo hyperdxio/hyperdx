@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 
 import api from '@/api';
 import AuthLoadingBlocker from '@/AuthLoadingBlocker';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_LOCAL_MODE, IS_SELF_HOSTED_MODE } from '@/config';
 
 export default function LandingPage() {
   const { data: installation, isLoading: installationIsLoading } =
@@ -14,7 +14,7 @@ export default function LandingPage() {
   const isLoggedIn = Boolean(!teamIsLoading && team);
 
   useEffect(() => {
-    if (isLoggedIn || IS_LOCAL_MODE) {
+    if (isLoggedIn || IS_LOCAL_MODE || IS_SELF_HOSTED_MODE) {
       router.push('/search');
     }
   }, [isLoggedIn, router]);
