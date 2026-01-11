@@ -133,7 +133,13 @@ export default function AutocompleteInput({
     <div style={{ flex: 1, minWidth: 0 }}>
       <Popover open={isInputDropdownOpen} onOpenChange={setIsInputDropdownOpen}>
         {/* TODO: CLICK-UI-POPOVER-TRIGGER-WIDTH - Popover.Trigger has width: fit-content by default, override to fill flex container */}
-        <Popover.Trigger style={{ width: '100%' }}>
+        <Popover.Trigger
+          style={{ width: '100%' }}
+          onClick={e => {
+            // Prevent Popover.Trigger from toggling - we control open state via focus
+            e.preventDefault();
+          }}
+        >
           <div style={{ position: 'relative' }}>
             <TextAreaField
               ref={inputRef}
@@ -263,6 +269,8 @@ export default function AutocompleteInput({
             zIndex,
             padding: 0,
           }}
+          onOpenAutoFocus={e => e.preventDefault()}
+          onCloseAutoFocus={e => e.preventDefault()}
         >
           {aboveSuggestions != null && (
             <div className="d-flex p-2 flex-wrap px-3">{aboveSuggestions}</div>
@@ -290,6 +298,7 @@ export default function AutocompleteInput({
                       onMouseOver={() => {
                         setSelectedAutocompleteIndex(i);
                       }}
+                      onMouseDown={e => e.preventDefault()}
                       onClick={() => {
                         onAcceptSuggestion(value);
                       }}
@@ -325,6 +334,7 @@ export default function AutocompleteInput({
                       }}
                       key={value}
                       onMouseOver={() => setSelectedQueryHistoryIndex(i)}
+                      onMouseDown={e => e.preventDefault()}
                       onClick={() => onSelectSearchHistory(value)}
                     >
                       <span className="me-1 text-truncate">{label}</span>
