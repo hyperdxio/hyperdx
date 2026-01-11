@@ -8,6 +8,7 @@ Import directly from `@punkbit/cui`:
 
 ```typescript
 import { Button, IconButton, Popover, TextAreaField } from '@punkbit/cui';
+// Note: Select is NOT migrated - use Mantine Select
 ```
 
 ---
@@ -176,6 +177,41 @@ Additionally, `Popover.Trigger` always wraps children in an internal `<div>`, ev
 
 ---
 
+### Select
+
+<!-- TODO: CLICK-UI-SELECT-NOT-WORKING -->
+#### Click UI Select dropdown does not open
+
+**Issue**: The Click UI `Select` component's dropdown does not open when clicked. The component renders but clicking on it does nothing.
+
+**Status**: ❌ **NOT MIGRATED** - Keeping Mantine Select until this is resolved.
+
+**Attempted approaches**:
+1. Using `options` prop with array of `{value, label}` objects
+2. Using `Select.Item` children instead of `options` prop
+3. Both approaches result in a non-functional dropdown
+
+**Possible causes**:
+- Internal Popover/Radix state management issue
+- Z-index or portal configuration needed
+- Missing required props or setup
+
+**Current workaround**: Continue using Mantine `Select` component.
+
+```typescript
+// ❌ Click UI Select - dropdown doesn't open
+import { Select } from '@punkbit/cui';
+<Select options={[...]} onSelect={...} />
+
+// ✅ Mantine Select - works correctly
+import { Select } from '@mantine/core';
+<Select data={[...]} onChange={...} />
+```
+
+**Affected files**: `SelectControlled.tsx` (kept as Mantine)
+
+---
+
 ## Search Tags for Future Fixes
 
 When Click UI releases fixes for these issues, search for these tags to find affected code:
@@ -190,6 +226,7 @@ When Click UI releases fixes for these issues, search for these tags to find aff
 | `CLICK-UI-BUTTON-HTML-TYPE` | Button needs htmlType prop for form submission |
 | `CLICK-UI-BUTTON-ICON-PROP` | Button icon props should accept ReactNode |
 | `CLICK-UI-POPOVER-TRIGGER-WIDTH` | Popover.Trigger should not have `width: fit-content` |
+| `CLICK-UI-SELECT-NOT-WORKING` | Select dropdown doesn't open - not migrated |
 
 ---
 
@@ -201,6 +238,7 @@ When Click UI releases fixes for these issues, search for these tags to find aff
 | `Textarea` | `TextAreaField` | `onChange` receives value directly, not event |
 | `Button` | `Button` | Use `type` for visual style, not HTML type |
 | `UnstyledButton` | Native `<button>` | No direct equivalent, use styled native button |
+| `Select` | ❌ Not migrated | Click UI Select dropdown doesn't open - keeping Mantine |
 
 ---
 
@@ -209,6 +247,7 @@ When Click UI releases fixes for these issues, search for these tags to find aff
 - `packages/app/src/DBSearchPage.tsx`
 - `packages/app/src/AutocompleteInput.tsx`
 - `packages/app/src/SearchInputV2.tsx`
+- `packages/app/src/components/SelectControlled.tsx`
 
 ---
 
