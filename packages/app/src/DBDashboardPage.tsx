@@ -44,9 +44,10 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
-import { useHover } from '@mantine/hooks';
+import { useHover, useHotkeys } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconArrowsMaximize,
   IconBell,
   IconCopy,
   IconDotsVertical,
@@ -65,6 +66,7 @@ import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import FullscreenPanelModal from '@/components/FullscreenPanelModal';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import {
@@ -155,6 +157,9 @@ const Tile = forwardRef(
     },
     ref: ForwardedRef<HTMLDivElement>,
   ) => {
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isFocused, setIsFocused] = useState(false);
+
     useEffect(() => {
       if (isHighlighted) {
         document
@@ -162,6 +167,12 @@ const Tile = forwardRef(
           ?.scrollIntoView({ behavior: 'smooth' });
       }
     }, [chart.id, isHighlighted]);
+
+    // YouTube-style 'f' key shortcut for fullscreen toggle
+    useHotkeys(
+      [['f', () => isFocused && setIsFullscreen(prev => !prev)]],
+      [isFocused],
+    );
 
     const [queriedConfig, setQueriedConfig] = useState<
       ChartConfigWithDateRange | undefined
@@ -268,6 +279,19 @@ const Tile = forwardRef(
             <IconCopy size={14} />
           </Button>
           <Button
+            data-testid={`tile-fullscreen-button-${chart.id}`}
+            variant="subtle"
+            color="gray"
+            size="xxs"
+            onClick={e => {
+              e.stopPropagation();
+              setIsFullscreen(true);
+            }}
+            title="View Fullscreen (f)"
+          >
+            <IconArrowsMaximize size={14} />
+          </Button>
+          <Button
             data-testid={`tile-edit-button-${chart.id}`}
             variant="subtle"
             color="gray"
@@ -310,31 +334,13 @@ const Tile = forwardRef(
       [chart.config.name],
     );
 
-    return (
-      <div
-        data-testid={`dashboard-tile-${chart.id}`}
-        className={`p-2 pt-0 ${className} d-flex flex-column bg-muted cursor-grab rounded ${
-          isHighlighted && 'dashboard-chart-highlighted'
-        }`}
-        id={`chart-${chart.id}`}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        key={chart.id}
-        ref={ref}
-        style={{
-          ...style,
-        }}
-        onMouseDown={onMouseDown}
-        onMouseUp={onMouseUp}
-        onTouchEnd={onTouchEnd}
-      >
-        <Group justify="center" py={4}>
-          <Box bg={hovered ? 'gray' : undefined} w={100} h={2}></Box>
-        </Group>
-        <div
-          className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default"
-          onMouseDown={e => e.stopPropagation()}
-        >
+    // Render chart content (used in both tile and fullscreen views)
+    const renderChartContent = useCallback(
+      (hideToolbar: boolean = false, isFullscreenView: boolean = false) => {
+        const toolbar = hideToolbar ? [] : [hoverToolbar];
+        const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
+
+        return (
           <ErrorBoundary
             onError={console.error}
             fallback={
@@ -346,8 +352,9 @@ const Tile = forwardRef(
             {(queriedConfig?.displayType === DisplayType.Line ||
               queriedConfig?.displayType === DisplayType.StackedBar) && (
               <DBTimeChart
+                key={`${keyPrefix}-${chart.id}`}
                 title={title}
-                toolbarPrefix={[hoverToolbar]}
+                toolbarPrefix={toolbar}
                 sourceId={chart.config.source}
                 showDisplaySwitcher={true}
                 config={queriedConfig}
@@ -366,8 +373,9 @@ const Tile = forwardRef(
             {queriedConfig?.displayType === DisplayType.Table && (
               <Box p="xs" h="100%">
                 <DBTableChart
+                  key={`${keyPrefix}-${chart.id}`}
                   title={title}
-                  toolbarPrefix={[hoverToolbar]}
+                  toolbarPrefix={toolbar}
                   config={queriedConfig}
                   getRowSearchLink={row =>
                     buildTableRowSearchUrl({
@@ -382,25 +390,28 @@ const Tile = forwardRef(
             )}
             {queriedConfig?.displayType === DisplayType.Number && (
               <DBNumberChart
+                key={`${keyPrefix}-${chart.id}`}
                 title={title}
-                toolbarPrefix={[hoverToolbar]}
+                toolbarPrefix={toolbar}
                 config={queriedConfig}
               />
             )}
             {queriedConfig?.displayType === DisplayType.Markdown && (
               <HDXMarkdownChart
+                key={`${keyPrefix}-${chart.id}`}
                 title={title}
-                toolbarItems={[hoverToolbar]}
+                toolbarItems={toolbar}
                 config={queriedConfig}
               />
             )}
             {queriedConfig?.displayType === DisplayType.Search && (
               <ChartContainer
                 title={title}
-                toolbarItems={[hoverToolbar]}
+                toolbarItems={toolbar}
                 disableReactiveContainer
               >
                 <DBSqlRowTableWithSideBar
+                  key={`${keyPrefix}-${chart.id}`}
                   enabled
                   sourceId={chart.config.source}
                   config={{
@@ -427,9 +438,66 @@ const Tile = forwardRef(
               </ChartContainer>
             )}
           </ErrorBoundary>
+        );
+      },
+      [
+        hoverToolbar,
+        queriedConfig,
+        title,
+        chart,
+        onTimeRangeSelect,
+        onUpdateChart,
+        source,
+        dateRange,
+      ],
+    );
+
+    return (
+      <>
+        <div
+          data-testid={`dashboard-tile-${chart.id}`}
+          className={`p-2 pt-0 ${className} d-flex flex-column bg-muted cursor-grab rounded ${
+            isHighlighted && 'dashboard-chart-highlighted'
+          }`}
+          id={`chart-${chart.id}`}
+          onMouseEnter={() => {
+            setHovered(true);
+            setIsFocused(true);
+          }}
+          onMouseLeave={() => {
+            setHovered(false);
+            setIsFocused(false);
+          }}
+          key={chart.id}
+          ref={ref}
+          style={{
+            ...style,
+          }}
+          onMouseDown={onMouseDown}
+          onMouseUp={onMouseUp}
+          onTouchEnd={onTouchEnd}
+        >
+          <Group justify="center" py={4}>
+            <Box bg={hovered ? 'gray' : undefined} w={100} h={2}></Box>
+          </Group>
+          <div
+            className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default"
+            onMouseDown={e => e.stopPropagation()}
+          >
+            {renderChartContent()}
+          </div>
+          {children}
         </div>
-        {children}
-      </div>
+
+        {/* Fullscreen Modal */}
+        <FullscreenPanelModal
+          opened={isFullscreen}
+          onClose={() => setIsFullscreen(false)}
+          title={chart.config.name}
+        >
+          {isFullscreen && renderChartContent(true, true)}
+        </FullscreenPanelModal>
+      </>
     );
   },
 );
