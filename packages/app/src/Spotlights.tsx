@@ -15,7 +15,7 @@ import {
 } from '@tabler/icons-react';
 
 import api from './api';
-import Logo from './Icon';
+import Logo from './ClickStackLogo';
 import { useSavedSearches } from './savedSearch';
 
 import '@mantine/spotlight/styles.css';

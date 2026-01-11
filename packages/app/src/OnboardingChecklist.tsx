@@ -21,8 +21,8 @@ import {
 
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import api from './api';
+import Icon from './ClickStackLogo';
 import { useConnections } from './connection';
-import Icon from './Icon';
 import { useSources } from './source';
 import { useLocalStorage } from './utils';
 

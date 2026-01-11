@@ -1,6 +1,6 @@
 import React from 'react';
 
-import Icon from './Icon';
+import ClickStackLogo from './ClickStackLogo';
 
 export default function Logo({
   size = 'sm',
@@ -39,16 +39,16 @@ export default function Logo({
           alignItems: 'center',
         }}
       >
-        <Icon size={configs[size].iconSize} />
+        <ClickStackLogo size={configs[size].iconSize} />
       </div>
 
       <span
-        className="fw-bold mono"
         style={{
           fontSize: configs[size].fontSize,
+          fontFamily: 'var(--font-inter)',
         }}
       >
-        HyperDX
+        ClickStack
       </span>
     </div>
   );

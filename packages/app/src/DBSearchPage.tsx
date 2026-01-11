@@ -41,7 +41,7 @@ import {
 import {
   ActionIcon,
   Box,
-  Button,
+  // Button,
   Card,
   Center,
   Code,
@@ -62,6 +62,7 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
+import { Button, IconButton } from '@punkbit/cui/bundled';
 import {
   IconBolt,
   IconCirclePlus,
@@ -280,27 +281,31 @@ function ResumeLiveTailButton({
   handleResumeLiveTail: () => void;
 }) {
   return (
-    <Button size="compact-xs" variant="outline" onClick={handleResumeLiveTail}>
-      <IconBolt size={14} className="text-success me-2" />
+    <Button
+      type="secondary"
+      iconLeft={(<IconBolt size={14} />) as any}
+      onClick={handleResumeLiveTail}
+    >
       Resume Live Tail
     </Button>
   );
 }
 
 function SearchSubmitButton({
-  isFormStateDirty,
+  isFormStateDirty: _isFormStateDirty,
 }: {
   isFormStateDirty: boolean;
 }) {
+  // Note: Click UI IconButton doesn't support dynamic colors or HTML type="submit"
+  // The form handles submission via the form's onSubmit handler
+  // Also Ideally the icon prop should accept a ReactNode, not just a string
+  // button contains a
   return (
-    <Button
+    <IconButton
       data-testid="search-submit-button"
-      variant="outline"
-      type="submit"
-      color={isFormStateDirty ? 'var(--color-text-success)' : 'gray'}
-    >
-      <IconPlayerPlay size={16} />
-    </Button>
+      icon="play"
+      type="secondary"
+    />
   );
 }
 
@@ -498,22 +503,12 @@ function SaveSearchModalComponent({
               {tags.map(tag => (
                 <Button
                   key={tag}
-                  variant="light"
-                  color="gray"
-                  size="xs"
-                  rightSection={
-                    <ActionIcon
-                      variant="transparent"
-                      color="gray"
-                      onClick={(e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        setTags(tags.filter(t => t !== tag));
-                      }}
-                      size="xs"
-                    >
-                      <IconX size={14} />
-                    </ActionIcon>
-                  }
+                  // TODO: CLICK-UI size="xs"
+                  iconRight={(<IconX size={14} />) as any}
+                  onClick={(e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    setTags(tags.filter(t => t !== tag));
+                  }}
                 >
                   {tag.toUpperCase()}
                 </Button>
@@ -521,9 +516,8 @@ function SaveSearchModalComponent({
               <Tags allowCreate values={tags} onChange={setTags}>
                 <Button
                   data-testid="add-tag-button"
-                  variant="outline"
-                  color="gray"
-                  size="xs"
+                  type="secondary"
+                  // TODO: CLICK-UI size="xs"
                 >
                   <IconPlus size={14} className="me-1" />
                   Add Tag
@@ -533,10 +527,50 @@ function SaveSearchModalComponent({
           </Box>
           <Button
             data-testid="save-search-submit-button"
-            variant="outline"
-            color="green"
-            type="submit"
+            type="primary"
             disabled={!formState.isValid}
+            onClick={() => {
+              handleSubmit(({ name }) => {
+                if (isUpdate) {
+                  if (savedSearchId == null) {
+                    throw new Error('savedSearchId is required for update');
+                  }
+                  updateSavedSearch.mutate(
+                    {
+                      id: savedSearchId,
+                      name,
+                      select: searchedConfig.select ?? '',
+                      where: searchedConfig.where ?? '',
+                      whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+                      source: searchedConfig.source ?? '',
+                      orderBy: searchedConfig.orderBy ?? '',
+                      tags: tags,
+                    },
+                    { onSuccess: () => onClose() },
+                  );
+                } else {
+                  createSavedSearch.mutate(
+                    {
+                      name,
+                      select: searchedConfig.select ?? '',
+                      where: searchedConfig.where ?? '',
+                      whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+                      source: searchedConfig.source ?? '',
+                      orderBy: searchedConfig.orderBy ?? '',
+                      tags: tags,
+                    },
+                    {
+                      onSuccess: savedSearch => {
+                        router.push(
+                          `/search/${savedSearch.id}${window.location.search}`,
+                        );
+                        onClose();
+                      },
+                    },
+                  );
+                }
+              })();
+            }}
           >
             {isUpdate ? 'Update' : 'Save'}
           </Button>
@@ -1624,8 +1658,8 @@ function DBSearchPage() {
               {!savedSearchId ? (
                 <Button
                   data-testid="save-search-button"
-                  variant="default"
-                  size="xs"
+                  type="secondary"
+                  // TODO: CLICK-UI size="xs"
                   onClick={onSaveSearch}
                   style={{ flexShrink: 0 }}
                 >
@@ -1634,8 +1668,7 @@ function DBSearchPage() {
               ) : (
                 <Button
                   data-testid="update-search-button"
-                  variant="default"
-                  size="xs"
+                  // TODO: CLICK-UI size="xs"
                   onClick={() => {
                     setSaveSearchModalState('update');
                   }}
@@ -1647,8 +1680,7 @@ function DBSearchPage() {
               {!IS_LOCAL_MODE && (
                 <Button
                   data-testid="alerts-button"
-                  variant="default"
-                  size="xs"
+                  // TODO: CLICK-UI size="xs"
                   onClick={openAlertModal}
                   style={{ flexShrink: 0 }}
                 >
@@ -1664,12 +1696,10 @@ function DBSearchPage() {
                   >
                     <Button
                       data-testid="tags-button"
-                      variant="default"
-                      px="xs"
-                      size="xs"
+                      // TODO: CLICK-UI size="xs"
                       style={{ flexShrink: 0 }}
+                      iconLeft={(<IconTags size={14} />) as any}
                     >
-                      <IconTags size={14} className="me-1" />
                       {savedSearch.tags?.length || 0}
                     </Button>
                   </Tags>

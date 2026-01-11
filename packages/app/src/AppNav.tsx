@@ -62,8 +62,8 @@ import {
   AppNavLink,
   AppNavUserMenu,
 } from './AppNav.components';
+import ClickStackLogo from './ClickStackLogo';
 import { IS_K8S_DASHBOARD_ENABLED, IS_LOCAL_MODE } from './config';
-import Icon from './Icon';
 import InstallInstructionModal from './InstallInstructionsModal';
 import Logo from './Logo';
 import OnboardingChecklist from './OnboardingChecklist';
@@ -632,7 +632,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             <Link href="/search" className="text-decoration-none">
               {isCollapsed ? (
                 <div style={{ marginLeft: '-0.15rem' }}>
-                  <Icon size={22} />
+                  <ClickStackLogo />
                 </div>
               ) : (
                 <Group gap="xs" align="center">

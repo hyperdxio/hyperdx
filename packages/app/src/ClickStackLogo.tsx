@@ -1,0 +1,52 @@
+export default function ClickStackLogo({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect
+        width="2.25"
+        height="20.249"
+        x="1.875"
+        y="1.875"
+        fill="var(--color-text)"
+        rx="0.237"
+      ></rect>
+      <rect
+        width="2.25"
+        height="20.249"
+        x="6.375"
+        y="1.875"
+        fill="var(--color-text)"
+        rx="0.237"
+      ></rect>
+      <rect
+        width="2.25"
+        height="20.249"
+        x="10.875"
+        y="1.875"
+        fill="var(--color-text)"
+        rx="0.237"
+      ></rect>
+      <rect
+        width="2.25"
+        height="20.249"
+        x="15.374"
+        y="1.875"
+        fill="var(--color-text)"
+        rx="0.237"
+      ></rect>
+      <rect
+        width="2.25"
+        height="4.5"
+        x="19.875"
+        y="9.75"
+        fill="var(--color-text)"
+        rx="0.237"
+      ></rect>
+    </svg>
+  );
+}
