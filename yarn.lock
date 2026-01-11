@@ -3482,6 +3482,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@emotion/is-prop-valid@npm:1.2.2":
+  version: 1.2.2
+  resolution: "@emotion/is-prop-valid@npm:1.2.2"
+  dependencies:
+    "@emotion/memoize": "npm:^0.8.1"
+  checksum: 10c0/bb1530dcb4e0e5a4fabb219279f2d0bc35796baf66f6241f98b0d03db1985c890a8cafbea268e0edefd5eeda143dbd5c09a54b5fba74cee8c69b98b13194af50
+  languageName: node
+  linkType: hard
+
 "@emotion/is-prop-valid@npm:1.4.0":
   version: 1.4.0
   resolution: "@emotion/is-prop-valid@npm:1.4.0"
@@ -3497,6 +3506,13 @@ __metadata:
   dependencies:
     "@emotion/memoize": "npm:^0.9.0"
   checksum: 10c0/123215540c816ff510737ec68dcc499c53ea4deb0bb6c2c27c03ed21046e2e69f6ad07a7a174d271c6cfcbcc9ea44e1763e0cf3875c92192f7689216174803cd
+  languageName: node
+  linkType: hard
+
+"@emotion/memoize@npm:^0.8.1":
+  version: 0.8.1
+  resolution: "@emotion/memoize@npm:0.8.1"
+  checksum: 10c0/dffed372fc3b9fa2ba411e76af22b6bb686fb0cb07694fdfaa6dd2baeb0d5e4968c1a7caa472bfcf06a5997d5e7c7d16b90e993f9a6ffae79a2c3dbdc76dfe78
   languageName: node
   linkType: hard
 
@@ -3572,6 +3588,13 @@ __metadata:
   version: 0.10.0
   resolution: "@emotion/unitless@npm:0.10.0"
   checksum: 10c0/150943192727b7650eb9a6851a98034ddb58a8b6958b37546080f794696141c3760966ac695ab9af97efe10178690987aee4791f9f0ad1ff76783cdca83c1d49
+  languageName: node
+  linkType: hard
+
+"@emotion/unitless@npm:0.8.1":
+  version: 0.8.1
+  resolution: "@emotion/unitless@npm:0.8.1"
+  checksum: 10c0/a1ed508628288f40bfe6dd17d431ed899c067a899fa293a13afe3aed1d70fac0412b8a215fafab0b42829360db687fecd763e5f01a64ddc4a4b58ec3112ff548
   languageName: node
   linkType: hard
 
@@ -4365,7 +4388,7 @@ __metadata:
     "@mantine/spotlight": "npm:^7.17.8"
     "@microsoft/fetch-event-source": "npm:^2.0.1"
     "@playwright/test": "npm:^1.57.0"
-    "@punkbit/cui": "npm:^0.0.247-rc.8"
+    "@punkbit/cui": "npm:0.0.248-rc.1"
     "@storybook/addon-docs": "npm:^10.1.4"
     "@storybook/addon-links": "npm:^10.1.4"
     "@storybook/addon-styling-webpack": "npm:^3.0.0"
@@ -7991,9 +8014,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@punkbit/cui@npm:^0.0.247-rc.8":
-  version: 0.0.247-rc.8
-  resolution: "@punkbit/cui@npm:0.0.247-rc.8"
+"@punkbit/cui@npm:0.0.248-rc.1":
+  version: 0.0.248-rc.1
+  resolution: "@punkbit/cui@npm:0.0.248-rc.1"
   dependencies:
     "@h6s/calendar": "npm:2.0.1"
     "@radix-ui/react-accordion": "npm:1.2.12"
@@ -8018,12 +8041,13 @@ __metadata:
     react-virtualized-auto-sizer: "npm:^1.0.20"
     react-window: "npm:^1.8.9"
     sortablejs: "npm:^1.15.0"
+    styled-components: "npm:6.2.1-prerelease.0"
   peerDependencies:
     dayjs: ^1.11.13
     react: ^18.2.0 || ^19.0.0
     react-dom: ^18.2.0 || ^19.0.0
-    styled-components: ">= 5"
-  checksum: 10c0/a949f068d0a02726d52080c79538d5f3f4ca349ec6b69c973f836fd285bed7968c42f12c08e3879593749bede9371430beb505cbddb6bd0280b3e2dd27b0a3cf
+    styled-components: 6.2.1-prerelease.0
+  checksum: 10c0/3d28526d4ada7a44a46f2c481497c0abb62749ff6401b91279f6f1c84084f5beeb51a0ff7343c698492b3dc643a5850dbe9928979ad1f77003495dd1d988051a
   languageName: node
   linkType: hard
 
@@ -27973,6 +27997,26 @@ __metadata:
   languageName: node
   linkType: hard
 
+"styled-components@npm:6.2.1-prerelease.0":
+  version: 6.2.1-prerelease.0
+  resolution: "styled-components@npm:6.2.1-prerelease.0"
+  dependencies:
+    "@emotion/is-prop-valid": "npm:1.2.2"
+    "@emotion/unitless": "npm:0.8.1"
+    "@types/stylis": "npm:4.2.7"
+    css-to-react-native: "npm:3.2.0"
+    csstype: "npm:3.2.3"
+    postcss: "npm:8.4.49"
+    shallowequal: "npm:1.1.0"
+    stylis: "npm:4.3.6"
+    tslib: "npm:2.6.2"
+  peerDependencies:
+    react: ">= 16.8.0"
+    react-dom: ">= 16.8.0"
+  checksum: 10c0/f2392d94ce3d1477f7906a0c7b2f3c42f0fff32651c3a2e00726c0fca7ee6d3f7d5e26cecbc98af50e0c56881a6e4d0a79b8a350e3959c87f00a071219de7f9b
+  languageName: node
+  linkType: hard
+
 "styled-components@npm:^6.3.5":
   version: 6.3.5
   resolution: "styled-components@npm:6.3.5"
@@ -28961,6 +29005,13 @@ __metadata:
     minimist: "npm:^1.2.6"
     strip-bom: "npm:^3.0.0"
   checksum: 10c0/8993f3e160aaca196a5e1e65c26167a6d026cb48c8b80bfe41c1a37a280a471a23611a9ee85ae913714968a75f75314d580726b6b8f08486fe08a0f0161f1930
+  languageName: node
+  linkType: hard
+
+"tslib@npm:2.6.2":
+  version: 2.6.2
+  resolution: "tslib@npm:2.6.2"
+  checksum: 10c0/e03a8a4271152c8b26604ed45535954c0a45296e32445b4b87f8a5abdb2421f40b59b4ca437c4346af0f28179780d604094eb64546bee2019d903d01c6c19bdb
   languageName: node
   linkType: hard
 

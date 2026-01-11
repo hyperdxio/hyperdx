@@ -62,7 +62,7 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { Button, IconButton } from '@punkbit/cui/bundled';
+import { Button, IconButton } from '@punkbit/cui';
 import {
   IconBolt,
   IconCirclePlus,

@@ -4,17 +4,11 @@ This document tracks issues and limitations encountered when replacing Mantine U
 
 ## Import Path
 
-**IMPORTANT**: Always import from `@punkbit/cui/bundled`, NOT `@punkbit/cui`.
+Import directly from `@punkbit/cui`:
 
 ```typescript
-// ✅ Correct
-import { Button, IconButton } from '@punkbit/cui/bundled';
-
-// ❌ Wrong - causes runtime errors (missing theme context)
-import { IconButton } from '@punkbit/cui';
+import { Button, IconButton, Popover, TextAreaField } from '@punkbit/cui';
 ```
-
-The `/bundled` export includes all dependencies pre-bundled with the theme provider.
 
 ---
 
@@ -151,6 +145,37 @@ The `/bundled` export includes all dependencies pre-bundled with the theme provi
 
 ---
 
+### Popover
+
+<!-- TODO: CLICK-UI-POPOVER-TRIGGER-WIDTH -->
+#### `Popover.Trigger` has `width: fit-content` by default
+
+**Issue**: The `Popover.Trigger` component applies `width: fit-content` via styled-components, which prevents it from expanding to fill available space in flex layouts. This breaks cases where the trigger (e.g., an input field) should stretch horizontally.
+
+Additionally, `Popover.Trigger` always wraps children in an internal `<div>`, even when `asChild` is passed (the `asChild` is forwarded to the underlying Radix component, but the cui wrapper div remains).
+
+**Workaround**: Pass `style={{ width: '100%' }}` to `Popover.Trigger` to override the default width.
+
+```typescript
+// ❌ Input won't stretch
+<Popover>
+  <Popover.Trigger>
+    <TextAreaField ... />
+  </Popover.Trigger>
+</Popover>
+
+// ✅ Works - override width
+<Popover>
+  <Popover.Trigger style={{ width: '100%' }}>
+    <TextAreaField ... />
+  </Popover.Trigger>
+</Popover>
+```
+
+**Affected files**: `AutocompleteInput.tsx`
+
+---
+
 ## Search Tags for Future Fixes
 
 When Click UI releases fixes for these issues, search for these tags to find affected code:
@@ -164,6 +189,7 @@ When Click UI releases fixes for these issues, search for these tags to find aff
 | `CLICK-UI-BUTTON-SIZE` | Button needs size prop |
 | `CLICK-UI-BUTTON-HTML-TYPE` | Button needs htmlType prop for form submission |
 | `CLICK-UI-BUTTON-ICON-PROP` | Button icon props should accept ReactNode |
+| `CLICK-UI-POPOVER-TRIGGER-WIDTH` | Popover.Trigger should not have `width: fit-content` |
 
 ---
 
@@ -171,7 +197,7 @@ When Click UI releases fixes for these issues, search for these tags to find aff
 
 | Component | Click UI Equivalent | Notes |
 |-----------|---------------------|-------|
-| `Popover` | `Popover` | Different API: `open`/`onOpenChange` vs `opened`/`onChange` |
+| `Popover` | `Popover` | Different API: `open`/`onOpenChange` vs `opened`/`onChange`. **Note**: Trigger has `width: fit-content` - override with `style={{ width: '100%' }}` |
 | `Textarea` | `TextAreaField` | `onChange` receives value directly, not event |
 | `Button` | `Button` | Use `type` for visual style, not HTML type |
 | `UnstyledButton` | Native `<button>` | No direct equivalent, use styled native button |
@@ -188,5 +214,5 @@ When Click UI releases fixes for these issues, search for these tags to find aff
 
 ## Version Info
 
-- `@punkbit/cui`: `^0.0.247-rc.8`
-- `styled-components`: `^6.3.5` (peer dependency)
+- `@punkbit/cui`: `0.0.248-rc.1`
+- `styled-components`: `^6.3.5` (installed) - Note: Click UI requests `6.2.1-prerelease.0` but `6.3.5` works
