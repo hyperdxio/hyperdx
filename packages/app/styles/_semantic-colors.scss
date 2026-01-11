@@ -1,134 +1,171 @@
-/* Dark Mode (default) */
-[data-mantine-color-scheme='dark'] {
+/*
+ * Semantic Color Variables
+ *
+ * Uses Click UI CSS variables (injected by ClickUIThemeVars component)
+ * which automatically update when the theme changes between dark/light.
+ *
+ * For colors not available in Click UI, we use the data-mantine-color-scheme
+ * selector to provide theme-specific overrides.
+ */
+
+:root {
+  /* ========================================
+   * Click UI Based Variables (auto-switch)
+   * ======================================== */
+
   /* Backgrounds */
-  --color-bg-body: var(--mantine-color-dark-9);
-  --color-bg-surface: var(--mantine-color-dark-5);
-  --color-bg-inverted: var(--mantine-color-dark-1);
-  --color-bg-muted: var(--mantine-color-dark-7);
-  --color-bg-highlighted: rgb(55 58 64 / 70%);
-  --color-bg-sidebar: var(--mantine-color-dark-9);
-  --color-bg-header: var(--mantine-color-dark-9);
-  --color-bg-hover: var(--mantine-color-dark-6);
-  --color-bg-active: var(--mantine-color-dark-5);
-  --color-bg-field: var(--mantine-color-dark-6);
-  --color-bg-field-highlighted: var(--mantine-color-dark-3);
-  --color-bg-neutral: var(--mantine-color-dark-4);
-  --color-bg-success: var(--mantine-color-green-5);
-  --color-bg-danger: var(--mantine-color-red-4);
-  --color-bg-warning: var(--mantine-color-orange-5);
-  --color-bg-brand: #4ffa7a;
+  --color-bg-body: var(--cui-color-background-default);
+  --color-bg-surface: var(--cui-color-background-default);
+  --color-bg-muted: var(--cui-color-background-muted);
+  --color-bg-sidebar: var(--cui-color-background-sidebar);
 
   /* Borders & Dividers */
-  --color-border: var(--mantine-color-dark-5);
-  --color-border-muted: rgb(255 255 255 / 8%);
+  --color-border: var(--cui-color-stroke-default);
+  --color-border-muted: var(--cui-color-stroke-muted);
+  --color-border-intense: var(--cui-color-stroke-intense);
 
   /* Text */
-  --color-text: var(--mantine-color-dark-0);
-  --color-text-inverted: var(--mantine-color-dark-9);
-  --color-text-primary: var(--mantine-color-green-4);
-  --color-text-primary-hover: var(--mantine-color-green-3);
-  --color-text-secondary: var(--mantine-color-dark-2);
-  --color-text-muted: var(--mantine-color-dark-2);
-  --color-text-muted-hover: var(--mantine-color-dark-1);
-  --color-text-success: var(--mantine-color-green-4);
-  --color-text-success-hover: var(--mantine-color-green-3);
-  --color-text-danger: var(--mantine-color-red-3);
+  --color-text: var(--cui-color-text-default);
+  --color-text-muted: var(--cui-color-text-muted);
+  --color-text-disabled: var(--cui-color-text-disabled);
+  --color-text-link: var(--cui-color-text-link-default);
+  --color-text-link-hover: var(--cui-color-text-link-hover);
+
+  /* Accent */
+  --color-accent: var(--cui-color-accent-default);
+
+  /* Feedback Colors */
+  --color-bg-info: var(--cui-color-feedback-info-background);
+  --color-text-info: var(--cui-color-feedback-info-foreground);
+  --color-bg-success: var(--cui-color-feedback-success-background);
+  --color-text-success: var(--cui-color-feedback-success-foreground);
+  --color-bg-warning: var(--cui-color-feedback-warning-background);
+  --color-text-warning: var(--cui-color-feedback-warning-foreground);
+  --color-bg-danger: var(--cui-color-feedback-danger-background);
+  --color-text-danger: var(--cui-color-feedback-danger-foreground);
+  --color-bg-neutral: var(--cui-color-feedback-neutral-background);
+  --color-text-neutral: var(--cui-color-feedback-neutral-foreground);
+
+  /* Chart Colors */
+  --color-chart-blue: var(--cui-color-chart-blue);
+  --color-chart-orange: var(--cui-color-chart-orange);
+  --color-chart-green: var(--cui-color-chart-green);
+  --color-chart-fuchsia: var(--cui-color-chart-fuchsia);
+  --color-chart-yellow: var(--cui-color-chart-yellow);
+  --color-chart-violet: var(--cui-color-chart-violet);
+  --color-chart-red: var(--cui-color-chart-red);
+  --color-chart-teal: var(--cui-color-chart-teal);
+
+  /* Shadow & Outline */
+  --color-shadow: var(--cui-color-shadow-default);
+  --color-outline: var(--cui-color-outline-default);
+}
+
+/* ========================================
+ * Dark Mode Overrides
+ * (for variables not available in Click UI)
+ * ======================================== */
+[data-mantine-color-scheme='dark'] {
+  /* Additional backgrounds */
+  --color-bg-inverted: var(--mantine-color-dark-1);
+  --color-bg-highlighted: rgb(55 58 64 / 70%);
+  --color-bg-header: var(--cui-color-background-default);
+  --color-bg-hover: var(--cui-color-stroke-default);
+  --color-bg-active: var(--cui-color-stroke-intense);
+  --color-bg-field: var(--cui-color-stroke-default);
+  --color-bg-field-highlighted: var(--cui-color-stroke-intense);
+  --color-bg-brand: var(--cui-color-accent-default);
+
+  /* Text - additional */
+  --color-text-inverted: var(--cui-color-background-default);
+  --color-text-primary: var(--cui-color-accent-default);
+  --color-text-primary-hover: var(--cui-color-text-link-hover);
+  --color-text-secondary: var(--cui-color-text-muted);
+  --color-text-muted-hover: var(--cui-color-text-default);
+  --color-text-success-hover: var(--cui-color-feedback-success-foreground);
 
   /* Icons */
-  --color-icon-primary: var(--mantine-color-dark-1);
-  --color-icon-muted: var(--mantine-color-dark-4);
+  --color-icon-primary: var(--cui-color-text-default);
+  --color-icon-muted: var(--cui-color-text-muted);
 
   /* Overlay & Backdrop */
   --color-overlay: rgb(0 0 0 / 50%);
   --color-backdrop: rgb(0 0 0 / 30%);
 
   /* States */
-  --color-state-hover: var(--mantine-color-dark-6);
-  --color-state-selected: var(--mantine-color-dark-5);
-  --color-state-focus: var(--mantine-color-dark-4);
+  --color-state-hover: var(--cui-color-stroke-default);
+  --color-state-selected: var(--cui-color-stroke-intense);
+  --color-state-focus: var(--cui-color-outline-default);
 
   /* Code / Misc UI */
-  --color-bg-code: var(--mantine-color-dark-8);
-  --color-border-code: var(--mantine-color-dark-6);
-  --color-bg-kbd: var(--mantine-color-dark-9);
+  --color-bg-code: var(--cui-color-background-muted);
+  --color-border-code: var(--cui-color-stroke-default);
+  --color-bg-kbd: var(--cui-color-background-default);
 
   /* JSON Syntax Highlighting */
-  --color-json-string: var(--mantine-color-green-3);
-  --color-json-number: var(--mantine-color-orange-3);
-  --color-json-boolean: var(--mantine-color-orange-3);
-  --color-json-key: var(--mantine-color-violet-3);
-  --color-json-object: var(--mantine-color-green-3);
-  --color-json-array: var(--mantine-color-green-3);
-  --color-json-punctuation: var(--mantine-color-dark-4);
+  --color-json-string: var(--cui-color-chart-green);
+  --color-json-number: var(--cui-color-chart-orange);
+  --color-json-boolean: var(--cui-color-chart-orange);
+  --color-json-key: var(--cui-color-chart-violet);
+  --color-json-object: var(--cui-color-chart-green);
+  --color-json-array: var(--cui-color-chart-green);
+  --color-json-punctuation: var(--cui-color-text-muted);
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
 }
 
-/* Light Mode */
+/* ========================================
+ * Light Mode Overrides
+ * (for variables not available in Click UI)
+ * ======================================== */
 [data-mantine-color-scheme='light'] {
-  /* Mantine Overrides */
-  --mantine-color-body: var(--color-bg-body);
-
-  /* Backgrounds - inverted (dark becomes light) */
-  --color-bg-body: var(--mantine-color-white);
-  --color-bg-surface: var(--mantine-color-white);
-  --color-bg-inverted: var(--mantine-color-dark-3);
-  --color-bg-muted: #f6f6fa;
+  /* Additional backgrounds */
+  --color-bg-inverted: var(--cui-color-text-default);
   --color-bg-highlighted: rgb(230 232 237 / 70%);
-  --color-bg-sidebar: var(--mantine-color-white);
-  --color-bg-header: var(--mantine-color-gray-1);
-  --color-bg-modal: var(--mantine-color-white);
-  --color-bg-hover: var(--mantine-color-gray-3);
-  --color-bg-active: var(--mantine-color-gray-4);
-  --color-bg-field: #ececf5;
-  --color-bg-field-highlighted: var(--mantine-color-white);
-  --color-bg-neutral: var(--mantine-color-gray-5);
-  --color-bg-success: var(--mantine-color-green-8);
-  --color-bg-danger: var(--mantine-color-red-8);
-  --color-bg-warning: var(--mantine-color-orange-8);
-  --color-bg-brand: var(--mantine-color-green-8);
+  --color-bg-header: var(--cui-color-background-muted);
+  --color-bg-modal: var(--cui-color-background-default);
+  --color-bg-hover: var(--cui-color-stroke-muted);
+  --color-bg-active: var(--cui-color-stroke-default);
+  --color-bg-field: var(--cui-color-background-muted);
+  --color-bg-field-highlighted: var(--cui-color-background-default);
+  --color-bg-brand: var(--cui-color-accent-default);
 
-  /* Borders & Dividers - inverted */
-  --color-border: var(--mantine-color-gray-1);
-  --color-border-muted: rgb(0 0 0 / 5%);
+  /* Text - additional */
+  --color-text-inverted: var(--cui-color-background-default);
+  --color-text-primary: var(--cui-color-accent-default);
+  --color-text-primary-hover: var(--cui-color-text-link-hover);
+  --color-text-secondary: var(--cui-color-text-muted);
+  --color-text-muted-hover: var(--cui-color-text-default);
+  --color-text-success-hover: var(--cui-color-feedback-success-foreground);
 
-  /* Text - inverted */
-  --color-text: var(--mantine-color-dark-9);
-  --color-text-inverted: var(--mantine-color-white);
-  --color-text-primary: var(--mantine-color-green-8);
-  --color-text-primary-hover: var(--mantine-color-green-9);
-  --color-text-secondary: var(--mantine-color-gray-5);
-  --color-text-muted: var(--mantine-color-dark-6);
-  --color-text-muted-hover: var(--mantine-color-dark-9);
-  --color-text-success: var(--mantine-color-green-8);
-  --color-text-success-hover: var(--mantine-color-green-9);
-  --color-text-danger: var(--mantine-color-red-8);
-
-  /* Icons - inverted */
-  --color-icon-primary: var(--mantine-color-dark-8);
-  --color-icon-muted: var(--mantine-color-dark-5);
+  /* Icons */
+  --color-icon-primary: var(--cui-color-text-default);
+  --color-icon-muted: var(--cui-color-text-muted);
 
   /* Overlay & Backdrop */
   --color-overlay: rgb(0 0 0 / 30%);
   --color-backdrop: rgb(0 0 0 / 10%);
 
-  /* States - inverted */
-  --color-state-hover: var(--mantine-color-dark-3);
-  --color-state-selected: var(--mantine-color-dark-4);
-  --color-state-focus: var(--mantine-color-dark-5);
+  /* States */
+  --color-state-hover: var(--cui-color-stroke-muted);
+  --color-state-selected: var(--cui-color-stroke-default);
+  --color-state-focus: var(--cui-color-outline-default);
 
-  /* Code / Misc UI - inverted */
-  --color-bg-code: var(--mantine-color-dark-1);
-  --color-border-code: var(--mantine-color-dark-3);
-  --color-bg-kbd: var(--mantine-color-dark-0);
+  /* Code / Misc UI */
+  --color-bg-code: var(--cui-color-background-muted);
+  --color-border-code: var(--cui-color-stroke-default);
+  --color-bg-kbd: var(--cui-color-background-muted);
 
   /* JSON Syntax Highlighting */
-  --color-json-string: var(--mantine-color-green-9);
-  --color-json-number: var(--mantine-color-orange-7);
-  --color-json-boolean: var(--mantine-color-orange-7);
-  --color-json-key: var(--mantine-color-violet-9);
-  --color-json-object: var(--mantine-color-green-7);
-  --color-json-array: var(--mantine-color-green-7);
-  --color-json-punctuation: var(--mantine-color-dark-5);
+  --color-json-string: var(--cui-color-chart-green);
+  --color-json-number: var(--cui-color-chart-orange);
+  --color-json-boolean: var(--cui-color-chart-orange);
+  --color-json-key: var(--cui-color-chart-violet);
+  --color-json-object: var(--cui-color-chart-green);
+  --color-json-array: var(--cui-color-chart-green);
+  --color-json-punctuation: var(--cui-color-text-muted);
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body);
 }

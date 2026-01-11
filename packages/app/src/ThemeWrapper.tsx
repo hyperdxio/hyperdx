@@ -3,6 +3,7 @@ import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { ClickUIProvider } from '@punkbit/cui/bundled';
 
+import { ClickUIThemeVars } from './theme/ClickUIThemeVars';
 import { makeTheme, theme as defaultTheme } from './theme/mantineTheme';
 
 export const ThemeWrapper = ({
@@ -21,6 +22,7 @@ export const ThemeWrapper = ({
   return (
     <MantineProvider forceColorScheme={colorScheme} theme={theme}>
       <ClickUIProvider theme={colorScheme}>
+        <ClickUIThemeVars />
         <Notifications zIndex={999999} />
         {children}
       </ClickUIProvider>
