@@ -6,6 +6,7 @@ import cx from 'classnames';
 import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -44,7 +45,6 @@ import { SourceSelectControlled } from './components/SourceSelect';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import {
-  convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
@@ -1304,10 +1304,8 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1341,10 +1339,8 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1467,10 +1463,8 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1504,10 +1498,8 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1554,10 +1546,8 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1591,10 +1581,8 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity: convertDateRangeToGranularityString(
-                              dateRange,
-                              60,
-                            ),
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
                             seriesReturnType: 'column',
                             series: [
                               {

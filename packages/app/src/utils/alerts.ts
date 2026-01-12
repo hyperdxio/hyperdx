@@ -6,17 +6,13 @@ import {
 } from 'date-fns';
 import _ from 'lodash';
 import { z } from 'zod';
+import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  Alert,
-  AlertBaseSchema,
   AlertChannelType,
   AlertInterval,
-  AlertSource,
   AlertThresholdType,
   ChartAlertBaseSchema,
 } from '@hyperdx/common-utils/dist/types';
-
-import { Granularity } from '@/ChartUtils';
 
 export function intervalToGranularity(interval: AlertInterval) {
   if (interval === '1m') return Granularity.OneMinute;

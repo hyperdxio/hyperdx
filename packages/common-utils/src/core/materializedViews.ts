@@ -9,7 +9,6 @@ import {
 } from '@/types';
 
 import { Metadata, TableConnection } from './metadata';
-import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from './renderChartConfig';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -140,10 +139,7 @@ function mvConfigSupportsGranularity(
   // Determine the effective granularity if the granularity is 'auto'
   const chartGranularity =
     normalizedGranularity === 'auto' && chartConfig.dateRange
-      ? convertDateRangeToGranularityString(
-          chartConfig.dateRange,
-          DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-        )
+      ? convertDateRangeToGranularityString(chartConfig.dateRange)
       : normalizedGranularity;
 
   const chartGranularitySeconds = convertGranularityToSeconds(chartGranularity);
