@@ -25,7 +25,6 @@ import { getMetadata } from '@/metadata';
 import { toArray } from '@/utils';
 
 // Hook to get metadata with proper settings applied
-// TODO: replace all getMetadata calls with useMetadataWithSettings
 export function useMetadataWithSettings() {
   const [metadata, setMetadata] = useState(getMetadata());
   const { data: me } = api.useMe();
