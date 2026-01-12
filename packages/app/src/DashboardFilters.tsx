@@ -1,68 +1,29 @@
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Select } from '@mantine/core';
+import { IconRefresh } from '@tabler/icons-react';
 
-import { useGetKeyValues } from './hooks/useMetadata';
+import { useDashboardFilterKeyValues } from './hooks/useDashboardFilterValues';
 import { FilterState } from './searchFilters';
-import { useSource } from './source';
-import { getMetricTableName } from './utils';
 
 interface DashboardFilterSelectProps {
   filter: DashboardFilter;
-  dateRange: [Date, Date];
   onChange: (value: string | null) => void;
   value?: string | null;
+  values?: string[];
+  isLoading?: boolean;
 }
 
 const DashboardFilterSelect = ({
   filter,
-  dateRange,
   onChange,
   value,
+  values,
+  isLoading,
 }: DashboardFilterSelectProps) => {
-  const { data: source, isLoading: isSourceLoading } = useSource({
-    id: filter.source,
-  });
-
-  const { timestampValueExpression, connection } = source || {};
-
-  const databaseName = source?.from.databaseName;
-  const tableName =
-    source && getMetricTableName(source, filter.sourceMetricType);
-
-  const { data: keys, isLoading: isKeyValuesLoading } = useGetKeyValues(
-    {
-      chartConfig: {
-        dateRange,
-        timestampValueExpression: timestampValueExpression!,
-        connection: connection!,
-        from: {
-          databaseName: databaseName!,
-          tableName: tableName!,
-        }!,
-        where: '',
-        whereLanguage: 'sql',
-        select: '',
-      },
-      keys: [filter.expression],
-      disableRowLimit: true,
-      limit: 10000,
-    },
-    {
-      enabled:
-        !!timestampValueExpression &&
-        !!connection &&
-        !!tableName &&
-        !!databaseName,
-    },
-  );
-
-  const selectValues = keys?.[0]?.value
-    .map(value => String(value))
-    .sort()
-    .map(value => ({
-      value,
-      label: value,
-    }));
+  const selectValues = values?.toSorted().map(value => ({
+    value,
+    label: value,
+  }));
 
   return (
     <Select
@@ -74,7 +35,7 @@ const DashboardFilterSelect = ({
       allowDeselect
       size="xs"
       maxDropdownHeight={280}
-      disabled={isSourceLoading || isKeyValuesLoading}
+      disabled={isLoading}
       variant="filled"
       w={200}
       limit={20}
@@ -96,20 +57,28 @@ const DashboardFilters = ({
   filterValues,
   onSetFilterValue,
 }: DashboardFilterProps) => {
+  const {
+    data: filterValuesBySource,
+    isLoading,
+    isFetching,
+  } = useDashboardFilterKeyValues({ filters, dateRange });
+
   return (
     <Group mt="sm">
       {Object.values(filters).map(filter => (
         <DashboardFilterSelect
           key={filter.id}
           filter={filter}
-          dateRange={dateRange}
+          isLoading={isLoading}
           onChange={value => onSetFilterValue(filter.expression, value)}
+          values={filterValuesBySource?.get(filter.expression)}
           value={filterValues[filter.expression]?.included
             .values()
             .next()
             .value?.toString()}
         />
       ))}
+      {isFetching && <IconRefresh className="spin-animate" size={12} />}
     </Group>
   );
 };

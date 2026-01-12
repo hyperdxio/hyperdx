@@ -19,6 +19,7 @@ import {
 
 import api from '@/api';
 import { getMetadata } from '@/metadata';
+import { useSources } from '@/source';
 import { toArray } from '@/utils';
 
 // Hook to get metadata with proper settings applied
@@ -182,32 +183,46 @@ export function useMultipleGetKeyValues(
 ) {
   const metadata = useMetadataWithSettings();
   const chartConfigsArr = toArray(chartConfigs);
-  return useQuery<{ key: string; value: string[] }[]>({
+
+  const { enabled = true } = options || {};
+  const { data: sources, isLoading: isLoadingSources } = useSources();
+
+  const query = useQuery<{ key: string; value: string[] }[]>({
     queryKey: [
       'useMetadata.useGetKeyValues',
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
       disableRowLimit,
     ],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       return (
         await Promise.all(
-          chartConfigsArr.map(chartConfig =>
-            metadata.getKeyValues({
+          chartConfigsArr.map(chartConfig => {
+            const source = chartConfig.source
+              ? sources?.find(s => s.id === chartConfig.source)
+              : undefined;
+            return metadata.getKeyValuesWithMVs({
               chartConfig,
               keys: keys.slice(0, 20), // Limit to 20 keys for now, otherwise request fails (max header size)
               limit,
               disableRowLimit,
-            }),
-          ),
+              source,
+              signal,
+            });
+          }),
         )
       ).flatMap(v => v);
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
-    enabled: !!keys.length,
     placeholderData: keepPreviousData,
     ...options,
+    enabled: !!enabled && !!keys.length && !isLoadingSources,
   });
+
+  return {
+    ...query,
+    isLoading: query.isLoading || isLoadingSources,
+  };
 }
 
 export function useGetValuesDistribution(

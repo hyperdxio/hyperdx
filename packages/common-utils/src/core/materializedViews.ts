@@ -14,6 +14,7 @@ import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
   getAlignedDateRange,
+  splitAndTrimWithBracket,
 } from './utils';
 
 type SelectItem = Exclude<
@@ -561,4 +562,106 @@ function formatAggregateFunction(aggFn: string, level: number | undefined) {
   } else {
     return aggFn;
   }
+}
+
+/**
+ * Returns a list of Materialized Views and the keys (of the ones provided)
+ * that could be queried from that materialized view, given the filters in the
+ * provided ChartConfig.
+ **/
+export async function getConfigsForKeyValues<
+  C extends ChartConfigWithOptDateRange,
+>({
+  chartConfig,
+  keys,
+  source,
+  clickhouseClient,
+  metadata,
+  signal,
+}: {
+  chartConfig: C;
+  keys: string[];
+  source: TSource;
+  clickhouseClient: BaseClickhouseClient;
+  metadata: Metadata;
+  signal?: AbortSignal;
+}) {
+  // Identify keys which can be queried from a materialized view
+  const mvs = source?.materializedViews || [];
+  const keysByMV = new Map<string, string[]>();
+  for (const mv of mvs) {
+    if (mvConfigSupportsDateRange(mv, chartConfig)) {
+      const dimensionColumns = splitAndTrimWithBracket(mv.dimensionColumns);
+      const keysInMV = keys.filter(k => dimensionColumns.includes(k));
+      if (keysInMV.length > 0) {
+        keysByMV.set(`${mv.databaseName}.${mv.tableName}`, keysInMV);
+      }
+    }
+  }
+
+  // Build the configs which would be used to query each MV for all of the keys it supports
+  const mvConfigs = [...keysByMV.entries()].map(([mvIdentifier, mvKeys]) => {
+    const [databaseName, tableName] = mvIdentifier.split('.');
+    return {
+      ...structuredClone(chartConfig),
+      from: {
+        databaseName,
+        tableName,
+      },
+      // These are dimension columns so we don't need to add any -Merge combinators
+      select: mvKeys
+        .map((k, i) => `groupUniqArray(1)(${k}) AS param${i}`)
+        .join(', '),
+    };
+  });
+
+  // Figure out which of those configs are valid by running EXPLAIN queries
+  const explainResults = await Promise.all(
+    mvConfigs.map(async config => {
+      const { isValid, rowEstimate = Number.POSITIVE_INFINITY } =
+        await clickhouseClient.testChartConfigValidity({
+          config,
+          metadata,
+          opts: { abort_signal: signal },
+        });
+      return {
+        databaseName: config.from.databaseName,
+        tableName: config.from.tableName,
+        isValid,
+        rowEstimate,
+      };
+    }),
+  );
+
+  // For each key, find the best MV that can provide it while reading the fewest rows
+  const mvToKeys = new Map<string, string[]>();
+  const uncoveredKeys = new Set<string>(keys);
+  const sortedValidConfigs = explainResults
+    .filter(r => r.isValid)
+    .sort((a, b) => a.rowEstimate - b.rowEstimate);
+  for (const config of sortedValidConfigs) {
+    const mvIdentifier = `${config.databaseName}.${config.tableName}`;
+    const mvKeys = keysByMV.get(mvIdentifier) ?? [];
+
+    // Only include keys which have not already been covered by a previous MV
+    const keysNotAlreadyCovered = mvKeys.filter(k => uncoveredKeys.has(k));
+    if (keysNotAlreadyCovered.length) {
+      mvToKeys.set(mvIdentifier, keysNotAlreadyCovered);
+      for (const key of keysNotAlreadyCovered) {
+        uncoveredKeys.delete(key);
+      }
+    }
+  }
+
+  return {
+    mvs: [...mvToKeys.entries()].map(([mvIdentifier, mvKeys]) => {
+      const [databaseName, tableName] = mvIdentifier.split('.');
+      return {
+        databaseName,
+        tableName,
+        keys: mvKeys,
+      };
+    }),
+    uncoveredKeys: [...uncoveredKeys],
+  };
 }

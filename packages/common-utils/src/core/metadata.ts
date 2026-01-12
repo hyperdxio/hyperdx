@@ -14,6 +14,8 @@ import {
 import { renderChartConfig } from '@/core/renderChartConfig';
 import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
+import { getConfigsForKeyValues } from './materializedViews';
+
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
 export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
@@ -689,11 +691,13 @@ export class Metadata {
     keys,
     limit = 20,
     disableRowLimit = false,
+    signal,
   }: {
     chartConfig: ChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
+    signal?: AbortSignal;
   }) {
     return this.cache.getOrFetch(
       `${chartConfig.connection}.${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
@@ -764,6 +768,7 @@ export class Metadata {
                   max_rows_to_read: '0',
                 }
               : undefined,
+            abort_signal: signal,
           })
           .then(res => res.json<any>());
 
@@ -774,6 +779,74 @@ export class Metadata {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see HDX-1548
           value: (value as string[])?.filter(Boolean), // remove nulls
         }));
+      },
+    );
+  }
+
+  async getKeyValuesWithMVs({
+    chartConfig,
+    keys,
+    source,
+    limit = 20,
+    disableRowLimit,
+    signal,
+  }: {
+    chartConfig: ChartConfigWithDateRange;
+    keys: string[];
+    source?: TSource;
+    limit?: number;
+    disableRowLimit?: boolean;
+    signal?: AbortSignal;
+  }) {
+    return this.cache.getOrFetch(
+      `${chartConfig.connection}.${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.with_mvs.values`,
+      async () => {
+        if (keys.length === 0) return [];
+
+        const mvOptimizations = source
+          ? await getConfigsForKeyValues({
+              chartConfig,
+              keys,
+              source,
+              clickhouseClient: this.clickhouseClient,
+              metadata: this,
+              signal,
+            })
+          : undefined;
+
+        // Get keys from materialized views where possible
+        const keyValuesFromMVsPromises =
+          mvOptimizations?.mvs.map(async ({ databaseName, tableName, keys }) =>
+            this.getKeyValues({
+              chartConfig: {
+                ...chartConfig,
+                from: { databaseName, tableName },
+              },
+              keys,
+              limit,
+              disableRowLimit: true,
+              signal,
+            }),
+          ) ?? [];
+
+        // Get any keys that are not covered by materialized views from the base table
+        const remainingKeys = mvOptimizations?.uncoveredKeys ?? keys;
+        const keyValuesFromBaseTablePromise = remainingKeys.length
+          ? this.getKeyValues({
+              chartConfig,
+              keys: remainingKeys,
+              limit,
+              disableRowLimit,
+              signal,
+            })
+          : Promise.resolve([]);
+
+        const allResults = await Promise.all([
+          ...keyValuesFromMVsPromises,
+          keyValuesFromBaseTablePromise,
+        ]);
+
+        return allResults.flat();
       },
     );
   }

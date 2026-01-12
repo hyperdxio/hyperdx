@@ -190,4 +190,275 @@ describe('Metadata Integration Tests', () => {
       });
     });
   });
+
+  describe('getKeyValuesWithMVs', () => {
+    let metadata: Metadata;
+    const baseTableName = 'test_logs_base';
+    const mvTableName = 'test_logs_mv_1m';
+
+    const chartConfig: ChartConfigWithDateRange = {
+      connection: 'test_connection',
+      from: {
+        databaseName: 'default',
+        tableName: baseTableName,
+      },
+      dateRange: [new Date('2024-01-01'), new Date('2024-01-31')],
+      select: '',
+      timestampValueExpression: 'Timestamp',
+      where: '',
+    };
+
+    beforeAll(async () => {
+      // Create base table
+      await client.command({
+        query: `CREATE OR REPLACE TABLE default.${baseTableName} (
+            Timestamp DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+            environment LowCardinality(String) CODEC(ZSTD(1)),
+            service LowCardinality(String) CODEC(ZSTD(1)),
+            status_code LowCardinality(String) CODEC(ZSTD(1)),
+            region LowCardinality(String) CODEC(ZSTD(1)),
+            message String CODEC(ZSTD(1))
+          )
+          ENGINE = MergeTree()
+          ORDER BY (Timestamp)
+        `,
+      });
+
+      // Create materialized view
+      await client.command({
+        query: `CREATE MATERIALIZED VIEW IF NOT EXISTS default.${mvTableName}
+          ENGINE = SummingMergeTree()
+          ORDER BY (environment, service, status_code, Timestamp)
+          AS SELECT
+            toStartOfMinute(Timestamp) as Timestamp,
+            environment,
+            service,
+            status_code,
+            count() as count
+          FROM default.${baseTableName}
+          GROUP BY Timestamp, environment, service, status_code
+        `,
+      });
+
+      // Insert data again to populate the MV (MVs don't get historical data)
+      await client.command({
+        query: `INSERT INTO default.${baseTableName}
+          (Timestamp, environment, service, status_code, region, message) VALUES
+          ('2024-01-10 12:00:00', 'production', 'api', '200', 'us-east', 'Success'),
+          ('2024-01-10 13:00:00', 'production', 'web', '200', 'us-west', 'Success'),
+          ('2024-01-10 14:00:00', 'staging', 'api', '500', 'us-east', 'Error'),
+          ('2024-01-10 15:00:00', 'staging', 'worker', '200', 'eu-west', 'Success'),
+          ('2024-01-10 16:00:00', 'production', 'api', '404', 'us-east', 'Not found')
+        `,
+      });
+    });
+
+    beforeEach(async () => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP VIEW IF EXISTS default.${mvTableName}`,
+      });
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${baseTableName}`,
+      });
+    });
+
+    it('should fetch key values using materialized views when available', async () => {
+      const source = {
+        id: 'test-source',
+        name: 'Test Logs',
+        kind: 'otel-logs',
+        from: { databaseName: 'default', tableName: baseTableName },
+        timestampValueExpression: 'Timestamp',
+        connection: 'test_connection',
+        materializedViews: [
+          {
+            databaseName: 'default',
+            tableName: mvTableName,
+            dimensionColumns: 'environment, service, status_code',
+            minGranularity: '1 minute',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+          },
+        ],
+      };
+
+      const result = await metadata.getKeyValuesWithMVs({
+        chartConfig,
+        keys: ['environment', 'service', 'status_code'],
+        source: source as any,
+      });
+
+      expect(result).toHaveLength(3);
+
+      const environmentResult = result.find(r => r.key === 'environment');
+      expect(environmentResult?.value).toEqual(
+        expect.arrayContaining(['production', 'staging']),
+      );
+
+      const serviceResult = result.find(r => r.key === 'service');
+      expect(serviceResult?.value).toEqual(
+        expect.arrayContaining(['api', 'web', 'worker']),
+      );
+
+      const statusCodeResult = result.find(r => r.key === 'status_code');
+      expect(statusCodeResult?.value).toEqual(
+        expect.arrayContaining(['200', '404', '500']),
+      );
+    });
+
+    it('should fall back to base table for keys not in materialized view', async () => {
+      const source = {
+        id: 'test-source',
+        name: 'Test Logs',
+        kind: 'otel-logs',
+        from: { databaseName: 'default', tableName: baseTableName },
+        timestampValueExpression: 'Timestamp',
+        connection: 'test_connection',
+        materializedViews: [
+          {
+            databaseName: 'default',
+            tableName: mvTableName,
+            dimensionColumns: 'environment, service, status_code',
+            minGranularity: '1 minute',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+          },
+        ],
+      };
+
+      // Query for keys both in and not in the MV
+      const result = await metadata.getKeyValuesWithMVs({
+        chartConfig,
+        keys: ['environment', 'region'], // 'region' is NOT in the MV
+        source: source as any,
+      });
+
+      expect(result).toHaveLength(2);
+
+      const environmentResult = result.find(r => r.key === 'environment');
+      expect(environmentResult?.value).toEqual(
+        expect.arrayContaining(['production', 'staging']),
+      );
+
+      const regionResult = result.find(r => r.key === 'region');
+      expect(regionResult?.value).toEqual(
+        expect.arrayContaining(['us-east', 'us-west', 'eu-west']),
+      );
+    });
+
+    it('should work without materialized views (fall back to base table)', async () => {
+      const source = {
+        id: 'test-source',
+        name: 'Test Logs',
+        kind: 'otel-logs',
+        from: { databaseName: 'default', tableName: baseTableName },
+        timestampValueExpression: 'Timestamp',
+        connection: 'test_connection',
+        materializedViews: [], // No MVs
+      };
+
+      const result = await metadata.getKeyValuesWithMVs({
+        chartConfig,
+        keys: ['environment', 'service'],
+        source: source as any,
+      });
+
+      expect(result).toHaveLength(2);
+
+      const environmentResult = result.find(r => r.key === 'environment');
+      expect(environmentResult?.value).toEqual(
+        expect.arrayContaining(['production', 'staging']),
+      );
+
+      const serviceResult = result.find(r => r.key === 'service');
+      expect(serviceResult?.value).toEqual(
+        expect.arrayContaining(['api', 'web', 'worker']),
+      );
+    });
+
+    it('should work without source parameter (fall back to base table)', async () => {
+      const result = await metadata.getKeyValuesWithMVs({
+        chartConfig,
+        keys: ['environment', 'service'],
+        // No source parameter
+      });
+
+      expect(result).toHaveLength(2);
+
+      const environmentResult = result.find(r => r.key === 'environment');
+      expect(environmentResult?.value).toEqual(
+        expect.arrayContaining(['production', 'staging']),
+      );
+
+      const serviceResult = result.find(r => r.key === 'service');
+      expect(serviceResult?.value).toEqual(
+        expect.arrayContaining(['api', 'web', 'worker']),
+      );
+    });
+
+    it('should return empty array for empty keys', async () => {
+      const source = {
+        id: 'test-source',
+        name: 'Test Logs',
+        kind: 'otel-logs',
+        from: { databaseName: 'default', tableName: baseTableName },
+        timestampValueExpression: 'Timestamp',
+        connection: 'test_connection',
+        materializedViews: [
+          {
+            databaseName: 'default',
+            tableName: mvTableName,
+            dimensionColumns: 'environment, service, status_code',
+            minGranularity: '1 minute',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+          },
+        ],
+      };
+
+      const result = await metadata.getKeyValuesWithMVs({
+        chartConfig,
+        keys: [],
+        source: source as any,
+      });
+
+      expect(result).toEqual([]);
+    });
+
+    it('should respect limit parameter', async () => {
+      const source = {
+        id: 'test-source',
+        name: 'Test Logs',
+        kind: 'otel-logs',
+        from: { databaseName: 'default', tableName: baseTableName },
+        timestampValueExpression: 'Timestamp',
+        connection: 'test_connection',
+        materializedViews: [
+          {
+            databaseName: 'default',
+            tableName: mvTableName,
+            dimensionColumns: 'environment, service, status_code',
+            minGranularity: '1 minute',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+          },
+        ],
+      };
+
+      const result = await metadata.getKeyValuesWithMVs({
+        chartConfig,
+        keys: ['service'],
+        source: source as any,
+        limit: 2,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].key).toBe('service');
+      expect(result[0].value.length).toBeLessThanOrEqual(2);
+    });
+  });
 });
