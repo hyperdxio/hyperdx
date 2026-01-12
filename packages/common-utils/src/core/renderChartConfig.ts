@@ -48,9 +48,6 @@ function createMetricNameFilter(
   return SqlString.format('MetricName = ?', [metricName]);
 }
 
-/** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
-export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
-
 // FIXME: SQLParser.ColumnRef is incomplete
 type ColumnRef = SQLParser.ColumnRef & {
   array_index?: {
@@ -512,10 +509,7 @@ function timeBucketExpr({
   const unsafeInterval = {
     UNSAFE_RAW_SQL:
       interval === 'auto' && Array.isArray(dateRange)
-        ? convertDateRangeToGranularityString(
-            dateRange,
-            DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-          )
+        ? convertDateRangeToGranularityString(dateRange)
         : interval,
   };
 
@@ -1036,10 +1030,7 @@ function renderDeltaExpression(
 ) {
   const interval =
     chartConfig.granularity === 'auto' && Array.isArray(chartConfig.dateRange)
-      ? convertDateRangeToGranularityString(
-          chartConfig.dateRange,
-          DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-        )
+      ? convertDateRangeToGranularityString(chartConfig.dateRange)
       : chartConfig.granularity;
   const intervalInSeconds = convertGranularityToSeconds(interval ?? '');
 
@@ -1186,10 +1177,7 @@ async function translateMetricChartConfig(
         includedDataInterval:
           chartConfig.granularity === 'auto' &&
           Array.isArray(chartConfig.dateRange)
-            ? convertDateRangeToGranularityString(
-                chartConfig.dateRange,
-                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-              )
+            ? convertDateRangeToGranularityString(chartConfig.dateRange)
             : chartConfig.granularity,
       },
       metadata,
@@ -1277,7 +1265,7 @@ async function translateMetricChartConfig(
     // Render the various clauses from the user input so they can be woven into the CTE queries. The dateRange
     // is manipulated to search forward/back one bucket window to ensure that there is enough data to compute
     // a reasonable value on the ends of the series.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
     const cteChartConfig = {
       ...chartConfig,
       from: {
@@ -1294,10 +1282,7 @@ async function translateMetricChartConfig(
       includedDataInterval:
         chartConfig.granularity === 'auto' &&
         Array.isArray(chartConfig.dateRange)
-          ? convertDateRangeToGranularityString(
-              chartConfig.dateRange,
-              DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-            )
+          ? convertDateRangeToGranularityString(chartConfig.dateRange)
           : chartConfig.granularity,
     } as ChartConfigWithOptDateRangeEx;
 
