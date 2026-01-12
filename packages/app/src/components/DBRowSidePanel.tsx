@@ -559,7 +559,7 @@ export default function DBRowSidePanelErrorBoundary({
     <Drawer
       opened={rowId != null}
       withCloseButton={false}
-      withinPortal={!isNestedPanel}
+      withOverlay={!isNestedPanel}
       onClose={() => {
         if (!subDrawerOpen) {
           _onClose();
