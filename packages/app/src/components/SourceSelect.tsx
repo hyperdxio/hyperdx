@@ -92,7 +92,7 @@ function SourceSelectControlledComponent({
       {...props}
       data={values}
       // disabled={isDatabasesLoading}
-      iconLef={{ withinPortal: false, ...comboboxProps }}
+      comboboxProps={{ withinPortal: false, ...comboboxProps }}
       searchable
       placeholder="Data Source"
       leftSection={<IconStack size={16} />}
