@@ -9,7 +9,7 @@ import {
 } from 'nuqs';
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
@@ -41,7 +41,6 @@ import {
 } from '@tabler/icons-react';
 
 import {
-  convertDateRangeToGranularityString,
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
   MS_NUMBER_FORMAT,
@@ -450,10 +449,8 @@ function HttpTab({
                 },
               ],
               dateRange: searchedTimeRange,
-              granularity: convertDateRangeToGranularityString(
-                searchedTimeRange,
-                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-              ),
+              granularity:
+                convertDateRangeToGranularityString(searchedTimeRange),
             } as ChartConfigWithOptDateRange,
             isSubquery: true,
           },
@@ -890,10 +887,8 @@ function DatabaseTab({
               ],
               // Date range and granularity add an `__hdx_time_bucket` column to select and group by
               dateRange: searchedTimeRange,
-              granularity: convertDateRangeToGranularityString(
-                searchedTimeRange,
-                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-              ),
+              granularity:
+                convertDateRangeToGranularityString(searchedTimeRange),
             } as CteChartConfig,
           },
           {
@@ -1008,10 +1003,8 @@ function DatabaseTab({
               ],
               // Date range and granularity add an `__hdx_time_bucket` column to select and group by
               dateRange: searchedTimeRange,
-              granularity: convertDateRangeToGranularityString(
-                searchedTimeRange,
-                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-              ),
+              granularity:
+                convertDateRangeToGranularityString(searchedTimeRange),
             } as CteChartConfig,
           },
           {
