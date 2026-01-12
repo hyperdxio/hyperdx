@@ -10,12 +10,6 @@ import {
   useMultipleGetKeyValues,
 } from '../useMetadata';
 
-if (!globalThis.structuredClone) {
-  globalThis.structuredClone = (obj: any) => {
-    return JSON.parse(JSON.stringify(obj));
-  };
-}
-
 // Mock dependencies
 jest.mock('../useMetadata', () => ({
   ...jest.requireActual('../useMetadata.tsx'),

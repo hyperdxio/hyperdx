@@ -1,14 +1,15 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import {
-  ChartConfigWithDateRange,
-  ChartConfigWithOptTimestamp,
-} from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
 
-import { convertToTableChartConfig } from '@/ChartUtils';
+import {
+  buildMVDateRangeIndicator,
+  convertToTableChartConfig,
+} from '@/ChartUtils';
 import { Table } from '@/HDXMultiSeriesTableChart';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useSource } from '@/source';
 import { useIntersectionObserver } from '@/utils';
@@ -76,8 +77,11 @@ export default function DBTableChart({
     return _config;
   }, [config, effectiveSort]);
 
+  const { data: mvOptimizationData } =
+    useMVOptimizationExplanation(queriedConfig);
+
   const { data, fetchNextPage, hasNextPage, isLoading, isError, error } =
-    useOffsetPaginatedQuery(queriedConfig as ChartConfigWithDateRange, {
+    useOffsetPaginatedQuery(queriedConfig, {
       enabled,
       queryKeyPrefix,
     });
@@ -139,11 +143,20 @@ export default function DBTableChart({
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-table-chart-mv-indicator"
-          config={config}
+          config={queriedConfig}
           source={source}
           variant="icon"
         />,
       );
+    }
+
+    const dateRangeIndicator = buildMVDateRangeIndicator({
+      mvOptimizationData,
+      originalDateRange: queriedConfig.dateRange,
+    });
+
+    if (dateRangeIndicator) {
+      allToolbarItems.push(dateRangeIndicator);
     }
 
     if (toolbarSuffix && toolbarSuffix.length > 0) {
@@ -152,11 +165,12 @@ export default function DBTableChart({
 
     return allToolbarItems;
   }, [
-    config,
     toolbarPrefix,
     toolbarSuffix,
     source,
     showMVOptimizationIndicator,
+    mvOptimizationData,
+    queriedConfig,
   ]);
 
   return (

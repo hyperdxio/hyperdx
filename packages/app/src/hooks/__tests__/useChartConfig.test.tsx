@@ -15,6 +15,7 @@ import {
   getGranularityAlignedTimeWindows,
   useQueriedChartConfig,
 } from '../useChartConfig';
+import { useMVOptimizationExplanation } from '../useMVOptimizationExplanation';
 
 // Mock the clickhouse module
 jest.mock('@/clickhouse', () => ({
@@ -32,6 +33,14 @@ jest.mock('@/metadata', () => ({
 // Mock the config module
 jest.mock('@/config', () => ({
   IS_MTVIEWS_ENABLED: false,
+}));
+
+// Mock the MV optimization module
+jest.mock('../useMVOptimizationExplanation', () => ({
+  useMVOptimizationExplanation: jest.fn().mockReturnValue({
+    data: undefined,
+    isLoading: false,
+  }),
 }));
 
 // Create a mock ChartConfig
@@ -1290,6 +1299,108 @@ describe('useChartConfig', () => {
         rows: 5,
         isComplete: true,
       });
+    });
+
+    it('should not execute query while useMVOptimizationExplanation is in loading state', async () => {
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2025-10-01 00:00:00Z'),
+          new Date('2025-10-02 00:00:00Z'),
+        ],
+        granularity: '1 hour',
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        select: [
+          {
+            aggCondition: '',
+            aggFn: 'count',
+            valueExpression: '',
+          },
+        ],
+      });
+
+      const optimizedConfig = createMockChartConfig({
+        ...config,
+        from: {
+          databaseName: 'default',
+          tableName: 'metrics_rollup_1h',
+        },
+        select: [
+          {
+            aggCondition: '',
+            aggFn: 'countMerge',
+            valueExpression: 'count__',
+          },
+        ],
+      });
+
+      // Mock useMVOptimizationExplanation to be in loading state
+      jest.mocked(useMVOptimizationExplanation).mockReturnValue({
+        data: undefined,
+        isLoading: true, // MV optimization is still loading
+      } as any);
+
+      renderHook(
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
+        {
+          wrapper,
+        },
+      );
+
+      // Wait a bit to ensure query doesn't execute
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Verify the query hasn't started because MV optimization is loading
+      expect(mockClickhouseClient.queryChartConfig).not.toHaveBeenCalled();
+
+      // Now mock the MV optimization to finish loading with an optimized config
+      jest.mocked(useMVOptimizationExplanation).mockReturnValue({
+        data: {
+          optimizedConfig: optimizedConfig,
+          explanations: [
+            {
+              success: true,
+              mvConfig: {
+                minGranularity: '1 hour',
+                tableName: 'metrics_rollup_1h',
+              },
+            },
+          ],
+        },
+        isLoading: false, // MV optimization finished loading
+      } as any);
+
+      const mockResponse = createMockQueryResponse([
+        {
+          'count()': '71',
+          SeverityText: 'info',
+          __hdx_time_bucket: '2025-10-01T00:00:00Z',
+        },
+      ]);
+
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(mockResponse);
+
+      // Re-render with MV optimization completed
+      const { result: result2 } = renderHook(
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
+        {
+          wrapper,
+        },
+      );
+
+      await waitFor(() => expect(result2.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result2.current.isFetching).toBe(false));
+
+      // Verify the query was executed after MV optimization finished
+      expect(mockClickhouseClient.queryChartConfig).toHaveBeenCalled();
+
+      // Verify the query used the optimized config (materialized view)
+      const queryCall = mockClickhouseClient.queryChartConfig.mock.calls[0][0];
+      expect(queryCall.config.from.tableName).toBe('metrics_rollup_1h');
+
+      expect(result2.current.data?.data).toBeDefined();
     });
   });
 });

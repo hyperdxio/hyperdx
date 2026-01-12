@@ -74,6 +74,7 @@ import {
   useDeleteDashboard,
 } from '@/dashboard';
 
+import ChartContainer from './components/charts/ChartContainer';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
@@ -394,30 +395,36 @@ const Tile = forwardRef(
               />
             )}
             {queriedConfig?.displayType === DisplayType.Search && (
-              <DBSqlRowTableWithSideBar
-                enabled
-                sourceId={chart.config.source}
-                config={{
-                  ...queriedConfig,
-                  orderBy: [
-                    {
-                      ordering: 'DESC',
-                      valueExpression: getFirstTimestampValueExpression(
-                        queriedConfig.timestampValueExpression,
-                      ),
-                    },
-                  ],
-                  dateRange,
-                  select:
-                    queriedConfig.select ||
-                    source?.defaultTableSelectExpression ||
-                    '',
-                  groupBy: undefined,
-                  granularity: undefined,
-                }}
-                isLive={false}
-                queryKeyPrefix={'search'}
-              />
+              <ChartContainer
+                title={title}
+                toolbarItems={[hoverToolbar]}
+                disableReactiveContainer
+              >
+                <DBSqlRowTableWithSideBar
+                  enabled
+                  sourceId={chart.config.source}
+                  config={{
+                    ...queriedConfig,
+                    orderBy: [
+                      {
+                        ordering: 'DESC',
+                        valueExpression: getFirstTimestampValueExpression(
+                          queriedConfig.timestampValueExpression,
+                        ),
+                      },
+                    ],
+                    dateRange,
+                    select:
+                      queriedConfig.select ||
+                      source?.defaultTableSelectExpression ||
+                      '',
+                    groupBy: undefined,
+                    granularity: undefined,
+                  }}
+                  isLive={false}
+                  queryKeyPrefix={'search'}
+                />
+              </ChartContainer>
             )}
           </ErrorBoundary>
         </div>

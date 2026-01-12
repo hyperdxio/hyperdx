@@ -1,13 +1,10 @@
 import { useMemo } from 'react';
 import stripAnsi from 'strip-ansi';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
-import {
-  convertDateRangeToGranularityString,
-  timeBucketByGranularity,
-  toStartOfInterval,
-} from '@/ChartUtils';
+import { timeBucketByGranularity, toStartOfInterval } from '@/ChartUtils';
 import {
   selectColumnMapWithoutAdditionalKeys,
   useConfigWithPrimaryAndPartitionKey,

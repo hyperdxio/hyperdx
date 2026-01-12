@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -14,7 +14,9 @@ import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 
+import { buildMVDateRangeIndicator } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 import { omit } from '@/utils';
 
@@ -216,6 +218,9 @@ export default function DBHistogramChart({
     },
   );
 
+  const { data: mvOptimizationData } =
+    useMVOptimizationExplanation(queriedConfig);
+
   // Don't ask me why...
   const buckets = data?.data?.[0]?.data;
 
@@ -232,11 +237,20 @@ export default function DBHistogramChart({
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-histogram-chart-mv-indicator"
-          config={config}
+          config={queriedConfig}
           source={source}
           variant="icon"
         />,
       );
+    }
+
+    const dateRangeIndicator = buildMVDateRangeIndicator({
+      mvOptimizationData,
+      originalDateRange: queriedConfig.dateRange,
+    });
+
+    if (dateRangeIndicator) {
+      allToolbarItems.push(dateRangeIndicator);
     }
 
     if (toolbarSuffix && toolbarSuffix.length > 0) {
@@ -245,11 +259,12 @@ export default function DBHistogramChart({
 
     return allToolbarItems;
   }, [
-    config,
+    queriedConfig,
     toolbarPrefix,
     toolbarSuffix,
     source,
     showMVOptimizationIndicator,
+    mvOptimizationData,
   ]);
 
   return (
