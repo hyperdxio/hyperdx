@@ -2,6 +2,7 @@ import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { add, differenceInSeconds } from 'date-fns';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -22,7 +23,6 @@ import {
   IconArrowsDiagonal,
   IconChartBar,
   IconChartLine,
-  IconClock,
   IconSearch,
 } from '@tabler/icons-react';
 
@@ -34,16 +34,17 @@ import {
   convertGranularityToSeconds,
   convertToTimeChartConfig,
   formatResponseForTimeChart,
-  getAlignedDateRange,
   getPreviousDateRange,
   PreviousPeriodSuffix,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 
 import ChartContainer from './charts/ChartContainer';
+import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
@@ -220,6 +221,7 @@ type DBTimeChartComponentProps = {
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
   showMVOptimizationIndicator?: boolean;
+  showDateRangeIndicator?: boolean;
 };
 
 function DBTimeChartComponent({
@@ -241,6 +243,7 @@ function DBTimeChartComponent({
   toolbarPrefix,
   toolbarSuffix,
   showMVOptimizationIndicator = true,
+  showDateRangeIndicator = true,
 }: DBTimeChartComponentProps) {
   const [isErrorExpanded, errorExpansion] = useDisclosure(false);
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
@@ -289,6 +292,9 @@ function DBTimeChartComponent({
     () => convertToTimeChartConfig(config),
     [config],
   );
+
+  const { data: mvOptimizationData } =
+    useMVOptimizationExplanation(queriedConfig);
 
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
@@ -592,9 +598,32 @@ function DBTimeChartComponent({
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-time-chart-mv-indicator"
-          config={config}
+          config={queriedConfig}
           source={source}
           variant="icon"
+        />,
+      );
+    }
+
+    const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
+    const isAlignedToChartGranularity =
+      queriedConfig.alignDateRangeToGranularity !== false;
+
+    if (
+      showDateRangeIndicator &&
+      (mvDateRange || isAlignedToChartGranularity)
+    ) {
+      const mvGranularity = isAlignedToChartGranularity
+        ? undefined
+        : mvOptimizationData?.explanations.find(e => e.success)?.mvConfig
+            .minGranularity;
+
+      allToolbarItems.push(
+        <DateRangeIndicator
+          key="db-time-chart-date-range-indicator"
+          originalDateRange={config.dateRange}
+          effectiveDateRange={mvDateRange || queriedConfig.dateRange}
+          mvGranularity={mvGranularity}
         />,
       );
     }
@@ -638,6 +667,9 @@ function DBTimeChartComponent({
     toolbarPrefix,
     toolbarSuffix,
     showMVOptimizationIndicator,
+    showDateRangeIndicator,
+    mvOptimizationData,
+    queriedConfig,
   ]);
 
   return (
@@ -718,6 +750,8 @@ function DBTimeChartComponent({
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
             selectedSeriesNames={selectedSeriesSet}
             onToggleSeries={handleToggleSeries}
+            granularity={granularity}
+            dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
           />
         </>
       )}

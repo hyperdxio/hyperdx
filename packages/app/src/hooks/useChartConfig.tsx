@@ -33,6 +33,8 @@ import { getMetadata } from '@/metadata';
 import { useSource } from '@/source';
 import { generateTimeWindowsDescending } from '@/utils/searchWindows';
 
+import { useMVOptimizationExplanation } from './useMVOptimizationExplanation';
+
 interface AdditionalUseQueriedChartConfigOptions {
   onError?: (error: Error | ClickHouseQueryError) => void;
   /**
@@ -253,9 +255,11 @@ export function useQueriedChartConfig(
   const queryClient = useQueryClient();
   const metadata = useMetadataWithSettings();
 
-  const { data: source, isLoading: isLoadingSource } = useSource({
-    id: config.source,
-  });
+  const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
+    useMVOptimizationExplanation(config, {
+      enabled: !!enabled,
+      placeholderData: undefined,
+    });
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
@@ -268,16 +272,7 @@ export function useQueriedChartConfig(
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
-      const optimizedConfig = source?.materializedViews?.length
-        ? await tryOptimizeConfigWithMaterializedView(
-            config,
-            metadata,
-            clickhouseClient,
-            context.signal,
-            source,
-          )
-        : config;
-
+      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
       const query = queryClient
         .getQueryCache()
         .find({ queryKey: context.queryKey, exact: true });
@@ -328,7 +323,7 @@ export function useQueriedChartConfig(
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
-    enabled: enabled && !isLoadingSource,
+    enabled: enabled && !isLoadingMVOptimization,
   });
 
   if (query.isError && options?.onError) {
@@ -336,7 +331,7 @@ export function useQueriedChartConfig(
   }
   return {
     ...query,
-    isLoading: query.isLoading || isLoadingSource,
+    isLoading: query.isLoading || isLoadingMVOptimization,
   };
 }
 
@@ -345,36 +340,27 @@ export function useRenderedSqlChartConfig(
   options?: UseQueryOptions<string>,
 ) {
   const { enabled = true } = options ?? {};
-  const metadata = useMetadataWithSettings();
-  const clickhouseClient = useClickhouseClient();
 
-  const { data: source, isLoading: isLoadingSource } = useSource({
-    id: config.source,
-  });
+  const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
+    useMVOptimizationExplanation(config, {
+      enabled: !!enabled,
+      placeholderData: undefined,
+    });
 
   const query = useQuery({
     queryKey: ['renderedSql', config],
-    queryFn: async ({ signal }) => {
-      const optimizedConfig = source?.materializedViews?.length
-        ? await tryOptimizeConfigWithMaterializedView(
-            config,
-            metadata,
-            clickhouseClient,
-            signal,
-            source,
-          )
-        : config;
-
+    queryFn: async () => {
+      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
       const query = await renderChartConfig(optimizedConfig, getMetadata());
       return format(parameterizedQueryToSql(query));
     },
     ...options,
-    enabled: enabled && !isLoadingSource,
+    enabled: enabled && !isLoadingMVOptimization,
   });
 
   return {
     ...query,
-    isLoading: query.isLoading || isLoadingSource,
+    isLoading: query.isLoading || isLoadingMVOptimization,
   };
 }
 

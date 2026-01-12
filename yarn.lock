@@ -4239,7 +4239,7 @@ __metadata:
   dependencies:
     "@ai-sdk/anthropic": "npm:^2.0.23"
     "@esm2cjs/p-queue": "npm:^7.3.0"
-    "@hyperdx/common-utils": "npm:^0.10.1"
+    "@hyperdx/common-utils": "npm:^0.10.2"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@hyperdx/passport-local-mongoose": "npm:^9.0.1"
     "@opentelemetry/api": "npm:^1.8.0"
@@ -4321,7 +4321,7 @@ __metadata:
     "@hookform/devtools": "npm:^4.3.1"
     "@hookform/resolvers": "npm:^3.9.0"
     "@hyperdx/browser": "npm:^0.21.1"
-    "@hyperdx/common-utils": "npm:^0.10.1"
+    "@hyperdx/common-utils": "npm:^0.10.2"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@jedmao/location": "npm:^3.0.0"
     "@lezer/highlight": "npm:^1.2.0"
@@ -4453,7 +4453,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@hyperdx/common-utils@npm:^0.10.1, @hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@npm:^0.10.2, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
@@ -9698,6 +9698,13 @@ __metadata:
   version: 1.3.2
   resolution: "@types/triple-beam@npm:1.3.2"
   checksum: 10c0/2e936cff7cde9df7da854a54a5f63e0a434b2ae1d6c1eb6de5f7a0b1107b023b3c272abecbba28614a54b8831226b29e37a49e3e34a7490a6a24d770a5b44eb9
+  languageName: node
+  linkType: hard
+
+"@types/ungap__structured-clone@npm:^1.2.0":
+  version: 1.2.0
+  resolution: "@types/ungap__structured-clone@npm:1.2.0"
+  checksum: 10c0/52f341ded16708603e5631769b26acf0e9ed7c556ce81abb4e55962110b30442576c631c8f7e298b561b8ff77c7823f0edc9f5e313e1c5e1441825a590e5b0f3
   languageName: node
   linkType: hard
 
@@ -16825,8 +16832,10 @@ __metadata:
     "@changesets/cli": "npm:^2.26.2"
     "@dotenvx/dotenvx": "npm:^1.51.1"
     "@nx/workspace": "npm:21.3.11"
+    "@types/ungap__structured-clone": "npm:^1.2.0"
     "@typescript-eslint/eslint-plugin": "npm:^8.48.1"
     "@typescript-eslint/parser": "npm:^8.48.1"
+    "@ungap/structured-clone": "npm:^1.3.0"
     babel-plugin-react-compiler: "npm:^1.0.0"
     concurrently: "npm:^9.1.2"
     dotenv: "npm:^16.4.7"
