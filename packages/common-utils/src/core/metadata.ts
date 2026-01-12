@@ -15,6 +15,7 @@ import { renderChartConfig } from '@/core/renderChartConfig';
 import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 import { getConfigsForKeyValues } from './materializedViews';
+import { objectHash } from './utils';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
@@ -623,7 +624,7 @@ export class Metadata {
       'with',
     ]);
     return this.cache.getOrFetch(
-      `${JSON.stringify(cacheKeyConfig)}.${key}.valuesDistribution`,
+      `${objectHash(cacheKeyConfig)}.${key}.valuesDistribution`,
       async () => {
         const config: ChartConfigWithDateRange = {
           ...chartConfig,
@@ -699,8 +700,20 @@ export class Metadata {
     disableRowLimit?: boolean;
     signal?: AbortSignal;
   }) {
+    const cacheKeyConfig = {
+      ...pick(chartConfig, [
+        'connection',
+        'from',
+        'dateRange',
+        'where',
+        'with',
+        'filters',
+      ]),
+      keys,
+      disableRowLimit,
+    };
     return this.cache.getOrFetch(
-      `${chartConfig.connection}.${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
+      `${objectHash(cacheKeyConfig)}.getKeyValues`,
       async () => {
         if (keys.length === 0) return [];
 
@@ -798,21 +811,38 @@ export class Metadata {
     disableRowLimit?: boolean;
     signal?: AbortSignal;
   }) {
+    const cacheKeyConfig = {
+      ...pick(chartConfig, [
+        'connection',
+        'from',
+        'dateRange',
+        'where',
+        'with',
+        'filters',
+      ]),
+      keys,
+      disableRowLimit,
+    };
     return this.cache.getOrFetch(
-      `${chartConfig.connection}.${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.with_mvs.values`,
+      `${objectHash(cacheKeyConfig)}.getKeyValuesWithMVs`,
       async () => {
         if (keys.length === 0) return [];
 
-        const mvOptimizations = source
-          ? await getConfigsForKeyValues({
+        let mvOptimizations;
+        if (source) {
+          try {
+            mvOptimizations = await getConfigsForKeyValues({
               chartConfig,
               keys,
               source,
               clickhouseClient: this.clickhouseClient,
               metadata: this,
               signal,
-            })
-          : undefined;
+            });
+          } catch (e) {
+            console.error('Error getting MV optimizations', e);
+          }
+        }
 
         // Get keys from materialized views where possible
         const keyValuesFromMVsPromises =
