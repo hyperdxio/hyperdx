@@ -125,6 +125,139 @@ describe('sources router', () => {
       .expect(404);
   });
 
+  it('PUT /:id - cleans up type-specific properties when changing source kind', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    // Create a metric source with metricTables property
+    const metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      name: 'Test Metric Source',
+      connection: new Types.ObjectId().toString(),
+      from: {
+        databaseName: 'test_db',
+        tableName: 'otel_metrics',
+      },
+      timestampValueExpression: 'TimeUnix',
+      resourceAttributesExpression: 'ResourceAttributes',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        sum: 'otel_metrics_sum',
+      },
+      team: team._id,
+    });
+
+    // Verify the metric source has metricTables
+    const createdSource = await Source.findById(metricSource._id).lean();
+    expect(createdSource?.metricTables).toBeDefined();
+
+    // Update the source to a trace source
+    const traceSource = {
+      id: metricSource._id.toString(),
+      kind: SourceKind.Trace,
+      name: 'Test Trace Source',
+      connection: metricSource.connection,
+      from: {
+        databaseName: 'test_db',
+        tableName: 'otel_traces',
+      },
+      timestampValueExpression: 'Timestamp',
+      durationExpression: 'Duration',
+      durationPrecision: 9,
+      traceIdExpression: 'TraceId',
+      spanIdExpression: 'SpanId',
+      parentSpanIdExpression: 'ParentSpanId',
+      spanNameExpression: 'SpanName',
+      spanKindExpression: 'SpanKind',
+      defaultTableSelectExpression: 'Timestamp, ServiceName',
+    };
+
+    await agent
+      .put(`/sources/${metricSource._id}`)
+      .send(traceSource)
+      .expect(200);
+
+    // Verify the trace source does NOT have metricTables property
+    const updatedSource = await Source.findById(metricSource._id).lean();
+    expect(updatedSource?.kind).toBe(SourceKind.Trace);
+    expect(updatedSource?.metricTables).toBeNull();
+    expect(updatedSource?.durationExpression).toBe('Duration');
+  });
+
+  it('PUT /:id - preserves metricTables when source remains Metric, removes when changed to another type', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    // Create a metric source with metricTables property
+    const metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      name: 'Test Metric Source',
+      connection: new Types.ObjectId().toString(),
+      from: {
+        databaseName: 'test_db',
+        tableName: 'otel_metrics',
+      },
+      timestampValueExpression: 'TimeUnix',
+      resourceAttributesExpression: 'ResourceAttributes',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        sum: 'otel_metrics_sum',
+      },
+      team: team._id,
+    });
+
+    // Step 1: Update the metric source (but keep it as Metric)
+    const updatedMetricSource = {
+      id: metricSource._id.toString(),
+      kind: SourceKind.Metric,
+      name: 'Updated Metric Source',
+      connection: metricSource.connection,
+      from: metricSource.from,
+      timestampValueExpression: 'TimeUnix',
+      resourceAttributesExpression: 'ResourceAttributes',
+      metricTables: {
+        gauge: 'otel_metrics_gauge_v2',
+        sum: 'otel_metrics_sum_v2',
+      },
+    };
+
+    await agent
+      .put(`/sources/${metricSource._id}`)
+      .send(updatedMetricSource)
+      .expect(200);
+
+    let updatedSource = await Source.findById(metricSource._id).lean();
+
+    // Verify the metric source still has metricTables with updated values
+    expect(updatedSource?.kind).toBe(SourceKind.Metric);
+    expect(updatedSource?.metricTables).toMatchObject({
+      gauge: 'otel_metrics_gauge_v2',
+      sum: 'otel_metrics_sum_v2',
+    });
+
+    // Step 2: Change the source to a Log type
+    const logSource = {
+      id: metricSource._id.toString(),
+      kind: SourceKind.Log,
+      name: 'Test Log Source',
+      connection: metricSource.connection,
+      from: {
+        databaseName: 'test_db',
+        tableName: 'otel_logs',
+      },
+      timestampValueExpression: 'Timestamp',
+      defaultTableSelectExpression: 'Body',
+      severityTextExpression: 'SeverityText',
+    };
+
+    await agent.put(`/sources/${metricSource._id}`).send(logSource).expect(200);
+
+    updatedSource = await Source.findById(metricSource._id).lean();
+
+    // Verify the source is now a Log and metricTables is removed
+    expect(updatedSource?.kind).toBe(SourceKind.Log);
+    expect(updatedSource?.metricTables).toBeNull();
+    expect(updatedSource?.severityTextExpression).toBe('SeverityText');
+  });
+
   it('DELETE /:id - deletes a source', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
