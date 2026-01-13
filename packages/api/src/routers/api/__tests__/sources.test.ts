@@ -183,64 +183,79 @@ describe('sources router', () => {
     expect(updatedSource?.durationExpression).toBe('Duration');
   });
 
-  it('PUT /:id - preserves shared properties when switching between Log and Trace', async () => {
+  it('PUT /:id - preserves metricTables when source remains Metric, removes when changed to another type', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
-    // Create a log source with shared properties
-    const logSource = await Source.create({
+    // Create a metric source with metricTables property
+    const metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      name: 'Test Metric Source',
+      connection: new Types.ObjectId().toString(),
+      from: {
+        databaseName: 'test_db',
+        tableName: 'otel_metrics',
+      },
+      timestampValueExpression: 'TimeUnix',
+      resourceAttributesExpression: 'ResourceAttributes',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        sum: 'otel_metrics_sum',
+      },
+      team: team._id,
+    });
+
+    // Step 1: Update the metric source (but keep it as Metric)
+    const updatedMetricSource = {
+      id: metricSource._id.toString(),
+      kind: SourceKind.Metric,
+      name: 'Updated Metric Source',
+      connection: metricSource.connection,
+      from: metricSource.from,
+      timestampValueExpression: 'TimeUnix',
+      resourceAttributesExpression: 'ResourceAttributes',
+      metricTables: {
+        gauge: 'otel_metrics_gauge_v2',
+        sum: 'otel_metrics_sum_v2',
+      },
+    };
+
+    await agent
+      .put(`/sources/${metricSource._id}`)
+      .send(updatedMetricSource)
+      .expect(200);
+
+    let updatedSource = await Source.findById(metricSource._id).lean();
+
+    // Verify the metric source still has metricTables with updated values
+    expect(updatedSource?.kind).toBe(SourceKind.Metric);
+    expect(updatedSource?.metricTables).toMatchObject({
+      gauge: 'otel_metrics_gauge_v2',
+      sum: 'otel_metrics_sum_v2',
+    });
+
+    // Step 2: Change the source to a Log type
+    const logSource = {
+      id: metricSource._id.toString(),
       kind: SourceKind.Log,
       name: 'Test Log Source',
-      connection: new Types.ObjectId().toString(),
+      connection: metricSource.connection,
       from: {
         databaseName: 'test_db',
         tableName: 'otel_logs',
       },
       timestampValueExpression: 'Timestamp',
-      defaultTableSelectExpression: 'Body, ServiceName',
-      serviceNameExpression: 'ServiceName',
-      severityTextExpression: 'SeverityText', // Log-specific
-      traceIdExpression: 'TraceId', // Shared with Trace
-      spanIdExpression: 'SpanId', // Shared with Trace
-      team: team._id,
-    });
-
-    // Update to trace source
-    const traceSource = {
-      id: logSource._id.toString(),
-      kind: SourceKind.Trace,
-      name: 'Test Trace Source',
-      connection: logSource.connection,
-      from: logSource.from,
-      timestampValueExpression: 'Timestamp',
-      defaultTableSelectExpression: 'SpanName, ServiceName', // Shared with Log
-      serviceNameExpression: 'ServiceName', // Shared with Log
-      traceIdExpression: 'TraceId', // Shared with Log
-      spanIdExpression: 'SpanId', // Shared with Log
-      durationExpression: 'Duration', // Trace-specific
-      durationPrecision: 9,
-      parentSpanIdExpression: 'ParentSpanId',
-      spanNameExpression: 'SpanName',
-      spanKindExpression: 'SpanKind',
+      defaultTableSelectExpression: 'Body',
+      severityTextExpression: 'SeverityText',
     };
 
-    await agent.put(`/sources/${logSource._id}`).send(traceSource).expect(200);
+    await agent.put(`/sources/${metricSource._id}`).send(logSource).expect(200);
 
-    const updatedSource = await Source.findById(logSource._id).lean();
+    updatedSource = await Source.findById(metricSource._id).lean();
 
-    // Verify trace-specific properties exist
-    expect(updatedSource?.kind).toBe(SourceKind.Trace);
-    expect(updatedSource?.durationExpression).toBe('Duration');
-
-    // Verify log-specific properties are removed
-    expect(updatedSource?.severityTextExpression).toBeNull();
-
-    // Verify shared properties are preserved
-    expect(updatedSource?.traceIdExpression).toBe('TraceId');
-    expect(updatedSource?.spanIdExpression).toBe('SpanId');
-    expect(updatedSource?.serviceNameExpression).toBe('ServiceName');
-    expect(updatedSource?.defaultTableSelectExpression).toBe(
-      'SpanName, ServiceName',
-    );
+    // Verify the source is now a Log and metricTables is removed
+    expect(updatedSource?.kind).toBe(SourceKind.Log);
+    expect(updatedSource?.metricTables).toBeNull();
+    expect(updatedSource?.severityTextExpression).toBe('SeverityText');
   });
 
   it('DELETE /:id - deletes a source', async () => {
