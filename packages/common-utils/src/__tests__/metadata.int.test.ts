@@ -460,5 +460,51 @@ describe('Metadata Integration Tests', () => {
       expect(result[0].key).toBe('service');
       expect(result[0].value.length).toBeLessThanOrEqual(2);
     });
+
+    it('should work with disableRowLimit: true', async () => {
+      const source = {
+        id: 'test-source',
+        name: 'Test Logs',
+        kind: 'otel-logs',
+        from: { databaseName: 'default', tableName: baseTableName },
+        timestampValueExpression: 'Timestamp',
+        connection: 'test_connection',
+        materializedViews: [
+          {
+            databaseName: 'default',
+            tableName: mvTableName,
+            dimensionColumns: 'environment, service, status_code',
+            minGranularity: '1 minute',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+          },
+        ],
+      };
+
+      // Should work with disableRowLimit: true (no row limits applied)
+      const result = await metadata.getKeyValuesWithMVs({
+        chartConfig,
+        keys: ['environment', 'service', 'status_code'],
+        source: source as any,
+        disableRowLimit: true,
+      });
+
+      expect(result).toHaveLength(3);
+
+      const environmentResult = result.find(r => r.key === 'environment');
+      expect(environmentResult?.value).toEqual(
+        expect.arrayContaining(['production', 'staging']),
+      );
+
+      const serviceResult = result.find(r => r.key === 'service');
+      expect(serviceResult?.value).toEqual(
+        expect.arrayContaining(['api', 'web', 'worker']),
+      );
+
+      const statusCodeResult = result.find(r => r.key === 'status_code');
+      expect(statusCodeResult?.value).toEqual(
+        expect.arrayContaining(['200', '404', '500']),
+      );
+    });
   });
 });

@@ -1,6 +1,6 @@
 import {
-  getConfigsForKeyValues,
   isUnsupportedCountFunction,
+  optimizeGetKeyValuesCalls,
   tryConvertConfigToMaterializedViewSelect,
   tryOptimizeConfigWithMaterializedView,
   tryOptimizeConfigWithMaterializedViewWithExplanations,
@@ -1846,7 +1846,7 @@ describe('materializedViews', () => {
     });
   });
 
-  describe('getConfigsForKeyValues', () => {
+  describe('optimizeGetKeyValuesCalls', () => {
     const mockClickHouseClient = {
       testChartConfigValidity: jest.fn(),
     } as unknown as jest.Mocked<ClickhouseClient>;
@@ -1865,15 +1865,6 @@ describe('materializedViews', () => {
       tableName: 'logs_rollup_1h',
       dimensionColumns: 'environment, region',
       minGranularity: '1 hour',
-      timestampColumn: 'Timestamp',
-      aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
-    };
-
-    const MV_CONFIG_TRACES_1M: MaterializedViewConfiguration = {
-      databaseName: 'default',
-      tableName: 'traces_rollup_1m',
-      dimensionColumns: 'service.name, endpoint',
-      minGranularity: '1 minute',
       timestampColumn: 'Timestamp',
       aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
     };
@@ -1905,7 +1896,7 @@ describe('materializedViews', () => {
         rowEstimate: 1000,
       });
 
-      const result = await getConfigsForKeyValues({
+      const result = await optimizeGetKeyValuesCalls({
         chartConfig,
         keys,
         source: source as any,
@@ -1913,14 +1904,12 @@ describe('materializedViews', () => {
         metadata,
       });
 
-      expect(result.mvs).toEqual([
-        {
-          databaseName: 'default',
-          tableName: 'logs_rollup_1m',
-          keys: ['environment', 'service', 'status_code'],
-        },
-      ]);
-      expect(result.uncoveredKeys).toEqual([]);
+      expect(result).toHaveLength(1);
+      expect(result[0].keys).toEqual(['environment', 'service', 'status_code']);
+      expect(result[0].chartConfig.from).toEqual({
+        databaseName: 'default',
+        tableName: 'logs_rollup_1m',
+      });
       expect(
         mockClickHouseClient.testChartConfigValidity,
       ).toHaveBeenCalledTimes(1);
@@ -1953,7 +1942,7 @@ describe('materializedViews', () => {
           }),
       );
 
-      const result = await getConfigsForKeyValues({
+      const result = await optimizeGetKeyValuesCalls({
         chartConfig,
         keys,
         source: source as any,
@@ -1962,22 +1951,29 @@ describe('materializedViews', () => {
       });
 
       // Should prefer logs_rollup_1h (500 rows) over logs_rollup_1m (1000 rows) for shared keys
-      expect(result.mvs).toHaveLength(2);
-      expect(result.mvs).toEqual(
+      expect(result).toHaveLength(2);
+      expect(result).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            databaseName: 'default',
-            tableName: 'logs_rollup_1h',
+            chartConfig: expect.objectContaining({
+              from: {
+                databaseName: 'default',
+                tableName: 'logs_rollup_1h',
+              },
+            }),
             keys: expect.arrayContaining(['environment', 'region']),
           }),
           expect.objectContaining({
-            databaseName: 'default',
-            tableName: 'logs_rollup_1m',
+            chartConfig: expect.objectContaining({
+              from: {
+                databaseName: 'default',
+                tableName: 'logs_rollup_1m',
+              },
+            }),
             keys: ['service'],
           }),
         ]),
       );
-      expect(result.uncoveredKeys).toEqual([]);
     });
 
     it('should return uncovered keys when no MV supports them', async () => {
@@ -2003,7 +1999,7 @@ describe('materializedViews', () => {
         rowEstimate: 1000,
       });
 
-      const result = await getConfigsForKeyValues({
+      const result = await optimizeGetKeyValuesCalls({
         chartConfig,
         keys,
         source: source as any,
@@ -2011,14 +2007,29 @@ describe('materializedViews', () => {
         metadata,
       });
 
-      expect(result.mvs).toEqual([
-        {
-          databaseName: 'default',
-          tableName: 'logs_rollup_1m',
-          keys: ['environment'],
-        },
-      ]);
-      expect(result.uncoveredKeys).toEqual(['unsupported_key']);
+      expect(result).toHaveLength(2);
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            chartConfig: expect.objectContaining({
+              from: {
+                databaseName: 'default',
+                tableName: 'logs_rollup_1m',
+              },
+            }),
+            keys: ['environment'],
+          }),
+          expect.objectContaining({
+            chartConfig: expect.objectContaining({
+              from: {
+                databaseName: 'default',
+                tableName: 'logs',
+              },
+            }),
+            keys: ['unsupported_key'],
+          }),
+        ]),
+      );
     });
 
     it('should skip invalid MVs and return uncovered keys', async () => {
@@ -2044,7 +2055,7 @@ describe('materializedViews', () => {
         error: 'Invalid query',
       });
 
-      const result = await getConfigsForKeyValues({
+      const result = await optimizeGetKeyValuesCalls({
         chartConfig,
         keys,
         source: source as any,
@@ -2052,8 +2063,16 @@ describe('materializedViews', () => {
         metadata,
       });
 
-      expect(result.mvs).toEqual([]);
-      expect(result.uncoveredKeys).toEqual(['environment', 'service']);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        chartConfig: expect.objectContaining({
+          from: {
+            databaseName: 'default',
+            tableName: 'logs',
+          },
+        }),
+        keys: ['environment', 'service'],
+      });
     });
 
     it('should prefer MVs with lower row estimates', async () => {
@@ -2083,7 +2102,7 @@ describe('materializedViews', () => {
           }),
       );
 
-      const result = await getConfigsForKeyValues({
+      const result = await optimizeGetKeyValuesCalls({
         chartConfig,
         keys,
         source: source as any,
@@ -2091,14 +2110,16 @@ describe('materializedViews', () => {
         metadata,
       });
 
-      expect(result.mvs).toEqual([
-        {
-          databaseName: 'default',
-          tableName: 'logs_rollup_1h',
-          keys: ['environment'],
-        },
-      ]);
-      expect(result.uncoveredKeys).toEqual([]);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        chartConfig: expect.objectContaining({
+          from: {
+            databaseName: 'default',
+            tableName: 'logs_rollup_1h',
+          },
+        }),
+        keys: ['environment'],
+      });
     });
 
     it('should handle empty keys array', async () => {
@@ -2119,7 +2140,7 @@ describe('materializedViews', () => {
         materializedViews: [MV_CONFIG_LOGS_1M],
       };
 
-      const result = await getConfigsForKeyValues({
+      const result = await optimizeGetKeyValuesCalls({
         chartConfig,
         keys,
         source: source as any,
@@ -2127,8 +2148,7 @@ describe('materializedViews', () => {
         metadata,
       });
 
-      expect(result.mvs).toEqual([]);
-      expect(result.uncoveredKeys).toEqual([]);
+      expect(result).toEqual([]);
       expect(
         mockClickHouseClient.testChartConfigValidity,
       ).not.toHaveBeenCalled();
@@ -2152,7 +2172,7 @@ describe('materializedViews', () => {
         materializedViews: [],
       };
 
-      const result = await getConfigsForKeyValues({
+      const result = await optimizeGetKeyValuesCalls({
         chartConfig,
         keys,
         source: source as any,
@@ -2160,8 +2180,16 @@ describe('materializedViews', () => {
         metadata,
       });
 
-      expect(result.mvs).toEqual([]);
-      expect(result.uncoveredKeys).toEqual(['environment', 'service']);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        chartConfig: expect.objectContaining({
+          from: {
+            databaseName: 'default',
+            tableName: 'logs',
+          },
+        }),
+        keys: ['environment', 'service'],
+      });
       expect(
         mockClickHouseClient.testChartConfigValidity,
       ).not.toHaveBeenCalled();
@@ -2195,7 +2223,7 @@ describe('materializedViews', () => {
         materializedViews: [MV_CONFIG_WITH_MIN_DATE],
       };
 
-      const result = await getConfigsForKeyValues({
+      const result = await optimizeGetKeyValuesCalls({
         chartConfig,
         keys,
         source: source as any,
@@ -2203,8 +2231,66 @@ describe('materializedViews', () => {
         metadata,
       });
 
-      expect(result.mvs).toEqual([]);
-      expect(result.uncoveredKeys).toEqual(['environment', 'service']);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        chartConfig: expect.objectContaining({
+          from: {
+            databaseName: 'default',
+            tableName: 'logs',
+          },
+        }),
+        keys: ['environment', 'service'],
+      });
+      expect(
+        mockClickHouseClient.testChartConfigValidity,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('should filter out MVs which have a granularity too large to support the date range', async () => {
+      const MV_CONFIG_WITH_MIN_DATE: MaterializedViewConfiguration = {
+        databaseName: 'default',
+        tableName: 'logs_rollup_recent',
+        dimensionColumns: 'environment, service',
+        minGranularity: '1 day',
+        timestampColumn: 'Timestamp',
+        aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+      };
+
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')], // only contains 1 MV interval
+        select: '',
+      };
+
+      const keys = ['environment', 'service'];
+      const source = {
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_WITH_MIN_DATE],
+      };
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        chartConfig: expect.objectContaining({
+          from: {
+            databaseName: 'default',
+            tableName: 'logs',
+          },
+        }),
+        keys: ['environment', 'service'],
+      });
       expect(
         mockClickHouseClient.testChartConfigValidity,
       ).not.toHaveBeenCalled();
@@ -2233,7 +2319,7 @@ describe('materializedViews', () => {
         rowEstimate: 1000,
       });
 
-      await getConfigsForKeyValues({
+      await optimizeGetKeyValuesCalls({
         chartConfig,
         keys,
         source: source as any,

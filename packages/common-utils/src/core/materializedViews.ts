@@ -1,3 +1,5 @@
+import { differenceInSeconds } from 'date-fns';
+
 import { BaseClickhouseClient } from '@/clickhouse';
 import {
   ChartConfigWithOptDateRange,
@@ -159,6 +161,16 @@ function mvConfigSupportsGranularity(
     chartGranularitySeconds >= mvGranularitySeconds &&
     chartGranularitySeconds % mvGranularitySeconds === 0
   );
+}
+
+function countIntervalsInDateRange(
+  dateRange: [Date, Date],
+  granularity: string,
+) {
+  const [startDate, endDate] = dateRange;
+  const granularitySeconds = convertGranularityToSeconds(granularity);
+  const diffSeconds = differenceInSeconds(endDate, startDate);
+  return Math.floor(diffSeconds / granularitySeconds);
 }
 
 function mvConfigSupportsDateRange(
@@ -564,12 +576,18 @@ function formatAggregateFunction(aggFn: string, level: number | undefined) {
   }
 }
 
-/**
- * Returns a list of Materialized Views and the keys (of the ones provided)
- * that could be queried from that materialized view, given the filters in the
- * provided ChartConfig.
- **/
-export async function getConfigsForKeyValues<
+function toMvId(
+  mv: Pick<MaterializedViewConfiguration, 'databaseName' | 'tableName'>,
+) {
+  return `${mv.databaseName}.${mv.tableName}`;
+}
+
+export interface GetKeyValueCall<C extends ChartConfigWithOptDateRange> {
+  chartConfig: C;
+  keys: string[];
+}
+
+export async function optimizeGetKeyValuesCalls<
   C extends ChartConfigWithOptDateRange,
 >({
   chartConfig,
@@ -585,39 +603,53 @@ export async function getConfigsForKeyValues<
   clickhouseClient: BaseClickhouseClient;
   metadata: Metadata;
   signal?: AbortSignal;
-}) {
-  // Identify keys which can be queried from a materialized view
+}): Promise<GetKeyValueCall<C>[]> {
+  // Get the MVs from the source
   const mvs = source?.materializedViews || [];
-  const keysByMV = new Map<string, string[]>();
-  for (const mv of mvs) {
-    if (mvConfigSupportsDateRange(mv, chartConfig)) {
+  const mvsById = new Map(mvs.map(mv => [toMvId(mv), mv]));
+
+  // Identify keys which can be queried from a materialized view
+  const supportedKeysByMv = new Map<string, string[]>();
+  for (const [mvId, mv] of mvsById.entries()) {
+    const mvIntervalsInDateRange = chartConfig.dateRange
+      ? countIntervalsInDateRange(chartConfig.dateRange, mv.minGranularity)
+      : Infinity;
+    if (
+      // Ensures that the MV contains data for the selected date range
+      mvConfigSupportsDateRange(mv, chartConfig) &&
+      // Ensures that the MV's granularity is small enough that the selected date
+      // range will include multiple MV time buckets. (3 is an arbitrary cutoff)
+      mvIntervalsInDateRange >= 3
+    ) {
       const dimensionColumns = splitAndTrimWithBracket(mv.dimensionColumns);
       const keysInMV = keys.filter(k => dimensionColumns.includes(k));
       if (keysInMV.length > 0) {
-        keysByMV.set(`${mv.databaseName}.${mv.tableName}`, keysInMV);
+        supportedKeysByMv.set(mvId, keysInMV);
       }
     }
   }
 
   // Build the configs which would be used to query each MV for all of the keys it supports
-  const mvConfigs = [...keysByMV.entries()].map(([mvIdentifier, mvKeys]) => {
-    const [databaseName, tableName] = mvIdentifier.split('.');
-    return {
-      ...structuredClone(chartConfig),
-      from: {
-        databaseName,
-        tableName,
-      },
-      // These are dimension columns so we don't need to add any -Merge combinators
-      select: mvKeys
-        .map((k, i) => `groupUniqArray(1)(${k}) AS param${i}`)
-        .join(', '),
-    };
-  });
+  const configsToExplain = [...supportedKeysByMv.entries()].map(
+    ([mvId, mvKeys]) => {
+      const { databaseName, tableName } = mvsById.get(mvId)!;
+      return {
+        ...structuredClone(chartConfig),
+        from: {
+          databaseName,
+          tableName,
+        },
+        // These are dimension columns so we don't need to add any -Merge combinators
+        select: mvKeys
+          .map((k, i) => `groupUniqArray(1)(${k}) AS param${i}`)
+          .join(', '),
+      };
+    },
+  );
 
   // Figure out which of those configs are valid by running EXPLAIN queries
   const explainResults = await Promise.all(
-    mvConfigs.map(async config => {
+    configsToExplain.map(async config => {
       const { isValid, rowEstimate = Number.POSITIVE_INFINITY } =
         await clickhouseClient.testChartConfigValidity({
           config,
@@ -625,8 +657,10 @@ export async function getConfigsForKeyValues<
           opts: { abort_signal: signal },
         });
       return {
-        databaseName: config.from.databaseName,
-        tableName: config.from.tableName,
+        id: toMvId({
+          databaseName: config.from.databaseName,
+          tableName: config.from.tableName,
+        }),
         isValid,
         rowEstimate,
       };
@@ -634,34 +668,46 @@ export async function getConfigsForKeyValues<
   );
 
   // For each key, find the best MV that can provide it while reading the fewest rows
-  const mvToKeys = new Map<string, string[]>();
+  const finalKeysByMv = new Map<string, string[]>();
   const uncoveredKeys = new Set<string>(keys);
   const sortedValidConfigs = explainResults
     .filter(r => r.isValid)
     .sort((a, b) => a.rowEstimate - b.rowEstimate);
   for (const config of sortedValidConfigs) {
-    const mvIdentifier = `${config.databaseName}.${config.tableName}`;
-    const mvKeys = keysByMV.get(mvIdentifier) ?? [];
+    const mvKeys = supportedKeysByMv.get(config.id) ?? [];
 
     // Only include keys which have not already been covered by a previous MV
     const keysNotAlreadyCovered = mvKeys.filter(k => uncoveredKeys.has(k));
     if (keysNotAlreadyCovered.length) {
-      mvToKeys.set(mvIdentifier, keysNotAlreadyCovered);
+      finalKeysByMv.set(config.id, keysNotAlreadyCovered);
       for (const key of keysNotAlreadyCovered) {
         uncoveredKeys.delete(key);
       }
     }
   }
 
-  return {
-    mvs: [...mvToKeys.entries()].map(([mvIdentifier, mvKeys]) => {
-      const [databaseName, tableName] = mvIdentifier.split('.');
-      return {
+  // Build the final list of optimized calls
+  const calls = [...finalKeysByMv.entries()].map(([mvId, mvKeys]) => {
+    const { databaseName, tableName } = mvsById.get(mvId)!;
+    const optimizedConfig: C = {
+      ...structuredClone(chartConfig),
+      from: {
         databaseName,
         tableName,
-        keys: mvKeys,
-      };
-    }),
-    uncoveredKeys: [...uncoveredKeys],
-  };
+      },
+    };
+    return {
+      chartConfig: optimizedConfig,
+      keys: mvKeys,
+    };
+  });
+
+  if (uncoveredKeys.size) {
+    calls.push({
+      chartConfig: structuredClone(chartConfig),
+      keys: [...uncoveredKeys],
+    });
+  }
+
+  return calls;
 }

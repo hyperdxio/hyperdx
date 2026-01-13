@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import React from 'react';
+import { optimizeGetKeyValuesCalls } from '@hyperdx/common-utils/dist/core/materializedViews';
+import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -12,11 +14,18 @@ import * as useMetadataModule from '../useMetadata';
 // Mock modules
 jest.mock('@/source');
 jest.mock('../useMetadata');
+jest.mock('@hyperdx/common-utils/dist/core/materializedViews', () => ({
+  optimizeGetKeyValuesCalls: jest
+    .fn()
+    .mockImplementation(async ({ keys, chartConfig }) => [
+      { keys, chartConfig },
+    ]),
+}));
 
 describe('useDashboardFilterKeyValues', () => {
   let queryClient: QueryClient;
   let wrapper: React.ComponentType<{ children: any }>;
-  let mockMetadata: any;
+  let mockMetadata: jest.Mocked<Metadata>;
 
   const mockSources = [
     {
@@ -66,10 +75,10 @@ describe('useDashboardFilterKeyValues', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    // Mock metadata with getKeyValuesWithMVs
+    // Mock metadata with getKeyValues
     mockMetadata = {
-      getKeyValuesWithMVs: jest.fn(),
-    };
+      getKeyValues: jest.fn(),
+    } as unknown as jest.Mocked<Metadata>;
 
     // Mock useMetadataWithSettings
     jest
@@ -102,19 +111,17 @@ describe('useDashboardFilterKeyValues', () => {
       isLoading: false,
     } as any);
 
-    mockMetadata.getKeyValuesWithMVs
-      .mockResolvedValueOnce([
-        {
-          key: 'environment',
-          value: ['production', 'staging', 'development'],
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          key: 'service.name',
-          value: ['frontend', 'backend', 'database'],
-        },
-      ]);
+    mockMetadata.getKeyValues.mockImplementation(({ keys }) => {
+      return Promise.resolve(
+        keys.map(key => ({
+          key,
+          value:
+            key === 'environment'
+              ? ['production', 'staging', 'development']
+              : ['frontend', 'backend', 'database'],
+        })),
+      );
+    });
 
     // Act
     const { result } = renderHook(
@@ -127,17 +134,70 @@ describe('useDashboardFilterKeyValues', () => {
     );
 
     // Assert
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
 
     expect(result.current.data).toEqual(
       new Map([
-        ['environment', ['production', 'staging', 'development']],
-        ['service.name', ['frontend', 'backend', 'database']],
+        [
+          'environment',
+          {
+            values: ['production', 'staging', 'development'],
+            isLoading: false,
+          },
+        ],
+        [
+          'service.name',
+          {
+            values: ['frontend', 'backend', 'database'],
+            isLoading: false,
+          },
+        ],
       ]),
     );
 
-    expect(mockMetadata.getKeyValuesWithMVs).toHaveBeenCalledTimes(2);
-    expect(mockMetadata.getKeyValuesWithMVs).toHaveBeenCalledTimes(2);
+    expect(optimizeGetKeyValuesCalls).toHaveBeenCalledTimes(2);
+    expect(optimizeGetKeyValuesCalls).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({
+          from: { databaseName: 'telemetry', tableName: 'logs' },
+          source: 'logs-source',
+          dateRange: mockDateRange,
+        }),
+        keys: ['environment'],
+      }),
+    );
+    expect(optimizeGetKeyValuesCalls).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({
+          from: { databaseName: 'telemetry', tableName: 'traces' },
+          source: 'traces-source',
+          dateRange: mockDateRange,
+        }),
+        keys: ['service.name'],
+      }),
+    );
+
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(2);
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({
+          from: { databaseName: 'telemetry', tableName: 'logs' },
+          source: 'logs-source',
+          dateRange: mockDateRange,
+        }),
+        keys: ['environment'],
+      }),
+    );
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({
+          from: { databaseName: 'telemetry', tableName: 'traces' },
+          source: 'traces-source',
+          dateRange: mockDateRange,
+        }),
+        keys: ['service.name'],
+      }),
+    );
   });
 
   it('should group multiple filters from the same source', async () => {
@@ -164,7 +224,7 @@ describe('useDashboardFilterKeyValues', () => {
       isLoading: false,
     } as any);
 
-    mockMetadata.getKeyValuesWithMVs.mockResolvedValueOnce([
+    mockMetadata.getKeyValues.mockResolvedValueOnce([
       {
         key: 'environment',
         value: ['production', 'staging'],
@@ -186,10 +246,10 @@ describe('useDashboardFilterKeyValues', () => {
     );
 
     // Assert
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
 
-    expect(mockMetadata.getKeyValuesWithMVs).toHaveBeenCalledTimes(1);
-    expect(mockMetadata.getKeyValuesWithMVs).toHaveBeenCalledWith(
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledWith(
       expect.objectContaining({
         keys: ['environment', 'status'],
       }),
@@ -214,8 +274,8 @@ describe('useDashboardFilterKeyValues', () => {
     );
 
     // Assert
-    expect(result.current.isFetched).toBe(false);
-    expect(mockMetadata.getKeyValuesWithMVs).not.toHaveBeenCalled();
+    expect(result.current.data).toEqual(new Map());
+    expect(mockMetadata.getKeyValues).not.toHaveBeenCalled();
   });
 
   it('should not fetch when sources are still loading', () => {
@@ -226,7 +286,7 @@ describe('useDashboardFilterKeyValues', () => {
     } as any);
 
     // Act
-    const { result } = renderHook(
+    renderHook(
       () =>
         useDashboardFilterKeyValues({
           filters: mockFilters,
@@ -236,8 +296,7 @@ describe('useDashboardFilterKeyValues', () => {
     );
 
     // Assert
-    expect(result.current.isFetched).toBe(false);
-    expect(mockMetadata.getKeyValuesWithMVs).not.toHaveBeenCalled();
+    expect(mockMetadata.getKeyValues).not.toHaveBeenCalled();
   });
 
   it('should filter out filters for sources that do not exist', async () => {
@@ -258,7 +317,7 @@ describe('useDashboardFilterKeyValues', () => {
       isLoading: false,
     } as any);
 
-    mockMetadata.getKeyValuesWithMVs
+    mockMetadata.getKeyValues
       .mockResolvedValueOnce([
         {
           key: 'environment',
@@ -283,10 +342,10 @@ describe('useDashboardFilterKeyValues', () => {
     );
 
     // Assert
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
 
-    // Should only call getKeyValuesWithMVs for valid sources
-    expect(mockMetadata.getKeyValuesWithMVs).toHaveBeenCalledTimes(2);
+    // Should only call getKeyValues for valid sources
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(2);
   });
 
   it('should handle errors when fetching key values', async () => {
@@ -296,7 +355,7 @@ describe('useDashboardFilterKeyValues', () => {
       isLoading: false,
     } as any);
 
-    mockMetadata.getKeyValuesWithMVs.mockRejectedValue(
+    mockMetadata.getKeyValues.mockRejectedValue(
       new Error('Failed to fetch key values'),
     );
 
@@ -313,18 +372,17 @@ describe('useDashboardFilterKeyValues', () => {
     // Assert
     await waitFor(() => expect(result.current.isError).toBe(true));
 
-    expect(result.current.error).toEqual(expect.any(Error));
-    expect(result.current.error!.message).toBe('Failed to fetch key values');
+    expect(result.current.isError).toBeTruthy();
   });
 
-  it('should pass correct parameters to getKeyValuesWithMVs', async () => {
+  it('should pass correct parameters to getKeyValues', async () => {
     // Arrange
     jest.spyOn(sourceModule, 'useSources').mockReturnValue({
       data: mockSources,
       isLoading: false,
     } as any);
 
-    mockMetadata.getKeyValuesWithMVs.mockResolvedValue([
+    mockMetadata.getKeyValues.mockResolvedValue([
       {
         key: 'environment',
         value: ['production'],
@@ -342,9 +400,9 @@ describe('useDashboardFilterKeyValues', () => {
     );
 
     // Assert
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
 
-    expect(mockMetadata.getKeyValuesWithMVs).toHaveBeenCalledWith({
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledWith({
       chartConfig: {
         timestampValueExpression: 'timestamp',
         connection: 'clickhouse-conn',
@@ -361,7 +419,6 @@ describe('useDashboardFilterKeyValues', () => {
       keys: ['environment'],
       limit: 10000,
       disableRowLimit: true,
-      source: mockSources[0],
       signal: expect.any(AbortSignal),
     });
   });
@@ -373,7 +430,7 @@ describe('useDashboardFilterKeyValues', () => {
       isLoading: false,
     } as any);
 
-    mockMetadata.getKeyValuesWithMVs.mockResolvedValue([
+    mockMetadata.getKeyValues.mockResolvedValue([
       {
         key: 'environment',
         value: ['production'],
@@ -397,7 +454,7 @@ describe('useDashboardFilterKeyValues', () => {
     );
 
     // Assert - Wait for first fetch to complete
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
 
     // Update with new date range (should trigger refetch)
     const newDateRange: [Date, Date] = [
@@ -405,7 +462,7 @@ describe('useDashboardFilterKeyValues', () => {
       new Date('2024-01-03'),
     ];
 
-    mockMetadata.getKeyValuesWithMVs.mockResolvedValue([
+    mockMetadata.getKeyValues.mockResolvedValue([
       {
         key: 'environment',
         value: ['staging'],
@@ -422,29 +479,6 @@ describe('useDashboardFilterKeyValues', () => {
     expect(result.current.data).toBeDefined();
   });
 
-  it('should have correct staleTime for caching', () => {
-    // Arrange
-    jest.spyOn(sourceModule, 'useSources').mockReturnValue({
-      data: mockSources,
-      isLoading: false,
-    } as any);
-
-    // Act
-    const { result } = renderHook(
-      () =>
-        useDashboardFilterKeyValues({
-          filters: mockFilters,
-          dateRange: mockDateRange,
-        }),
-      { wrapper },
-    );
-
-    // Assert
-    // The hook should be configured with staleTime of 5 minutes (300000ms)
-    // This is an implementation detail, but we can verify the query is cached
-    expect(result.current).toBeDefined();
-  });
-
   it('should flatten results from multiple sources into a single Map', async () => {
     // Arrange
     jest.spyOn(sourceModule, 'useSources').mockReturnValue({
@@ -452,7 +486,7 @@ describe('useDashboardFilterKeyValues', () => {
       isLoading: false,
     } as any);
 
-    mockMetadata.getKeyValuesWithMVs
+    mockMetadata.getKeyValues
       .mockResolvedValueOnce([
         {
           key: 'environment',
@@ -505,17 +539,442 @@ describe('useDashboardFilterKeyValues', () => {
     );
 
     // Assert
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
 
     expect(result.current.data).toEqual(
       new Map([
-        ['environment', ['production', 'staging']],
-        ['log_level', ['info', 'error']],
-        ['service.name', ['frontend', 'backend']],
+        [
+          'environment',
+          { values: ['production', 'staging'], isLoading: false },
+        ],
+        ['log_level', { values: ['info', 'error'], isLoading: false }],
+        ['service.name', { values: ['frontend', 'backend'], isLoading: false }],
       ]),
     );
 
     // Should have size of 3 (all keys)
     expect(result.current.data?.size).toBe(3);
+  });
+
+  it('should query keys from materialized views when optimizeGetKeyValuesCalls indicates MVs are available', async () => {
+    // Arrange
+    jest.spyOn(sourceModule, 'useSources').mockReturnValue({
+      data: mockSources,
+      isLoading: false,
+    } as any);
+
+    // Mock optimizeGetKeyValuesCalls to return multiple calls (one for MV, one for original source)
+    jest.mocked(optimizeGetKeyValuesCalls).mockResolvedValue([
+      {
+        chartConfig: {
+          from: { databaseName: 'telemetry', tableName: 'logs_rollup_1m' },
+          dateRange: mockDateRange,
+          connection: 'clickhouse-conn',
+          timestampValueExpression: 'timestamp',
+          source: 'logs-source',
+          where: '',
+          whereLanguage: 'sql',
+          select: '',
+        },
+        keys: ['environment'],
+      },
+      {
+        chartConfig: {
+          from: { databaseName: 'telemetry', tableName: 'logs' },
+          dateRange: mockDateRange,
+          connection: 'clickhouse-conn',
+          timestampValueExpression: 'timestamp',
+          source: 'logs-source',
+          where: '',
+          whereLanguage: 'sql',
+          select: '',
+        },
+        keys: ['service.name'],
+      },
+    ]);
+
+    mockMetadata.getKeyValues
+      .mockResolvedValueOnce([
+        {
+          key: 'environment',
+          value: ['production', 'staging'],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          key: 'service.name',
+          value: ['frontend', 'backend'],
+        },
+      ]);
+
+    const filtersForSameSource: DashboardFilter[] = [
+      {
+        id: 'filter1',
+        type: 'QUERY_EXPRESSION',
+        name: 'Environment',
+        expression: 'environment',
+        source: 'logs-source',
+      },
+      {
+        id: 'filter2',
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'service.name',
+        source: 'logs-source',
+      },
+    ];
+
+    // Act
+    const { result } = renderHook(
+      () =>
+        useDashboardFilterKeyValues({
+          filters: filtersForSameSource,
+          dateRange: mockDateRange,
+        }),
+      { wrapper },
+    );
+
+    // Assert
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    // Should call getKeyValues twice (once for MV, once for original source)
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(2);
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({
+          from: { databaseName: 'telemetry', tableName: 'logs_rollup_1m' },
+        }),
+        keys: ['environment'],
+      }),
+    );
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({
+          from: { databaseName: 'telemetry', tableName: 'logs' },
+        }),
+        keys: ['service.name'],
+      }),
+    );
+
+    // Should return combined results
+    expect(result.current.data).toEqual(
+      new Map([
+        [
+          'environment',
+          { values: ['production', 'staging'], isLoading: false },
+        ],
+        ['service.name', { values: ['frontend', 'backend'], isLoading: false }],
+      ]),
+    );
+  });
+
+  it('should provide partial results when some keys have loaded and others have not', async () => {
+    // Arrange
+    jest.spyOn(sourceModule, 'useSources').mockReturnValue({
+      data: mockSources,
+      isLoading: false,
+    } as any);
+
+    // Mock optimizeGetKeyValuesCalls to return two separate calls
+    jest
+      .mocked(optimizeGetKeyValuesCalls)
+      .mockResolvedValueOnce([
+        {
+          chartConfig: {
+            from: { databaseName: 'telemetry', tableName: 'logs' },
+            dateRange: mockDateRange,
+            connection: 'clickhouse-conn',
+            timestampValueExpression: 'timestamp',
+            source: 'logs-source',
+            where: '',
+            whereLanguage: 'sql',
+            select: '',
+          },
+          keys: ['environment'],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          chartConfig: {
+            from: { databaseName: 'telemetry', tableName: 'traces' },
+            dateRange: mockDateRange,
+            connection: 'clickhouse-conn',
+            timestampValueExpression: 'timestamp',
+            source: 'traces-source',
+            where: '',
+            whereLanguage: 'sql',
+            select: '',
+          },
+          keys: ['service.name'],
+        },
+      ]);
+
+    // First query resolves quickly, second query takes longer
+    let resolveQuery;
+    mockMetadata.getKeyValues
+      .mockImplementationOnce(async () => {
+        return [
+          {
+            key: 'environment',
+            value: ['production'],
+          },
+        ];
+      })
+      .mockImplementationOnce(
+        async () =>
+          new Promise(
+            resolve => {
+              resolveQuery = resolve;
+            },
+            //   setTimeout(
+            //     () =>
+            //       resolve([
+            //         {
+            //           key: 'service.name',
+            //           value: ['backend'],
+            //         },
+            //       ]),
+            //     100,
+            //   ),
+          ),
+      );
+
+    // Act
+    const { result } = renderHook(
+      () =>
+        useDashboardFilterKeyValues({
+          filters: mockFilters,
+          dateRange: mockDateRange,
+        }),
+      { wrapper },
+    );
+
+    // Assert - Wait for first query to complete
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // At this point, environment should be loaded but service.name should still be loading
+    expect(result.current.data?.get('environment')).toEqual({
+      values: ['production'],
+      isLoading: false,
+    });
+
+    // Wait for all queries to complete
+    resolveQuery!([
+      {
+        key: 'service.name',
+        value: ['backend'],
+      },
+    ]);
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    // Now both should be loaded
+    expect(result.current.data).toEqual(
+      new Map([
+        ['environment', { values: ['production'], isLoading: false }],
+        ['service.name', { values: ['backend'], isLoading: false }],
+      ]),
+    );
+  });
+
+  it('should provide partial results when some keys have failed and others have not', async () => {
+    // Arrange
+    jest.spyOn(sourceModule, 'useSources').mockReturnValue({
+      data: mockSources,
+      isLoading: false,
+    } as any);
+
+    // Mock optimizeGetKeyValuesCalls to return two separate calls
+    (optimizeGetKeyValuesCalls as jest.Mock)
+      .mockResolvedValueOnce([
+        {
+          chartConfig: {
+            from: { databaseName: 'telemetry', tableName: 'logs' },
+            dateRange: mockDateRange,
+            connection: 'clickhouse-conn',
+            timestampValueExpression: 'timestamp',
+            source: 'logs-source',
+            where: '',
+            whereLanguage: 'sql',
+            select: '',
+          },
+          keys: ['environment'],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          chartConfig: {
+            from: { databaseName: 'telemetry', tableName: 'traces' },
+            dateRange: mockDateRange,
+            connection: 'clickhouse-conn',
+            timestampValueExpression: 'timestamp',
+            source: 'traces-source',
+            where: '',
+            whereLanguage: 'sql',
+            select: '',
+          },
+          keys: ['service.name'],
+        },
+      ]);
+
+    // First query succeeds, second query fails
+    mockMetadata.getKeyValues
+      .mockResolvedValueOnce([
+        {
+          key: 'environment',
+          value: ['production', 'staging'],
+        },
+      ])
+      .mockRejectedValueOnce(new Error('Failed to fetch service.name'));
+
+    // Act
+    const { result } = renderHook(
+      () =>
+        useDashboardFilterKeyValues({
+          filters: mockFilters,
+          dateRange: mockDateRange,
+        }),
+      { wrapper },
+    );
+
+    // Assert - Wait for queries to settle
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    // Should have partial results - environment loaded successfully
+    expect(result.current.data?.get('environment')).toEqual({
+      values: ['production', 'staging'],
+      isLoading: false,
+    });
+
+    // service.name should not be in the map because the query failed
+    expect(result.current.data?.has('service.name')).toBe(false);
+
+    // Overall error state should be true
+    expect(result.current.isError).toBe(true);
+
+    // Should have called getKeyValues twice
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(2);
+  });
+
+  it('should keep previous data while fetching new data (placeholderData behavior)', async () => {
+    // Arrange
+    jest.spyOn(sourceModule, 'useSources').mockReturnValue({
+      data: mockSources,
+      isLoading: false,
+    } as any);
+
+    const initialDateRange: [Date, Date] = [
+      new Date('2024-01-01'),
+      new Date('2024-01-02'),
+    ];
+    const updatedDateRange: [Date, Date] = [
+      new Date('2024-01-03'),
+      new Date('2024-01-04'),
+    ];
+
+    // Mock optimizeGetKeyValuesCalls for both date ranges
+    jest
+      .mocked(optimizeGetKeyValuesCalls)
+      .mockImplementation(async ({ chartConfig }) => [
+        {
+          chartConfig,
+          keys: ['environment'],
+        },
+      ]);
+
+    // Initial data
+    mockMetadata.getKeyValues.mockResolvedValueOnce([
+      {
+        key: 'environment',
+        value: ['production', 'staging'],
+      },
+    ]);
+
+    // Act - Initial render
+    const { result, rerender } = renderHook(
+      ({ filters, dateRange }) =>
+        useDashboardFilterKeyValues({
+          filters,
+          dateRange,
+        }),
+      {
+        wrapper,
+        initialProps: {
+          filters: [mockFilters[0]], // Only environment filter from logs-source
+          dateRange: initialDateRange,
+        },
+      },
+    );
+
+    // Wait for initial data to load
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    const initialData = result.current.data;
+    expect(initialData?.get('environment')).toEqual({
+      values: ['production', 'staging'],
+      isLoading: false,
+    });
+
+    // Setup a Promise we can control for the next query
+    let resolveNextQuery: (value: { key: string; value: string[] }[]) => void;
+    const nextQueryPromise = new Promise<{ key: string; value: string[] }[]>(
+      resolve => {
+        resolveNextQuery = resolve;
+      },
+    );
+
+    mockMetadata.getKeyValues.mockImplementationOnce(async () => {
+      return nextQueryPromise;
+    });
+
+    // Rerender with new date range
+    rerender({
+      filters: [mockFilters[0]],
+      dateRange: updatedDateRange,
+    });
+
+    // Wait for refetch to start
+    await waitFor(() => expect(result.current.isFetching).toBe(true));
+
+    // Verify that previous data is still available during fetch (placeholderData behavior)
+    expect(result.current.data?.get('environment')).toEqual({
+      values: ['production', 'staging'],
+      isLoading: false,
+    });
+    expect(result.current.isFetching).toBe(true);
+
+    // Resolve the new query with updated data
+    resolveNextQuery!([
+      {
+        key: 'environment',
+        value: ['development', 'testing'],
+      },
+    ]);
+
+    // Wait for new data to load
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    // Verify that new data has replaced the old data
+    expect(result.current.data?.get('environment')).toEqual({
+      values: ['development', 'testing'],
+      isLoading: false,
+    });
+
+    // Verify optimizeGetKeyValuesCalls was called twice (once for each date range)
+    expect(optimizeGetKeyValuesCalls).toHaveBeenCalledTimes(2);
+    expect(optimizeGetKeyValuesCalls).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({
+          dateRange: initialDateRange,
+        }),
+      }),
+    );
+    expect(optimizeGetKeyValuesCalls).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({
+          dateRange: updatedDateRange,
+        }),
+      }),
+    );
   });
 });

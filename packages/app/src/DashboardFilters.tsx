@@ -57,27 +57,29 @@ const DashboardFilters = ({
   filterValues,
   onSetFilterValue,
 }: DashboardFilterProps) => {
-  const {
-    data: filterValuesBySource,
-    isLoading,
-    isFetching,
-  } = useDashboardFilterKeyValues({ filters, dateRange });
+  const { data: filterValuesBySource, isFetching } =
+    useDashboardFilterKeyValues({ filters, dateRange });
 
   return (
     <Group mt="sm">
-      {Object.values(filters).map(filter => (
-        <DashboardFilterSelect
-          key={filter.id}
-          filter={filter}
-          isLoading={isLoading}
-          onChange={value => onSetFilterValue(filter.expression, value)}
-          values={filterValuesBySource?.get(filter.expression)}
-          value={filterValues[filter.expression]?.included
-            .values()
-            .next()
-            .value?.toString()}
-        />
-      ))}
+      {Object.values(filters).map(filter => {
+        const queriedFilterValues = filterValuesBySource?.get(
+          filter.expression,
+        );
+        return (
+          <DashboardFilterSelect
+            key={filter.id}
+            filter={filter}
+            isLoading={!queriedFilterValues}
+            onChange={value => onSetFilterValue(filter.expression, value)}
+            values={queriedFilterValues?.values}
+            value={filterValues[filter.expression]?.included
+              .values()
+              .next()
+              .value?.toString()}
+          />
+        );
+      })}
       {isFetching && <IconRefresh className="spin-animate" size={12} />}
     </Group>
   );
