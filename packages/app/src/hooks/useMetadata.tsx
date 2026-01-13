@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import objectHash from 'object-hash';
 import {
   ColumnMeta,
@@ -14,19 +14,46 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
   useQuery,
+  useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
 
 import api from '@/api';
+import { IS_LOCAL_MODE } from '@/config';
+import { LOCAL_STORE_CONNECTIONS_KEY } from '@/connection';
 import { getMetadata } from '@/metadata';
 import { toArray } from '@/utils';
 
 // Hook to get metadata with proper settings applied
-// TODO: replace all getMetadata calls with useMetadataWithSettings
 export function useMetadataWithSettings() {
-  const metadata = getMetadata();
+  const [metadata, setMetadata] = useState(getMetadata());
   const { data: me } = api.useMe();
   const settingsApplied = useRef(false);
+  const queryClient = useQueryClient();
+
+  // Create a listener that triggers when connections are updated in local mode
+  useEffect(() => {
+    const isBrowser =
+      typeof window !== 'undefined' && typeof window.document !== 'undefined';
+    if (!isBrowser || !IS_LOCAL_MODE) return;
+
+    const createNewMetadata = (event: StorageEvent) => {
+      if (event.key === LOCAL_STORE_CONNECTIONS_KEY && event.newValue) {
+        // Create a new metadata instance with a new ClickHouse client,
+        // since the existing one will not have connection / auth info.
+        setMetadata(getMetadata());
+        settingsApplied.current = false;
+        // Clear react-query cache so that metadata is refetched with
+        // the new connection info, and error states are cleared.
+        queryClient.resetQueries();
+      }
+    };
+
+    window.addEventListener('storage', createNewMetadata);
+    return () => {
+      window.removeEventListener('storage', createNewMetadata);
+    };
+  }, [queryClient]);
 
   useEffect(() => {
     if (me?.team?.metadataMaxRowsToRead && !settingsApplied.current) {
