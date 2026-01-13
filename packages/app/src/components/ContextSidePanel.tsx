@@ -44,7 +44,7 @@ interface ContextSubpanelProps {
 }
 
 // Custom hook to manage nested panel state
-function useNestedPanelState(isNested: boolean) {
+export function useNestedPanelState(isNested?: boolean) {
   // Query state (URL-based) for root level
   const queryState = {
     contextRowId: useQueryState('contextRowId', parseAsString),

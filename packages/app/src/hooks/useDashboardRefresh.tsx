@@ -1,12 +1,10 @@
 'use client';
 
 import React from 'react';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { useDocumentVisibility } from '@mantine/hooks';
 
-import {
-  convertDateRangeToGranularityString,
-  convertGranularityToSeconds,
-} from '@/ChartUtils';
+import { convertGranularityToSeconds } from '@/ChartUtils';
 
 export const useDashboardRefresh = ({
   searchedTimeRange,
@@ -38,10 +36,8 @@ export const useDashboardRefresh = ({
     }, 1000);
   }, [onTimeRangeSelect, searchedTimeRange]);
 
-  const granularityOverride = convertDateRangeToGranularityString(
-    searchedTimeRange,
-    60,
-  );
+  const granularityOverride =
+    convertDateRangeToGranularityString(searchedTimeRange);
 
   // Auto-refresh interval
   const intervalRef = React.useRef<number | null>(null);

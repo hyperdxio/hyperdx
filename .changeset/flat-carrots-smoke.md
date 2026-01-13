@@ -1,6 +1,7 @@
 ---
 "@hyperdx/common-utils": patch
+"@hyperdx/api": patch
 "@hyperdx/app": patch
 ---
 
-feat: Align date ranges to MV Granularity
+chore: Standardize granularities

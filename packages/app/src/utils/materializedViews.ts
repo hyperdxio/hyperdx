@@ -5,6 +5,7 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
+  Metadata,
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
@@ -96,13 +97,11 @@ function isSummingMergeTree(meta: TableMetadata) {
  * Returns undefined if there are multiple materialized views targeting the given table,
  * or if the target table is not an AggregatingMergeTree.
  */
-async function getMetadataForMaterializedViewAndTable({
-  databaseName,
-  tableName,
-  connectionId,
-}: TableConnection) {
+async function getMetadataForMaterializedViewAndTable(
+  { databaseName, tableName, connectionId }: TableConnection,
+  metadata: Metadata,
+) {
   try {
-    const metadata = getMetadata();
     const givenMetadata = await metadata.getTableMetadata({
       databaseName,
       tableName,
@@ -321,6 +320,7 @@ export function getSourceTableColumn(
 export async function inferMaterializedViewConfig(
   mvTableOrView: TableConnection,
   sourceTable: TableConnection,
+  metadata: Metadata,
 ): Promise<MaterializedViewConfiguration | undefined> {
   const { databaseName, tableName, connectionId } = mvTableOrView;
   const { databaseName: sourceDatabaseName, tableName: sourceTableName } =
@@ -330,18 +330,20 @@ export async function inferMaterializedViewConfig(
     return undefined;
   }
 
-  const meta = await getMetadataForMaterializedViewAndTable({
-    databaseName,
-    tableName,
-    connectionId,
-  });
+  const meta = await getMetadataForMaterializedViewAndTable(
+    {
+      databaseName,
+      tableName,
+      connectionId,
+    },
+    metadata,
+  );
 
   if (!meta) {
     return undefined;
   }
 
   const { mvMetadata, mvTableMetadata } = meta;
-  const metadata = getMetadata();
 
   const [mvTableColumns, sourceTableColumns] = await Promise.all([
     metadata.getColumns({

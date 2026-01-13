@@ -8,11 +8,11 @@ import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser'
 import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
   isMetricChartConfig,
   isUsingGranularity,
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import {
   ChartConfigWithDateRange,
@@ -24,15 +24,11 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
-import {
-  convertDateRangeToGranularityString,
-  toStartOfInterval,
-} from '@/ChartUtils';
+import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
-import { getMetadata } from '@/metadata';
 import { useSource } from '@/source';
 import { generateTimeWindowsDescending } from '@/utils/searchWindows';
 
@@ -95,10 +91,7 @@ export const getGranularityAlignedTimeWindows = (
 
   const granularity =
     config.granularity === 'auto'
-      ? convertDateRangeToGranularityString(
-          config.dateRange,
-          DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-        )
+      ? convertDateRangeToGranularityString(config.dateRange)
       : config.granularity;
 
   const windows = [];
@@ -150,7 +143,7 @@ async function* fetchDataInChunks({
 
   if (IS_MTVIEWS_ENABLED) {
     const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
-      await buildMTViewSelectQuery(config);
+      await buildMTViewSelectQuery(config, metadata);
     // TODO: show the DDLs in the UI so users can run commands manually
     // eslint-disable-next-line no-console
     console.log('dataTableDDL:', dataTableDDL);
@@ -347,6 +340,8 @@ export function useRenderedSqlChartConfig(
 ) {
   const { enabled = true } = options ?? {};
 
+  const metadata = useMetadataWithSettings();
+
   const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
     useMVOptimizationExplanation(config, {
       enabled: !!enabled,
@@ -357,7 +352,7 @@ export function useRenderedSqlChartConfig(
     queryKey: ['renderedSql', config],
     queryFn: async () => {
       const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
-      const query = await renderChartConfig(optimizedConfig, getMetadata());
+      const query = await renderChartConfig(optimizedConfig, metadata);
       return format(parameterizedQueryToSql(query));
     },
     ...options,
@@ -382,6 +377,8 @@ export function useAliasMapFromChartConfig(
       ? config.dateRange[1].getTime() - config.dateRange[0].getTime()
       : undefined;
 
+  const metadata = useMetadataWithSettings();
+
   return useQuery<Record<string, string>>({
     // Only include config properties that affect SELECT structure and aliases.
     // When adding new ChartConfig fields, check renderChartConfig.ts to see if they
@@ -403,7 +400,7 @@ export function useAliasMapFromChartConfig(
         return {};
       }
 
-      const query = await renderChartConfig(config, getMetadata());
+      const query = await renderChartConfig(config, metadata);
 
       const aliasMap = chSqlToAliasMap(query);
 
