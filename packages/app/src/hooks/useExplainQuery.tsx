@@ -3,7 +3,8 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { useClickhouseClient } from '@/clickhouse';
-import { getMetadata } from '@/metadata';
+
+import { useMetadataWithSettings } from './useMetadata';
 
 export function useExplainQuery(
   _config: ChartConfigWithDateRange,
@@ -14,10 +15,12 @@ export function useExplainQuery(
     with: undefined,
   };
   const clickhouseClient = useClickhouseClient();
+  const metadata = useMetadataWithSettings();
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['explain', config],
     queryFn: async ({ signal }) => {
-      const query = await renderChartConfig(config, getMetadata());
+      const query = await renderChartConfig(config, metadata);
       const response = await clickhouseClient.query<'JSONEachRow'>({
         query: `EXPLAIN ESTIMATE ${query.sql}`,
         query_params: query.params,

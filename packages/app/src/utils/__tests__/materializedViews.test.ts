@@ -5,20 +5,12 @@ import {
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
 
-import { getMetadata } from '@/metadata';
-
 import {
   getSourceTableColumn,
   inferMaterializedViewConfig,
   inferTimestampColumnGranularity,
   parseSummedColumns,
 } from '../materializedViews';
-
-jest.mock('@/metadata', () => {
-  return {
-    getMetadata: jest.fn(),
-  };
-});
 
 function createMockColumnMeta({
   name,
@@ -32,7 +24,6 @@ function createMockColumnMeta({
 }
 
 describe('inferMaterializedViewConfig', () => {
-  const mockGetMetadata = jest.mocked(getMetadata);
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const mockMetadata: Metadata = {
     getColumns: jest.fn(),
@@ -163,7 +154,6 @@ describe('inferMaterializedViewConfig', () => {
   };
 
   beforeEach(() => {
-    mockGetMetadata.mockReturnValue(mockMetadata);
     mockMetadata.getTableMetadata = jest
       .fn()
       .mockImplementation(({ tableName }) => {
@@ -226,6 +216,7 @@ describe('inferMaterializedViewConfig', () => {
     const actualConfig = await inferMaterializedViewConfig(
       mvTableConnection,
       sourceTableConnection,
+      mockMetadata,
     );
 
     expect(actualConfig).toEqual({
@@ -275,6 +266,7 @@ describe('inferMaterializedViewConfig', () => {
     const actualConfig = await inferMaterializedViewConfig(
       mvTableConnection,
       sourceTableConnection,
+      mockMetadata,
     );
 
     expect(actualConfig).toEqual({
@@ -324,6 +316,7 @@ describe('inferMaterializedViewConfig', () => {
     const actualConfig = await inferMaterializedViewConfig(
       mvTableConnection,
       sourceTableConnection,
+      mockMetadata,
     );
 
     expect(actualConfig).toEqual({
@@ -373,6 +366,7 @@ describe('inferMaterializedViewConfig', () => {
     const actualConfig = await inferMaterializedViewConfig(
       mvTableConnection,
       sourceTableConnection,
+      mockMetadata,
     );
 
     expect(actualConfig).toEqual({
@@ -422,6 +416,7 @@ describe('inferMaterializedViewConfig', () => {
     const actualConfig = await inferMaterializedViewConfig(
       mvTableConnection,
       sourceTableConnection,
+      mockMetadata,
     );
 
     expect(actualConfig).toBeUndefined();

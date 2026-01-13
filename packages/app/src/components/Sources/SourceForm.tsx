@@ -45,6 +45,7 @@ import {
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import {
   inferTableSourceConfig,
   isValidMetricTable,
@@ -544,6 +545,8 @@ function AggregatedColumnsFormSection({
   const fromTableName = useWatch({ control, name: 'from.tableName' });
   const prevMvTableNameRef = useRef(mvTableName);
 
+  const metadata = useMetadataWithSettings();
+
   useEffect(() => {
     (async () => {
       try {
@@ -569,6 +572,7 @@ function AggregatedColumnsFormSection({
                 tableName: fromTableName,
                 connectionId: connection,
               },
+              metadata,
             );
 
             if (config) {
@@ -603,6 +607,7 @@ function AggregatedColumnsFormSection({
     mvIndex,
     replaceAggregates,
     setValue,
+    metadata,
   ]);
 
   return (
@@ -1278,6 +1283,7 @@ export function SessionTableModelForm({ control }: TableModelProps) {
   const connectionId = useWatch({ control, name: 'connection' });
   const tableName = useWatch({ control, name: 'from.tableName' });
   const prevTableNameRef = useRef(tableName);
+  const metadata = useMetadataWithSettings();
 
   useEffect(() => {
     (async () => {
@@ -1288,6 +1294,7 @@ export function SessionTableModelForm({ control }: TableModelProps) {
             databaseName,
             tableName,
             connectionId,
+            metadata,
           });
 
           if (!isValid) {
@@ -1305,7 +1312,7 @@ export function SessionTableModelForm({ control }: TableModelProps) {
         });
       }
     })();
-  }, [tableName, databaseName, connectionId]);
+  }, [tableName, databaseName, connectionId, metadata]);
 
   return (
     <>
@@ -1336,6 +1343,8 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
   const metricTables = useWatch({ control, name: 'metricTables' });
   const prevMetricTablesRef = useRef(metricTables);
 
+  const metadata = useMetadataWithSettings();
+
   useEffect(() => {
     for (const [_key, _value] of Object.entries(OTEL_CLICKHOUSE_EXPRESSIONS)) {
       setValue(_key as any, _value);
@@ -1361,6 +1370,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
                 tableName: newValue as string,
                 connectionId,
                 metricType: metricType as MetricsDataType,
+                metadata,
               });
               if (!isValid) {
                 notifications.show({
@@ -1380,7 +1390,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
         });
       }
     })();
-  }, [metricTables, databaseName, connectionId]);
+  }, [metricTables, databaseName, connectionId, metadata]);
 
   return (
     <>
@@ -1495,6 +1505,8 @@ export function TableSourceForm({
   });
   const prevTableNameRef = useRef(watchedTableName);
 
+  const metadata = useMetadataWithSettings();
+
   useEffect(() => {
     (async () => {
       try {
@@ -1511,6 +1523,7 @@ export function TableSourceForm({
               tableName:
                 watchedKind !== SourceKind.Metric ? watchedTableName : '',
               connectionId: watchedConnection,
+              metadata,
             });
             if (Object.keys(config).length > 0) {
               notifications.show({
@@ -1537,6 +1550,7 @@ export function TableSourceForm({
     watchedDatabaseName,
     watchedKind,
     resetField,
+    metadata,
   ]);
 
   // Sets the default connection field to the first connection after the

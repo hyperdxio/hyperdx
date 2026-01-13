@@ -11,12 +11,10 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
-import { getMetadata } from '@/metadata';
 import { usePrevious } from '@/utils';
 
+import { useMetadataWithSettings } from './hooks/useMetadata';
 import { getClickhouseClient, useClickhouseClient } from './clickhouse';
-import { IS_LOCAL_MODE } from './config';
-import { getLocalConnections } from './connection';
 import { SESSION_TABLE_EXPRESSIONS, useSource } from './source';
 
 export type Session = {
@@ -54,6 +52,7 @@ export function useSessions(
   const FIXED_SDK_ATTRIBUTES = ['teamId', 'teamName', 'userEmail', 'userName'];
   const SESSIONS_CTE_NAME = 'sessions';
   const clickhouseClient = useClickhouseClient();
+  const metadata = useMetadataWithSettings();
   return useQuery<ResponseJSON<Session>, Error>({
     queryKey: [
       'sessions',
@@ -141,7 +140,7 @@ export function useSessions(
             connection: traceSource.connection,
             groupBy: 'serviceName, sessionId',
           },
-          getMetadata(),
+          metadata,
         ),
         renderChartConfig(
           {
@@ -161,7 +160,7 @@ export function useSessions(
               SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
             connection: sessionSource.connection,
           },
-          getMetadata(),
+          metadata,
         ),
         renderChartConfig(
           {
@@ -179,7 +178,7 @@ export function useSessions(
             implicitColumnExpression: traceSource.implicitColumnExpression,
             connection: traceSource?.connection,
           },
-          getMetadata(),
+          metadata,
         ),
       ]);
 
@@ -291,6 +290,7 @@ export function useRRWebEventStream(
   // @ts-ignore
   const keepPreviousData = options?.keepPreviousData ?? false;
   const shouldAbortPendingRequest = options?.shouldAbortPendingRequest ?? true;
+  const metadata = useMetadataWithSettings();
 
   const [results, setResults] = useState<{ key: string; data: any[] }>({
     key: '',
@@ -331,7 +331,6 @@ export function useRRWebEventStream(
 
       const MAX_LIMIT = 1e6;
 
-      const metadata = getMetadata();
       const query = await renderChartConfig(
         {
           // FIXME: add mappings to session source
@@ -465,6 +464,7 @@ export function useRRWebEventStream(
       onEvent,
       onEnd,
       resultsKey,
+      metadata,
     ],
   );
 
