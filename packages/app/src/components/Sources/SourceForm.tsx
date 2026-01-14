@@ -69,7 +69,7 @@ import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
 import { ConnectionSelectControlled } from '../ConnectionSelect';
 import { DatabaseSelectControlled } from '../DatabaseSelect';
 import { DBTableSelectControlled } from '../DBTableSelect';
-import { ErrorCollapse } from '../error/ErrorCollapse';
+import { ErrorCollapse } from '../Error/ErrorCollapse';
 import { InputControlled } from '../InputControlled';
 import SelectControlled from '../SelectControlled';
 import { SQLInlineEditorControlled } from '../SQLInlineEditor';
