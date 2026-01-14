@@ -540,12 +540,17 @@ export abstract class SQLSerializer implements Serializer {
     isNegatedField: boolean,
     context: SerializerContext,
   ) {
-    const { column, found } = await this.getColumnForField(field, context);
+    const { column, found, mapKeyIndexExpression } =
+      await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
+    const expressionPostfix =
+      mapKeyIndexExpression && !isNegatedField
+        ? ` AND ${mapKeyIndexExpression}`
+        : '';
     return SqlString.format(
-      `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?)`,
+      `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?${expressionPostfix})`,
       [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
     );
   }

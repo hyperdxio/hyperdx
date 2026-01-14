@@ -388,6 +388,18 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       sql: "((`LogAttributes`['example.number'] <= '1' AND indexHint(mapContains(`LogAttributes`, 'example.number'))))",
       english: "'LogAttributes.example.number' is less than or equal to 1",
     },
+    // Explicitly hint to CH to use the map keys index
+    {
+      lucene: 'LogAttributes.example.number:[1 TO 5]',
+      sql: "((`LogAttributes`['example.number'] BETWEEN 1 AND 5 AND indexHint(mapContains(`LogAttributes`, 'example.number'))))",
+      english: 'LogAttributes.example.number is between 1 and 5',
+    },
+    // Can't really use the map keys index
+    {
+      lucene: '-LogAttributes.example.number:[1 TO 5]',
+      sql: "((`LogAttributes`['example.number'] NOT BETWEEN 1 AND 5))",
+      english: 'LogAttributes.example.number is not between 1 and 5',
+    },
   ];
 
   it.each(testCases)(
