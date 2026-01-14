@@ -179,6 +179,8 @@ export const NumberFormatForm: React.FC<{
               data={[
                 { value: '1', label: 'Seconds' },
                 { value: '0.001', label: 'Milliseconds' },
+                { value: '0.000001', label: 'Microseconds' },
+                { value: '0.000000001', label: 'Nanoseconds' },
               ]}
             />
           ) : (
