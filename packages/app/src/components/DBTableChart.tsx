@@ -8,7 +8,7 @@ import {
   buildMVDateRangeIndicator,
   convertToTableChartConfig,
 } from '@/ChartUtils';
-import { Table } from '@/HDXMultiSeriesTableChart';
+import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useSource } from '@/source';
@@ -31,6 +31,7 @@ export default function DBTableChart({
   toolbarPrefix,
   toolbarSuffix,
   showMVOptimizationIndicator = true,
+  variant,
 }: {
   config: ChartConfigWithOptTimestamp;
   getRowSearchLink?: (row: any) => string | null;
@@ -43,6 +44,7 @@ export default function DBTableChart({
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
   showMVOptimizationIndicator?: boolean;
+  variant?: TableVariant;
 }) {
   const [sort, setSort] = useState<SortingState>([]);
 
@@ -217,6 +219,7 @@ export default function DBTableChart({
           getRowSearchLink={getRowSearchLink}
           sorting={effectiveSort}
           onSortingChange={handleSortingChange}
+          variant={variant}
           tableBottom={
             hasNextPage && (
               <Text ref={fetchMoreRef} ta="center">

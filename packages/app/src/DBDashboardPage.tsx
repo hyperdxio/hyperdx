@@ -369,6 +369,7 @@ const Tile = forwardRef(
                   title={title}
                   toolbarPrefix={[hoverToolbar]}
                   config={queriedConfig}
+                  variant="muted"
                   getRowSearchLink={row =>
                     buildTableRowSearchUrl({
                       row,
@@ -423,6 +424,7 @@ const Tile = forwardRef(
                   }}
                   isLive={false}
                   queryKeyPrefix={'search'}
+                  variant="muted"
                 />
               </ChartContainer>
             )}

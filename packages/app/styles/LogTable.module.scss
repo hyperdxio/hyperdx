@@ -1,14 +1,25 @@
 $button-height: 18px;
 
+.tableWrapper {
+  /* CSS custom properties for variant support */
+  --log-table-bg: var(--color-bg-body);
+  --log-table-muted-bg: var(--color-bg-muted);
+
+  &.muted {
+    --log-table-bg: var(--color-bg-muted);
+    --log-table-muted-bg: var(--color-bg-highlighted);
+  }
+}
+
 .table {
   table-layout: fixed;
   border-spacing: 0;
   border-collapse: separate;
-  background: var(--color-bg-body);
+  background: var(--log-table-bg);
 }
 
 .tableHead {
-  background: var(--color-bg-body);
+  background: var(--log-table-bg);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -19,7 +30,7 @@ $button-height: 18px;
   position: relative;
 
   &__selected {
-    background-color: var(--color-bg-muted);
+    background-color: var(--log-table-muted-bg);
     font-weight: bold;
   }
 
@@ -28,7 +39,7 @@ $button-height: 18px;
   }
 
   &:hover .rowContentButton {
-    background-color: var(--color-bg-muted);
+    background-color: var(--log-table-muted-bg);
   }
 
   &:has(.expandButton:hover) .rowButtons {
@@ -43,7 +54,7 @@ $button-height: 18px;
 .expandedRowContent {
   max-height: 400px;
   overflow: auto;
-  background-color: var(--color-bg-muted);
+  background-color: var(--log-table-muted-bg);
 }
 
 .expandButton {
@@ -60,19 +71,19 @@ $button-height: 18px;
   min-height: $button-height;
 
   &:hover {
-    background-color: var(--color-bg-muted);
+    background-color: var(--log-table-muted-bg);
   }
 
   &:focus,
   &:focus-visible {
-    background-color: var(--color-bg-muted);
+    background-color: var(--log-table-muted-bg);
     outline: none;
   }
 
   &:active {
     outline: none;
     box-shadow: none;
-    background-color: var(--color-bg-muted);
+    background-color: var(--log-table-muted-bg);
   }
 
   svg {
@@ -117,14 +128,14 @@ $button-height: 18px;
 
   &:focus,
   &:focus-visible {
-    background-color: var(--color-bg-muted);
+    background-color: var(--log-table-muted-bg);
     outline: none;
   }
 
   &:active {
     outline: none;
     box-shadow: none;
-    background-color: var(--color-bg-muted);
+    background-color: var(--log-table-muted-bg);
   }
 
   &.isWrapped {

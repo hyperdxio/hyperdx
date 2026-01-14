@@ -19,7 +19,7 @@ import DBRowSidePanel, {
   RowSidePanelContextProps,
 } from './DBRowSidePanel';
 import { BreadcrumbEntry } from './DBRowSidePanelHeader';
-import { DBSqlRowTable } from './DBRowTable';
+import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
 
 interface Props {
   sourceId: string;
@@ -39,6 +39,7 @@ interface Props {
   breadcrumbPath?: BreadcrumbEntry[];
   onSortingChange?: (v: SortingState | null) => void;
   initialSortBy?: SortingState;
+  variant?: DBRowTableVariant;
 }
 
 export default function DBSqlRowTableWithSideBar({
@@ -57,6 +58,7 @@ export default function DBSqlRowTableWithSideBar({
   onSidebarOpen,
   onSortingChange,
   initialSortBy,
+  variant,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere');
@@ -127,6 +129,7 @@ export default function DBSqlRowTableWithSideBar({
         onError={onError}
         onExpandedRowsChange={onExpandedRowsChange}
         collapseAllRows={collapseAllRows}
+        variant={variant}
       />
     </RowSidePanelContext.Provider>
   );
