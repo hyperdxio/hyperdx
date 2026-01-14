@@ -22,6 +22,8 @@ import { UNDEFINED_WIDTH } from './tableUtils';
 import type { NumberFormat } from './types';
 import { formatNumber } from './utils';
 
+export type TableVariant = 'default' | 'muted';
+
 export const Table = ({
   data,
   groupColumnName,
@@ -30,6 +32,7 @@ export const Table = ({
   tableBottom,
   sorting,
   onSortingChange,
+  variant = 'default',
 }: {
   data: any[];
   columns: {
@@ -46,6 +49,7 @@ export const Table = ({
   tableBottom?: React.ReactNode;
   sorting: SortingState;
   onSortingChange: (sorting: SortingState) => void;
+  variant?: TableVariant;
 }) => {
   const MIN_COLUMN_WIDTH_PX = 100;
   //we need a reference to the scrolling element for logic down below
@@ -221,7 +225,10 @@ export const Table = ({
           style={{
             position: 'sticky',
             top: 0,
-            background: 'var(--color-bg-body)',
+            background:
+              variant === 'muted'
+                ? 'var(--color-bg-muted)'
+                : 'var(--color-bg-body)',
           }}
         >
           {table.getHeaderGroups().map(headerGroup => (

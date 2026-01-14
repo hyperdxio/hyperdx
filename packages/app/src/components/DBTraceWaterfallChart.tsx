@@ -229,7 +229,7 @@ function getConfig(
   const config = {
     select,
     from: source.from,
-    timestampValueExpression: alias.Timestamp,
+    timestampValueExpression: source.timestampValueExpression,
     where: `${alias.TraceId} = '${traceId}'`,
     limit: { limit: 50000 },
     connection: source.connection,
