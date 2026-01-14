@@ -208,7 +208,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     },
     {
       lucene: 'LogAttributes.error.message:("Failed to fetch")',
-      sql: "(((`LogAttributes`['error.message'] ILIKE '%Failed to fetch%' AND indexHint(mapContains(LogAttributes, 'error.message')))))",
+      sql: "(((`LogAttributes`['error.message'] ILIKE '%Failed to fetch%' AND indexHint(mapContains(`LogAttributes`, 'error.message')))))",
       english: '(LogAttributes.error.message contains "Failed to fetch")',
     },
     {
@@ -301,7 +301,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     {
       // We can probably trust CH to use the map keys index, but let's be explicit anyways
       lucene: 'LogAttributes.error.message:"Failed to fetch"',
-      sql: "((`LogAttributes`['error.message'] = 'Failed to fetch' AND indexHint(mapContains(LogAttributes, 'error.message'))))",
+      sql: "((`LogAttributes`['error.message'] = 'Failed to fetch' AND indexHint(mapContains(`LogAttributes`, 'error.message'))))",
       english: "'LogAttributes.error.message' is Failed to fetch",
     },
     {
@@ -313,7 +313,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     {
       // Explicitly hint to CH to use the map keys index
       lucene: 'LogAttributes.error.message:Failed',
-      sql: "((`LogAttributes`['error.message'] ILIKE '%Failed%' AND indexHint(mapContains(LogAttributes, 'error.message'))))",
+      sql: "((`LogAttributes`['error.message'] ILIKE '%Failed%' AND indexHint(mapContains(`LogAttributes`, 'error.message'))))",
       english: "'LogAttributes.error.message' contains Failed",
     },
     {
@@ -325,7 +325,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     {
       // Explicitly hint to CH to use the map keys index
       lucene: 'LogAttributes.error.message:*',
-      sql: "(notEmpty(`LogAttributes`['error.message']) = 1 AND indexHint(mapContains(LogAttributes, 'error.message')))",
+      sql: "(notEmpty(`LogAttributes`['error.message']) = 1 AND indexHint(mapContains(`LogAttributes`, 'error.message')))",
       english: "'LogAttributes.error.message' is not null",
     },
     {
@@ -337,7 +337,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     {
       // Explicitly hint to CH to use the map keys index for the non-materialized entry
       lucene: 'MaterializedExample:"foo"',
-      sql: "((MaterializedExample = 'foo' AND indexHint(mapContains(LogAttributes, 'materialized.example'))))",
+      sql: "((MaterializedExample = 'foo' AND indexHint(mapContains(`LogAttributes`, 'materialized.example'))))",
       english: "'MaterializedExample' is foo",
     },
     {
@@ -349,7 +349,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     {
       // Explicitly hint to CH to use the map keys index for the non-materialized entry
       lucene: 'MaterializedExample:foo',
-      sql: "((MaterializedExample ILIKE '%foo%' AND indexHint(mapContains(LogAttributes, 'materialized.example'))))",
+      sql: "((MaterializedExample ILIKE '%foo%' AND indexHint(mapContains(`LogAttributes`, 'materialized.example'))))",
       english: "'MaterializedExample' contains foo",
     },
     {
@@ -361,31 +361,31 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     {
       // Explicitly hint to CH to use the map keys index
       lucene: 'LogAttributes.materialized.example:foo',
-      sql: "((`LogAttributes`['materialized.example'] ILIKE '%foo%' AND indexHint(mapContains(LogAttributes, 'materialized.example'))))",
+      sql: "((`LogAttributes`['materialized.example'] ILIKE '%foo%' AND indexHint(mapContains(`LogAttributes`, 'materialized.example'))))",
       english: "'LogAttributes.materialized.example' contains foo",
     },
     {
       // Explicitly hint to CH to use the map keys index
       lucene: 'LogAttributes.example.number:>1',
-      sql: "((`LogAttributes`['example.number'] > '1' AND indexHint(mapContains(LogAttributes, 'example.number'))))",
+      sql: "((`LogAttributes`['example.number'] > '1' AND indexHint(mapContains(`LogAttributes`, 'example.number'))))",
       english: "'LogAttributes.example.number' is greater than 1",
     },
     {
       // Explicitly hint to CH to use the map keys index
       lucene: 'LogAttributes.example.number:>=1',
-      sql: "((`LogAttributes`['example.number'] >= '1' AND indexHint(mapContains(LogAttributes, 'example.number'))))",
+      sql: "((`LogAttributes`['example.number'] >= '1' AND indexHint(mapContains(`LogAttributes`, 'example.number'))))",
       english: "'LogAttributes.example.number' is greater than or equal to 1",
     },
     {
       // Explicitly hint to CH to use the map keys index
       lucene: 'LogAttributes.example.number:<1',
-      sql: "((`LogAttributes`['example.number'] < '1' AND indexHint(mapContains(LogAttributes, 'example.number'))))",
+      sql: "((`LogAttributes`['example.number'] < '1' AND indexHint(mapContains(`LogAttributes`, 'example.number'))))",
       english: "'LogAttributes.example.number' is less than 1",
     },
     {
       // Explicitly hint to CH to use the map keys index
       lucene: 'LogAttributes.example.number:<=1',
-      sql: "((`LogAttributes`['example.number'] <= '1' AND indexHint(mapContains(LogAttributes, 'example.number'))))",
+      sql: "((`LogAttributes`['example.number'] <= '1' AND indexHint(mapContains(`LogAttributes`, 'example.number'))))",
       english: "'LogAttributes.example.number' is less than or equal to 1",
     },
   ];

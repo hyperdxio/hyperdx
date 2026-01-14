@@ -35,7 +35,7 @@ function buildMapContains(mapField: string) {
     return { map, key };
   };
   const { map, key } = splitMapKey(mapField);
-  return `mapContains(${map}, '${key}')`;
+  return SqlString.format('mapContains(??, ?)', [map, key]);
 }
 
 const IMPLICIT_FIELD = '<implicit>';
