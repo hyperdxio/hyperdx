@@ -37,6 +37,7 @@ import {
 import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
 import {
+  IconCheck,
   IconCirclePlus,
   IconHelpCircle,
   IconSettings,
@@ -69,6 +70,7 @@ import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
 import { ConnectionSelectControlled } from '../ConnectionSelect';
 import { DatabaseSelectControlled } from '../DatabaseSelect';
 import { DBTableSelectControlled } from '../DBTableSelect';
+import { ErrorCollapse } from '../Error/ErrorCollapse';
 import { InputControlled } from '../InputControlled';
 import SelectControlled from '../SelectControlled';
 import { SQLInlineEditorControlled } from '../SQLInlineEditor';
@@ -258,6 +260,18 @@ function HighlightedAttributeRow({
             placeholder="Optional Alias"
             disableKeywordAutocomplete
           />
+          <Tooltip label="Validate expression">
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              color="gray"
+              loading={explainLoading}
+              disabled={!expression || explainLoading}
+              onClick={runExpression}
+            >
+              <IconCheck size={16} />
+            </ActionIcon>
+          </Tooltip>
           <ActionIcon
             size="xs"
             variant="subtle"
@@ -269,28 +283,21 @@ function HighlightedAttributeRow({
         </Flex>
       </Grid.Col>
 
-      <Grid.Col span={5} pe={0}>
-        <Flex align="center" gap="sm">
-          <Button
-            style={{ flexShrink: 0 }}
-            variant="outline"
-            size="xs"
-            loading={explainLoading}
-            disabled={!expression || explainLoading}
-            onClick={runExpression}
-          >
-            Validate expression
-          </Button>
-
-          {(isExpressionValid || isExpressionInvalid) && (
-            <Text c={isExpressionValid ? 'green' : 'red'}>
-              Expression is {isExpressionValid ? 'valid' : 'invalid'}.
+      {(isExpressionValid || isExpressionInvalid) && (
+        <Grid.Col span={5} pe={0} pt={0}>
+          {isExpressionValid && (
+            <Text c="green" size="xs">
+              Expression is valid.
             </Text>
           )}
-        </Flex>
-
-        {isExpressionInvalid && <Text mt="sm">{explainError?.message}</Text>}
-      </Grid.Col>
+          {isExpressionInvalid && (
+            <ErrorCollapse
+              summary="Expression is invalid"
+              details={explainError?.message}
+            />
+          )}
+        </Grid.Col>
+      )}
 
       <Grid.Col span={3} pe={0}>
         <InputControlled
