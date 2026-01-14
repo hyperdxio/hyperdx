@@ -274,6 +274,7 @@ router.post(
       const keyValues = await metadata.getKeyValues({
         chartConfig: cc,
         keys: keysToFetch.map(f => f.key),
+        source,
       });
 
       const anthropic = createAnthropic({
