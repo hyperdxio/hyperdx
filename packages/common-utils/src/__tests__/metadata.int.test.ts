@@ -3,11 +3,18 @@ import { ClickHouseClient } from '@clickhouse/client-common';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
-import { ChartConfigWithDateRange } from '@/types';
+import { ChartConfigWithDateRange, TSource } from '@/types';
 
 describe('Metadata Integration Tests', () => {
   let client: ClickHouseClient;
   let hdxClient: HdxClickhouseClient;
+
+  const source = {
+    querySettings: [
+      { setting: 'optimize_read_in_order', value: '0' },
+      { setting: 'cast_keep_nullable', value: '0' },
+    ],
+  } as TSource;
 
   beforeAll(() => {
     const host = process.env.CLICKHOUSE_HOST || 'http://localhost:8123';
@@ -85,6 +92,7 @@ describe('Metadata Integration Tests', () => {
           chartConfig,
           keys: ['SeverityText'],
           disableRowLimit,
+          source,
         });
 
         expect(resultSeverityText).toHaveLength(1);
@@ -98,6 +106,7 @@ describe('Metadata Integration Tests', () => {
           chartConfig,
           keys: ['TraceId'],
           disableRowLimit,
+          source,
         });
 
         expect(resultTraceId).toHaveLength(1);
@@ -115,6 +124,7 @@ describe('Metadata Integration Tests', () => {
           chartConfig,
           keys: ['TraceId', 'SeverityText'],
           disableRowLimit,
+          source,
         });
 
         expect(resultBoth).toEqual([
@@ -138,6 +148,7 @@ describe('Metadata Integration Tests', () => {
           chartConfig,
           keys: ['__hdx_materialized_k8s.pod.name'],
           disableRowLimit,
+          source,
         });
 
         expect(resultPodName).toHaveLength(1);
@@ -153,6 +164,7 @@ describe('Metadata Integration Tests', () => {
           chartConfig,
           keys: ['LogAttributes.user'],
           disableRowLimit,
+          source,
         });
 
         expect(resultLogAttributes).toHaveLength(1);
@@ -167,6 +179,7 @@ describe('Metadata Integration Tests', () => {
         const resultEmpty = await metadata.getKeyValues({
           chartConfig,
           keys: [],
+          source,
         });
 
         expect(resultEmpty).toEqual([]);
@@ -177,6 +190,7 @@ describe('Metadata Integration Tests', () => {
           chartConfig,
           keys: ['SeverityText'],
           limit: 2,
+          source,
         });
 
         expect(resultLimited).toHaveLength(1);
@@ -380,11 +394,12 @@ describe('Metadata Integration Tests', () => {
       );
     });
 
-    it('should work without source parameter (fall back to base table)', async () => {
+    it('should work with an undefined source parameter (fall back to base table)', async () => {
       const result = await metadata.getKeyValuesWithMVs({
         chartConfig,
         keys: ['environment', 'service'],
         // No source parameter
+        source: undefined,
       });
 
       expect(result).toHaveLength(2);

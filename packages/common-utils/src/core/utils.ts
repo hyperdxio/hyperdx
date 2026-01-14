@@ -693,3 +693,25 @@ export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
     range1[1].getTime() === range2[1].getTime()
   );
 }
+
+/*
+  This function extracts the SETTINGS clause from the end(!) of the sql string.
+*/
+export function extractSettingsClauseFromEnd(
+  sqlInput: string,
+): [string, string | undefined] {
+  const sql = sqlInput.trim().endsWith(';')
+    ? sqlInput.trim().slice(0, -1)
+    : sqlInput.trim();
+
+  const settingsIndex = sql.toUpperCase().indexOf('SETTINGS');
+
+  if (settingsIndex === -1) {
+    return [sql, undefined] as const;
+  }
+
+  const settingsClause = sql.substring(settingsIndex).trim();
+  const remaining = sql.substring(0, settingsIndex).trim();
+
+  return [remaining, settingsClause] as const;
+}

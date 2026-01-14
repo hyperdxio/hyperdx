@@ -10,6 +10,7 @@ import {
 
 import {
   convertToDashboardTemplate,
+  extractSettingsClauseFromEnd,
   findJsonExpressions,
   formatDate,
   getAlignedDateRange,
@@ -1422,5 +1423,49 @@ describe('utils', () => {
       expect(alignedStart.toISOString()).toBe('2025-11-26T12:15:00.000Z');
       expect(alignedEnd.toISOString()).toBe('2025-11-26T13:00:00.000Z');
     });
+  });
+
+  describe('extractSettingsClauseFromEnd', () => {
+    test.each([
+      {
+        label: 'no settings clause',
+        sql: 'SELECT * FROM table',
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause: undefined,
+      },
+      {
+        label: 'basic',
+        sql: 'SELECT * FROM table SETTINGS opt=1, cast=1',
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause: 'SETTINGS opt=1, cast=1',
+      },
+      {
+        label: 'basic with semicolon',
+        sql: 'SELECT * FROM table SETTINGS opt = 1, cast = 1;',
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause: 'SETTINGS opt = 1, cast = 1',
+      },
+      {
+        label: 'with WHERE clause',
+        sql: 'SELECT * FROM table WHERE col=Value SETTINGS opt = 1, cast = 1;',
+        withoutSettingsClause: 'SELECT * FROM table WHERE col=Value',
+        settingsClause: 'SETTINGS opt = 1, cast = 1',
+      },
+      {
+        label: 'SETTINGS not at end',
+        sql: 'SELECT * FROM table WHERE col=Value SETTINGS opt = 1, cast = 1 FORMAT json;',
+        withoutSettingsClause: 'SELECT * FROM table WHERE col=Value',
+        // This test case illustrates that subsequent clauses will also be extracted.
+        settingsClause: 'SETTINGS opt = 1, cast = 1 FORMAT json',
+      },
+    ])(
+      'Extracts SETTINGS clause from: "$label" query',
+      ({ sql, settingsClause, withoutSettingsClause }) => {
+        const [remaining, extractedSettingsClause] =
+          extractSettingsClauseFromEnd(sql);
+        expect(remaining).toBe(withoutSettingsClause);
+        expect(extractedSettingsClause).toBe(settingsClause);
+      },
+    );
   });
 });

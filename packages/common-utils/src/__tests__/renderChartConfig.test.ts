@@ -4,9 +4,14 @@ import {
   ChartConfigWithOptDateRange,
   DisplayType,
   MetricsDataType,
+  QuerySettings,
 } from '@/types';
 
-import { renderChartConfig, timeFilterExpr } from '../core/renderChartConfig';
+import {
+  ChartConfigWithOptDateRangeEx,
+  renderChartConfig,
+  timeFilterExpr,
+} from '../core/renderChartConfig';
 
 describe('renderChartConfig', () => {
   let mockMetadata: jest.Mocked<Metadata>;
@@ -69,10 +74,16 @@ describe('renderChartConfig', () => {
     limit: { limit: 10 },
   };
 
+  const querySettings: QuerySettings = [
+    { setting: 'optimize_read_in_order', value: '0' },
+    { setting: 'cast_keep_nullable', value: '0' },
+  ];
+
   it('should generate sql for a single gauge metric', async () => {
     const generatedSql = await renderChartConfig(
       gaugeConfiguration,
       mockMetadata,
+      querySettings,
     );
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toMatchSnapshot();
@@ -93,6 +104,7 @@ describe('renderChartConfig', () => {
         ],
       },
       mockMetadata,
+      querySettings,
     );
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toMatchSnapshot();
@@ -132,7 +144,11 @@ describe('renderChartConfig', () => {
       limit: { limit: 10 },
     };
 
-    const generatedSql = await renderChartConfig(config, mockMetadata);
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      querySettings,
+    );
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toMatchSnapshot();
   });
@@ -161,9 +177,9 @@ describe('renderChartConfig', () => {
       limit: { limit: 10 },
     };
 
-    await expect(renderChartConfig(config, mockMetadata)).rejects.toThrow(
-      'multi select or string select on metrics not supported',
-    );
+    await expect(
+      renderChartConfig(config, mockMetadata, querySettings),
+    ).rejects.toThrow('multi select or string select on metrics not supported');
   });
 
   describe('histogram metric queries', () => {
@@ -199,7 +215,11 @@ describe('renderChartConfig', () => {
           limit: { limit: 10 },
         };
 
-        const generatedSql = await renderChartConfig(config, mockMetadata);
+        const generatedSql = await renderChartConfig(
+          config,
+          mockMetadata,
+          querySettings,
+        );
         const actual = parameterizedQueryToSql(generatedSql);
         expect(actual).toMatchSnapshot();
       });
@@ -236,7 +256,11 @@ describe('renderChartConfig', () => {
           limit: { limit: 10 },
         };
 
-        const generatedSql = await renderChartConfig(config, mockMetadata);
+        const generatedSql = await renderChartConfig(
+          config,
+          mockMetadata,
+          querySettings,
+        );
         const actual = parameterizedQueryToSql(generatedSql);
         expect(actual).toMatchSnapshot();
       });
@@ -274,7 +298,11 @@ describe('renderChartConfig', () => {
           limit: { limit: 10 },
         };
 
-        const generatedSql = await renderChartConfig(config, mockMetadata);
+        const generatedSql = await renderChartConfig(
+          config,
+          mockMetadata,
+          querySettings,
+        );
         const actual = parameterizedQueryToSql(generatedSql);
         expect(actual).toMatchSnapshot();
       });
@@ -311,7 +339,11 @@ describe('renderChartConfig', () => {
           limit: { limit: 10 },
         };
 
-        const generatedSql = await renderChartConfig(config, mockMetadata);
+        const generatedSql = await renderChartConfig(
+          config,
+          mockMetadata,
+          querySettings,
+        );
         const actual = parameterizedQueryToSql(generatedSql);
         expect(actual).toMatchSnapshot();
       });
@@ -347,7 +379,11 @@ describe('renderChartConfig', () => {
           limit: { limit: 10 },
         };
 
-        const generatedSql = await renderChartConfig(config, mockMetadata);
+        const generatedSql = await renderChartConfig(
+          config,
+          mockMetadata,
+          querySettings,
+        );
         const actual = parameterizedQueryToSql(generatedSql);
         expect(actual).toMatchSnapshot();
       });
@@ -384,7 +420,11 @@ describe('renderChartConfig', () => {
           limit: { limit: 10 },
         };
 
-        const generatedSql = await renderChartConfig(config, mockMetadata);
+        const generatedSql = await renderChartConfig(
+          config,
+          mockMetadata,
+          querySettings,
+        );
         const actual = parameterizedQueryToSql(generatedSql);
         expect(actual).toMatchSnapshot();
       });
@@ -407,7 +447,11 @@ describe('renderChartConfig', () => {
         whereLanguage: 'sql',
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toMatchSnapshot();
     });
@@ -457,7 +501,11 @@ describe('renderChartConfig', () => {
         limit: { limit: 1000 },
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toMatchSnapshot();
     });
@@ -480,7 +528,9 @@ describe('renderChartConfig', () => {
         whereLanguage: 'sql',
       };
 
-      await expect(renderChartConfig(config, mockMetadata)).rejects.toThrow(
+      await expect(
+        renderChartConfig(config, mockMetadata, querySettings),
+      ).rejects.toThrow(
         "must specify either 'sql' or 'chartConfig' in with clause",
       );
     });
@@ -503,9 +553,9 @@ describe('renderChartConfig', () => {
         whereLanguage: 'sql',
       };
 
-      await expect(renderChartConfig(config, mockMetadata)).rejects.toThrow(
-        'non-conforming sql object in CTE',
-      );
+      await expect(
+        renderChartConfig(config, mockMetadata, querySettings),
+      ).rejects.toThrow('non-conforming sql object in CTE');
     });
 
     it('should throw if the CTE chartConfig param is invalid', async () => {
@@ -529,9 +579,9 @@ describe('renderChartConfig', () => {
         whereLanguage: 'sql',
       };
 
-      await expect(renderChartConfig(config, mockMetadata)).rejects.toThrow(
-        'non-conforming chartConfig object in CTE',
-      );
+      await expect(
+        renderChartConfig(config, mockMetadata, querySettings),
+      ).rejects.toThrow('non-conforming chartConfig object in CTE');
     });
   });
 
@@ -571,7 +621,11 @@ describe('renderChartConfig', () => {
         limit: { limit: 10 },
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
 
       // Verify the SQL contains the IN-based metric name condition
@@ -616,7 +670,11 @@ describe('renderChartConfig', () => {
         limit: { limit: 10 },
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
 
       expect(actual).toContain('k8s.node.cpu.utilization');
@@ -659,7 +717,11 @@ describe('renderChartConfig', () => {
         limit: { limit: 10 },
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
 
       expect(actual).toContain('container.cpu.utilization');
@@ -703,7 +765,11 @@ describe('renderChartConfig', () => {
         limit: { limit: 10 },
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
 
       expect(actual).toContain('k8s.pod.cpu.utilization');
@@ -746,7 +812,11 @@ describe('renderChartConfig', () => {
         limit: { limit: 10 },
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
 
       // Should use the simple string comparison for regular metrics (not IN-based)
@@ -781,7 +851,11 @@ describe('renderChartConfig', () => {
         dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain('HAVING');
       expect(actual).toContain('count(*) > 100');
@@ -817,7 +891,11 @@ describe('renderChartConfig', () => {
         dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain('HAVING');
       expect(actual).toContain('avg(response_time) > 500 AND count(*) > 10');
@@ -846,7 +924,11 @@ describe('renderChartConfig', () => {
         dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).not.toContain('HAVING');
       expect(actual).toMatchSnapshot();
@@ -877,7 +959,11 @@ describe('renderChartConfig', () => {
         granularity: '5 minute',
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain('HAVING');
       expect(actual).toContain('count(*) > 50');
@@ -909,7 +995,11 @@ describe('renderChartConfig', () => {
         dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).not.toContain('HAVING');
       expect(actual).toMatchSnapshot();
@@ -1150,7 +1240,11 @@ describe('renderChartConfig', () => {
         dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain('avgMerge(Duration)');
       expect(actual).toMatchSnapshot();
@@ -1177,7 +1271,11 @@ describe('renderChartConfig', () => {
         groupBy: 'severity',
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain(
         "avgMergeIf(Duration, ((severity = 'ERROR')) AND toFloat64OrDefault(toString(Duration)) IS NOT NULL)",
@@ -1209,7 +1307,11 @@ describe('renderChartConfig', () => {
         dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain(
         "quantileMergeIf(0.95)(Duration, ((severity = 'ERROR')) AND toFloat64OrDefault(toString(Duration)) IS NOT NULL)",
@@ -1239,9 +1341,85 @@ describe('renderChartConfig', () => {
         dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
       };
 
-      const generatedSql = await renderChartConfig(config, mockMetadata);
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain('histogramMerge(20)(Duration)');
+      expect(actual).toMatchSnapshot();
+    });
+  });
+
+  describe('SETTINGS clause', () => {
+    const config: ChartConfigWithOptDateRangeEx = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: {
+        databaseName: 'default',
+        tableName: 'logs',
+      },
+      select: [
+        {
+          aggFn: 'histogramMerge',
+          valueExpression: 'Duration',
+          level: 20,
+        },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      groupBy: 'severity',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      // settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
+    };
+
+    test('should apply the "query settings" settings to the query', async () => {
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        'SETTINGS optimize_read_in_order = 0, cast_keep_nullable = 0',
+      );
+      expect(actual).toMatchSnapshot();
+    });
+
+    test('should apply the "chart config" settings to the query', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...config,
+          settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
+        },
+        mockMetadata,
+        querySettings,
+      );
+
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        "SETTINGS short_circuit_function_evaluation = 'force_enable'",
+      );
+      expect(actual).toMatchSnapshot();
+    });
+
+    test('should concat the "chart config" and "query setting" settings and apply them to the query', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...config,
+          settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
+        },
+        mockMetadata,
+        querySettings,
+      );
+
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain(
+        "SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 0",
+      );
       expect(actual).toMatchSnapshot();
     });
   });

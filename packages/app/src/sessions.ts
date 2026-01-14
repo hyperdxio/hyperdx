@@ -141,6 +141,7 @@ export function useSessions(
             groupBy: 'serviceName, sessionId',
           },
           metadata,
+          traceSource.querySettings,
         ),
         renderChartConfig(
           {
@@ -161,6 +162,7 @@ export function useSessions(
             connection: sessionSource.connection,
           },
           metadata,
+          sessionSource.querySettings,
         ),
         renderChartConfig(
           {
@@ -179,6 +181,7 @@ export function useSessions(
             connection: traceSource?.connection,
           },
           metadata,
+          traceSource.querySettings,
         ),
       ]);
 
@@ -372,6 +375,7 @@ export function useRRWebEventStream(
           },
         },
         metadata,
+        source.querySettings,
       );
 
       const format = 'JSONEachRow';

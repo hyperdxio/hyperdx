@@ -86,6 +86,17 @@ export const Source = mongoose.model<ISource>(
         },
         default: undefined,
       },
+
+      querySettings: {
+        type: [
+          {
+            setting: { type: String, required: true },
+            value: { type: String, required: true },
+          },
+        ],
+        default: undefined,
+        maxlength: 10,
+      },
     },
     {
       toJSON: { virtuals: true },

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { pick } from 'lodash';
+import _ from 'lodash';
 import {
   GetKeyValueCall,
   optimizeGetKeyValuesCalls,
@@ -129,6 +130,9 @@ export function useDashboardFilterKeyValues({
     dateRange,
   });
 
+  const { data: sources, isLoading: isSourcesLoading } = useSources();
+  const sourcesLookup = useMemo(() => _.keyBy(sources, 'id'), [sources]);
+
   const queryClient = useQueryClient();
   type TQueryData = { key: string; value: string[] }[];
 
@@ -140,6 +144,11 @@ export function useDashboardFilterKeyValues({
         chartConfig.from,
         keys,
       ];
+
+      const source = chartConfig.source
+        ? sourcesLookup[chartConfig.source]
+        : undefined;
+
       return {
         queryKey: [...queryKeyPrefix, chartConfig],
         placeholderData: () => {
@@ -157,7 +166,7 @@ export function useDashboardFilterKeyValues({
             });
           return cached[0]?.data;
         },
-        enabled: !isLoadingOptimizedCalls,
+        enabled: !isLoadingOptimizedCalls && !isSourcesLoading,
         staleTime: 1000 * 60 * 5, // Cache every 5 min
         queryFn: async ({ signal }) =>
           metadata.getKeyValues({
@@ -166,6 +175,7 @@ export function useDashboardFilterKeyValues({
             limit: 10000,
             disableRowLimit: true,
             signal,
+            source,
           }),
       };
     }),
