@@ -9,6 +9,8 @@ import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
+import { useSources } from '@/source';
+
 import {
   deduplicate2dArray,
   useGetKeyValues,
@@ -28,6 +30,13 @@ const createMockChartConfig = (
     },
     ...overrides,
   }) as ChartConfigWithDateRange;
+
+jest.mock('@/source', () => ({
+  useSources: jest.fn().mockReturnValue({
+    data: [{ id: 'source1' }, { id: 'source2' }],
+    isLoading: false,
+  }),
+}));
 
 describe('useGetKeyValues', () => {
   let queryClient: QueryClient;
@@ -70,7 +79,9 @@ describe('useGetKeyValues', () => {
       },
     ];
 
-    jest.spyOn(mockMetadata, 'getKeyValues').mockResolvedValue(mockKeyValues);
+    jest
+      .spyOn(mockMetadata, 'getKeyValuesWithMVs')
+      .mockResolvedValue(mockKeyValues);
 
     // Act
     const { result } = renderHook(
@@ -108,7 +119,7 @@ describe('useGetKeyValues', () => {
     ];
 
     jest
-      .spyOn(mockMetadata, 'getKeyValues')
+      .spyOn(mockMetadata, 'getKeyValuesWithMVs')
       .mockResolvedValueOnce([
         {
           key: "ResourceAttributes['service.name']",
@@ -145,7 +156,9 @@ describe('useGetKeyValues', () => {
         value: ['production', 'staging'],
       },
     ]);
-    expect(jest.spyOn(mockMetadata, 'getKeyValues')).toHaveBeenCalledTimes(2);
+    expect(
+      jest.spyOn(mockMetadata, 'getKeyValuesWithMVs'),
+    ).toHaveBeenCalledTimes(2);
   });
 
   // Test case: Handling empty keys
@@ -165,7 +178,9 @@ describe('useGetKeyValues', () => {
 
     // Assert
     expect(result.current.isFetched).toBe(false);
-    expect(jest.spyOn(mockMetadata, 'getKeyValues')).not.toHaveBeenCalled();
+    expect(
+      jest.spyOn(mockMetadata, 'getKeyValuesWithMVs'),
+    ).not.toHaveBeenCalled();
   });
 
   // Test case: Custom limit and disableRowLimit
@@ -181,7 +196,9 @@ describe('useGetKeyValues', () => {
       },
     ];
 
-    jest.spyOn(mockMetadata, 'getKeyValues').mockResolvedValue(mockKeyValues);
+    jest
+      .spyOn(mockMetadata, 'getKeyValuesWithMVs')
+      .mockResolvedValue(mockKeyValues);
 
     // Act
     const { result } = renderHook(
@@ -206,7 +223,7 @@ describe('useGetKeyValues', () => {
     const mockKeys = ['ResourceAttributes.service.name'];
 
     jest
-      .spyOn(mockMetadata, 'getKeyValues')
+      .spyOn(mockMetadata, 'getKeyValuesWithMVs')
       .mockRejectedValue(new Error('Fetch failed'));
 
     // Act
@@ -224,6 +241,34 @@ describe('useGetKeyValues', () => {
 
     expect(result.current.error).toEqual(expect.any(Error));
     expect(result.current.error!.message).toBe('Fetch failed');
+  });
+
+  it('should be in a loading state while fetching sources', async () => {
+    jest.mocked(useSources).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isFetching: true,
+    } as any);
+
+    // Arrange
+    const mockChartConfig = createMockChartConfig();
+    const mockKeys = ['ResourceAttributes.service.name'];
+
+    // Act
+    const { result } = renderHook(
+      () =>
+        useGetKeyValues({
+          chartConfig: mockChartConfig,
+          keys: mockKeys,
+        }),
+      { wrapper },
+    );
+
+    // Assert
+    expect(
+      jest.spyOn(mockMetadata, 'getKeyValuesWithMVs'),
+    ).not.toHaveBeenCalled();
+    await waitFor(() => expect(result.current.isLoading).toBe(true));
   });
 });
 
