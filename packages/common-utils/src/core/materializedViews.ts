@@ -357,6 +357,7 @@ export async function tryConvertConfigToMaterializedViewSelect<
   const clonedConfig: C = {
     ...structuredClone(chartConfig),
     select,
+    timestampValueExpression: mvConfig.timestampColumn,
     from: {
       databaseName: mvConfig.databaseName,
       tableName: mvConfig.tableName,
@@ -632,9 +633,10 @@ export async function optimizeGetKeyValuesCalls<
   // Build the configs which would be used to query each MV for all of the keys it supports
   const configsToExplain = [...supportedKeysByMv.entries()].map(
     ([mvId, mvKeys]) => {
-      const { databaseName, tableName } = mvsById.get(mvId)!;
+      const { databaseName, tableName, timestampColumn } = mvsById.get(mvId)!;
       return {
         ...structuredClone(chartConfig),
+        timestampValueExpression: timestampColumn,
         from: {
           databaseName,
           tableName,
@@ -688,9 +690,10 @@ export async function optimizeGetKeyValuesCalls<
 
   // Build the final list of optimized calls
   const calls = [...finalKeysByMv.entries()].map(([mvId, mvKeys]) => {
-    const { databaseName, tableName } = mvsById.get(mvId)!;
+    const { databaseName, tableName, timestampColumn } = mvsById.get(mvId)!;
     const optimizedConfig: C = {
       ...structuredClone(chartConfig),
+      timestampValueExpression: timestampColumn,
       from: {
         databaseName,
         tableName,

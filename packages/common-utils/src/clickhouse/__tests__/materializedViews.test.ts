@@ -189,6 +189,7 @@ describe('materializedViews', () => {
           databaseName: 'default',
           tableName: 'metrics_rollup_1m',
         },
+        timestampValueExpression: 'Timestamp',
         select: [
           {
             valueExpression: 'sum__Duration',
@@ -234,6 +235,7 @@ describe('materializedViews', () => {
             aggFn: 'avgMerge',
           },
         ],
+        timestampValueExpression: 'Timestamp',
         where: '',
         connection: 'test-connection',
       });
@@ -275,6 +277,7 @@ describe('materializedViews', () => {
             level: 0.95,
           },
         ],
+        timestampValueExpression: 'Timestamp',
         where: '',
         connection: 'test-connection',
       });
@@ -316,6 +319,7 @@ describe('materializedViews', () => {
             level: 20,
           },
         ],
+        timestampValueExpression: 'Timestamp',
         where: '',
         connection: 'test-connection',
       });
@@ -356,6 +360,7 @@ describe('materializedViews', () => {
             aggFn: 'sum',
           },
         ],
+        timestampValueExpression: 'Timestamp',
         where: "StatusCode = '200'",
         groupBy: 'StatusCode',
         connection: 'test-connection',
@@ -400,6 +405,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -459,6 +465,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -502,6 +509,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -541,6 +549,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -580,6 +589,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -624,6 +634,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -755,6 +766,7 @@ describe('materializedViews', () => {
         where: '',
         connection: 'test-connection',
         granularity: '1 minute',
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -927,6 +939,7 @@ describe('materializedViews', () => {
         where: '',
         connection: 'test-connection',
         dateRangeEndInclusive: false,
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -974,6 +987,7 @@ describe('materializedViews', () => {
         granularity: '1 minute',
         dateRange: chartConfig.dateRange,
         dateRangeEndInclusive: false,
+        timestampValueExpression: 'Timestamp',
       });
       expect(result.errors).toBeUndefined();
     });
@@ -1022,6 +1036,7 @@ describe('materializedViews', () => {
           new Date('2023-01-02T01:01:00Z'),
         ],
         dateRangeEndInclusive: false,
+        timestampValueExpression: 'Timestamp',
       });
     });
   });
@@ -1131,6 +1146,7 @@ describe('materializedViews', () => {
             ],
             where: '',
             connection: 'test-connection',
+            timestampValueExpression: 'Timestamp',
           },
         }),
       );
@@ -1165,6 +1181,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       };
 
       const actual = await tryOptimizeConfigWithMaterializedView(
@@ -1236,6 +1253,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       };
 
       const actual = await tryOptimizeConfigWithMaterializedView(
@@ -1301,6 +1319,7 @@ describe('materializedViews', () => {
               ],
               where: '',
               connection: 'test-connection',
+              timestampValueExpression: 'Timestamp',
             },
           },
         ],
@@ -1397,6 +1416,7 @@ describe('materializedViews', () => {
               ],
               where: '',
               connection: 'test-connection',
+              timestampValueExpression: 'Timestamp',
             },
           },
           {
@@ -1414,6 +1434,7 @@ describe('materializedViews', () => {
               ],
               where: '',
               connection: 'test-connection',
+              timestampValueExpression: 'Timestamp',
             },
           },
         ],
@@ -1551,6 +1572,7 @@ describe('materializedViews', () => {
             ],
             where: '',
             connection: 'test-connection',
+            timestampValueExpression: 'Timestamp',
           },
         }),
       );
@@ -1585,6 +1607,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       };
 
       const result =
@@ -1805,6 +1828,7 @@ describe('materializedViews', () => {
         ],
         where: '',
         connection: 'test-connection',
+        timestampValueExpression: 'Timestamp',
       };
 
       const result =
@@ -2336,6 +2360,65 @@ describe('materializedViews', () => {
           metadata,
         }),
       );
+    });
+
+    it('should use the MV timestamp column when it differs from the source table', async () => {
+      const MV_CONFIG_WITH_DIFFERENT_TIMESTAMP: MaterializedViewConfiguration =
+        {
+          databaseName: 'default',
+          tableName: 'logs_rollup_1h',
+          dimensionColumns: 'environment, service',
+          minGranularity: '1 hour',
+          timestampColumn: 'mv_timestamp', // Different from source
+          aggregatedColumns: [{ aggFn: 'count', mvColumn: 'count' }],
+        };
+
+      const chartConfig: ChartConfigWithOptDateRange = {
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        where: '',
+        connection: 'test-connection',
+        dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        select: '',
+        timestampValueExpression: 'source_timestamp', // Source uses this
+      };
+
+      const keys = ['environment', 'service'];
+      const source = {
+        from: { databaseName: 'default', tableName: 'logs' },
+        materializedViews: [MV_CONFIG_WITH_DIFFERENT_TIMESTAMP],
+        timestampValueExpression: 'source_timestamp',
+      };
+
+      mockClickHouseClient.testChartConfigValidity.mockResolvedValue({
+        isValid: true,
+        rowEstimate: 500,
+      });
+
+      const result = await optimizeGetKeyValuesCalls({
+        chartConfig,
+        keys,
+        source: source as any,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      // Should return one call using the MV
+      expect(result).toHaveLength(1);
+      expect(result[0].chartConfig.from).toEqual({
+        databaseName: 'default',
+        tableName: 'logs_rollup_1h',
+      });
+
+      // Should use the MV's timestamp column
+      expect(result[0].chartConfig.timestampValueExpression).toBe(
+        'mv_timestamp',
+      );
+
+      // Keys should be from the MV
+      expect(result[0].keys).toEqual(['environment', 'service']);
     });
   });
 });
