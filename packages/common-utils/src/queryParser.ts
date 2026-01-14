@@ -28,14 +28,18 @@ export function parse(query: string): lucene.AST {
 }
 
 function buildMapContains(mapField: string) {
-  const splitMapKey = (field: string): { map: string; key: string } => {
+  const splitMapKey = (
+    field: string,
+  ): { map: string; key: string } | undefined => {
     const bracketIndex = field.indexOf("['");
+    if (bracketIndex === -1) return undefined;
     const map = field.slice(0, bracketIndex);
     const key = field.slice(bracketIndex + 2, -2);
     return { map, key };
   };
-  const { map, key } = splitMapKey(mapField);
-  return SqlString.format('mapContains(??, ?)', [map, key]);
+  const val = splitMapKey(mapField);
+  if (!val) return undefined;
+  return SqlString.format('mapContains(??, ?)', [val.map, val.key]);
 }
 
 const IMPLICIT_FIELD = '<implicit>';
@@ -649,7 +653,12 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         return undefined;
       })();
       if (materializedColumn) {
-        columnExpression.mapKeyIndexExpression = `indexHint(${buildMapContains(materializedColumn.materializedTarget)})`;
+        const mapContainsStatement = buildMapContains(
+          materializedColumn.materializedTarget,
+        );
+        if (mapContainsStatement) {
+          columnExpression.mapKeyIndexExpression = `indexHint(${mapContainsStatement})`;
+        }
       }
       return columnExpression;
     }
