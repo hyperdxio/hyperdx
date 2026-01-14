@@ -1194,7 +1194,8 @@ function KubernetesDashboardPage() {
     }
 
     if (
-      logSourceJsonColumns?.includes(logSource.eventAttributesExpression ?? '')
+      logSource.eventAttributesExpression &&
+      logSourceJsonColumns?.includes(logSource.eventAttributesExpression)
     ) {
       return {
         Severity: `${logSource.eventAttributesExpression}.object.type.:String`,
