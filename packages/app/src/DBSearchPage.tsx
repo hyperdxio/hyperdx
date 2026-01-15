@@ -297,7 +297,7 @@ function SearchSubmitButton({
       data-testid="search-submit-button"
       variant="outline"
       type="submit"
-      color={isFormStateDirty ? 'var(--color-text-success)' : 'gray'}
+      color={isFormStateDirty ? 'var(--color-text-brand)' : 'gray'}
     >
       <IconPlayerPlay size={16} />
     </Button>

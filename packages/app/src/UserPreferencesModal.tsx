@@ -12,16 +12,26 @@ import {
   Stack,
   Switch,
   Text,
+  Tooltip,
 } from '@mantine/core';
-import { IconWorld } from '@tabler/icons-react';
+import { IconFlask, IconWorld } from '@tabler/icons-react';
 
 import { OPTIONS_FONTS } from './config/fonts';
+import { useAppTheme } from './theme/ThemeProvider';
+import { ThemeName } from './theme/types';
+import { themes } from './theme';
 import { UserPreferences, useUserPreferences } from './useUserPreferences';
 
-const OPTIONS_THEMES = [
+const OPTIONS_COLOR_MODE = [
   { label: 'Dark', value: 'dark' },
   { label: 'Light', value: 'light' },
 ];
+
+// Brand theme options (generated from theme registry)
+const OPTIONS_BRAND_THEMES = Object.values(themes).map(t => ({
+  label: t.displayName,
+  value: t.name,
+}));
 
 const OPTIONS_MIX_BLEND_MODE = [
   'normal',
@@ -76,6 +86,7 @@ export const UserPreferencesModal = ({
   onClose: () => void;
 }) => {
   const { userPreferences, setUserPreference } = useUserPreferences();
+  const { themeName, setTheme, isDev } = useAppTheme();
 
   return (
     <Modal
@@ -134,7 +145,7 @@ export const UserPreferencesModal = ({
           mt="sm"
         />
         <SettingContainer
-          label="Theme"
+          label="Color Mode"
           description="Switch between light and dark mode"
         >
           <Select
@@ -145,10 +156,43 @@ export const UserPreferencesModal = ({
                 theme: value as UserPreferences['theme'],
               })
             }
-            data={OPTIONS_THEMES}
+            data={OPTIONS_COLOR_MODE}
             allowDeselect={false}
           />
         </SettingContainer>
+
+        {isDev && (
+          <SettingContainer
+            label={
+              <Group gap="xs">
+                Brand Theme
+                <Tooltip
+                  label="Only available in local/dev mode. Changes logo, colors, and branding."
+                  multiline
+                  w={220}
+                >
+                  <Badge
+                    variant="light"
+                    color="violet"
+                    fw="normal"
+                    size="xs"
+                    leftSection={<IconFlask size={10} />}
+                  >
+                    Dev Only
+                  </Badge>
+                </Tooltip>
+              </Group>
+            }
+            description="Switch between HyperDX and ClickStack branding"
+          >
+            <Select
+              value={themeName}
+              onChange={value => value && setTheme(value as ThemeName)}
+              data={OPTIONS_BRAND_THEMES}
+              allowDeselect={false}
+            />
+          </SettingContainer>
+        )}
 
         <SettingContainer
           label="Font"

@@ -24,6 +24,7 @@ import {
   MANTINE_FONT_MAP,
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
+import { AppThemeProvider } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { useConfirmModal } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
@@ -147,21 +148,25 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         />
       </Head>
 
-      <HDXQueryParamProvider>
-        <QueryParamProvider adapter={NextAdapter}>
-          <QueryClientProvider client={queryClient}>
-            <ThemeWrapper
-              fontFamily={selectedMantineFont}
-              colorScheme={userPreferences.theme === 'dark' ? 'dark' : 'light'}
-            >
-              {getLayout(<Component {...pageProps} />)}
-              {confirmModal}
-            </ThemeWrapper>
-            <ReactQueryDevtools initialIsOpen={true} />
-            {background}
-          </QueryClientProvider>
-        </QueryParamProvider>
-      </HDXQueryParamProvider>
+      <AppThemeProvider>
+        <HDXQueryParamProvider>
+          <QueryParamProvider adapter={NextAdapter}>
+            <QueryClientProvider client={queryClient}>
+              <ThemeWrapper
+                fontFamily={selectedMantineFont}
+                colorScheme={
+                  userPreferences.theme === 'dark' ? 'dark' : 'light'
+                }
+              >
+                {getLayout(<Component {...pageProps} />)}
+                {confirmModal}
+              </ThemeWrapper>
+              <ReactQueryDevtools initialIsOpen={true} />
+              {background}
+            </QueryClientProvider>
+          </QueryParamProvider>
+        </HDXQueryParamProvider>
+      </AppThemeProvider>
     </React.Fragment>
   );
 }

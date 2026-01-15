@@ -231,7 +231,7 @@ const TimePickerComponent = ({
           styles={{
             input: {
               color: isLiveMode
-                ? 'var(--color-text-success)'
+                ? 'var(--color-text-brand)'
                 : 'var(--color-text)',
             },
           }}

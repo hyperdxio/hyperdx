@@ -1,14 +1,9 @@
-/* Theme-specific color imports */
-@use './themes/hyperdx-colors';
-@use './themes/clickstack-colors';
+/* HyperDX Theme Colors */
 
-/* 
- * Fallback colors for when no theme class is applied
- * Uses HyperDX theme as default
- */
+/* Default theme with green accent */
 
-/* Dark Mode (default) */
-[data-mantine-color-scheme='dark'] {
+/* Dark Mode */
+.theme-hyperdx[data-mantine-color-scheme='dark'] {
   /* Backgrounds */
   --color-bg-body: var(--mantine-color-dark-9);
   --color-bg-surface: var(--mantine-color-dark-5);
@@ -39,6 +34,8 @@
   --color-text-secondary: var(--mantine-color-dark-2);
   --color-text-muted: var(--mantine-color-dark-2);
   --color-text-muted-hover: var(--mantine-color-dark-1);
+  --color-text-brand: var(--mantine-color-green-4);
+  --color-text-brand-hover: var(--mantine-color-green-3);
   --color-text-success: var(--mantine-color-green-4);
   --color-text-success-hover: var(--mantine-color-green-3);
   --color-text-danger: var(--mantine-color-red-3);
@@ -75,7 +72,7 @@
 }
 
 /* Light Mode */
-[data-mantine-color-scheme='light'] {
+.theme-hyperdx[data-mantine-color-scheme='light'] {
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body);
 
@@ -110,6 +107,8 @@
   --color-text-secondary: var(--mantine-color-gray-5);
   --color-text-muted: var(--mantine-color-dark-6);
   --color-text-muted-hover: var(--mantine-color-dark-9);
+  --color-text-brand: var(--mantine-color-green-8);
+  --color-text-brand-hover: var(--mantine-color-green-9);
   --color-text-success: var(--mantine-color-green-8);
   --color-text-success-hover: var(--mantine-color-green-9);
   --color-text-danger: var(--mantine-color-red-8);
