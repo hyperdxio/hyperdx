@@ -675,8 +675,7 @@ export default function SessionSubpanel({
           <Group align="center" justify="flex-end" gap="xs">
             <Button
               size="compact-sm"
-              color="gray"
-              variant="light"
+              variant="secondary"
               fw="normal"
               rightSection={
                 skipInactive ? (
@@ -692,8 +691,7 @@ export default function SessionSubpanel({
             </Button>
             <Button
               size="compact-sm"
-              color="gray"
-              variant="light"
+              variant="secondary"
               fw="normal"
               rightSection={
                 <span className="fw-bold pe-1">{playerSpeed}x</span>
