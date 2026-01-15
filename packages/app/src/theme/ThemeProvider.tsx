@@ -1,9 +1,14 @@
-import React, { createContext, useContext, useEffect, useMemo } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 
 import {
   clearDevTheme,
-  getCurrentTheme,
-  getCurrentThemeName,
+  DEFAULT_THEME,
   getTheme,
   setDevTheme,
   themes,
@@ -14,6 +19,8 @@ import { ThemeConfig, ThemeName } from './types';
 const IS_DEV =
   process.env.NODE_ENV === 'development' ||
   process.env.NEXT_PUBLIC_IS_LOCAL_MODE === 'true';
+
+const THEME_STORAGE_KEY = 'hdx-dev-theme';
 
 interface ThemeContextValue {
   theme: ThemeConfig;
@@ -35,9 +42,36 @@ export function AppThemeProvider({
   themeName?: ThemeName;
   children: React.ReactNode;
 }) {
-  const theme = useMemo(() => {
-    return themeName ? getTheme(themeName) : getCurrentTheme();
+  // Start with default theme to match server render and avoid hydration mismatch
+  const [resolvedThemeName, setResolvedThemeName] = useState<ThemeName>(
+    themeName ?? DEFAULT_THEME,
+  );
+
+  // After hydration, read from localStorage/URL in dev mode
+  useEffect(() => {
+    if (themeName || !IS_DEV) return;
+
+    // Check URL query param first
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlTheme = urlParams.get('theme') as ThemeName | null;
+    if (urlTheme && themes[urlTheme]) {
+      localStorage.setItem(THEME_STORAGE_KEY, urlTheme);
+      setResolvedThemeName(urlTheme);
+      return;
+    }
+
+    // Check localStorage
+    const storedTheme = localStorage.getItem(
+      THEME_STORAGE_KEY,
+    ) as ThemeName | null;
+    if (storedTheme && themes[storedTheme]) {
+      setResolvedThemeName(storedTheme);
+    }
   }, [themeName]);
+
+  const theme = useMemo(() => {
+    return getTheme(resolvedThemeName);
+  }, [resolvedThemeName]);
 
   const contextValue = useMemo(
     () => ({
@@ -108,8 +142,8 @@ export function AppThemeProvider({
 export function useAppTheme(): ThemeContextValue {
   const context = useContext(ThemeContext);
   if (!context) {
-    // Fallback for when used outside provider
-    const theme = getCurrentTheme();
+    // Fallback for when used outside provider - always use default to avoid hydration issues
+    const theme = getTheme(DEFAULT_THEME);
     return {
       theme,
       themeName: theme.name,
@@ -136,5 +170,6 @@ export function useIcon() {
 
 // Hook to get current theme name (useful for conditional rendering)
 export function useThemeName(): ThemeName {
-  return getCurrentThemeName();
+  const { themeName } = useAppTheme();
+  return themeName;
 }

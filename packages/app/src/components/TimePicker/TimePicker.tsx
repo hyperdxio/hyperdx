@@ -223,7 +223,7 @@ const TimePickerComponent = ({
           data-testid="time-picker-input"
           leftSection={
             isLiveMode ? (
-              <IconBolt size={16} className="text-success" />
+              <IconBolt size={16} className="text-brand" />
             ) : (
               <IconCalendarFilled size={16} />
             )

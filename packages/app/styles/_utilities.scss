@@ -116,6 +116,19 @@
   }
 }
 
+.text-brand {
+  color: var(--color-text-brand) !important;
+}
+
+.text-brand-hover {
+  color: var(--color-text-brand-hover);
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--color-text-brand-hover);
+  }
+}
+
 .text-link {
   color: var(--color-text-primary) !important;
 }

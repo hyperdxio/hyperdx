@@ -1,11 +1,8 @@
-/* Theme-specific color imports */
-@use './themes/hyperdx-colors';
-@use './themes/clickstack-colors';
+/* Base Design Tokens - Fallback values when no theme class is applied */
+/* Uses HyperDX theme as default */
 
-/* 
- * Fallback colors for when no theme class is applied
- * Uses HyperDX theme as default
- */
+@use './hyperdx/tokens' as hyperdx-tokens;
+@use './clickstack/tokens' as clickstack-tokens;
 
 /* Dark Mode (default) */
 [data-mantine-color-scheme='dark'] {
