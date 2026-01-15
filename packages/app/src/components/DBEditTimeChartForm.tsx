@@ -3,8 +3,11 @@ import { omit } from 'lodash';
 import {
   Control,
   Controller,
+  FieldErrors,
+  FieldPath,
   useFieldArray,
   useForm,
+  UseFormClearErrors,
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
@@ -123,6 +126,14 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
 
 const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
 
+// Helper function to safely construct field paths for series
+const getSeriesFieldPath = (
+  namePrefix: string,
+  fieldName: string,
+): FieldPath<SavedChartConfigWithSeries> => {
+  return `${namePrefix}${fieldName}` as FieldPath<SavedChartConfigWithSeries>;
+};
+
 const NumberFormatInputControlled = ({
   control,
   onSubmit,
@@ -147,6 +158,10 @@ const NumberFormatInputControlled = ({
   );
 };
 
+type SeriesItem = NonNullable<
+  SavedChartConfigWithSelectArray['select']
+>[number];
+
 function ChartSeriesEditorComponent({
   control,
   databaseName,
@@ -163,6 +178,8 @@ function ChartSeriesEditorComponent({
   parentRef,
   length,
   tableSource,
+  errors,
+  clearErrors,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -179,6 +196,8 @@ function ChartSeriesEditorComponent({
   tableName: string;
   length: number;
   tableSource?: TSource;
+  errors?: FieldErrors<SeriesItem>;
+  clearErrors: UseFormClearErrors<SavedChartConfigWithSeries>;
 }) {
   const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
   const aggConditionLanguage = useWatch({
@@ -294,6 +313,10 @@ function ChartSeriesEditorComponent({
               }
               metricSource={tableSource}
               data-testid="metric-name-selector"
+              error={errors?.metricName?.message}
+              onFocus={() =>
+                clearErrors(getSeriesFieldPath(namePrefix, 'metricName'))
+              }
             />
             {metricType === 'gauge' && (
               <Flex justify="end">
@@ -457,12 +480,19 @@ export default function EditTimeChartForm({
     [chartConfig],
   );
 
-  const { control, setValue, handleSubmit, register } =
-    useForm<SavedChartConfigWithSeries>({
-      defaultValues: configWithSeries,
-      values: configWithSeries,
-      resolver: zodResolver(zSavedChartConfig),
-    });
+  const {
+    control,
+    setValue,
+    handleSubmit,
+    register,
+    setError,
+    clearErrors,
+    formState: { errors },
+  } = useForm<SavedChartConfigWithSeries>({
+    defaultValues: configWithSeries,
+    values: configWithSeries,
+    resolver: zodResolver(zSavedChartConfig),
+  });
 
   const {
     fields,
@@ -563,6 +593,25 @@ export default function EditTimeChartForm({
 
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
+      // Validate metric sources have metric names selected
+      if (
+        tableSource?.kind === SourceKind.Metric &&
+        Array.isArray(form.series)
+      ) {
+        let hasValidationError = false;
+        form.series.forEach((series, index) => {
+          if (series.metricType && !series.metricName) {
+            setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
+              type: 'manual',
+              message: 'Please select a metric name',
+            });
+            hasValidationError = true;
+          }
+        });
+
+        if (hasValidationError) return;
+      }
+
       // Merge the series and select fields back together, and prevent the series field from being submitted
       const config = {
         ...omit(form, ['series']),
@@ -606,6 +655,7 @@ export default function EditTimeChartForm({
     setQueriedConfigAndSource,
     tableSource,
     dateRange,
+    setError,
   ]);
 
   const onTableSortingChange = useCallback(
@@ -934,6 +984,12 @@ export default function EditTimeChartForm({
                   }
                   tableName={tableName ?? ''}
                   tableSource={tableSource}
+                  errors={
+                    errors.series && Array.isArray(errors.series)
+                      ? errors.series[index]
+                      : undefined
+                  }
+                  clearErrors={clearErrors}
                 />
               ))}
               {fields.length > 1 && displayType !== DisplayType.Number && (

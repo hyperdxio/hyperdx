@@ -997,7 +997,7 @@ const DBSearchPageFiltersComponent = ({
     async (key: string) => {
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
-        const newKeyVals = await metadata.getKeyValues({
+        const newKeyVals = await metadata.getKeyValuesWithMVs({
           chartConfig: {
             ...chartConfig,
             dateRange,
@@ -1005,6 +1005,7 @@ const DBSearchPageFiltersComponent = ({
           keys: [key],
           limit: LOAD_MORE_LOAD_LIMIT,
           disableRowLimit: true,
+          source,
         });
         const newValues = newKeyVals[0].value;
         if (newValues.length > 0) {
@@ -1023,7 +1024,7 @@ const DBSearchPageFiltersComponent = ({
         });
       }
     },
-    [chartConfig, setExtraFacets, dateRange, metadata],
+    [chartConfig, setExtraFacets, dateRange, metadata, source],
   );
 
   const shownFacets = useMemo(() => {
