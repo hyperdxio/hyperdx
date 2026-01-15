@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { omit, pick } from 'lodash';
+import { pick } from 'lodash';
 import {
   GetKeyValueCall,
   optimizeGetKeyValuesCalls,
@@ -16,8 +16,22 @@ import {
 
 import { useClickhouseClient } from '@/clickhouse';
 import { useSources } from '@/source';
+import { getMetricTableName } from '@/utils';
 
 import { useMetadataWithSettings } from './useMetadata';
+
+const filterToKey = (filter: DashboardFilter) =>
+  filter.sourceMetricType
+    ? `${filter.source}~${filter.sourceMetricType}`
+    : `${filter.source}`;
+
+const filterFromKey = (key: string) => {
+  const [sourceId, metricType] = key.split('~');
+  return {
+    sourceId,
+    metricType,
+  };
+};
 
 function useOptimizedKeyValuesCalls({
   filters,
@@ -30,27 +44,37 @@ function useOptimizedKeyValuesCalls({
   const metadata = useMetadataWithSettings();
   const { data: sources, isLoading: isLoadingSources } = useSources();
 
-  const filtersBySourceId = useMemo(() => {
-    const filtersBySourceId = new Map<string, DashboardFilter[]>();
+  const filtersBySourceIdAndMetric = useMemo(() => {
+    const filtersBySourceIdAndMetric = new Map<string, DashboardFilter[]>();
     for (const filter of filters) {
-      if (!filtersBySourceId.has(filter.source)) {
-        filtersBySourceId.set(filter.source, [filter]);
+      const key = filterToKey(filter);
+      if (!filtersBySourceIdAndMetric.has(key)) {
+        filtersBySourceIdAndMetric.set(key, [filter]);
       } else {
-        filtersBySourceId.get(filter.source)!.push(filter);
+        filtersBySourceIdAndMetric.get(key)!.push(filter);
       }
     }
-    return filtersBySourceId;
+    return filtersBySourceIdAndMetric;
   }, [filters]);
 
   const results: UseQueryResult<GetKeyValueCall<ChartConfigWithDateRange>[]>[] =
     useQueries({
-      queries: Array.from(filtersBySourceId.entries())
-        .filter(([sourceId]) => sources?.some(s => s.id === sourceId))
-        .map(([sourceId, filters]) => {
+      queries: Array.from(filtersBySourceIdAndMetric.entries())
+        .filter(([key]) =>
+          sources?.some(s => s.id === filterFromKey(key).sourceId),
+        )
+        .map(([key, filters]) => {
+          const { sourceId, metricType } = filterFromKey(key);
           const source = sources!.find(s => s.id === sourceId)!;
           const keys = filters.map(f => f.expression);
+          const tableName = getMetricTableName(source, metricType) ?? '';
+
           const chartConfig: ChartConfigWithDateRange = {
-            ...pick(source, ['timestampValueExpression', 'connection', 'from']),
+            ...pick(source, ['timestampValueExpression', 'connection']),
+            from: {
+              databaseName: source.from.databaseName,
+              tableName,
+            },
             dateRange,
             source: source.id,
             where: '',
@@ -62,6 +86,7 @@ function useOptimizedKeyValuesCalls({
             queryKey: [
               'dashboard-filters-key-value-calls',
               sourceId,
+              metricType,
               dateRange,
               keys,
             ],
