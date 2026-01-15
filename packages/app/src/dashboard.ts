@@ -2,7 +2,9 @@ import { useCallback, useMemo, useState } from 'react';
 import { parseAsJson, useQueryState } from 'nuqs';
 import {
   DashboardFilter,
+  Filter,
   SavedChartConfig,
+  SearchConditionLanguage,
 } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -28,6 +30,9 @@ export type Dashboard = {
   tiles: Tile[];
   tags: string[];
   filters?: DashboardFilter[];
+  savedQuery?: string | null;
+  savedQueryLanguage?: SearchConditionLanguage | null;
+  savedFilterValues?: Filter[] | null;
 };
 
 export function useUpdateDashboard() {

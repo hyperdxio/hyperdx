@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import dynamic from 'next/dynamic';
@@ -11,7 +12,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { formatRelative } from 'date-fns';
 import produce from 'immer';
-import { parseAsString, useQueryState } from 'nuqs';
+import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm, useWatch } from 'react-hook-form';
@@ -49,6 +50,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconBell,
   IconCopy,
+  IconDeviceFloppy,
   IconDotsVertical,
   IconDownload,
   IconFilterEdit,
@@ -630,11 +632,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'whereLanguage',
     parseAsString.withDefault('lucene'),
   );
+  // Get raw filter queries from URL (not processed by hook)
+  const [rawFilterQueries] = useQueryState('filters', parseAsJson<Filter[]>());
+
+  // Track if we've initialized query for this dashboard
+  const initializedDashboard = useRef<string>(undefined);
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
-  const { filterValues, setFilterValue, filterQueries } =
+  const { filterValues, setFilterValue, filterQueries, setFilterQueries } =
     useDashboardFilters(filters);
 
   const handleSaveFilter = (filter: DashboardFilter) => {
@@ -664,7 +671,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [isLive, setIsLive] = useState(false);
 
-  const { control, setValue, handleSubmit } = useForm<{
+  const { control, setValue, getValues, handleSubmit } = useForm<{
     granularity: SQLInterval | 'auto';
     where: SearchCondition;
     whereLanguage: SearchConditionLanguage;
@@ -704,13 +711,93 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     isLive,
   });
 
-  const onSubmit = () => {
+  const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(data => {
       setWhere(data.where as SearchCondition);
       setWhereLanguage((data.whereLanguage as SearchConditionLanguage) ?? null);
     })();
-  };
+  }, [
+    displayedTimeInputValue,
+    handleSubmit,
+    onSearch,
+    setWhere,
+    setWhereLanguage,
+  ]);
+
+  // Load and execute saved query once when dashboard first loads (if no URL params)
+  useEffect(() => {
+    if (!dashboard?.id || !router.isReady) return;
+    if (initializedDashboard.current === dashboard.id) return;
+
+    // Only restore if URL doesn't have explicit params
+    if (!('where' in router.query) && dashboard.savedQuery) {
+      setValue('where', dashboard.savedQuery);
+      setWhere(dashboard.savedQuery);
+      if (dashboard.savedQueryLanguage) {
+        setValue('whereLanguage', dashboard.savedQueryLanguage);
+        setWhereLanguage(dashboard.savedQueryLanguage);
+      }
+    }
+
+    if (!('filters' in router.query) && dashboard.savedFilterValues) {
+      setFilterQueries(dashboard.savedFilterValues);
+    }
+
+    initializedDashboard.current = dashboard.id;
+  }, [
+    dashboard?.id,
+    dashboard?.savedQuery,
+    dashboard?.savedQueryLanguage,
+    dashboard?.savedFilterValues,
+    router.isReady,
+    router.query,
+    setValue,
+    setWhere,
+    setWhereLanguage,
+    setFilterQueries,
+  ]);
+
+  const handleSaveQuery = useCallback(() => {
+    if (!dashboard || isLocalDashboard) return;
+
+    // Execute the query first (updates URL)
+    onSubmit();
+
+    // Then save to database (reads from form values which were just submitted to URL)
+    const formValues = getValues();
+    const currentWhere = formValues.where || null;
+    const currentWhereLanguage = currentWhere
+      ? formValues.whereLanguage || 'lucene'
+      : null;
+    const currentFilterValues = rawFilterQueries?.length
+      ? rawFilterQueries
+      : null;
+
+    setDashboard(
+      produce(dashboard, draft => {
+        draft.savedQuery = currentWhere;
+        draft.savedQueryLanguage = currentWhereLanguage;
+        draft.savedFilterValues = currentFilterValues;
+      }),
+      () => {
+        notifications.show({
+          color: 'green',
+          title: 'Query saved and executed',
+          message:
+            'Filter query and dropdown values have been saved with the dashboard',
+          autoClose: 3000,
+        });
+      },
+    );
+  }, [
+    dashboard,
+    isLocalDashboard,
+    setDashboard,
+    getValues,
+    rawFilterQueries,
+    onSubmit,
+  ]);
 
   const [editedTile, setEditedTile] = useState<undefined | Tile>();
 
@@ -1086,6 +1173,24 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             )
           }
         />
+        {!isLocalDashboard && (
+          <Tooltip
+            withArrow
+            label="Save Query and Filter Values with Dashboard"
+            fz="xs"
+            color="gray"
+          >
+            <Button
+              data-testid="save-query-button"
+              variant="default"
+              px="xs"
+              onClick={handleSaveQuery}
+              title="Save current filter query and filter values with dashboard"
+            >
+              <IconDeviceFloppy size={18} />
+            </Button>
+          </Tooltip>
+        )}
         <TimePicker
           inputValue={displayedTimeInputValue}
           setInputValue={setDisplayedTimeInputValue}
