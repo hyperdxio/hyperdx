@@ -159,7 +159,7 @@ function AckAlert({ alert }: { alert: AlertsPageItem }) {
           <Menu.Target>
             <Button
               size="compact-sm"
-              variant="light"
+              variant="primary"
               color={
                 isNoLongerMuted
                   ? 'var(--color-bg-warning)'

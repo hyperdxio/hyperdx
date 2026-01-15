@@ -495,9 +495,8 @@ export default function DOMPlayer({
               <ActionIcon
                 onClick={copy}
                 title="Copy URL"
-                variant="light"
+                variant="secondary"
                 size="sm"
-                color="gray"
               >
                 {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
               </ActionIcon>

@@ -1189,7 +1189,7 @@ export default function EditTimeChartForm({
             <Button
               data-testid="chart-save-button"
               loading={isSaving}
-              variant="outline"
+              variant="primary"
               onClick={handleSubmit(handleSave)}
             >
               Save
@@ -1243,17 +1243,18 @@ export default function EditTimeChartForm({
           {activeTab !== 'markdown' && (
             <Button
               data-testid="chart-run-query-button"
-              variant="outline"
+              variant="primary"
               type="submit"
               onClick={onSubmit}
+              leftSection={<IconPlayerPlay size={16} />}
             >
-              <IconPlayerPlay size={16} />
+              Run
             </Button>
           )}
           {!IS_LOCAL_MODE && !dashboardId && (
             <Menu width={250}>
               <Menu.Target>
-                <Button variant="outline" color="gray" px="xs" size="sm">
+                <Button variant="secondary" px="xs" size="sm">
                   <IconDotsVertical size={14} />
                 </Button>
               </Menu.Target>

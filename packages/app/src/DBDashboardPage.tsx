@@ -535,7 +535,7 @@ function DashboardName({
             }
             placeholder="Dashboard Name"
           />
-          <Button ms="sm" variant="outline" type="submit" color="green">
+          <Button ms="sm" variant="primary" type="submit">
             Save Name
           </Button>
         </form>
@@ -934,12 +934,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <Text size="sm">
               This is a temporary dashboard and can not be saved.
             </Text>
-            <Button
-              variant="outline"
-              color="green"
-              fw={400}
-              onClick={onCreateDashboard}
-            >
+            <Button variant="primary" fw={400} onClick={onCreateDashboard}>
               Create New Saved Dashboard
             </Button>
           </Flex>
@@ -1138,10 +1133,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         )}
         <Button
           data-testid="search-submit-button"
-          variant="outline"
+          variant="primary"
           type="submit"
+          leftSection={<IconPlayerPlay size={16} />}
         >
-          <IconPlayerPlay size={16} />
+          Run
         </Button>
       </Flex>
       <DashboardFilters
@@ -1203,9 +1199,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       </Box>
       <Button
         data-testid="add-new-tile-button"
-        variant="outline"
+        variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
         mt="sm"
-        color={dashboard?.tiles.length === 0 ? 'green' : 'gray'}
         fw={400}
         onClick={onAddTile}
         w="100%"

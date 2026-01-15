@@ -1600,8 +1600,7 @@ function ServicesDashboardPage() {
                 onClick={refresh}
                 loading={manualRefreshCooloff}
                 disabled={manualRefreshCooloff}
-                color="gray"
-                variant="outline"
+                variant="secondary"
                 title="Refresh dashboard"
                 aria-label="Refresh dashboard"
                 px="xs"
@@ -1609,8 +1608,13 @@ function ServicesDashboardPage() {
                 <IconRefresh size={18} />
               </Button>
             </Tooltip>
-            <Button variant="outline" type="submit" px="sm">
-              <IconPlayerPlay size={16} />
+            <Button
+              variant="primary"
+              type="submit"
+              px="sm"
+              leftSection={<IconPlayerPlay size={16} />}
+            >
+              Run
             </Button>
           </Group>
         </Group>

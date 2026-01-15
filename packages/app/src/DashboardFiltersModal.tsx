@@ -230,7 +230,7 @@ const EmptyState = ({ onCreateFilter, onClose }: EmptyStateProps) => {
           Add filters to let users quickly narrow data on key columns. Saved
           filters will stay with this dashboard.
         </Text>
-        <Button variant="filled" onClick={onCreateFilter}>
+        <Button variant="primary" onClick={onCreateFilter}>
           Add new filter
         </Button>
       </Stack>
@@ -310,7 +310,7 @@ const DashboardFiltersList = ({
         <Button variant="default" onClick={onClose}>
           Close
         </Button>
-        <Button variant="filled" onClick={onAddNew}>
+        <Button variant="primary" onClick={onAddNew}>
           Add new filter
         </Button>
       </Group>

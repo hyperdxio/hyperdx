@@ -556,8 +556,7 @@ function ClickhousePage() {
               onClick={refresh}
               loading={manualRefreshCooloff}
               disabled={manualRefreshCooloff}
-              color="gray"
-              variant="outline"
+              variant="secondary"
               title="Refresh dashboard"
               aria-label="Refresh dashboard"
               px="xs"

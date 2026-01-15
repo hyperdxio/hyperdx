@@ -11,13 +11,7 @@ export default function SearchPageActionBar({
   return (
     <Menu width={250}>
       <Menu.Target>
-        <Button
-          variant="outline"
-          color="gray"
-          px="xs"
-          size="xs"
-          style={{ flexShrink: 0 }}
-        >
+        <Button variant="secondary" px="xs" size="xs" style={{ flexShrink: 0 }}>
           <IconDotsVertical size={14} />
         </Button>
       </Menu.Target>

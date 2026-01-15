@@ -111,7 +111,7 @@ function ConnectionsSection() {
         {!isCreatingConnection &&
           (IS_LOCAL_MODE ? (connections?.length ?? 0) < 1 : true) && (
             <Button
-              variant="outline"
+              variant="primary"
               onClick={() => setIsCreatingConnection(true)}
             >
               Add Connection
@@ -228,8 +228,7 @@ function TeamNameSection() {
               <Button
                 type="submit"
                 size="xs"
-                variant="light"
-                color="green"
+                variant="primary"
                 loading={setTeamName.isPending}
               >
                 Save
@@ -412,8 +411,7 @@ function ClickhouseSettingForm({
             <Button
               type="submit"
               size="xs"
-              variant="light"
-              color="green"
+              variant="primary"
               loading={updateClickhouseSettings.isPending}
             >
               Save
@@ -593,8 +591,7 @@ function ApiKeysSection() {
           )}
           {hasAdminAccess && (
             <Button
-              variant="light"
-              color="red"
+              variant="danger"
               onClick={() => setRotateApiKeyConfirmationModalShow(true)}
             >
               Rotate API Key
@@ -628,8 +625,7 @@ function ApiKeysSection() {
                 Cancel
               </Button>
               <Button
-                variant="outline"
-                color="red"
+                variant="danger"
                 className="mt-2 px-4 float-end"
                 size="sm"
                 onClick={onConfirmUpdateTeamApiKey}
