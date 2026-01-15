@@ -134,26 +134,62 @@ function usePatterns({
   severityTextExpression?: string;
   enabled?: boolean;
 }) {
-  const configWithPrimaryAndPartitionKey = useConfigWithPrimaryAndPartitionKey({
-    ...config,
-    // TODO: User-configurable pattern columns and non-pattern/group by columns
-    select: [
-      `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
-      `${getFirstTimestampValueExpression(config.timestampValueExpression)} as ${TIMESTAMP_COLUMN_ALIAS}`,
-      ...(severityTextExpression
-        ? [`${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`]
-        : []),
-    ].join(','),
-    // TODO: Proper sampling
-    orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-    limit: { limit: samples },
-  });
+  // Create a sampling config with CTE for smart sampling
+  const samplingConfig = useMemo(() => {
+    // Build config with CTE for count check
+    const configWithCTE: ChartConfigWithDateRange = {
+      ...config,
+      // Add CTE to get table statistics for sampling
+      with: [
+        {
+          name: 'tableStats',
+          chartConfig: {
+            ...config,
+            select: 'count() as total',
+            groupBy: undefined,
+            orderBy: undefined,
+            limit: undefined,
+          },
+        },
+      ],
+      // Select the required columns
+      select: [
+        `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
+        `${getFirstTimestampValueExpression(config.timestampValueExpression)} as ${TIMESTAMP_COLUMN_ALIAS}`,
+        ...(severityTextExpression
+          ? [`${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`]
+          : []),
+      ].join(','),
+      // Add sampling condition as a filter
+      filters: [
+        ...(config.filters || []),
+        {
+          type: 'sql',
+          condition: `if(
+            (SELECT total FROM tableStats) <= ${samples},
+            1,
+            cityHash64(${getFirstTimestampValueExpression(config.timestampValueExpression)}, rand()) % greatest(
+              CAST((SELECT total FROM tableStats) / ${samples} AS UInt32),
+              1
+            ) = 0
+          )`,
+        },
+      ],
+      // Remove random ordering
+      orderBy: undefined,
+      limit: { limit: samples },
+    };
 
-  const { data: sampleRows, isLoading: isSampleLoading } =
-    useQueriedChartConfig(
-      configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
-      { enabled: configWithPrimaryAndPartitionKey != null && enabled },
-    );
+    return configWithCTE;
+  }, [config, samples, bodyValueExpression, severityTextExpression]);
+
+  const configWithPrimaryAndPartitionKey =
+    useConfigWithPrimaryAndPartitionKey(samplingConfig);
+
+  const { data: sampleRows, isLoading: isLoadingSampleRows } =
+    useQueriedChartConfig(configWithPrimaryAndPartitionKey ?? samplingConfig, {
+      enabled: configWithPrimaryAndPartitionKey != null && enabled,
+    });
 
   const { data: pyodide, isLoading: isLoadingPyodide } = usePyodide({
     enabled,
@@ -200,7 +236,7 @@ function usePatterns({
 
   return {
     ...query,
-    isLoading: query.isLoading || isSampleLoading || isLoadingPyodide,
+    isLoading: query.isLoading || isLoadingPyodide || isLoadingSampleRows,
     patternQueryConfig: configWithPrimaryAndPartitionKey,
   };
 }
