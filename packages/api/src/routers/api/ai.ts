@@ -14,7 +14,7 @@ import {
 } from '@/controllers/ai';
 import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
-import { Api500Error } from '@/utils/errors';
+import { Api404Error, Api500Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
 
@@ -32,9 +32,7 @@ router.post(
     try {
       const model = await getAIModel();
       if (!model) {
-        return res.status(500).json({
-          error: 'No AI model provider configured',
-        });
+        throw new Api500Error('No AI model provider configured');
       }
       const { teamId } = getNonNullUserWithTeam(req);
 
@@ -44,9 +42,7 @@ router.post(
 
       if (source == null) {
         logger.error({ message: 'invalid source id', sourceId, teamId });
-        return res.status(400).json({
-          error: 'Invalid source',
-        });
+        throw new Api404Error('Invalid source');
       }
 
       const { allFieldsWithKeys, keyValues } = await getAIMetadata(source);
