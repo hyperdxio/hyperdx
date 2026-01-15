@@ -247,28 +247,31 @@ function OnboardingModalComponent({
               id: source.id,
             });
           }
+
+          // Clean out sources which were created with an empty connection (invalid)
+          if (source.connection === '') {
+            await deleteSourceMutation.mutateAsync({
+              id: source.id,
+            });
+          }
         }
       }
+
       let createdConnectionId = '';
-      await createConnectionMutation.mutateAsync(
-        {
+      try {
+        const connection = await createConnectionMutation.mutateAsync({
           connection: {
             name: 'Demo',
             host: 'https://sql-clickhouse.clickhouse.com',
             username: 'otel_demo',
             password: '',
           },
-        },
-        {
-          onSuccess(data) {
-            createdConnectionId = data.id;
-          },
-          onError(error) {
-            console.error('Failed to create demo connection: ', error);
-            return;
-          },
-        },
-      );
+        });
+        createdConnectionId = connection.id;
+      } catch (err) {
+        console.error('Failed to create demo connection', err);
+        return;
+      }
 
       await addOtelDemoSources({
         connectionId: createdConnectionId,
