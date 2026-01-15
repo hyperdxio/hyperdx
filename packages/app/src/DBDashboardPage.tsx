@@ -934,12 +934,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <Text size="sm">
               This is a temporary dashboard and can not be saved.
             </Text>
-            <Button
-              variant="outline"
-              color="green"
-              fw={400}
-              onClick={onCreateDashboard}
-            >
+            <Button variant="outline" fw={400} onClick={onCreateDashboard}>
               Create New Saved Dashboard
             </Button>
           </Flex>

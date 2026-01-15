@@ -45,42 +45,20 @@ export const makeTheme = ({
     xl: 'calc(2rem * var(--mantine-scale))',
   },
   colors: {
-    // ClickStack yellow/gold palette
+    // Note: Actual color values are overridden via CSS variables in _tokens.scss
+    // These arrays are required for Mantine to recognize the colors
+    // The CSS variables allow different palettes for light/dark modes
     yellow: [
-      '#fff9e6',
-      '#fff3cc',
-      '#ffe699',
-      '#ffd966',
-      '#ffcc33',
-      '#f5b800',
-      '#cc9900',
-      '#997300',
-      '#664d00',
-      '#332600',
-    ],
-    gray: [
-      '#f8f9fa',
-      '#f1f3f5',
-      '#e9ecef',
-      '#dee2e6',
-      '#ced4da',
-      '#adb5bd',
-      '#868e96',
-      '#495057',
-      '#343a40',
-      '#212529',
-    ],
-    dark: [
-      '#d5d7e0',
-      '#acaebf',
-      '#8c8fa3',
-      '#666980',
-      '#4d4f66',
-      '#34354a',
-      '#2b2c3d',
-      '#1d1e30',
-      '#0c0d21',
-      '#01010a',
+      '#ffffe8', // Overridden by --mantine-color-yellow-0
+      '#feffc2', // Overridden by --mantine-color-yellow-1
+      '#fdffa3', // Overridden by --mantine-color-yellow-2
+      '#faff69', // Overridden by --mantine-color-yellow-3
+      '#eef400', // Overridden by --mantine-color-yellow-4
+      '#c7cc00', // Overridden by --mantine-color-yellow-5
+      '#959900', // Overridden by --mantine-color-yellow-6
+      '#686b00', // Overridden by --mantine-color-yellow-7
+      '#3c4601', // Overridden by --mantine-color-yellow-8
+      '#333300', // Overridden by --mantine-color-yellow-9
     ],
   },
   headings: {

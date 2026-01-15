@@ -6,6 +6,72 @@
 
 /* Dark Mode */
 .theme-clickstack[data-mantine-color-scheme='dark'] {
+  /* Brand Palette - Yellow/Gold */
+  --palette-brand-50: #ffffe8;
+  --palette-brand-100: #feffc2;
+  --palette-brand-200: #fdffa3;
+  --palette-brand-300: #faff69;
+  --palette-brand-400: #eef400;
+  --palette-brand-500: #c7cc00;
+  --palette-brand-600: #959900;
+  --palette-brand-700: #686b00;
+  --palette-brand-800: #3c4601;
+  --palette-brand-900: #330;
+  --palette-brand-base: #fbff46;
+
+  /* Neutral Palette - Dark Mode */
+  --palette-neutral-0: #fff;
+  --palette-neutral-100: #f9f9f9;
+  --palette-neutral-200: #dfdfdf;
+  --palette-neutral-300: #c0c0c0;
+  --palette-neutral-400: #a0a0a0;
+  --palette-neutral-500: #808080;
+  --palette-neutral-600: #606060;
+  --palette-neutral-650: #505050;
+  --palette-neutral-700: #414141;
+  --palette-neutral-712: #323232;
+  --palette-neutral-725: #282828;
+  --palette-neutral-750: #1f1f1c;
+  --palette-neutral-800: #1d1d1d;
+  --palette-neutral-900: #151515;
+  --palette-neutral-base: #212121;
+
+  /* Mantine Yellow/Primary Override - Uses Brand Palette */
+  --mantine-color-yellow-0: var(--palette-brand-50);
+  --mantine-color-yellow-1: var(--palette-brand-100);
+  --mantine-color-yellow-2: var(--palette-brand-200);
+  --mantine-color-yellow-3: var(--palette-brand-300);
+  --mantine-color-yellow-4: var(--palette-brand-400);
+  --mantine-color-yellow-5: var(--palette-brand-500);
+  --mantine-color-yellow-6: var(--palette-brand-600);
+  --mantine-color-yellow-7: var(--palette-brand-700);
+  --mantine-color-yellow-8: var(--palette-brand-800);
+  --mantine-color-yellow-9: var(--palette-brand-900);
+
+  /* Mantine Gray Override - Uses Neutral Palette */
+  --mantine-color-gray-0: var(--palette-neutral-0);
+  --mantine-color-gray-1: var(--palette-neutral-100);
+  --mantine-color-gray-2: var(--palette-neutral-200);
+  --mantine-color-gray-3: var(--palette-neutral-300);
+  --mantine-color-gray-4: var(--palette-neutral-400);
+  --mantine-color-gray-5: var(--palette-neutral-500);
+  --mantine-color-gray-6: var(--palette-neutral-600);
+  --mantine-color-gray-7: var(--palette-neutral-700);
+  --mantine-color-gray-8: var(--palette-neutral-800);
+  --mantine-color-gray-9: var(--palette-neutral-900);
+
+  /* Mantine Dark Override - Uses Neutral Palette (inverted for dark backgrounds) */
+  --mantine-color-dark-0: var(--palette-neutral-200);
+  --mantine-color-dark-1: var(--palette-neutral-300);
+  --mantine-color-dark-2: var(--palette-neutral-400);
+  --mantine-color-dark-3: var(--palette-neutral-500);
+  --mantine-color-dark-4: var(--palette-neutral-700);
+  --mantine-color-dark-5: var(--palette-neutral-650);
+  --mantine-color-dark-6: var(--palette-neutral-725);
+  --mantine-color-dark-7: var(--palette-neutral-750);
+  --mantine-color-dark-8: var(--palette-neutral-800);
+  --mantine-color-dark-9: var(--palette-neutral-900);
+
   /* Click UI Global Tokens - Dark Mode Values */
   --click-global-color-stroke-default: #323232;
   --click-global-color-accent-default: #faff69;
@@ -91,6 +157,69 @@
 
 /* Light Mode */
 .theme-clickstack[data-mantine-color-scheme='light'] {
+  /* Brand Palette - Yellow/Gold */
+  --palette-brand-50: #ffffe8;
+  --palette-brand-100: #feffc2;
+  --palette-brand-200: #fdffa3;
+  --palette-brand-300: #faff69;
+  --palette-brand-400: #eef400;
+  --palette-brand-500: #c7cc00;
+  --palette-brand-600: #959900;
+  --palette-brand-700: #686b00;
+  --palette-brand-800: #3c4601;
+  --palette-brand-900: #330;
+  --palette-brand-base: #fbff46;
+
+  /* Slate Palette - Light Mode */
+  --palette-slate-25: #fbfcff;
+  --palette-slate-50: #f6f7fa;
+  --palette-slate-100: #e6e7e9;
+  --palette-slate-200: #cccfd3;
+  --palette-slate-300: #b3b6bd;
+  --palette-slate-400: #9a9ea7;
+  --palette-slate-500: #808691;
+  --palette-slate-600: #696e79;
+  --palette-slate-700: #53575f;
+  --palette-slate-800: #302e32;
+  --palette-slate-900: #161517;
+  --palette-slate-base: #373439;
+
+  /* Mantine Yellow/Primary Override - Uses Brand Palette */
+  --mantine-color-yellow-0: var(--palette-brand-50);
+  --mantine-color-yellow-1: var(--palette-brand-100);
+  --mantine-color-yellow-2: var(--palette-brand-200);
+  --mantine-color-yellow-3: var(--palette-brand-300);
+  --mantine-color-yellow-4: var(--palette-brand-400);
+  --mantine-color-yellow-5: var(--palette-brand-500);
+  --mantine-color-yellow-6: var(--palette-brand-600);
+  --mantine-color-yellow-7: var(--palette-brand-700);
+  --mantine-color-yellow-8: var(--palette-brand-800);
+  --mantine-color-yellow-9: var(--palette-brand-900);
+
+  /* Mantine Gray Override - Uses Slate Palette */
+  --mantine-color-gray-0: var(--palette-slate-25);
+  --mantine-color-gray-1: var(--palette-slate-50);
+  --mantine-color-gray-2: var(--palette-slate-100);
+  --mantine-color-gray-3: var(--palette-slate-200);
+  --mantine-color-gray-4: var(--palette-slate-300);
+  --mantine-color-gray-5: var(--palette-slate-400);
+  --mantine-color-gray-6: var(--palette-slate-500);
+  --mantine-color-gray-7: var(--palette-slate-600);
+  --mantine-color-gray-8: var(--palette-slate-700);
+  --mantine-color-gray-9: var(--palette-slate-800);
+
+  /* Mantine Dark Override - Uses Slate Palette */
+  --mantine-color-dark-0: var(--palette-slate-100);
+  --mantine-color-dark-1: var(--palette-slate-200);
+  --mantine-color-dark-2: var(--palette-slate-300);
+  --mantine-color-dark-3: var(--palette-slate-400);
+  --mantine-color-dark-4: var(--palette-slate-500);
+  --mantine-color-dark-5: var(--palette-slate-600);
+  --mantine-color-dark-6: var(--palette-slate-700);
+  --mantine-color-dark-7: var(--palette-slate-800);
+  --mantine-color-dark-8: var(--palette-slate-900);
+  --mantine-color-dark-9: var(--palette-slate-900);
+
   /* Click UI Global Tokens - Light Mode Values */
   --click-global-color-stroke-default: #e6e7e9;
   --click-global-color-accent-default: #151515;
