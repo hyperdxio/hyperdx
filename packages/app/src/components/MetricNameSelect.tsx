@@ -113,6 +113,8 @@ export function MetricNameSelect({
   isLoading,
   isError,
   metricSource,
+  error,
+  onFocus,
   'data-testid': dataTestId,
 }: {
   dateRange?: DateRange['dateRange'];
@@ -123,6 +125,8 @@ export function MetricNameSelect({
   isLoading?: boolean;
   isError?: boolean;
   metricSource: TSource;
+  error?: string;
+  onFocus?: () => void;
   'data-testid'?: string;
 }) {
   const SEPARATOR = ':::::::';
@@ -192,6 +196,8 @@ export function MetricNameSelect({
           setMetricType(_metricType.toLowerCase() as MetricsDataType);
         }
       }}
+      onFocus={onFocus}
+      error={error}
       data-testid={dataTestId}
     />
   );
