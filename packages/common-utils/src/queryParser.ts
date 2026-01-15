@@ -87,6 +87,7 @@ const CLICK_HOUSE_JSON_NUMBER_TYPES = [
 interface SerializerContext {
   /** The current implicit column expression, indicating which SQL expression to use when comparing a term to the '<implicit>' field */
   implicitColumnExpression?: string;
+  isNegatedAndParenthesized?: boolean;
 }
 
 interface Serializer {
@@ -309,7 +310,7 @@ export abstract class SQLSerializer implements Serializer {
       );
     } else if (propertyType === JSDataType.Number) {
       return SqlString.format(
-        `(${column} ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'${expressionPostfix}))`,
+        `(${column} ${isNegatedField ? '!' : ''}= CAST(?, 'Float64')${expressionPostfix})`,
         [term],
       );
     } else if (propertyType === JSDataType.JSON) {
@@ -450,7 +451,9 @@ export abstract class SQLSerializer implements Serializer {
       return this.NOT_FOUND_QUERY;
     }
     const expressionPostfix =
-      mapKeyIndexExpression && !isNegatedField
+      mapKeyIndexExpression &&
+      !isNegatedField &&
+      (!isImplicitField || !context.isNegatedAndParenthesized)
         ? ` AND ${mapKeyIndexExpression}`
         : '';
     // If it's a string field, we will always try to match with ilike
@@ -884,6 +887,9 @@ function createSerializerContext(
     return {
       ...currentContext,
       implicitColumnExpression: fieldWithoutNegation,
+      ...(isNegatedAndParenthesized(ast)
+        ? { isNegatedAndParenthesized: true }
+        : {}),
     };
   } else {
     return currentContext;
