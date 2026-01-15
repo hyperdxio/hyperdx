@@ -6,6 +6,7 @@ import { Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
+import { getSqlEditor } from '../utils/locators';
 
 export class DashboardPage {
   readonly page: Page;
@@ -20,6 +21,12 @@ export class DashboardPage {
   private readonly searchSubmitButton: Locator;
   private readonly liveButton: Locator;
   private readonly tempDashboardBanner: Locator;
+  private readonly editFiltersButton: Locator;
+  private readonly filtersListModal: Locator;
+  private readonly emptyFiltersListModal: Locator;
+  private readonly addFiltersButton: Locator;
+  private readonly closeFiltersModalButton: Locator;
+  private readonly filtersSourceSelector: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -40,6 +47,14 @@ export class DashboardPage {
     this.tempDashboardBanner = page.locator(
       '[data-testid="temporary-dashboard-banner"]',
     );
+    this.editFiltersButton = page.getByTestId('edit-filters-button');
+    this.filtersListModal = page.getByTestId('dashboard-filters-list');
+    this.emptyFiltersListModal = page.getByTestId(
+      'dashboard-filters-empty-state',
+    );
+    this.addFiltersButton = page.getByTestId('add-filter-button');
+    this.closeFiltersModalButton = page.getByTestId('close-filters-button');
+    this.filtersSourceSelector = page.getByTestId('source-selector');
   }
 
   /**
@@ -226,6 +241,93 @@ export class DashboardPage {
     return this.page.locator('.recharts-responsive-container');
   }
 
+  /** Open the Edit Filters Modal */
+  async openEditFiltersModal() {
+    await this.editFiltersButton.click();
+  }
+
+  /** Close the Edit Filters Modal */
+  async closeFiltersModal() {
+    await this.closeFiltersModalButton.click();
+  }
+
+  async fillFilterForm(
+    name: string,
+    sourceName: string,
+    expression: string,
+    metricType?: string,
+  ) {
+    const filterNameInput = this.page.getByTestId('filter-name-input');
+    await filterNameInput.fill(name);
+
+    await this.filtersSourceSelector.click();
+    await this.page
+      .getByRole('option', { name: sourceName, exact: true })
+      .click();
+
+    const editor = getSqlEditor(this.page, 'expression');
+    await editor.click();
+    await this.page.keyboard.type(expression);
+
+    if (metricType) {
+      await this.page
+        .getByRole('radio', { name: metricType, exact: true })
+        .click();
+    }
+
+    const saveFilterButton = this.page.getByTestId('save-filter-button');
+    await saveFilterButton.click();
+  }
+
+  async addFilterToDashboard(
+    name: string,
+    sourceName: string,
+    expression: string,
+    metricType?: string,
+  ) {
+    await this.addFiltersButton.click();
+
+    await this.fillFilterForm(name, sourceName, expression, metricType);
+  }
+
+  async deleteFilterFromDashboard(name: string) {
+    const deleteButton = this.page.getByTestId(`delete-filter-button-${name}`);
+    await deleteButton.click();
+  }
+
+  async editFilter(
+    currentName: string,
+    name: string,
+    sourceName: string,
+    expression: string,
+    metricType?: string,
+  ) {
+    const editButton = this.page.getByTestId(
+      `edit-filter-button-${currentName}`,
+    );
+    await editButton.click();
+
+    await this.fillFilterForm(name, sourceName, expression, metricType);
+  }
+
+  getFilterItemByName(name: string) {
+    return this.page.getByTestId(`dashboard-filter-item-${name}`);
+  }
+
+  getFilterSelectByName(name: string) {
+    return this.page.getByTestId(`dashboard-filter-select-${name}`);
+  }
+
+  async clickFilterOption(filterName: string, option: string) {
+    const serviceFilter = this.getFilterSelectByName(filterName);
+    serviceFilter.click();
+    const optionLocator = this.page.getByRole('option', {
+      name: option,
+      exact: true,
+    });
+    await optionLocator.click();
+  }
+
   // Getters for assertions
 
   get createButton() {
@@ -250,5 +352,13 @@ export class DashboardPage {
 
   get temporaryDashboardBanner() {
     return this.tempDashboardBanner;
+  }
+
+  get filtersList() {
+    return this.filtersListModal;
+  }
+
+  get emptyFiltersList() {
+    return this.emptyFiltersListModal;
   }
 }

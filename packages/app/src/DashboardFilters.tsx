@@ -40,6 +40,7 @@ const DashboardFilterSelect = ({
       w={200}
       limit={20}
       onChange={onChange}
+      data-testid={`dashboard-filter-select-${filter.name}`}
     />
   );
 };
