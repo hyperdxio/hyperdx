@@ -15,6 +15,7 @@ import z from 'zod';
 
 import * as config from '@/config';
 import { ISource } from '@/models/source';
+import { Api500Error } from '@/utils/errors';
 import logger from '@/utils/logger';
 
 import { getConnectionById } from './connection';
@@ -41,7 +42,7 @@ export async function getAIMetadata(source: ISource) {
   );
 
   if (connection == null) {
-    throw new Error('Invalid connection');
+    throw new Api500Error('Invalid connection');
   }
 
   const clickhouseClient = new ClickhouseClient({
@@ -289,5 +290,6 @@ export function getChartConfigFromResolvedConfig(
     dateRange: [dateRange[0].toString(), dateRange[1].toString()],
     markdown: resObject.markdown,
     granularity: 'auto',
+    whereLanguage: 'lucene',
   };
 }

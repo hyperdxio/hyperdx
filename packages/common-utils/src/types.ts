@@ -913,9 +913,9 @@ const AILineQuerySchema = z
   })
   .merge(AIBaseSchema);
 
-export type AILineTableResponse = z.infer<
-  typeof AILineQuerySchema | typeof AITableQuerySchema
->;
+export type AILineTableResponse =
+  | z.infer<typeof AILineQuerySchema>
+  | z.infer<typeof AITableQuerySchema>;
 
 // Union that covers all 3 objects
 export const AssistantResponseConfig = z.discriminatedUnion('displayType', [

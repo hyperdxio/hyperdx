@@ -101,7 +101,6 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
 
         return res.json(chartConfig);
       } catch (err) {
-        console.log(err);
         if (err instanceof APICallError) {
           throw new Api500Error(`AI Provider Error: ${err.message}`);
         }
