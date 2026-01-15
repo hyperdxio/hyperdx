@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { Anchor, Burger, Button, Container, Group } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
+import { useLogo } from './theme/ThemeProvider';
 import api from './api';
-import Logo from './Logo';
 
 export default function LandingHeader({
   activeKey,
@@ -12,6 +12,7 @@ export default function LandingHeader({
   activeKey: string;
   fixed?: boolean;
 }) {
+  const Logo = useLogo();
   const { data: me } = api.useMe();
   const isLoggedIn = Boolean(me);
 

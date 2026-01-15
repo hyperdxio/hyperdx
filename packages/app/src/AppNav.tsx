@@ -54,6 +54,7 @@ import packageJson from '../package.json';
 const APP_VERSION =
   process.env.NEXT_PUBLIC_APP_VERSION ?? packageJson.version ?? 'dev';
 
+import { useIcon, useLogo } from './theme/ThemeProvider';
 import api from './api';
 import {
   AppNavCloudBanner,
@@ -63,9 +64,7 @@ import {
   AppNavUserMenu,
 } from './AppNav.components';
 import { IS_K8S_DASHBOARD_ENABLED, IS_LOCAL_MODE } from './config';
-import Icon from './Icon';
 import InstallInstructionModal from './InstallInstructionsModal';
-import Logo from './Logo';
 import OnboardingChecklist from './OnboardingChecklist';
 import { useSavedSearches, useUpdateSavedSearch } from './savedSearch';
 import type { SavedSearch, ServerDashboard } from './types';
@@ -356,6 +355,9 @@ function useSearchableList<T extends AppNavLinkItem>({
 }
 
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
+  const Logo = useLogo();
+  const Icon = useIcon();
+
   useEffect(() => {
     let redirectUrl;
     try {

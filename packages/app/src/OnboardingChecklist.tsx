@@ -20,9 +20,9 @@ import {
 } from '@tabler/icons-react';
 
 import { useQueriedChartConfig } from './hooks/useChartConfig';
+import { useIcon } from './theme/ThemeProvider';
 import api from './api';
 import { useConnections } from './connection';
-import Icon from './Icon';
 import { useSources } from './source';
 import { useLocalStorage } from './utils';
 
@@ -41,6 +41,7 @@ const OnboardingChecklist = ({
 }: {
   onAddDataClick?: () => void;
 }) => {
+  const Icon = useIcon();
   const [isCollapsed, setIsCollapsed] = useLocalStorage(
     'onboardingChecklistCollapsed',
     false,
