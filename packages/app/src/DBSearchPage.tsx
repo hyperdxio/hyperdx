@@ -78,7 +78,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchPageActionBar from '@/components/SearchPageActionBar';

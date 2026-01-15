@@ -33,7 +33,7 @@ import {
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { PageHeader } from '@/components/PageHeader';
 
 import { isAlertSilenceExpired } from './utils/alerts';
