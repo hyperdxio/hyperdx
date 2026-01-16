@@ -1,5 +1,13 @@
 # @hyperdx/common-utils
 
+## 0.10.3
+
+### Patch Changes
+
+- 79398be7: chore: Standardize granularities
+- f98fc519: perf: Query filter values from MVs
+- f20fac30: feat: force usage of the map key index with lucene rendered queries
+
 ## 0.10.2
 
 ### Patch Changes
