@@ -8,7 +8,7 @@
 .theme-clickstack[data-mantine-color-scheme='dark'] {
   /* Brand Palette - Yellow/Gold */
   --palette-brand-50: #ffffe8;
-  --palette-brand-100: #feffc2;
+  --palette-brand-100: #feffba;
   --palette-brand-200: #fdffa3;
   --palette-brand-300: #faff69;
   --palette-brand-400: #eef400;
@@ -105,6 +105,9 @@
   --color-bg-danger: #ef4444;
   --color-bg-warning: #f59e0b;
   --color-bg-brand: var(--click-global-color-accent-default);
+  --color-primary-button-background: var(--palette-brand-300);
+  --color-primary-button-background-hover: var(--color-brand-200);
+  --color-primary-button-text: var(--color-text-inverted);
 
   /* Borders & Dividers */
   --color-border: var(--click-global-color-stroke-default);
@@ -254,6 +257,9 @@
   --color-bg-danger: #dc2626;
   --color-bg-warning: #d97706;
   --color-bg-brand: var(--click-global-color-accent-default);
+  --color-primary-button-background: var(--palette-brand-900);
+  --color-primary-button-background-hover: var(--color-brand-800);
+  --color-primary-button-text: var(--color-text-inverted);
 
   /* Borders & Dividers */
   --color-border: var(--click-global-color-stroke-default);

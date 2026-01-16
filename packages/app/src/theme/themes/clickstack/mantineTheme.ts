@@ -219,10 +219,10 @@ export const makeTheme = ({
         if (props.variant === 'primary') {
           return {
             root: {
-              backgroundColor: 'var(--mantine-color-yellow-6)',
-              color: 'var(--mantine-color-dark-9)',
+              backgroundColor: 'var(--color-primary-button-background)',
+              color: 'var(--color-primary-button-text)',
               '&:hover': {
-                backgroundColor: 'var(--mantine-color-yellow-5)',
+                backgroundColor: 'var(--color-primary-button-background-hover)',
               },
             },
           };
