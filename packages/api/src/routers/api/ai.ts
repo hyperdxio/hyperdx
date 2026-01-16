@@ -276,12 +276,21 @@ router.post(
         keys: keysToFetch.map(f => f.key),
       });
 
-      const anthropic = createAnthropic({
+      // Support both direct Anthropic API and Azure AI endpoints
+      const anthropicConfig: any = {
         apiKey: config.ANTHROPIC_API_KEY,
-      });
+      };
+      
+      // If Azure endpoint is configured, use it
+      if (config.ANTHROPIC_BASE_URL) {
+        anthropicConfig.baseURL = config.ANTHROPIC_BASE_URL;
+      }
 
-      // const model = anthropic('claude-3-5-haiku-latest');
-      const model = anthropic('claude-sonnet-4-5-20250929');
+      const anthropic = createAnthropic(anthropicConfig);
+
+      // Use Azure deployment name if configured, otherwise use default model
+      const modelName = config.ANTHROPIC_DEPLOYMENT_NAME || 'claude-sonnet-4-5-20250929';
+      const model = anthropic(modelName);
 
       const prompt = `You are an AI assistant that helps users create chart configurations for an observability platform called HyperDX.
 

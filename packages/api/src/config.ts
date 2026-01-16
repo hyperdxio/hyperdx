@@ -49,3 +49,5 @@ export const CLICKHOUSE_PASSWORD = env.CLICKHOUSE_PASSWORD as string;
 
 // AI Assistant
 export const ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY as string;
+export const ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL as string;
+export const ANTHROPIC_DEPLOYMENT_NAME = env.ANTHROPIC_DEPLOYMENT_NAME as string;
