@@ -1,4 +1,7 @@
-import type { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
+import type {
+  AILineTableResponse,
+  SavedChartConfig,
+} from '@hyperdx/common-utils/dist/types';
 import { useMutation } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
@@ -9,11 +12,11 @@ type AssistantInput = {
 };
 
 export function useChartAssistant() {
-  return useMutation<SavedChartConfig, Error, AssistantInput>({
+  return useMutation<AILineTableResponse, Error, AssistantInput>({
     mutationFn: async ({ sourceId, text }: AssistantInput) =>
       hdxServer('ai/assistant', {
         method: 'POST',
         json: { sourceId, text },
-      }).json<SavedChartConfig>(),
+      }).json<AILineTableResponse>(),
   });
 }
