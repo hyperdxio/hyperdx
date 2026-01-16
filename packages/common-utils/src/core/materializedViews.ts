@@ -383,7 +383,7 @@ async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
   clickhouseClient: BaseClickhouseClient,
   signal: AbortSignal | undefined,
   mvConfig: MaterializedViewConfiguration,
-  sourceFrom: TSource['from'],
+  source: Omit<TSource, 'connection'>, // for overlap with ISource type
 ) {
   const errors: string[] = [];
   // Attempt to optimize any CTEs that exist in the config
@@ -393,8 +393,8 @@ async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
       config.with.map(async cte => {
         if (
           cte.chartConfig &&
-          cte.chartConfig.from.databaseName === sourceFrom.databaseName &&
-          cte.chartConfig.from.tableName === sourceFrom.tableName
+          cte.chartConfig.from.databaseName === source.from.databaseName &&
+          cte.chartConfig.from.tableName === source.from.tableName
         ) {
           return tryConvertConfigToMaterializedViewSelect(
             cte.chartConfig,
@@ -433,8 +433,8 @@ async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
 
   // Attempt to optimize the main (outer) select
   if (
-    config.from.databaseName === sourceFrom.databaseName &&
-    config.from.tableName === sourceFrom.tableName
+    config.from.databaseName === source.from.databaseName &&
+    config.from.tableName === source.from.tableName
   ) {
     const convertedOuterSelect = await tryConvertConfigToMaterializedViewSelect(
       optimizedConfig ?? config,
@@ -460,6 +460,7 @@ async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
       opts: {
         abort_signal: signal,
       },
+      querySettings: source.querySettings,
     });
 
     if (error) {
@@ -486,7 +487,7 @@ export async function tryOptimizeConfigWithMaterializedViewWithExplanations<
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
   signal: AbortSignal | undefined,
-  source: Pick<TSource, 'from'> & Partial<Pick<TSource, 'materializedViews'>>,
+  source: Omit<TSource, 'connection'>, // for overlap with ISource type
 ): Promise<{
   optimizedConfig?: C;
   explanations: MVOptimizationExplanation[];
@@ -500,7 +501,7 @@ export async function tryOptimizeConfigWithMaterializedViewWithExplanations<
         clickhouseClient,
         signal,
         mvConfig,
-        source.from,
+        source,
       ).then(result => ({ ...result, mvConfig })),
     ),
   );
@@ -540,7 +541,7 @@ export async function tryOptimizeConfigWithMaterializedView<
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
   signal: AbortSignal | undefined,
-  source: Pick<TSource, 'from'> & Partial<Pick<TSource, 'materializedViews'>>,
+  source: Omit<TSource, 'connection'>, // for overlap with ISource type
 ) {
   const { optimizedConfig } =
     await tryOptimizeConfigWithMaterializedViewWithExplanations(
@@ -653,6 +654,7 @@ export async function optimizeGetKeyValuesCalls<
           config,
           metadata,
           opts: { abort_signal: signal },
+          querySettings: source?.querySettings,
         });
       return {
         id: toMvId({

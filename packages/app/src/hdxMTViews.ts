@@ -15,6 +15,7 @@ import {
   AggregateFunction,
   ChartConfigWithOptDateRange,
   DerivedColumn,
+  QuerySettings,
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
 
@@ -97,6 +98,7 @@ const buildMTViewDDL = (name: string, table: string, query: ChSql) => {
 export const buildMTViewSelectQuery = async (
   chartConfig: ChartConfigWithOptDateRange,
   metadata: Metadata,
+  querySettings: QuerySettings | undefined,
   customGranularity?: SQLInterval,
 ) => {
   const _config = {
@@ -116,7 +118,7 @@ export const buildMTViewSelectQuery = async (
     orderBy: undefined,
     limit: undefined,
   };
-  const mtViewSQL = await renderChartConfig(_config, metadata);
+  const mtViewSQL = await renderChartConfig(_config, metadata, querySettings);
   const mtViewSQLHash = objectHash.sha1(mtViewSQL);
   const mtViewName = `${chartConfig.from.tableName}_mv_${mtViewSQLHash}`;
   const renderMTViewConfig = {
@@ -148,7 +150,11 @@ export const buildMTViewSelectQuery = async (
     ),
     renderMTViewConfig: async () => {
       try {
-        return await renderChartConfig(renderMTViewConfig, metadata);
+        return await renderChartConfig(
+          renderMTViewConfig,
+          metadata,
+          querySettings,
+        );
       } catch (e) {
         console.error('Failed to render MTView config', e);
         return null;

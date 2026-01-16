@@ -5,9 +5,8 @@ import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
-  AggregateFunctionSchema,
-  DerivedColumn,
   MetricsDataType,
+  QuerySettings,
 } from '@hyperdx/common-utils/dist/types';
 import _ from 'lodash';
 import ms from 'ms';
@@ -35,6 +34,11 @@ const TEST_METRIC_TABLES = {
   summary: DEFAULT_METRICS_TABLE.SUMMARY,
   'exponential histogram': DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM,
 };
+
+const querySettings: QuerySettings = [
+  { setting: 'optimize_read_in_order', value: '0' },
+  { setting: 'cast_keep_nullable', value: '0' },
+];
 
 describe('renderChartConfig', () => {
   const server = getServer();
@@ -152,6 +156,7 @@ describe('renderChartConfig', () => {
           timestampValueExpression: 'ts',
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -190,6 +195,7 @@ describe('renderChartConfig', () => {
           timestampValueExpression: 'ts',
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -226,6 +232,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
 
       const resp = await clickhouseClient
@@ -272,6 +279,7 @@ describe('renderChartConfig', () => {
           groupBy: 'ServiceName',
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -342,6 +350,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(avgQuery)).toMatchSnapshot();
       const maxQuery = await renderChartConfig(
@@ -363,6 +372,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(maxQuery)).toMatchSnapshot();
       const sumQuery = await renderChartConfig(
@@ -384,6 +394,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(sumQuery)).toMatchSnapshot();
     });
@@ -409,6 +420,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -434,6 +446,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -459,6 +472,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -485,6 +499,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -657,6 +672,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -681,6 +697,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -705,6 +722,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(query)).toMatchSnapshot();
     });
@@ -749,6 +767,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(minQuery)).toMatchSnapshot('minSum');
 
@@ -771,6 +790,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       expect(await queryData(maxQuery)).toMatchSnapshot('maxSum');
     });
@@ -1151,6 +1171,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1200,6 +1221,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1250,6 +1272,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1294,6 +1317,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1320,6 +1344,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1347,6 +1372,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1374,6 +1400,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
@@ -1444,6 +1471,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
 
       const res = await queryData(query);
@@ -1480,6 +1508,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
 
       const res = await queryData(query);
@@ -1509,6 +1538,7 @@ describe('renderChartConfig', () => {
           connection: connection.id,
         },
         metadata,
+        querySettings,
       );
 
       const res = await queryData(query);

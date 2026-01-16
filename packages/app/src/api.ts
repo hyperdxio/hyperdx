@@ -7,7 +7,7 @@ import type {
   PresetDashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
 import type { UseQueryOptions } from '@tanstack/react-query';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
 import { Dashboard } from './dashboard';
