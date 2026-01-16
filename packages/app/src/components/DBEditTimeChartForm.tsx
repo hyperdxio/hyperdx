@@ -60,7 +60,6 @@ import {
 import { SortingState } from '@tanstack/react-table';
 
 import {
-  AGG_FNS,
   buildTableRowSearchUrl,
   convertToNumberChartConfig,
   convertToTableChartConfig,
@@ -68,6 +67,7 @@ import {
   getPreviousDateRange,
 } from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
+import { ApdexThresholdInput } from '@/components/ApdexThresholdInput';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -275,9 +275,17 @@ function ChartSeriesEditorComponent({
           <AggFnSelectControlled
             aggFnName={`${namePrefix}aggFn`}
             quantileLevelName={`${namePrefix}level`}
-            defaultValue={AGG_FNS[0].value}
+            defaultValue={'count'}
             control={control}
           />
+          {aggFn === 'apdex' && (
+            <Group mt="xxs" gap="xs">
+              <ApdexThresholdInput
+                name={`${namePrefix}threshold`}
+                control={control}
+              />
+            </Group>
+          )}
         </div>
         {tableSource?.kind === SourceKind.Metric && metricType && (
           <div style={{ minWidth: 220 }}>

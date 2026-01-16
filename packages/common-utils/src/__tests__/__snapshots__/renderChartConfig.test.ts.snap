@@ -26,6 +26,192 @@ exports[`renderChartConfig containing CTE clauses should render a ChSql CTE conf
 
 exports[`renderChartConfig containing CTE clauses should render a chart config CTE configuration correctly 1`] = `"WITH Parts AS (SELECT _part, _part_offset FROM default.some_table WHERE ((FieldA = 'test')) ORDER BY rand() DESC LIMIT 1000) SELECT * FROM Parts WHERE ((FieldA = 'test') AND (indexHint((_part, _part_offset) IN (SELECT tuple(_part, _part_offset) FROM Parts)))) ORDER BY rand() DESC LIMIT 1000"`;
 
+exports[`renderChartConfig histogram metric queries apdex should generate a query with grouping and time bucketing 1`] = `
+"WITH source AS (
+      SELECT
+        ExplicitBounds,
+        toStartOfInterval(toDateTime(TimeUnix), INTERVAL 2 minute) AS \`__hdx_time_bucket\`,
+        [ResourceAttributes['host']] AS group,
+        sumForEach(deltas) AS bucket_counts,
+        0.5 AS threshold
+      FROM (
+        SELECT
+          TimeUnix,
+          AggregationTemporality,
+          ExplicitBounds,
+          ResourceAttributes,
+          Attributes,
+          attr_hash,
+          any(attr_hash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_attr_hash,
+          any(bounds_hash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_bounds_hash,
+          any(counts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_counts,
+          counts,
+          IF(
+            AggregationTemporality = 1
+              OR prev_attr_hash != attr_hash
+              OR bounds_hash != prev_bounds_hash
+              OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)),
+            counts,
+            counts - prev_counts
+          ) AS deltas
+        FROM (
+          SELECT
+            TimeUnix,
+            AggregationTemporality,
+            ExplicitBounds,
+            ResourceAttributes,
+            Attributes,
+            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+            cityHash64(ExplicitBounds) AS bounds_hash,
+            CAST(BucketCounts AS Array(Int64)) AS counts
+          FROM default.otel_metrics_histogram
+          WHERE (TimeUnix >= toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 2 minute) - INTERVAL 2 minute AND TimeUnix <= toStartOfInterval(fromUnixTimestamp64Milli(1765670400000), INTERVAL 2 minute) + INTERVAL 2 minute) AND ((MetricName = 'http.server.duration'))
+          ORDER BY attr_hash, TimeUnix ASC
+        )
+      )
+      GROUP BY \`__hdx_time_bucket\`, group, ExplicitBounds
+      ORDER BY \`__hdx_time_bucket\`
+    ),metrics AS (
+      SELECT
+        \`__hdx_time_bucket\`,
+        group,
+        arrayResize(ExplicitBounds, length(bucket_counts), inf) AS safe_bounds,
+        arraySum((delta, bound) -> if(bound <= threshold, delta, 0), bucket_counts, safe_bounds) AS satisfied,
+        arraySum((delta, bound) -> if(bound > threshold AND bound <= (threshold * 4), delta, 0), bucket_counts, safe_bounds) AS tolerating,
+        arraySum((delta, bound) -> if(bound > (threshold * 4), delta, 0), bucket_counts, safe_bounds) AS frustrated,
+        if(
+          satisfied + tolerating + frustrated > 0,
+          (satisfied + tolerating * 0.5) / (satisfied + tolerating + frustrated),
+          NULL
+        ) AS \\"Value\\"
+      FROM source
+    ) SELECT \`__hdx_time_bucket\`, group, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable'"
+`;
+
+exports[`renderChartConfig histogram metric queries apdex should generate a query without grouping but time bucketing 1`] = `
+"WITH source AS (
+      SELECT
+        ExplicitBounds,
+        toStartOfInterval(toDateTime(TimeUnix), INTERVAL 2 minute) AS \`__hdx_time_bucket\`,
+        
+        sumForEach(deltas) AS bucket_counts,
+        0.5 AS threshold
+      FROM (
+        SELECT
+          TimeUnix,
+          AggregationTemporality,
+          ExplicitBounds,
+          ResourceAttributes,
+          Attributes,
+          attr_hash,
+          any(attr_hash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_attr_hash,
+          any(bounds_hash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_bounds_hash,
+          any(counts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_counts,
+          counts,
+          IF(
+            AggregationTemporality = 1
+              OR prev_attr_hash != attr_hash
+              OR bounds_hash != prev_bounds_hash
+              OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)),
+            counts,
+            counts - prev_counts
+          ) AS deltas
+        FROM (
+          SELECT
+            TimeUnix,
+            AggregationTemporality,
+            ExplicitBounds,
+            ResourceAttributes,
+            Attributes,
+            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+            cityHash64(ExplicitBounds) AS bounds_hash,
+            CAST(BucketCounts AS Array(Int64)) AS counts
+          FROM default.otel_metrics_histogram
+          WHERE (TimeUnix >= toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 2 minute) - INTERVAL 2 minute AND TimeUnix <= toStartOfInterval(fromUnixTimestamp64Milli(1765670400000), INTERVAL 2 minute) + INTERVAL 2 minute) AND ((MetricName = 'http.server.duration'))
+          ORDER BY attr_hash, TimeUnix ASC
+        )
+      )
+      GROUP BY \`__hdx_time_bucket\`, ExplicitBounds
+      ORDER BY \`__hdx_time_bucket\`
+    ),metrics AS (
+      SELECT
+        \`__hdx_time_bucket\`,
+        
+        arrayResize(ExplicitBounds, length(bucket_counts), inf) AS safe_bounds,
+        arraySum((delta, bound) -> if(bound <= threshold, delta, 0), bucket_counts, safe_bounds) AS satisfied,
+        arraySum((delta, bound) -> if(bound > threshold AND bound <= (threshold * 4), delta, 0), bucket_counts, safe_bounds) AS tolerating,
+        arraySum((delta, bound) -> if(bound > (threshold * 4), delta, 0), bucket_counts, safe_bounds) AS frustrated,
+        if(
+          satisfied + tolerating + frustrated > 0,
+          (satisfied + tolerating * 0.5) / (satisfied + tolerating + frustrated),
+          NULL
+        ) AS \\"Value\\"
+      FROM source
+    ) SELECT \`__hdx_time_bucket\`, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable'"
+`;
+
+exports[`renderChartConfig histogram metric queries apdex should generate a query without grouping or time bucketing 1`] = `
+"WITH source AS (
+      SELECT
+        ExplicitBounds,
+        TimeUnix AS \`__hdx_time_bucket\`,
+        
+        sumForEach(deltas) AS bucket_counts,
+        0.5 AS threshold
+      FROM (
+        SELECT
+          TimeUnix,
+          AggregationTemporality,
+          ExplicitBounds,
+          ResourceAttributes,
+          Attributes,
+          attr_hash,
+          any(attr_hash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_attr_hash,
+          any(bounds_hash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_bounds_hash,
+          any(counts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_counts,
+          counts,
+          IF(
+            AggregationTemporality = 1
+              OR prev_attr_hash != attr_hash
+              OR bounds_hash != prev_bounds_hash
+              OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)),
+            counts,
+            counts - prev_counts
+          ) AS deltas
+        FROM (
+          SELECT
+            TimeUnix,
+            AggregationTemporality,
+            ExplicitBounds,
+            ResourceAttributes,
+            Attributes,
+            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+            cityHash64(ExplicitBounds) AS bounds_hash,
+            CAST(BucketCounts AS Array(Int64)) AS counts
+          FROM default.otel_metrics_histogram
+          WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND ((MetricName = 'http.server.duration'))
+          ORDER BY attr_hash, TimeUnix ASC
+        )
+      )
+      GROUP BY \`__hdx_time_bucket\`, ExplicitBounds
+      ORDER BY \`__hdx_time_bucket\`
+    ),metrics AS (
+      SELECT
+        \`__hdx_time_bucket\`,
+        
+        arrayResize(ExplicitBounds, length(bucket_counts), inf) AS safe_bounds,
+        arraySum((delta, bound) -> if(bound <= threshold, delta, 0), bucket_counts, safe_bounds) AS satisfied,
+        arraySum((delta, bound) -> if(bound > threshold AND bound <= (threshold * 4), delta, 0), bucket_counts, safe_bounds) AS tolerating,
+        arraySum((delta, bound) -> if(bound > (threshold * 4), delta, 0), bucket_counts, safe_bounds) AS frustrated,
+        if(
+          satisfied + tolerating + frustrated > 0,
+          (satisfied + tolerating * 0.5) / (satisfied + tolerating + frustrated),
+          NULL
+        ) AS \\"Value\\"
+      FROM source
+    ) SELECT \`__hdx_time_bucket\`, \\"Value\\" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable'"
+`;
+
 exports[`renderChartConfig histogram metric queries count should generate a count query with grouping and time bucketing 1`] = `
 "WITH source AS (
         SELECT

@@ -74,6 +74,10 @@ export const AGG_FNS = [
   },
   { value: 'any' as const, label: 'Any' },
   { value: 'none' as const, label: 'None' },
+  {
+    group: 'Extra',
+    items: [{ value: 'apdex' as const, label: 'Apdex' }],
+  },
 ];
 
 export const getMetricAggFns = (
