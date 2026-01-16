@@ -19,7 +19,6 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { IS_LOCAL_MODE } from '@/config';
 import {
   DEFAULT_FONT_VAR,
-  DEFAULT_MANTINE_FONT,
   FONT_VAR_MAP,
   MANTINE_FONT_MAP,
 } from '@/config/fonts';
@@ -69,8 +68,11 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const confirmModal = useConfirmModal();
   const background = useBackground(userPreferences);
 
-  const selectedMantineFont =
-    MANTINE_FONT_MAP[userPreferences.font] || DEFAULT_MANTINE_FONT;
+  // Only override font if user has explicitly set a preference
+  // Otherwise, let the theme use its default font
+  const selectedMantineFont = userPreferences.font
+    ? MANTINE_FONT_MAP[userPreferences.font]
+    : undefined;
 
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
