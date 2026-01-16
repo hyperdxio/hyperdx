@@ -222,7 +222,7 @@ export function NetworkPropertySubpanel({
             });
           }}
         >
-          <Button size="xs" variant="light">
+          <Button size="xs" variant="primary">
             <IconTerminal size={14} className="me-2" />
             Copy Request as Curl
           </Button>
