@@ -135,6 +135,31 @@ const getSeriesFieldPath = (
   return `${namePrefix}${fieldName}` as FieldPath<SavedChartConfigWithSeries>;
 };
 
+// Helper function to validate metric names for metric sources
+const validateMetricNames = (
+  tableSource: TSource | undefined,
+  series: SavedChartConfigWithSelectArray['select'] | undefined,
+  setError: (
+    name: FieldPath<SavedChartConfigWithSeries>,
+    error: { type: string; message: string },
+  ) => void,
+): boolean => {
+  if (tableSource?.kind === SourceKind.Metric && Array.isArray(series)) {
+    let hasValidationError = false;
+    series.forEach((s, index) => {
+      if (s.metricType && !s.metricName) {
+        setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
+          type: 'manual',
+          message: 'Please select a metric name',
+        });
+        hasValidationError = true;
+      }
+    });
+    return hasValidationError;
+  }
+  return false;
+};
+
 const NumberFormatInputControlled = ({
   control,
   onSubmit,
@@ -595,22 +620,8 @@ export default function EditTimeChartForm({
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
       // Validate metric sources have metric names selected
-      if (
-        tableSource?.kind === SourceKind.Metric &&
-        Array.isArray(form.series)
-      ) {
-        let hasValidationError = false;
-        form.series.forEach((series, index) => {
-          if (series.metricType && !series.metricName) {
-            setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
-              type: 'manual',
-              message: 'Please select a metric name',
-            });
-            hasValidationError = true;
-          }
-        });
-
-        if (hasValidationError) return;
+      if (validateMetricNames(tableSource, form.series, setError)) {
+        return;
       }
 
       // Merge the series and select fields back together, and prevent the series field from being submitted
@@ -683,6 +694,11 @@ export default function EditTimeChartForm({
 
   const handleSave = useCallback(
     (v: SavedChartConfigWithSeries) => {
+      // Validate metric sources have metric names selected
+      if (validateMetricNames(tableSource, v.series, setError)) {
+        return;
+      }
+
       // If the chart type is search, we need to ensure the select is a string
       if (displayType === DisplayType.Search && typeof v.select !== 'string') {
         v.select = '';
@@ -692,7 +708,7 @@ export default function EditTimeChartForm({
       // Avoid saving the series field. Series should be persisted in the select field.
       onSave?.(omit(v, ['series']));
     },
-    [onSave, displayType],
+    [onSave, displayType, tableSource, setError],
   );
 
   // Track previous values for detecting changes
