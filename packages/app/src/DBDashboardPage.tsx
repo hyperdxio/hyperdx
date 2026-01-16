@@ -1126,6 +1126,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               variant="default"
               px="xs"
               onClick={() => setShowFiltersModal(true)}
+              data-testid="edit-filters-button"
             >
               <IconFilterEdit strokeWidth={1} />
             </Button>

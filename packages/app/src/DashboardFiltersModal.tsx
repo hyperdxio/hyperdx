@@ -138,6 +138,7 @@ const DashboardFilterEditForm = ({
             <CustomInputWrapper label="Name" error={formState.errors.name}>
               <TextInput
                 placeholder="Name"
+                data-testid="filter-name-input"
                 {...register('name', { required: true, minLength: 1 })}
               />
             </CustomInputWrapper>
@@ -206,7 +207,13 @@ const DashboardFilterEditForm = ({
               <Button variant="default" onClick={onCancel}>
                 Cancel
               </Button>
-              <Button type="submit">Save filter</Button>
+              <Button
+                type="submit"
+                variant="primary"
+                data-testid="save-filter-button"
+              >
+                Save filter
+              </Button>
             </Group>
           </Stack>
         </form>
@@ -223,14 +230,24 @@ interface EmptyStateProps {
 const EmptyState = ({ onCreateFilter, onClose }: EmptyStateProps) => {
   return (
     <Modal opened onClose={onClose} size={MODAL_SIZE}>
-      <Stack align="center" justify="center" pt="lg" pb="xl">
+      <Stack
+        align="center"
+        justify="center"
+        pt="lg"
+        pb="xl"
+        data-testid="dashboard-filters-empty-state"
+      >
         <IconFilter />
         <Title order={4}>No filters yet.</Title>
         <Text size="sm" ta="center" px="xl">
           Add filters to let users quickly narrow data on key columns. Saved
           filters will stay with this dashboard.
         </Text>
-        <Button variant="primary" onClick={onCreateFilter}>
+        <Button
+          variant="primary"
+          onClick={onCreateFilter}
+          data-testid="add-filter-button"
+        >
           Add new filter
         </Button>
       </Stack>
@@ -265,7 +282,11 @@ const DashboardFiltersList = ({
       size={MODAL_SIZE}
       className={styles.modal}
     >
-      <Stack className={styles.filtersContainer} gap="xs">
+      <Stack
+        className={styles.filtersContainer}
+        gap="xs"
+        data-testid="dashboard-filters-list"
+      >
         {filters.map(filter => (
           <Paper
             key={filter.id}
@@ -273,6 +294,7 @@ const DashboardFiltersList = ({
             className={styles.filterPaper}
             p="xs"
             variant="muted"
+            data-testid={`dashboard-filter-item-${filter.name}`}
           >
             <Group justify="space-between" className={styles.filterHeader}>
               <Text size="xs">{filter.name}</Text>
@@ -280,12 +302,14 @@ const DashboardFiltersList = ({
                 <UnstyledButton
                   onClick={() => onEdit(filter)}
                   className={styles.filterActionButton}
+                  data-testid={`edit-filter-button-${filter.name}`}
                 >
                   <IconPencil size={16} />
                 </UnstyledButton>
                 <UnstyledButton
                   onClick={() => onRemove(filter.id)}
                   className={`${styles.filterActionButton} ${styles.deleteButton}`}
+                  data-testid={`delete-filter-button-${filter.name}`}
                 >
                   <IconTrash size={16} />
                 </UnstyledButton>
@@ -307,10 +331,18 @@ const DashboardFiltersList = ({
       </Stack>
 
       <Group justify="space-between" my="sm">
-        <Button variant="default" onClick={onClose}>
+        <Button
+          variant="default"
+          onClick={onClose}
+          data-testid="close-filters-button"
+        >
           Close
         </Button>
-        <Button variant="primary" onClick={onAddNew}>
+        <Button
+          variant="primary"
+          onClick={onAddNew}
+          data-testid="add-filter-button"
+        >
           Add new filter
         </Button>
       </Group>
