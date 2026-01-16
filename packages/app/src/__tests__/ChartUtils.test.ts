@@ -36,7 +36,6 @@ describe('ChartUtils', () => {
           currentPeriodResponse: res,
           dateRange: [new Date(), new Date()],
           granularity: '1 minute',
-          generateEmptyBuckets: false,
         }),
       ).toThrow(
         'No timestamp column found with meta: [{"name":"AVG(toFloat64OrDefault(toString(Duration)))","type":"Float64"}]',
@@ -62,7 +61,6 @@ describe('ChartUtils', () => {
         currentPeriodResponse: res,
         dateRange: [new Date(), new Date()],
         granularity: '1 minute',
-        generateEmptyBuckets: false,
       });
 
       expect(actual.graphResults).toEqual([]);
@@ -102,7 +100,6 @@ describe('ChartUtils', () => {
         currentPeriodResponse: res,
         dateRange: [new Date(), new Date()],
         granularity: '1 minute',
-        generateEmptyBuckets: false,
       });
 
       expect(actual.graphResults).toEqual([
@@ -185,7 +182,6 @@ describe('ChartUtils', () => {
         currentPeriodResponse: res,
         dateRange: [new Date(), new Date()],
         granularity: '1 minute',
-        generateEmptyBuckets: false,
       });
 
       expect(actual.graphResults).toEqual([
@@ -293,7 +289,6 @@ describe('ChartUtils', () => {
         currentPeriodResponse: res,
         dateRange: [new Date(), new Date()],
         granularity: '1 minute',
-        generateEmptyBuckets: false,
         source,
       });
 
@@ -325,7 +320,7 @@ describe('ChartUtils', () => {
       ]);
     });
 
-    it('should zero-fill missing time buckets', () => {
+    it('should zero-fill missing time buckets when fillNullsWith is 0', () => {
       const res = {
         data: [
           {
@@ -371,7 +366,7 @@ describe('ChartUtils', () => {
         currentPeriodResponse: res,
         dateRange: [new Date(1764159780000), new Date(1764159900000)],
         granularity: '1 minute',
-        generateEmptyBuckets: true,
+        fillNullsWith: 0,
       });
 
       expect(actual.graphResults).toEqual([
@@ -441,6 +436,154 @@ describe('ChartUtils', () => {
       ]);
     });
 
+    it('should fill missing time buckets with custom value', () => {
+      const res = {
+        data: [
+          {
+            'count()': 10,
+            __hdx_time_bucket: '2025-11-26T12:23:00Z',
+          },
+          {
+            'count()': 20,
+            __hdx_time_bucket: '2025-11-26T12:25:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'count()',
+            type: 'UInt64',
+          },
+          {
+            name: '__hdx_time_bucket',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(1764159780000), new Date(1764159900000)],
+        granularity: '1 minute',
+        fillNullsWith: -1,
+      });
+
+      expect(actual.graphResults).toEqual([
+        {
+          __hdx_time_bucket: 1764159780,
+          'count()': 10,
+        },
+        {
+          __hdx_time_bucket: 1764159840,
+          'count()': -1,
+        },
+        {
+          __hdx_time_bucket: 1764159900,
+          'count()': 20,
+        },
+      ]);
+    });
+
+    it('should not fill missing time buckets when fillNullsWith is undefined', () => {
+      const res = {
+        data: [
+          {
+            'count()': 10,
+            __hdx_time_bucket: '2025-11-26T12:23:00Z',
+          },
+          {
+            'count()': 20,
+            __hdx_time_bucket: '2025-11-26T12:25:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'count()',
+            type: 'UInt64',
+          },
+          {
+            name: '__hdx_time_bucket',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(1764159780000), new Date(1764159900000)],
+        granularity: '1 minute',
+        fillNullsWith: undefined,
+      });
+
+      // Should only have the two data points, no filled buckets
+      expect(actual.graphResults).toEqual([
+        {
+          __hdx_time_bucket: 1764159780,
+          'count()': 10,
+        },
+        {
+          __hdx_time_bucket: 1764159900,
+          'count()': 20,
+        },
+      ]);
+    });
+
+    it('should fill missing series values in existing buckets with custom value', () => {
+      const res = {
+        data: [
+          {
+            'count()': 10,
+            ServiceName: 'api',
+            __hdx_time_bucket: '2025-11-26T12:23:00Z',
+          },
+          // Missing 'web' service at 12:23
+          {
+            'count()': 15,
+            ServiceName: 'web',
+            __hdx_time_bucket: '2025-11-26T12:24:00Z',
+          },
+          {
+            'count()': 20,
+            ServiceName: 'api',
+            __hdx_time_bucket: '2025-11-26T12:24:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'count()',
+            type: 'UInt64',
+          },
+          {
+            name: 'ServiceName',
+            type: 'LowCardinality(String)',
+          },
+          {
+            name: '__hdx_time_bucket',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(1764159780000), new Date(1764159840000)],
+        granularity: '1 minute',
+        fillNullsWith: 100,
+      });
+
+      expect(actual.graphResults).toEqual([
+        {
+          __hdx_time_bucket: 1764159780,
+          api: 10,
+          web: 100, // Filled with custom value
+        },
+        {
+          __hdx_time_bucket: 1764159840,
+          api: 20,
+          web: 15,
+        },
+      ]);
+    });
+
     it('should plot previous period data when provided, shifted to align with current period', () => {
       const currentPeriodResponse = {
         data: [
@@ -496,7 +639,6 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T11:14:00Z'),
         ],
         granularity: '1 minute',
-        generateEmptyBuckets: false,
         previousPeriodOffsetSeconds: 120,
       });
 

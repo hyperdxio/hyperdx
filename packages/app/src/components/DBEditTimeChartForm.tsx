@@ -45,6 +45,7 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import {
   IconArrowDown,
   IconArrowUp,
@@ -82,7 +83,6 @@ import { GranularityPickerControlled } from '@/GranularityPicker';
 import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
-import { FormatTime } from '@/useFormatTime';
 import {
   getMetricTableName,
   optionsToSelectData,
@@ -99,20 +99,20 @@ import {
 } from '@/utils/alerts';
 
 import HDXMarkdownChart from '../HDXMarkdownChart';
-import type { NumberFormat } from '../types';
 
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { AggFnSelectControlled } from './AggFnSelect';
+import ChartDisplaySettingsDrawer, {
+  ChartConfigDisplaySettings,
+} from './ChartDisplaySettingsDrawer';
 import DBNumberChart from './DBNumberChart';
 import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
 import {
   CheckBoxControlled,
   InputControlled,
-  SwitchControlled,
   TextInputControlled,
 } from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
-import { NumberFormatInput } from './NumberFormat';
 import SaveToDashboardModal from './SaveToDashboardModal';
 import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
@@ -158,30 +158,6 @@ const validateMetricNames = (
     return hasValidationError;
   }
   return false;
-};
-
-const NumberFormatInputControlled = ({
-  control,
-  onSubmit,
-}: {
-  control: Control<any>;
-  onSubmit: () => void;
-}) => {
-  return (
-    <Controller
-      control={control}
-      name="numberFormat"
-      render={({ field: { onChange, value } }) => (
-        <NumberFormatInput
-          onChange={(newValue?: NumberFormat) => {
-            onChange(newValue);
-            onSubmit();
-          }}
-          value={value}
-        />
-      )}
-    />
-  );
 };
 
 type SeriesItem = NonNullable<
@@ -537,14 +513,6 @@ export default function EditTimeChartForm({
   const whereLanguage = useWatch({ control, name: 'whereLanguage' });
   const alert = useWatch({ control, name: 'alert' });
   const seriesReturnType = useWatch({ control, name: 'seriesReturnType' });
-  const compareToPreviousPeriod = useWatch({
-    control,
-    name: 'compareToPreviousPeriod',
-  });
-  const alignDateRangeToGranularity = useWatch({
-    control,
-    name: 'alignDateRangeToGranularity',
-  });
   const groupBy = useWatch({ control, name: 'groupBy' });
   const displayType =
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
@@ -579,6 +547,41 @@ export default function EditTimeChartForm({
 
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
   const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
+
+  const [
+    alignDateRangeToGranularity,
+    fillNulls,
+    compareToPreviousPeriod,
+    numberFormat,
+  ] = useWatch({
+    control,
+    name: [
+      'alignDateRangeToGranularity',
+      'fillNulls',
+      'compareToPreviousPeriod',
+      'numberFormat',
+    ],
+  });
+
+  const displaySettings: ChartConfigDisplaySettings = useMemo(
+    () => ({
+      alignDateRangeToGranularity,
+      fillNulls,
+      compareToPreviousPeriod,
+      numberFormat,
+    }),
+    [
+      alignDateRangeToGranularity,
+      fillNulls,
+      compareToPreviousPeriod,
+      numberFormat,
+    ],
+  );
+
+  const [
+    displaySettingsOpened,
+    { open: openDisplaySettings, close: closeDisplaySettings },
+  ] = useDisclosure(false);
 
   // Only update this on submit, otherwise we'll have issues
   // with using the source value from the last submit
@@ -762,34 +765,6 @@ export default function EditTimeChartForm({
     });
   }, [dateRange]);
 
-  // Trigger a search when "Show Complete Intervals" changes
-  useEffect(() => {
-    setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
-      if (config == null) {
-        return config;
-      }
-
-      return {
-        ...config,
-        alignDateRangeToGranularity,
-      };
-    });
-  }, [alignDateRangeToGranularity]);
-
-  // Trigger a search when "compare to previous period" changes
-  useEffect(() => {
-    setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
-      if (config == null) {
-        return config;
-      }
-
-      return {
-        ...config,
-        compareToPreviousPeriod,
-      };
-    });
-  }, [compareToPreviousPeriod]);
-
   const queryReady = isQueryReady(queriedConfig);
 
   // The chart config to use when showing the user the generated SQL
@@ -876,6 +851,22 @@ export default function EditTimeChartForm({
 
   // Need to force a rerender on change as the modal will not be mounted when initially rendered
   const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
+
+  const handleUpdateDisplaySettings = useCallback(
+    ({
+      numberFormat,
+      alignDateRangeToGranularity,
+      fillNulls,
+      compareToPreviousPeriod,
+    }: ChartConfigDisplaySettings) => {
+      setValue('numberFormat', numberFormat);
+      setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
+      setValue('fillNulls', fillNulls);
+      setValue('compareToPreviousPeriod', compareToPreviousPeriod);
+      onSubmit();
+    },
+    [setValue, onSubmit],
+  );
 
   return (
     <div ref={setParentRef} data-testid={dataTestId}>
@@ -1091,10 +1082,13 @@ export default function EditTimeChartForm({
                       </Button>
                     )}
                 </Group>
-                <NumberFormatInputControlled
-                  control={control}
-                  onSubmit={onSubmit}
-                />
+                <Button
+                  onClick={openDisplaySettings}
+                  size="compact-sm"
+                  variant="secondary"
+                >
+                  Display Settings
+                </Button>
               </Flex>
             </>
           ) : (
@@ -1288,33 +1282,6 @@ export default function EditTimeChartForm({
           )}
         </Flex>
       </Flex>
-      {activeTab === 'time' && (
-        <Group justify="end" mb="xs">
-          <SwitchControlled
-            control={control}
-            name="alignDateRangeToGranularity"
-            label="Show Complete Intervals"
-          />
-          <SwitchControlled
-            control={control}
-            name="compareToPreviousPeriod"
-            label={
-              <>
-                Compare to Previous Period{' '}
-                {!dashboardId && (
-                  <>
-                    (
-                    <FormatTime value={previousDateRange?.[0]} format="short" />
-                    {' - '}
-                    <FormatTime value={previousDateRange?.[1]} format="short" />
-                    )
-                  </>
-                )}
-              </>
-            }
-          />
-        </Group>
-      )}
       {!queryReady && activeTab !== 'markdown' ? (
         <Paper shadow="xs" p="xl">
           <Center mih={400}>
@@ -1461,6 +1428,14 @@ export default function EditTimeChartForm({
         chartConfig={chartConfig}
         opened={saveToDashboardModalOpen}
         onClose={() => setSaveToDashboardModalOpen(false)}
+      />
+      <ChartDisplaySettingsDrawer
+        opened={displaySettingsOpened}
+        settings={displaySettings}
+        previousDateRange={!dashboardId ? previousDateRange : undefined}
+        displayType={displayType}
+        onChange={handleUpdateDisplaySettings}
+        onClose={closeDisplaySettings}
       />
     </div>
   );
