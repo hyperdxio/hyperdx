@@ -1,7 +1,7 @@
 /* stylelint-disable */
 // stylelint adds '}}' to end of file.. not sure why. Disabled for now.
 
-@use './_semantic-colors';
+@use '../src/theme/themes/base-tokens';
 
 // Bootstrap utilities only (d-flex, flex-column, m-*, p-*, etc.)
 @use './_bootstrap-utilities';
