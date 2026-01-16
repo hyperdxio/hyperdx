@@ -946,7 +946,8 @@ const findSource = (
     s =>
       (kind === undefined || s.kind === kind) &&
       (id === undefined || s.id === id) &&
-      (connection === undefined || s.connection === connection),
+      (connection === undefined || s.connection === connection) &&
+      !s.disabled,
   );
 };
 
@@ -991,7 +992,8 @@ export const resolveSourceIds = (
     s =>
       s.kind === SourceKind.Log &&
       s.metricSourceId &&
-      findSource(sources, { id: s.metricSourceId }),
+      findSource(sources, { id: s.metricSourceId }) &&
+      !s.disabled,
   );
 
   if (logSourceWithMetricSource) {

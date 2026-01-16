@@ -40,6 +40,10 @@ export const Source = mongoose.model<ISource>(
       },
 
       name: String,
+      disabled: {
+        type: Boolean,
+        default: false,
+      },
       displayedTimestampValueExpression: String,
       implicitColumnExpression: String,
       serviceNameExpression: String,
