@@ -1,5 +1,30 @@
 # @hyperdx/app
 
+## 2.12.1
+
+### Patch Changes
+
+- 5b3ce9fc: refactor: Standardize Button/ActionIcon variants and add ESLint enforcement
+- 190c66b8: Add metric column name validation when saving dashboard tiles
+- 18222cd3: fix: Fix accuracy of ClickHouse inserts chart
+- de680527: fix: Make pattern sampling query random
+- f39fcdac: fix: Refresh metadata after creating new connection in local mode
+- 5b252211: fix: Respect date range URL params on Services dashboard
+- ddc7dd04: various improvements to search result drawers and nesting logic
+- 79398be7: chore: Standardize granularities
+- a4b06044: fix: alias reference bug in processRowToWhereClause
+- acefcbed: fix: Fix K8s events query for JSON schema
+- 1d961409: fix: Set correct values when opening number format form
+- 6752b3f8: fix: Filter DBTraceWaterfall events on timestamp expression
+- 78423450: Add `variant` prop to table components for muted background styling in dashboard tiles
+- f98fc519: perf: Query filter values from MVs
+- 64998e0f: fix: Fix dashboard filters from Metric Tables
+- ac3082a5: Validate column names for metrics before creating a chart
+- Updated dependencies [79398be7]
+- Updated dependencies [f98fc519]
+- Updated dependencies [f20fac30]
+  - @hyperdx/common-utils@0.10.3
+
 ## 2.12.0
 
 ### Minor Changes

@@ -1,5 +1,16 @@
 # @hyperdx/api
 
+## 2.12.1
+
+### Patch Changes
+
+- d769f88d: Fix issue when a source type is switched after creation
+- 79398be7: chore: Standardize granularities
+- Updated dependencies [79398be7]
+- Updated dependencies [f98fc519]
+- Updated dependencies [f20fac30]
+  - @hyperdx/common-utils@0.10.3
+
 ## 2.12.0
 
 ### Patch Changes
