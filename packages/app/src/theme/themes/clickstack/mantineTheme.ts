@@ -202,58 +202,36 @@ export const makeTheme = ({
       },
     }),
     Button: Button.extend({
-      vars: (theme, props) => {
+      vars: (_theme, props) => {
+        const baseVars: Record<string, string> = {};
+
         if (props.size === 'xxs') {
-          return {
-            root: {
-              '--button-height': rem(22),
-              '--button-padding-x': rem(4),
-              '--button-fz': rem(12),
-            },
-          };
+          baseVars['--button-height'] = rem(22);
+          baseVars['--button-padding-x'] = rem(4);
+          baseVars['--button-fz'] = rem(12);
         }
 
-        return { root: {} };
-      },
-      styles: (_theme, props) => {
+        // Use Mantine's built-in CSS vars for hover support
         if (props.variant === 'primary') {
-          return {
-            root: {
-              backgroundColor: 'var(--color-primary-button-background)',
-              color: 'var(--color-primary-button-text)',
-              '&:hover': {
-                backgroundColor: 'var(--color-primary-button-background-hover)',
-              },
-            },
-          };
+          baseVars['--button-bg'] = 'var(--color-primary-button-bg)';
+          baseVars['--button-hover'] = 'var(--color-primary-button-bg-hover)';
+          baseVars['--button-color'] = 'var(--color-primary-button-text)';
         }
 
         if (props.variant === 'secondary') {
-          return {
-            root: {
-              backgroundColor: 'var(--color-bg-body)',
-              color: 'var(--color-text)',
-              border: '1px solid var(--color-border)',
-              '&:hover': {
-                backgroundColor: 'var(--color-bg-hover)',
-              },
-            },
-          };
+          baseVars['--button-bg'] = 'var(--color-bg-body)';
+          baseVars['--button-hover'] = 'var(--color-bg-hover)';
+          baseVars['--button-color'] = 'var(--color-text)';
+          baseVars['--button-bd'] = '1px solid var(--color-border)';
         }
 
         if (props.variant === 'danger') {
-          return {
-            root: {
-              backgroundColor: 'var(--mantine-color-red-light)',
-              color: 'var(--mantine-color-red-light-color)',
-              '&:hover': {
-                backgroundColor: 'var(--mantine-color-red-light-hover)',
-              },
-            },
-          };
+          baseVars['--button-bg'] = 'var(--mantine-color-red-light)';
+          baseVars['--button-hover'] = 'var(--mantine-color-red-light-hover)';
+          baseVars['--button-color'] = 'var(--mantine-color-red-light-color)';
         }
 
-        return {};
+        return { root: baseVars };
       },
     }),
     SegmentedControl: {

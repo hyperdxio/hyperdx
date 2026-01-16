@@ -105,8 +105,10 @@
   --color-bg-danger: #ef4444;
   --color-bg-warning: #f59e0b;
   --color-bg-brand: var(--click-global-color-accent-default);
-  --color-primary-button-background: var(--palette-brand-300);
-  --color-primary-button-background-hover: var(--color-brand-200);
+
+  /* Primary Button */
+  --color-primary-button-bg: var(--palette-brand-300);
+  --color-primary-button-bg-hover: var(--color-brand-200);
   --color-primary-button-text: var(--color-text-inverted);
 
   /* Borders & Dividers */
@@ -257,8 +259,10 @@
   --color-bg-danger: #dc2626;
   --color-bg-warning: #d97706;
   --color-bg-brand: var(--click-global-color-accent-default);
-  --color-primary-button-background: var(--palette-brand-900);
-  --color-primary-button-background-hover: var(--color-brand-800);
+
+  /* Primary Button */
+  --color-primary-button-bg: var(--palette-slate-800);
+  --color-primary-button-bg-hover: #42464b;
   --color-primary-button-text: var(--color-text-inverted);
 
   /* Borders & Dividers */

@@ -22,6 +22,11 @@
   --color-bg-warning: var(--mantine-color-orange-5);
   --color-bg-brand: #4ffa7a;
 
+  /* Primary Button */
+  --color-primary-button-bg: var(--palette-brand-300);
+  --color-primary-button-bg-hover: var(--color-brand-200);
+  --color-primary-button-text: var(--color-text-inverted);
+
   /* Borders & Dividers */
   --color-border: var(--mantine-color-dark-5);
   --color-border-muted: rgb(255 255 255 / 8%);
