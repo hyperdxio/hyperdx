@@ -415,13 +415,17 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     });
   const { width } = useWindowSize();
 
-  const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<boolean>({
+  const isSmallScreen = (width ?? 1000) < 900;
+
+  const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<
+    boolean | undefined
+  >({
     key: 'isNavCollapsed',
-    defaultValue: false,
+    defaultValue: undefined,
   });
 
-  const isSmallScreen = (width ?? 1000) < 900;
-  const isCollapsed = isSmallScreen || isPreferCollapsed;
+  const isCollapsed =
+    isPreferCollapsed != null ? isPreferCollapsed : isSmallScreen || false;
 
   const navWidth = isCollapsed ? 50 : 230;
   const navHeaderStyle = isCollapsed ? undefined : { height: 58 };
@@ -657,7 +661,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               className={isCollapsed ? 'mt-4' : ''}
               style={{ marginRight: -4, marginLeft: -4 }}
               title="Collapse/Expand Navigation"
-              onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
+              onClick={() =>
+                setIsPreferCollapsed((v: boolean | undefined) => !v)
+              }
             >
               <IconLayoutSidebarLeftCollapse size={16} />
             </ActionIcon>
