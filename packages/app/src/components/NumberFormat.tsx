@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import {
+  ActionIcon,
   Button,
   Checkbox as MCheckbox,
   Drawer,
@@ -186,7 +187,7 @@ export const NumberFormatForm: React.FC<{
           <Button type="submit" onClick={handleSubmit(onApply)}>
             Apply
           </Button>
-          <Button onClick={onClose} variant="default">
+          <Button onClick={onClose} variant="secondary">
             Cancel
           </Button>
         </Stack>
@@ -225,22 +226,19 @@ export const NumberFormatInput: React.FC<{
         <Button
           onClick={open}
           size="compact-sm"
-          color="dark"
-          variant="default"
+          variant="secondary"
           leftSection={value?.output && FORMAT_ICONS[value.output]}
         >
           {value?.output ? FORMAT_NAMES[value.output] : 'Set number format'}
         </Button>
         {value?.output && (
-          <Button
-            size="compact-sm"
-            color="dark"
-            variant="default"
-            px="xs"
+          <ActionIcon
+            size="sm"
+            variant="secondary"
             onClick={() => handleApply(undefined)}
           >
             <IconX size={14} />
-          </Button>
+          </ActionIcon>
         )}
       </Button.Group>
     </>

@@ -30,6 +30,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
+  ActionIcon,
   Box,
   Button,
   Center,
@@ -1205,7 +1206,7 @@ export default function EditTimeChartForm({
             <Button
               data-testid="chart-save-button"
               loading={isSaving}
-              variant="outline"
+              variant="primary"
               onClick={handleSubmit(handleSave)}
             >
               Save
@@ -1259,19 +1260,21 @@ export default function EditTimeChartForm({
           {activeTab !== 'markdown' && (
             <Button
               data-testid="chart-run-query-button"
-              variant="outline"
+              variant="primary"
               type="submit"
               onClick={onSubmit}
+              leftSection={<IconPlayerPlay size={16} />}
+              style={{ flexShrink: 0 }}
             >
-              <IconPlayerPlay size={16} />
+              Run
             </Button>
           )}
           {!IS_LOCAL_MODE && !dashboardId && (
             <Menu width={250}>
               <Menu.Target>
-                <Button variant="outline" color="gray" px="xs" size="sm">
-                  <IconDotsVertical size={14} />
-                </Button>
+                <ActionIcon variant="secondary" size="input-sm">
+                  <IconDotsVertical size={16} />
+                </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Item
