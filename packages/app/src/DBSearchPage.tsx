@@ -302,6 +302,7 @@ function SearchSubmitButton({
       variant={isFormStateDirty ? 'primary' : 'secondary'}
       type="submit"
       leftSection={<IconPlayerPlay size={16} />}
+      style={{ flexShrink: 0 }}
     >
       Run
     </Button>

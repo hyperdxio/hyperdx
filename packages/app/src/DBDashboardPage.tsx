@@ -1137,6 +1137,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           variant="primary"
           type="submit"
           leftSection={<IconPlayerPlay size={16} />}
+          style={{ flexShrink: 0 }}
         >
           Run
         </Button>

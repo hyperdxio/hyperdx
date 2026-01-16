@@ -476,6 +476,7 @@ export default function SessionsPage() {
                 type="submit"
                 px="sm"
                 leftSection={<IconPlayerPlay size={16} />}
+                style={{ flexShrink: 0 }}
               >
                 Run
               </Button>

@@ -1247,6 +1247,7 @@ export default function EditTimeChartForm({
               type="submit"
               onClick={onSubmit}
               leftSection={<IconPlayerPlay size={16} />}
+              style={{ flexShrink: 0 }}
             >
               Run
             </Button>
