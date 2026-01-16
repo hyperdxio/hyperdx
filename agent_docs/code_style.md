@@ -25,19 +25,63 @@
 
 ## Mantine UI Components
 
-The project uses Mantine UI with **custom variants** defined in `packages/app/src/theme/mantineTheme.ts`:
+The project uses Mantine UI with **custom variants** defined in `packages/app/src/theme/mantineTheme.ts`.
 
-### Custom Button Variants
-- `variant="primary"` - Light green button for primary actions
-- `variant="secondary"` - Default styled button for secondary actions  
-- `variant="danger"` - Light red button for destructive actions
+### Button & ActionIcon Variants (REQUIRED)
 
-### Custom ActionIcon Variants
-- `variant="primary"` - Light green action icon
-- `variant="secondary"` - Default styled action icon
-- `variant="danger"` - Light red action icon for destructive actions
+**ONLY use these variants for Button and ActionIcon components:**
 
-These are valid variants - do not replace them with standard Mantine variants like `variant="light" color="red"`.
+| Variant | Use Case | Example |
+|---------|----------|---------|
+| `variant="primary"` | Primary actions (Submit, Save, Create, Run) | `<Button variant="primary">Save</Button>` |
+| `variant="secondary"` | Secondary actions (Cancel, Clear, auxiliary actions) | `<Button variant="secondary">Cancel</Button>` |
+| `variant="danger"` | Destructive actions (Delete, Remove, Rotate API Key) | `<Button variant="danger">Delete</Button>` |
+
+### DO NOT USE (Forbidden Patterns)
+
+The following patterns are **NOT ALLOWED** for Button and ActionIcon:
+
+```tsx
+// ❌ WRONG - Don't use these
+<Button variant="light" color="green">Save</Button>
+<Button variant="light" color="gray">Cancel</Button>
+<Button variant="light" color="red">Delete</Button>
+<Button variant="outline" color="green">Save</Button>
+<Button variant="outline" color="gray">Cancel</Button>
+<Button variant="outline" color="red">Delete</Button>
+<Button variant="filled" color="gray">Cancel</Button>
+<Button variant="default">Cancel</Button>
+<ActionIcon variant="light" color="red">...</ActionIcon>
+<ActionIcon variant="filled" color="gray">...</ActionIcon>
+
+// ✅ CORRECT - Use custom variants
+<Button variant="primary">Save</Button>
+<Button variant="secondary">Cancel</Button>
+<Button variant="danger">Delete</Button>
+<ActionIcon variant="primary">...</ActionIcon>
+<ActionIcon variant="secondary">...</ActionIcon>
+<ActionIcon variant="danger">...</ActionIcon>
+```
+
+**Note**: `variant="filled"` is still valid for **form inputs** (Select, TextInput, etc.), just not for Button/ActionIcon.
+
+### Icon-Only Buttons → ActionIcon
+
+**If a Button only contains an icon (no text), use ActionIcon instead:**
+
+```tsx
+// ❌ WRONG - Button with only an icon
+<Button variant="secondary" px="xs">
+  <IconRefresh size={18} />
+</Button>
+
+// ✅ CORRECT - Use ActionIcon for icon-only buttons
+<ActionIcon variant="secondary" size="input-sm">
+  <IconRefresh size={18} />
+</ActionIcon>
+```
+
+This pattern cannot be enforced by ESLint and requires manual code review.
 
 ## Refactoring
 

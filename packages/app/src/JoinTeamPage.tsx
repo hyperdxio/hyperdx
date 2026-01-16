@@ -43,7 +43,7 @@ export default function JoinTeam() {
                 )}
                 <div className="text-center mt-4">
                   <Button
-                    variant="light"
+                    variant="primary"
                     className="px-6"
                     type="submit"
                     data-test-id="submit"

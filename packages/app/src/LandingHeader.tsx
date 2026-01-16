@@ -79,14 +79,14 @@ export default function LandingHeader({
                 activeKey !== '/register' &&
                 installation?.isTeamExisting === false && (
                   <Link href="/register">
-                    <Button variant="outline" color="green" size="sm">
+                    <Button variant="primary" size="sm">
                       Setup Account
                     </Button>
                   </Link>
                 )}
               {isLoggedIn && (
                 <Link href="/search">
-                  <Button variant="outline" color="green" size="sm">
+                  <Button variant="primary" size="sm">
                     Go to Search
                   </Button>
                 </Link>
@@ -124,14 +124,14 @@ export default function LandingHeader({
                 activeKey !== '/register' &&
                 installation?.isTeamExisting === false && (
                   <Link href="/register">
-                    <Button variant="outline" color="green" size="sm" fullWidth>
+                    <Button variant="primary" size="sm" fullWidth>
                       Setup Account
                     </Button>
                   </Link>
                 )}
               {isLoggedIn && (
                 <Link href="/search">
-                  <Button variant="outline" color="green" size="sm" fullWidth>
+                  <Button variant="primary" size="sm" fullWidth>
                     Go to Search
                   </Button>
                 </Link>

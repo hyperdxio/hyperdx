@@ -125,8 +125,7 @@ export function SourcesList({
           </Text>
           <Button
             size="xs"
-            variant="light"
-            color="red"
+            variant="danger"
             leftSection={<IconRefresh size={14} />}
             onClick={handleRetry}
           >

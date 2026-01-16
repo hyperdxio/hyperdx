@@ -544,7 +544,7 @@ export const SourceMapsFtux = () => {
         code.
       </Text>
       <Link href="https://www.npmjs.com/package/@hyperdx/cli" target="_blank">
-        <Button size="compact-xs" variant="light" mt="xs">
+        <Button size="compact-xs" variant="primary" mt="xs">
           See docs
         </Button>
       </Link>

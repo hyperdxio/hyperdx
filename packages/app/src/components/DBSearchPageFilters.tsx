@@ -1407,8 +1407,7 @@ const DBSearchPageFiltersComponent = ({
           })()}
 
           <Button
-            color="gray"
-            variant="light"
+            variant="secondary"
             size="compact-xs"
             loading={isFacetsFetching}
             rightSection={

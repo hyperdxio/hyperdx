@@ -86,6 +86,51 @@ export default [
           selector: 'Literal[value=/\\bbi-\\b/i]',
           message: 'Please update to use @tabler/icons-react instead',
         },
+        // Enforce custom Button/ActionIcon variants (see agent_docs/code_style.md)
+        // NOTE: Icon-only Buttons should use ActionIcon instead - this requires manual review
+        // as ESLint cannot detect children content patterns
+        {
+          selector:
+            'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="light"]',
+          message:
+            'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+        },
+        {
+          selector:
+            'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="filled"]',
+          message:
+            'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+        },
+        {
+          selector:
+            'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="outline"]',
+          message:
+            'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+        },
+        {
+          selector:
+            'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="default"]',
+          message:
+            'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+        },
+        {
+          selector:
+            'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="light"]',
+          message:
+            'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+        },
+        {
+          selector:
+            'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="filled"]',
+          message:
+            'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+        },
+        {
+          selector:
+            'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="outline"]',
+          message:
+            'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+        },
       ],
       'react-hooks/exhaustive-deps': 'error',
       'no-console': ['error', { allow: ['warn', 'error'] }],

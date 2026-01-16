@@ -48,7 +48,7 @@ export const AppNavCloudBanner = () => {
       <span className="fs-8">Ready to deploy on ClickHouse Cloud?</span>
       <div className="mt-2 mb-2">
         <Link href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started#deploy-with-clickhouse-cloud">
-          <Button variant="light" size="xs" className="hover-color-white">
+          <Button variant="primary" size="xs" className="hover-color-white">
             Get Started for Free
           </Button>
         </Link>

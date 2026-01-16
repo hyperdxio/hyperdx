@@ -50,8 +50,7 @@ export const ColorSwatchInput = ({
       <Popover.Target>
         <Button
           size="compact-xs"
-          variant="light"
-          color="gray"
+          variant="secondary"
           onClick={() => setOpened(o => !o)}
         >
           {value ? (

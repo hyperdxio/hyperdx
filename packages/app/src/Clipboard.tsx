@@ -23,7 +23,7 @@ export default function Clipboard({
       }}
     >
       <Button
-        variant="default"
+        variant="secondary"
         p={0}
         className={cx('text-decoration-none', className)}
         size="xs"

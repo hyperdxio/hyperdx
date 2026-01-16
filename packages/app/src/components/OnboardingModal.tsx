@@ -435,7 +435,7 @@ function OnboardingModalComponent({
           <Divider label="OR" my="md" />
           <Button
             data-testid="demo-server-button"
-            variant="outline"
+            variant="secondary"
             w="100%"
             onClick={handleDemoServerClick}
           >

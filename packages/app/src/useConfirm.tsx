@@ -59,18 +59,16 @@ export const useConfirmModal = () => {
         <Button
           data-testid="confirm-cancel-button"
           size="xs"
-          variant="outline"
+          variant="secondary"
           onClick={handleClose}
-          color="Gray"
         >
           Cancel
         </Button>
         <Button
           data-testid="confirm-confirm-button"
           size="xs"
-          variant="outline"
+          variant="danger"
           onClick={confirm?.onConfirm}
-          color="red"
         >
           {confirm?.confirmLabel || 'Confirm'}
         </Button>

@@ -187,8 +187,7 @@ export const UserPreferencesModal = ({
               description={
                 <Group gap={4}>
                   <Button
-                    variant="light"
-                    color="gray"
+                    variant="secondary"
                     size="compact-xs"
                     onClick={() =>
                       setUserPreference({
@@ -199,8 +198,7 @@ export const UserPreferencesModal = ({
                     Try this
                   </Button>
                   <Button
-                    variant="light"
-                    color="gray"
+                    variant="secondary"
                     size="compact-xs"
                     onClick={() =>
                       setUserPreference({

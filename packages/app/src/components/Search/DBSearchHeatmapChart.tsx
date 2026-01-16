@@ -191,7 +191,7 @@ function DBSearchHeatmapForm({
         </div>
         <ActionIcon
           w="40px"
-          variant="outline"
+          variant="primary"
           type="submit"
           h="auto"
           title="Run"

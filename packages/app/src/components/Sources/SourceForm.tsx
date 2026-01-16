@@ -374,9 +374,8 @@ function HighlightedAttributeExpressionsFormRow({
         ))}
       </Grid>
       <Button
-        variant="default"
+        variant="secondary"
         size="sm"
-        color="gray"
         className="align-self-start"
         mt={highlightedAttributes.length ? 'sm' : 'md'}
         onClick={() => {
@@ -439,7 +438,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
           ))}
 
           <Button
-            variant="default"
+            variant="secondary"
             onClick={() => {
               appendMaterializedView({
                 databaseName: databaseName,
@@ -752,7 +751,7 @@ function AggregatedColumnsFormSection({
           />
         ))}
       </Grid>
-      <Button size="sm" variant="default" onClick={addAggregate} mt="lg">
+      <Button size="sm" variant="secondary" onClick={addAggregate} mt="lg">
         <Group>
           <IconCirclePlus size={16} />
           Add Column

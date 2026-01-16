@@ -239,10 +239,10 @@ const AlertForm = ({
           )}
         </div>
         <Group gap="xs">
-          <Button variant="light" color="gray" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="light" type="submit" loading={loading}>
+          <Button variant="primary" type="submit" loading={loading}>
             {defaultValues
               ? 'Save Alert'
               : hasSavedSearch

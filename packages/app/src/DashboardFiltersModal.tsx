@@ -204,10 +204,14 @@ const DashboardFilterEditForm = ({
             </CustomInputWrapper>
 
             <Group justify="space-between" my="xs">
-              <Button variant="default" onClick={onCancel}>
+              <Button variant="secondary" onClick={onCancel}>
                 Cancel
               </Button>
-              <Button type="submit" data-testid="save-filter-button">
+              <Button
+                type="submit"
+                variant="primary"
+                data-testid="save-filter-button"
+              >
                 Save filter
               </Button>
             </Group>
@@ -240,7 +244,7 @@ const EmptyState = ({ onCreateFilter, onClose }: EmptyStateProps) => {
           filters will stay with this dashboard.
         </Text>
         <Button
-          variant="filled"
+          variant="primary"
           onClick={onCreateFilter}
           data-testid="add-filter-button"
         >
@@ -328,14 +332,14 @@ const DashboardFiltersList = ({
 
       <Group justify="space-between" my="sm">
         <Button
-          variant="default"
+          variant="secondary"
           onClick={onClose}
           data-testid="close-filters-button"
         >
           Close
         </Button>
         <Button
-          variant="filled"
+          variant="primary"
           onClick={onAddNew}
           data-testid="add-filter-button"
         >

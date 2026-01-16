@@ -254,7 +254,7 @@ function BenchmarkPage() {
               </Stack>
             </Grid.Col>
           </Grid>
-          <Button variant="outline" type="submit" loading={isQueryIdsLoading}>
+          <Button variant="primary" type="submit" loading={isQueryIdsLoading}>
             Run Benchmark
           </Button>
           {isQueryIdsLoading && (

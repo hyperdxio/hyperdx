@@ -111,7 +111,7 @@ function ConnectionsSection() {
         {!isCreatingConnection &&
           (IS_LOCAL_MODE ? (connections?.length ?? 0) < 1 : true) && (
             <Button
-              variant="outline"
+              variant="primary"
               onClick={() => setIsCreatingConnection(true)}
             >
               Add Connection
@@ -228,8 +228,7 @@ function TeamNameSection() {
               <Button
                 type="submit"
                 size="xs"
-                variant="light"
-                color="green"
+                variant="primary"
                 loading={setTeamName.isPending}
               >
                 Save
@@ -237,7 +236,7 @@ function TeamNameSection() {
               <Button
                 type="button"
                 size="xs"
-                variant="default"
+                variant="secondary"
                 disabled={setTeamName.isPending}
                 onClick={() => setIsEditingTeamName(false)}
               >
@@ -251,7 +250,7 @@ function TeamNameSection() {
             {hasAdminAccess && (
               <Button
                 size="xs"
-                variant="default"
+                variant="secondary"
                 leftSection={<IconPencil size={16} />}
                 onClick={() => {
                   setIsEditingTeamName(true);
@@ -412,8 +411,7 @@ function ClickhouseSettingForm({
             <Button
               type="submit"
               size="xs"
-              variant="light"
-              color="green"
+              variant="primary"
               loading={updateClickhouseSettings.isPending}
             >
               Save
@@ -421,7 +419,7 @@ function ClickhouseSettingForm({
             <Button
               type="button"
               size="xs"
-              variant="default"
+              variant="secondary"
               disabled={updateClickhouseSettings.isPending}
               onClick={() => {
                 setIsEditing(false);
@@ -441,7 +439,7 @@ function ClickhouseSettingForm({
           {hasAdminAccess && (
             <Button
               size="xs"
-              variant="default"
+              variant="secondary"
               leftSection={<IconPencil size={16} />}
               onClick={() => setIsEditing(true)}
             >
@@ -593,8 +591,7 @@ function ApiKeysSection() {
           )}
           {hasAdminAccess && (
             <Button
-              variant="light"
-              color="red"
+              variant="danger"
               onClick={() => setRotateApiKeyConfirmationModalShow(true)}
             >
               Rotate API Key
@@ -620,7 +617,7 @@ function ApiKeysSection() {
             </Text>
             <Group justify="end">
               <Button
-                variant="default"
+                variant="secondary"
                 className="mt-2 px-4 ms-2 float-end"
                 size="sm"
                 onClick={() => setRotateApiKeyConfirmationModalShow(false)}
@@ -628,8 +625,7 @@ function ApiKeysSection() {
                 Cancel
               </Button>
               <Button
-                variant="outline"
-                color="red"
+                variant="danger"
                 className="mt-2 px-4 float-end"
                 size="sm"
                 onClick={onConfirmUpdateTeamApiKey}

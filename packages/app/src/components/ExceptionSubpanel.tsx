@@ -621,7 +621,7 @@ export const ExceptionSubpanel = ({
 
         {stacktraceHiddenRowsCount ? (
           <Button
-            variant="default"
+            variant="secondary"
             size="xs"
             m="xs"
             onClick={handleStacktraceToggleMoreRows}
@@ -650,7 +650,7 @@ export const ExceptionSubpanel = ({
             />
             {breadcrumbHiddenRowsCount ? (
               <Button
-                variant="default"
+                variant="secondary"
                 size="xs"
                 m="xs"
                 onClick={handleBreadcrumbToggleMoreRows}
