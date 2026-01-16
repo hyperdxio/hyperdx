@@ -236,7 +236,7 @@ function TeamNameSection() {
               <Button
                 type="button"
                 size="xs"
-                variant="default"
+                variant="secondary"
                 disabled={setTeamName.isPending}
                 onClick={() => setIsEditingTeamName(false)}
               >
@@ -250,7 +250,7 @@ function TeamNameSection() {
             {hasAdminAccess && (
               <Button
                 size="xs"
-                variant="default"
+                variant="secondary"
                 leftSection={<IconPencil size={16} />}
                 onClick={() => {
                   setIsEditingTeamName(true);
@@ -419,7 +419,7 @@ function ClickhouseSettingForm({
             <Button
               type="button"
               size="xs"
-              variant="default"
+              variant="secondary"
               disabled={updateClickhouseSettings.isPending}
               onClick={() => {
                 setIsEditing(false);
@@ -439,7 +439,7 @@ function ClickhouseSettingForm({
           {hasAdminAccess && (
             <Button
               size="xs"
-              variant="default"
+              variant="secondary"
               leftSection={<IconPencil size={16} />}
               onClick={() => setIsEditing(true)}
             >
@@ -617,7 +617,7 @@ function ApiKeysSection() {
             </Text>
             <Group justify="end">
               <Button
-                variant="default"
+                variant="secondary"
                 className="mt-2 px-4 ms-2 float-end"
                 size="sm"
                 onClick={() => setRotateApiKeyConfirmationModalShow(false)}

@@ -50,6 +50,7 @@ The following patterns are **NOT ALLOWED** for Button and ActionIcon:
 <Button variant="outline" color="gray">Cancel</Button>
 <Button variant="outline" color="red">Delete</Button>
 <Button variant="filled" color="gray">Cancel</Button>
+<Button variant="default">Cancel</Button>
 <ActionIcon variant="light" color="red">...</ActionIcon>
 <ActionIcon variant="filled" color="gray">...</ActionIcon>
 
@@ -63,6 +64,24 @@ The following patterns are **NOT ALLOWED** for Button and ActionIcon:
 ```
 
 **Note**: `variant="filled"` is still valid for **form inputs** (Select, TextInput, etc.), just not for Button/ActionIcon.
+
+### Icon-Only Buttons → ActionIcon
+
+**If a Button only contains an icon (no text), use ActionIcon instead:**
+
+```tsx
+// ❌ WRONG - Button with only an icon
+<Button variant="secondary" px="xs">
+  <IconRefresh size={18} />
+</Button>
+
+// ✅ CORRECT - Use ActionIcon for icon-only buttons
+<ActionIcon variant="secondary" size="input-sm">
+  <IconRefresh size={18} />
+</ActionIcon>
+```
+
+This pattern cannot be enforced by ESLint and requires manual code review.
 
 ## Refactoring
 

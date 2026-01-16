@@ -212,7 +212,7 @@ function AckAlert({ alert }: { alert: AlertsPageItem }) {
       <ErrorBoundary message="Failed to load alert acknowledgment menu">
         <Menu disabled={silenceAlert.isPending}>
           <Menu.Target>
-            <Button size="compact-sm" variant="default">
+            <Button size="compact-sm" variant="secondary">
               Ack
             </Button>
           </Menu.Target>

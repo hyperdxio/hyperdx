@@ -174,7 +174,7 @@ export const Tags = React.memo(
             <div className="ms-2 fs-8 ">{values.length || 'None'} selected</div>
             {values.length >= 1 && (
               <Button
-                variant="default"
+                variant="secondary"
                 size="compact-xs"
                 fw="normal"
                 onClick={handleClearAll}

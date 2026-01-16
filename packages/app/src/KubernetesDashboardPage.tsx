@@ -9,6 +9,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Alert,
   Badge,
   Box,
@@ -1276,17 +1277,17 @@ function KubernetesDashboardPage() {
             />
           </form>
           <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-            <Button
+            <ActionIcon
               onClick={refresh}
               loading={manualRefreshCooloff}
               disabled={manualRefreshCooloff}
               variant="secondary"
               title="Refresh dashboard"
               aria-label="Refresh dashboard"
-              px="xs"
+              size="lg"
             >
               <IconRefresh size={18} />
-            </Button>
+            </ActionIcon>
           </Tooltip>
         </Group>
       </Group>

@@ -87,6 +87,8 @@ export default [
           message: 'Please update to use @tabler/icons-react instead',
         },
         // Enforce custom Button/ActionIcon variants (see agent_docs/code_style.md)
+        // NOTE: Icon-only Buttons should use ActionIcon instead - this requires manual review
+        // as ESLint cannot detect children content patterns
         {
           selector:
             'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="light"]',
@@ -102,6 +104,12 @@ export default [
         {
           selector:
             'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="outline"]',
+          message:
+            'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+        },
+        {
+          selector:
+            'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="default"]',
           message:
             'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
         },

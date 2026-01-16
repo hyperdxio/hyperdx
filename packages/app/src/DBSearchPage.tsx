@@ -1626,7 +1626,7 @@ function DBSearchPage() {
               {!savedSearchId ? (
                 <Button
                   data-testid="save-search-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={onSaveSearch}
                   style={{ flexShrink: 0 }}
@@ -1636,7 +1636,7 @@ function DBSearchPage() {
               ) : (
                 <Button
                   data-testid="update-search-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={() => {
                     setSaveSearchModalState('update');
@@ -1649,7 +1649,7 @@ function DBSearchPage() {
               {!IS_LOCAL_MODE && (
                 <Button
                   data-testid="alerts-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={openAlertModal}
                   style={{ flexShrink: 0 }}
@@ -1666,7 +1666,7 @@ function DBSearchPage() {
                   >
                     <Button
                       data-testid="tags-button"
-                      variant="default"
+                      variant="secondary"
                       px="xs"
                       size="xs"
                       style={{ flexShrink: 0 }}

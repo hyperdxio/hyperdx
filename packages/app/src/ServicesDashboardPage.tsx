@@ -21,6 +21,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Box,
   Button,
   Grid,
@@ -1586,27 +1587,27 @@ function ServicesDashboardPage() {
             />
             {!IS_LOCAL_MODE && (
               <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-                <Button
-                  variant="default"
-                  px="xs"
+                <ActionIcon
+                  variant="secondary"
                   onClick={() => setShowFiltersModal(true)}
+                  size="lg"
                 >
-                  <IconFilterEdit strokeWidth={1} />
-                </Button>
+                  <IconFilterEdit size={18} />
+                </ActionIcon>
               </Tooltip>
             )}
             <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-              <Button
+              <ActionIcon
                 onClick={refresh}
                 loading={manualRefreshCooloff}
                 disabled={manualRefreshCooloff}
                 variant="secondary"
                 title="Refresh dashboard"
                 aria-label="Refresh dashboard"
-                px="xs"
+                size="lg"
               >
                 <IconRefresh size={18} />
-              </Button>
+              </ActionIcon>
             </Tooltip>
             <Button
               variant="primary"

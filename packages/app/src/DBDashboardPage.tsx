@@ -31,6 +31,7 @@ import {
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Box,
   Button,
   Flex,
@@ -244,49 +245,45 @@ const Tile = forwardRef(
               mr={4}
             >
               <Tooltip label={alertTooltip} withArrow>
-                <Button
+                <ActionIcon
                   data-testid={`tile-alerts-button-${chart.id}`}
                   variant="subtle"
-                  color="gray"
-                  size="xxs"
+                  size="sm"
                   onClick={onEditClick}
                 >
                   <IconBell size={16} />
-                </Button>
+                </ActionIcon>
               </Tooltip>
             </Indicator>
           )}
 
-          <Button
+          <ActionIcon
             data-testid={`tile-duplicate-button-${chart.id}`}
             variant="subtle"
-            color="gray"
-            size="xxs"
+            size="sm"
             onClick={onDuplicateClick}
             title="Duplicate"
           >
             <IconCopy size={14} />
-          </Button>
-          <Button
+          </ActionIcon>
+          <ActionIcon
             data-testid={`tile-edit-button-${chart.id}`}
             variant="subtle"
-            color="gray"
-            size="xxs"
+            size="sm"
             onClick={onEditClick}
             title="Edit"
           >
             <IconPencil size={14} />
-          </Button>
-          <Button
+          </ActionIcon>
+          <ActionIcon
             data-testid={`tile-delete-button-${chart.id}`}
             variant="subtle"
-            color="gray"
-            size="xxs"
+            size="sm"
             onClick={onDeleteClick}
             title="Delete"
           >
             <IconTrash size={14} />
-          </Button>
+          </ActionIcon>
         </Flex>
       );
     }, [
@@ -961,7 +958,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               onChange={handleUpdateTags}
             >
               <Button
-                variant="default"
+                variant="secondary"
                 px="xs"
                 size="xs"
                 style={{ flexShrink: 0 }}
@@ -975,9 +972,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
             <Menu width={250}>
               <Menu.Target>
-                <Button variant="default" px="xs" size="xs">
+                <ActionIcon variant="secondary" size="input-xs">
                   <IconDotsVertical size={14} />
-                </Button>
+                </ActionIcon>
               </Menu.Target>
 
               <Menu.Dropdown>
@@ -1102,34 +1099,34 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           <Button
             onClick={() => setIsLive(prev => !prev)}
             size="sm"
-            variant={isLive ? 'filled' : 'default'}
+            variant={isLive ? 'primary' : 'secondary'}
             title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
           >
             Live
           </Button>
         </Tooltip>
         <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-          <Button
+          <ActionIcon
             onClick={refresh}
             loading={manualRefreshCooloff}
             disabled={manualRefreshCooloff}
-            variant="default"
+            variant="secondary"
             title="Refresh dashboard"
-            px="xs"
+            size="input-sm"
           >
             <IconRefresh size={18} />
-          </Button>
+          </ActionIcon>
         </Tooltip>
         {!IS_LOCAL_MODE && (
           <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-            <Button
-              variant="default"
-              px="xs"
+            <ActionIcon
+              variant="secondary"
               onClick={() => setShowFiltersModal(true)}
               data-testid="edit-filters-button"
+              size="input-sm"
             >
-              <IconFilterEdit strokeWidth={1} />
-            </Button>
+              <IconFilterEdit size={18} />
+            </ActionIcon>
           </Tooltip>
         )}
         <Button

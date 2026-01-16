@@ -30,6 +30,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
+  ActionIcon,
   Box,
   Button,
   Center,
@@ -1255,9 +1256,9 @@ export default function EditTimeChartForm({
           {!IS_LOCAL_MODE && !dashboardId && (
             <Menu width={250}>
               <Menu.Target>
-                <Button variant="secondary" px="xs" size="sm">
-                  <IconDotsVertical size={14} />
-                </Button>
+                <ActionIcon variant="secondary" size="input-sm">
+                  <IconDotsVertical size={16} />
+                </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Item

@@ -204,7 +204,7 @@ const DashboardFilterEditForm = ({
             </CustomInputWrapper>
 
             <Group justify="space-between" my="xs">
-              <Button variant="default" onClick={onCancel}>
+              <Button variant="secondary" onClick={onCancel}>
                 Cancel
               </Button>
               <Button
@@ -332,7 +332,7 @@ const DashboardFiltersList = ({
 
       <Group justify="space-between" my="sm">
         <Button
-          variant="default"
+          variant="secondary"
           onClick={onClose}
           data-testid="close-filters-button"
         >

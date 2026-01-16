@@ -1,4 +1,4 @@
-import { Button, Menu, Text } from '@mantine/core';
+import { ActionIcon, Menu } from '@mantine/core';
 import { IconDotsVertical, IconForms, IconTrash } from '@tabler/icons-react';
 
 export default function SearchPageActionBar({
@@ -11,9 +11,13 @@ export default function SearchPageActionBar({
   return (
     <Menu width={250}>
       <Menu.Target>
-        <Button variant="secondary" px="xs" size="xs" style={{ flexShrink: 0 }}>
+        <ActionIcon
+          variant="secondary"
+          style={{ flexShrink: 0 }}
+          size="input-xs"
+        >
           <IconDotsVertical size={14} />
-        </Button>
+        </ActionIcon>
       </Menu.Target>
 
       <Menu.Dropdown>

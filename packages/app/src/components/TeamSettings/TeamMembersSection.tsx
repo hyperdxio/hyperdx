@@ -307,7 +307,7 @@ export default function TeamMembersSection() {
                         Pending Invite
                       </Badge>
                       <CopyToClipboard text={invitation.url}>
-                        <Button size="compact-xs" variant="default" ml="xs">
+                        <Button size="compact-xs" variant="secondary" ml="xs">
                           📋 Copy URL
                         </Button>
                       </CopyToClipboard>
@@ -372,7 +372,7 @@ export default function TeamMembersSection() {
           </Text>
           <Group justify="flex-end" gap="xs">
             <Button
-              variant="default"
+              variant="secondary"
               onClick={() =>
                 setDeleteTeamMemberConfirmationModalData({
                   mode: null,
