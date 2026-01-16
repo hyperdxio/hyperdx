@@ -292,8 +292,7 @@ const TimePickerComponent = ({
             <Button
               data-testid="time-picker-1h-back"
               size="compact-xs"
-              color="gray"
-              variant="light"
+              variant="secondary"
               onClick={handleMove.bind(null, { hours: -1 })}
               disabled={isLiveMode || isRelative}
             >
@@ -302,8 +301,7 @@ const TimePickerComponent = ({
             <Button
               data-testid="time-picker-1h-forward"
               size="compact-xs"
-              color="gray"
-              variant="light"
+              variant="secondary"
               onClick={handleMove.bind(null, { hours: 1 })}
               disabled={isLiveMode || isRelative}
             >
@@ -455,7 +453,7 @@ const TimePickerComponent = ({
               <Button
                 data-testid="time-picker-apply"
                 size="compact-sm"
-                variant="light"
+                variant="primary"
                 disabled={!form.isValid() || isRelative}
                 onClick={handleApply}
               >

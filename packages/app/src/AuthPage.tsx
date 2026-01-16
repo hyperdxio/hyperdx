@@ -200,7 +200,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   <Button
                     mt={4}
                     type="submit"
-                    variant="light"
+                    variant="primary"
                     size="md"
                     disabled={isSubmitting || verificationSent}
                     loading={isSubmitting}

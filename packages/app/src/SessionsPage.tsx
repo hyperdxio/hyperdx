@@ -471,8 +471,14 @@ export default function SessionsPage() {
                   onSearch(range);
                 }}
               />
-              <Button variant="outline" type="submit" px="sm">
-                <IconPlayerPlay size={16} />
+              <Button
+                variant="primary"
+                type="submit"
+                px="sm"
+                leftSection={<IconPlayerPlay size={16} />}
+                style={{ flexShrink: 0 }}
+              >
+                Run
               </Button>
             </Group>
           </Flex>

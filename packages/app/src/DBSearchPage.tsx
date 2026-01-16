@@ -280,8 +280,12 @@ function ResumeLiveTailButton({
   handleResumeLiveTail: () => void;
 }) {
   return (
-    <Button size="compact-xs" variant="outline" onClick={handleResumeLiveTail}>
-      <IconBolt size={14} className="text-success me-2" />
+    <Button
+      size="compact-xs"
+      variant="primary"
+      onClick={handleResumeLiveTail}
+      leftSection={<IconBolt size={14} />}
+    >
       Resume Live Tail
     </Button>
   );
@@ -295,11 +299,12 @@ function SearchSubmitButton({
   return (
     <Button
       data-testid="search-submit-button"
-      variant="outline"
+      variant={isFormStateDirty ? 'primary' : 'secondary'}
       type="submit"
-      color={isFormStateDirty ? 'var(--color-text-brand)' : 'gray'}
+      leftSection={<IconPlayerPlay size={16} />}
+      style={{ flexShrink: 0 }}
     >
-      <IconPlayerPlay size={16} />
+      Run
     </Button>
   );
 }
@@ -498,8 +503,7 @@ function SaveSearchModalComponent({
               {tags.map(tag => (
                 <Button
                   key={tag}
-                  variant="light"
-                  color="gray"
+                  variant="secondary"
                   size="xs"
                   rightSection={
                     <ActionIcon
@@ -521,8 +525,7 @@ function SaveSearchModalComponent({
               <Tags allowCreate values={tags} onChange={setTags}>
                 <Button
                   data-testid="add-tag-button"
-                  variant="outline"
-                  color="gray"
+                  variant="secondary"
                   size="xs"
                 >
                   <IconPlus size={14} className="me-1" />
@@ -533,8 +536,7 @@ function SaveSearchModalComponent({
           </Box>
           <Button
             data-testid="save-search-submit-button"
-            variant="outline"
-            color="green"
+            variant="primary"
             type="submit"
             disabled={!formState.isValid}
           >
@@ -1624,7 +1626,7 @@ function DBSearchPage() {
               {!savedSearchId ? (
                 <Button
                   data-testid="save-search-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={onSaveSearch}
                   style={{ flexShrink: 0 }}
@@ -1634,7 +1636,7 @@ function DBSearchPage() {
               ) : (
                 <Button
                   data-testid="update-search-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={() => {
                     setSaveSearchModalState('update');
@@ -1647,7 +1649,7 @@ function DBSearchPage() {
               {!IS_LOCAL_MODE && (
                 <Button
                   data-testid="alerts-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={openAlertModal}
                   style={{ flexShrink: 0 }}
@@ -1664,7 +1666,7 @@ function DBSearchPage() {
                   >
                     <Button
                       data-testid="tags-button"
-                      variant="default"
+                      variant="secondary"
                       px="xs"
                       size="xs"
                       style={{ flexShrink: 0 }}
