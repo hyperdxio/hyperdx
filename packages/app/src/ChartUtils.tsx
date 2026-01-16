@@ -653,7 +653,7 @@ export function formatResponseForTimeChart({
   previousPeriodResponse,
   dateRange,
   granularity,
-  generateEmptyBuckets = true,
+  fillNullsWith,
   source,
   hiddenSeries = [],
   previousPeriodOffsetSeconds = 0,
@@ -662,7 +662,7 @@ export function formatResponseForTimeChart({
   granularity?: SQLInterval;
   currentPeriodResponse: ResponseJSON<Record<string, any>>;
   previousPeriodResponse?: ResponseJSON<Record<string, any>>;
-  generateEmptyBuckets?: boolean;
+  fillNullsWith?: number;
   source?: TSource;
   hiddenSeries?: string[];
   previousPeriodOffsetSeconds?: number;
@@ -719,7 +719,7 @@ export function formatResponseForTimeChart({
     );
   });
 
-  if (generateEmptyBuckets && granularity != null) {
+  if (fillNullsWith !== undefined && granularity != null) {
     const generatedTsBuckets = timeBucketByGranularity(
       dateRange[0],
       dateRange[1],
@@ -736,14 +736,14 @@ export function formatResponseForTimeChart({
         };
 
         for (const line of sortedLineData) {
-          tsBucket[line.dataKey] = 0;
+          tsBucket[line.dataKey] = fillNullsWith;
         }
 
         tsBucketMap.set(ts, tsBucket);
       } else {
         for (const line of sortedLineData) {
           if (tsBucket[line.dataKey] == null) {
-            tsBucket[line.dataKey] = 0;
+            tsBucket[line.dataKey] = fillNullsWith;
           }
         }
         tsBucketMap.set(ts, tsBucket);

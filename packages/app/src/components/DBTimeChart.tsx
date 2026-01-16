@@ -387,6 +387,13 @@ function DBTimeChartComponent({
       return defaultResponse;
     }
 
+    // Backwards compatible / default behavior (when fillNulls is undefined or null)
+    // is to fill nulls with 0.
+    const fillNullsWith =
+      typeof fillNulls === 'boolean' && fillNulls === false
+        ? undefined
+        : (fillNulls ?? 0);
+
     try {
       return formatResponseForTimeChart({
         currentPeriodResponse: data,
@@ -395,7 +402,7 @@ function DBTimeChartComponent({
           : undefined,
         dateRange,
         granularity,
-        generateEmptyBuckets: fillNulls !== false,
+        fillNullsWith,
         source,
         hiddenSeries,
         previousPeriodOffsetSeconds,
