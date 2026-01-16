@@ -160,6 +160,7 @@ describe('processRowToWhereClause', () => {
           type: 'String',
           valueExpr: 'name',
           jsType: JSDataType.String,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -179,6 +180,7 @@ describe('processRowToWhereClause', () => {
           type: 'DateTime64',
           valueExpr: 'created_at',
           jsType: JSDataType.Date,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -200,6 +202,7 @@ describe('processRowToWhereClause', () => {
           type: 'Array(String)',
           valueExpr: 'tags',
           jsType: JSDataType.Array,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -219,6 +222,7 @@ describe('processRowToWhereClause', () => {
           type: 'Map(String, String)',
           valueExpr: 'attributes',
           jsType: JSDataType.Map,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -240,6 +244,7 @@ describe('processRowToWhereClause', () => {
           type: 'JSON',
           valueExpr: 'data',
           jsType: JSDataType.JSON,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -262,6 +267,7 @@ describe('processRowToWhereClause', () => {
           type: 'Dynamic',
           valueExpr: 'dynamic_field',
           jsType: JSDataType.Dynamic,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -281,6 +287,7 @@ describe('processRowToWhereClause', () => {
           type: 'Dynamic',
           valueExpr: 'dynamic_field',
           jsType: JSDataType.Dynamic,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -302,6 +309,7 @@ describe('processRowToWhereClause', () => {
           type: 'Dynamic',
           valueExpr: 'dynamic_field',
           jsType: JSDataType.Dynamic,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -322,6 +330,7 @@ describe('processRowToWhereClause', () => {
           type: 'Dynamic',
           valueExpr: 'dynamic_field',
           jsType: JSDataType.Dynamic,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -342,6 +351,7 @@ describe('processRowToWhereClause', () => {
           type: 'Dynamic',
           valueExpr: 'dynamic_field',
           jsType: JSDataType.Dynamic,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -362,6 +372,7 @@ describe('processRowToWhereClause', () => {
           type: 'String',
           valueExpr: 'description',
           jsType: JSDataType.String,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -385,6 +396,7 @@ describe('processRowToWhereClause', () => {
           type: 'String',
           valueExpr: 'name',
           jsType: JSDataType.String,
+          containsAliasRefs: false,
         },
       ],
       [
@@ -394,6 +406,7 @@ describe('processRowToWhereClause', () => {
           type: 'Int32',
           valueExpr: 'age',
           jsType: JSDataType.Number,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -413,6 +426,7 @@ describe('processRowToWhereClause', () => {
           type: 'String',
           valueExpr: 'original_column',
           jsType: JSDataType.String,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -432,6 +446,7 @@ describe('processRowToWhereClause', () => {
           type: 'Tuple(String, Int32)',
           valueExpr: 'coordinates',
           jsType: JSDataType.Tuple,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -453,6 +468,7 @@ describe('processRowToWhereClause', () => {
           type: 'String',
           valueExpr: 'name',
           jsType: JSDataType.String,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -472,6 +488,7 @@ describe('processRowToWhereClause', () => {
           type: 'String',
           valueExpr: 'description',
           jsType: JSDataType.String,
+          containsAliasRefs: false,
         },
       ],
     ]);
@@ -591,6 +608,7 @@ describe('processRowToWhereClause', () => {
   });
 
   it('should default containsAliasRefs to false when not provided', () => {
+    // Intentionally omit containsAliasRefs to test default behavior
     const columnMap = new Map([
       [
         'name',
@@ -599,8 +617,7 @@ describe('processRowToWhereClause', () => {
           type: 'String',
           valueExpr: 'name',
           jsType: JSDataType.String,
-          // containsAliasRefs not provided
-        },
+        } as any,
       ],
     ]);
 
@@ -630,6 +647,7 @@ describe('processRowToWhereClause', () => {
           type: 'String',
           valueExpr: null as any,
           jsType: JSDataType.String,
+          containsAliasRefs: false,
         },
       ],
     ]);
