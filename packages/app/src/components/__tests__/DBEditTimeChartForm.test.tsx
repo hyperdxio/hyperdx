@@ -368,3 +368,44 @@ describe('DBEditTimeChartForm - Metric Name Validation', () => {
     });
   });
 });
+
+describe('DBEditTimeChartForm - Save Button Metric Name Validation', () => {
+  const renderComponent = (props = {}) => {
+    return renderWithMantine(
+      <QueryClientProvider client={queryClient}>
+        <DBEditTimeChartForm
+          chartConfig={defaultChartConfig}
+          dateRange={[new Date('2024-01-01'), new Date('2024-01-02')]}
+          {...props}
+        />
+      </QueryClientProvider>,
+    );
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should show validation error when clicking save without selecting a metric name', async () => {
+    const onSave = jest.fn();
+    renderComponent({ onSave });
+
+    // Find and click the save button
+    const saveButton = screen.getByTestId('chart-save-button');
+    await userEvent.click(saveButton);
+
+    // Verify that the validation error is displayed
+    await waitFor(() => {
+      const errorMessage = screen.getByTestId('metric-name-error');
+      expect(errorMessage).toBeInTheDocument();
+      expect(errorMessage).toHaveTextContent('Please select a metric name');
+    });
+
+    // Verify that onSave was not called
+    expect(onSave).not.toHaveBeenCalled();
+
+    // Verify that the metric name select has aria-invalid attribute
+    const metricSelect = screen.getByTestId('metric-name-selector');
+    expect(metricSelect).toHaveAttribute('aria-invalid', 'true');
+  });
+});
