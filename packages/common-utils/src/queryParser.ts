@@ -629,26 +629,39 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     context: SerializerContext,
   ) {
     const isImplicitField = field === IMPLICIT_FIELD;
-    const { column, columnJSON, found, propertyType } =
+    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
       await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
+    const expressionPostfix =
+      mapKeyIndexExpression &&
+      !isNegatedField &&
+      (!isImplicitField || !context.isNegatedAndParenthesized)
+        ? ` AND ${mapKeyIndexExpression}`
+        : '';
 
     if (propertyType === JSDataType.Bool) {
       const normTerm = `${term}`.trim().toLowerCase();
-      return SqlString.format(`(?? ${isNegatedField ? '!' : ''}= ?)`, [
-        column,
-        normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
-      ]);
+      return SqlString.format(
+        `(?? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
+        [
+          column,
+          normTerm === 'true'
+            ? 1
+            : normTerm === 'false'
+              ? 0
+              : parseInt(normTerm),
+        ],
+      );
     } else if (propertyType === JSDataType.Number) {
       return SqlString.format(
-        `(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`,
+        `(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64')${expressionPostfix})`,
         [column, term],
       );
     } else if (propertyType === JSDataType.JSON) {
       return SqlString.format(
-        `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}ILIKE ?)`,
+        `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}ILIKE ?${expressionPostfix})`,
         [`%${term}%`],
       );
     }
@@ -724,10 +737,10 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       }
     }
 
-    return SqlString.format(`(${column} ${isNegatedField ? 'NOT ' : ''}? ?)`, [
-      SqlString.raw('ILIKE'),
-      `%${term}%`,
-    ]);
+    return SqlString.format(
+      `(${column} ${isNegatedField ? 'NOT ' : ''}? ?${expressionPostfix})`,
+      [SqlString.raw('ILIKE'), `%${term}%`],
+    );
   }
 
   /**
