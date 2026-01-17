@@ -62,9 +62,8 @@ function DeleteWebhookButton({
 
   return (
     <Button
-      color="red"
       size="compact-xs"
-      variant="outline"
+      variant="danger"
       onClick={handleDelete}
       loading={deleteWebhook.isPending}
     >
@@ -187,7 +186,7 @@ export default function WebhooksSection() {
       </Stack>
 
       {!isAddWebhookModalOpen ? (
-        <Button variant="outline" color="gray.4" onClick={openWebhookModal}>
+        <Button variant="secondary" onClick={openWebhookModal}>
           Add Webhook
         </Button>
       ) : (

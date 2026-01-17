@@ -323,6 +323,7 @@ export const RawLogTable = memo(
     sortOrder,
     showExpandButton = true,
     getRowWhere,
+    variant = 'default',
   }: {
     wrapLines?: boolean;
     displayedColumns: string[];
@@ -363,6 +364,7 @@ export const RawLogTable = memo(
     sortOrder?: SortingState;
     onSortingChange?: (v: SortingState | null) => void;
     getRowWhere?: (row: Record<string, any>) => string;
+    variant?: DBRowTableVariant;
   }) => {
     const generateRowMatcher = generateRowId;
 
@@ -729,7 +731,9 @@ export const RawLogTable = memo(
     return (
       <div
         data-testid="search-results-table"
-        className="overflow-auto h-100 fs-8"
+        className={cx('overflow-auto h-100 fs-8', styles.tableWrapper, {
+          [styles.muted]: variant === 'muted',
+        })}
         onScroll={e => {
           fetchMoreOnBottomReached(e.target as HTMLDivElement);
 
@@ -1168,6 +1172,8 @@ export function selectColumnMapWithoutAdditionalKeys(
   );
 }
 
+export type DBRowTableVariant = 'default' | 'muted';
+
 function DBSqlRowTableComponent({
   config,
   sourceId,
@@ -1186,6 +1192,7 @@ function DBSqlRowTableComponent({
   renderRowDetails,
   onSortingChange,
   initialSortBy,
+  variant = 'default',
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
@@ -1204,6 +1211,7 @@ function DBSqlRowTableComponent({
   showExpandButton?: boolean;
   initialSortBy?: SortingState;
   onSortingChange?: (v: SortingState | null) => void;
+  variant?: DBRowTableVariant;
 }) {
   const { data: me } = api.useMe();
 
@@ -1228,6 +1236,20 @@ function DBSqlRowTableComponent({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceId]);
+
+  // Sync local orderBy state with initialSortBy when it changes
+  // (e.g., when loading a saved search)
+  const prevInitialSortBy = usePrevious(initialSortBy);
+  useEffect(() => {
+    const currentSort = initialSortBy?.[0] ?? null;
+    const prevSort = prevInitialSortBy?.[0] ?? null;
+
+    // Only sync if initialSortBy actually changed (not orderBy)
+    // We don't include orderBy in deps to avoid infinite loop
+    if (JSON.stringify(currentSort) !== JSON.stringify(prevSort)) {
+      setOrderBy(currentSort);
+    }
+  }, [initialSortBy, prevInitialSortBy]);
 
   const mergedConfigObj = useMemo(() => {
     const base = {
@@ -1450,6 +1472,7 @@ function DBSqlRowTableComponent({
         onSortingChange={_onSortingChange}
         sortOrder={orderByArray}
         getRowWhere={getRowWhere}
+        variant={variant}
       />
     </>
   );

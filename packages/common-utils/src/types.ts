@@ -422,6 +422,7 @@ export const _ChartConfigSchema = z.object({
   eventTableSelect: z.string().optional(),
   compareToPreviousPeriod: z.boolean().optional(),
   source: z.string().optional(),
+  alignDateRangeToGranularity: z.boolean().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.
@@ -646,6 +647,7 @@ export const MaterializedViewConfigurationSchema = z.object({
   tableName: z.string().min(1, 'Materialized View Table is required'),
   dimensionColumns: z.string(),
   minGranularity: SQLIntervalSchema,
+  minDate: z.string().datetime().nullish(),
   timestampColumn: z
     .string()
     .min(1, 'Materialized View Timestamp column is required'),

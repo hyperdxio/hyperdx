@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import {
+  ActionIcon,
   Button,
   Checkbox as MCheckbox,
   Drawer,
@@ -39,34 +40,27 @@ const FORMAT_ICONS: Record<string, React.ReactNode> = {
   time: <IconClock size={14} />,
 };
 
+const DEFAULT_NUMBER_FORMAT: NumberFormat = {
+  factor: 1,
+  output: 'number',
+  mantissa: 2,
+  thousandSeparated: true,
+  average: false,
+  decimalBytes: false,
+};
+
+const TEST_NUMBER = 1234;
+
 export const NumberFormatForm: React.FC<{
   value?: NumberFormat;
   onApply: (value: NumberFormat) => void;
   onClose: () => void;
 }> = ({ value, onApply, onClose }) => {
   const { register, handleSubmit, control, setValue } = useForm<NumberFormat>({
-    values: value,
-    defaultValues: {
-      factor: 1,
-      output: 'number',
-      mantissa: 2,
-      thousandSeparated: true,
-      average: false,
-      decimalBytes: false,
-    },
+    defaultValues: value ?? DEFAULT_NUMBER_FORMAT,
   });
 
-  const values = useWatch({ control });
-  const valuesWithDefaults = values ?? {
-    factor: 1,
-    output: 'number' as const,
-    mantissa: 2,
-    thousandSeparated: true,
-    average: false,
-    decimalBytes: false,
-  };
-
-  const testNumber = 1234;
+  const format = useWatch({ control });
 
   return (
     <>
@@ -99,10 +93,7 @@ export const NumberFormatForm: React.FC<{
         >
           <NativeSelect
             label="Output format"
-            leftSection={
-              valuesWithDefaults.output &&
-              FORMAT_ICONS[valuesWithDefaults.output]
-            }
+            leftSection={format.output && FORMAT_ICONS[format.output]}
             style={{ flex: 1 }}
             data={[
               { value: 'number', label: 'Number' },
@@ -113,7 +104,7 @@ export const NumberFormatForm: React.FC<{
             ]}
             {...register('output')}
           />
-          {valuesWithDefaults.output === 'currency' && (
+          {format.output === 'currency' && (
             <TextInput
               w={80}
               label="Symbol"
@@ -121,12 +112,6 @@ export const NumberFormatForm: React.FC<{
               {...register('currencySymbol')}
             />
           )}
-          {/* <TextInput
-            w={100}
-            label="Unit"
-            placeholder=""
-            {...register('unit')}
-          /> */}
         </div>
 
         <div style={{ marginTop: -6 }}>
@@ -138,11 +123,11 @@ export const NumberFormatForm: React.FC<{
             >
               Example
             </div>
-            {formatNumber(testNumber || 0, valuesWithDefaults as NumberFormat)}
+            {formatNumber(TEST_NUMBER, format as NumberFormat)}
           </Paper>
         </div>
 
-        {valuesWithDefaults.output !== 'time' && (
+        {format.output !== 'time' && (
           <div>
             <div className="fs-8 mt-2 fw-bold mb-1">Decimals</div>
             <Slider
@@ -154,7 +139,7 @@ export const NumberFormatForm: React.FC<{
                 { value: 0, label: '0' },
                 { value: 10, label: '10' },
               ]}
-              value={values.mantissa}
+              value={format.mantissa}
               onChange={value => {
                 setValue('mantissa', value);
               }}
@@ -162,14 +147,14 @@ export const NumberFormatForm: React.FC<{
           </div>
         )}
         <Stack gap="xs">
-          {values.output === 'byte' ? (
+          {format.output === 'byte' ? (
             <MCheckbox
               size="xs"
               label="Decimal base"
               description="Use 1KB = 1000 bytes"
               {...register('decimalBytes')}
             />
-          ) : values.output === 'time' ? (
+          ) : format.output === 'time' ? (
             <NativeSelect
               size="sm"
               label="Input unit"
@@ -202,7 +187,7 @@ export const NumberFormatForm: React.FC<{
           <Button type="submit" onClick={handleSubmit(onApply)}>
             Apply
           </Button>
-          <Button onClick={onClose} variant="default">
+          <Button onClick={onClose} variant="secondary">
             Cancel
           </Button>
         </Stack>
@@ -211,17 +196,11 @@ export const NumberFormatForm: React.FC<{
   );
 };
 
-const TEST_NUMBER = 1234;
-
 export const NumberFormatInput: React.FC<{
   value?: NumberFormat;
   onChange: (value?: NumberFormat) => void;
 }> = ({ value, onChange }) => {
   const [opened, { open, close }] = useDisclosure(false);
-  const example = React.useMemo(
-    () => formatNumber(TEST_NUMBER, value),
-    [value],
-  );
 
   const handleApply = React.useCallback(
     (value?: NumberFormat) => {
@@ -247,22 +226,19 @@ export const NumberFormatInput: React.FC<{
         <Button
           onClick={open}
           size="compact-sm"
-          color="dark"
-          variant="default"
+          variant="secondary"
           leftSection={value?.output && FORMAT_ICONS[value.output]}
         >
           {value?.output ? FORMAT_NAMES[value.output] : 'Set number format'}
         </Button>
         {value?.output && (
-          <Button
-            size="compact-sm"
-            color="dark"
-            variant="default"
-            px="xs"
+          <ActionIcon
+            size="sm"
+            variant="secondary"
             onClick={() => handleApply(undefined)}
           >
             <IconX size={14} />
-          </Button>
+          </ActionIcon>
         )}
       </Button.Group>
     </>

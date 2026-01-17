@@ -220,7 +220,7 @@ function SessionCardList({
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const appliedConfigMap = {
   sessionSource: parseAsString,
-  where: parseAsString,
+  where: parseAsString.withDefault(''),
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
 export default function SessionsPage() {
@@ -417,12 +417,7 @@ export default function SessionsPage() {
             return false;
           }}
         >
-          <Flex
-            gap="xs"
-            direction="column"
-            wrap="nowrap"
-            style={{ overflow: 'hidden' }}
-          >
+          <Flex gap="xs" direction="column" wrap="nowrap">
             <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
               <SourceSelectControlled
                 control={control}
@@ -476,8 +471,14 @@ export default function SessionsPage() {
                   onSearch(range);
                 }}
               />
-              <Button variant="outline" type="submit" px="sm">
-                <IconPlayerPlay size={16} />
+              <Button
+                variant="primary"
+                type="submit"
+                px="sm"
+                leftSection={<IconPlayerPlay size={16} />}
+                style={{ flexShrink: 0 }}
+              >
+                Run
               </Button>
             </Group>
           </Flex>

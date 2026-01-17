@@ -11,11 +11,13 @@ import * as config from '@/config';
 import { createAlert } from '@/controllers/alerts';
 import { createTeam } from '@/controllers/team';
 import {
+  bulkInsertData,
   bulkInsertLogs,
   bulkInsertMetricsGauge,
   DEFAULT_DATABASE,
   DEFAULT_METRICS_TABLE,
   getServer,
+  getTestFixtureClickHouseClient,
   makeTile,
 } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
@@ -121,6 +123,37 @@ describe('checkAlerts', () => {
   });
 
   describe('Alert Templates', () => {
+    // Create a mock metadata object with the necessary methods
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const mockMetadata = {
+      getColumn: jest.fn().mockImplementation(({ column }) => {
+        // Provide basic column definitions for common columns to avoid warnings
+        const columnMap = {
+          Timestamp: { name: 'Timestamp', type: 'DateTime' },
+          Body: { name: 'Body', type: 'String' },
+          SeverityText: { name: 'SeverityText', type: 'String' },
+          ServiceName: { name: 'ServiceName', type: 'String' },
+        };
+        return Promise.resolve(columnMap[column]);
+      }),
+      getColumns: jest.fn().mockResolvedValue([]),
+      getMapKeys: jest.fn().mockResolvedValue([]),
+      getMapValues: jest.fn().mockResolvedValue([]),
+      getAllFields: jest.fn().mockResolvedValue([]),
+      getTableMetadata: jest.fn().mockResolvedValue({}),
+      getClickHouseSettings: jest.fn().mockReturnValue({}),
+      setClickHouseSettings: jest.fn(),
+    } as any;
+
+    // Create a mock clickhouse client
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const mockClickhouseClient = {
+      query: jest.fn().mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ data: [] }),
+        text: jest.fn().mockResolvedValue(''),
+      }),
+    } as any;
+
     const defaultSearchView: AlertMessageTemplateDefaultView = {
       alert: {
         thresholdType: AlertThresholdType.ABOVE,
@@ -523,8 +556,8 @@ describe('checkAlerts', () => {
 
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.ALERT,
         template: 'Custom body @webhook-My_Web', // partial name should work
         view: {
@@ -558,8 +591,8 @@ describe('checkAlerts', () => {
 
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.ALERT,
         template: 'Custom body @webhook-My_Web', // partial name should work
         view: {
@@ -615,8 +648,8 @@ describe('checkAlerts', () => {
 
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.ALERT,
         template: 'Custom body @webhook-{{attributes.webhookName}}', // partial name should work
         view: {
@@ -685,8 +718,8 @@ describe('checkAlerts', () => {
 
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.ALERT,
         template: `
 {{#is_match "attributes.k8s.pod.name" "otel-collector-123"}}
@@ -723,8 +756,8 @@ describe('checkAlerts', () => {
       // @webhook should not be called
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.ALERT,
         template:
           '{{#is_match "attributes.host" "web"}} @webhook-My_Web {{/is_match}}', // partial name should work
@@ -816,8 +849,8 @@ describe('checkAlerts', () => {
 
       await renderAlertTemplate({
         alertProvider,
-        clickhouseClient: {} as any,
-        metadata: {} as any,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
         state: AlertState.OK, // Resolved state
         template: '@webhook-My_Webhook',
         view: {
@@ -3846,6 +3879,416 @@ describe('checkAlerts', () => {
       // Verify webhook WAS called
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
       expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+    });
+  });
+
+  describe('processAlert with materialized views', () => {
+    const MV_TABLE_NAME = 'otel_logs_rollup_5m';
+    const server = getServer();
+
+    const createMV = async () => {
+      const client = await getTestFixtureClickHouseClient();
+      await client.command({
+        query: `
+          CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${MV_TABLE_NAME}
+          (
+              Timestamp DateTime,
+              ServiceName LowCardinality(String),
+              SeverityText LowCardinality(String),
+              count SimpleAggregateFunction(sum, UInt64)
+          )
+          ENGINE = AggregatingMergeTree
+          PARTITION BY toDate(Timestamp)
+          ORDER BY (ServiceName, SeverityText, Timestamp)
+          SETTINGS index_granularity = 8192
+        `,
+        clickhouse_settings: {
+          wait_end_of_query: 1,
+        },
+      });
+    };
+
+    const clearMV = async () => {
+      const client = await getTestFixtureClickHouseClient();
+      await client.command({
+        query: `TRUNCATE ${DEFAULT_DATABASE}.${MV_TABLE_NAME}`,
+        clickhouse_settings: {
+          wait_end_of_query: 1,
+        },
+      });
+    };
+
+    const createSavedSearchWithMVSource = async (savedSearchWhere: string) => {
+      const team = await createTeam({ name: 'My Team' });
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+        materializedViews: [
+          {
+            databaseName: DEFAULT_DATABASE,
+            tableName: MV_TABLE_NAME,
+            dimensionColumns: 'ServiceName, SeverityText',
+            minGranularity: '5 minute',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [
+              {
+                sourceColumn: '',
+                aggFn: 'count',
+                mvColumn: 'count',
+              },
+            ],
+          },
+        ],
+      });
+
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'My Search',
+        select: 'Body',
+        where: savedSearchWhere,
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      return {
+        team,
+        clickhouseClient,
+        webhook,
+        savedSearch,
+        source,
+        connection,
+        teamWebhooksById,
+      };
+    };
+
+    beforeAll(async () => {
+      await server.start();
+      await createMV();
+    });
+
+    beforeEach(async () => {
+      jest
+        .spyOn(slack, 'postMessageToWebhook')
+        .mockResolvedValueOnce({ text: 'ok' });
+
+      jest.spyOn(checkAlert, 'handleSendGenericWebhook');
+    });
+
+    afterEach(async () => {
+      await server.clearDBs();
+      await clearMV();
+      jest.clearAllMocks();
+    });
+
+    afterAll(async () => {
+      const client = await getTestFixtureClickHouseClient();
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DEFAULT_DATABASE}.${MV_TABLE_NAME}`,
+        clickhouse_settings: { wait_end_of_query: 1 },
+      });
+      await server.stop();
+    });
+
+    it('should process alerts using materialized views when a compatible materialized view is available', async () => {
+      // Arrange
+      const {
+        team,
+        clickhouseClient,
+        webhook,
+        savedSearch,
+        source,
+        connection,
+        teamWebhooksById,
+      } = await createSavedSearchWithMVSource('SeverityText:"error"');
+
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        new mongoose.Types.ObjectId(),
+      );
+
+      const enhancedAlert: any = await Alert.findById(alert.id).populate([
+        'team',
+        'savedSearch',
+      ]);
+
+      const details = {
+        alert: enhancedAlert,
+        source,
+        previousMap: new Map(),
+        taskType: AlertTaskType.SAVED_SEARCH,
+        savedSearch,
+      } satisfies AlertDetails;
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+      const eventNextMs = new Date('2023-11-16T22:10:00.000Z');
+
+      // Insert directly into the MV so that we can be sure the MV is being used
+      await bulkInsertData(`${DEFAULT_DATABASE}.${MV_TABLE_NAME}`, [
+        // logs from 22:05 - 22:10
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          count: 3,
+        },
+        // logs from 22:10 - 22:15
+        {
+          ServiceName: 'api',
+          Timestamp: eventNextMs,
+          SeverityText: 'error',
+          count: 1,
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventNextMs,
+          SeverityText: 'info',
+          count: 2,
+        },
+      ]);
+
+      // Act - Run alerts twice to cover two periods
+      let previousMap = await getPreviousAlertHistories(
+        [details.alert.id],
+        now,
+      );
+      await processAlert(
+        now,
+        {
+          ...details,
+          previousMap,
+        },
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      const nextWindow = new Date('2023-11-16T22:15:00.000Z');
+      previousMap = await getPreviousAlertHistories(
+        [details.alert.id],
+        nextWindow,
+      );
+      await processAlert(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Assert - Alert ran and has a state consistent with the data in the MV
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({
+        createdAt: 1,
+      });
+      expect(alertHistories.length).toBe(2);
+
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[0].counts).toBe(1);
+      expect(alertHistories[0].lastValues[0].count).toBe(3);
+      expect(alertHistories[0].createdAt).toEqual(
+        new Date('2023-11-16T22:10:00.000Z'),
+      );
+
+      expect(alertHistories[1].state).toBe('ALERT');
+      expect(alertHistories[1].counts).toBe(1);
+      expect(alertHistories[1].lastValues[0].count).toBe(1);
+      expect(alertHistories[1].createdAt).toEqual(
+        new Date('2023-11-16T22:15:00.000Z'),
+      );
+    });
+
+    it('should not use a materialized view when the query is incompatible with the available materialized view', async () => {
+      // Arrange
+      const {
+        team,
+        clickhouseClient,
+        webhook,
+        savedSearch,
+        source,
+        connection,
+        teamWebhooksById,
+      } = await createSavedSearchWithMVSource('Body:no'); // Body is not in the MV, so the MV should not be used
+
+      const mockUserId = new mongoose.Types.ObjectId();
+      const alert = await createAlert(
+        team._id,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        mockUserId,
+      );
+
+      const enhancedAlert: any = await Alert.findById(alert.id).populate([
+        'team',
+        'savedSearch',
+      ]);
+
+      const details = {
+        alert: enhancedAlert,
+        source,
+        previousMap: new Map(),
+        taskType: AlertTaskType.SAVED_SEARCH,
+        savedSearch,
+      } satisfies AlertDetails;
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+      const eventNextMs = new Date('2023-11-16T22:10:00.000Z');
+
+      // Insert directly into the MV so that we can be sure the MV is being used
+      await bulkInsertLogs([
+        // logs from 22:05 - 22:10
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        // logs from 22:10 - 22:15
+        {
+          ServiceName: 'api',
+          Timestamp: eventNextMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventNextMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventNextMs,
+          SeverityText: 'info',
+          Body: 'Something went right for a change!',
+        },
+      ]);
+
+      // Act - Run alerts twice to cover two periods
+      let previousMap = await getPreviousAlertHistories(
+        [details.alert.id],
+        now,
+      );
+      await processAlert(
+        now,
+        {
+          ...details,
+          previousMap,
+        },
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      const nextWindow = new Date('2023-11-16T22:15:00.000Z');
+      previousMap = await getPreviousAlertHistories(
+        [details.alert.id],
+        nextWindow,
+      );
+      await processAlert(
+        nextWindow,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Assert - Alert ran and has a state consistent with the data in the base table
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({
+        createdAt: 1,
+      });
+      expect(alertHistories.length).toBe(2);
+
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[0].counts).toBe(1);
+      expect(alertHistories[0].lastValues[0].count).toBe(3);
+      expect(alertHistories[0].createdAt).toEqual(
+        new Date('2023-11-16T22:10:00.000Z'),
+      );
+
+      expect(alertHistories[1].state).toBe('ALERT');
+      expect(alertHistories[1].counts).toBe(1);
+      expect(alertHistories[1].lastValues[0].count).toBe(2);
+      expect(alertHistories[1].createdAt).toEqual(
+        new Date('2023-11-16T22:15:00.000Z'),
+      );
     });
   });
 

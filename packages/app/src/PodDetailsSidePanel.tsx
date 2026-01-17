@@ -1,10 +1,9 @@
 import * as React from 'react';
-import Link from 'next/link';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
-  Anchor,
   Box,
   Card,
   Drawer,
@@ -16,7 +15,6 @@ import {
 } from '@mantine/core';
 
 import {
-  convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
@@ -183,7 +181,7 @@ function PodLogs({
 
   return (
     <Card p="md">
-      <Card.Section p="md" py="xs" withBorder>
+      <Card.Section p="md" py="xs">
         <Flex justify="space-between" align="center">
           Latest Pod Logs & Spans
           <Flex gap="xs" align="center">
@@ -284,6 +282,7 @@ export default function PodDetailsSidePanel({
   const { data: logServiceNames } = useGetKeyValues(
     {
       chartConfig: {
+        source: logSource.id,
         from: logSource.from,
         where: `${logSource?.resourceAttributesExpression}.k8s.pod.name:"${podName}"`,
         whereLanguage: 'lucene',
@@ -368,18 +367,14 @@ export default function PodDetailsSidePanel({
               />
               <Grid.Col span={6}>
                 <Card p="md" data-testid="pod-details-cpu-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    CPU Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="CPU Usage by Pod"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
-                          granularity: convertDateRangeToGranularityString(
-                            dateRange,
-                            60,
-                          ),
+                          granularity:
+                            convertDateRangeToGranularityString(dateRange),
                           seriesReturnType: 'column',
                           series: [
                             {
@@ -404,18 +399,14 @@ export default function PodDetailsSidePanel({
               </Grid.Col>
               <Grid.Col span={6}>
                 <Card p="md" data-testid="pod-details-memory-usage-chart">
-                  <Card.Section p="md" py="xs" withBorder>
-                    Memory Usage
-                  </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
                     <DBTimeChart
+                      title="Memory Usage"
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
-                          granularity: convertDateRangeToGranularityString(
-                            dateRange,
-                            60,
-                          ),
+                          granularity:
+                            convertDateRangeToGranularityString(dateRange),
                           seriesReturnType: 'column',
                           series: [
                             {
@@ -440,7 +431,7 @@ export default function PodDetailsSidePanel({
               </Grid.Col>
               <Grid.Col span={12}>
                 <Card p="md">
-                  <Card.Section p="md" py="xs" withBorder>
+                  <Card.Section p="md" py="xs">
                     Latest Pod Events
                   </Card.Section>
                   <Card.Section>

@@ -14,6 +14,9 @@ import {
 import { renderChartConfig } from '@/core/renderChartConfig';
 import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
+import { optimizeGetKeyValuesCalls } from './materializedViews';
+import { objectHash } from './utils';
+
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
 export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
@@ -711,7 +714,7 @@ export class Metadata {
       'with',
     ]);
     return this.cache.getOrFetch(
-      `${JSON.stringify(cacheKeyConfig)}.${key}.valuesDistribution`,
+      `${objectHash(cacheKeyConfig)}.${key}.valuesDistribution`,
       async () => {
         const config: ChartConfigWithDateRange = {
           ...chartConfig,
@@ -779,14 +782,28 @@ export class Metadata {
     keys,
     limit = 20,
     disableRowLimit = false,
+    signal,
   }: {
     chartConfig: ChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
-  }) {
+    signal?: AbortSignal;
+  }): Promise<{ key: string; value: string[] }[]> {
+    const cacheKeyConfig = {
+      ...pick(chartConfig, [
+        'connection',
+        'from',
+        'dateRange',
+        'where',
+        'with',
+        'filters',
+      ]),
+      keys,
+      disableRowLimit,
+    };
     return this.cache.getOrFetch(
-      `${chartConfig.connection}.${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
+      `${objectHash(cacheKeyConfig)}.getKeyValues`,
       async () => {
         if (keys.length === 0) return [];
 
@@ -854,6 +871,7 @@ export class Metadata {
                   max_rows_to_read: '0',
                 }
               : undefined,
+            abort_signal: signal,
           })
           .then(res => res.json<any>());
 
@@ -864,6 +882,67 @@ export class Metadata {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see HDX-1548
           value: (value as string[])?.filter(Boolean), // remove nulls
         }));
+      },
+    );
+  }
+
+  async getKeyValuesWithMVs({
+    chartConfig,
+    keys,
+    source,
+    limit = 20,
+    disableRowLimit,
+    signal,
+  }: {
+    chartConfig: ChartConfigWithDateRange;
+    keys: string[];
+    source?: TSource;
+    limit?: number;
+    disableRowLimit?: boolean;
+    signal?: AbortSignal;
+  }): Promise<{ key: string; value: string[] }[]> {
+    const cacheKeyConfig = {
+      ...pick(chartConfig, [
+        'connection',
+        'from',
+        'dateRange',
+        'where',
+        'with',
+        'filters',
+      ]),
+      keys,
+      disableRowLimit,
+    };
+    return this.cache.getOrFetch(
+      `${objectHash(cacheKeyConfig)}.getKeyValuesWithMVs`,
+      async () => {
+        if (keys.length === 0) return [];
+
+        const defaultKeyValueCall = { chartConfig, keys };
+        const getKeyValueCalls = source
+          ? await optimizeGetKeyValuesCalls({
+              chartConfig,
+              keys,
+              source,
+              clickhouseClient: this.clickhouseClient,
+              metadata: this,
+              signal,
+            })
+          : [defaultKeyValueCall];
+
+        const allResults = await Promise.all(
+          getKeyValueCalls.map(async ({ chartConfig, keys }) =>
+            this.getKeyValues({
+              chartConfig,
+              keys,
+              limit,
+              disableRowLimit,
+              signal,
+            }),
+          ),
+        );
+
+        return allResults.flat();
       },
     );
   }

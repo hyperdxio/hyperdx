@@ -40,6 +40,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+
+# Build additional flags
+ADDITIONAL_FLAGS=""
+if [ -n "$TAGS" ]; then
+  ADDITIONAL_FLAGS="--grep $TAGS"
+fi
+if [ "$UI_MODE" = true ]; then
+  ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --ui"
+fi
+
+
 cleanup_mongodb() {
   echo "Stopping MongoDB..."
   docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" down -v
@@ -98,11 +109,7 @@ wait_for_mongodb() {
 run_local_mode() {
   echo "Running E2E tests in local mode (frontend only)..."
   cd "$REPO_ROOT/packages/app"
-  if [ -n "$TAGS" ]; then
-    yarn test:e2e --local --grep "$TAGS" ${UI_MODE:+--ui}
-  else
-    yarn test:e2e --local ${UI_MODE:+--ui}
-  fi
+  yarn test:e2e --local $ADDITIONAL_FLAGS
 }
 
 run_fullstack_mode() {
@@ -122,11 +129,7 @@ run_fullstack_mode() {
 
   # Run tests in full-stack mode (default for yarn test:e2e)
   cd "$REPO_ROOT/packages/app"
-  if [ -n "$TAGS" ]; then
-    yarn test:e2e --grep "$TAGS" ${UI_MODE:+--ui}
-  else
-    yarn test:e2e ${UI_MODE:+--ui}
-  fi
+  yarn test:e2e $ADDITIONAL_FLAGS
 }
 
 # Main execution

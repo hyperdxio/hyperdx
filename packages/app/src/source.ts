@@ -9,6 +9,7 @@ import {
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   hashCode,
   splitAndTrimWithBracket,
@@ -231,14 +232,15 @@ export async function inferTableSourceConfig({
   databaseName,
   tableName,
   connectionId,
+  metadata,
 }: {
   databaseName: string;
   tableName: string;
   connectionId: string;
+  metadata: Metadata;
 }): Promise<
   Partial<Omit<TSource, 'id' | 'name' | 'from' | 'connection' | 'kind'>>
 > {
-  const metadata = getMetadata();
   const columns = await metadata.getColumns({
     databaseName,
     tableName,
@@ -412,17 +414,18 @@ export async function isValidMetricTable({
   tableName,
   connectionId,
   metricType,
+  metadata,
 }: {
   databaseName: string;
   tableName?: string;
   connectionId: string;
   metricType: MetricsDataType;
+  metadata: Metadata;
 }) {
   if (!tableName) {
     return false;
   }
 
-  const metadata = getMetadata();
   const columns = await metadata.getColumns({
     databaseName,
     tableName,
@@ -438,16 +441,17 @@ export async function isValidSessionsTable({
   databaseName,
   tableName,
   connectionId,
+  metadata,
 }: {
   databaseName: string;
   tableName?: string;
   connectionId: string;
+  metadata: Metadata;
 }) {
   if (!tableName) {
     return false;
   }
 
-  const metadata = getMetadata();
   const columns = await metadata.getColumns({
     databaseName,
     tableName,

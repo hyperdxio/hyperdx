@@ -3,8 +3,11 @@ import { omit } from 'lodash';
 import {
   Control,
   Controller,
+  FieldErrors,
+  FieldPath,
   useFieldArray,
   useForm,
+  UseFormClearErrors,
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
@@ -15,6 +18,7 @@ import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
+  ChartConfigWithOptTimestamp,
   DateRange,
   DisplayType,
   Filter,
@@ -26,6 +30,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
+  ActionIcon,
   Box,
   Button,
   Center,
@@ -61,6 +66,9 @@ import { SortingState } from '@tanstack/react-table';
 import {
   AGG_FNS,
   buildTableRowSearchUrl,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
+  convertToTimeChartConfig,
   getPreviousDateRange,
 } from '@/ChartUtils';
 import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
@@ -74,7 +82,6 @@ import { GranularityPickerControlled } from '@/GranularityPicker';
 import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
-import { parseTimeQuery } from '@/timeQuery';
 import { FormatTime } from '@/useFormatTime';
 import {
   getMetricTableName,
@@ -114,11 +121,44 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
   ((queriedConfig?.select?.length ?? 0) > 0 ||
     typeof queriedConfig?.select === 'string') &&
   queriedConfig?.from?.databaseName &&
-  // tableName is emptry for metric sources
+  // tableName is empty for metric sources
   (queriedConfig?.from?.tableName || queriedConfig?.metricTables) &&
   queriedConfig?.timestampValueExpression;
 
 const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
+
+// Helper function to safely construct field paths for series
+const getSeriesFieldPath = (
+  namePrefix: string,
+  fieldName: string,
+): FieldPath<SavedChartConfigWithSeries> => {
+  return `${namePrefix}${fieldName}` as FieldPath<SavedChartConfigWithSeries>;
+};
+
+// Helper function to validate metric names for metric sources
+const validateMetricNames = (
+  tableSource: TSource | undefined,
+  series: SavedChartConfigWithSelectArray['select'] | undefined,
+  setError: (
+    name: FieldPath<SavedChartConfigWithSeries>,
+    error: { type: string; message: string },
+  ) => void,
+): boolean => {
+  if (tableSource?.kind === SourceKind.Metric && Array.isArray(series)) {
+    let hasValidationError = false;
+    series.forEach((s, index) => {
+      if (s.metricType && !s.metricName) {
+        setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
+          type: 'manual',
+          message: 'Please select a metric name',
+        });
+        hasValidationError = true;
+      }
+    });
+    return hasValidationError;
+  }
+  return false;
+};
 
 const NumberFormatInputControlled = ({
   control,
@@ -144,6 +184,10 @@ const NumberFormatInputControlled = ({
   );
 };
 
+type SeriesItem = NonNullable<
+  SavedChartConfigWithSelectArray['select']
+>[number];
+
 function ChartSeriesEditorComponent({
   control,
   databaseName,
@@ -160,6 +204,8 @@ function ChartSeriesEditorComponent({
   parentRef,
   length,
   tableSource,
+  errors,
+  clearErrors,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -176,6 +222,8 @@ function ChartSeriesEditorComponent({
   tableName: string;
   length: number;
   tableSource?: TSource;
+  errors?: FieldErrors<SeriesItem>;
+  clearErrors: UseFormClearErrors<SavedChartConfigWithSeries>;
 }) {
   const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
   const aggConditionLanguage = useWatch({
@@ -291,6 +339,10 @@ function ChartSeriesEditorComponent({
               }
               metricSource={tableSource}
               data-testid="metric-name-selector"
+              error={errors?.metricName?.message}
+              onFocus={() =>
+                clearErrors(getSeriesFieldPath(namePrefix, 'metricName'))
+              }
             />
             {metricType === 'gauge' && (
               <Flex justify="end">
@@ -397,11 +449,6 @@ function ChartSeriesEditorComponent({
 }
 const ChartSeriesEditor = ChartSeriesEditorComponent;
 
-// Autocomplete can focus on column/map keys
-
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
-
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
@@ -441,7 +488,7 @@ export default function EditTimeChartForm({
   dateRange: [Date, Date];
   isSaving?: boolean;
   onTimeRangeSearch?: (value: string) => void;
-  setChartConfig: (chartConfig: SavedChartConfig) => void;
+  setChartConfig?: (chartConfig: SavedChartConfig) => void;
   setDisplayedTimeInputValue?: (value: string) => void;
   onSave?: (chart: SavedChartConfig) => void;
   onClose?: () => void;
@@ -459,12 +506,19 @@ export default function EditTimeChartForm({
     [chartConfig],
   );
 
-  const { control, setValue, handleSubmit, register } =
-    useForm<SavedChartConfigWithSeries>({
-      defaultValues: configWithSeries,
-      values: configWithSeries,
-      resolver: zodResolver(zSavedChartConfig),
-    });
+  const {
+    control,
+    setValue,
+    handleSubmit,
+    register,
+    setError,
+    clearErrors,
+    formState: { errors },
+  } = useForm<SavedChartConfigWithSeries>({
+    defaultValues: configWithSeries,
+    values: configWithSeries,
+    resolver: zodResolver(zSavedChartConfig),
+  });
 
   const {
     fields,
@@ -487,6 +541,10 @@ export default function EditTimeChartForm({
     control,
     name: 'compareToPreviousPeriod',
   });
+  const alignDateRangeToGranularity = useWatch({
+    control,
+    name: 'alignDateRangeToGranularity',
+  });
   const groupBy = useWatch({ control, name: 'groupBy' });
   const displayType =
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
@@ -498,9 +556,6 @@ export default function EditTimeChartForm({
   const databaseName = tableSource?.from.databaseName;
   const tableName = tableSource?.from.tableName;
 
-  // const tableSource = tableSourceWatch();
-  // const databaseName = tableSourceWatch('from.databaseName');
-  // const tableName = tableSourceWatch('from.tableName');
   const activeTab = useMemo(() => {
     switch (displayType) {
       case DisplayType.Search:
@@ -525,19 +580,6 @@ export default function EditTimeChartForm({
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
   const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
 
-  // const queriedConfig: ChartConfigWithDateRange | undefined = useMemo(() => {
-  //   if (queriedTableSource == null) {
-  //     return undefined;
-  //   }
-
-  //   return {
-  //     ...chartConfig,
-  //     from: queriedTableSource.from,
-  //     timestampValueExpression: queriedTableSource?.timestampValueExpression,
-  //     dateRange,
-  //   };
-  // }, [dateRange, chartConfig, queriedTableSource]);
-
   // Only update this on submit, otherwise we'll have issues
   // with using the source value from the last submit
   // (ex. ignoring local custom source updates)
@@ -556,11 +598,32 @@ export default function EditTimeChartForm({
     [],
   );
 
+  const dbTimeChartConfig = useMemo(() => {
+    if (!queriedConfig) {
+      return undefined;
+    }
+
+    return {
+      ...queriedConfig,
+      granularity: alert
+        ? intervalToGranularity(alert.interval)
+        : queriedConfig.granularity,
+      dateRange: alert
+        ? extendDateRangeToInterval(queriedConfig.dateRange, alert.interval)
+        : queriedConfig.dateRange,
+    };
+  }, [queriedConfig, alert]);
+
   const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
     useState(false);
 
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
+      // Validate metric sources have metric names selected
+      if (validateMetricNames(tableSource, form.series, setError)) {
+        return;
+      }
+
       // Merge the series and select fields back together, and prevent the series field from being submitted
       const config = {
         ...omit(form, ['series']),
@@ -568,7 +631,7 @@ export default function EditTimeChartForm({
           form.displayType === DisplayType.Search ? form.select : form.series,
       };
 
-      setChartConfig(config);
+      setChartConfig?.(config);
       if (tableSource != null) {
         const isSelectEmpty = !config.select || config.select.length === 0; // select is string or array
         const newConfig = {
@@ -591,7 +654,7 @@ export default function EditTimeChartForm({
         setQueriedConfigAndSource(
           // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
           // YOUR STATE IS AN OBJECT. YOU'RE COPYING BY REFERENCE WHICH MIGHT
-          // ACCIDENTALLY CAUSE A useQuery SOMEWHERE TO FIRE A REQUEST EVERYTIME
+          // ACCIDENTALLY CAUSE A useQuery SOMEWHERE TO FIRE A REQUEST EVERY TIME
           // AN INPUT CHANGES. USE structuredClone TO PERFORM A DEEP COPY INSTEAD
           structuredClone(newConfig),
           tableSource,
@@ -604,6 +667,7 @@ export default function EditTimeChartForm({
     setQueriedConfigAndSource,
     tableSource,
     dateRange,
+    setError,
   ]);
 
   const onTableSortingChange = useCallback(
@@ -630,6 +694,11 @@ export default function EditTimeChartForm({
 
   const handleSave = useCallback(
     (v: SavedChartConfigWithSeries) => {
+      // Validate metric sources have metric names selected
+      if (validateMetricNames(tableSource, v.series, setError)) {
+        return;
+      }
+
       // If the chart type is search, we need to ensure the select is a string
       if (displayType === DisplayType.Search && typeof v.select !== 'string') {
         v.select = '';
@@ -639,7 +708,7 @@ export default function EditTimeChartForm({
       // Avoid saving the series field. Series should be persisted in the select field.
       onSave?.(omit(v, ['series']));
     },
-    [onSave, displayType],
+    [onSave, displayType, tableSource, setError],
   );
 
   // Track previous values for detecting changes
@@ -693,6 +762,20 @@ export default function EditTimeChartForm({
     });
   }, [dateRange]);
 
+  // Trigger a search when "Show Complete Intervals" changes
+  useEffect(() => {
+    setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
+      if (config == null) {
+        return config;
+      }
+
+      return {
+        ...config,
+        alignDateRangeToGranularity,
+      };
+    });
+  }, [alignDateRangeToGranularity]);
+
   // Trigger a search when "compare to previous period" changes
   useEffect(() => {
     setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
@@ -709,28 +792,57 @@ export default function EditTimeChartForm({
 
   const queryReady = isQueryReady(queriedConfig);
 
-  // The chart config to use when explaining to to the user whether and why
-  // their query is or is not being executed against a materialized view.
-  const chartConfigForMvOptimizationExplanation:
-    | ChartConfigWithDateRange
-    | undefined = useMemo(() => {
-    // If the user has submitted a query, us the submitted query, unless they have changed sources
-    if (queriedConfig && queriedSource?.id === tableSource?.id) {
-      return queriedConfig;
-    }
+  // The chart config to use when showing the user the generated SQL
+  // and explaining whether a MV can be used.
+  const chartConfigForExplanations: ChartConfigWithOptTimestamp | undefined =
+    useMemo(() => {
+      const userHasSubmittedQuery = !!queriedConfig;
+      const queriedSourceMatchesSelectedSource =
+        queriedSource?.id === tableSource?.id;
+      const urlParamsSourceMatchesSelectedSource =
+        chartConfig?.source === tableSource?.id;
 
-    // If there is a chart config from the props (either a saved config or one from the URL params), use that,
-    // unless a different source has been selected.
-    return chartConfig && tableSource?.id === chartConfig.source
-      ? {
-          ...chartConfig,
-          dateRange,
-          timestampValueExpression: tableSource.timestampValueExpression,
-          from: tableSource.from,
-          connection: tableSource.connection,
-        }
-      : undefined;
-  }, [chartConfig, dateRange, tableSource, queriedConfig, queriedSource]);
+      const effectiveQueriedConfig =
+        activeTab === 'time' ? dbTimeChartConfig : queriedConfig;
+
+      const config =
+        userHasSubmittedQuery && queriedSourceMatchesSelectedSource
+          ? effectiveQueriedConfig
+          : chartConfig && urlParamsSourceMatchesSelectedSource
+            ? {
+                ...chartConfig,
+                dateRange,
+                timestampValueExpression: tableSource.timestampValueExpression,
+                from: tableSource.from,
+                connection: tableSource.connection,
+              }
+            : undefined;
+
+      if (!config) {
+        return undefined;
+      }
+
+      // Apply the transformations that child components will apply,
+      // so that the MV optimization explanation and generated SQL preview
+      // are accurate.
+      if (activeTab === 'time') {
+        return convertToTimeChartConfig(config);
+      } else if (activeTab === 'number') {
+        return convertToNumberChartConfig(config);
+      } else if (activeTab === 'table') {
+        return convertToTableChartConfig(config);
+      }
+
+      return config;
+    }, [
+      queriedConfig,
+      queriedSource?.id,
+      tableSource,
+      chartConfig,
+      dateRange,
+      activeTab,
+      dbTimeChartConfig,
+    ]);
 
   const previousDateRange = getPreviousDateRange(dateRange);
 
@@ -862,7 +974,7 @@ export default function EditTimeChartForm({
             {tableSource && activeTab !== 'search' && (
               <MVOptimizationIndicator
                 source={tableSource}
-                config={chartConfigForMvOptimizationExplanation}
+                config={chartConfigForExplanations}
               />
             )}
           </Flex>
@@ -889,6 +1001,12 @@ export default function EditTimeChartForm({
                   }
                   tableName={tableName ?? ''}
                   tableSource={tableSource}
+                  errors={
+                    errors.series && Array.isArray(errors.series)
+                      ? errors.series[index]
+                      : undefined
+                  }
+                  clearErrors={clearErrors}
                 />
               ))}
               {fields.length > 1 && displayType !== DisplayType.Number && (
@@ -1088,7 +1206,7 @@ export default function EditTimeChartForm({
             <Button
               data-testid="chart-save-button"
               loading={isSaving}
-              variant="outline"
+              variant="primary"
               onClick={handleSubmit(handleSave)}
             >
               Save
@@ -1142,19 +1260,21 @@ export default function EditTimeChartForm({
           {activeTab !== 'markdown' && (
             <Button
               data-testid="chart-run-query-button"
-              variant="outline"
+              variant="primary"
               type="submit"
               onClick={onSubmit}
+              leftSection={<IconPlayerPlay size={16} />}
+              style={{ flexShrink: 0 }}
             >
-              <IconPlayerPlay size={16} />
+              Run
             </Button>
           )}
           {!IS_LOCAL_MODE && !dashboardId && (
             <Menu width={250}>
               <Menu.Target>
-                <Button variant="outline" color="gray" px="xs" size="sm">
-                  <IconDotsVertical size={14} />
-                </Button>
+                <ActionIcon variant="secondary" size="input-sm">
+                  <IconDotsVertical size={16} />
+                </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Item
@@ -1170,6 +1290,11 @@ export default function EditTimeChartForm({
       </Flex>
       {activeTab === 'time' && (
         <Group justify="end" mb="xs">
+          <SwitchControlled
+            control={control}
+            name="alignDateRangeToGranularity"
+            label="Show Complete Intervals"
+          />
           <SwitchControlled
             control={control}
             name="compareToPreviousPeriod"
@@ -1201,10 +1326,7 @@ export default function EditTimeChartForm({
         </Paper>
       ) : undefined}
       {queryReady && queriedConfig != null && activeTab === 'table' && (
-        <div
-          className="flex-grow-1 d-flex flex-column"
-          style={{ minHeight: 400 }}
-        >
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBTableChart
             config={queriedConfig}
             getRowSearchLink={row =>
@@ -1217,28 +1339,15 @@ export default function EditTimeChartForm({
             }
             onSortingChange={onTableSortingChange}
             sort={tableSortState}
+            showMVOptimizationIndicator={false}
           />
         </div>
       )}
-      {queryReady && queriedConfig != null && activeTab === 'time' && (
-        <div
-          className="flex-grow-1 d-flex flex-column"
-          style={{ minHeight: 400 }}
-        >
+      {queryReady && dbTimeChartConfig != null && activeTab === 'time' && (
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBTimeChart
             sourceId={sourceId}
-            config={{
-              ...queriedConfig,
-              granularity: alert
-                ? intervalToGranularity(alert.interval)
-                : queriedConfig.granularity,
-              dateRange: alert
-                ? extendDateRangeToInterval(
-                    queriedConfig.dateRange,
-                    alert.interval,
-                  )
-                : queriedConfig.dateRange,
-            }}
+            config={dbTimeChartConfig}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={
               alert &&
@@ -1247,15 +1356,16 @@ export default function EditTimeChartForm({
                 thresholdType: alert.thresholdType,
               })
             }
+            showMVOptimizationIndicator={false}
           />
         </div>
       )}
       {queryReady && queriedConfig != null && activeTab === 'number' && (
-        <div
-          className="flex-grow-1 d-flex flex-column"
-          style={{ minHeight: 400 }}
-        >
-          <DBNumberChart config={queriedConfig} />
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBNumberChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+          />
         </div>
       )}
       {queryReady &&
@@ -1339,8 +1449,8 @@ export default function EditTimeChartForm({
                 </Text>
               </Accordion.Control>
               <Accordion.Panel>
-                {queryReady && queriedConfig != null && (
-                  <ChartSQLPreview config={queriedConfig} />
+                {queryReady && chartConfigForExplanations != null && (
+                  <ChartSQLPreview config={chartConfigForExplanations} />
                 )}
               </Accordion.Panel>
             </Accordion.Item>

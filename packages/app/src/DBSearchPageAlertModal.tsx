@@ -109,7 +109,6 @@ const AlertForm = ({
   const interval = useWatch({ control, name: 'interval' });
   const groupByValue = useWatch({ control, name: 'groupBy' });
   const threshold = useWatch({ control, name: 'threshold' });
-  const thresholdTypeValue = useWatch({ control, name: 'thresholdType' });
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
@@ -202,7 +201,7 @@ const AlertForm = ({
                 interval={interval}
                 groupBy={groupByValue}
                 threshold={threshold}
-                thresholdType={thresholdTypeValue}
+                thresholdType={thresholdType}
               />
             )}
           </Accordion.Panel>
@@ -240,10 +239,10 @@ const AlertForm = ({
           )}
         </div>
         <Group gap="xs">
-          <Button variant="light" color="gray" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="light" type="submit" loading={loading}>
+          <Button variant="primary" type="submit" loading={loading}>
             {defaultValues
               ? 'Save Alert'
               : hasSavedSearch

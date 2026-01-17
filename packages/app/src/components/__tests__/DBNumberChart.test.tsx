@@ -1,23 +1,31 @@
 import React from 'react';
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { act, screen } from '@testing-library/react';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { useSource } from '@/source';
 import { formatNumber } from '@/utils';
 
 import { NumberFormat } from '../../types';
+import DateRangeIndicator from '../charts/DateRangeIndicator';
 import DBNumberChart from '../DBNumberChart';
-import { NumberFormatInput } from '../NumberFormat';
+import MVOptimizationIndicator from '../MaterializedViews/MVOptimizationIndicator';
 
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
+}));
+
+jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
+  useMVOptimizationExplanation: jest.fn().mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isPlaceholderData: false,
+  }),
+}));
+
+jest.mock('@/source', () => ({
+  useSource: jest.fn().mockReturnValue({ data: null }),
 }));
 
 jest.mock('@/utils', () => ({
@@ -28,6 +36,12 @@ jest.mock('@/utils', () => ({
     return result;
   }),
 }));
+
+jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
+  jest.fn(() => null),
+);
+
+jest.mock('../charts/DateRangeIndicator', () => jest.fn(() => null));
 
 describe('DBNumberChart', () => {
   const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;
@@ -188,5 +202,102 @@ describe('DBNumberChart', () => {
 
     renderWithMantine(<DBNumberChart config={baseTestConfig} />);
     expect(screen.getByText(/Error loading chart/)).toBeInTheDocument();
+  });
+
+  it('passes the same config to useMVOptimizationExplanation, useQueriedChartConfig, and MVOptimizationIndicator', () => {
+    // Mock useSource to return a source so MVOptimizationIndicator is rendered
+    jest.mocked(useSource).mockReturnValue({
+      data: { id: 'test-source', name: 'Test Source' },
+    } as any);
+
+    renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+
+    // Get the config that was passed to useMVOptimizationExplanation
+    expect(jest.mocked(useMVOptimizationExplanation)).toHaveBeenCalled();
+    const mvOptExplanationConfig = jest.mocked(useMVOptimizationExplanation)
+      .mock.calls[0][0];
+
+    // Get the config that was passed to useQueriedChartConfig
+    expect(jest.mocked(useQueriedChartConfig)).toHaveBeenCalled();
+    const queriedChartConfig = jest.mocked(useQueriedChartConfig).mock
+      .calls[0][0];
+
+    // Get the config that was passed to MVOptimizationIndicator
+    expect(jest.mocked(MVOptimizationIndicator)).toHaveBeenCalled();
+    const indicatorConfig = jest.mocked(MVOptimizationIndicator).mock
+      .calls[0][0].config;
+
+    // All three should receive the same config object reference
+    expect(mvOptExplanationConfig).toBe(queriedChartConfig);
+    expect(queriedChartConfig).toBe(indicatorConfig);
+    expect(mvOptExplanationConfig).toBe(indicatorConfig);
+  });
+
+  it('renders DateRangeIndicator when MV optimization returns a different date range', () => {
+    const originalStartDate = new Date('2024-01-01T00:00:30Z');
+    const originalEndDate = new Date('2024-01-01T01:30:45Z');
+    const alignedStartDate = new Date('2024-01-01T00:00:00Z');
+    const alignedEndDate = new Date('2024-01-01T02:00:00Z');
+
+    const config = {
+      ...baseTestConfig,
+      dateRange: [originalStartDate, originalEndDate] as [Date, Date],
+    };
+
+    // Mock useMVOptimizationExplanation to return an optimized config with aligned date range
+    jest.mocked(useMVOptimizationExplanation).mockReturnValue({
+      data: {
+        optimizedConfig: {
+          ...config,
+          dateRange: [alignedStartDate, alignedEndDate] as [Date, Date],
+        },
+        explanations: [
+          {
+            success: true,
+            mvConfig: {
+              minGranularity: '1 minute',
+              tableName: 'metrics_rollup_1m',
+            },
+          },
+        ],
+      },
+      isLoading: false,
+      isPlaceholderData: false,
+    } as any);
+
+    renderWithMantine(<DBNumberChart config={config} />);
+
+    // Verify DateRangeIndicator was called
+    expect(jest.mocked(DateRangeIndicator)).toHaveBeenCalled();
+
+    // Verify it was called with the correct props
+    const dateRangeIndicatorCall =
+      jest.mocked(DateRangeIndicator).mock.calls[0][0];
+    expect(dateRangeIndicatorCall.originalDateRange).toEqual([
+      originalStartDate,
+      originalEndDate,
+    ]);
+    expect(dateRangeIndicatorCall.effectiveDateRange).toEqual([
+      alignedStartDate,
+      alignedEndDate,
+    ]);
+    expect(dateRangeIndicatorCall.mvGranularity).toBe('1 minute');
+  });
+
+  it('does not render DateRangeIndicator when MV optimization has no optimized date range', () => {
+    // Mock useMVOptimizationExplanation to return data without an optimized config
+    jest.mocked(useMVOptimizationExplanation).mockReturnValue({
+      data: {
+        optimizedConfig: undefined,
+        explanations: [],
+      },
+      isLoading: false,
+      isPlaceholderData: false,
+    } as any);
+
+    renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+
+    // Verify DateRangeIndicator was not called
+    expect(jest.mocked(DateRangeIndicator)).not.toHaveBeenCalled();
   });
 });

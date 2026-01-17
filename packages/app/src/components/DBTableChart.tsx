@@ -1,16 +1,21 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import {
-  ChartConfigWithDateRange,
-  ChartConfigWithOptTimestamp,
-} from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
 
-import { Table } from '@/HDXMultiSeriesTableChart';
+import {
+  buildMVDateRangeIndicator,
+  convertToTableChartConfig,
+} from '@/ChartUtils';
+import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
-import { omit, useIntersectionObserver } from '@/utils';
+import { useSource } from '@/source';
+import { useIntersectionObserver } from '@/utils';
 
+import ChartContainer from './charts/ChartContainer';
+import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
 // TODO: Support clicking in to view matched events
@@ -22,6 +27,11 @@ export default function DBTableChart({
   onSortingChange,
   sort: controlledSort,
   hiddenColumns = [],
+  title,
+  toolbarPrefix,
+  toolbarSuffix,
+  showMVOptimizationIndicator = true,
+  variant,
 }: {
   config: ChartConfigWithOptTimestamp;
   getRowSearchLink?: (row: any) => string | null;
@@ -30,8 +40,15 @@ export default function DBTableChart({
   onSortingChange?: (sort: SortingState) => void;
   sort?: SortingState;
   hiddenColumns?: string[];
+  title?: React.ReactNode;
+  toolbarPrefix?: React.ReactNode[];
+  toolbarSuffix?: React.ReactNode[];
+  showMVOptimizationIndicator?: boolean;
+  variant?: TableVariant;
 }) {
   const [sort, setSort] = useState<SortingState>([]);
+
+  const { data: source } = useSource({ id: config.source });
 
   const effectiveSort = useMemo(
     () => controlledSort || sort,
@@ -48,21 +65,8 @@ export default function DBTableChart({
     [onSortingChange],
   );
 
-  const queriedConfig = (() => {
-    const _config = omit(config, ['granularity']);
-    if (!_config.limit) {
-      _config.limit = { limit: 200 };
-    }
-
-    // Set a default orderBy if groupBy is set but orderBy is not,
-    // so that the set of rows within the limit is stable.
-    if (
-      _config.groupBy &&
-      typeof _config.groupBy === 'string' &&
-      !_config.orderBy
-    ) {
-      _config.orderBy = _config.groupBy;
-    }
+  const queriedConfig = useMemo(() => {
+    const _config = convertToTableChartConfig(config);
 
     if (effectiveSort.length) {
       _config.orderBy = effectiveSort.map(o => {
@@ -73,10 +77,13 @@ export default function DBTableChart({
       });
     }
     return _config;
-  })();
+  }, [config, effectiveSort]);
+
+  const { data: mvOptimizationData } =
+    useMVOptimizationExplanation(queriedConfig);
 
   const { data, fetchNextPage, hasNextPage, isLoading, isError, error } =
-    useOffsetPaginatedQuery(queriedConfig as ChartConfigWithDateRange, {
+    useOffsetPaginatedQuery(queriedConfig, {
       enabled,
       queryKeyPrefix,
     });
@@ -127,55 +134,101 @@ export default function DBTableChart({
     hiddenColumns,
   ]);
 
-  return isLoading && !data ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      Loading Chart Data...
-    </div>
-  ) : isError && error ? (
-    <div className="h-100 w-100 align-items-center justify-content-center text-muted">
-      <Text ta="center" size="sm" mt="sm">
-        Error loading chart, please check your query or try again later.
-      </Text>
-      <Box mt="sm">
-        <Text my="sm" size="sm" ta="center">
-          Error Message:
-        </Text>
-        <Code
-          block
-          style={{
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {error.message}
-        </Code>
-        {error instanceof ClickHouseQueryError && (
-          <>
-            <Text my="sm" size="sm" ta="center">
-              Sent Query:
-            </Text>
-            <SQLPreview data={error?.query} />
-          </>
-        )}
-      </Box>
-    </div>
-  ) : data?.data.length === 0 ? (
-    <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
-      No data found within time range.
-    </div>
-  ) : (
-    <Table
-      data={data?.data ?? []}
-      columns={columns}
-      getRowSearchLink={getRowSearchLink}
-      sorting={effectiveSort}
-      onSortingChange={handleSortingChange}
-      tableBottom={
-        hasNextPage && (
-          <Text ref={fetchMoreRef} ta="center">
-            Loading...
+  const toolbarItemsMemo = useMemo(() => {
+    const allToolbarItems = [];
+
+    if (toolbarPrefix && toolbarPrefix.length > 0) {
+      allToolbarItems.push(...toolbarPrefix);
+    }
+
+    if (source && showMVOptimizationIndicator) {
+      allToolbarItems.push(
+        <MVOptimizationIndicator
+          key="db-table-chart-mv-indicator"
+          config={queriedConfig}
+          source={source}
+          variant="icon"
+        />,
+      );
+    }
+
+    const dateRangeIndicator = buildMVDateRangeIndicator({
+      mvOptimizationData,
+      originalDateRange: queriedConfig.dateRange,
+    });
+
+    if (dateRangeIndicator) {
+      allToolbarItems.push(dateRangeIndicator);
+    }
+
+    if (toolbarSuffix && toolbarSuffix.length > 0) {
+      allToolbarItems.push(...toolbarSuffix);
+    }
+
+    return allToolbarItems;
+  }, [
+    toolbarPrefix,
+    toolbarSuffix,
+    source,
+    showMVOptimizationIndicator,
+    mvOptimizationData,
+    queriedConfig,
+  ]);
+
+  return (
+    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+      {isLoading && !data ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          Loading Chart Data...
+        </div>
+      ) : isError && error ? (
+        <div className="h-100 w-100 align-items-center justify-content-center text-muted">
+          <Text ta="center" size="sm" mt="sm">
+            Error loading chart, please check your query or try again later.
           </Text>
-        )
-      }
-    />
+          <Box mt="sm">
+            <Text my="sm" size="sm" ta="center">
+              Error Message:
+            </Text>
+            <Code
+              block
+              style={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {error.message}
+            </Code>
+            {error instanceof ClickHouseQueryError && (
+              <>
+                <Text my="sm" size="sm" ta="center">
+                  Sent Query:
+                </Text>
+                <SQLPreview data={error?.query} />
+              </>
+            )}
+          </Box>
+        </div>
+      ) : data?.data.length === 0 ? (
+        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+          No data found within time range.
+        </div>
+      ) : (
+        <Table
+          data={data?.data ?? []}
+          columns={columns}
+          getRowSearchLink={getRowSearchLink}
+          sorting={effectiveSort}
+          onSortingChange={handleSortingChange}
+          variant={variant}
+          tableBottom={
+            hasNextPage && (
+              <Text ref={fetchMoreRef} ta="center">
+                Loading...
+              </Text>
+            )
+          }
+        />
+      )}
+    </ChartContainer>
   );
 }

@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react';
 import { add, min, sub } from 'date-fns';
+import {
+  convertDateRangeToGranularityString,
+  Granularity,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -12,11 +16,9 @@ import {
 } from '@mantine/core';
 
 import { convertV1ChartConfigToV2 } from '@/ChartUtils';
-import { getEventBody, useSource } from '@/source';
+import { useSource } from '@/source';
 
 import {
-  convertDateRangeToGranularityString,
-  Granularity,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_FILESYSTEM_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
@@ -65,7 +67,7 @@ const InfraSubpanelGroup = ({
   }, [size]);
 
   const granularity = useMemo<Granularity>(() => {
-    return convertDateRangeToGranularityString(dateRange, 60);
+    return convertDateRangeToGranularityString(dateRange);
   }, [dateRange]);
 
   return (
@@ -98,12 +100,10 @@ const InfraSubpanelGroup = ({
         </Group>
       </Group>
       <SimpleGrid mt="md" cols={cols}>
-        <Card p="md" data-testid="cpu-usage-card">
-          <Card.Section p="md" py="xs" withBorder>
-            CPU Usage (%)
-          </Card.Section>
-          <Card.Section py={8} px={4} h={height}>
+        <Card data-testid="cpu-usage-card">
+          <Card.Section py={8} px={8} h={height}>
             <DBTimeChart
+              title="CPU Usage (%)"
               config={convertV1ChartConfigToV2(
                 {
                   dateRange,
@@ -130,12 +130,10 @@ const InfraSubpanelGroup = ({
             />
           </Card.Section>
         </Card>
-        <Card p="md" data-testid="memory-usage-card">
-          <Card.Section p="md" py="xs" withBorder>
-            Memory Used
-          </Card.Section>
-          <Card.Section py={8} px={4} h={height}>
+        <Card data-testid="memory-usage-card">
+          <Card.Section py={8} px={8} h={height}>
             <DBTimeChart
+              title="Memory Used"
               config={convertV1ChartConfigToV2(
                 {
                   dateRange,
@@ -162,12 +160,10 @@ const InfraSubpanelGroup = ({
             />
           </Card.Section>
         </Card>
-        <Card p="md" data-testid="disk-usage-card">
-          <Card.Section p="md" py="xs" withBorder>
-            Disk Available
-          </Card.Section>
-          <Card.Section py={8} px={4} h={height}>
+        <Card data-testid="disk-usage-card">
+          <Card.Section py={8} px={8} h={height}>
             <DBTimeChart
+              title="Disk Available"
               config={convertV1ChartConfigToV2(
                 {
                   dateRange,
@@ -230,7 +226,7 @@ export default ({
           )}
           {source && (
             <Card p="md" mt="xl">
-              <Card.Section p="md" py="xs" withBorder>
+              <Card.Section p="md" py="xs">
                 Pod Timeline
               </Card.Section>
               <Card.Section>

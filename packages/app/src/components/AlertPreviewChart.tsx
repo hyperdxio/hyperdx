@@ -60,6 +60,8 @@ export const AlertPreviewChart = ({
       <DBTimeChart
         sourceId={source.id}
         showDisplaySwitcher={false}
+        showMVOptimizationIndicator={false}
+        showDateRangeIndicator={false}
         referenceLines={getAlertReferenceLines({ threshold, thresholdType })}
         config={{
           where: where || '',

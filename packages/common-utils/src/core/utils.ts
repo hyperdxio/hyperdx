@@ -18,6 +18,9 @@ import {
   TSourceUnion,
 } from '@/types';
 
+/** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
+export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
+
 export const isBrowser: boolean =
   typeof window !== 'undefined' && typeof window.document !== 'undefined';
 
@@ -218,6 +221,10 @@ export function replaceJsonExpressions(sql: string) {
   return { sqlWithReplacements, replacements };
 }
 
+/**
+ * To best support Pre-aggregation in Materialized Views, any new
+ * granularities should be multiples of all smaller granularities.
+ * */
 export enum Granularity {
   FifteenSecond = '15 second',
   ThirtySecond = '30 second',
@@ -251,7 +258,7 @@ export function hashCode(str: string) {
 
 export function convertDateRangeToGranularityString(
   dateRange: [Date, Date],
-  maxNumBuckets: number,
+  maxNumBuckets: number = DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
 ): Granularity {
   const start = dateRange[0].getTime();
   const end = dateRange[1].getTime();
@@ -266,9 +273,9 @@ export function convertDateRangeToGranularityString(
     return Granularity.OneMinute;
   } else if (granularitySizeSeconds <= 5 * 60) {
     return Granularity.FiveMinute;
-  } else if (granularitySizeSeconds <= 10 * 60) {
-    return Granularity.TenMinute;
   } else if (granularitySizeSeconds <= 15 * 60) {
+    // 10 minute granularity is skipped so that every auto-inferred granularity is a multiple
+    // of all smaller granularities, which makes it more likely that a materialized view can be used.
     return Granularity.FifteenMinute;
   } else if (granularitySizeSeconds <= 30 * 60) {
     return Granularity.ThirtyMinute;
@@ -661,4 +668,28 @@ export function optimizeTimestampValueExpression(
   }
 
   return timestampValueExprs.join(', ');
+}
+
+export function getAlignedDateRange(
+  [originalStart, originalEnd]: [Date, Date],
+  granularity: SQLInterval,
+): [Date, Date] {
+  // Round the start time down to the previous interval boundary
+  const alignedStart = toStartOfInterval(originalStart, granularity);
+
+  // Round the end time up to the next interval boundary
+  let alignedEnd = toStartOfInterval(originalEnd, granularity);
+  if (alignedEnd.getTime() < originalEnd.getTime()) {
+    const intervalSeconds = convertGranularityToSeconds(granularity);
+    alignedEnd = fnsAdd(alignedEnd, { seconds: intervalSeconds });
+  }
+
+  return [alignedStart, alignedEnd];
+}
+
+export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
+  return (
+    range1[0].getTime() === range2[0].getTime() &&
+    range1[1].getTime() === range2[1].getTime()
+  );
 }

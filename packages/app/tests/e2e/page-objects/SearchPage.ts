@@ -189,12 +189,30 @@ export class SearchPage {
   }
 
   /**
+   * Get ORDER BY editor (CodeMirror)
+   */
+  getOrderByEditor() {
+    return this.page.locator('.cm-content').nth(1);
+  }
+
+  /**
    * Set custom SELECT columns
    */
   async setCustomSELECT(selectStatement: string) {
     const selectEditor = this.getSELECTEditor();
     await selectEditor.click({ clickCount: 3 }); // Select all
     await this.page.keyboard.type(selectStatement);
+  }
+
+  /**
+   * Set custom ORDER BY clause
+   */
+  async setCustomOrderBy(orderByStatement: string) {
+    const orderByEditor = this.getOrderByEditor();
+    await orderByEditor.click({ clickCount: 3 }); // Select all
+    await this.page.keyboard.type(orderByStatement);
+    // CLoses Autocomplete Modal if open
+    await this.page.keyboard.press('Escape');
   }
 
   /**

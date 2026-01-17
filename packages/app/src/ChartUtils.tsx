@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { add } from 'date-fns';
+import { add, differenceInSeconds } from 'date-fns';
+import { omit } from 'lodash';
 import SqlString from 'sqlstring';
 import { z } from 'zod';
 import {
@@ -10,9 +11,15 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  convertDateRangeToGranularityString,
+  Granularity,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   AggregateFunction as AggFnV2,
   ChartConfigWithDateRange,
+  ChartConfigWithOptTimestamp,
   DisplayType,
   Filter,
   MetricsDataType as MetricsDataTypeV2,
@@ -24,6 +31,8 @@ import {
 import { SegmentedControl } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import DateRangeIndicator from './components/charts/DateRangeIndicator';
+import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
 import { getMetricNameSql } from './otelSemanticConventions';
 import {
   AggFn,
@@ -98,24 +107,6 @@ export const getMetricAggFns = (
   ];
 };
 
-export enum Granularity {
-  FifteenSecond = '15 second',
-  ThirtySecond = '30 second',
-  OneMinute = '1 minute',
-  FiveMinute = '5 minute',
-  TenMinute = '10 minute',
-  FifteenMinute = '15 minute',
-  ThirtyMinute = '30 minute',
-  OneHour = '1 hour',
-  TwoHour = '2 hour',
-  SixHour = '6 hour',
-  TwelveHour = '12 hour',
-  OneDay = '1 day',
-  TwoDay = '2 day',
-  SevenDay = '7 day',
-  ThirtyDay = '30 day',
-}
-
 export const DEFAULT_CHART_CONFIG: Omit<
   SavedChartConfig,
   'source' | 'connection'
@@ -133,28 +124,44 @@ export const DEFAULT_CHART_CONFIG: Omit<
   whereLanguage: 'lucene',
   displayType: DisplayType.Line,
   granularity: 'auto',
+  alignDateRangeToGranularity: true,
 };
 
 export const isGranularity = (value: string): value is Granularity => {
   return Object.values(Granularity).includes(value as Granularity);
 };
 
-export function useTimeChartSettings(chartConfig: ChartConfigWithDateRange) {
-  const autoGranularity = useMemo(() => {
-    return convertDateRangeToGranularityString(chartConfig.dateRange, 80);
-  }, [chartConfig.dateRange]);
-
+export function convertToTimeChartConfig(config: ChartConfigWithDateRange) {
   const granularity =
-    chartConfig.granularity === 'auto' || chartConfig.granularity == null
-      ? autoGranularity
-      : chartConfig.granularity;
+    config.granularity === 'auto' || config.granularity == null
+      ? convertDateRangeToGranularityString(config.dateRange, 80)
+      : config.granularity;
+
+  const dateRange =
+    config.alignDateRangeToGranularity === false
+      ? config.dateRange
+      : getAlignedDateRange(config.dateRange, granularity);
 
   return {
-    displayType: chartConfig.displayType,
-    dateRange: chartConfig.dateRange,
-    fillNulls: chartConfig.fillNulls,
+    ...config,
+    dateRange,
+    dateRangeEndInclusive: false,
     granularity,
+    limit: { limit: 100000 },
   };
+}
+
+export function useTimeChartSettings(chartConfig: ChartConfigWithDateRange) {
+  return useMemo(() => {
+    const convertedConfig = convertToTimeChartConfig(chartConfig);
+
+    return {
+      displayType: convertedConfig.displayType,
+      dateRange: convertedConfig.dateRange,
+      fillNulls: convertedConfig.fillNulls,
+      granularity: convertedConfig.granularity,
+    };
+  }, [chartConfig]);
 }
 
 export function seriesToSearchQuery({
@@ -231,50 +238,6 @@ export function TableToggle({
       ]}
     />
   );
-}
-
-export function convertDateRangeToGranularityString(
-  dateRange: [Date, Date],
-  maxNumBuckets: number,
-): Granularity {
-  const start = dateRange[0].getTime();
-  const end = dateRange[1].getTime();
-  const diffSeconds = Math.floor((end - start) / 1000);
-  const granularitySizeSeconds = Math.ceil(diffSeconds / maxNumBuckets);
-
-  if (granularitySizeSeconds <= 15) {
-    return Granularity.FifteenSecond;
-  } else if (granularitySizeSeconds <= 30) {
-    return Granularity.ThirtySecond;
-  } else if (granularitySizeSeconds <= 60) {
-    return Granularity.OneMinute;
-  } else if (granularitySizeSeconds <= 5 * 60) {
-    return Granularity.FiveMinute;
-  } else if (granularitySizeSeconds <= 10 * 60) {
-    return Granularity.TenMinute;
-  } else if (granularitySizeSeconds <= 15 * 60) {
-    return Granularity.FifteenMinute;
-  } else if (granularitySizeSeconds <= 30 * 60) {
-    return Granularity.ThirtyMinute;
-  } else if (granularitySizeSeconds <= 3600) {
-    return Granularity.OneHour;
-  } else if (granularitySizeSeconds <= 2 * 3600) {
-    return Granularity.TwoHour;
-  } else if (granularitySizeSeconds <= 6 * 3600) {
-    return Granularity.SixHour;
-  } else if (granularitySizeSeconds <= 12 * 3600) {
-    return Granularity.TwelveHour;
-  } else if (granularitySizeSeconds <= 24 * 3600) {
-    return Granularity.OneDay;
-  } else if (granularitySizeSeconds <= 2 * 24 * 3600) {
-    return Granularity.TwoDay;
-  } else if (granularitySizeSeconds <= 7 * 24 * 3600) {
-    return Granularity.SevenDay;
-  } else if (granularitySizeSeconds <= 30 * 24 * 3600) {
-    return Granularity.ThirtyDay;
-  }
-
-  return Granularity.ThirtyDay;
 }
 
 export const ChartKeyJoiner = ' · ';
@@ -539,16 +502,9 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
-export function getPreviousPeriodOffsetSeconds(
-  dateRange: [Date, Date],
-): number {
-  const [start, end] = dateRange;
-  return Math.round((end.getTime() - start.getTime()) / 1000);
-}
-
 export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
   const [start, end] = currentRange;
-  const offsetSeconds = getPreviousPeriodOffsetSeconds(currentRange);
+  const offsetSeconds = differenceInSeconds(end, start);
   return [
     new Date(start.getTime() - offsetSeconds * 1000),
     new Date(end.getTime() - offsetSeconds * 1000),
@@ -612,7 +568,7 @@ function addResponseToFormattedData({
   lineDataMap,
   tsBucketMap,
   source,
-  currentPeriodDateRange,
+  previousPeriodOffsetSeconds,
   isPreviousPeriod,
   hiddenSeries = [],
 }: {
@@ -621,7 +577,7 @@ function addResponseToFormattedData({
   response: ResponseJSON<Record<string, any>>;
   source?: TSource;
   isPreviousPeriod: boolean;
-  currentPeriodDateRange: [Date, Date];
+  previousPeriodOffsetSeconds: number;
   hiddenSeries?: string[];
 }) {
   const { meta, data } = response;
@@ -645,9 +601,7 @@ function addResponseToFormattedData({
     const date = new Date(row[timestampColumn.name]);
 
     // Previous period data needs to be shifted forward to align with current period
-    const offsetSeconds = isPreviousPeriod
-      ? getPreviousPeriodOffsetSeconds(currentPeriodDateRange)
-      : 0;
+    const offsetSeconds = isPreviousPeriod ? previousPeriodOffsetSeconds : 0;
     const ts = Math.round(date.getTime() / 1000 + offsetSeconds);
 
     for (const valueColumn of valueColumns) {
@@ -702,6 +656,7 @@ export function formatResponseForTimeChart({
   generateEmptyBuckets = true,
   source,
   hiddenSeries = [],
+  previousPeriodOffsetSeconds = 0,
 }: {
   dateRange: [Date, Date];
   granularity?: SQLInterval;
@@ -710,6 +665,7 @@ export function formatResponseForTimeChart({
   generateEmptyBuckets?: boolean;
   source?: TSource;
   hiddenSeries?: string[];
+  previousPeriodOffsetSeconds?: number;
 }) {
   const meta = currentPeriodResponse.meta;
 
@@ -740,7 +696,7 @@ export function formatResponseForTimeChart({
     tsBucketMap,
     source,
     isPreviousPeriod: false,
-    currentPeriodDateRange: dateRange,
+    previousPeriodOffsetSeconds,
     hiddenSeries,
   });
 
@@ -751,7 +707,7 @@ export function formatResponseForTimeChart({
       tsBucketMap,
       source,
       isPreviousPeriod: true,
-      currentPeriodDateRange: dateRange,
+      previousPeriodOffsetSeconds,
       hiddenSeries,
     });
   }
@@ -1148,4 +1104,56 @@ export function buildTableRowSearchUrl({
     groupFilters,
     valueRangeFilter,
   });
+}
+
+export function convertToNumberChartConfig(
+  config: ChartConfigWithDateRange,
+): ChartConfigWithOptTimestamp {
+  return omit(config, ['granularity', 'groupBy']);
+}
+
+export function convertToTableChartConfig(
+  config: ChartConfigWithOptTimestamp,
+): ChartConfigWithOptTimestamp {
+  const convertedConfig = structuredClone(omit(config, ['granularity']));
+
+  // Set a default limit if not already set
+  if (!convertedConfig.limit) {
+    convertedConfig.limit = { limit: 200 };
+  }
+
+  // Set a default orderBy if groupBy is set but orderBy is not,
+  // so that the set of rows within the limit is stable.
+  if (
+    convertedConfig.groupBy &&
+    typeof convertedConfig.groupBy === 'string' &&
+    !convertedConfig.orderBy
+  ) {
+    convertedConfig.orderBy = convertedConfig.groupBy;
+  }
+
+  return convertedConfig;
+}
+
+export function buildMVDateRangeIndicator({
+  mvOptimizationData,
+  originalDateRange,
+}: {
+  mvOptimizationData?: MVOptimizationExplanationResult;
+  originalDateRange: [Date, Date];
+}) {
+  const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
+  if (!mvDateRange) return null;
+
+  const mvGranularity = mvOptimizationData?.explanations.find(e => e.success)
+    ?.mvConfig.minGranularity;
+
+  return (
+    <DateRangeIndicator
+      key="date-range-indicator"
+      originalDateRange={originalDateRange}
+      effectiveDateRange={mvDateRange}
+      mvGranularity={mvGranularity}
+    />
+  );
 }

@@ -78,12 +78,12 @@ import CodeMirror from '@uiw/react-codemirror';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
-import { TableSourceForm } from '@/components/SourceForm';
+import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
@@ -280,8 +280,12 @@ function ResumeLiveTailButton({
   handleResumeLiveTail: () => void;
 }) {
   return (
-    <Button size="compact-xs" variant="outline" onClick={handleResumeLiveTail}>
-      <IconBolt size={14} className="text-success me-2" />
+    <Button
+      size="compact-xs"
+      variant="primary"
+      onClick={handleResumeLiveTail}
+      leftSection={<IconBolt size={14} />}
+    >
       Resume Live Tail
     </Button>
   );
@@ -295,11 +299,12 @@ function SearchSubmitButton({
   return (
     <Button
       data-testid="search-submit-button"
-      variant="outline"
+      variant={isFormStateDirty ? 'primary' : 'secondary'}
       type="submit"
-      color={isFormStateDirty ? 'var(--color-text-success)' : 'gray'}
+      leftSection={<IconPlayerPlay size={16} />}
+      style={{ flexShrink: 0 }}
     >
-      <IconPlayerPlay size={16} />
+      Run
     </Button>
   );
 }
@@ -498,8 +503,7 @@ function SaveSearchModalComponent({
               {tags.map(tag => (
                 <Button
                   key={tag}
-                  variant="light"
-                  color="gray"
+                  variant="secondary"
                   size="xs"
                   rightSection={
                     <ActionIcon
@@ -521,8 +525,7 @@ function SaveSearchModalComponent({
               <Tags allowCreate values={tags} onChange={setTags}>
                 <Button
                   data-testid="add-tag-button"
-                  variant="outline"
-                  color="gray"
+                  variant="secondary"
                   size="xs"
                 >
                   <IconPlus size={14} className="me-1" />
@@ -533,8 +536,7 @@ function SaveSearchModalComponent({
           </Box>
           <Button
             data-testid="save-search-submit-button"
-            variant="outline"
-            color="green"
+            variant="primary"
             type="submit"
             disabled={!formState.isValid}
           >
@@ -622,14 +624,14 @@ function useLiveUpdate({
   ]);
 }
 
-function useSearchedConfigToChartConfig({
-  select,
-  source,
-  whereLanguage,
-  where,
-  filters,
-  orderBy,
-}: SearchConfig) {
+/**
+ * Takes in a input search config (user edited search config) and a default search config (saved search or source default config)
+ * and returns a chart config.
+ */
+function useSearchedConfigToChartConfig(
+  { select, source, whereLanguage, where, filters, orderBy }: SearchConfig,
+  defaultSearchConfig?: Partial<SearchConfig>,
+) {
   const { data: sourceObj, isLoading } = useSource({
     id: source,
   });
@@ -639,7 +641,11 @@ function useSearchedConfigToChartConfig({
     if (sourceObj != null) {
       return {
         data: {
-          select: select || (sourceObj.defaultTableSelectExpression ?? ''),
+          select:
+            select ||
+            defaultSearchConfig?.select ||
+            sourceObj.defaultTableSelectExpression ||
+            '',
           from: sourceObj.from,
           source: sourceObj.id,
           ...(sourceObj.tableFilterExpression != null
@@ -660,7 +666,7 @@ function useSearchedConfigToChartConfig({
           implicitColumnExpression: sourceObj.implicitColumnExpression,
           connection: sourceObj.connection,
           displayType: DisplayType.Search,
-          orderBy: orderBy || defaultOrderBy,
+          orderBy: orderBy || defaultSearchConfig?.orderBy || defaultOrderBy,
         },
       };
     }
@@ -671,6 +677,7 @@ function useSearchedConfigToChartConfig({
     isLoading,
     select,
     filters,
+    defaultSearchConfig,
     where,
     whereLanguage,
     defaultOrderBy,
@@ -752,6 +759,9 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
   const { data: source } = useSource({ id: sourceID });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
+  // If no source, return undefined so that the orderBy is not set incorrectly
+  if (!source) return undefined;
+
   // When source changes, make sure select and orderby fields are set to default
   return useMemo(
     () =>
@@ -805,11 +815,6 @@ function DBSearchPage() {
       'delta',
       'pattern',
     ]).withDefault('results'),
-  );
-
-  const [outlierSqlCondition, setOutlierSqlCondition] = useQueryState(
-    'outlierSqlCondition',
-    parseAsString,
   );
 
   const [isLive, setIsLive] = useQueryState(
@@ -867,11 +872,33 @@ function DBSearchPage() {
   });
 
   const inputSource = useWatch({ name: 'source', control });
+
+  const defaultOrderBy = useDefaultOrderBy(inputSource);
+
+  // The default search config to use when the user hasn't changed the search config
+  const defaultSearchConfig = useMemo(() => {
+    let _savedSearch = savedSearch;
+    // Ensure to not use the saved search if the saved search id is not the same as the current saved search id
+    if (!savedSearchId || savedSearch?.id !== savedSearchId) {
+      _savedSearch = undefined;
+    }
+    // Ensure to not use the saved search if the input source is not the same as the saved search source
+    if (inputSource !== savedSearch?.source) {
+      _savedSearch = undefined;
+    }
+    return {
+      select:
+        _savedSearch?.select ?? searchedSource?.defaultTableSelectExpression,
+      where: _savedSearch?.where ?? '',
+      whereLanguage: _savedSearch?.whereLanguage ?? 'lucene',
+      source: _savedSearch?.source,
+      orderBy: _savedSearch?.orderBy || defaultOrderBy,
+    };
+  }, [searchedSource, inputSource, savedSearch, defaultOrderBy, savedSearchId]);
+
   // const { data: inputSourceObj } = useSource({ id: inputSource });
   const { data: inputSourceObjs } = useSources();
   const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
-
-  const defaultOrderBy = useDefaultOrderBy(inputSource);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Live Tail');
@@ -1023,14 +1050,14 @@ function DBSearchPage() {
         // Save the selected source ID to localStorage
         setLastSelectedSourceId(newInputSourceObj.id);
 
-        // If the user is in a saved search, prefer the saved search's select if available
+        // If the user isn't in a saved search (or the source is different from the saved search source), reset fields
         if (savedSearchId == null || savedSearch?.source !== watchedSource) {
-          setValue(
-            'select',
-            newInputSourceObj?.defaultTableSelectExpression ?? '',
-          );
+          setValue('select', '');
+          setValue('orderBy', '');
+          // If the user is in a saved search, prefer the saved search's select/orderBy if available
         } else {
           setValue('select', savedSearch?.select ?? '');
+          setValue('orderBy', savedSearch?.orderBy ?? '');
         }
         // Clear all search filters
         searchFilters.clearAllFilters();
@@ -1066,7 +1093,7 @@ function DBSearchPage() {
   >(undefined);
 
   const { data: chartConfig, isLoading: isChartConfigLoading } =
-    useSearchedConfigToChartConfig(searchedConfig);
+    useSearchedConfigToChartConfig(searchedConfig, defaultSearchConfig);
 
   // query error handling
   const { hasQueryError, queryError } = useMemo(() => {
@@ -1239,11 +1266,9 @@ function DBSearchPage() {
   const displayedColumns = useMemo(
     () =>
       splitAndTrimWithBracket(
-        dbSqlRowTableConfig?.select ??
-          searchedSource?.defaultTableSelectExpression ??
-          '',
+        dbSqlRowTableConfig?.select ?? defaultSearchConfig.select ?? '',
       ),
-    [dbSqlRowTableConfig?.select, searchedSource?.defaultTableSelectExpression],
+    [dbSqlRowTableConfig?.select, defaultSearchConfig.select],
   );
 
   const toggleColumn = useCallback(
@@ -1367,6 +1392,9 @@ function DBSearchPage() {
       with: aliasWith,
       // Preserve the original table select string for "View Events" links
       eventTableSelect: searchedConfig.select,
+      // In live mode, when the end date is aligned to the granularity, the end date does
+      // not change on every query, resulting in cached data being re-used.
+      alignDateRangeToGranularity: !isLive,
       ...variableConfig,
     };
   }, [
@@ -1375,6 +1403,7 @@ function DBSearchPage() {
     aliasWith,
     searchedTimeRange,
     searchedConfig.select,
+    isLive,
   ]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
@@ -1393,10 +1422,10 @@ function DBSearchPage() {
       setSearchedConfig({
         orderBy: sort
           ? `${sort.id} ${sort.desc ? 'DESC' : 'ASC'}`
-          : defaultOrderBy,
+          : defaultSearchConfig.orderBy,
       });
     },
-    [setIsLive, defaultOrderBy, setSearchedConfig],
+    [setIsLive, defaultSearchConfig.orderBy, setSearchedConfig],
   );
   // Parse the orderBy string into a SortingState. We need the string
   // version in other places so we keep this parser separate.
@@ -1574,10 +1603,8 @@ function DBSearchPage() {
               tableConnection={inputSourceTableConnection}
               control={control}
               name="select"
-              defaultValue={inputSourceObj?.defaultTableSelectExpression}
-              placeholder={
-                inputSourceObj?.defaultTableSelectExpression || 'SELECT Columns'
-              }
+              defaultValue={defaultSearchConfig.select}
+              placeholder={defaultSearchConfig.select || 'SELECT Columns'}
               onSubmit={onSubmit}
               label="SELECT"
               size="xs"
@@ -1588,7 +1615,7 @@ function DBSearchPage() {
               tableConnection={inputSourceTableConnection}
               control={control}
               name="orderBy"
-              defaultValue={defaultOrderBy}
+              defaultValue={defaultSearchConfig.orderBy}
               onSubmit={onSubmit}
               label="ORDER BY"
               size="xs"
@@ -1599,7 +1626,7 @@ function DBSearchPage() {
               {!savedSearchId ? (
                 <Button
                   data-testid="save-search-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={onSaveSearch}
                   style={{ flexShrink: 0 }}
@@ -1609,7 +1636,7 @@ function DBSearchPage() {
               ) : (
                 <Button
                   data-testid="update-search-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={() => {
                     setSaveSearchModalState('update');
@@ -1622,7 +1649,7 @@ function DBSearchPage() {
               {!IS_LOCAL_MODE && (
                 <Button
                   data-testid="alerts-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={openAlertModal}
                   style={{ flexShrink: 0 }}
@@ -1639,7 +1666,7 @@ function DBSearchPage() {
                   >
                     <Button
                       data-testid="tags-button"
-                      variant="default"
+                      variant="secondary"
                       px="xs"
                       size="xs"
                       style={{ flexShrink: 0 }}
@@ -1754,7 +1781,6 @@ function DBSearchPage() {
         <SaveSearchModal
           opened={saveSearchModalState != null}
           onClose={clearSaveSearchModalState}
-          // @ts-ignore FIXME: Do some sort of validation?
           searchedConfig={searchedConfig}
           isUpdate={saveSearchModalState === 'update'}
           savedSearchId={savedSearchId}
@@ -1822,6 +1848,8 @@ function DBSearchPage() {
                           config={histogramTimeChartConfig}
                           enabled={isReady}
                           showDisplaySwitcher={false}
+                          showMVOptimizationIndicator={false}
+                          showDateRangeIndicator={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
                         />
@@ -1895,6 +1923,8 @@ function DBSearchPage() {
                             config={histogramTimeChartConfig}
                             enabled={isReady}
                             showDisplaySwitcher={false}
+                            showMVOptimizationIndicator={false}
+                            showDateRangeIndicator={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
                             enableParallelQueries

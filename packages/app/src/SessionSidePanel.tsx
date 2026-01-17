@@ -7,8 +7,7 @@ import {
   SearchConditionLanguage,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Button } from '@mantine/core';
-import { Drawer } from '@mantine/core';
+import { ActionIcon, Button, Drawer } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconLink, IconX } from '@tabler/icons-react';
 
@@ -122,7 +121,7 @@ export default function SessionSidePanel({
                   }}
                 >
                   <Button
-                    variant="default"
+                    variant="secondary"
                     size="sm"
                     leftSection={<IconLink size={14} />}
                     style={{ fontSize: '12px' }}
@@ -130,14 +129,9 @@ export default function SessionSidePanel({
                     Share Session
                   </Button>
                 </CopyToClipboard>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={onClose}
-                  style={{ padding: '4px 8px' }}
-                >
+                <ActionIcon variant="secondary" size="md" onClick={onClose}>
                   <IconX size={14} />
-                </Button>
+                </ActionIcon>
               </div>
             </div>
           </div>

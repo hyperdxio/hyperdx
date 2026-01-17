@@ -18,7 +18,7 @@ import {
   useUpdateSource,
 } from '@/source';
 
-import { TableSourceForm } from './SourceForm';
+import { TableSourceForm } from './Sources/SourceForm';
 
 async function addOtelDemoSources({
   connectionId,
@@ -40,6 +40,7 @@ async function addOtelDemoSources({
   traceSourceName,
   traceSourceTableName,
   traceSourceHighlightedTraceAttributes,
+  traceSourceMaterializedViews,
 }: {
   connectionId: string;
   createSourceMutation: ReturnType<typeof useCreateSource>;
@@ -62,6 +63,7 @@ async function addOtelDemoSources({
   traceSourceName: string;
   traceSourceTableName: string;
   traceSourceHighlightedTraceAttributes?: TSource['highlightedTraceAttributeExpressions'];
+  traceSourceMaterializedViews?: TSource['materializedViews'];
 }) {
   const hasLogSource =
     logSourceDatabaseName && logSourceName && logSourceTableName;
@@ -121,6 +123,7 @@ async function addOtelDemoSources({
       spanEventsValueExpression: 'Events',
       highlightedTraceAttributeExpressions:
         traceSourceHighlightedTraceAttributes,
+      materializedViews: traceSourceMaterializedViews,
     },
   });
   let metricsSource: TSource | undefined;
@@ -287,6 +290,53 @@ function OnboardingModalComponent({
         traceSourceDatabaseName: 'otel_v2',
         traceSourceName: 'Demo Traces',
         traceSourceTableName: 'otel_traces',
+        traceSourceMaterializedViews: [
+          {
+            databaseName: 'otel_v2',
+            tableName: 'otel_traces_1m',
+            dimensionColumns: 'ServiceName, StatusCode',
+            minGranularity: '1 minute',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [
+              { mvColumn: 'count', aggFn: 'count', sourceColumn: '' },
+              {
+                mvColumn: 'max__Duration',
+                aggFn: 'max',
+                sourceColumn: 'Duration',
+              },
+              {
+                mvColumn: 'avg__Duration',
+                aggFn: 'avg',
+                sourceColumn: 'Duration',
+              },
+            ],
+          },
+          {
+            databaseName: 'otel_v2',
+            tableName: 'otel_traces_1m_v2',
+            dimensionColumns: 'ServiceName, SpanName, SpanKind',
+            minGranularity: '1 minute',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [
+              { mvColumn: 'count', aggFn: 'count', sourceColumn: '' },
+              {
+                mvColumn: 'max__Duration',
+                aggFn: 'max',
+                sourceColumn: 'Duration',
+              },
+              {
+                mvColumn: 'avg__Duration',
+                aggFn: 'avg',
+                sourceColumn: 'Duration',
+              },
+              {
+                mvColumn: 'quantile__Duration',
+                aggFn: 'quantile',
+                sourceColumn: 'Duration',
+              },
+            ],
+          },
+        ],
 
         updateSourceMutation,
       });
@@ -385,7 +435,7 @@ function OnboardingModalComponent({
           <Divider label="OR" my="md" />
           <Button
             data-testid="demo-server-button"
-            variant="outline"
+            variant="secondary"
             w="100%"
             onClick={handleDemoServerClick}
           >
