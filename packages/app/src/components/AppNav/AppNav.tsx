@@ -817,7 +817,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
                         <AppNavLinkGroups
                           name="dashboards"
-                          /* @ts-ignore */
                           groups={groupedFilteredDashboardsList}
                           renderLink={renderDashboardLink}
                           forceExpandGroups={!!dashboardsListQ}
