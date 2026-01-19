@@ -10,7 +10,7 @@ export default function FullscreenPanelModal({
 }: {
   opened: boolean;
   onClose: () => void;
-  title: string;
+  title?: string;
   children: React.ReactNode;
 }) {
   // YouTube-style 'f' key to toggle fullscreen

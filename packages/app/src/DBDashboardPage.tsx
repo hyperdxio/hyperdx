@@ -44,7 +44,7 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
-import { useHover, useHotkeys } from '@mantine/hooks';
+import { useHotkeys, useHover } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowsMaximize,
@@ -169,10 +169,7 @@ const Tile = forwardRef(
     }, [chart.id, isHighlighted]);
 
     // YouTube-style 'f' key shortcut for fullscreen toggle
-    useHotkeys(
-      [['f', () => isFocused && setIsFullscreen(prev => !prev)]],
-      [isFocused],
-    );
+    useHotkeys([['f', () => isFocused && setIsFullscreen(prev => !prev)]]);
 
     const [queriedConfig, setQueriedConfig] = useState<
       ChartConfigWithDateRange | undefined
@@ -493,7 +490,6 @@ const Tile = forwardRef(
         <FullscreenPanelModal
           opened={isFullscreen}
           onClose={() => setIsFullscreen(false)}
-          title={chart.config.name}
         >
           {isFullscreen && renderChartContent(true, true)}
         </FullscreenPanelModal>
