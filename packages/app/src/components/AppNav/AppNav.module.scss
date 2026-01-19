@@ -1,0 +1,379 @@
+// =============================================================================
+// AppNav - Sidebar Navigation Component Styles
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Layout
+// -----------------------------------------------------------------------------
+
+.nav {
+  height: 100vh;
+  max-height: 100vh;
+  display: flex;
+  flex-flow: column nowrap;
+  justify-content: space-between;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg-nav);
+  letter-spacing: 0.05em;
+
+  &Fixed {
+    position: fixed;
+  }
+}
+
+.header {
+  padding-inline: 16px;
+  padding-block: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+
+  &Expanded {
+    height: 58px;
+  }
+}
+
+.logoLink {
+  text-decoration: none;
+}
+
+.logoIconWrapper {
+  margin-left: -0.15rem;
+}
+
+.collapseButton {
+  margin-right: -4px;
+  margin-left: -4px;
+
+  &Collapsed {
+    margin-top: 16px;
+  }
+}
+
+.scrollContainer {
+  max-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.footer {
+  position: absolute;
+  bottom: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    var(--color-bg-nav) 50%,
+    transparent 100%
+  );
+  padding-top: 40px;
+}
+
+// -----------------------------------------------------------------------------
+// Navigation Links
+// -----------------------------------------------------------------------------
+
+.navLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-inline: 8px;
+  margin-top: 8px;
+}
+
+.navItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-decoration: none;
+  color: var(--color-text-sidenav-link);
+  font-size: 14px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+  gap: 10px;
+  padding-inline: 8px;
+  height: 34px;
+  border-radius: 4px;
+
+  &:hover {
+    color: var(--color-text-sidenav-link-active);
+    background: var(--color-bg-sidenav-link);
+  }
+
+  &:focus-visible {
+    outline: none;
+    background: var(--color-bg-sidenav-link);
+  }
+
+  &Active {
+    color: var(--color-text-sidenav-link-active);
+    background: var(--color-bg-sidenav-link);
+  }
+}
+
+.navItemContent {
+  display: flex;
+  align-items: center;
+}
+
+.navItemIcon {
+  margin-right: 8px;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  transition: color 0.2s ease-in-out;
+}
+
+.navItemBadge {
+  margin-left: auto;
+}
+
+.navItemToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  margin-right: -4px;
+}
+
+// -----------------------------------------------------------------------------
+// Sub-menu (Collapsible sections)
+// -----------------------------------------------------------------------------
+
+.subMenu {
+  overflow-x: hidden;
+  max-width: 100%;
+  padding: 4px 16px;
+  padding-bottom: 0;
+}
+
+.subMenuItem {
+  display: block;
+  color: var(--color-text-sidenav-link);
+  text-decoration: none;
+  font-size: 13px;
+  padding-left: 16px;
+  padding-block: 2px;
+  transition: color 0.2s ease-in-out;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--color-text-sidenav-link-active);
+  }
+
+  &:focus-visible {
+    outline: none;
+    background: var(--color-bg-sidenav-link);
+  }
+
+  i {
+    vertical-align: top;
+  }
+
+  &Active {
+    color: var(--color-text-sidenav-link-active);
+    background: var(--color-bg-sidenav-link);
+    border-radius: 4px;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Groups (Saved Searches, Dashboards)
+// -----------------------------------------------------------------------------
+
+.groupLabel {
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+  margin-top: 6px;
+  padding-left: 16px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-text-sidenav-link);
+  }
+}
+
+.groupDragOver {
+  opacity: 0.7;
+  background: #ffffff1a;
+  border-radius: 10px;
+}
+
+// -----------------------------------------------------------------------------
+// Search Input
+// -----------------------------------------------------------------------------
+
+.searchInput {
+  input {
+    min-height: 28px;
+    height: 28px;
+    line-height: 28px;
+  }
+}
+
+.shortcutHint {
+  white-space: nowrap;
+  letter-spacing: -1px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 10px;
+  margin-right: 16px;
+
+  &Ctrl {
+    letter-spacing: -2px;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Empty States
+// -----------------------------------------------------------------------------
+
+.emptyMessage {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  margin: 8px 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// -----------------------------------------------------------------------------
+// User Menu
+// -----------------------------------------------------------------------------
+
+.userMenu {
+  pointer-events: all;
+  cursor: pointer;
+  margin: 8px 0.875rem 0.875rem;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition:
+    background-color 0.2s ease,
+    transform 0.1s ease;
+  max-width: 100%;
+  overflow: hidden;
+
+  &:hover {
+    background: var(--color-bg-sidenav-link);
+  }
+
+  &:active {
+    transform: translate(0, 1px);
+  }
+
+  &Collapsed {
+    padding: 2px;
+    margin: 8px auto 0.875rem;
+    background: transparent;
+    border: none !important;
+    width: fit-content;
+
+    &:hover {
+      background: var(--color-bg-sidenav-link);
+    }
+
+    &:active {
+      transform: translate(0, 1px);
+    }
+  }
+}
+
+.userMenuInfo {
+  flex: 1;
+  overflow: hidden;
+}
+
+.userMenuName {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.userMenuTeam {
+  font-size: 11px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 16px;
+}
+
+// -----------------------------------------------------------------------------
+// Help Button
+// -----------------------------------------------------------------------------
+
+.helpButton {
+  pointer-events: all;
+  cursor: pointer;
+  margin: 0 0.875rem 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  transition:
+    background-color 0.2s ease,
+    transform 0.1s ease,
+    border-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: var(--color-bg-sidenav-link);
+    border-color: var(--color-border);
+  }
+
+  &:active {
+    transform: translate(0, 1px);
+  }
+
+  &Collapsed {
+    margin: 0 auto 8px;
+    border: none;
+    background: transparent;
+
+    &:hover {
+      background: var(--color-bg-sidenav-link);
+    }
+
+    &:active {
+      transform: translate(0, 1px);
+    }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Onboarding Section
+// -----------------------------------------------------------------------------
+
+.onboardingSection {
+  padding-left: 12px;
+  padding-right: 12px;
+  margin-bottom: 8px;
+  margin-top: 16px;
+  padding-bottom: 80px;
+}
+
+// -----------------------------------------------------------------------------
+// Scrollbar Customization
+// -----------------------------------------------------------------------------
+
+.scrollbar {
+  .thumb {
+    background-color: var(--color-border);
+  }
+}

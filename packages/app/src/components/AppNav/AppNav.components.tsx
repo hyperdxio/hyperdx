@@ -2,7 +2,6 @@ import React from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import {
-  ActionIcon,
   Avatar,
   Badge,
   Button,
@@ -27,12 +26,11 @@ import {
   IconUserCog,
 } from '@tabler/icons-react';
 
+import { IS_LOCAL_MODE } from '@/config';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import { useSources } from '@/source';
 
-import { IS_LOCAL_MODE } from './config';
-
-import styles from '../styles/AppNav.module.scss';
+import styles from './AppNav.module.scss';
 
 export const AppNavContext = React.createContext<{
   isCollapsed: boolean;
@@ -84,8 +82,8 @@ export const AppNavUserMenu = ({
       <Menu.Target>
         <Paper
           data-testid="user-menu-trigger"
-          className={cx(styles.userMenuTrigger, {
-            [styles.userMenuTriggerCollapsed]: isCollapsed,
+          className={cx(styles.userMenu, {
+            [styles.userMenuCollapsed]: isCollapsed,
           })}
         >
           <Group gap="xs" wrap="nowrap" miw={0}>
@@ -107,29 +105,16 @@ export const AppNavUserMenu = ({
                   }
                   openDelay={250}
                 >
-                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                  <div className={styles.userMenuInfo}>
                     <Text
                       size="xs"
                       fw="bold"
                       lh={1.1}
-                      style={{
-                        maxWidth: '100%',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
+                      className={styles.userMenuName}
                     >
                       {displayName}
                     </Text>
-                    <Text
-                      size="xs"
-                      style={{
-                        fontSize: 11,
-                        maxWidth: '100%',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        maxHeight: 16,
-                      }}
-                    >
+                    <Text size="xs" className={styles.userMenuTeam}>
                       {teamName}
                     </Text>
                   </div>
@@ -205,13 +190,11 @@ export const AppNavHelpMenu = ({
     { close: closeInstallModal, open: openInstallModal },
   ] = useDisclosure(false);
 
-  // const isTeamHasNoData = useIsTeamHasNoData();
-
   return (
     <>
       <Paper
-        className={cx(styles.helpMenuTrigger, {
-          [styles.helpMenuTriggerCollapsed]: isCollapsed,
+        className={cx(styles.helpButton, {
+          [styles.helpButtonCollapsed]: isCollapsed,
         })}
       >
         <Menu
@@ -291,45 +274,50 @@ export const AppNavLink = ({
 }) => {
   const { pathname, isCollapsed } = React.useContext(AppNavContext);
 
-  // Create a test id based on the href
   const testId = `nav-link-${href.replace(/^\//, '').replace(/\//g, '-') || 'home'}`;
 
+  const handleClick = (e: React.MouseEvent) => {
+    // If collapsible, toggle on click instead of navigating
+    if (onToggle && !isCollapsed) {
+      e.preventDefault();
+      onToggle();
+    }
+  };
+
   return (
-    <Group justify="space-between" px="md" py="6px" h="34px">
-      <Link
-        data-testid={testId}
-        href={href}
-        className={cx(
-          styles.listLink,
-          { [styles.listLinkActive]: pathname?.includes(href) },
-          className,
-        )}
-        style={{ display: 'flex', alignItems: 'center' }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center' }}>
-          <span className={styles.linkIcon}>{icon}</span>
-          {!isCollapsed && <span>{label}</span>}
-        </span>
-      </Link>
+    <Link
+      data-testid={testId}
+      href={href}
+      onClick={handleClick}
+      className={cx(
+        styles.navItem,
+        { [styles.navItemActive]: pathname?.includes(href) },
+        className,
+      )}
+    >
+      <span className={styles.navItemContent}>
+        <span className={styles.navItemIcon}>{icon}</span>
+        {!isCollapsed && <span>{label}</span>}
+      </span>
       {!isCollapsed && isBeta && (
-        <Badge size="xs" radius="sm" color="gray" style={{ marginRight: 8 }}>
+        <Badge
+          size="xs"
+          radius="sm"
+          color="gray"
+          className={styles.navItemBadge}
+        >
           Beta
         </Badge>
       )}
       {!isCollapsed && onToggle && (
-        <ActionIcon
-          data-testid={`${testId}-toggle`}
-          variant="subtle"
-          size="sm"
-          onClick={onToggle}
-        >
+        <span className={styles.navItemToggle}>
           {isExpanded ? (
             <IconChevronUp size={14} className="text-muted-hover" />
           ) : (
             <IconChevronDown size={14} className="text-muted-hover" />
           )}
-        </ActionIcon>
+        </span>
       )}
-    </Group>
+    </Link>
   );
 };
