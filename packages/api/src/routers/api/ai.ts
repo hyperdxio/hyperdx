@@ -1,4 +1,3 @@
-import { createAnthropic } from '@ai-sdk/anthropic';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   getMetadata,
@@ -18,6 +17,7 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as config from '@/config';
+import { getAIModel } from '@/controllers/ai';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
@@ -176,11 +176,6 @@ router.post(
   }),
   async (req, res, next) => {
     try {
-      if (!config.ANTHROPIC_API_KEY) {
-        logger.error('No ANTHROPIC_API_KEY defined');
-        return res.status(500).json({});
-      }
-
       const { teamId } = getNonNullUserWithTeam(req);
 
       const { text, sourceId } = req.body;
@@ -276,21 +271,8 @@ router.post(
         keys: keysToFetch.map(f => f.key),
       });
 
-      // Support both direct Anthropic API and Azure AI endpoints
-      const anthropicConfig: any = {
-        apiKey: config.ANTHROPIC_API_KEY,
-      };
-      
-      // If Azure endpoint is configured, use it
-      if (config.ANTHROPIC_BASE_URL) {
-        anthropicConfig.baseURL = config.ANTHROPIC_BASE_URL;
-      }
-
-      const anthropic = createAnthropic(anthropicConfig);
-
-      // Use Azure deployment name if configured, otherwise use default model
-      const modelName = config.ANTHROPIC_DEPLOYMENT_NAME || 'claude-sonnet-4-5-20250929';
-      const model = anthropic(modelName);
+      // Get configured AI model
+      const model = getAIModel();
 
       const prompt = `You are an AI assistant that helps users create chart configurations for an observability platform called HyperDX.
 
