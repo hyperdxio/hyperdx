@@ -1,10 +1,42 @@
-// =============================================================================
-// AppNav - Sidebar Navigation Component Styles
-// =============================================================================
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 12px;
+$spacing-lg: 16px;
+$nav-item-height: 34px;
+$header-height: 58px;
+$help-button-size: 28px;
+$search-input-height: 28px;
+$radius-sm: 4px;
+$radius-md: 8px;
+$radius-lg: 10px;
+$font-size-xs: 10px;
+$font-size-sm: 11px;
+$font-size-md: 13px;
+$font-size-lg: 14px;
+$transition-fast: 0.1s ease;
+$transition-normal: 0.15s ease;
+$transition-slow: 0.2s ease;
 
-// -----------------------------------------------------------------------------
-// Layout
-// -----------------------------------------------------------------------------
+/* Mixins */
+@mixin text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin interactive-press {
+  &:active {
+    transform: translate(0, 1px);
+  }
+}
+
+/* Layout */
 
 .nav {
   height: 100vh;
@@ -22,15 +54,15 @@
 }
 
 .header {
-  padding-inline: 16px;
-  padding-block: 12px;
+  padding-inline: $spacing-lg;
+  padding-block: $spacing-md;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
 
   &Expanded {
-    height: 58px;
+    height: $header-height;
   }
 }
 
@@ -43,11 +75,11 @@
 }
 
 .collapseButton {
-  margin-right: -4px;
-  margin-left: -4px;
+  margin-right: -$spacing-xs;
+  margin-left: -$spacing-xs;
 
   &Collapsed {
-    margin-top: 16px;
+    margin-top: $spacing-lg;
   }
 }
 
@@ -71,16 +103,14 @@
   padding-top: 40px;
 }
 
-// -----------------------------------------------------------------------------
-// Navigation Links
-// -----------------------------------------------------------------------------
+/* Navigation Links */
 
 .navLinks {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-inline: 8px;
-  margin-top: 8px;
+  padding-inline: $spacing-sm;
+  margin-top: $spacing-sm;
 }
 
 .navItem {
@@ -89,16 +119,15 @@
   align-items: center;
   text-decoration: none;
   color: var(--color-text-sidenav-link);
-  font-size: 14px;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: $font-size-lg;
+
+  @include text-truncate;
+
   user-select: none;
   gap: 10px;
-  padding-inline: 8px;
-  height: 34px;
-  border-radius: 4px;
+  padding-inline: $spacing-sm;
+  height: $nav-item-height;
+  border-radius: $radius-sm;
 
   &:hover {
     color: var(--color-text-sidenav-link-active);
@@ -122,11 +151,11 @@
 }
 
 .navItemIcon {
-  margin-right: 8px;
+  margin-right: $spacing-sm;
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
-  transition: color 0.2s ease-in-out;
+  transition: color $transition-slow;
 }
 
 .navItemBadge {
@@ -134,21 +163,37 @@
 }
 
 .navItemToggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  margin-right: -4px;
+  @include flex-center;
+
+  padding: $spacing-xs;
+  margin-right: -$spacing-xs;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: $radius-sm;
+  color: var(--color-text-muted);
+  transition:
+    background-color $transition-normal,
+    color $transition-normal,
+    transform $transition-fast;
+
+  &:hover {
+    background: var(--color-bg-sidenav-link-hover);
+    color: var(--color-text-sidenav-link-active);
+    transform: scale(1.1);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
 }
 
-// -----------------------------------------------------------------------------
-// Sub-menu (Collapsible sections)
-// -----------------------------------------------------------------------------
+/* Sub-menu (Collapsible sections) */
 
 .subMenu {
   overflow-x: hidden;
   max-width: 100%;
-  padding: 4px 16px;
+  padding: $spacing-xs 2px;
   padding-bottom: 0;
 }
 
@@ -156,16 +201,19 @@
   display: block;
   color: var(--color-text-sidenav-link);
   text-decoration: none;
-  font-size: 13px;
-  padding-left: 16px;
+  font-size: $font-size-md;
+  padding-left: $spacing-lg;
   padding-block: 2px;
-  transition: color 0.2s ease-in-out;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  transition: color $transition-slow;
+
+  @include text-truncate;
+
+  border-radius: $radius-sm;
+  margin-bottom: 2px;
 
   &:hover {
     color: var(--color-text-sidenav-link-active);
+    background: var(--color-bg-sidenav-link);
   }
 
   &:focus-visible {
@@ -180,22 +228,19 @@
   &Active {
     color: var(--color-text-sidenav-link-active);
     background: var(--color-bg-sidenav-link);
-    border-radius: 4px;
   }
 }
 
-// -----------------------------------------------------------------------------
-// Groups (Saved Searches, Dashboards)
-// -----------------------------------------------------------------------------
+/* Groups (Saved Searches, Dashboards) */
 
 .groupLabel {
   color: var(--color-text-muted);
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: $font-size-sm;
   letter-spacing: 1px;
   margin-bottom: 2px;
   margin-top: 6px;
-  padding-left: 16px;
+  padding-left: $spacing-lg;
   width: 100%;
   display: flex;
   align-items: center;
@@ -210,18 +255,16 @@
 .groupDragOver {
   opacity: 0.7;
   background: #ffffff1a;
-  border-radius: 10px;
+  border-radius: $radius-lg;
 }
 
-// -----------------------------------------------------------------------------
-// Search Input
-// -----------------------------------------------------------------------------
+/* Search Input */
 
 .searchInput {
   input {
-    min-height: 28px;
-    height: 28px;
-    line-height: 28px;
+    min-height: $search-input-height;
+    height: $search-input-height;
+    line-height: $search-input-height;
   }
 }
 
@@ -230,41 +273,37 @@
   letter-spacing: -1px;
   color: var(--color-text-muted);
   background: var(--color-bg-surface);
-  border-radius: 4px;
-  padding: 0 4px;
-  font-size: 10px;
-  margin-right: 16px;
+  border-radius: $radius-sm;
+  padding: 0 $spacing-xs;
+  font-size: $font-size-xs;
+  margin-right: $spacing-lg;
 
   &Ctrl {
     letter-spacing: -2px;
   }
 }
 
-// -----------------------------------------------------------------------------
-// Empty States
-// -----------------------------------------------------------------------------
+/* Empty States */
 
 .emptyMessage {
   color: var(--color-text-muted);
-  font-size: 12px;
-  margin: 8px 16px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: $font-size-md - 1px;
+  margin: $spacing-sm $spacing-lg;
+
+  @include text-truncate;
 }
 
-// -----------------------------------------------------------------------------
-// User Menu
-// -----------------------------------------------------------------------------
+/* User Menu */
 
 .userMenu {
   pointer-events: all;
   cursor: pointer;
-  margin: 8px 0.875rem 0.875rem;
-  padding: 4px 8px;
-  border-radius: 8px;
+  margin: $spacing-sm;
+  padding: $spacing-xs $spacing-sm;
+  border-radius: $radius-md;
   transition:
-    background-color 0.2s ease,
-    transform 0.1s ease;
+    background-color $transition-slow,
+    transform $transition-fast;
   max-width: 100%;
   overflow: hidden;
 
@@ -272,13 +311,11 @@
     background: var(--color-bg-sidenav-link);
   }
 
-  &:active {
-    transform: translate(0, 1px);
-  }
+  @include interactive-press;
 
   &Collapsed {
     padding: 2px;
-    margin: 8px auto 0.875rem;
+    margin: $spacing-sm auto 0.875rem;
     background: transparent;
     border: none !important;
     width: fit-content;
@@ -287,9 +324,7 @@
       background: var(--color-bg-sidenav-link);
     }
 
-    &:active {
-      transform: translate(0, 1px);
-    }
+    @include interactive-press;
   }
 }
 
@@ -300,49 +335,44 @@
 
 .userMenuName {
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+
+  @include text-truncate;
 }
 
 .userMenuTeam {
-  font-size: 11px;
+  font-size: $font-size-sm;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-height: 16px;
+  max-height: $spacing-lg;
+
+  @include text-truncate;
 }
 
-// -----------------------------------------------------------------------------
-// Help Button
-// -----------------------------------------------------------------------------
+/* Help Button */
 
 .helpButton {
+  @include flex-center;
+
   pointer-events: all;
   cursor: pointer;
-  margin: 0 0.875rem 8px;
-  width: 28px;
-  height: 28px;
+  margin: 0 $spacing-sm $spacing-sm;
+  width: $help-button-size;
+  height: $help-button-size;
   border-radius: 50%;
   border: 1px solid var(--color-border);
   transition:
-    background-color 0.2s ease,
-    transform 0.1s ease,
-    border-color 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    background-color $transition-slow,
+    transform $transition-fast,
+    border-color $transition-slow;
 
   &:hover {
     background: var(--color-bg-sidenav-link);
     border-color: var(--color-border);
   }
 
-  &:active {
-    transform: translate(0, 1px);
-  }
+  @include interactive-press;
 
   &Collapsed {
-    margin: 0 auto 8px;
+    margin: 0 auto $spacing-sm;
     border: none;
     background: transparent;
 
@@ -350,27 +380,21 @@
       background: var(--color-bg-sidenav-link);
     }
 
-    &:active {
-      transform: translate(0, 1px);
-    }
+    @include interactive-press;
   }
 }
 
-// -----------------------------------------------------------------------------
-// Onboarding Section
-// -----------------------------------------------------------------------------
+/* Onboarding Section */
 
 .onboardingSection {
-  padding-left: 12px;
-  padding-right: 12px;
-  margin-bottom: 8px;
-  margin-top: 16px;
+  padding-left: $spacing-sm;
+  padding-right: $spacing-md;
+  margin-bottom: $spacing-sm;
+  margin-top: $spacing-lg;
   padding-bottom: 80px;
 }
 
-// -----------------------------------------------------------------------------
-// Scrollbar Customization
-// -----------------------------------------------------------------------------
+/* Scrollbar Customization */
 
 .scrollbar {
   .thumb {

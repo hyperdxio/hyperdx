@@ -276,19 +276,17 @@ export const AppNavLink = ({
 
   const testId = `nav-link-${href.replace(/^\//, '').replace(/\//g, '-') || 'home'}`;
 
-  const handleClick = (e: React.MouseEvent) => {
-    // If collapsible, toggle on click instead of navigating
-    if (onToggle && !isCollapsed) {
-      e.preventDefault();
-      onToggle();
-    }
+  const handleToggleClick = (e: React.MouseEvent) => {
+    // Stop propagation so clicking chevron doesn't navigate
+    e.preventDefault();
+    e.stopPropagation();
+    onToggle?.();
   };
 
   return (
     <Link
       data-testid={testId}
       href={href}
-      onClick={handleClick}
       className={cx(
         styles.navItem,
         { [styles.navItemActive]: pathname?.includes(href) },
@@ -310,13 +308,18 @@ export const AppNavLink = ({
         </Badge>
       )}
       {!isCollapsed && onToggle && (
-        <span className={styles.navItemToggle}>
+        <button
+          type="button"
+          data-testid={`${testId}-toggle`}
+          className={styles.navItemToggle}
+          onClick={handleToggleClick}
+        >
           {isExpanded ? (
             <IconChevronUp size={14} className="text-muted-hover" />
           ) : (
             <IconChevronDown size={14} className="text-muted-hover" />
           )}
-        </span>
+        </button>
       )}
     </Link>
   );
