@@ -711,12 +711,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               label="Search"
               icon={<IconTable size={16} />}
               href="/search"
-              className={cx({
-                'text-brand fw-600':
-                  pathname.includes('/search') && query.savedSearchId == null,
-                'fw-600':
-                  pathname.includes('/search') && query.savedSearchId != null,
-              })}
               isExpanded={isSearchExpanded}
               onToggle={
                 !IS_LOCAL_MODE
