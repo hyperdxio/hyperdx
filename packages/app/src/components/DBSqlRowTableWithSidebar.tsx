@@ -11,6 +11,7 @@ import { useSource } from '@/source';
 import TabBar from '@/TabBar';
 import { useLocalStorage } from '@/utils';
 
+import { useNestedPanelState } from './ContextSidePanel';
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import DBRowSidePanel, {
@@ -18,7 +19,7 @@ import DBRowSidePanel, {
   RowSidePanelContextProps,
 } from './DBRowSidePanel';
 import { BreadcrumbEntry } from './DBRowSidePanelHeader';
-import { DBSqlRowTable } from './DBRowTable';
+import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
 
 interface Props {
   sourceId: string;
@@ -38,6 +39,7 @@ interface Props {
   breadcrumbPath?: BreadcrumbEntry[];
   onSortingChange?: (v: SortingState | null) => void;
   initialSortBy?: SortingState;
+  variant?: DBRowTableVariant;
 }
 
 export default function DBSqlRowTableWithSideBar({
@@ -56,10 +58,12 @@ export default function DBSqlRowTableWithSideBar({
   onSidebarOpen,
   onSortingChange,
   initialSortBy,
+  variant,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere');
   const [rowSource, setRowSource] = useQueryState('rowSource');
+  const { setContextRowId, setContextRowSource } = useNestedPanelState();
 
   const onOpenSidebar = useCallback(
     (rowWhere: string) => {
@@ -73,7 +77,19 @@ export default function DBSqlRowTableWithSideBar({
   const onCloseSidebar = useCallback(() => {
     setRowId(null);
     setRowSource(null);
-  }, [setRowId, setRowSource]);
+    // When closing the main drawer, clear the nested panel state
+    // this ensures that re-opening the main drawer will not open the nested panel
+    if (!isNestedPanel) {
+      setContextRowId(null);
+      setContextRowSource(null);
+    }
+  }, [
+    setRowId,
+    setRowSource,
+    isNestedPanel,
+    setContextRowId,
+    setContextRowSource,
+  ]);
   const renderRowDetails = useCallback(
     (r: { [key: string]: unknown }) => {
       if (!sourceData) {
@@ -113,6 +129,7 @@ export default function DBSqlRowTableWithSideBar({
         onError={onError}
         onExpandedRowsChange={onExpandedRowsChange}
         collapseAllRows={collapseAllRows}
+        variant={variant}
       />
     </RowSidePanelContext.Provider>
   );

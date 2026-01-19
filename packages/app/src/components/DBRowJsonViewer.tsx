@@ -436,12 +436,7 @@ export function DBRowJsonViewer({
             leftSection={<IconSearch size={16} />}
           />
           {filter && (
-            <Button
-              variant="filled"
-              color="gray"
-              size="xs"
-              onClick={() => setFilter('')}
-            >
+            <Button variant="secondary" size="xs" onClick={() => setFilter('')}>
               Clear
             </Button>
           )}

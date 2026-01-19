@@ -400,15 +400,14 @@ export function WebhookForm({
         <Group justify="space-between">
           <Group>
             <Button
-              variant="outline"
+              variant="primary"
               type="submit"
               loading={saveWebhook.isPending || updateWebhook.isPending}
             >
               {isEditing ? 'Update Webhook' : 'Add Webhook'}
             </Button>
             <Button
-              variant="outline"
-              color="blue"
+              variant="secondary"
               onClick={form.handleSubmit(handleTestWebhook)}
               loading={testWebhook.isPending}
               type="button"
@@ -416,7 +415,7 @@ export function WebhookForm({
               Test Webhook
             </Button>
           </Group>
-          <Button variant="outline" color="gray" onClick={onClose} type="reset">
+          <Button variant="secondary" onClick={onClose} type="reset">
             Cancel
           </Button>
         </Group>
