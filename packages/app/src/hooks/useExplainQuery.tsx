@@ -1,12 +1,13 @@
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { useClickhouseClient } from '@/clickhouse';
-import { getMetadata } from '@/metadata';
+
+import { useMetadataWithSettings } from './useMetadata';
 
 export function useExplainQuery(
-  _config: ChartConfigWithDateRange,
+  _config: ChartConfigWithOptDateRange,
   options?: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'>,
 ) {
   const config = {
@@ -14,10 +15,12 @@ export function useExplainQuery(
     with: undefined,
   };
   const clickhouseClient = useClickhouseClient();
-  const { data, isLoading, error } = useQuery({
+  const metadata = useMetadataWithSettings();
+
+  return useQuery({
     queryKey: ['explain', config],
     queryFn: async ({ signal }) => {
-      const query = await renderChartConfig(config, getMetadata());
+      const query = await renderChartConfig(config, metadata);
       const response = await clickhouseClient.query<'JSONEachRow'>({
         query: `EXPLAIN ESTIMATE ${query.sql}`,
         query_params: query.params,
@@ -31,6 +34,4 @@ export function useExplainQuery(
     staleTime: 1000 * 60,
     ...options,
   });
-
-  return { data, isLoading, error };
 }

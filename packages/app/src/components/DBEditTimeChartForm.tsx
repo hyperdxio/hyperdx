@@ -3,8 +3,11 @@ import { omit } from 'lodash';
 import {
   Control,
   Controller,
+  FieldErrors,
+  FieldPath,
   useFieldArray,
   useForm,
+  UseFormClearErrors,
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
@@ -27,6 +30,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
+  ActionIcon,
   Box,
   Button,
   Center,
@@ -123,6 +127,39 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
 
 const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
 
+// Helper function to safely construct field paths for series
+const getSeriesFieldPath = (
+  namePrefix: string,
+  fieldName: string,
+): FieldPath<SavedChartConfigWithSeries> => {
+  return `${namePrefix}${fieldName}` as FieldPath<SavedChartConfigWithSeries>;
+};
+
+// Helper function to validate metric names for metric sources
+const validateMetricNames = (
+  tableSource: TSource | undefined,
+  series: SavedChartConfigWithSelectArray['select'] | undefined,
+  setError: (
+    name: FieldPath<SavedChartConfigWithSeries>,
+    error: { type: string; message: string },
+  ) => void,
+): boolean => {
+  if (tableSource?.kind === SourceKind.Metric && Array.isArray(series)) {
+    let hasValidationError = false;
+    series.forEach((s, index) => {
+      if (s.metricType && !s.metricName) {
+        setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
+          type: 'manual',
+          message: 'Please select a metric name',
+        });
+        hasValidationError = true;
+      }
+    });
+    return hasValidationError;
+  }
+  return false;
+};
+
 const NumberFormatInputControlled = ({
   control,
   onSubmit,
@@ -147,6 +184,10 @@ const NumberFormatInputControlled = ({
   );
 };
 
+type SeriesItem = NonNullable<
+  SavedChartConfigWithSelectArray['select']
+>[number];
+
 function ChartSeriesEditorComponent({
   control,
   databaseName,
@@ -163,6 +204,8 @@ function ChartSeriesEditorComponent({
   parentRef,
   length,
   tableSource,
+  errors,
+  clearErrors,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -179,6 +222,8 @@ function ChartSeriesEditorComponent({
   tableName: string;
   length: number;
   tableSource?: TSource;
+  errors?: FieldErrors<SeriesItem>;
+  clearErrors: UseFormClearErrors<SavedChartConfigWithSeries>;
 }) {
   const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
   const aggConditionLanguage = useWatch({
@@ -294,6 +339,10 @@ function ChartSeriesEditorComponent({
               }
               metricSource={tableSource}
               data-testid="metric-name-selector"
+              error={errors?.metricName?.message}
+              onFocus={() =>
+                clearErrors(getSeriesFieldPath(namePrefix, 'metricName'))
+              }
             />
             {metricType === 'gauge' && (
               <Flex justify="end">
@@ -457,12 +506,19 @@ export default function EditTimeChartForm({
     [chartConfig],
   );
 
-  const { control, setValue, handleSubmit, register } =
-    useForm<SavedChartConfigWithSeries>({
-      defaultValues: configWithSeries,
-      values: configWithSeries,
-      resolver: zodResolver(zSavedChartConfig),
-    });
+  const {
+    control,
+    setValue,
+    handleSubmit,
+    register,
+    setError,
+    clearErrors,
+    formState: { errors },
+  } = useForm<SavedChartConfigWithSeries>({
+    defaultValues: configWithSeries,
+    values: configWithSeries,
+    resolver: zodResolver(zSavedChartConfig),
+  });
 
   const {
     fields,
@@ -563,6 +619,11 @@ export default function EditTimeChartForm({
 
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
+      // Validate metric sources have metric names selected
+      if (validateMetricNames(tableSource, form.series, setError)) {
+        return;
+      }
+
       // Merge the series and select fields back together, and prevent the series field from being submitted
       const config = {
         ...omit(form, ['series']),
@@ -606,6 +667,7 @@ export default function EditTimeChartForm({
     setQueriedConfigAndSource,
     tableSource,
     dateRange,
+    setError,
   ]);
 
   const onTableSortingChange = useCallback(
@@ -632,6 +694,11 @@ export default function EditTimeChartForm({
 
   const handleSave = useCallback(
     (v: SavedChartConfigWithSeries) => {
+      // Validate metric sources have metric names selected
+      if (validateMetricNames(tableSource, v.series, setError)) {
+        return;
+      }
+
       // If the chart type is search, we need to ensure the select is a string
       if (displayType === DisplayType.Search && typeof v.select !== 'string') {
         v.select = '';
@@ -641,7 +708,7 @@ export default function EditTimeChartForm({
       // Avoid saving the series field. Series should be persisted in the select field.
       onSave?.(omit(v, ['series']));
     },
-    [onSave, displayType],
+    [onSave, displayType, tableSource, setError],
   );
 
   // Track previous values for detecting changes
@@ -934,6 +1001,12 @@ export default function EditTimeChartForm({
                   }
                   tableName={tableName ?? ''}
                   tableSource={tableSource}
+                  errors={
+                    errors.series && Array.isArray(errors.series)
+                      ? errors.series[index]
+                      : undefined
+                  }
+                  clearErrors={clearErrors}
                 />
               ))}
               {fields.length > 1 && displayType !== DisplayType.Number && (
@@ -1133,7 +1206,7 @@ export default function EditTimeChartForm({
             <Button
               data-testid="chart-save-button"
               loading={isSaving}
-              variant="outline"
+              variant="primary"
               onClick={handleSubmit(handleSave)}
             >
               Save
@@ -1187,19 +1260,21 @@ export default function EditTimeChartForm({
           {activeTab !== 'markdown' && (
             <Button
               data-testid="chart-run-query-button"
-              variant="outline"
+              variant="primary"
               type="submit"
               onClick={onSubmit}
+              leftSection={<IconPlayerPlay size={16} />}
+              style={{ flexShrink: 0 }}
             >
-              <IconPlayerPlay size={16} />
+              Run
             </Button>
           )}
           {!IS_LOCAL_MODE && !dashboardId && (
             <Menu width={250}>
               <Menu.Target>
-                <Button variant="outline" color="gray" px="xs" size="sm">
-                  <IconDotsVertical size={14} />
-                </Button>
+                <ActionIcon variant="secondary" size="input-sm">
+                  <IconDotsVertical size={16} />
+                </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Item

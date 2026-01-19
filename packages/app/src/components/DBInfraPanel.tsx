@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react';
 import { add, min, sub } from 'date-fns';
+import {
+  convertDateRangeToGranularityString,
+  Granularity,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -12,11 +16,9 @@ import {
 } from '@mantine/core';
 
 import { convertV1ChartConfigToV2 } from '@/ChartUtils';
-import { getEventBody, useSource } from '@/source';
+import { useSource } from '@/source';
 
 import {
-  convertDateRangeToGranularityString,
-  Granularity,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_FILESYSTEM_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
@@ -65,7 +67,7 @@ const InfraSubpanelGroup = ({
   }, [size]);
 
   const granularity = useMemo<Granularity>(() => {
-    return convertDateRangeToGranularityString(dateRange, 60);
+    return convertDateRangeToGranularityString(dateRange);
   }, [dateRange]);
 
   return (

@@ -8,6 +8,7 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { z } from 'zod';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   MetricsDataType,
   SourceKind,
@@ -36,15 +37,19 @@ import {
 import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
 import {
+  IconCheck,
   IconCirclePlus,
   IconHelpCircle,
   IconSettings,
   IconTrash,
 } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
+import { useExplainQuery } from '@/hooks/useExplainQuery';
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import {
   inferTableSourceConfig,
   isValidMetricTable,
@@ -65,6 +70,7 @@ import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
 import { ConnectionSelectControlled } from '../ConnectionSelect';
 import { DatabaseSelectControlled } from '../DatabaseSelect';
 import { DBTableSelectControlled } from '../DBTableSelect';
+import { ErrorCollapse } from '../Error/ErrorCollapse';
 import { InputControlled } from '../InputControlled';
 import SelectControlled from '../SelectControlled';
 import { SQLInlineEditorControlled } from '../SQLInlineEditor';
@@ -168,6 +174,157 @@ function FormRow({
   );
 }
 
+type HighlightedAttributeRowProps = Omit<TableModelProps, 'setValue'> & {
+  id: string;
+  index: number;
+  databaseName: string;
+  name:
+    | 'highlightedTraceAttributeExpressions'
+    | 'highlightedRowAttributeExpressions';
+  tableName: string;
+  connectionId: string;
+  removeHighlightedAttribute: (index: number) => void;
+};
+
+function HighlightedAttributeRow({
+  id,
+  index,
+  control,
+  databaseName,
+  name,
+  tableName,
+  connectionId,
+  removeHighlightedAttribute,
+}: HighlightedAttributeRowProps) {
+  const expression = useWatch({
+    control,
+    name: `${name}.${index}.sqlExpression`,
+  });
+
+  const alias = useWatch({
+    control,
+    name: `${name}.${index}.alias`,
+  });
+
+  const {
+    data: explainData,
+    error: explainError,
+    isLoading: explainLoading,
+    refetch: explainExpression,
+  } = useExplainQuery(
+    {
+      from: { databaseName, tableName },
+      connection: connectionId,
+      select: [{ alias, valueExpression: expression }],
+      where: '',
+    },
+
+    { enabled: false },
+  );
+
+  const runExpression = () => {
+    if (expression) {
+      explainExpression();
+    }
+  };
+
+  const isExpressionValid = !!explainData?.length;
+  const isExpressionInvalid = explainError instanceof ClickHouseQueryError;
+
+  return (
+    <React.Fragment key={id}>
+      <Grid.Col span={3} pe={0}>
+        <div
+          style={{ display: 'contents' }}
+          data-name={`${name}.${index}.sqlExpression`}
+        >
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name={`${name}.${index}.sqlExpression`}
+            disableKeywordAutocomplete
+            placeholder="ResourceAttributes['http.host']"
+          />
+        </div>
+      </Grid.Col>
+      <Grid.Col span={2} ps="xs">
+        <Flex align="center" gap="sm">
+          <Text c="gray">AS</Text>
+          <SQLInlineEditorControlled
+            control={control}
+            name={`${name}.${index}.alias`}
+            placeholder="Optional Alias"
+            disableKeywordAutocomplete
+          />
+          <Tooltip label="Validate expression">
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              color="gray"
+              loading={explainLoading}
+              disabled={!expression || explainLoading}
+              onClick={runExpression}
+            >
+              <IconCheck size={16} />
+            </ActionIcon>
+          </Tooltip>
+          <ActionIcon
+            size="xs"
+            variant="subtle"
+            color="gray"
+            onClick={() => removeHighlightedAttribute(index)}
+          >
+            <IconTrash size={16} />
+          </ActionIcon>
+        </Flex>
+      </Grid.Col>
+
+      {(isExpressionValid || isExpressionInvalid) && (
+        <Grid.Col span={5} pe={0} pt={0}>
+          {isExpressionValid && (
+            <Text c="green" size="xs">
+              Expression is valid.
+            </Text>
+          )}
+          {isExpressionInvalid && (
+            <ErrorCollapse
+              summary="Expression is invalid"
+              details={explainError?.message}
+            />
+          )}
+        </Grid.Col>
+      )}
+
+      <Grid.Col span={3} pe={0}>
+        <InputControlled
+          control={control}
+          name={`${name}.${index}.luceneExpression`}
+          placeholder="ResourceAttributes.http.host (Optional) "
+        />
+      </Grid.Col>
+      <Grid.Col span={1} pe={0}>
+        <Text me="sm" mt={6}>
+          <Tooltip
+            label={
+              'An optional, Lucene version of the above expression. If provided, it is used when searching for this attribute value.'
+            }
+            color="dark"
+            c="white"
+            multiline
+            maw={600}
+          >
+            <IconHelpCircle size={14} className="cursor-pointer" />
+          </Tooltip>
+        </Text>
+      </Grid.Col>
+    </React.Fragment>
+  );
+}
+
 function HighlightedAttributeExpressionsFormRow({
   control,
   name,
@@ -200,77 +357,36 @@ function HighlightedAttributeExpressionsFormRow({
   return (
     <FormRow label={label} helpText={helpText}>
       <Grid columns={5}>
-        {highlightedAttributes.map((field, index) => (
-          <React.Fragment key={field.id}>
-            <Grid.Col span={3} pe={0}>
-              <SQLInlineEditorControlled
-                tableConnection={{
-                  databaseName,
-                  tableName,
-                  connectionId,
-                }}
-                control={control}
-                name={`${name}.${index}.sqlExpression`}
-                disableKeywordAutocomplete
-                placeholder="ResourceAttributes['http.host']"
-              />
-            </Grid.Col>
-            <Grid.Col span={2} ps="xs">
-              <Flex align="center" gap="sm">
-                <Text c="gray">AS</Text>
-                <SQLInlineEditorControlled
-                  control={control}
-                  name={`${name}.${index}.alias`}
-                  placeholder="Optional Alias"
-                  disableKeywordAutocomplete
-                />
-                <ActionIcon
-                  size="xs"
-                  variant="subtle"
-                  color="gray"
-                  onClick={() => removeHighlightedAttribute(index)}
-                >
-                  <IconTrash size={16} />
-                </ActionIcon>
-              </Flex>
-            </Grid.Col>
-            <Grid.Col span={3} pe={0}>
-              <InputControlled
-                control={control}
-                name={`${name}.${index}.luceneExpression`}
-                placeholder="ResourceAttributes.http.host (Optional) "
-              />
-            </Grid.Col>
-            <Grid.Col span={1} pe={0}>
-              <Text me="sm" mt={6}>
-                <Tooltip
-                  label={
-                    'An optional, Lucene version of the above expression. If provided, it is used when searching for this attribute value.'
-                  }
-                  color="dark"
-                  c="white"
-                  multiline
-                  maw={600}
-                >
-                  <IconHelpCircle size={14} className="cursor-pointer" />
-                </Tooltip>
-              </Text>
-            </Grid.Col>
-          </React.Fragment>
+        {highlightedAttributes.map(({ id }, index) => (
+          <HighlightedAttributeRow
+            key={id}
+            {...{
+              id,
+              index,
+              name,
+              control,
+              databaseName,
+              tableName,
+              connectionId,
+              removeHighlightedAttribute,
+            }}
+          />
         ))}
       </Grid>
       <Button
-        variant="default"
+        variant="secondary"
         size="sm"
-        color="gray"
         className="align-self-start"
         mt={highlightedAttributes.length ? 'sm' : 'md'}
         onClick={() => {
-          appendHighlightedAttribute({
-            sqlExpression: '',
-            luceneExpression: '',
-            alias: '',
-          });
+          appendHighlightedAttribute(
+            {
+              sqlExpression: '',
+              luceneExpression: '',
+              alias: '',
+            },
+            { shouldFocus: false },
+          );
         }}
       >
         <IconCirclePlus size={14} className="me-2" />
@@ -322,7 +438,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
           ))}
 
           <Button
-            variant="default"
+            variant="secondary"
             onClick={() => {
               appendMaterializedView({
                 databaseName: databaseName,
@@ -544,6 +660,8 @@ function AggregatedColumnsFormSection({
   const fromTableName = useWatch({ control, name: 'from.tableName' });
   const prevMvTableNameRef = useRef(mvTableName);
 
+  const metadata = useMetadataWithSettings();
+
   useEffect(() => {
     (async () => {
       try {
@@ -569,6 +687,7 @@ function AggregatedColumnsFormSection({
                 tableName: fromTableName,
                 connectionId: connection,
               },
+              metadata,
             );
 
             if (config) {
@@ -603,6 +722,7 @@ function AggregatedColumnsFormSection({
     mvIndex,
     replaceAggregates,
     setValue,
+    metadata,
   ]);
 
   return (
@@ -631,7 +751,7 @@ function AggregatedColumnsFormSection({
           />
         ))}
       </Grid>
-      <Button size="sm" variant="default" onClick={addAggregate} mt="lg">
+      <Button size="sm" variant="secondary" onClick={addAggregate} mt="lg">
         <Group>
           <IconCirclePlus size={16} />
           Add Column
@@ -1278,6 +1398,7 @@ export function SessionTableModelForm({ control }: TableModelProps) {
   const connectionId = useWatch({ control, name: 'connection' });
   const tableName = useWatch({ control, name: 'from.tableName' });
   const prevTableNameRef = useRef(tableName);
+  const metadata = useMetadataWithSettings();
 
   useEffect(() => {
     (async () => {
@@ -1288,6 +1409,7 @@ export function SessionTableModelForm({ control }: TableModelProps) {
             databaseName,
             tableName,
             connectionId,
+            metadata,
           });
 
           if (!isValid) {
@@ -1305,7 +1427,7 @@ export function SessionTableModelForm({ control }: TableModelProps) {
         });
       }
     })();
-  }, [tableName, databaseName, connectionId]);
+  }, [tableName, databaseName, connectionId, metadata]);
 
   return (
     <>
@@ -1336,6 +1458,8 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
   const metricTables = useWatch({ control, name: 'metricTables' });
   const prevMetricTablesRef = useRef(metricTables);
 
+  const metadata = useMetadataWithSettings();
+
   useEffect(() => {
     for (const [_key, _value] of Object.entries(OTEL_CLICKHOUSE_EXPRESSIONS)) {
       setValue(_key as any, _value);
@@ -1361,6 +1485,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
                 tableName: newValue as string,
                 connectionId,
                 metricType: metricType as MetricsDataType,
+                metadata,
               });
               if (!isValid) {
                 notifications.show({
@@ -1380,7 +1505,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
         });
       }
     })();
-  }, [metricTables, databaseName, connectionId]);
+  }, [metricTables, databaseName, connectionId, metadata]);
 
   return (
     <>
@@ -1495,6 +1620,8 @@ export function TableSourceForm({
   });
   const prevTableNameRef = useRef(watchedTableName);
 
+  const metadata = useMetadataWithSettings();
+
   useEffect(() => {
     (async () => {
       try {
@@ -1511,6 +1638,7 @@ export function TableSourceForm({
               tableName:
                 watchedKind !== SourceKind.Metric ? watchedTableName : '',
               connectionId: watchedConnection,
+              metadata,
             });
             if (Object.keys(config).length > 0) {
               notifications.show({
@@ -1537,6 +1665,7 @@ export function TableSourceForm({
     watchedDatabaseName,
     watchedKind,
     resetField,
+    metadata,
   ]);
 
   // Sets the default connection field to the first connection after the

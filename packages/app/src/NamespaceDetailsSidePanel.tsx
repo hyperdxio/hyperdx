@@ -1,23 +1,19 @@
 import * as React from 'react';
-import Link from 'next/link';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
-  Anchor,
   Badge,
-  Box,
   Card,
   Drawer,
   Flex,
   Grid,
-  ScrollArea,
   SegmentedControl,
   Text,
 } from '@mantine/core';
 
 import {
-  convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
@@ -280,6 +276,7 @@ export default function NamespaceDetailsSidePanel({
   const { data: logServiceNames } = useGetKeyValues(
     {
       chartConfig: {
+        source: logSource.id,
         from: logSource.from,
         where: `${logSource?.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`,
         whereLanguage: 'lucene',
@@ -365,10 +362,8 @@ export default function NamespaceDetailsSidePanel({
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
-                          granularity: convertDateRangeToGranularityString(
-                            dateRange,
-                            60,
-                          ),
+                          granularity:
+                            convertDateRangeToGranularityString(dateRange),
                           seriesReturnType: 'column',
                           series: [
                             {
@@ -398,10 +393,8 @@ export default function NamespaceDetailsSidePanel({
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
-                          granularity: convertDateRangeToGranularityString(
-                            dateRange,
-                            60,
-                          ),
+                          granularity:
+                            convertDateRangeToGranularityString(dateRange),
                           seriesReturnType: 'column',
                           series: [
                             {
