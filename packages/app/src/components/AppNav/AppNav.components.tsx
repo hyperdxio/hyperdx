@@ -28,7 +28,6 @@ import {
 
 import { IS_LOCAL_MODE } from '@/config';
 import InstallInstructionModal from '@/InstallInstructionsModal';
-import { useSources } from '@/source';
 
 import styles from './AppNav.module.scss';
 
@@ -164,18 +163,6 @@ export const AppNavUserMenu = ({
   );
 };
 
-const useIsTeamHasNoData = () => {
-  const now = React.useMemo(() => new Date(), []);
-  const ago14d = React.useMemo(
-    () => new Date(Date.now() - 1000 * 60 * 60 * 24 * 14),
-    [],
-  );
-
-  const { data: sources } = useSources();
-
-  return Array.isArray(sources) && sources?.length > 0 ? false : true;
-};
-
 export const AppNavHelpMenu = ({
   version,
   onAddDataClick,
@@ -187,7 +174,7 @@ export const AppNavHelpMenu = ({
 
   const [
     installModalOpen,
-    { close: closeInstallModal, open: openInstallModal },
+    { close: closeInstallModal, open: _openInstallModal },
   ] = useDisclosure(false);
 
   return (
@@ -277,11 +264,16 @@ export const AppNavLink = ({
   const testId = `nav-link-${href.replace(/^\//, '').replace(/\//g, '-') || 'home'}`;
 
   const handleToggleClick = (e: React.MouseEvent) => {
-    // Stop propagation so clicking chevron doesn't navigate
+    // Clicking chevron only toggles submenu, doesn't navigate
+    // This separates navigation (clicking link) from expand/collapse (clicking chevron)
     e.preventDefault();
     e.stopPropagation();
     onToggle?.();
   };
+
+  // Check if current path matches this nav item
+  // Use exact match or startsWith to avoid partial matches (e.g., /search matching /search-settings)
+  const isActive = pathname === href || pathname?.startsWith(href + '/');
 
   return (
     <Link
@@ -289,7 +281,7 @@ export const AppNavLink = ({
       href={href}
       className={cx(
         styles.navItem,
-        { [styles.navItemActive]: pathname?.includes(href) },
+        { [styles.navItemActive]: isActive },
         className,
       )}
     >

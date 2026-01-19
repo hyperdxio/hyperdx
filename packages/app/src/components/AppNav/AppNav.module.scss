@@ -45,7 +45,7 @@ $transition-slow: 0.2s ease;
   flex-flow: column nowrap;
   justify-content: space-between;
   border-right: 1px solid var(--color-border);
-  background: var(--color-bg-nav);
+  background: var(--color-bg-sidenav);
   letter-spacing: 0.05em;
 
   &Fixed {
@@ -193,7 +193,7 @@ $transition-slow: 0.2s ease;
 .subMenu {
   overflow-x: hidden;
   max-width: 100%;
-  padding: $spacing-xs 2px;
+  padding: $spacing-xs $spacing-xs;
   padding-bottom: 0;
 }
 
