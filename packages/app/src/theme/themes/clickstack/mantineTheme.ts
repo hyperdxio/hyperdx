@@ -5,6 +5,7 @@ import {
   MantineThemeOverride,
   rem,
   Select,
+  Tabs,
   Text,
   Tooltip,
 } from '@mantine/core';
@@ -244,6 +245,13 @@ export const makeTheme = ({
         },
       },
     },
+    Tabs: Tabs.extend({
+      vars: () => ({
+        root: {
+          '--tabs-color': 'var(--color-text-brand)',
+        },
+      }),
+    }),
     ActionIcon: ActionIcon.extend({
       defaultProps: {
         variant: 'subtle',
