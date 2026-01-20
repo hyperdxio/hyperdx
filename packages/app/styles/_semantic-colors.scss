@@ -82,6 +82,10 @@
   --color-chart-warning: #efb118; /* Orange */
   --color-chart-error: #ff725c; /* Red */
 
+  /* Chart Semantic Colors - Highlighted (for hover/selection states) */
+  --color-chart-error-highlight: #ffa090;
+  --color-chart-warning-highlight: #f5c94d;
+
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
 }
@@ -173,4 +177,8 @@
   --color-chart-success: #3ca951; /* Green */
   --color-chart-warning: #efb118; /* Orange */
   --color-chart-error: #ff725c; /* Red */
+
+  /* Chart Semantic Colors - Highlighted (for hover/selection states) */
+  --color-chart-error-highlight: #ffa090;
+  --color-chart-warning-highlight: #f5c94d;
 }

@@ -58,5 +58,7 @@ export const semanticColorsGrouped = {
     'color-chart-success',
     'color-chart-warning',
     'color-chart-error',
+    'color-chart-error-highlight',
+    'color-chart-warning-highlight',
   ],
 };

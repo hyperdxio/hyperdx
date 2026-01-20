@@ -405,19 +405,36 @@ export const getLogLevelClass = (lvl: string | undefined) => {
         : undefined;
 };
 
-// Observable categorical color palette - works well on both light and dark backgrounds
+// Observable categorical color palette - single source of truth
 // https://observablehq.com/@d3/color-schemes
+export const CHART_PALETTE = {
+  blue: '#4269d0',
+  orange: '#efb118',
+  red: '#ff725c',
+  cyan: '#6cc5b0',
+  green: '#3ca951',
+  pink: '#ff8ab7',
+  purple: '#a463f2',
+  lightBlue: '#97bbf5',
+  brown: '#9c6b4e',
+  gray: '#9498a0',
+  // Highlighted variants (lighter shades for hover/selection states)
+  redHighlight: '#ffa090',
+  orangeHighlight: '#f5c94d',
+} as const;
+
+// Ordered array for chart series (derived from palette)
 export const COLORS = [
-  '#4269d0', // Blue
-  '#efb118', // Orange
-  '#ff725c', // Red
-  '#6cc5b0', // Cyan
-  '#3ca951', // Green
-  '#ff8ab7', // Pink
-  '#a463f2', // Purple
-  '#97bbf5', // Light Blue
-  '#9c6b4e', // Brown
-  '#9498a0', // Gray
+  CHART_PALETTE.blue,
+  CHART_PALETTE.orange,
+  CHART_PALETTE.red,
+  CHART_PALETTE.cyan,
+  CHART_PALETTE.green,
+  CHART_PALETTE.pink,
+  CHART_PALETTE.purple,
+  CHART_PALETTE.lightBlue,
+  CHART_PALETTE.brown,
+  CHART_PALETTE.gray,
 ];
 
 export function hashCode(str: string) {
@@ -433,10 +450,14 @@ export function hashCode(str: string) {
   return hash;
 }
 
-// Semantic colors for log levels (from Observable palette)
-export const CHART_COLOR_SUCCESS = '#3ca951'; // Green
-export const CHART_COLOR_WARNING = '#efb118'; // Orange
-export const CHART_COLOR_ERROR = '#ff725c'; // Red
+// Semantic colors for log levels (derived from palette)
+export const CHART_COLOR_SUCCESS = CHART_PALETTE.green;
+export const CHART_COLOR_WARNING = CHART_PALETTE.orange;
+export const CHART_COLOR_ERROR = CHART_PALETTE.red;
+
+// Highlighted variants (derived from palette)
+export const CHART_COLOR_ERROR_HIGHLIGHT = CHART_PALETTE.redHighlight;
+export const CHART_COLOR_WARNING_HIGHLIGHT = CHART_PALETTE.orangeHighlight;
 
 // Try to match log levels to colors
 export const semanticKeyedColor = (
