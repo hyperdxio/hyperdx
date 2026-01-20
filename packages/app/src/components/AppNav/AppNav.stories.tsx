@@ -1,8 +1,8 @@
 import type { Meta } from '@storybook/nextjs';
 import type { StoryObj } from '@storybook/nextjs';
 
-import AppNav from '../AppNav';
-import { AppNavUserMenu } from '../AppNav.components';
+import AppNav from './AppNav';
+import { AppNavUserMenu } from './AppNav.components';
 
 const meta: Meta = {
   component: AppNav,

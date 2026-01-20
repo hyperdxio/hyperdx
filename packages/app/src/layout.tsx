@@ -1,6 +1,7 @@
 import React from 'react';
 
-import AppNav from './AppNav';
+import AppNav from '@/components/AppNav';
+
 import { HDXSpotlightProvider } from './Spotlights';
 
 /**
