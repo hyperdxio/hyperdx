@@ -39,6 +39,7 @@ import {
 } from '@/source';
 import TimelineChart from '@/TimelineChart';
 import { useFormatTime } from '@/useFormatTime';
+import { CHART_COLOR_ERROR, CHART_COLOR_WARNING } from '@/utils';
 import {
   getHighlightedAttributesFromData,
   getSelectExpressionsForHighlightedAttributes,
@@ -82,8 +83,9 @@ function barColor(condition: {
   isHighlighted: boolean;
 }) {
   const { isError, isWarn, isHighlighted } = condition;
-  if (isError) return isHighlighted ? '#FF6E6E' : '#F53749';
-  if (isWarn) return isHighlighted ? '#FFE38A' : '#FFC107';
+  // Use semantic chart colors from Observable palette
+  if (isError) return isHighlighted ? '#ffa090' : CHART_COLOR_ERROR; // #ff725c
+  if (isWarn) return isHighlighted ? '#f5c94d' : CHART_COLOR_WARNING; // #efb118
   return isHighlighted ? '#A9AFB7' : '#6A7077';
 }
 
