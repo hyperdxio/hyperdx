@@ -222,7 +222,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#8250dc',
+          color: COLORS[1],
           dataKey: 'max · checkout',
           currentPeriodKey: 'max · checkout',
           previousPeriodKey: 'max · checkout (previous)',
@@ -230,7 +230,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#cdad7a',
+          color: COLORS[2],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           currentPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
@@ -240,7 +240,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#0d6efd',
+          color: COLORS[3],
           dataKey: 'max · shipping',
           currentPeriodKey: 'max · shipping',
           previousPeriodKey: 'max · shipping (previous)',
@@ -414,7 +414,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#8250dc',
+          color: COLORS[1],
           dataKey: 'max · checkout',
           currentPeriodKey: 'max · checkout',
           previousPeriodKey: 'max · checkout (previous)',
@@ -422,7 +422,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#cdad7a',
+          color: COLORS[2],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           currentPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
@@ -432,7 +432,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#0d6efd',
+          color: COLORS[3],
           dataKey: 'max · shipping',
           currentPeriodKey: 'max · shipping',
           previousPeriodKey: 'max · shipping (previous)',
