@@ -49,7 +49,7 @@ export const CLICKHOUSE_PASSWORD = env.CLICKHOUSE_PASSWORD as string;
 
 // AI Assistant
 // Provider-agnostic configuration (preferred)
-export const AI_PROVIDER = env.AI_PROVIDER as string; // 'anthropic' | 'openai' | 'azure-openai' | 'google'
+export const AI_PROVIDER = env.AI_PROVIDER as string; // 'anthropic' | 'openai'
 export const AI_API_KEY = env.AI_API_KEY as string;
 export const AI_BASE_URL = env.AI_BASE_URL as string;
 export const AI_MODEL_NAME = env.AI_MODEL_NAME as string;

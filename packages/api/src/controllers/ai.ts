@@ -4,7 +4,7 @@ import type { LanguageModel } from 'ai';
 import * as config from '@/config';
 import logger from '@/utils/logger';
 
-type AIProvider = 'anthropic' | 'openai' | 'azure-openai' | 'google';
+type AIProvider = 'anthropic' | 'openai';
 
 /**
  * Get configured AI model for use in the application.
@@ -47,8 +47,6 @@ export function getAIModel(): LanguageModel {
       return getAnthropicModel();
 
     case 'openai':
-    case 'azure-openai':
-    case 'google':
       throw new Error(
         `Provider '${provider}' is not yet supported. Currently only 'anthropic' is available. ` +
         'Support for additional providers can be added in the future.',
@@ -81,7 +79,7 @@ function getAnthropicModel(): LanguageModel {
     apiKey,
   };
 
-  // Support Azure AI Anthropic endpoints or custom base URLs
+  // Support other AI Anthropic endpoints or custom base URLs
   if (config.AI_BASE_URL) {
     anthropicConfig.baseURL = config.AI_BASE_URL;
   }
