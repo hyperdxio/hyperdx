@@ -31,6 +31,7 @@ import {
 } from '@tabler/icons-react';
 
 import DBRowSidePanel from '@/components/DBRowSidePanel';
+import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import DOMPlayer from './DOMPlayer';
@@ -79,6 +80,7 @@ export default function SessionSubpanel({
   whereLanguage?: SearchConditionLanguage;
 }) {
   const [rowId, setRowId] = useState<string | undefined>(undefined);
+  const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
 
   // Without portaling the nested drawer close overlay will not render properly
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -104,6 +106,7 @@ export default function SessionSubpanel({
               source={traceSource}
               isNestedPanel
               rowId={rowId}
+              aliasWith={aliasWith}
               onClose={() => {
                 setDrawerOpen(false);
                 setRowId(undefined);
@@ -552,11 +555,12 @@ export default function SessionSubpanel({
           aliasMap={aliasMap}
           queriedConfig={sessionEventListConfig}
           onClick={useCallback(
-            (id: string) => {
+            (rowWhere: RowWhereResult) => {
               setDrawerOpen(true);
-              setRowId(id);
+              setRowId(rowWhere.where);
+              setAliasWith(rowWhere.aliasWith);
             },
-            [setDrawerOpen, setRowId],
+            [setDrawerOpen, setRowId, setAliasWith],
           )}
           focus={focus}
           onTimeClick={useCallback(
