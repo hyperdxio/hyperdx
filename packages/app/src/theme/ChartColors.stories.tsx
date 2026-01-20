@@ -1,24 +1,46 @@
 import React from 'react';
 
-// Observable categorical color palette
+import {
+  CHART_COLOR_ERROR,
+  CHART_COLOR_SUCCESS,
+  CHART_COLOR_WARNING,
+  COLORS,
+} from '@/utils';
+
+// Labels for the Observable categorical color palette
 // https://observablehq.com/@d3/color-schemes
-const CHART_COLORS = [
-  { name: 'color-chart-1', hex: '#4269d0', label: 'Blue' },
-  { name: 'color-chart-2', hex: '#efb118', label: 'Orange' },
-  { name: 'color-chart-3', hex: '#ff725c', label: 'Red' },
-  { name: 'color-chart-4', hex: '#6cc5b0', label: 'Cyan' },
-  { name: 'color-chart-5', hex: '#3ca951', label: 'Green' },
-  { name: 'color-chart-6', hex: '#ff8ab7', label: 'Pink' },
-  { name: 'color-chart-7', hex: '#a463f2', label: 'Purple' },
-  { name: 'color-chart-8', hex: '#97bbf5', label: 'Light Blue' },
-  { name: 'color-chart-9', hex: '#9c6b4e', label: 'Brown' },
-  { name: 'color-chart-10', hex: '#9498a0', label: 'Gray' },
+const COLOR_LABELS = [
+  'Blue',
+  'Orange',
+  'Red',
+  'Cyan',
+  'Green',
+  'Pink',
+  'Purple',
+  'Light Blue',
+  'Brown',
+  'Gray',
 ];
 
+// Derive chart colors from the single source of truth in utils.ts
+const CHART_COLORS = COLORS.map((hex, i) => ({
+  name: `color-chart-${i + 1}`,
+  hex,
+  label: COLOR_LABELS[i] || `Color ${i + 1}`,
+}));
+
 const SEMANTIC_CHART_COLORS = [
-  { name: 'color-chart-success', hex: '#3ca951', label: 'Success (Green)' },
-  { name: 'color-chart-warning', hex: '#efb118', label: 'Warning (Orange)' },
-  { name: 'color-chart-error', hex: '#ff725c', label: 'Error (Red)' },
+  {
+    name: 'color-chart-success',
+    hex: CHART_COLOR_SUCCESS,
+    label: 'Success (Green)',
+  },
+  {
+    name: 'color-chart-warning',
+    hex: CHART_COLOR_WARNING,
+    label: 'Warning (Orange)',
+  },
+  { name: 'color-chart-error', hex: CHART_COLOR_ERROR, label: 'Error (Red)' },
 ];
 
 const story = {
