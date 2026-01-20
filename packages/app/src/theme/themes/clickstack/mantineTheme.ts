@@ -257,76 +257,42 @@ export const makeTheme = ({
         variant: 'subtle',
         color: 'gray',
       },
-      styles: (_theme, props) => {
+      vars: (_theme, props) => {
+        const baseVars: Record<string, string> = {};
+
         if (props.variant === 'subtle') {
-          return {
-            root: {
-              backgroundColor: 'transparent',
-              color: 'var(--color-text)',
-              '&:hover': {
-                backgroundColor: 'var(--color-bg-hover)',
-              },
-              '&:active': {
-                backgroundColor: 'var(--color-bg-muted)',
-              },
-            },
-          };
+          baseVars['--ai-bg'] = 'transparent';
+          baseVars['--ai-hover'] = 'var(--color-bg-hover)';
+          baseVars['--ai-color'] = 'var(--color-text)';
         }
 
         if (props.variant === 'default') {
-          return {
-            root: {
-              backgroundColor: 'var(--color-bg-hover)',
-              color: 'var(--color-text)',
-              border: 'none',
-              '&:hover': {
-                backgroundColor: 'var(--color-bg-muted)',
-              },
-              '&:active': {
-                backgroundColor: 'var(--color-bg-muted)',
-              },
-            },
-          };
+          baseVars['--ai-bg'] = 'var(--color-bg-hover)';
+          baseVars['--ai-hover'] = 'var(--color-bg-muted)';
+          baseVars['--ai-color'] = 'var(--color-text)';
+          baseVars['--ai-bd'] = 'none';
         }
 
         if (props.variant === 'primary') {
-          return {
-            root: {
-              backgroundColor: 'var(--mantine-color-yellow-6)',
-              color: 'var(--mantine-color-dark-9)',
-              '&:hover': {
-                backgroundColor: 'var(--mantine-color-yellow-5)',
-              },
-            },
-          };
+          baseVars['--ai-bg'] = 'var(--color-primary-button-bg)';
+          baseVars['--ai-hover'] = 'var(--color-primary-button-bg-hover)';
+          baseVars['--ai-color'] = 'var(--color-primary-button-text)';
         }
 
         if (props.variant === 'secondary') {
-          return {
-            root: {
-              backgroundColor: 'var(--color-bg-surface)',
-              color: 'var(--color-text)',
-              border: '1px solid var(--color-border)',
-              '&:hover': {
-                backgroundColor: 'var(--color-bg-hover)',
-              },
-            },
-          };
+          baseVars['--ai-bg'] = 'var(--color-bg-surface)';
+          baseVars['--ai-hover'] = 'var(--color-bg-hover)';
+          baseVars['--ai-color'] = 'var(--color-text)';
+          baseVars['--ai-bd'] = '1px solid var(--color-border)';
         }
 
         if (props.variant === 'danger') {
-          return {
-            root: {
-              backgroundColor: 'var(--mantine-color-red-light)',
-              color: 'var(--mantine-color-red-light-color)',
-              '&:hover': {
-                backgroundColor: 'var(--mantine-color-red-light-hover)',
-              },
-            },
-          };
+          baseVars['--ai-bg'] = 'var(--mantine-color-red-light)';
+          baseVars['--ai-hover'] = 'var(--mantine-color-red-light-hover)';
+          baseVars['--ai-color'] = 'var(--mantine-color-red-light-color)';
         }
 
-        return {};
+        return { root: baseVars };
       },
     }),
   },

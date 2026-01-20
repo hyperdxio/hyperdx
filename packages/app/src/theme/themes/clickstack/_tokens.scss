@@ -90,7 +90,7 @@
 
   /* Backgrounds - Using Click UI tokens */
   --color-bg-body: var(--click-global-color-background-default);
-  --color-bg-surface: #34354a;
+  --color-bg-surface: var(--click-global-color-background-default);
   --color-bg-inverted: #d5d7e0;
   --color-bg-muted: var(--click-global-color-background-muted);
   --color-bg-highlighted: rgb(75 78 102 / 70%);
@@ -98,8 +98,8 @@
   --color-bg-sidenav-link-active: var(--click-global-color-background-muted);
   --color-bg-sidenav-link-active-hover: var(--mantine-color-gray-7);
   --color-bg-header: var(--click-global-color-background-default);
-  --color-bg-hover: #2b2c3d;
-  --color-bg-active: #34354a;
+  --color-bg-hover: var(--palette-neutral-725);
+  --color-bg-active: var(--palette-neutral-800);
   --color-bg-field: var(--click-field-color-background-default);
   --color-bg-field-highlighted: #4d4f66;
   --color-bg-neutral: #4d4f66;
@@ -110,7 +110,7 @@
 
   /* Primary Button */
   --color-primary-button-bg: var(--palette-brand-300);
-  --color-primary-button-bg-hover: var(--color-brand-200);
+  --color-primary-button-bg-hover: var(--palette-brand-200);
   --color-primary-button-text: var(--color-text-inverted);
 
   /* Borders & Dividers */
@@ -189,6 +189,7 @@
   --palette-slate-500: #808691;
   --palette-slate-600: #696e79;
   --palette-slate-700: #53575f;
+  --palette-slate-725: #42464b;
   --palette-slate-800: #302e32;
   --palette-slate-900: #161517;
   --palette-slate-base: #373439;
@@ -268,7 +269,7 @@
 
   /* Primary Button */
   --color-primary-button-bg: var(--palette-slate-800);
-  --color-primary-button-bg-hover: #42464b;
+  --color-primary-button-bg-hover: var(--palette-slate-725);
   --color-primary-button-text: var(--color-text-inverted);
 
   /* Borders & Dividers */
