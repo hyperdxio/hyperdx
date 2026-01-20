@@ -405,19 +405,19 @@ export const getLogLevelClass = (lvl: string | undefined) => {
         : undefined;
 };
 
-// Accessible chart colors
+// Observable categorical color palette - works well on both light and dark backgrounds
+// https://observablehq.com/@d3/color-schemes
 export const COLORS = [
-  '#20c997', // Green
-  // '#F81358', // Red
-  '#8250dc', // Light Purple
-  '#cdad7a', // Tan
-  '#0d6efd', // Blue
-  '#fd7e14', // Orange
-  '#0dcaf0', // Turqoise
-  '#828c95', // Grey
-  '#ff9382', // Coral
-  '#39b5ab', // Olive-tealish?
-  '#ffa600', // Yellow
+  '#4269d0', // Blue
+  '#efb118', // Orange
+  '#ff725c', // Red
+  '#6cc5b0', // Cyan
+  '#3ca951', // Green
+  '#ff8ab7', // Pink
+  '#a463f2', // Purple
+  '#97bbf5', // Light Blue
+  '#9c6b4e', // Brown
+  '#9498a0', // Gray
 ];
 
 export function hashCode(str: string) {
@@ -433,6 +433,11 @@ export function hashCode(str: string) {
   return hash;
 }
 
+// Semantic colors for log levels (from Observable palette)
+export const CHART_COLOR_SUCCESS = '#3ca951'; // Green
+export const CHART_COLOR_WARNING = '#efb118'; // Orange
+export const CHART_COLOR_ERROR = '#ff725c'; // Red
+
 // Try to match log levels to colors
 export const semanticKeyedColor = (
   key: string | number | undefined,
@@ -441,10 +446,10 @@ export const semanticKeyedColor = (
   const logLevel = getLogLevelClass(`${key}`);
   if (logLevel != null) {
     return logLevel === 'error'
-      ? '#d63384' // magenta
+      ? CHART_COLOR_ERROR
       : logLevel === 'warn'
-        ? '#ffc107' // yellow
-        : '#20c997'; // green;
+        ? CHART_COLOR_WARNING
+        : CHART_COLOR_SUCCESS;
   }
 
   return COLORS[index % COLORS.length];
@@ -453,10 +458,10 @@ export const semanticKeyedColor = (
 export const logLevelColor = (key: string | number | undefined) => {
   const logLevel = getLogLevelClass(`${key}`);
   return logLevel === 'error'
-    ? '#F81358' // red
+    ? CHART_COLOR_ERROR
     : logLevel === 'warn'
-      ? '#ffc107' // yellow
-      : '#20c997'; // green;
+      ? CHART_COLOR_WARNING
+      : CHART_COLOR_SUCCESS;
 };
 
 // order of colors for sorting. green on bottom, then yellow, then red
@@ -471,10 +476,10 @@ const getLevelColor = (logLevel?: string) => {
     return;
   }
   return logLevel === 'error'
-    ? '#d63384' // magenta
+    ? CHART_COLOR_ERROR
     : logLevel === 'warn'
-      ? '#ffc107' // yellow
-      : '#20c997'; // green;
+      ? CHART_COLOR_WARNING
+      : CHART_COLOR_SUCCESS;
 };
 
 export const getColorProps = (index: number, level: string): string => {
