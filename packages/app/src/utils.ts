@@ -405,14 +405,14 @@ export const getLogLevelClass = (lvl: string | undefined) => {
         : undefined;
 };
 
-// Observable categorical color palette - single source of truth
-// https://observablehq.com/@d3/color-schemes
+// Chart color palette - single source of truth
+// Based on Observable categorical palette with Mantine-compatible green
 export const CHART_PALETTE = {
+  green: '#00c28a', // Custom green.5 from mantineTheme - works well in light & dark modes
   blue: '#4269d0',
   orange: '#efb118',
   red: '#ff725c',
   cyan: '#6cc5b0',
-  green: '#3ca951',
   pink: '#ff8ab7',
   purple: '#a463f2',
   lightBlue: '#97bbf5',
@@ -425,11 +425,11 @@ export const CHART_PALETTE = {
 
 // Ordered array for chart series (derived from palette)
 export const COLORS = [
+  CHART_PALETTE.green,
   CHART_PALETTE.blue,
   CHART_PALETTE.orange,
   CHART_PALETTE.red,
   CHART_PALETTE.cyan,
-  CHART_PALETTE.green,
   CHART_PALETTE.pink,
   CHART_PALETTE.purple,
   CHART_PALETTE.lightBlue,
