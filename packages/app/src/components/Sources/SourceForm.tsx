@@ -416,14 +416,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
   return (
     <Stack gap="md">
       <FormRow
-        label={
-          <Group>
-            Materialized Views
-            <Badge size="sm" radius="sm" color="gray">
-              Beta
-            </Badge>
-          </Group>
-        }
+        label="Materialized Views"
         helpText="Configure materialized views for query optimization. These pre-aggregated views can significantly improve query performance on aggregation queries."
       >
         <Stack gap="md">
