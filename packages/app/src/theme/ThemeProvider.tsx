@@ -11,6 +11,8 @@ import {
   DEFAULT_THEME,
   getDevThemeName,
   getTheme,
+  safeLocalStorageRemove,
+  safeLocalStorageSet,
   THEME_STORAGE_KEY,
   themes,
 } from './index';
@@ -91,7 +93,7 @@ export function AppThemeProvider({
       return;
     }
     if (themes[name]) {
-      localStorage.setItem(THEME_STORAGE_KEY, name);
+      safeLocalStorageSet(THEME_STORAGE_KEY, name);
       setResolvedThemeName(name);
     }
   }, []);
@@ -103,16 +105,14 @@ export function AppThemeProvider({
       const currentIndex = themeNames.indexOf(current);
       const nextIndex = (currentIndex + 1) % themeNames.length;
       const nextTheme = themeNames[nextIndex];
-      localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+      safeLocalStorageSet(THEME_STORAGE_KEY, nextTheme);
       return nextTheme;
     });
   }, []);
 
   const clearThemeOverride = useCallback(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(THEME_STORAGE_KEY);
-      setResolvedThemeName(propsThemeName ?? DEFAULT_THEME);
-    }
+    safeLocalStorageRemove(THEME_STORAGE_KEY);
+    setResolvedThemeName(propsThemeName ?? DEFAULT_THEME);
   }, [propsThemeName]);
 
   const contextValue = useMemo(

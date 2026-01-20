@@ -16,9 +16,45 @@ const IS_DEV =
 // LocalStorage key for dev theme override (exported for ThemeProvider)
 export const THEME_STORAGE_KEY = 'hdx-dev-theme';
 
-// Default theme (can be overridden via environment variable)
-export const DEFAULT_THEME: ThemeName =
-  (process.env.NEXT_PUBLIC_THEME as ThemeName) || 'hyperdx';
+// Validate that a theme name is valid
+function isValidThemeName(name: string | null | undefined): name is ThemeName {
+  return name != null && name in themes;
+}
+
+// Safe localStorage access (handles private browsing, SSR, etc.)
+function safeLocalStorageGet(key: string): string | undefined {
+  try {
+    if (typeof window === 'undefined') return undefined;
+    return localStorage.getItem(key) ?? undefined;
+  } catch {
+    // localStorage may throw in private browsing or when disabled
+    return undefined;
+  }
+}
+
+function safeLocalStorageSet(key: string, value: string): void {
+  try {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(key, value);
+  } catch {
+    // localStorage may throw in private browsing or when disabled
+  }
+}
+
+function safeLocalStorageRemove(key: string): void {
+  try {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(key);
+  } catch {
+    // localStorage may throw in private browsing or when disabled
+  }
+}
+
+// Default theme (validated against registry, falls back to hyperdx)
+const envTheme = process.env.NEXT_PUBLIC_THEME;
+export const DEFAULT_THEME: ThemeName = isValidThemeName(envTheme)
+  ? envTheme
+  : 'hyperdx';
 
 /**
  * Get the theme name from various sources (dev mode only).
@@ -39,18 +75,16 @@ export function getDevThemeName(): ThemeName {
 
   // Check URL query param first (highest priority for testing)
   const urlParams = new URLSearchParams(window.location.search);
-  const urlTheme = urlParams.get('theme') as ThemeName | null;
-  if (urlTheme && themes[urlTheme]) {
+  const urlTheme = urlParams.get('theme');
+  if (isValidThemeName(urlTheme)) {
     // Persist to localStorage when set via URL
-    localStorage.setItem(THEME_STORAGE_KEY, urlTheme);
+    safeLocalStorageSet(THEME_STORAGE_KEY, urlTheme);
     return urlTheme;
   }
 
   // Check localStorage
-  const storedTheme = localStorage.getItem(
-    THEME_STORAGE_KEY,
-  ) as ThemeName | null;
-  if (storedTheme && themes[storedTheme]) {
+  const storedTheme = safeLocalStorageGet(THEME_STORAGE_KEY);
+  if (isValidThemeName(storedTheme)) {
     return storedTheme;
   }
 
@@ -75,6 +109,9 @@ export function getCurrentThemeName(): ThemeName {
 
 // Re-export types
 export type { ThemeConfig, ThemeName } from './types';
+
+// Export safe localStorage helpers for ThemeProvider
+export { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet };
 
 // Re-export for backwards compatibility
 export { makeTheme, theme } from './themes/hyperdx/mantineTheme';
