@@ -94,7 +94,9 @@
   --color-bg-inverted: #d5d7e0;
   --color-bg-muted: var(--click-global-color-background-muted);
   --color-bg-highlighted: rgb(75 78 102 / 70%);
-  --color-bg-sidebar: var(--click-global-color-background-default);
+  --color-bg-sidenav: var(--click-global-color-background-default);
+  --color-bg-sidenav-link-active: var(--click-global-color-background-muted);
+  --color-bg-sidenav-link-active-hover: var(--mantine-color-gray-7);
   --color-bg-header: var(--click-global-color-background-default);
   --color-bg-hover: #2b2c3d;
   --color-bg-active: #34354a;
@@ -128,6 +130,8 @@
   --color-text-success: #22c55e;
   --color-text-success-hover: #4ade80;
   --color-text-danger: var(--click-global-color-text-danger);
+  --color-text-sidenav-link: var(--click-global-color-text-default);
+  --color-text-sidenav-link-active: var(--color-text-primary);
 
   /* Icons */
   --color-icon-primary: #d5d7e0;
@@ -247,7 +251,9 @@
   --color-bg-inverted: #343a40;
   --color-bg-muted: var(--click-global-color-background-muted);
   --color-bg-highlighted: rgb(241 243 245 / 80%);
-  --color-bg-sidebar: var(--click-global-color-background-default);
+  --color-bg-sidenav: var(--click-global-color-background-default);
+  --color-bg-sidenav-link-active: var(--click-global-color-stroke-default);
+  --color-bg-sidenav-link-active-hover: var(--mantine-color-gray-3);
   --color-bg-header: var(--click-global-color-background-muted);
   --color-bg-modal: var(--click-global-color-background-default);
   --color-bg-hover: #e9ecef;
@@ -282,6 +288,8 @@
   --color-text-success: #16a34a;
   --color-text-success-hover: #15803d;
   --color-text-danger: var(--click-global-color-text-danger);
+  --color-text-sidenav-link: var(--click-global-color-text-default);
+  --color-text-sidenav-link-active: var(--click-global-color-accent-default);
 
   /* Icons */
   --color-icon-primary: #343a40;
