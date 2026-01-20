@@ -36,6 +36,7 @@ import {
   formatResponseForTimeChart,
   getPreviousDateRange,
   PreviousPeriodSuffix,
+  shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
@@ -395,7 +396,7 @@ function DBTimeChartComponent({
           : undefined,
         dateRange,
         granularity,
-        generateEmptyBuckets: fillNulls !== false,
+        generateEmptyBuckets: shouldFillNullsWithZero(fillNulls),
         source,
         hiddenSeries,
         previousPeriodOffsetSeconds,

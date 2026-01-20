@@ -602,8 +602,12 @@ export const formatNumber = (
       currencySymbol: options.currencySymbol || '$',
     }),
   };
+
+  // Factor is only currently available for the time output
+  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
+
   return (
-    numbro(value * (options.factor ?? 1)).format(numbroFormat) +
+    numbro(value * factor).format(numbroFormat) +
     (options.unit ? ` ${options.unit}` : '')
   );
 };

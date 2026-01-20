@@ -500,6 +500,7 @@ export const MemoChart = memo(function MemoChart({
               })}
           name={seriesName}
           isAnimationActive={false}
+          connectNulls
         />
       );
     });
