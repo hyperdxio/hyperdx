@@ -52,14 +52,20 @@ export function AppThemeProvider({
   themeName?: ThemeName;
   children: React.ReactNode;
 }) {
-  // SSR/initial render: Always use props or DEFAULT_THEME for hydration consistency
-  // The server cannot read localStorage/URL, so we must start with a deterministic value
+  // SSR/initial render: Always use props or DEFAULT_THEME for hydration consistency.
+  // The server cannot read localStorage/URL, so we must start with a deterministic value.
+  //
+  // HYDRATION NOTE: In dev mode, the useEffect below may update the theme after hydration
+  // if localStorage/URL contains a different theme. This is intentional for dev testing
+  // and will cause a brief flash. In production (IS_DEV=false), theme is stable and
+  // matches server render. To avoid any flash in production, pass themeName prop explicitly.
   const [resolvedThemeName, setResolvedThemeName] = useState<ThemeName>(
     () => propsThemeName ?? DEFAULT_THEME,
   );
 
-  // After hydration, read from localStorage/URL in dev mode
-  // Uses consolidated getDevThemeName() from index.ts as single source of truth
+  // After hydration, read from localStorage/URL in dev mode only.
+  // Uses consolidated getDevThemeName() from index.ts as single source of truth.
+  // This effect only changes state in dev mode, so production has no hydration mismatch.
   useEffect(() => {
     // If theme is explicitly passed via props, use that (no dev override)
     if (propsThemeName) {
@@ -67,7 +73,7 @@ export function AppThemeProvider({
       return;
     }
 
-    // In dev mode, allow URL/localStorage overrides
+    // In dev mode only, allow URL/localStorage overrides for testing themes
     if (IS_DEV) {
       const devTheme = getDevThemeName();
       setResolvedThemeName(devTheme);

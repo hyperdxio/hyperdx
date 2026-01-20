@@ -2,6 +2,12 @@
 
 /* Uses HyperDX theme as default */
 
+/*
+ * Import theme-specific tokens. These files define CSS custom properties
+ * scoped to their theme class selectors (e.g., .theme-hyperdx, .theme-clickstack).
+ * The @use imports ensure these scoped styles are included in the compiled CSS.
+ * Note: SCSS partials are prefixed with underscore in filename but imported without it.
+ */
 @use './hyperdx/tokens' as hyperdx-tokens;
 @use './clickstack/tokens' as clickstack-tokens;
 
