@@ -43,7 +43,6 @@ import {
   IconSettings,
   IconTrash,
 } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
@@ -1430,6 +1429,21 @@ export function SessionTableModelForm({ control }: TableModelProps) {
           helpText="HyperDX Source for traces associated with sessions. Required"
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
+        </FormRow>
+        <FormRow
+          label={'Timestamp Column'}
+          helpText="DateTime column or expression that is part of your table's primary key."
+        >
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name="timestampValueExpression"
+            disableKeywordAutocomplete
+          />
         </FormRow>
       </Stack>
     </>

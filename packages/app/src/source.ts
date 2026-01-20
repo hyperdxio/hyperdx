@@ -25,7 +25,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { hdxServer } from '@/api';
 import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
-import { getMetadata } from '@/metadata';
 import { parseJSON } from '@/utils';
 
 // Columns for the sessions table as of OTEL Collector v0.129.1
@@ -91,10 +90,11 @@ export function getEventBody(eventModel: TSource) {
 function addDefaultsToSource(source: TSourceUnion): TSource {
   return {
     ...source,
-    // Session sources have hard-coded timestampValueExpressions
+    // Session sources have optional timestampValueExpressions, with default
     timestampValueExpression:
       source.kind === SourceKind.Session
-        ? SESSION_TABLE_EXPRESSIONS.timestampValueExpression
+        ? source.timestampValueExpression ||
+          SESSION_TABLE_EXPRESSIONS.timestampValueExpression
         : source.timestampValueExpression,
   };
 }

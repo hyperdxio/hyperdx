@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
 import uniqBy from 'lodash/uniqBy';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
+import { keepPreviousData } from '@tanstack/react-query';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
+import { SessionRow, sessionRowSchema } from './utils/sessions';
 import type { PlaybarMarker } from './PlaybarSlider';
 import { PlaybarSlider } from './PlaybarSlider';
 import { getShortUrl } from './utils';
@@ -29,14 +31,19 @@ export default function Playbar({
   const maxSliderVal = Math.ceil(playbackRange[1].getTime() / 1000) * 1000;
   const minSliderVal = Math.floor(playbackRange[0].getTime() / 1000) * 1000;
 
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
-      placeholderData: (prev: any) => prev,
-      queryKey: ['PlayBar', queriedConfig],
-    },
+  const { data } = useQueriedChartConfig(queriedConfig, {
+    placeholderData: keepPreviousData,
+    queryKey: ['PlayBar', queriedConfig],
+  });
+
+  const events: SessionRow[] = useMemo(
+    () =>
+      data?.data
+        ?.map(row => sessionRowSchema.safeParse(row))
+        .filter(parsed => parsed.success)
+        .map(parsed => parsed.data) ?? [],
+    [data?.data],
   );
-  const events: any[] = useMemo(() => data?.data ?? [], [data?.data]);
 
   const markers = useMemo<PlaybarMarker[]>(() => {
     return uniqBy(
@@ -59,14 +66,14 @@ export default function Playbar({
         )
         .map(event => {
           const spanName = event['span_name'];
-          const locationHref = event['location.href'];
+          const locationHref = event['location.href'] ?? '';
           const shortLocationHref = getShortUrl(locationHref);
 
-          const errorMessage = event['error.message'];
+          const errorMessage = event['error.message'] ?? '';
 
-          const url = event['http.url'];
-          const statusCode = event['http.status_code'];
-          const method = event['http.method'];
+          const url = event['http.url'] ?? '';
+          const statusCode = Number(event['http.status_code'] ?? '');
+          const method = event['http.method'] ?? '';
           const shortUrl = getShortUrl(url);
 
           const isNavigation =
@@ -94,7 +101,7 @@ export default function Playbar({
                   ? errorMessage
                   : spanName === 'intercom.onShow'
                     ? 'Intercom Chat Opened'
-                    : event.body,
+                    : (event.body ?? ''),
             isError,
             isSuccess,
           };
