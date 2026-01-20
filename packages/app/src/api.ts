@@ -176,6 +176,7 @@ const api = {
   usePresetDashboardFilters(
     presetDashboard: PresetDashboard,
     sourceId: string,
+    enabled: boolean = true,
   ) {
     return useQuery({
       queryKey: [`dashboards`, `preset`, presetDashboard, `filters`, sourceId],
@@ -184,7 +185,7 @@ const api = {
           method: 'GET',
           searchParams: { sourceId },
         }).json() as Promise<PresetDashboardFilter[]>,
-      enabled: !!sourceId,
+      enabled: !!sourceId && enabled,
     });
   },
   useCreatePresetDashboardFilter() {

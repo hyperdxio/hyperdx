@@ -1438,6 +1438,7 @@ function ServicesDashboardPage() {
   } = usePresetDashboardFilters({
     presetDashboard: PresetDashboard.Services,
     sourceId: sourceId || '',
+    enabled: !IS_LOCAL_MODE,
   });
 
   const appliedConfig = useMemo(
