@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { Box, Modal } from '@mantine/core';
 import { useHotkeys } from '@mantine/hooks';
 
@@ -14,7 +13,7 @@ export default function FullscreenPanelModal({
   children: React.ReactNode;
 }) {
   // YouTube-style 'f' key to toggle fullscreen
-  useHotkeys([['f', () => opened && onClose()]], [opened, onClose]);
+  useHotkeys([['f', () => opened && onClose()]]);
 
   return (
     <Modal
