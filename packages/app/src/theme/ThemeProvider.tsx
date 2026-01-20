@@ -1,5 +1,6 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -7,12 +8,11 @@ import React, {
 } from 'react';
 
 import {
-  clearDevTheme,
   DEFAULT_THEME,
+  getDevThemeName,
   getTheme,
-  setDevTheme,
+  THEME_STORAGE_KEY,
   themes,
-  toggleDevTheme,
 } from './index';
 import { ThemeConfig, ThemeName } from './types';
 
@@ -20,7 +20,17 @@ const IS_DEV =
   process.env.NODE_ENV === 'development' ||
   process.env.NEXT_PUBLIC_IS_LOCAL_MODE === 'true';
 
-const THEME_STORAGE_KEY = 'hdx-dev-theme';
+// Type declaration for window namespace (avoids conflicts)
+declare global {
+  interface Window {
+    __HDX_THEME?: {
+      current: ThemeName;
+      set: (name: ThemeName) => void;
+      toggle: () => void;
+      clear: () => void;
+    };
+  }
+}
 
 interface ThemeContextValue {
   theme: ThemeConfig;
@@ -36,54 +46,80 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function AppThemeProvider({
-  themeName,
+  themeName: propsThemeName,
   children,
 }: {
   themeName?: ThemeName;
   children: React.ReactNode;
 }) {
-  // Start with default theme to match server render and avoid hydration mismatch
+  // SSR/initial render: Always use props or DEFAULT_THEME for hydration consistency
+  // The server cannot read localStorage/URL, so we must start with a deterministic value
   const [resolvedThemeName, setResolvedThemeName] = useState<ThemeName>(
-    themeName ?? DEFAULT_THEME,
+    () => propsThemeName ?? DEFAULT_THEME,
   );
 
   // After hydration, read from localStorage/URL in dev mode
+  // Uses consolidated getDevThemeName() from index.ts as single source of truth
   useEffect(() => {
-    if (themeName || !IS_DEV) return;
-
-    // Check URL query param first
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlTheme = urlParams.get('theme') as ThemeName | null;
-    if (urlTheme && themes[urlTheme]) {
-      localStorage.setItem(THEME_STORAGE_KEY, urlTheme);
-      setResolvedThemeName(urlTheme);
+    // If theme is explicitly passed via props, use that (no dev override)
+    if (propsThemeName) {
+      setResolvedThemeName(propsThemeName);
       return;
     }
 
-    // Check localStorage
-    const storedTheme = localStorage.getItem(
-      THEME_STORAGE_KEY,
-    ) as ThemeName | null;
-    if (storedTheme && themes[storedTheme]) {
-      setResolvedThemeName(storedTheme);
+    // In dev mode, allow URL/localStorage overrides
+    if (IS_DEV) {
+      const devTheme = getDevThemeName();
+      setResolvedThemeName(devTheme);
     }
-  }, [themeName]);
+  }, [propsThemeName]);
 
   const theme = useMemo(() => {
     return getTheme(resolvedThemeName);
   }, [resolvedThemeName]);
+
+  // Theme control functions - update state without page reload
+  const setTheme = useCallback((name: ThemeName) => {
+    if (!IS_DEV) {
+      console.warn('setTheme only works in development mode');
+      return;
+    }
+    if (themes[name]) {
+      localStorage.setItem(THEME_STORAGE_KEY, name);
+      setResolvedThemeName(name);
+    }
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    if (!IS_DEV) return;
+    const themeNames = Object.keys(themes) as ThemeName[];
+    setResolvedThemeName(current => {
+      const currentIndex = themeNames.indexOf(current);
+      const nextIndex = (currentIndex + 1) % themeNames.length;
+      const nextTheme = themeNames[nextIndex];
+      localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+      return nextTheme;
+    });
+  }, []);
+
+  const clearThemeOverride = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(THEME_STORAGE_KEY);
+      setResolvedThemeName(propsThemeName ?? DEFAULT_THEME);
+    }
+  }, [propsThemeName]);
 
   const contextValue = useMemo(
     () => ({
       theme,
       themeName: theme.name,
       availableThemes: Object.keys(themes) as ThemeName[],
-      setTheme: setDevTheme,
-      toggleTheme: toggleDevTheme,
-      clearThemeOverride: clearDevTheme,
+      setTheme,
+      toggleTheme,
+      clearThemeOverride,
       isDev: IS_DEV,
     }),
-    [theme],
+    [theme, setTheme, toggleTheme, clearThemeOverride],
   );
 
   // Apply theme CSS class to document
@@ -105,32 +141,40 @@ export function AppThemeProvider({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'T') {
         e.preventDefault();
-        toggleDevTheme();
+        e.stopPropagation();
+        toggleTheme();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [toggleTheme]);
 
-  // Dev mode: log theme info to console
+  // Dev mode: expose theme API to window (namespaced to avoid global pollution)
   useEffect(() => {
-    if (IS_DEV && typeof window !== 'undefined') {
-      // eslint-disable-next-line no-console
-      console.info(
-        `🎨 Theme: ${theme.displayName} (${theme.name})`,
-        '\n   Toggle: Ctrl+Shift+T',
-        '\n   Set via URL: ?theme=clickstack',
-        '\n   Set via console: window.__setTheme("clickstack")',
-      );
+    if (!IS_DEV || typeof window === 'undefined') return;
 
-      // Expose helper functions to window for console access
-      (window as any).__setTheme = setDevTheme;
-      (window as any).__toggleTheme = toggleDevTheme;
-      (window as any).__clearTheme = clearDevTheme;
-      (window as any).__currentTheme = theme.name;
-    }
-  }, [theme]);
+    // eslint-disable-next-line no-console
+    console.info(
+      `🎨 Theme: ${theme.displayName} (${theme.name})`,
+      '\n   Toggle: Ctrl+Shift+T',
+      '\n   Set via URL: ?theme=clickstack',
+      '\n   Set via console: window.__HDX_THEME.set("clickstack")',
+    );
+
+    // Expose namespaced helper object to window for console access
+    window.__HDX_THEME = {
+      current: theme.name,
+      set: setTheme,
+      toggle: toggleTheme,
+      clear: clearThemeOverride,
+    };
+
+    // Cleanup on unmount
+    return () => {
+      delete window.__HDX_THEME;
+    };
+  }, [theme, setTheme, toggleTheme, clearThemeOverride]);
 
   return (
     <ThemeContext.Provider value={contextValue}>
@@ -148,9 +192,22 @@ export function useAppTheme(): ThemeContextValue {
       theme,
       themeName: theme.name,
       availableThemes: Object.keys(themes) as ThemeName[],
-      setTheme: setDevTheme,
-      toggleTheme: toggleDevTheme,
-      clearThemeOverride: clearDevTheme,
+      // No-op functions when outside provider context
+      setTheme: () => {
+        console.warn(
+          'useAppTheme: setTheme called outside of AppThemeProvider',
+        );
+      },
+      toggleTheme: () => {
+        console.warn(
+          'useAppTheme: toggleTheme called outside of AppThemeProvider',
+        );
+      },
+      clearThemeOverride: () => {
+        console.warn(
+          'useAppTheme: clearThemeOverride called outside of AppThemeProvider',
+        );
+      },
       isDev: IS_DEV,
     };
   }

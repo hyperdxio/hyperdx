@@ -13,21 +13,26 @@ const IS_DEV =
   process.env.NODE_ENV === 'development' ||
   process.env.NEXT_PUBLIC_IS_LOCAL_MODE === 'true';
 
-// LocalStorage key for dev theme override
-const THEME_STORAGE_KEY = 'hdx-dev-theme';
+// LocalStorage key for dev theme override (exported for ThemeProvider)
+export const THEME_STORAGE_KEY = 'hdx-dev-theme';
 
 // Default theme (can be overridden via environment variable)
 export const DEFAULT_THEME: ThemeName =
   (process.env.NEXT_PUBLIC_THEME as ThemeName) || 'hyperdx';
 
 /**
- * Get the theme name from various sources (dev mode only):
+ * Get the theme name from various sources (dev mode only).
+ * This is the single source of truth for resolving dev theme names.
+ *
+ * Priority:
  * 1. URL query param: ?theme=clickstack
  * 2. localStorage: hdx-dev-theme
  * 3. Environment variable: NEXT_PUBLIC_THEME
  * 4. Default: hyperdx
+ *
+ * Note: URL params are persisted to localStorage when detected.
  */
-function getDevThemeName(): ThemeName {
+export function getDevThemeName(): ThemeName {
   if (typeof window === 'undefined') {
     return DEFAULT_THEME;
   }
@@ -52,45 +57,7 @@ function getDevThemeName(): ThemeName {
   return DEFAULT_THEME;
 }
 
-/**
- * Set the dev theme (persists to localStorage)
- * Only works in development mode
- */
-export function setDevTheme(name: ThemeName): void {
-  if (!IS_DEV) {
-    console.warn('setDevTheme only works in development mode');
-    return;
-  }
-  if (typeof window !== 'undefined' && themes[name]) {
-    localStorage.setItem(THEME_STORAGE_KEY, name);
-    // Reload to apply theme
-    window.location.reload();
-  }
-}
-
-/**
- * Clear the dev theme override (reverts to default)
- */
-export function clearDevTheme(): void {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(THEME_STORAGE_KEY);
-    window.location.reload();
-  }
-}
-
-/**
- * Toggle between themes (useful for keyboard shortcut)
- */
-export function toggleDevTheme(): void {
-  if (!IS_DEV) return;
-  const current = getDevThemeName();
-  const themeNames = Object.keys(themes) as ThemeName[];
-  const currentIndex = themeNames.indexOf(current);
-  const nextIndex = (currentIndex + 1) % themeNames.length;
-  setDevTheme(themeNames[nextIndex]);
-}
-
-// Get theme configuration
+// Get theme configuration by name
 export function getTheme(name: ThemeName = DEFAULT_THEME): ThemeConfig {
   return themes[name] || themes.hyperdx;
 }
