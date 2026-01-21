@@ -574,6 +574,7 @@ export const ConnectionSchema = z.object({
   host: z.string(),
   username: z.string(),
   password: z.string().optional(),
+  hyperdxSettingPrefix: z.string().optional(),
 });
 
 export type Connection = z.infer<typeof ConnectionSchema>;

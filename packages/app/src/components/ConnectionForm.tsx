@@ -131,6 +131,7 @@ export function ConnectionForm({
         host: connection.host,
         username: connection.username,
         password: connection.password,
+        hyperdxSettingPrefix: connection.hyperdxSettingPrefix,
       },
     });
 
@@ -281,6 +282,22 @@ export function ConnectionForm({
               )}
             </Flex>
           )}
+        </Box>
+        <Box>
+          <Text size="xs" mb="xs">
+            Query Log Setting Prefix (optional)
+          </Text>
+          <InputControlled
+            data-testid="connection-setting-prefix-input"
+            name="hyperdxSettingPrefix"
+            control={control}
+            placeholder="hyperdx"
+          />
+          <Text size="xs" c="dimmed" mt="xs">
+            When set, HyperDX queries will include a custom ClickHouse setting (
+            {'{prefix}_user'}) with the current user's email for tracking query
+            origins in system.query_log.
+          </Text>
         </Box>
         <Group justify="space-between">
           <Group gap="xs" justify="flex-start">

@@ -162,4 +162,36 @@ describe('ConnectionForm', () => {
       }),
     );
   });
+
+  it('should include hyperdxSettingPrefix when creating connection', async () => {
+    renderWithMantine(
+      <ConnectionForm connection={baseConnection} isNew={true} />,
+    );
+
+    const settingPrefixInput = screen.getByPlaceholderText('hyperdx');
+    const nameInput = screen.getByPlaceholderText('My Clickhouse Server');
+    const hostInput = screen.getByPlaceholderText('http://localhost:8123');
+    const submitButton = screen.getByRole('button', { name: 'Create' });
+
+    await fireEvent.change(nameInput, { target: { value: 'Test Name' } });
+    await fireEvent.change(hostInput, {
+      target: { value: 'http://example.com:8123' },
+    });
+    await fireEvent.change(settingPrefixInput, {
+      target: { value: 'myprefix' },
+    });
+
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(mockCreateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connection: expect.objectContaining({
+            hyperdxSettingPrefix: 'myprefix',
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+  });
 });
