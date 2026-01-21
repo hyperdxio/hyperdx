@@ -4,49 +4,14 @@ import SqlString from 'sqlstring';
 import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
-  extractColumnReferencesFromKey,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 
 const MAX_STRING_LENGTH = 512;
 
-/**
- * Checks if an expression contains references to any of the aliases in the aliasMap.
- * Uses node-sql-parser via extractColumnReferencesFromKey to properly parse the expression
- * and extract column references, avoiding false positives from string literals.
- *
- * For example:
- *   - `concat('text', query_id, 'more')` with alias `query_id` -> true (query_id is a column ref)
- *   - `concat('query_id is here')` with alias `query_id` -> false (query_id is inside a string)
- */
-export function expressionContainsAliasReferences(
-  expr: string,
-  aliasMap: Record<string, string | undefined>,
-): boolean {
-  try {
-    // Extract column references from the expression using node-sql-parser
-    const columnRefs = extractColumnReferencesFromKey(expr);
-
-    // Check if any of the referenced columns are aliases
-    for (const colRef of columnRefs) {
-      if (aliasMap[colRef] != null) {
-        return true;
-      }
-    }
-
-    return false;
-  } catch (e) {
-    // If parsing fails, fall back to assuming no alias references
-    // This is safer than incorrectly detecting references
-    console.warn('Failed to parse expression for alias references:', expr, e);
-    return false;
-  }
-}
-
 type ColumnWithMeta = ColumnMetaType & {
   valueExpr: string;
   jsType: JSDataType | null;
-  containsAliasRefs: boolean;
 };
 
 export function processRowToWhereClause(
@@ -59,7 +24,6 @@ export function processRowToWhereClause(
       const chType = cm?.type;
       const jsType = cm?.jsType;
       const valueExpr = cm?.valueExpr;
-      const containsAliasRefs = cm?.containsAliasRefs ?? false;
 
       if (chType == null) {
         throw new Error(
@@ -71,14 +35,6 @@ export function processRowToWhereClause(
         throw new Error(
           `valueExpr not found for ${column}, ${JSON.stringify(columnMap)}`,
         );
-      }
-
-      // If the expression contains alias references that we can't safely expand,
-      // skip this column from the WHERE clause to avoid SQL errors.
-      // The other columns (especially primary/partition keys) should still
-      // provide enough uniqueness for row identification.
-      if (containsAliasRefs) {
-        return null;
       }
 
       switch (jsType) {
@@ -150,7 +106,6 @@ export function processRowToWhereClause(
           ]);
       }
     })
-    .filter(clause => clause != null)
     .join(' AND ');
 
   return res;
@@ -171,22 +126,12 @@ export default function useRowWhere({
           // but if the alias is not found, use the column name as the valueExpr
           const valueExpr =
             aliasMap != null ? (aliasMap[c.name] ?? c.name) : c.name;
-
-          // Check if this expression contains references to other aliases.
-          // If it does, we'll skip this column in the WHERE clause because
-          // the alias references won't be resolvable in the row lookup query context.
-          // Example: concat('text', query_id, 'more') where query_id is another alias
-          const containsAliasRefs =
-            aliasMap != null &&
-            expressionContainsAliasReferences(valueExpr, aliasMap);
-
           return [
             c.name,
             {
               ...c,
               valueExpr: valueExpr,
               jsType: convertCHDataTypeToJSType(c.type),
-              containsAliasRefs,
             },
           ];
         }),
