@@ -9,6 +9,8 @@ import { Metadata } from '@/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   MaterializedViewConfiguration,
+  QuerySettings,
+  TSource,
 } from '@/types';
 
 import { ColumnMeta } from '..';
@@ -81,7 +83,7 @@ describe('materializedViews', () => {
   const SOURCE = {
     from: { databaseName: 'default', tableName: 'otel_spans' },
     materializedViews: [MV_CONFIG_METRIC_ROLLUP_1M],
-  };
+  } as TSource;
 
   describe('tryConvertConfigToMaterializedViewSelect', () => {
     it('should return empty object if selecting a string instead of an array of aggregates', async () => {
@@ -1092,7 +1094,7 @@ describe('materializedViews', () => {
         {} as any,
         {
           from: { databaseName: 'default', tableName: 'table_without_mv' },
-        },
+        } as TSource,
       );
 
       expect(actual).toEqual(chartConfig);
@@ -1507,7 +1509,7 @@ describe('materializedViews', () => {
           {} as any,
           {
             from: { databaseName: 'default', tableName: 'table_without_mv' },
-          },
+          } as TSource,
         );
 
       expect(result).toEqual({

@@ -784,3 +784,13 @@ export const orderByStringToSortingState = (
     },
   ];
 };
+
+export const mapKeyBy = <T>(array: T[], key: keyof T) => {
+  const map = new Map<T[typeof key], T>();
+
+  for (const item of array) {
+    map.set(item[key], item);
+  }
+
+  return map;
+};
