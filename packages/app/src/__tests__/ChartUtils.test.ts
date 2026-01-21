@@ -10,6 +10,7 @@ import {
   convertToTimeChartConfig,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
+import { CHART_COLOR_ERROR, COLORS } from '@/utils';
 
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
@@ -122,7 +123,7 @@ describe('ChartUtils', () => {
       });
       expect(actual.lineData).toEqual([
         {
-          color: '#20c997',
+          color: COLORS[0],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           currentPeriodKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           previousPeriodKey:
@@ -211,7 +212,7 @@ describe('ChartUtils', () => {
       });
       expect(actual.lineData).toEqual([
         {
-          color: '#20c997',
+          color: COLORS[0],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
           currentPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
@@ -221,7 +222,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#8250dc',
+          color: COLORS[1],
           dataKey: 'max · checkout',
           currentPeriodKey: 'max · checkout',
           previousPeriodKey: 'max · checkout (previous)',
@@ -229,7 +230,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#cdad7a',
+          color: COLORS[2],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           currentPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
@@ -239,7 +240,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#0d6efd',
+          color: COLORS[3],
           dataKey: 'max · shipping',
           currentPeriodKey: 'max · shipping',
           previousPeriodKey: 'max · shipping (previous)',
@@ -299,7 +300,7 @@ describe('ChartUtils', () => {
 
       expect(actual.lineData).toEqual([
         {
-          color: '#20c997',
+          color: COLORS[0],
           dataKey: 'info',
           currentPeriodKey: 'info',
           previousPeriodKey: 'info (previous)',
@@ -307,7 +308,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#20c997',
+          color: COLORS[0],
           dataKey: 'debug',
           currentPeriodKey: 'debug',
           previousPeriodKey: 'debug (previous)',
@@ -315,7 +316,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#F81358',
+          color: CHART_COLOR_ERROR,
           dataKey: 'error',
           currentPeriodKey: 'error',
           previousPeriodKey: 'error (previous)',
@@ -403,7 +404,7 @@ describe('ChartUtils', () => {
       });
       expect(actual.lineData).toEqual([
         {
-          color: '#20c997',
+          color: COLORS[0],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
           currentPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
@@ -413,7 +414,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#8250dc',
+          color: COLORS[1],
           dataKey: 'max · checkout',
           currentPeriodKey: 'max · checkout',
           previousPeriodKey: 'max · checkout (previous)',
@@ -421,7 +422,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#cdad7a',
+          color: COLORS[2],
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           currentPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
@@ -431,7 +432,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#0d6efd',
+          color: COLORS[3],
           dataKey: 'max · shipping',
           currentPeriodKey: 'max · shipping',
           previousPeriodKey: 'max · shipping (previous)',
@@ -519,7 +520,7 @@ describe('ChartUtils', () => {
       });
       expect(actual.lineData).toEqual([
         {
-          color: '#20c997',
+          color: COLORS[0],
           currentPeriodKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           previousPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
@@ -528,7 +529,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: '#20c997',
+          color: COLORS[0],
           currentPeriodKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           previousPeriodKey:
             'AVG(toFloat64OrDefault(toString(Duration))) (previous)',

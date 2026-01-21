@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Control,
   Controller,
@@ -1596,6 +1602,7 @@ export function TableSourceForm({
           databaseName: 'default',
           tableName: '',
         },
+        querySettings: source?.querySettings,
       },
       // TODO: HDX-1768 remove type assertion
       values: source as TSourceUnion,
@@ -1951,6 +1958,12 @@ export function TableSourceForm({
     defaultValue: source?.connection,
   });
 
+  const {
+    fields: querySettingFields,
+    append: appendSetting,
+    remove: removeSetting,
+  } = useFieldArray({ control, name: 'querySettings' });
+
   return (
     <div
       style={
@@ -2013,6 +2026,66 @@ export function TableSourceForm({
             />
           </FormRow>
         )}
+        <FormRow
+          label={
+            <Anchor
+              href="https://clickhouse.com/docs/operations/settings/settings"
+              size="sm"
+              target="_blank"
+            >
+              Query Settings
+            </Anchor>
+          }
+          helpText="Query-level Session Settings that will be added to each query for this source."
+        >
+          <Grid columns={11}>
+            {querySettingFields.map((field, index) => (
+              <Fragment key={field.id}>
+                <Grid.Col span={5} pe={0}>
+                  <InputControlled
+                    placeholder="Setting"
+                    control={control}
+                    name={`querySettings.${index}.setting`}
+                  />
+                </Grid.Col>
+                <Grid.Col span={5} pe={0}>
+                  <InputControlled
+                    placeholder="Value"
+                    control={control}
+                    name={`querySettings.${index}.value`}
+                  />
+                </Grid.Col>
+                <Grid.Col span={1} ps={0}>
+                  <Flex align="center" justify="center" gap="sm" h="100%">
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      title="Remove setting"
+                      onClick={() => removeSetting(index)}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Flex>
+                </Grid.Col>
+              </Fragment>
+            ))}
+          </Grid>
+          <Button
+            variant="secondary"
+            size="sm"
+            color="gray"
+            mt="md"
+            disabled={querySettingFields.length >= 10}
+            onClick={() => {
+              if (querySettingFields.length < 10) {
+                appendSetting({ setting: '', value: '' });
+              }
+            }}
+          >
+            <IconCirclePlus size={14} className="me-2" />
+            Add Setting
+          </Button>
+        </FormRow>
       </Stack>
       <TableModelForm control={control} setValue={setValue} kind={kind} />
       <Group justify="flex-end" mt="lg">
