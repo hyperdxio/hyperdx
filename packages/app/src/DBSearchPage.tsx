@@ -171,17 +171,22 @@ type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
 
 // Helper function to get the default source id
 export function getDefaultSourceId(
-  sources: { id: string }[] | undefined,
+  sources: { id: string; disabled?: boolean }[] | undefined,
   lastSelectedSourceId: string | undefined,
 ): string {
   if (!sources || sources.length === 0) return '';
+  
+  // Filter out disabled sources
+  const enabledSources = sources.filter(s => !s.disabled);
+  if (enabledSources.length === 0) return '';
+  
   if (
     lastSelectedSourceId &&
-    sources.some(s => s.id === lastSelectedSourceId)
+    enabledSources.some(s => s.id === lastSelectedSourceId)
   ) {
     return lastSelectedSourceId;
   }
-  return sources[0].id;
+  return enabledSources[0].id;
 }
 
 function SourceEditMenu({

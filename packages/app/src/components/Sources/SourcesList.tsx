@@ -155,30 +155,43 @@ export function SourcesList({
 
         {sources?.map((s, index) => (
           <React.Fragment key={s.id}>
-            <Flex justify="space-between" align="center">
-              <div>
-                <Text size={textSize} fw={500}>
-                  {s.name}
-                </Text>
-                <Text size={subtextSize} c="dimmed" mt={4}>
-                  <Group gap="xs">
-                    {capitalizeFirstLetter(s.kind)}
-                    <Group gap={4}>
-                      <IconServer size={iconSize} />
-                      {connections?.find(c => c.id === s.connection)?.name}
+            <Flex
+              justify="space-between"
+              align="center"
+              opacity={s.disabled ? 0.5 : 1}
+              style={{
+                transition: 'opacity 0.2s ease',
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <Flex align="center" gap="sm">
+                  <div>
+                    <Group gap="xs" align="center">
+                      <Text size={textSize} fw={500}>
+                        {s.name}
+                      </Text>
                     </Group>
-                    <Group gap={4}>
-                      {s.from && (
-                        <>
-                          <IconStack size={iconSize} />
-                          {s.from.databaseName}
-                          {s.kind === SourceKind.Metric ? '' : '.'}
-                          {s.from.tableName}
-                        </>
-                      )}
-                    </Group>
-                  </Group>
-                </Text>
+                    <Text size={subtextSize} c="dimmed" mt={4}>
+                      <Group gap="xs">
+                        {capitalizeFirstLetter(s.kind)}
+                        <Group gap={4}>
+                          <IconServer size={iconSize} />
+                          {connections?.find(c => c.id === s.connection)?.name}
+                        </Group>
+                        <Group gap={4}>
+                          {s.from && (
+                            <>
+                              <IconStack size={iconSize} />
+                              {s.from.databaseName}
+                              {s.kind === SourceKind.Metric ? '' : '.'}
+                              {s.from.tableName}
+                            </>
+                          )}
+                        </Group>
+                      </Group>
+                    </Text>
+                  </div>
+                </Flex>
               </div>
               <ActionIcon
                 variant="secondary"

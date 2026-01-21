@@ -257,9 +257,9 @@ export default function SessionsPage() {
   // Auto-select the first session source when the page loads
   useEffect(() => {
     if (sources && sources.length > 0 && !appliedConfig.sessionSource) {
-      // Find the first session source
+      // Find the first enabled session source
       const sessionSource = sources.find(
-        source => source.kind === SourceKind.Session,
+        source => source.kind === SourceKind.Session && !source.disabled,
       );
       if (sessionSource) {
         setValue('source', sessionSource.id);
