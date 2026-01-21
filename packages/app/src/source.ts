@@ -35,6 +35,11 @@ export const SESSION_TABLE_EXPRESSIONS = {
   implicitColumnExpression: 'Body',
 } as const;
 
+export const JSON_SESSION_TABLE_EXPRESSIONS = {
+  ...SESSION_TABLE_EXPRESSIONS,
+  timestampValueExpression: 'Timestamp',
+} as const;
+
 const LOCAL_STORE_SOUCES_KEY = 'hdx-local-source';
 
 function setLocalSources(fn: (prev: TSource[]) => TSource[]) {
@@ -435,8 +440,6 @@ export async function isValidMetricTable({
   return hasAllColumns(columns, ReqMetricTableColumns[metricType]);
 }
 
-const ReqSessionsTableColumns = Object.values(SESSION_TABLE_EXPRESSIONS);
-
 export async function isValidSessionsTable({
   databaseName,
   tableName,
@@ -458,5 +461,8 @@ export async function isValidSessionsTable({
     connectionId,
   });
 
-  return hasAllColumns(columns, ReqSessionsTableColumns);
+  return (
+    hasAllColumns(columns, Object.values(SESSION_TABLE_EXPRESSIONS)) ||
+    hasAllColumns(columns, Object.values(JSON_SESSION_TABLE_EXPRESSIONS))
+  );
 }
