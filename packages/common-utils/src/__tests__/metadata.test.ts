@@ -490,4 +490,53 @@ describe('Metadata', () => {
       });
     });
   });
+
+  describe('parseTokensExpression', () => {
+    it.each([
+      // Test cases without tokens
+      {
+        expression: 'lower(Body)',
+        expected: { hasTokens: false },
+      },
+      {
+        expression: '',
+        expected: { hasTokens: false },
+      },
+      // Test cases with tokens
+      {
+        expression: 'tokens(Body)',
+        expected: { hasTokens: true, innerExpression: 'Body' },
+      },
+      {
+        expression: 'tokens(lower(Body))',
+        expected: { hasTokens: true, innerExpression: 'lower(Body)' },
+      },
+      {
+        expression: "tokens(lower(concatWithSeparator(';',Body,Message)))",
+        expected: {
+          hasTokens: true,
+          innerExpression: "lower(concatWithSeparator(';',Body,Message))",
+        },
+      },
+      // Extra whitespace
+      {
+        expression: 'tokens( Body )',
+        expected: { hasTokens: true, innerExpression: 'Body' },
+      },
+      {
+        expression: ' tokens( Body ) ',
+        expected: { hasTokens: true, innerExpression: 'Body' },
+      },
+      {
+        expression: 'tokens ( Body )',
+        expected: { hasTokens: true, innerExpression: 'Body' },
+      },
+    ])(
+      'should correctly parse tokens from: $expression',
+      ({ expression, expected }) => {
+        const result = Metadata.parseTokensExpression(expression);
+        expect(result).toEqual(expected);
+      },
+    );
+  });
 });
