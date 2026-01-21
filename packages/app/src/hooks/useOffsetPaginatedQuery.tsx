@@ -12,7 +12,10 @@ import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithOptTimestamp,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   QueryClient,
   QueryFunction,
@@ -24,6 +27,7 @@ import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { useSource } from '@/source';
 import { omit } from '@/utils';
 import {
   generateTimeWindowsAscending,
@@ -67,6 +71,7 @@ type QueryMeta = {
   hasPreviousQueries: boolean;
   metadata: Metadata;
   optimizedConfig?: ChartConfigWithOptTimestamp;
+  source: TSource | undefined;
 };
 
 // Get time window from page param
@@ -141,7 +146,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     throw new Error('Query missing client meta');
   }
 
-  const { queryClient, metadata, hasPreviousQueries, optimizedConfig } =
+  const { queryClient, metadata, hasPreviousQueries, optimizedConfig, source } =
     meta as QueryMeta;
 
   // Only stream incrementally if this is a fresh query with no previous
@@ -177,7 +182,11 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     },
   };
 
-  const query = await renderChartConfig(windowedConfig, metadata);
+  const query = await renderChartConfig(
+    windowedConfig,
+    metadata,
+    source?.querySettings,
+  );
 
   // Create abort signal from timeout if provided
   const abortController = queryTimeout ? new AbortController() : undefined;
@@ -399,6 +408,10 @@ export default function useOffsetPaginatedQuery(
       placeholderData: undefined,
     });
 
+  const { data: source, isLoading: isSourceLoading } = useSource({
+    id: config?.source,
+  });
+
   const {
     data,
     fetchNextPage,
@@ -419,7 +432,8 @@ export default function useOffsetPaginatedQuery(
       // Only preserve previous query in live mode
       return isLive ? prev : undefined;
     },
-    enabled: enabled && !isLoadingMe && !isLoadingMVOptimization,
+    enabled:
+      enabled && !isLoadingMe && !isLoadingMVOptimization && !isSourceLoading,
     initialPageParam: { windowIndex: 0, offset: 0 } as TPageParam,
     getNextPageParam: (lastPage, allPages) => {
       return getNextPageParam(lastPage, allPages, config);
@@ -430,6 +444,7 @@ export default function useOffsetPaginatedQuery(
       hasPreviousQueries,
       metadata,
       optimizedConfig: mvOptimizationData?.optimizedConfig,
+      source,
     } satisfies QueryMeta,
     queryFn,
     gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data

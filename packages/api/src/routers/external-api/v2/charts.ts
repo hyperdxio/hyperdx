@@ -588,6 +588,7 @@ router.post(
             const result = await clickhouseClient.queryChartConfig({
               config: chartConfig,
               metadata,
+              querySettings: source.querySettings,
             });
 
             return {

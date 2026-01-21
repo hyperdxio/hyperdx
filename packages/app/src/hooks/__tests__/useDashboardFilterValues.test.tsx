@@ -446,6 +446,16 @@ describe('useDashboardFilterKeyValues', () => {
       limit: 10000,
       disableRowLimit: true,
       signal: expect.any(AbortSignal),
+      source: {
+        connection: 'clickhouse-conn',
+        from: {
+          databaseName: 'telemetry',
+          tableName: 'logs',
+        },
+        id: 'logs-source',
+        name: 'Logs',
+        timestampValueExpression: 'timestamp',
+      },
     });
   });
 
