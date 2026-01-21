@@ -4,6 +4,8 @@ import { useQueryState } from 'nuqs';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { IconArrowsMaximize, IconChevronRight } from '@tabler/icons-react';
 
+import { INTERNAL_ROW_FIELDS } from '@/hooks/useRowWhere';
+
 import styles from '../../styles/LogTable.module.scss';
 
 // Hook that provides a function to open the sidebar with specific row details
@@ -179,7 +181,7 @@ export const createExpandButtonColumn = (
   highlightedLineId?: string,
 ) => ({
   id: 'expand-btn',
-  accessorKey: '__hyperdx_id',
+  accessorKey: INTERNAL_ROW_FIELDS.ID,
   header: () => '',
   cell: (info: any) => {
     const rowId = info.getValue() as string;

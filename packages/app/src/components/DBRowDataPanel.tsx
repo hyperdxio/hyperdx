@@ -5,6 +5,7 @@ import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { WithClause } from '@/hooks/useRowWhere';
 import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 
@@ -26,9 +27,11 @@ export enum ROW_DATA_ALIASES {
 export function useRowData({
   source,
   rowId,
+  aliasWith,
 }: {
   source: TSource;
   rowId: string | undefined | null;
+  aliasWith?: WithClause[];
 }) {
   const eventBodyExpr = getEventBody(source);
 
@@ -129,9 +132,10 @@ export function useRowData({
       where: rowId ?? '0=1',
       from: source.from,
       limit: { limit: 1 },
+      ...(aliasWith && aliasWith.length > 0 ? { with: aliasWith } : {}),
     },
     {
-      queryKey: ['row_side_panel', rowId, source],
+      queryKey: ['row_side_panel', rowId, aliasWith, source],
       enabled: rowId != null,
     },
   );
@@ -182,13 +186,15 @@ export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {
 export function RowDataPanel({
   source,
   rowId,
+  aliasWith,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
+  aliasWith?: WithClause[];
   'data-testid'?: string;
 }) {
-  const { data, isLoading, isError } = useRowData({ source, rowId });
+  const { data, isLoading, isError } = useRowData({ source, rowId, aliasWith });
 
   const firstRow = useMemo(() => {
     const firstRow = { ...(data?.data?.[0] ?? {}) };
