@@ -1,6 +1,6 @@
 import express from 'express';
 
-import { ANTHROPIC_API_KEY, USAGE_STATS_ENABLED } from '@/config';
+import { AI_API_KEY, ANTHROPIC_API_KEY, USAGE_STATS_ENABLED } from '@/config';
 import { getTeam } from '@/controllers/team';
 import { Api404Error } from '@/utils/errors';
 
@@ -31,7 +31,7 @@ router.get('/', async (req, res, next) => {
       name,
       team,
       usageStatsEnabled: USAGE_STATS_ENABLED,
-      aiAssistantEnabled: !!ANTHROPIC_API_KEY,
+      aiAssistantEnabled: !!(AI_API_KEY || ANTHROPIC_API_KEY),
     });
   } catch (e) {
     next(e);

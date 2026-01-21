@@ -8,8 +8,11 @@ import { Metadata } from '@/core/metadata';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
+  extractSettingsClauseFromEnd,
   getFirstTimestampValueExpression,
+  joinQuerySettings,
   optimizeTimestampValueExpression,
+  parseToNumber,
   parseToStartOfFunction,
   splitAndTrimWithBracket,
 } from '@/core/utils';
@@ -24,6 +27,7 @@ import {
   ChSqlSchema,
   CteChartConfig,
   MetricsDataType,
+  QuerySettings,
   SearchCondition,
   SearchConditionLanguage,
   SelectList,
@@ -164,9 +168,12 @@ const fastifySQL = ({
 }) => {
   // Parse the SQL AST
   try {
+    // Remove the SETTINGS clause because `SQLParser` doesn't understand it.
+    const [rawSqlWithoutSettingsClause] = extractSettingsClauseFromEnd(rawSQL);
+
     const parser = new SQLParser.Parser();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type, we expect Select
-    const ast = parser.astify(rawSQL, {
+    const ast = parser.astify(rawSqlWithoutSettingsClause, {
       database: 'Postgresql',
     }) as SQLParser.Select;
 
@@ -916,9 +923,21 @@ function renderLimit(
   return chSql`${{ Int32: chartConfig.limit.limit }}${offset}`;
 }
 
+function renderSettings(
+  chartConfig: ChartConfigWithOptDateRangeEx,
+  querySettings: QuerySettings | undefined,
+) {
+  const querySettingsJoined = joinQuerySettings(querySettings);
+
+  return concatChSql(', ', [
+    chSql`${chartConfig.settings ?? ''}`,
+    chSql`${querySettingsJoined ?? ''}`,
+  ]);
+}
+
 // includedDataInterval isn't exported at this time. It's only used internally
 // for metric SQL generation.
-type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
+export type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
   includedDataInterval?: string;
   settings?: ChSql;
 };
@@ -926,6 +945,7 @@ type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
 async function renderWith(
   chartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
+  querySettings: QuerySettings | undefined,
 ): Promise<ChSql | undefined> {
   const { with: withClauses } = chartConfig;
   if (withClauses) {
@@ -972,8 +992,12 @@ async function renderWith(
           // results in schema conformance.
           const resolvedSql = sql
             ? sql
-            : // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see comment above
-              await renderChartConfig(chartConfig as ChartConfig, metadata);
+            : await renderChartConfig(
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see comment above
+                chartConfig as ChartConfig,
+                metadata,
+                querySettings,
+              );
 
           if (clause.isSubquery === false) {
             return chSql`(${resolvedSql}) AS ${{ Identifier: clause.name }}`;
@@ -1339,8 +1363,9 @@ async function translateMetricChartConfig(
 }
 
 export async function renderChartConfig(
-  rawChartConfig: ChartConfigWithOptDateRange,
+  rawChartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
+  querySettings: QuerySettings | undefined,
 ): Promise<ChSql> {
   // metric types require more rewriting since we know more about the schema
   // but goes through the same generation process
@@ -1348,7 +1373,7 @@ export async function renderChartConfig(
     ? await translateMetricChartConfig(rawChartConfig, metadata)
     : rawChartConfig;
 
-  const withClauses = await renderWith(chartConfig, metadata);
+  const withClauses = await renderWith(chartConfig, metadata, querySettings);
   const select = await renderSelect(chartConfig, metadata);
   const from = renderFrom(chartConfig);
   const where = await renderWhere(chartConfig, metadata);
@@ -1357,6 +1382,7 @@ export async function renderChartConfig(
   const orderBy = renderOrderBy(chartConfig);
   //const fill = renderFill(chartConfig); //TODO: Fill breaks heatmaps and some charts
   const limit = renderLimit(chartConfig);
+  const settings = renderSettings(chartConfig, querySettings);
 
   return concatChSql(' ', [
     chSql`${withClauses?.sql ? chSql`WITH ${withClauses}` : ''}`,
@@ -1368,8 +1394,9 @@ export async function renderChartConfig(
     chSql`${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''}`,
     //chSql`${fill?.sql ? chSql`WITH FILL ${fill}` : ''}`,
     chSql`${limit?.sql ? chSql`LIMIT ${limit}` : ''}`,
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- settings type narrowing
-    chSql`${'settings' in chartConfig ? chSql`SETTINGS ${chartConfig.settings as ChSql}` : []}`,
+
+    // SETTINGS must be last - see `extractSettingsClause` in "./utils.ts"
+    chSql`${settings.sql ? chSql`SETTINGS ${settings}` : []}`,
   ]);
 }
 

@@ -77,11 +77,9 @@ function AIAssistant({
       },
       {
         onSuccess(data) {
-          setConfig(data);
+          setConfig({ ...data, where: '' });
           onTimeRangeSelect(
-            // @ts-ignore TODO: fix these types
             new Date(data.dateRange[0]),
-            // @ts-ignore TODO: fix these types
             new Date(data.dateRange[1]),
           );
 

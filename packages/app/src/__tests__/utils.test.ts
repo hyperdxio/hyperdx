@@ -8,6 +8,7 @@ import {
   formatAttributeClause,
   formatNumber,
   getMetricTableName,
+  mapKeyBy,
   orderByStringToSortingState,
   sortingStateToOrderByString,
   stripTrailingSlash,
@@ -662,5 +663,27 @@ describe('orderByStringToSortingState', () => {
     const orderByString = sortingStateToOrderByString(originalSort);
     const roundTripSort = orderByStringToSortingState(orderByString);
     expect(roundTripSort).toEqual(originalSort);
+  });
+});
+
+describe('mapKeyBy', () => {
+  it('returns a map', () => {
+    const result = mapKeyBy([{ id: 'a' }, { id: 'b' }], 'id');
+    expect(result).toBeInstanceOf(Map);
+  });
+
+  it('adds each item to the map, keyed by the provided `key` param', () => {
+    const data = [{ id: 'a' }, { id: 'b' }];
+    const result = mapKeyBy(data, 'id');
+    expect(result.size).toBe(2);
+    expect(result.get('a')).toBe(data.at(0));
+    expect(result.get('b')).toBe(data.at(1));
+  });
+
+  it('overwrites items with the same key', () => {
+    const data = [{ id: 'a' }, { id: 'a' }];
+    const result = mapKeyBy(data, 'id');
+    expect(result.size).toBe(1);
+    expect(result.get('a')).toBe(data.at(1));
   });
 });

@@ -12,7 +12,12 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/core/renderChartConfig';
-import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
+import type {
+  ChartConfig,
+  ChartConfigWithDateRange,
+  QuerySettings,
+  TSource,
+} from '@/types';
 
 import { optimizeGetKeyValuesCalls } from './materializedViews';
 import { objectHash } from './utils';
@@ -93,6 +98,13 @@ export type TableMetadata = {
   active_parts: string;
   total_marks: string;
   comment: string;
+};
+
+export type SkipIndexMetadata = {
+  name: string;
+  type: string; // 'bloom_filter', 'tokenbf_v1', 'minmax', etc.
+  expression: string; // e.g., "tokens(lower(Body))"
+  granularity: number;
 };
 
 export class Metadata {
@@ -604,16 +616,103 @@ export class Metadata {
     return tableMetadata;
   }
 
+  /**
+   * Queries system.data_skipping_indices to retrieve skip index metadata for a table.
+   * Results are cached using MetadataCache.
+   *
+   * Skip indices are ClickHouse data skipping indices that improve query performance
+   * by allowing the query optimizer to skip reading entire data parts.
+   */
+  async getSkipIndices({
+    databaseName,
+    tableName,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  }): Promise<SkipIndexMetadata[]> {
+    return this.cache.getOrFetch<SkipIndexMetadata[]>(
+      `${connectionId}.${databaseName}.${tableName}.skipIndices`,
+      async () => {
+        const sql = chSql`
+          SELECT
+            name,
+            type,
+            expr as expression,
+            granularity
+          FROM system.data_skipping_indices
+          WHERE database = ${{ String: databaseName }}
+            AND table = ${{ String: tableName }}
+        `;
+
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query: sql.sql,
+              query_params: sql.params,
+              clickhouse_settings: this.getClickHouseSettings(),
+            })
+            .then(res => res.json<SkipIndexMetadata>());
+
+          return json.data;
+        } catch (e) {
+          // Don't retry permissions errors, just silently return empty array
+          if (
+            e instanceof Error &&
+            e.message.includes('Not enough privileges')
+          ) {
+            console.warn('Not enough privileges to fetch skip indices:', e);
+            return [];
+          }
+
+          throw e;
+        }
+      },
+    );
+  }
+
+  /**
+   * Parses a ClickHouse index expression to check if it uses the tokens() function.
+   * Returns the inner expression if tokens() is found.
+   *
+   * Examples:
+   * - tokens(Body) -> { hasTokens: true, innerExpression: 'Body' }
+   * - tokens(lower(Body)) -> { hasTokens: true, innerExpression: 'lower(Body)' }
+   * - lower(Body) -> { hasTokens: false }
+   */
+  static parseTokensExpression(expression: string):
+    | {
+        hasTokens: true;
+        innerExpression: string;
+      }
+    | { hasTokens: false } {
+    const tokensRegex = /^tokens\s*\((.*)\)$/i;
+    const match = expression.trim().match(tokensRegex);
+
+    if (match) {
+      return {
+        hasTokens: true,
+        innerExpression: match[1].trim(),
+      };
+    }
+
+    return { hasTokens: false };
+  }
+
   async getValuesDistribution({
     chartConfig,
     key,
     samples = 100_000,
     limit = 100,
+    source,
   }: {
     chartConfig: ChartConfigWithDateRange;
     key: string;
     samples?: number;
     limit?: number;
+    source: TSource | undefined;
   }) {
     const cacheKeyConfig = pick(chartConfig, [
       'connection',
@@ -654,7 +753,11 @@ export class Metadata {
           limit: { limit },
         };
 
-        const sql = await renderChartConfig(config, this);
+        const sql = await renderChartConfig(
+          config,
+          this,
+          source?.querySettings,
+        );
 
         const json = await this.clickhouseClient
           .query<'JSON'>({
@@ -693,12 +796,16 @@ export class Metadata {
     limit = 20,
     disableRowLimit = false,
     signal,
+    source,
   }: {
     chartConfig: ChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
     signal?: AbortSignal;
+    source:
+      | Omit<TSource, 'connection'> /* for overlap with ISource type */
+      | undefined;
   }): Promise<{ key: string; value: string[] }[]> {
     const cacheKeyConfig = {
       ...pick(chartConfig, [
@@ -764,7 +871,11 @@ export class Metadata {
               };
             })();
 
-        const sql = await renderChartConfig(sqlConfig, this);
+        const sql = await renderChartConfig(
+          sqlConfig,
+          this,
+          source?.querySettings,
+        );
 
         const json = await this.clickhouseClient
           .query<'JSON'>({
@@ -806,7 +917,7 @@ export class Metadata {
   }: {
     chartConfig: ChartConfigWithDateRange;
     keys: string[];
-    source?: TSource;
+    source: TSource | undefined;
     limit?: number;
     disableRowLimit?: boolean;
     signal?: AbortSignal;
@@ -848,6 +959,7 @@ export class Metadata {
               limit,
               disableRowLimit,
               signal,
+              source,
             }),
           ),
         );

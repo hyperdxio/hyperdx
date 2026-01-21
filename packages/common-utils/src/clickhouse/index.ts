@@ -18,11 +18,12 @@ import {
   splitChartConfigs,
 } from '@/core/renderChartConfig';
 import {
+  extractSettingsClauseFromEnd,
   hashCode,
   replaceJsonExpressions,
   splitAndTrimWithBracket,
 } from '@/core/utils';
-import { ChartConfigWithOptDateRange } from '@/types';
+import { ChartConfigWithOptDateRange, QuerySettings } from '@/types';
 
 // export @clickhouse/client-common types
 export type {
@@ -557,6 +558,7 @@ export abstract class BaseClickhouseClient {
     config,
     metadata,
     opts,
+    querySettings,
   }: {
     config: ChartConfigWithOptDateRange;
     metadata: Metadata;
@@ -564,10 +566,13 @@ export abstract class BaseClickhouseClient {
       abort_signal?: AbortSignal;
       clickhouse_settings?: Record<string, any>;
     };
+    querySettings: QuerySettings | undefined;
   }): Promise<ResponseJSON<Record<string, string | number>>> {
     config = setChartSelectsAlias(config);
     const queries: ChSql[] = await Promise.all(
-      splitChartConfigs(config).map(c => renderChartConfig(c, metadata)),
+      splitChartConfigs(config).map(c =>
+        renderChartConfig(c, metadata, querySettings),
+      ),
     );
 
     const isTimeSeries = config.displayType === 'line';
@@ -654,6 +659,7 @@ export abstract class BaseClickhouseClient {
     config,
     metadata,
     opts,
+    querySettings,
   }: {
     config: ChartConfigWithOptDateRange;
     metadata: Metadata;
@@ -661,9 +667,14 @@ export abstract class BaseClickhouseClient {
       abort_signal?: AbortSignal;
       clickhouse_settings?: Record<string, any>;
     };
+    querySettings: QuerySettings | undefined;
   }): Promise<{ isValid: boolean; rowEstimate?: number; error?: string }> {
     try {
-      const renderedConfig = await renderChartConfig(config, metadata);
+      const renderedConfig = await renderChartConfig(
+        config,
+        metadata,
+        querySettings,
+      );
       const explainedQuery = chSql`EXPLAIN ESTIMATE ${renderedConfig}`;
 
       const result = await this.query<'JSON'>({
@@ -736,10 +747,12 @@ export function chSqlToAliasMap(
   try {
     const sql = parameterizedQueryToSql(chSql);
 
+    // Remove the SETTINGS clause because `SQLParser` doesn't understand it.
+    const [sqlWithoutSettingsClause] = extractSettingsClauseFromEnd(sql);
+
     // Replace JSON expressions with replacement tokens so that node-sql-parser can parse the SQL
     const { sqlWithReplacements, replacements: jsonReplacementsToExpressions } =
-      replaceJsonExpressions(sql);
-
+      replaceJsonExpressions(sqlWithoutSettingsClause);
     const parser = new SQLParser.Parser();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type
     const ast = parser.astify(sqlWithReplacements, {

@@ -405,19 +405,38 @@ export const getLogLevelClass = (lvl: string | undefined) => {
         : undefined;
 };
 
-// Accessible chart colors
+// Chart color palette - single source of truth
+// Colors from Observable categorical palette, with custom brand green
+// https://observablehq.com/@d3/color-schemes
+export const CHART_PALETTE = {
+  green: '#00c28a', // Brand green (Mantine green.5) - used as primary chart color
+  blue: '#4269d0',
+  orange: '#efb118',
+  red: '#ff725c',
+  cyan: '#6cc5b0',
+  pink: '#ff8ab7',
+  purple: '#a463f2',
+  lightBlue: '#97bbf5',
+  brown: '#9c6b4e',
+  gray: '#9498a0',
+  // Highlighted variants (lighter shades for hover/selection states)
+  redHighlight: '#ffa090',
+  orangeHighlight: '#f5c94d',
+} as const;
+
+// Ordered array for chart series - green first for brand consistency
+// Maps to CSS variables: COLORS[0] -> --color-chart-1, COLORS[1] -> --color-chart-2, etc.
 export const COLORS = [
-  '#20c997', // Green
-  // '#F81358', // Red
-  '#8250dc', // Light Purple
-  '#cdad7a', // Tan
-  '#0d6efd', // Blue
-  '#fd7e14', // Orange
-  '#0dcaf0', // Turqoise
-  '#828c95', // Grey
-  '#ff9382', // Coral
-  '#39b5ab', // Olive-tealish?
-  '#ffa600', // Yellow
+  CHART_PALETTE.green, // 1 - Brand green (primary)
+  CHART_PALETTE.blue, // 2
+  CHART_PALETTE.orange, // 3
+  CHART_PALETTE.red, // 4
+  CHART_PALETTE.cyan, // 5
+  CHART_PALETTE.pink, // 6
+  CHART_PALETTE.purple, // 7
+  CHART_PALETTE.lightBlue, // 8
+  CHART_PALETTE.brown, // 9
+  CHART_PALETTE.gray, // 10
 ];
 
 export function hashCode(str: string) {
@@ -433,6 +452,15 @@ export function hashCode(str: string) {
   return hash;
 }
 
+// Semantic colors for log levels (derived from palette)
+export const CHART_COLOR_SUCCESS = CHART_PALETTE.green;
+export const CHART_COLOR_WARNING = CHART_PALETTE.orange;
+export const CHART_COLOR_ERROR = CHART_PALETTE.red;
+
+// Highlighted variants (derived from palette)
+export const CHART_COLOR_ERROR_HIGHLIGHT = CHART_PALETTE.redHighlight;
+export const CHART_COLOR_WARNING_HIGHLIGHT = CHART_PALETTE.orangeHighlight;
+
 // Try to match log levels to colors
 export const semanticKeyedColor = (
   key: string | number | undefined,
@@ -441,10 +469,10 @@ export const semanticKeyedColor = (
   const logLevel = getLogLevelClass(`${key}`);
   if (logLevel != null) {
     return logLevel === 'error'
-      ? '#d63384' // magenta
+      ? CHART_COLOR_ERROR
       : logLevel === 'warn'
-        ? '#ffc107' // yellow
-        : '#20c997'; // green;
+        ? CHART_COLOR_WARNING
+        : CHART_COLOR_SUCCESS;
   }
 
   return COLORS[index % COLORS.length];
@@ -453,10 +481,10 @@ export const semanticKeyedColor = (
 export const logLevelColor = (key: string | number | undefined) => {
   const logLevel = getLogLevelClass(`${key}`);
   return logLevel === 'error'
-    ? '#F81358' // red
+    ? CHART_COLOR_ERROR
     : logLevel === 'warn'
-      ? '#ffc107' // yellow
-      : '#20c997'; // green;
+      ? CHART_COLOR_WARNING
+      : CHART_COLOR_SUCCESS;
 };
 
 // order of colors for sorting. green on bottom, then yellow, then red
@@ -471,10 +499,10 @@ const getLevelColor = (logLevel?: string) => {
     return;
   }
   return logLevel === 'error'
-    ? '#d63384' // magenta
+    ? CHART_COLOR_ERROR
     : logLevel === 'warn'
-      ? '#ffc107' // yellow
-      : '#20c997'; // green;
+      ? CHART_COLOR_WARNING
+      : CHART_COLOR_SUCCESS;
 };
 
 export const getColorProps = (index: number, level: string): string => {
@@ -759,4 +787,14 @@ export const orderByStringToSortingState = (
       desc: orderByParts[1].trim().toUpperCase() === 'DESC',
     },
   ];
+};
+
+export const mapKeyBy = <T>(array: T[], key: keyof T) => {
+  const map = new Map<T[typeof key], T>();
+
+  for (const item of array) {
+    map.set(item[key], item);
+  }
+
+  return map;
 };
