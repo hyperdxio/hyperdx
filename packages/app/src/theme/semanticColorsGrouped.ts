@@ -34,7 +34,12 @@ export const semanticColorsGrouped = {
   ],
   icons: ['color-icon-primary', 'color-icon-muted'],
   overlay: ['color-overlay', 'color-backdrop'],
-  states: ['color-state-hover', 'color-state-selected', 'color-state-focus'],
+  states: [
+    'color-state-hover',
+    'color-state-selected',
+    'color-state-focus',
+    'color-outline-focus',
+  ],
   json: [
     'color-json-string',
     'color-json-number',
