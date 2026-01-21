@@ -4,8 +4,6 @@ import type { LanguageModel } from 'ai';
 import * as config from '@/config';
 import logger from '@/utils/logger';
 
-type AIProvider = 'anthropic' | 'openai';
-
 /**
  * Get configured AI model for use in the application.
  * Currently supports Anthropic (with both direct API and Azure AI endpoints).
@@ -24,14 +22,12 @@ type AIProvider = 'anthropic' | 'openai';
  */
 export function getAIModel(): LanguageModel {
   // Determine provider with backward compatibility
-  let provider: AIProvider | undefined = config.AI_PROVIDER as AIProvider;
+  let provider: string | undefined = config.AI_PROVIDER;
 
   // Legacy support: if no AI_PROVIDER but ANTHROPIC_API_KEY exists, use anthropic
+  // We should deprecate this in the future, but want to avoid a breaking change until we add a second provider.
   if (!provider && config.ANTHROPIC_API_KEY) {
     provider = 'anthropic';
-    logger.warn(
-      'Using legacy ANTHROPIC_API_KEY. Consider migrating to AI_PROVIDER and AI_API_KEY.',
-    );
   }
 
   if (!provider) {
@@ -49,7 +45,7 @@ export function getAIModel(): LanguageModel {
     case 'openai':
       throw new Error(
         `Provider '${provider}' is not yet supported. Currently only 'anthropic' is available. ` +
-        'Support for additional providers can be added in the future.',
+          'Support for additional providers can be added in the future.',
       );
 
     default:
