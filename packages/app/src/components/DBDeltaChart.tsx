@@ -27,7 +27,11 @@ import {
 import { isAggregateFunction } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
-import { truncateMiddle } from '@/utils';
+import {
+  CHART_COLOR_ERROR,
+  CHART_COLOR_SUCCESS,
+  truncateMiddle,
+} from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -246,13 +250,13 @@ function PropertyComparisonChart({
           <Bar
             dataKey="outlierCount"
             name="Outliers"
-            fill="#F81358"
+            fill={CHART_COLOR_ERROR}
             isAnimationActive={false}
           />
           <Bar
             dataKey="inlierCount"
             name="Inliers"
-            fill="#09D99C"
+            fill={CHART_COLOR_SUCCESS}
             isAnimationActive={false}
           />
         </BarChart>

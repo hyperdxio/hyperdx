@@ -453,7 +453,7 @@ export const MemoChart = memo(function MemoChart({
         return !hasSelection || selectedSeriesNames.has(seriesName);
       });
 
-    return limitedGroupKeys.map((key, i) => {
+    return limitedGroupKeys.map(key => {
       const lineDataIndex = lineData.findIndex(ld => ld.dataKey === key);
       const color = lineData[lineDataIndex]?.color;
       const strokeDasharray = lineData[lineDataIndex]?.isDashed ? '4 3' : '0';
@@ -495,7 +495,7 @@ export const MemoChart = memo(function MemoChart({
           {...(isHovered
             ? { fill: 'none', strokeDasharray }
             : {
-                fill: `url(#time-chart-lin-grad-${id}-${color.replace('#', '').toLowerCase()})`,
+                fill: `url(#time-chart-lin-grad-${id}-${color?.replace('#', '').toLowerCase()})`,
                 strokeDasharray,
               })}
           name={seriesName}

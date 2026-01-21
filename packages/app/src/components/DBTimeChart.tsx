@@ -685,8 +685,7 @@ function DBTimeChartComponent({
           </Text>
           <Button
             className="mx-auto"
-            variant="subtle"
-            color="red"
+            variant="danger"
             onClick={() => errorExpansion.open()}
           >
             <Group gap="xxs">
