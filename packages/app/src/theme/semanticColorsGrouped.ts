@@ -30,6 +30,8 @@ export const semanticColorsGrouped = {
     'color-text-muted-hover',
     'color-text-success',
     'color-text-success-hover',
+    'color-text-brand',
+    'color-text-brand-hover',
     'color-text-danger',
   ],
   icons: ['color-icon-primary', 'color-icon-muted'],
