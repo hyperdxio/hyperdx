@@ -14,7 +14,6 @@ export const semanticColorsGrouped = {
     'color-bg-success',
     'color-bg-danger',
     'color-bg-warning',
-    'color-bg-brand',
     'color-bg-modal',
     'color-bg-code',
     'color-bg-kbd',
