@@ -1,4 +1,3 @@
-import { createAnthropic } from '@ai-sdk/anthropic';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   getMetadata,
@@ -18,6 +17,7 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as config from '@/config';
+import { getAIModel } from '@/controllers/ai';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
@@ -176,11 +176,6 @@ router.post(
   }),
   async (req, res, next) => {
     try {
-      if (!config.ANTHROPIC_API_KEY) {
-        logger.error('No ANTHROPIC_API_KEY defined');
-        return res.status(500).json({});
-      }
-
       const { teamId } = getNonNullUserWithTeam(req);
 
       const { text, sourceId } = req.body;
@@ -277,12 +272,8 @@ router.post(
         source,
       });
 
-      const anthropic = createAnthropic({
-        apiKey: config.ANTHROPIC_API_KEY,
-      });
-
-      // const model = anthropic('claude-3-5-haiku-latest');
-      const model = anthropic('claude-sonnet-4-5-20250929');
+      // Get configured AI model
+      const model = getAIModel();
 
       const prompt = `You are an AI assistant that helps users create chart configurations for an observability platform called HyperDX.
 
