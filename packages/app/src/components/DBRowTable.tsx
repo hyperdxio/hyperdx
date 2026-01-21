@@ -84,6 +84,7 @@ import { UNDEFINED_WIDTH } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import {
+  COLORS,
   getLogLevelClass,
   logLevelColor,
   useLocalStorage,
@@ -232,14 +233,14 @@ export const PatternTrendChart = ({
               isAnimationActive={false}
               dataKey="count"
               stackId="a"
-              fill={color || '#20c997'}
+              fill={color || COLORS[0]}
               maxBarSize={24}
             />
             {/* <Line
               key={'count'}
               type="monotone"
               dataKey={'count'}
-              stroke={'#20c997'}
+              stroke={COLORS[0]}
               dot={false}
             /> */}
             <Tooltip content={<PatternTrendChartTooltip />} />
