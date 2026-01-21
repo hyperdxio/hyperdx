@@ -78,7 +78,11 @@ import { useCsvExport } from '@/hooks/useCsvExport';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useGroupedPatterns } from '@/hooks/usePatterns';
-import useRowWhere from '@/hooks/useRowWhere';
+import useRowWhere, {
+  INTERNAL_ROW_FIELDS,
+  RowWhereResult,
+  WithClause,
+} from '@/hooks/useRowWhere';
 import { useSource } from '@/source';
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
@@ -120,7 +124,8 @@ const ACCESSOR_MAP: Record<string, AccessorFn> = {
 const MAX_SCROLL_FETCH_LINES = 1000;
 const MAX_CELL_LENGTH = 500;
 
-const getRowId = (row: Record<string, any>): string => row.__hyperdx_id;
+const getRowId = (row: Record<string, any>): string =>
+  row[INTERNAL_ROW_FIELDS.ID];
 
 function retrieveColumnValue(column: string, row: Row): any {
   const accessor = ACCESSOR_MAP[column] ?? ACCESSOR_MAP.default;
@@ -334,7 +339,7 @@ export const RawLogTable = memo(
     isLoading?: boolean;
     fetchNextPage?: (options?: FetchNextPageOptions | undefined) => any;
     onRowDetailsClick: (row: Record<string, any>) => void;
-    generateRowId: (row: Record<string, any>) => string;
+    generateRowId: (row: Record<string, any>) => RowWhereResult;
     // onPropertySearchClick: (
     //   name: string,
     //   value: string | number | boolean,
@@ -360,33 +365,39 @@ export const RawLogTable = memo(
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
     collapseAllRows?: boolean;
     showExpandButton?: boolean;
-    renderRowDetails?: (row: Record<string, any>) => React.ReactNode;
+    renderRowDetails?: (row: {
+      id: string;
+      aliasWith?: WithClause[];
+      [key: string]: any;
+    }) => React.ReactNode;
     enableSorting?: boolean;
     sortOrder?: SortingState;
     onSortingChange?: (v: SortingState | null) => void;
-    getRowWhere?: (row: Record<string, any>) => string;
+    getRowWhere?: (row: Record<string, any>) => RowWhereResult;
     variant?: DBRowTableVariant;
   }) => {
-    const generateRowMatcher = generateRowId;
-
     const dedupedRows = useMemo(() => {
       const lIds = new Set();
       const returnedRows = dedupRows
         ? rows.filter(l => {
-            const matcher = generateRowMatcher(l);
-            if (lIds.has(matcher)) {
+            const rowWhereResult = generateRowId(l);
+            if (lIds.has(rowWhereResult.where)) {
               return false;
             }
-            lIds.add(matcher);
+            lIds.add(rowWhereResult.where);
             return true;
           })
         : rows;
 
-      return returnedRows.map(r => ({
-        ...r,
-        __hyperdx_id: generateRowMatcher(r),
-      }));
-    }, [rows, dedupRows, generateRowMatcher]);
+      return returnedRows.map(r => {
+        const rowWhereResult = generateRowId(r);
+        return {
+          ...r,
+          [INTERNAL_ROW_FIELDS.ID]: rowWhereResult.where,
+          [INTERNAL_ROW_FIELDS.ALIAS_WITH]: rowWhereResult.aliasWith,
+        };
+      });
+    }, [rows, dedupRows, generateRowId]);
 
     const _onRowExpandClick = useCallback(
       (row: Record<string, any>) => {
@@ -964,6 +975,7 @@ export const RawLogTable = memo(
                     >
                       {renderRowDetails?.({
                         id: rowId,
+                        aliasWith: row.original[INTERNAL_ROW_FIELDS.ALIAS_WITH],
                         ...row.original,
                       })}
                     </ExpandedLogRow>
@@ -1197,12 +1209,16 @@ function DBSqlRowTableComponent({
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
-  onRowDetailsClick?: (where: string) => void;
+  onRowDetailsClick?: (rowWhere: RowWhereResult) => void;
   highlightedLineId?: string;
   queryKeyPrefix?: string;
   enabled?: boolean;
   isLive?: boolean;
-  renderRowDetails?: (r: { [key: string]: unknown }) => React.ReactNode;
+  renderRowDetails?: (r: {
+    id: string;
+    aliasWith?: WithClause[];
+    [key: string]: unknown;
+  }) => React.ReactNode;
   onScroll?: (scrollTop: number) => void;
   onError?: (error: Error | ClickHouseQueryError) => void;
   denoiseResults?: boolean;

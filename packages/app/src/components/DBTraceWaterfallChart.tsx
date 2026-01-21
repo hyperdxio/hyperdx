@@ -29,7 +29,7 @@ import {
 import { ContactSupportText } from '@/components/ContactSupportText';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useResizable from '@/hooks/useResizable';
-import useRowWhere from '@/hooks/useRowWhere';
+import useRowWhere, { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import SearchInputV2 from '@/SearchInputV2';
 import {
@@ -313,7 +313,7 @@ export function useEventsAroundFocus({
   const meta = beforeSpanData?.meta ?? afterSpanData?.meta;
   const error = beforeSpanError || afterSpanError;
 
-  const rowWhere = useRowWhere({ meta, aliasMap: alias });
+  const getRowWhere = useRowWhere({ meta, aliasMap: alias });
   const rows = useMemo(() => {
     // Sometimes meta has not loaded yet
     // DO NOT REMOVE, useRowWhere will error if no meta
@@ -322,6 +322,11 @@ export function useEventsAroundFocus({
       ...(beforeSpanData?.data ?? []),
       ...(afterSpanData?.data ?? []),
     ].map(cd => {
+      // Omit SpanAttributes, SpanEvents and __hdx_hidden from rowWhere id generation.
+      // SpanAttributes and SpanEvents can be large objects, and __hdx_hidden may be a lucene expression.
+      const rowWhereResult = getRowWhere(
+        omit(cd, ['SpanAttributes', 'SpanEvents', '__hdx_hidden']),
+      );
       return {
         // Keep all fields available for display
         ...cd,
@@ -329,14 +334,14 @@ export function useEventsAroundFocus({
         SpanId: cd?.SpanId,
         __hdx_hidden: cd?.__hdx_hidden,
         type,
-        // Omit SpanAttributes, SpanEvents and __hdx_hidden from rowWhere id generation.
-        // SpanAttributes and SpanEvents can be large objects, and __hdx_hidden may be a lucene expression.
-        id: rowWhere(
-          omit(cd, ['SpanAttributes', 'SpanEvents', '__hdx_hidden']),
-        ),
+        id: rowWhereResult.where,
+        // Don't pass aliasWith for trace waterfall chart - the WHERE clause already uses
+        // raw column expressions (e.g., SpanName='value'), and the aliasMap creates
+        // redundant WITH clauses like (Timestamp) AS Timestamp that interfere with queries.
+        aliasWith: [],
       };
     });
-  }, [afterSpanData, beforeSpanData, meta, rowWhere, type]);
+  }, [afterSpanData, beforeSpanData, meta, getRowWhere, type]);
 
   return {
     rows,
@@ -362,7 +367,11 @@ export function DBTraceWaterfallChartContainer({
   traceId: string;
   dateRange: [Date, Date];
   focusDate: Date;
-  onClick?: (rowWhere: { id: string; type: string }) => void;
+  onClick?: (rowWhere: {
+    id: string;
+    type: string;
+    aliasWith: WithClause[];
+  }) => void;
   highlightedRowWhere?: string | null;
   initialRowHighlightHint?: {
     timestamp: string;
@@ -499,6 +508,7 @@ export function DBTraceWaterfallChartContainer({
         onClick?.({
           id: rows[initialRowHighlightIndex].id,
           type: rows[initialRowHighlightIndex].type ?? '',
+          aliasWith: rows[initialRowHighlightIndex].aliasWith,
         });
       }
     }
@@ -510,7 +520,12 @@ export function DBTraceWaterfallChartContainer({
   // 3. Spans, with multiple root nodes (ex. somehow disjoint traces fe/be)
 
   // Parse out a DAG of spans
-  type Node = SpanRow & { id: string; parentId: string; children: SpanRow[] };
+  type Node = SpanRow & {
+    id: string;
+    parentId: string;
+    children: SpanRow[];
+    aliasWith: WithClause[];
+  };
   const validSpanIDs = useMemo(() => {
     return new Set(
       traceRowsData // only spans in traces can define valid span ids
@@ -653,7 +668,13 @@ export function DBTraceWaterfallChartContainer({
     const start = startOffset - minOffset;
     const end = start + tookMs;
 
-    const { Body: _body, ServiceName: serviceName, id, type } = result;
+    const {
+      Body: _body,
+      ServiceName: serviceName,
+      id,
+      type,
+      aliasWith,
+    } = result;
     let body = `${_body}`;
     try {
       body = typeof _body === 'string' ? _body : JSON.stringify(_body);
@@ -692,6 +713,7 @@ export function DBTraceWaterfallChartContainer({
     return {
       id,
       type,
+      aliasWith,
       label: (
         <div
           className={`${textColor({ isError, isWarn })} ${
@@ -699,7 +721,7 @@ export function DBTraceWaterfallChartContainer({
           } text-truncate cursor-pointer ps-2 ${styles.traceTimelineLabel}`}
           role="button"
           onClick={() => {
-            onClick?.({ id, type: type ?? '' });
+            onClick?.({ id, type: type ?? '', aliasWith });
           }}
         >
           <div className="d-flex align-items-center" style={{ height: 24 }}>
@@ -774,6 +796,8 @@ export function DBTraceWaterfallChartContainer({
       events: [
         {
           id,
+          type,
+          aliasWith,
           start,
           end,
           tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
@@ -921,8 +945,16 @@ export function DBTraceWaterfallChartContainer({
               onClick={ts => {
                 // onTimeClick(ts + startedAt);
               }}
-              onEventClick={event => {
-                onClick?.({ id: event.id, type: event.type ?? '' });
+              onEventClick={(event: {
+                id: string;
+                type?: string;
+                aliasWith?: WithClause[];
+              }) => {
+                onClick?.({
+                  id: event.id,
+                  type: event.type ?? '',
+                  aliasWith: event.aliasWith ?? [],
+                });
               }}
               cursors={[]}
               rows={timelineRows}

@@ -426,9 +426,10 @@ describe('useRowWhere', () => {
     const { result } = renderHook(() => useRowWhere({ meta }));
 
     const row = { id: '123', status: 'active' };
-    const whereClause = result.current(row);
+    const rowWhereResult = result.current(row);
 
-    expect(whereClause).toBe("id='123' AND status='active'");
+    expect(rowWhereResult.where).toBe("id='123' AND status='active'");
+    expect(rowWhereResult.aliasWith).toEqual([]);
   });
 
   it('should handle aliasMap correctly', () => {
@@ -445,9 +446,23 @@ describe('useRowWhere', () => {
     const { result } = renderHook(() => useRowWhere({ meta, aliasMap }));
 
     const row = { user_id: '123', user_status: 'active' };
-    const whereClause = result.current(row);
+    const rowWhereResult = result.current(row);
 
-    expect(whereClause).toBe("users.id='123' AND users.status='active'");
+    expect(rowWhereResult.where).toBe(
+      "users.id='123' AND users.status='active'",
+    );
+    expect(rowWhereResult.aliasWith).toEqual([
+      {
+        name: 'user_id',
+        sql: { sql: 'users.id', params: {} },
+        isSubquery: false,
+      },
+      {
+        name: 'user_status',
+        sql: { sql: 'users.status', params: {} },
+        isSubquery: false,
+      },
+    ]);
   });
 
   it('should use column name when alias not found in aliasMap', () => {
@@ -464,9 +479,12 @@ describe('useRowWhere', () => {
     const { result } = renderHook(() => useRowWhere({ meta, aliasMap }));
 
     const row = { id: '123', status: 'active' };
-    const whereClause = result.current(row);
+    const rowWhereResult = result.current(row);
 
-    expect(whereClause).toBe("users.id='123' AND status='active'");
+    expect(rowWhereResult.where).toBe("users.id='123' AND status='active'");
+    expect(rowWhereResult.aliasWith).toEqual([
+      { name: 'id', sql: { sql: 'users.id', params: {} }, isSubquery: false },
+    ]);
   });
 
   it('should handle undefined alias values in aliasMap', () => {
@@ -483,9 +501,12 @@ describe('useRowWhere', () => {
     const { result } = renderHook(() => useRowWhere({ meta, aliasMap }));
 
     const row = { id: '123', status: 'active' };
-    const whereClause = result.current(row);
+    const rowWhereResult = result.current(row);
 
-    expect(whereClause).toBe("users.id='123' AND status='active'");
+    expect(rowWhereResult.where).toBe("users.id='123' AND status='active'");
+    expect(rowWhereResult.aliasWith).toEqual([
+      { name: 'id', sql: { sql: 'users.id', params: {} }, isSubquery: false },
+    ]);
   });
 
   it('should memoize the column map', () => {

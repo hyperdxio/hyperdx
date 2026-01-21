@@ -13,7 +13,7 @@ import {
 } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-import useRowWhere from '@/hooks/useRowWhere';
+import useRowWhere, { RowWhereResult } from '@/hooks/useRowWhere';
 
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useFormatTime } from './useFormatTime';
@@ -108,7 +108,7 @@ export const SessionEventList = ({
   focus: { ts: number; setBy: string } | undefined;
   minTs: number;
   showRelativeTime: boolean;
-  onClick: (rowId: string) => void;
+  onClick: (rowWhere: RowWhereResult) => void;
   onTimeClick: (ts: number) => void;
   eventsFollowPlayerPosition: boolean;
 }) => {
