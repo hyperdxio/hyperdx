@@ -269,6 +269,7 @@ router.post(
       const keyValues = await metadata.getKeyValues({
         chartConfig: cc,
         keys: keysToFetch.map(f => f.key),
+        source,
       });
 
       // Get configured AI model

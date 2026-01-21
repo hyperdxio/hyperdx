@@ -94,6 +94,7 @@ async function getServiceMapQuery({
         where: '',
       },
       metadata,
+      source.querySettings,
     ),
     renderChartConfig(
       {
@@ -108,6 +109,7 @@ async function getServiceMapQuery({
         where: '',
       },
       metadata,
+      source.querySettings,
     ),
   ]);
 

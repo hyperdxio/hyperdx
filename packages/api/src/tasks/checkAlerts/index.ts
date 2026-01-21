@@ -448,6 +448,7 @@ export const processAlert = async (
     const checksData = await clickhouseClient.queryChartConfig({
       config: optimizedChartConfig,
       metadata,
+      querySettings: source.querySettings,
     });
 
     logger.info(
