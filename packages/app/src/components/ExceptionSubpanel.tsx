@@ -556,7 +556,7 @@ export const ExceptionSubpanel = ({
                     label="handled"
                     value={
                       firstException.mechanism?.handled ? (
-                        <span className="text-brand">true</span>
+                        <span className="text-success">true</span>
                       ) : (
                         <span className="text-danger">false</span>
                       )
