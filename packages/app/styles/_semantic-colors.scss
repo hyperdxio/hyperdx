@@ -6,7 +6,9 @@
   --color-bg-inverted: var(--mantine-color-dark-1);
   --color-bg-muted: var(--mantine-color-dark-7);
   --color-bg-highlighted: rgb(55 58 64 / 70%);
-  --color-bg-sidebar: var(--mantine-color-dark-9);
+  --color-bg-sidenav: var(--mantine-color-dark-9);
+  --color-bg-sidenav-link: var(--mantine-color-dark-6);
+  --color-bg-sidenav-link-hover: var(--mantine-color-dark-7);
   --color-bg-header: var(--mantine-color-dark-9);
   --color-bg-hover: var(--mantine-color-dark-6);
   --color-bg-active: var(--mantine-color-dark-5);
@@ -33,6 +35,8 @@
   --color-text-success: var(--mantine-color-green-4);
   --color-text-success-hover: var(--mantine-color-green-3);
   --color-text-danger: var(--mantine-color-red-3);
+  --color-text-sidenav-link: var(--mantine-color-dark-0);
+  --color-text-sidenav-link-active: var(--color-text-primary);
 
   /* Icons */
   --color-icon-primary: var(--mantine-color-dark-1);
@@ -76,7 +80,9 @@
   --color-bg-inverted: var(--mantine-color-dark-3);
   --color-bg-muted: #f6f6fa;
   --color-bg-highlighted: rgb(230 232 237 / 70%);
-  --color-bg-sidebar: var(--mantine-color-white);
+  --color-bg-sidenav: var(--mantine-color-white);
+  --color-bg-sidenav-link: #f6f6fa;
+  --color-bg-sidenav-link-hover: var(--mantine-color-gray-2);
   --color-bg-header: var(--mantine-color-gray-1);
   --color-bg-modal: var(--mantine-color-white);
   --color-bg-hover: var(--mantine-color-gray-3);
@@ -104,6 +110,8 @@
   --color-text-success: var(--mantine-color-green-8);
   --color-text-success-hover: var(--mantine-color-green-9);
   --color-text-danger: var(--mantine-color-red-8);
+  --color-text-sidenav-link: var(--mantine-color-dark-6);
+  --color-text-sidenav-link-active: var(--mantine-color-green-9);
 
   /* Icons - inverted */
   --color-icon-primary: var(--mantine-color-dark-8);
