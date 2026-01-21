@@ -92,6 +92,7 @@ import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
+import { aliasMapToWithClauses } from '@/hooks/useRowWhere';
 import { withAppNav } from '@/layout';
 import {
   useCreateSavedSearch,
@@ -1348,18 +1349,7 @@ function DBSearchPage() {
 
   const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
-  const aliasWith = useMemo(
-    () =>
-      Object.entries(aliasMap ?? {}).map(([key, value]) => ({
-        name: key,
-        sql: {
-          sql: value,
-          params: {},
-        },
-        isSubquery: false,
-      })),
-    [aliasMap],
-  );
+  const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
 
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {

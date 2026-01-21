@@ -120,7 +120,7 @@ describe('DBTraceWaterfallChartContainer', () => {
   // Reset mocks before each test
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseRowWhere.mockReturnValue(() => 'row-id');
+    mockUseRowWhere.mockReturnValue(() => ({ where: 'row-id', aliasWith: [] }));
     MockTimelineChart.latestProps = {};
   });
 
@@ -294,7 +294,7 @@ describe('useEventsAroundFocus', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseRowWhere.mockReturnValue(() => 'row-id');
+    mockUseRowWhere.mockReturnValue(() => ({ where: 'row-id', aliasWith: [] }));
   });
 
   const testEventsAroundFocus = (options: {

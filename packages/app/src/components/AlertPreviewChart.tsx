@@ -9,6 +9,7 @@ import { Paper } from '@mantine/core';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
+import { aliasMapToWithClauses } from '@/hooks/useRowWhere';
 import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
 
 import { getAlertReferenceLines } from './Alerts';
@@ -46,14 +47,7 @@ export const AlertPreviewChart = ({
     from: source.from,
     whereLanguage: whereLanguage || undefined,
   });
-  const aliasWith = Object.entries(aliasMap ?? {}).map(([key, value]) => ({
-    name: key,
-    sql: {
-      sql: value,
-      params: {},
-    },
-    isSubquery: false,
-  }));
+  const aliasWith = aliasMapToWithClauses(aliasMap);
 
   return (
     <Paper w="100%" h={200}>

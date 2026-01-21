@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
@@ -7,6 +7,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
+import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { useSource } from '@/source';
 import TabBar from '@/TabBar';
 import { useLocalStorage } from '@/utils';
@@ -63,15 +64,17 @@ export default function DBSqlRowTableWithSideBar({
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere');
   const [rowSource, setRowSource] = useQueryState('rowSource');
+  const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
   const { setContextRowId, setContextRowSource } = useNestedPanelState();
 
   const onOpenSidebar = useCallback(
-    (rowWhere: string) => {
-      setRowId(rowWhere);
+    (rowWhere: RowWhereResult) => {
+      setRowId(rowWhere.where);
+      setAliasWith(rowWhere.aliasWith);
       setRowSource(sourceId);
-      onSidebarOpen?.(rowWhere);
+      onSidebarOpen?.(rowWhere.where);
     },
-    [setRowId, setRowSource, sourceId, onSidebarOpen],
+    [setRowId, setAliasWith, setRowSource, sourceId, onSidebarOpen],
   );
 
   const onCloseSidebar = useCallback(() => {
@@ -91,12 +94,16 @@ export default function DBSqlRowTableWithSideBar({
     setContextRowSource,
   ]);
   const renderRowDetails = useCallback(
-    (r: { [key: string]: unknown }) => {
+    (r: { id: string; aliasWith?: WithClause[]; [key: string]: unknown }) => {
       if (!sourceData) {
         return <div className="p-3 text-muted">Loading...</div>;
       }
       return (
-        <RowOverviewPanelWrapper source={sourceData} rowId={r.id as string} />
+        <RowOverviewPanelWrapper
+          source={sourceData}
+          rowId={r.id}
+          aliasWith={r.aliasWith}
+        />
       );
     },
     [sourceData],
@@ -108,6 +115,7 @@ export default function DBSqlRowTableWithSideBar({
         <DBRowSidePanel
           source={sourceData}
           rowId={rowId ?? undefined}
+          aliasWith={aliasWith}
           isNestedPanel={isNestedPanel}
           breadcrumbPath={breadcrumbPath}
           onClose={onCloseSidebar}
@@ -143,9 +151,11 @@ enum InlineTab {
 function RowOverviewPanelWrapper({
   source,
   rowId,
+  aliasWith,
 }: {
   source: TSource;
   rowId: string;
+  aliasWith?: WithClause[];
 }) {
   // Use localStorage to persist the selected tab
   const [activeTab, setActiveTab] = useLocalStorage<InlineTab>(
@@ -175,11 +185,15 @@ function RowOverviewPanelWrapper({
       <div>
         {activeTab === InlineTab.Overview && (
           <div className="inline-overview-panel">
-            <RowOverviewPanel source={source} rowId={rowId} />
+            <RowOverviewPanel
+              source={source}
+              rowId={rowId}
+              aliasWith={aliasWith}
+            />
           </div>
         )}
         {activeTab === InlineTab.ColumnValues && (
-          <RowDataPanel source={source} rowId={rowId} />
+          <RowDataPanel source={source} rowId={rowId} aliasWith={aliasWith} />
         )}
       </div>
     </div>
