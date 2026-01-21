@@ -603,6 +603,12 @@ export enum SourceKind {
 // TABLE SOURCE FORM VALIDATION
 // --------------------------
 
+const QuerySettingsSchema = z.array(
+  z.object({ setting: z.string(), value: z.string() }),
+);
+
+export type QuerySettings = z.infer<typeof QuerySettingsSchema>;
+
 // Base schema with fields common to all source types
 const SourceBaseSchema = z.object({
   id: z.string(),
@@ -613,6 +619,7 @@ const SourceBaseSchema = z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string().min(1, 'Table is required'),
   }),
+  querySettings: QuerySettingsSchema.optional(),
 });
 
 const RequiredTimestampColumnSchema = z

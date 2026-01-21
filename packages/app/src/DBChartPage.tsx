@@ -187,7 +187,7 @@ function AIAssistant({
               {chartAssistant.isPending ? (
                 <Loader size="xs" type="dots" />
               ) : (
-                <Button type="submit" size="xs" variant="light">
+                <Button type="submit" size="xs" variant="primary">
                   Generate
                 </Button>
               )}

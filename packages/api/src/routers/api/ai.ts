@@ -30,10 +30,8 @@ router.post(
   }),
   async (req, res, next) => {
     try {
-      const model = await getAIModel();
-      if (!model) {
-        throw new Api500Error('No AI model provider configured');
-      }
+      const model = getAIModel();
+
       const { teamId } = getNonNullUserWithTeam(req);
 
       const { text, sourceId } = req.body;

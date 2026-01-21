@@ -102,7 +102,6 @@ export default function SessionSubpanel({
           traceSource && (
             <DBRowSidePanel
               source={traceSource}
-              isNestedPanel
               rowId={rowId}
               onClose={() => {
                 setDrawerOpen(false);
@@ -634,8 +633,7 @@ export default function SessionSubpanel({
           <Group align="center" justify="center" gap="xs">
             <Tooltip label="Go 15 seconds back" color="gray">
               <ActionIcon
-                variant="filled"
-                color="gray"
+                variant="secondary"
                 size="md"
                 radius="xl"
                 onClick={skipBackward}
@@ -649,8 +647,7 @@ export default function SessionSubpanel({
               color="gray"
             >
               <ActionIcon
-                variant="filled"
-                color="gray"
+                variant="secondary"
                 size="lg"
                 radius="xl"
                 onClick={togglePlayerState}
@@ -664,8 +661,7 @@ export default function SessionSubpanel({
             </Tooltip>
             <Tooltip label="Skip 15 seconds" color="gray">
               <ActionIcon
-                variant="filled"
-                color="gray"
+                variant="secondary"
                 size="md"
                 radius="xl"
                 onClick={skipForward}
@@ -678,8 +674,7 @@ export default function SessionSubpanel({
           <Group align="center" justify="flex-end" gap="xs">
             <Button
               size="compact-sm"
-              color="gray"
-              variant="light"
+              variant="secondary"
               fw="normal"
               rightSection={
                 skipInactive ? (
@@ -695,8 +690,7 @@ export default function SessionSubpanel({
             </Button>
             <Button
               size="compact-sm"
-              color="gray"
-              variant="light"
+              variant="secondary"
               fw="normal"
               rightSection={
                 <span className="fw-bold pe-1">{playerSpeed}x</span>

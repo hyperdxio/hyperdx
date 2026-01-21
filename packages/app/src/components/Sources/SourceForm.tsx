@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Control,
   Controller,
@@ -374,9 +380,8 @@ function HighlightedAttributeExpressionsFormRow({
         ))}
       </Grid>
       <Button
-        variant="default"
+        variant="secondary"
         size="sm"
-        color="gray"
         className="align-self-start"
         mt={highlightedAttributes.length ? 'sm' : 'md'}
         onClick={() => {
@@ -417,14 +422,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
   return (
     <Stack gap="md">
       <FormRow
-        label={
-          <Group>
-            Materialized Views
-            <Badge size="sm" radius="sm" color="gray">
-              Beta
-            </Badge>
-          </Group>
-        }
+        label="Materialized Views"
         helpText="Configure materialized views for query optimization. These pre-aggregated views can significantly improve query performance on aggregation queries."
       >
         <Stack gap="md">
@@ -439,7 +437,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
           ))}
 
           <Button
-            variant="default"
+            variant="secondary"
             onClick={() => {
               appendMaterializedView({
                 databaseName: databaseName,
@@ -752,7 +750,7 @@ function AggregatedColumnsFormSection({
           />
         ))}
       </Grid>
-      <Button size="sm" variant="default" onClick={addAggregate} mt="lg">
+      <Button size="sm" variant="secondary" onClick={addAggregate} mt="lg">
         <Group>
           <IconCirclePlus size={16} />
           Add Column
@@ -1590,6 +1588,7 @@ export function TableSourceForm({
           databaseName: 'default',
           tableName: '',
         },
+        querySettings: source?.querySettings,
       },
       // TODO: HDX-1768 remove type assertion
       values: source as TSourceUnion,
@@ -1945,6 +1944,12 @@ export function TableSourceForm({
     defaultValue: source?.connection,
   });
 
+  const {
+    fields: querySettingFields,
+    append: appendSetting,
+    remove: removeSetting,
+  } = useFieldArray({ control, name: 'querySettings' });
+
   return (
     <div
       style={
@@ -2007,6 +2012,66 @@ export function TableSourceForm({
             />
           </FormRow>
         )}
+        <FormRow
+          label={
+            <Anchor
+              href="https://clickhouse.com/docs/operations/settings/settings"
+              size="sm"
+              target="_blank"
+            >
+              Query Settings
+            </Anchor>
+          }
+          helpText="Query-level Session Settings that will be added to each query for this source."
+        >
+          <Grid columns={11}>
+            {querySettingFields.map((field, index) => (
+              <Fragment key={field.id}>
+                <Grid.Col span={5} pe={0}>
+                  <InputControlled
+                    placeholder="Setting"
+                    control={control}
+                    name={`querySettings.${index}.setting`}
+                  />
+                </Grid.Col>
+                <Grid.Col span={5} pe={0}>
+                  <InputControlled
+                    placeholder="Value"
+                    control={control}
+                    name={`querySettings.${index}.value`}
+                  />
+                </Grid.Col>
+                <Grid.Col span={1} ps={0}>
+                  <Flex align="center" justify="center" gap="sm" h="100%">
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      title="Remove setting"
+                      onClick={() => removeSetting(index)}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Flex>
+                </Grid.Col>
+              </Fragment>
+            ))}
+          </Grid>
+          <Button
+            variant="secondary"
+            size="sm"
+            color="gray"
+            mt="md"
+            disabled={querySettingFields.length >= 10}
+            onClick={() => {
+              if (querySettingFields.length < 10) {
+                appendSetting({ setting: '', value: '' });
+              }
+            }}
+          >
+            <IconCirclePlus size={14} className="me-2" />
+            Add Setting
+          </Button>
+        </FormRow>
       </Stack>
       <TableModelForm control={control} setValue={setValue} kind={kind} />
       <Group justify="flex-end" mt="lg">

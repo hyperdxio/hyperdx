@@ -164,8 +164,7 @@ export default function DBTracePanel({
             />
             <Button
               ms="sm"
-              variant="outline"
-              color="green"
+              variant="primary"
               onClick={traceIdHandleSubmit(({ traceIdExpression }) => {
                 if (parentSourceData != null) {
                   updateTableSource({
@@ -182,8 +181,7 @@ export default function DBTracePanel({
             </Button>
             <Button
               ms="sm"
-              variant="outline"
-              color="gray"
+              variant="secondary"
               onClick={() => setShowTraceIdInput(false)}
               size="xs"
             >
