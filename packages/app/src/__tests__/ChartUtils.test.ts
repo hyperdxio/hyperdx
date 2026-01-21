@@ -326,7 +326,7 @@ describe('ChartUtils', () => {
       ]);
     });
 
-    it('should zero-fill missing time buckets', () => {
+    it('should zero-fill missing time buckets when generateEmptyBuckets is undefined', () => {
       const res = {
         data: [
           {
@@ -372,7 +372,6 @@ describe('ChartUtils', () => {
         currentPeriodResponse: res,
         dateRange: [new Date(1764159780000), new Date(1764159900000)],
         granularity: '1 minute',
-        generateEmptyBuckets: true,
       });
 
       expect(actual.graphResults).toEqual([
@@ -438,6 +437,97 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'max · shipping (previous)',
           displayName: 'max · shipping',
           isDashed: false,
+        },
+      ]);
+    });
+
+    it('should fill missing time buckets with zero when generateEmptyBuckets is true', () => {
+      const res = {
+        data: [
+          {
+            'count()': 10,
+            __hdx_time_bucket: '2025-11-26T12:23:00Z',
+          },
+          {
+            'count()': 20,
+            __hdx_time_bucket: '2025-11-26T12:25:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'count()',
+            type: 'UInt64',
+          },
+          {
+            name: '__hdx_time_bucket',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(1764159780000), new Date(1764159900000)],
+        granularity: '1 minute',
+        generateEmptyBuckets: true,
+      });
+
+      expect(actual.graphResults).toEqual([
+        {
+          __hdx_time_bucket: 1764159780,
+          'count()': 10,
+        },
+        {
+          __hdx_time_bucket: 1764159840,
+          'count()': 0,
+        },
+        {
+          __hdx_time_bucket: 1764159900,
+          'count()': 20,
+        },
+      ]);
+    });
+
+    it('should not fill missing time buckets when generateEmptyBuckets is false', () => {
+      const res = {
+        data: [
+          {
+            'count()': 10,
+            __hdx_time_bucket: '2025-11-26T12:23:00Z',
+          },
+          {
+            'count()': 20,
+            __hdx_time_bucket: '2025-11-26T12:25:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'count()',
+            type: 'UInt64',
+          },
+          {
+            name: '__hdx_time_bucket',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(1764159780000), new Date(1764159900000)],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+
+      // Should only have the two data points, no filled buckets
+      expect(actual.graphResults).toEqual([
+        {
+          __hdx_time_bucket: 1764159780,
+          'count()': 10,
+        },
+        {
+          __hdx_time_bucket: 1764159900,
+          'count()': 20,
         },
       ]);
     });
