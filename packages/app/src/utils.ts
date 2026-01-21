@@ -406,9 +406,10 @@ export const getLogLevelClass = (lvl: string | undefined) => {
 };
 
 // Chart color palette - single source of truth
-// Based on Observable categorical palette with Mantine-compatible green
+// Colors from Observable categorical palette, with custom brand green
+// https://observablehq.com/@d3/color-schemes
 export const CHART_PALETTE = {
-  green: '#00c28a', // Custom green.5 from mantineTheme - works well in light & dark modes
+  green: '#00c28a', // Brand green (Mantine green.5) - used as primary chart color
   blue: '#4269d0',
   orange: '#efb118',
   red: '#ff725c',
@@ -423,18 +424,19 @@ export const CHART_PALETTE = {
   orangeHighlight: '#f5c94d',
 } as const;
 
-// Ordered array for chart series (derived from palette)
+// Ordered array for chart series - green first for brand consistency
+// Maps to CSS variables: COLORS[0] -> --color-chart-1, COLORS[1] -> --color-chart-2, etc.
 export const COLORS = [
-  CHART_PALETTE.green,
-  CHART_PALETTE.blue,
-  CHART_PALETTE.orange,
-  CHART_PALETTE.red,
-  CHART_PALETTE.cyan,
-  CHART_PALETTE.pink,
-  CHART_PALETTE.purple,
-  CHART_PALETTE.lightBlue,
-  CHART_PALETTE.brown,
-  CHART_PALETTE.gray,
+  CHART_PALETTE.green, // 1 - Brand green (primary)
+  CHART_PALETTE.blue, // 2
+  CHART_PALETTE.orange, // 3
+  CHART_PALETTE.red, // 4
+  CHART_PALETTE.cyan, // 5
+  CHART_PALETTE.pink, // 6
+  CHART_PALETTE.purple, // 7
+  CHART_PALETTE.lightBlue, // 8
+  CHART_PALETTE.brown, // 9
+  CHART_PALETTE.gray, // 10
 ];
 
 export function hashCode(str: string) {

@@ -7,14 +7,13 @@ import {
   COLORS,
 } from '@/utils';
 
-// Labels for the Observable categorical color palette
-// https://observablehq.com/@d3/color-schemes
+// Labels for chart colors - brand green first, then Observable palette
 const COLOR_LABELS = [
+  'Green (Brand)',
   'Blue',
   'Orange',
   'Red',
   'Cyan',
-  'Green',
   'Pink',
   'Purple',
   'Light Blue',
