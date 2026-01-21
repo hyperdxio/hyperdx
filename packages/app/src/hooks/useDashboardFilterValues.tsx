@@ -16,7 +16,7 @@ import {
 
 import { useClickhouseClient } from '@/clickhouse';
 import { useSources } from '@/source';
-import { getMetricTableName } from '@/utils';
+import { getMetricTableName, mapKeyBy } from '@/utils';
 
 import { useMetadataWithSettings } from './useMetadata';
 
@@ -129,6 +129,9 @@ export function useDashboardFilterKeyValues({
     dateRange,
   });
 
+  const { data: sources, isLoading: isSourcesLoading } = useSources();
+  const sourcesLookup = useMemo(() => mapKeyBy(sources ?? [], 'id'), [sources]);
+
   const queryClient = useQueryClient();
   type TQueryData = { key: string; value: string[] }[];
 
@@ -140,6 +143,9 @@ export function useDashboardFilterKeyValues({
         chartConfig.from,
         keys,
       ];
+
+      const source = sourcesLookup.get(chartConfig.source);
+
       return {
         queryKey: [...queryKeyPrefix, chartConfig],
         placeholderData: () => {
@@ -157,7 +163,7 @@ export function useDashboardFilterKeyValues({
             });
           return cached[0]?.data;
         },
-        enabled: !isLoadingOptimizedCalls,
+        enabled: !isLoadingOptimizedCalls && !isSourcesLoading,
         staleTime: 1000 * 60 * 5, // Cache every 5 min
         queryFn: async ({ signal }) =>
           metadata.getKeyValues({
@@ -166,6 +172,7 @@ export function useDashboardFilterKeyValues({
             limit: 10000,
             disableRowLimit: true,
             signal,
+            source,
           }),
       };
     }),

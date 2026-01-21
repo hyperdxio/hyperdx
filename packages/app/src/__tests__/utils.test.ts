@@ -8,6 +8,7 @@ import {
   formatAttributeClause,
   formatNumber,
   getMetricTableName,
+  mapKeyBy,
   orderByStringToSortingState,
   sortingStateToOrderByString,
   stripTrailingSlash,
@@ -148,12 +149,12 @@ describe('formatNumber', () => {
       expect(formatNumber(1234567, format)).toBe('1,234,567');
     });
 
-    it('applies factor multiplication', () => {
+    it('does not apply factor multiplication', () => {
       const format: NumberFormat = {
         output: 'number',
         factor: 0.001, // Convert to milliseconds
       };
-      expect(formatNumber(1000, format)).toBe('1');
+      expect(formatNumber(1000, format)).toBe('1000');
     });
   });
 
@@ -207,6 +208,40 @@ describe('formatNumber', () => {
         decimalBytes: true,
       };
       expect(formatNumber(1000, format)).toBe('1 KB');
+    });
+  });
+
+  describe('time format', () => {
+    it('formats seconds input', () => {
+      const format: NumberFormat = {
+        output: 'time',
+        factor: 1, // seconds
+      };
+      expect(formatNumber(3661, format)).toBe('1:01:01');
+    });
+
+    it('formats milliseconds input', () => {
+      const format: NumberFormat = {
+        output: 'time',
+        factor: 0.001, // milliseconds
+      };
+      expect(formatNumber(61000, format)).toBe('0:01:01');
+    });
+
+    it('formats microseconds input', () => {
+      const format: NumberFormat = {
+        output: 'time',
+        factor: 0.000001, // microseconds
+      };
+      expect(formatNumber(1000000, format)).toBe('0:00:01');
+    });
+
+    it('formats nanoseconds input', () => {
+      const format: NumberFormat = {
+        output: 'time',
+        factor: 0.000000001, // nanoseconds
+      };
+      expect(formatNumber(1000000001, format)).toBe('0:00:01');
     });
   });
 
@@ -628,5 +663,27 @@ describe('orderByStringToSortingState', () => {
     const orderByString = sortingStateToOrderByString(originalSort);
     const roundTripSort = orderByStringToSortingState(orderByString);
     expect(roundTripSort).toEqual(originalSort);
+  });
+});
+
+describe('mapKeyBy', () => {
+  it('returns a map', () => {
+    const result = mapKeyBy([{ id: 'a' }, { id: 'b' }], 'id');
+    expect(result).toBeInstanceOf(Map);
+  });
+
+  it('adds each item to the map, keyed by the provided `key` param', () => {
+    const data = [{ id: 'a' }, { id: 'b' }];
+    const result = mapKeyBy(data, 'id');
+    expect(result.size).toBe(2);
+    expect(result.get('a')).toBe(data.at(0));
+    expect(result.get('b')).toBe(data.at(1));
+  });
+
+  it('overwrites items with the same key', () => {
+    const data = [{ id: 'a' }, { id: 'a' }];
+    const result = mapKeyBy(data, 'id');
+    expect(result.size).toBe(1);
+    expect(result.get('a')).toBe(data.at(1));
   });
 });

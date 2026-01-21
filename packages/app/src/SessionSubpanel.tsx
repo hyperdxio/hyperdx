@@ -104,7 +104,6 @@ export default function SessionSubpanel({
           traceSource && (
             <DBRowSidePanel
               source={traceSource}
-              isNestedPanel
               rowId={rowId}
               aliasWith={aliasWith}
               onClose={() => {
