@@ -1,4 +1,4 @@
-CREATE TABLE ${DATABASE}.hyperdx_sessions
+CREATE TABLE IF NOT EXISTS ${DATABASE}.hyperdx_sessions
 (
     `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
     `TimestampTime` DateTime DEFAULT toDateTime(Timestamp),
@@ -33,4 +33,4 @@ PARTITION BY toDate(TimestampTime)
 PRIMARY KEY (ServiceName, TimestampTime)
 ORDER BY (ServiceName, TimestampTime, Timestamp)
 TTL TimestampTime + toIntervalDay(30)
-SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
