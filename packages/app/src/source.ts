@@ -20,7 +20,12 @@ import {
   TSource,
   TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  UseQueryOptions,
+} from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
 import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';

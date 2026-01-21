@@ -10,7 +10,10 @@ import {
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
   useQuery,
@@ -22,7 +25,7 @@ import api from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
 import { LOCAL_STORE_CONNECTIONS_KEY } from '@/connection';
 import { getMetadata } from '@/metadata';
-import { useSources } from '@/source';
+import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
 
 // Hook to get metadata with proper settings applied
@@ -265,6 +268,10 @@ export function useGetValuesDistribution(
   options?: Omit<UseQueryOptions<Map<string, number>, Error>, 'queryKey'>,
 ) {
   const metadata = useMetadataWithSettings();
+  const { data: source, isLoading: isLoadingSource } = useSource({
+    id: chartConfig.source,
+  });
+
   return useQuery<Map<string, number>>({
     queryKey: ['useMetadata.useGetValuesDistribution', chartConfig, key],
     queryFn: async () => {
@@ -272,10 +279,11 @@ export function useGetValuesDistribution(
         chartConfig,
         key,
         limit,
+        source,
       });
     },
     staleTime: Infinity,
-    enabled: !!key,
+    enabled: !!key && !isLoadingSource,
     placeholderData: keepPreviousData,
     retry: false,
     ...options,

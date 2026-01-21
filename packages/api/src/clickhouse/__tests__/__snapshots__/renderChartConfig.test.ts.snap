@@ -473,6 +473,17 @@ Array [
 ]
 `;
 
+exports[`renderChartConfig Query settings handles the the query settings 1`] = `
+Array [
+  Object {
+    "Body": "Oh no! Something went wrong!",
+  },
+  Object {
+    "Body": "This is a test message.",
+  },
+]
+`;
+
 exports[`renderChartConfig aggFn numeric agg functions should handle numeric values as strings 1`] = `
 Array [
   Object {

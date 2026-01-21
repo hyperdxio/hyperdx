@@ -99,6 +99,7 @@ export const useV2LogBatch = <T = any,>(
           orderBy: `${logSource.timestampValueExpression} ${order}`,
         },
         metadata,
+        logSource.querySettings,
       );
 
       const json = await clickhouseClient

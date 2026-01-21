@@ -12,7 +12,12 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/core/renderChartConfig';
-import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
+import type {
+  ChartConfig,
+  ChartConfigWithDateRange,
+  QuerySettings,
+  TSource,
+} from '@/types';
 
 import { optimizeGetKeyValuesCalls } from './materializedViews';
 import { objectHash } from './utils';
@@ -701,11 +706,13 @@ export class Metadata {
     key,
     samples = 100_000,
     limit = 100,
+    source,
   }: {
     chartConfig: ChartConfigWithDateRange;
     key: string;
     samples?: number;
     limit?: number;
+    source: TSource | undefined;
   }) {
     const cacheKeyConfig = pick(chartConfig, [
       'connection',
@@ -746,7 +753,11 @@ export class Metadata {
           limit: { limit },
         };
 
-        const sql = await renderChartConfig(config, this);
+        const sql = await renderChartConfig(
+          config,
+          this,
+          source?.querySettings,
+        );
 
         const json = await this.clickhouseClient
           .query<'JSON'>({
@@ -785,12 +796,16 @@ export class Metadata {
     limit = 20,
     disableRowLimit = false,
     signal,
+    source,
   }: {
     chartConfig: ChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
     signal?: AbortSignal;
+    source:
+      | Omit<TSource, 'connection'> /* for overlap with ISource type */
+      | undefined;
   }): Promise<{ key: string; value: string[] }[]> {
     const cacheKeyConfig = {
       ...pick(chartConfig, [
@@ -856,7 +871,11 @@ export class Metadata {
               };
             })();
 
-        const sql = await renderChartConfig(sqlConfig, this);
+        const sql = await renderChartConfig(
+          sqlConfig,
+          this,
+          source?.querySettings,
+        );
 
         const json = await this.clickhouseClient
           .query<'JSON'>({
@@ -898,7 +917,7 @@ export class Metadata {
   }: {
     chartConfig: ChartConfigWithDateRange;
     keys: string[];
-    source?: TSource;
+    source: TSource | undefined;
     limit?: number;
     disableRowLimit?: boolean;
     signal?: AbortSignal;
@@ -940,6 +959,7 @@ export class Metadata {
               limit,
               disableRowLimit,
               signal,
+              source,
             }),
           ),
         );

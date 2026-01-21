@@ -10,6 +10,7 @@ import {
 
 import {
   convertToDashboardTemplate,
+  extractSettingsClauseFromEnd,
   findJsonExpressions,
   formatDate,
   getAlignedDateRange,
@@ -17,7 +18,9 @@ import {
   isFirstOrderByAscending,
   isJsonExpression,
   isTimestampExpressionInFirstOrderBy,
+  joinQuerySettings,
   optimizeTimestampValueExpression,
+  parseToNumber,
   parseToStartOfFunction,
   replaceJsonExpressions,
   splitAndTrimCSV,
@@ -1421,6 +1424,137 @@ describe('utils', () => {
 
       expect(alignedStart.toISOString()).toBe('2025-11-26T12:15:00.000Z');
       expect(alignedEnd.toISOString()).toBe('2025-11-26T13:00:00.000Z');
+    });
+  });
+
+  describe('extractSettingsClauseFromEnd', () => {
+    test.each([
+      {
+        label: 'no settings clause',
+        sql: 'SELECT * FROM table',
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause: undefined,
+      },
+      {
+        label: 'basic',
+        sql: 'SELECT * FROM table SETTINGS opt=1, cast=1',
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause: 'SETTINGS opt=1, cast=1',
+      },
+      {
+        label: 'basic with semicolon',
+        sql: 'SELECT * FROM table SETTINGS opt = 1, cast = 1;',
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause: 'SETTINGS opt = 1, cast = 1',
+      },
+      {
+        label: 'with WHERE clause',
+        sql: 'SELECT * FROM table WHERE col=Value SETTINGS opt = 1, cast = 1;',
+        withoutSettingsClause: 'SELECT * FROM table WHERE col=Value',
+        settingsClause: 'SETTINGS opt = 1, cast = 1',
+      },
+      {
+        label: 'SETTINGS not at end',
+        sql: 'SELECT * FROM table WHERE col=Value SETTINGS opt = 1, cast = 1 FORMAT json;',
+        withoutSettingsClause: 'SELECT * FROM table WHERE col=Value',
+        // This test case illustrates that subsequent clauses will also be extracted.
+        settingsClause: 'SETTINGS opt = 1, cast = 1 FORMAT json',
+      },
+    ])(
+      'Extracts SETTINGS clause from: "$label" query',
+      ({ sql, settingsClause, withoutSettingsClause }) => {
+        const [remaining, extractedSettingsClause] =
+          extractSettingsClauseFromEnd(sql);
+        expect(remaining).toBe(withoutSettingsClause);
+        expect(extractedSettingsClause).toBe(settingsClause);
+      },
+    );
+  });
+
+  describe('parseToNumber', () => {
+    it('returns `undefined` for an empty string', () => {
+      expect(parseToNumber('')).toBe(undefined);
+    });
+
+    it('returns `undefined` for a whitespace string', () => {
+      expect(parseToNumber(' ')).toBe(undefined);
+    });
+
+    it('returns `undefined` for a non-numeric string', () => {
+      expect(parseToNumber(' . ? / ')).toBe(undefined);
+      expect(parseToNumber('  some string value ')).toBe(undefined);
+      expect(parseToNumber('5678abc')).toBe(undefined);
+    });
+
+    it('returns `undefined` for an infinite number', () => {
+      expect(parseToNumber('Infinity')).toBe(undefined);
+      expect(parseToNumber('-Infinity')).toBe(undefined);
+    });
+
+    it('returns the number value for a parseable number', () => {
+      expect(parseToNumber('123')).toBe(123);
+      expect(parseToNumber('0.123')).toBe(0.123);
+      expect(parseToNumber('1.123')).toBe(1.123);
+      expect(parseToNumber('10000000')).toBe(10000000);
+    });
+  });
+
+  describe('joinQuerySettings', () => {
+    test('returns `undefined` if the querySettings are `undefined` or empty', () => {
+      expect(joinQuerySettings(undefined)).toBe(undefined);
+      expect(joinQuerySettings([])).toBe(undefined);
+    });
+
+    test('filters out items whose `setting` or `value` field is empty', () => {
+      expect(
+        joinQuerySettings([
+          { setting: '', value: '1' },
+          { setting: 'async_insert', value: '' },
+          { setting: 'async_insert_busy_timeout_min_ms', value: '20000' },
+        ]),
+      ).toEqual('async_insert_busy_timeout_min_ms = 20000');
+    });
+
+    test('joins the values into key value pairs', () => {
+      const result = joinQuerySettings([
+        { setting: 'additional_result_filter', value: 'x != 2' },
+        { setting: 'async_insert', value: '0' },
+        { setting: 'async_insert_busy_timeout_min_ms', value: '20000' },
+      ]);
+
+      expect(result).toContain("additional_result_filter = 'x != 2'");
+      expect(result).toContain('async_insert = 0');
+      expect(result).toContain('async_insert_busy_timeout_min_ms = 20000');
+    });
+
+    test('joins the result into a comma separated string', () => {
+      expect(
+        joinQuerySettings([
+          { setting: 'additional_result_filter', value: 'x != 2' },
+          { setting: 'async_insert', value: '0' },
+          { setting: 'async_insert_busy_timeout_min_ms', value: '20000' },
+        ]),
+      ).toEqual(
+        "additional_result_filter = 'x != 2', async_insert = 0, async_insert_busy_timeout_min_ms = 20000",
+      );
+    });
+
+    test('wraps non-numeric and infinite numeric values in quotes', () => {
+      expect(
+        joinQuerySettings([{ setting: 'setting_name', value: 'x != 2' }]),
+      ).toEqual("setting_name = 'x != 2'");
+
+      expect(
+        joinQuerySettings([{ setting: 'setting_name', value: 'string value' }]),
+      ).toEqual("setting_name = 'string value'");
+
+      expect(
+        joinQuerySettings([{ setting: 'setting_name', value: '1000' }]),
+      ).toEqual('setting_name = 1000');
+
+      expect(
+        joinQuerySettings([{ setting: 'setting_name', value: 'Infinity' }]),
+      ).toEqual("setting_name = 'Infinity'");
     });
   });
 });

@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react';
 import Head from 'next/head';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { SubmitHandler, useForm, useWatch } from 'react-hook-form';
+import { SubmitHandler, useForm } from 'react-hook-form';
 import { DEFAULT_METADATA_MAX_ROWS_TO_READ } from '@hyperdx/common-utils/dist/core/metadata';
-import { TeamClickHouseSettings } from '@hyperdx/common-utils/dist/types';
+import { type TeamClickHouseSettings } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Button,
