@@ -677,12 +677,14 @@ export class Metadata {
    * - tokens(lower(Body)) -> { hasTokens: true, innerExpression: 'lower(Body)' }
    * - lower(Body) -> { hasTokens: false }
    */
-  static parseTokensExpression(expression: string): {
-    hasTokens: boolean;
-    innerExpression?: string;
-  } {
-    const tokensRegex = /^tokens\((.*)\)$/i;
-    const match = expression.match(tokensRegex);
+  static parseTokensExpression(expression: string):
+    | {
+        hasTokens: true;
+        innerExpression: string;
+      }
+    | { hasTokens: false } {
+    const tokensRegex = /^tokens\s*\((.*)\)$/i;
+    const match = expression.trim().match(tokensRegex);
 
     if (match) {
       return {

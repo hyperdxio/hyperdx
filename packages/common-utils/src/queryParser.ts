@@ -432,113 +432,18 @@ export abstract class SQLSerializer implements Serializer {
     return term.split(/[ -/:-@[-`{-~\t\n\r]+/).filter(t => t.length > 0);
   }
 
-  protected termHasSeperators(term: string): boolean {
+  protected termHasSeparators(term: string): boolean {
     return term.match(/[ -/:-@[-`{-~\t\n\r]+/) != null;
   }
 
-  async fieldSearch(
+  abstract fieldSearch(
     field: string,
     term: string,
     isNegatedField: boolean,
     prefixWildcard: boolean,
     suffixWildcard: boolean,
     context: SerializerContext,
-  ) {
-    const isImplicitField = field === IMPLICIT_FIELD;
-    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
-      await this.getColumnForField(field, context);
-    if (!found) {
-      return this.NOT_FOUND_QUERY;
-    }
-    const expressionPostfix =
-      mapKeyIndexExpression &&
-      !isNegatedField &&
-      (!isImplicitField || !context.isNegatedAndParenthesized)
-        ? ` AND ${mapKeyIndexExpression}`
-        : '';
-    // If it's a string field, we will always try to match with ilike
-
-    if (propertyType === JSDataType.Bool) {
-      // numeric and boolean fields must be equality matched
-      const normTerm = `${term}`.trim().toLowerCase();
-      return SqlString.format(
-        `(?? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
-        [
-          column,
-          normTerm === 'true'
-            ? 1
-            : normTerm === 'false'
-              ? 0
-              : parseInt(normTerm),
-        ],
-      );
-    } else if (propertyType === JSDataType.Number) {
-      return SqlString.format(
-        `(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64')${expressionPostfix})`,
-        [column, term],
-      );
-    } else if (propertyType === JSDataType.JSON) {
-      return SqlString.format(
-        `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}ILIKE ?${expressionPostfix})`,
-        [`%${term}%`],
-      );
-    }
-
-    // // If the query is empty, or is a empty quoted string ex: ""
-    // // we should match all
-    if (term.length === 0) {
-      return '(1=1)';
-    }
-
-    if (isImplicitField) {
-      // For implicit fields that come directly from the Source, we assume there is a bloom filter that can be used to
-      // optimize searches with hasToken. Overridden implicit columns (eg. "foo" in "foo:("bar baz")") are assumed
-      // to not have bloom filters.
-      const shouldUseTokenBf = !context.implicitColumnExpression;
-
-      // For the _source column, we'll try to do whole word searches by default
-      // to utilize the token bloom filter unless a prefix/suffix wildcard is specified
-      if (prefixWildcard || suffixWildcard) {
-        return SqlString.format(
-          `(lower(?) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
-          [
-            SqlString.raw(column ?? ''),
-            `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
-          ],
-        );
-      } else if (shouldUseTokenBf) {
-        // TODO: Check case sensitivity of the index before lowering by default
-        // We can't search multiple tokens with `hasToken`, so we need to split up the term into tokens
-        const hasSeperators = this.termHasSeperators(term);
-        if (hasSeperators) {
-          const tokens = this.tokenizeTerm(term);
-          return `(${isNegatedField ? 'NOT (' : ''}${[
-            ...tokens.map(token =>
-              SqlString.format(`hasToken(lower(?), lower(?))`, [
-                SqlString.raw(column ?? ''),
-                token,
-              ]),
-            ),
-            // If there are symbols in the term, we'll try to match the whole term as well (ex. Scott!)
-            SqlString.format(`(lower(?) LIKE lower(?))`, [
-              SqlString.raw(column ?? ''),
-              `%${term}%`,
-            ]),
-          ].join(' AND ')}${isNegatedField ? ')' : ''})`;
-        } else {
-          return SqlString.format(
-            `(${isNegatedField ? 'NOT ' : ''}hasToken(lower(?), lower(?)))`,
-            [SqlString.raw(column ?? ''), term],
-          );
-        }
-      }
-    }
-
-    return SqlString.format(
-      `(${column} ${isNegatedField ? 'NOT ' : ''}? ?${expressionPostfix})`,
-      [SqlString.raw('ILIKE'), `%${term}%`],
-    );
-  }
+  ): Promise<string>;
 
   async range(
     field: string,
@@ -666,6 +571,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       );
     }
 
+    // If the term is empty, return a no-op that always evaluates to true
     if (term.length === 0) {
       return '(1=1)';
     }
@@ -682,21 +588,24 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ],
         );
       } else if (shouldUseTokenBf) {
+        const hasSeparators = this.termHasSeparators(term);
+
         // Check for bloom_filter tokens() index first
         const bloomIndex = await this.findBloomFilterTokensIndex(column ?? '');
 
         if (bloomIndex.found) {
+          const indexHasLower = /\blower\s*\(/.test(bloomIndex.indexExpression);
+          const termTokensExpression = indexHasLower
+            ? SqlString.format('tokens(lower(?))', [term])
+            : SqlString.format('tokens(?)', [term]);
+
           // Use hasAll with tokens() - more efficient than hasToken
           // Note: tokens('foo bar') automatically tokenizes, so we use a single hasAll call
-          const hasSeperators = this.termHasSeperators(term);
-          if (hasSeperators) {
+          if (hasSeparators) {
             // Multi-term: hasAll(tokens(...), tokens('foo bar')) AND LIKE fallback
             return `(${isNegatedField ? 'NOT (' : ''}${[
-              SqlString.format(
-                `hasAll(${bloomIndex.indexExpression}, tokens(?))`,
-                [term],
-              ),
-              // If there are symbols in the term, try to match the whole term as well
+              `hasAll(${bloomIndex.indexExpression}, ${termTokensExpression})`,
+              // If there are token separators in the term, try to match the whole term as well
               SqlString.format(`(lower(?) LIKE lower(?))`, [
                 SqlString.raw(column ?? ''),
                 `%${term}%`,
@@ -704,16 +613,12 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
             ].join(' AND ')}${isNegatedField ? ')' : ''})`;
           } else {
             // Single term: hasAll(tokens(...), tokens('term'))
-            return SqlString.format(
-              `(${isNegatedField ? 'NOT ' : ''}hasAll(${bloomIndex.indexExpression}, tokens(?)))`,
-              [term],
-            );
+            return `(${isNegatedField ? 'NOT ' : ''}hasAll(${bloomIndex.indexExpression}, ${termTokensExpression}))`;
           }
         }
 
-        // Fallback to existing hasToken logic for tokenbf_v1 indices
-        const hasSeperators = this.termHasSeperators(term);
-        if (hasSeperators) {
+        // Fallback to using tokenbf_v1 indices if no bloom_filter index is found
+        if (hasSeparators) {
           const tokens = this.tokenizeTerm(term);
           return `(${isNegatedField ? 'NOT (' : ''}${[
             ...tokens.map(token =>
@@ -879,10 +784,13 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
    *
    * Note: Ignores tokenbf_v1 indices (those are handled by existing hasToken logic).
    */
-  private async findBloomFilterTokensIndex(columnExpression: string): Promise<{
-    found: boolean;
-    indexExpression?: string;
-  }> {
+  private async findBloomFilterTokensIndex(columnExpression: string): Promise<
+    | {
+        found: true;
+        indexExpression: string;
+      }
+    | { found: false }
+  > {
     try {
       const skipIndices = await this.skipIndicesPromise;
 
@@ -901,7 +809,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
         if (parsed.hasTokens) {
           // Match the inner expression against our column
-          if (this.columnsMatch(parsed.innerExpression!, columnExpression)) {
+          if (
+            this.indexCoversColumn(parsed.innerExpression, columnExpression)
+          ) {
             return {
               found: true,
               indexExpression: index.expression, // e.g., "tokens(lower(Body))"
@@ -919,15 +829,15 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   }
 
   /**
-   * Compares two column expressions to determine if they refer to the same column.
+   * Compares two expressions to determine if the index expression refers to the search column.
    * Handles cases where index expression may have transformations like lower(Body) vs Body.
    */
-  private columnsMatch(indexColumn: string, searchColumn: string): boolean {
+  indexCoversColumn(indexExpression: string, searchColumn: string): boolean {
     // Normalize expressions for comparison
     const normalize = (expr: string) =>
-      expr.replace(/\s+/g, '').replace(/`/g, '').toLowerCase();
+      expr.replace(/\s+/g, '').replace(/`/g, '');
 
-    const normalizedIndex = normalize(indexColumn);
+    const normalizedIndex = normalize(indexExpression);
     const normalizedSearch = normalize(searchColumn);
 
     // Direct match
@@ -938,8 +848,13 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     // Check if index expression contains the search column
     // E.g., lower(Body) should match Body, concatWithSeparator(';',Body,Message) should match Body
     // Extract potential column names (alphanumeric + underscore)
+    const indexExpressionWords = normalizedIndex.match(/\w+/g);
     const searchColumnName = normalizedSearch.match(/\w+/)?.[0];
-    if (searchColumnName && normalizedIndex.includes(searchColumnName)) {
+    if (
+      searchColumnName &&
+      indexExpressionWords &&
+      indexExpressionWords.includes(searchColumnName)
+    ) {
       return true;
     }
 
