@@ -1,12 +1,12 @@
 .sourceSchemaPreviewButton {
   pointer-events: all;
   font-size: var(--mantine-font-size-xxs);
-  color: var(--color-text-success);
+  color: var(--color-text-brand);
   padding-inline: var(--mantine-spacing-xxxs);
   border-radius: var(--mantine-radius-xs);
 
   &:hover {
-    color: var(--color-text-success-hover);
+    color: var(--color-text-brand-hover);
     cursor: pointer;
   }
 }
