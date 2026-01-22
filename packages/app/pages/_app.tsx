@@ -16,6 +16,7 @@ import {
 } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
+import { DynamicFavicon } from '@/components/DynamicFavicon';
 import { IS_LOCAL_MODE } from '@/config';
 import {
   DEFAULT_FONT_VAR,
@@ -138,12 +139,10 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
     <React.Fragment>
       <Head>
         <title>HyperDX</title>
-        <link rel="icon" type="image/png" sizes="32x32" href="/Icon32.png" />
         <meta
           name="viewport"
           content="width=device-width, initial-scale=0.75"
         />
-        <meta name="theme-color" content="#25292e"></meta>
         <meta name="google" content="notranslate" />
         <ColorSchemeScript
           forceColorScheme={userPreferences.theme === 'dark' ? 'dark' : 'light'}
@@ -151,6 +150,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       </Head>
 
       <AppThemeProvider>
+        <DynamicFavicon />
         <HDXQueryParamProvider>
           <QueryParamProvider adapter={NextAdapter}>
             <QueryClientProvider client={queryClient}>
