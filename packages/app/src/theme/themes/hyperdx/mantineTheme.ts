@@ -10,7 +10,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 
-import focusClasses from '../../styles/focus.module.scss';
+import focusClasses from '../../../../styles/focus.module.scss';
 
 export const makeTheme = ({
   fontFamily = '"IBM Plex Sans", monospace',
