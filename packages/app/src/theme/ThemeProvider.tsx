@@ -11,16 +11,13 @@ import {
   DEFAULT_THEME,
   getDevThemeName,
   getTheme,
+  IS_DEV,
   safeLocalStorageRemove,
   safeLocalStorageSet,
   THEME_STORAGE_KEY,
   themes,
 } from './index';
 import { ThemeConfig, ThemeName } from './types';
-
-const IS_DEV =
-  process.env.NODE_ENV === 'development' ||
-  process.env.NEXT_PUBLIC_IS_LOCAL_MODE === 'true';
 
 // Type declaration for window namespace (avoids conflicts)
 declare global {
@@ -86,10 +83,15 @@ export function AppThemeProvider({
     return getTheme(resolvedThemeName);
   }, [resolvedThemeName]);
 
-  // Theme control functions - update state without page reload
+  // Theme control functions - DEV MODE ONLY
+  // Brand theme is deployment-configured in production (via NEXT_PUBLIC_THEME).
+  // These functions are intentionally disabled in production - users should not
+  // be able to switch brand themes; each deployment is branded for one product.
   const setTheme = useCallback((name: ThemeName) => {
     if (!IS_DEV) {
-      console.warn('setTheme only works in development mode');
+      console.warn(
+        'setTheme only works in development mode. Brand theme is deployment-configured in production.',
+      );
       return;
     }
     if (themes[name]) {

@@ -1,6 +1,39 @@
 import React from 'react';
 import { MantineThemeOverride } from '@mantine/core';
 
+/**
+ * ============================================================================
+ * THEMING CONCEPTS: Color Mode vs Brand Theme
+ * ============================================================================
+ *
+ * This codebase has TWO separate theming concepts:
+ *
+ * 1. COLOR MODE (light/dark)
+ *    - User-selectable preference stored in `useUserPreferences().colorMode`
+ *    - Affects visual appearance: backgrounds, text colors, etc.
+ *    - Managed by Mantine's color scheme system
+ *    - Persisted to localStorage via `hdx-user-preferences`
+ *
+ * 2. BRAND THEME (hyperdx/clickstack)
+ *    - Deployment-configured, NOT user-selectable in production
+ *    - Set via `NEXT_PUBLIC_THEME` environment variable
+ *    - Affects branding: logos, accent colors, favicons
+ *    - Each deployment is branded for one specific product
+ *    - Dev mode allows switching via URL (?theme=), localStorage, or keyboard (Ctrl+Shift+T)
+ *
+ * WHY SEPARATE?
+ * - Color mode is personal preference (accessibility, comfort)
+ * - Brand theme is business identity (product differentiation)
+ * - A ClickStack deployment should never show HyperDX branding, regardless of color mode
+ *
+ * @see useUserPreferences - manages colorMode (user preference)
+ * @see AppThemeProvider - manages brand theme (deployment config)
+ */
+
+/**
+ * Brand theme identifier.
+ * This is DEPLOYMENT-CONFIGURED, not user-selectable in production.
+ */
 export type ThemeName = 'hyperdx' | 'clickstack';
 
 /**

@@ -6,7 +6,8 @@ import { atomWithStorage } from 'jotai/utils';
 export type UserPreferences = {
   isUTC: boolean;
   timeFormat: '12h' | '24h';
-  theme: 'light' | 'dark';
+  /** Color mode preference (light/dark). Separate from brand theme (hyperdx/clickstack). */
+  colorMode: 'light' | 'dark';
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;
 };
@@ -16,7 +17,7 @@ export const userPreferencesAtom = atomWithStorage<UserPreferences>(
   {
     isUTC: false,
     timeFormat: '12h',
-    theme: 'dark',
+    colorMode: 'dark',
     font: 'IBM Plex Mono',
   },
 );

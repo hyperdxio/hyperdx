@@ -125,11 +125,11 @@ export const UserPreferencesModal = ({
           description="Switch between light and dark mode"
         >
           <Select
-            value={userPreferences.theme}
+            value={userPreferences.colorMode}
             onChange={value =>
               value &&
               setUserPreference({
-                theme: value as UserPreferences['theme'],
+                colorMode: value as UserPreferences['colorMode'],
               })
             }
             data={OPTIONS_COLOR_MODE}
@@ -137,6 +137,15 @@ export const UserPreferencesModal = ({
           />
         </SettingContainer>
 
+        {/*
+          Brand Theme Selector - DEV MODE ONLY
+          
+          This is intentionally NOT available in production. Brand theme (HyperDX vs ClickStack)
+          is deployment-configured via NEXT_PUBLIC_THEME environment variable.
+          Each deployment is branded for a specific product; users don't choose this.
+          
+          This dev-only UI exists for testing theme implementations during development.
+        */}
         {isDev && (
           <SettingContainer
             label={

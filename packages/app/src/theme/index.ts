@@ -2,6 +2,23 @@ import { clickstackTheme } from './themes/clickstack';
 import { hyperdxTheme } from './themes/hyperdx';
 import { ThemeConfig, ThemeName } from './types';
 
+/**
+ * Brand Theme System
+ *
+ * DESIGN DECISION: Brand theme (hyperdx/clickstack) is DEPLOYMENT-CONFIGURED, not user-selectable.
+ *
+ * - Production: Theme is set via NEXT_PUBLIC_THEME environment variable at build/deploy time.
+ *   Each deployment is branded for a specific product (HyperDX or ClickStack).
+ *   Users cannot and should not change the brand theme.
+ *
+ * - Development: Theme switching is enabled for testing via:
+ *   - URL param: ?theme=clickstack (temporary, for testing)
+ *   - localStorage: hdx-dev-theme (persisted via dev UI)
+ *   - Keyboard shortcut: Ctrl+Shift+T
+ *
+ * This is intentionally different from colorMode (light/dark), which IS user-selectable.
+ */
+
 // Theme registry
 export const themes: Record<ThemeName, ThemeConfig> = {
   hyperdx: hyperdxTheme,
@@ -9,7 +26,7 @@ export const themes: Record<ThemeName, ThemeConfig> = {
 };
 
 // Check if we're in development/local mode
-const IS_DEV =
+export const IS_DEV =
   process.env.NODE_ENV === 'development' ||
   process.env.NEXT_PUBLIC_IS_LOCAL_MODE === 'true';
 

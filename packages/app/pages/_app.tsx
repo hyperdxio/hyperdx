@@ -144,7 +144,9 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         />
         <meta name="google" content="notranslate" />
         <ColorSchemeScript
-          forceColorScheme={userPreferences.theme === 'dark' ? 'dark' : 'light'}
+          forceColorScheme={
+            userPreferences.colorMode === 'dark' ? 'dark' : 'light'
+          }
         />
       </Head>
 
@@ -156,7 +158,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
               <ThemeWrapper
                 fontFamily={selectedMantineFont}
                 colorScheme={
-                  userPreferences.theme === 'dark' ? 'dark' : 'light'
+                  userPreferences.colorMode === 'dark' ? 'dark' : 'light'
                 }
               >
                 {getLayout(<Component {...pageProps} />)}

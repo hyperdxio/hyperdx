@@ -4,6 +4,15 @@ import Head from 'next/head';
 import { DEFAULT_THEME, getTheme } from '@/theme';
 import { useAppTheme } from '@/theme/ThemeProvider';
 
+// Validate hex color to prevent XSS injection
+// Exported for testing
+export const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
+export const DEFAULT_THEME_COLOR = '#25292e';
+
+export function sanitizeThemeColor(color: string): string {
+  return HEX_COLOR_PATTERN.test(color) ? color : DEFAULT_THEME_COLOR;
+}
+
 /**
  * Dynamic favicon component that updates based on the current theme.
  *
@@ -65,8 +74,12 @@ export function DynamicFavicon() {
         href={favicon.appleTouchIcon}
       />
 
-      {/* Theme color for browser UI */}
-      <meta key="theme-color" name="theme-color" content={favicon.themeColor} />
+      {/* Theme color for browser UI - validated to prevent XSS */}
+      <meta
+        key="theme-color"
+        name="theme-color"
+        content={sanitizeThemeColor(favicon.themeColor)}
+      />
     </Head>
   );
 }
