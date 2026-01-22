@@ -9,6 +9,28 @@ import {
 
 const MAX_STRING_LENGTH = 512;
 
+// Internal row field names used by the table component for row tracking
+export const INTERNAL_ROW_FIELDS = {
+  ID: '__hyperdx_id',
+  ALIAS_WITH: '__hyperdx_alias_with',
+} as const;
+
+// Type for WITH clause entries, matching ChartConfig's with property
+export type WithClause = {
+  name: string;
+  sql: {
+    sql: string;
+    params: Record<string, unknown>;
+  };
+  isSubquery: boolean;
+};
+
+// Result type for row WHERE clause with alias support
+export type RowWhereResult = {
+  where: string;
+  aliasWith: WithClause[];
+};
+
 type ColumnWithMeta = ColumnMetaType & {
   valueExpr: string;
   jsType: JSDataType | null;
@@ -111,6 +133,29 @@ export function processRowToWhereClause(
   return res;
 }
 
+/**
+ * Converts an aliasMap to an array of WITH clause entries.
+ * This allows aliases to be properly defined when querying for a specific row.
+ */
+export function aliasMapToWithClauses(
+  aliasMap: Record<string, string | undefined> | undefined,
+): WithClause[] {
+  if (!aliasMap) {
+    return [];
+  }
+
+  return Object.entries(aliasMap)
+    .filter(([, value]) => value != null && value.trim() !== '')
+    .map(([name, value]) => ({
+      name,
+      sql: {
+        sql: value as string,
+        params: {},
+      },
+      isSubquery: false,
+    }));
+}
+
 export default function useRowWhere({
   meta,
   aliasMap,
@@ -126,6 +171,7 @@ export default function useRowWhere({
           // but if the alias is not found, use the column name as the valueExpr
           const valueExpr =
             aliasMap != null ? (aliasMap[c.name] ?? c.name) : c.name;
+
           return [
             c.name,
             {
@@ -139,13 +185,22 @@ export default function useRowWhere({
     [meta, aliasMap],
   );
 
-  return useCallback(
-    (row: Record<string, any>) => {
-      // Filter out synthetic columns that aren't in the database schema
+  // Memoize the aliasWith array since it only depends on aliasMap
+  const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
 
-      const { __hyperdx_id, ...dbRow } = row;
-      return processRowToWhereClause(dbRow, columnMap);
+  return useCallback(
+    (row: Record<string, any>): RowWhereResult => {
+      // Filter out synthetic columns that aren't in the database schema
+      const {
+        [INTERNAL_ROW_FIELDS.ID]: _id,
+        [INTERNAL_ROW_FIELDS.ALIAS_WITH]: _aliasWith,
+        ...dbRow
+      } = row;
+      return {
+        where: processRowToWhereClause(dbRow, columnMap),
+        aliasWith,
+      };
     },
-    [columnMap],
+    [columnMap, aliasWith],
   );
 }

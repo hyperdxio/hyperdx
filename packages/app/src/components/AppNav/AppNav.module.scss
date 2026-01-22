@@ -131,17 +131,17 @@ $transition-slow: 0.2s ease;
 
   &:hover {
     color: var(--color-text-sidenav-link-active);
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 
   &:focus-visible {
     outline: none;
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 
   &Active {
     color: var(--color-text-sidenav-link-active);
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 }
 
@@ -178,7 +178,7 @@ $transition-slow: 0.2s ease;
     transform $transition-fast;
 
   &:hover {
-    background: var(--color-bg-sidenav-link-hover);
+    background: var(--color-bg-sidenav-link-active-hover);
     color: var(--color-text-sidenav-link-active);
     transform: scale(1.1);
   }
@@ -213,12 +213,12 @@ $transition-slow: 0.2s ease;
 
   &:hover {
     color: var(--color-text-sidenav-link-active);
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 
   &:focus-visible {
     outline: none;
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 
   i {
@@ -227,7 +227,7 @@ $transition-slow: 0.2s ease;
 
   &Active {
     color: var(--color-text-sidenav-link-active);
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 }
 
@@ -308,7 +308,7 @@ $transition-slow: 0.2s ease;
   overflow: hidden;
 
   &:hover {
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 
   @include interactive-press;
@@ -321,7 +321,7 @@ $transition-slow: 0.2s ease;
     width: fit-content;
 
     &:hover {
-      background: var(--color-bg-sidenav-link);
+      background: var(--color-bg-sidenav-link-active);
     }
 
     @include interactive-press;
@@ -365,7 +365,7 @@ $transition-slow: 0.2s ease;
     border-color $transition-slow;
 
   &:hover {
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
     border-color: var(--color-border);
   }
 
@@ -377,7 +377,7 @@ $transition-slow: 0.2s ease;
     background: transparent;
 
     &:hover {
-      background: var(--color-bg-sidenav-link);
+      background: var(--color-bg-sidenav-link-active);
     }
 
     @include interactive-press;

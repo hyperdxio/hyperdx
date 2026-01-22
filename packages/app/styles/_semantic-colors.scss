@@ -7,8 +7,8 @@
   --color-bg-muted: var(--mantine-color-dark-7);
   --color-bg-highlighted: rgb(55 58 64 / 70%);
   --color-bg-sidenav: var(--mantine-color-dark-9);
-  --color-bg-sidenav-link: var(--mantine-color-dark-6);
-  --color-bg-sidenav-link-hover: var(--mantine-color-dark-7);
+  --color-bg-sidenav-link-active: var(--mantine-color-dark-6);
+  --color-bg-sidenav-link-active-hover: var(--mantine-color-dark-7);
   --color-bg-header: var(--mantine-color-dark-9);
   --color-bg-hover: var(--mantine-color-dark-6);
   --color-bg-active: var(--mantine-color-dark-5);
@@ -51,6 +51,7 @@
   --color-state-hover: var(--mantine-color-dark-6);
   --color-state-selected: var(--mantine-color-dark-5);
   --color-state-focus: var(--mantine-color-dark-4);
+  --color-outline-focus: var(--mantine-color-green-4);
 
   /* Code / Misc UI */
   --color-bg-code: var(--mantine-color-dark-8);
@@ -65,6 +66,29 @@
   --color-json-object: var(--mantine-color-green-3);
   --color-json-array: var(--mantine-color-green-3);
   --color-json-punctuation: var(--mantine-color-dark-4);
+
+  /* Chart Colors - Brand green first, then Observable palette
+     Note: 1-indexed CSS vars map to 0-indexed COLORS array in utils.ts
+     e.g., --color-chart-1 corresponds to COLORS[0] */
+  --color-chart-1: #00c28a; /* Green - Brand (primary) */
+  --color-chart-2: #4269d0; /* Blue */
+  --color-chart-3: #efb118; /* Orange */
+  --color-chart-4: #ff725c; /* Red */
+  --color-chart-5: #6cc5b0; /* Cyan */
+  --color-chart-6: #ff8ab7; /* Pink */
+  --color-chart-7: #a463f2; /* Purple */
+  --color-chart-8: #97bbf5; /* Light Blue */
+  --color-chart-9: #9c6b4e; /* Brown */
+  --color-chart-10: #9498a0; /* Gray */
+
+  /* Chart Semantic Colors */
+  --color-chart-success: #00c28a; /* Green - Brand */
+  --color-chart-warning: #efb118; /* Orange */
+  --color-chart-error: #ff725c; /* Red */
+
+  /* Chart Semantic Colors - Highlighted (for hover/selection states) */
+  --color-chart-error-highlight: #ffa090;
+  --color-chart-warning-highlight: #f5c94d;
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
@@ -82,8 +106,8 @@
   --color-bg-muted: #f6f6fa;
   --color-bg-highlighted: rgb(230 232 237 / 70%);
   --color-bg-sidenav: var(--mantine-color-white);
-  --color-bg-sidenav-link: #f6f6fa;
-  --color-bg-sidenav-link-hover: var(--mantine-color-gray-2);
+  --color-bg-sidenav-link-active: #f6f6fa;
+  --color-bg-sidenav-link-active-hover: var(--mantine-color-gray-2);
   --color-bg-header: var(--mantine-color-gray-1);
   --color-bg-modal: var(--mantine-color-white);
   --color-bg-hover: var(--mantine-color-gray-3);
@@ -127,6 +151,7 @@
   --color-state-hover: var(--mantine-color-dark-3);
   --color-state-selected: var(--mantine-color-dark-4);
   --color-state-focus: var(--mantine-color-dark-5);
+  --color-outline-focus: var(--mantine-color-green-8);
 
   /* Code / Misc UI - inverted */
   --color-bg-code: var(--mantine-color-dark-1);
@@ -141,4 +166,25 @@
   --color-json-object: var(--mantine-color-green-7);
   --color-json-array: var(--mantine-color-green-7);
   --color-json-punctuation: var(--mantine-color-dark-5);
+
+  /* Chart Colors - Brand green first, then Observable palette (same for light mode) */
+  --color-chart-1: #00c28a; /* Green - Brand (primary) */
+  --color-chart-2: #4269d0; /* Blue */
+  --color-chart-3: #efb118; /* Orange */
+  --color-chart-4: #ff725c; /* Red */
+  --color-chart-5: #6cc5b0; /* Cyan */
+  --color-chart-6: #ff8ab7; /* Pink */
+  --color-chart-7: #a463f2; /* Purple */
+  --color-chart-8: #97bbf5; /* Light Blue */
+  --color-chart-9: #9c6b4e; /* Brown */
+  --color-chart-10: #9498a0; /* Gray */
+
+  /* Chart Semantic Colors */
+  --color-chart-success: #00c28a; /* Green - Brand */
+  --color-chart-warning: #efb118; /* Orange */
+  --color-chart-error: #ff725c; /* Red */
+
+  /* Chart Semantic Colors - Highlighted (for hover/selection states) */
+  --color-chart-error-highlight: #ffa090;
+  --color-chart-warning-highlight: #f5c94d;
 }

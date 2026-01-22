@@ -36,6 +36,7 @@ import {
   formatResponseForTimeChart,
   getPreviousDateRange,
   PreviousPeriodSuffix,
+  shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
@@ -395,7 +396,7 @@ function DBTimeChartComponent({
           : undefined,
         dateRange,
         granularity,
-        generateEmptyBuckets: fillNulls !== false,
+        generateEmptyBuckets: shouldFillNullsWithZero(fillNulls),
         source,
         hiddenSeries,
         previousPeriodOffsetSeconds,
@@ -685,8 +686,7 @@ function DBTimeChartComponent({
           </Text>
           <Button
             className="mx-auto"
-            variant="subtle"
-            color="red"
+            variant="danger"
             onClick={() => errorExpansion.open()}
           >
             <Group gap="xxs">
