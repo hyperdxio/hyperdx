@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -130,15 +131,26 @@ export function AppThemeProvider({
     [theme, setTheme, toggleTheme, clearThemeOverride],
   );
 
-  // Apply theme CSS class to document
+  // Track previous theme class for efficient swap
+  const prevThemeClassRef = useRef<string | null>(null);
+
+  // Apply theme CSS class to document (single class swap for performance)
   useEffect(() => {
     if (typeof document !== 'undefined') {
-      // Remove all theme classes
-      Object.values(themes).forEach(t => {
-        document.documentElement.classList.remove(t.cssClass);
-      });
-      // Add current theme class
-      document.documentElement.classList.add(theme.cssClass);
+      const html = document.documentElement;
+      const newClass = theme.cssClass;
+
+      // Remove only the previous theme class (not all themes)
+      if (prevThemeClassRef.current && prevThemeClassRef.current !== newClass) {
+        html.classList.remove(prevThemeClassRef.current);
+      }
+
+      // Add new theme class if not already present
+      if (!html.classList.contains(newClass)) {
+        html.classList.add(newClass);
+      }
+
+      prevThemeClassRef.current = newClass;
     }
   }, [theme]);
 

@@ -39,7 +39,7 @@ function isValidThemeName(name: string | null | undefined): name is ThemeName {
 }
 
 // Safe localStorage access (handles private browsing, SSR, etc.)
-function safeLocalStorageGet(key: string): string | undefined {
+export function safeLocalStorageGet(key: string): string | undefined {
   try {
     if (typeof window === 'undefined') return undefined;
     return localStorage.getItem(key) ?? undefined;
@@ -49,7 +49,7 @@ function safeLocalStorageGet(key: string): string | undefined {
   }
 }
 
-function safeLocalStorageSet(key: string, value: string): void {
+export function safeLocalStorageSet(key: string, value: string): void {
   try {
     if (typeof window === 'undefined') return;
     localStorage.setItem(key, value);
@@ -58,7 +58,7 @@ function safeLocalStorageSet(key: string, value: string): void {
   }
 }
 
-function safeLocalStorageRemove(key: string): void {
+export function safeLocalStorageRemove(key: string): void {
   try {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(key);
@@ -122,9 +122,6 @@ export function getCurrentThemeName(): ThemeName {
 
 // Re-export types
 export type { ThemeConfig, ThemeName } from './types';
-
-// Export safe localStorage helpers for ThemeProvider
-export { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet };
 
 // Re-export for backwards compatibility
 export { makeTheme, theme } from './themes/hyperdx/mantineTheme';
