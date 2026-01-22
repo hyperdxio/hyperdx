@@ -1,9 +1,13 @@
 import lucene from '@hyperdx/lucene';
+import { chunk } from 'lodash';
 import SqlString from 'sqlstring';
 
 import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
 import { Metadata, SkipIndexMetadata } from '@/core/metadata';
-import { splitAndTrimWithBracket } from '@/core/utils';
+import {
+  parseTokenizerFromTextIndex,
+  splitAndTrimWithBracket,
+} from '@/core/utils';
 
 function encodeSpecialTokens(query: string): string {
   return query
@@ -493,6 +497,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private implicitColumnExpression?: string;
   private connectionId: string;
   private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
+  private enableTextIndexPromise?: Promise<boolean>;
 
   constructor({
     metadata,
@@ -518,6 +523,18 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       .catch(error => {
         console.error('Error fetching skip indices:', error);
         return [];
+      });
+
+    // Pre-fetch value of the enable_full_text_index setting
+    this.enableTextIndexPromise = this.metadata
+      .getSetting({
+        settingName: 'enable_full_text_index',
+        connectionId,
+      })
+      .then(value => value === '1')
+      .catch(error => {
+        console.error('Error fetching enable_full_text_index setting:', error);
+        return false;
       });
   }
 
@@ -588,9 +605,48 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ],
         );
       } else if (shouldUseTokenBf) {
-        const hasSeparators = this.termHasSeparators(term);
+        // First check for a text index, and use it if possible
+        // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
+        const isTextIndexEnabled = await this.enableTextIndexPromise;
+        const textIndex = isTextIndexEnabled
+          ? await this.findTextIndex(column ?? '')
+          : undefined;
+
+        if (textIndex) {
+          const tokenizer = parseTokenizerFromTextIndex(textIndex);
+
+          // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
+          if (tokenizer?.type === 'splitByNonAlpha') {
+            const tokens = this.tokenizeTerm(term);
+            const hasSeparators = this.termHasSeparators(term);
+
+            // Batch tokens into groups of 50 to avoid exceeding hasAllTokens limit (64)
+            const tokenBatches = chunk(tokens, 50);
+            const hasAllTokensExpressions = tokenBatches.map(batch =>
+              SqlString.format(`hasAllTokens(?, ?)`, [
+                SqlString.raw(column ?? ''),
+                batch.join(' '),
+              ]),
+            );
+
+            if (hasSeparators || tokenBatches.length > 1) {
+              // Multi-token, or term containing token separators: hasAllTokens(..., 'foo bar') AND lower(...) LIKE '%foo bar%'
+              return `(${isNegatedField ? 'NOT (' : ''}${[
+                ...hasAllTokensExpressions,
+                SqlString.format(`(lower(?) LIKE lower(?))`, [
+                  SqlString.raw(column ?? ''),
+                  `%${term}%`,
+                ]),
+              ].join(' AND ')}${isNegatedField ? ')' : ''})`;
+            } else {
+              // Single token, without token separators: hasAllTokens(..., 'term')
+              return `(${isNegatedField ? 'NOT ' : ''}${hasAllTokensExpressions.join(' AND ')})`;
+            }
+          }
+        }
 
         // Check for bloom_filter tokens() index first
+        const hasSeparators = this.termHasSeparators(term);
         const bloomIndex = await this.findBloomFilterTokensIndex(column ?? '');
 
         if (bloomIndex.found) {
@@ -776,6 +832,23 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       columnType: 'Unknown',
     };
     // throw new Error(`Column not found: ${field}`);
+  }
+
+  private async findTextIndex(
+    columnExpression: string,
+  ): Promise<SkipIndexMetadata | undefined> {
+    const skipIndices = await this.skipIndicesPromise;
+
+    if (!skipIndices || skipIndices.length === 0) {
+      return undefined;
+    }
+
+    // Note: Text index expressions should not be wrapped in tokens() or preprocessing functions like lower().
+    return skipIndices.find(
+      idx =>
+        idx.type === 'text' &&
+        this.indexCoversColumn(idx.expression, columnExpression),
+    );
   }
 
   /**
