@@ -193,13 +193,13 @@ const OnboardingChecklist = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     border: step.isComplete
-                      ? '1px solid var(--color-text-success)'
+                      ? '1px solid var(--color-text-brand)'
                       : '1px solid var(--color-border)',
                     backgroundColor: step.isComplete
                       ? 'transparent'
                       : 'var(--color-bg-muted)',
                     color: step.isComplete
-                      ? 'var(--color-text-success)'
+                      ? 'var(--color-text-brand)'
                       : 'var(--color-text)',
                     flexShrink: 0,
                   }}

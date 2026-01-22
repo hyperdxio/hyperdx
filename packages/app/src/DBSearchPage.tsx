@@ -66,7 +66,6 @@ import { Button, IconButton } from '@punkbit/cui';
 import {
   IconBolt,
   IconCirclePlus,
-  IconPlayerPlay,
   IconPlus,
   IconSettings,
   IconTags,
@@ -302,10 +301,11 @@ function SearchSubmitButton({
   // Also Ideally the icon prop should accept a ReactNode, not just a string
   // button contains a
   return (
-    <IconButton
+    <Button
       data-testid="search-submit-button"
-      icon="play"
+      iconLeft="play"
       type="secondary"
+      label="Run"
     />
   );
 }

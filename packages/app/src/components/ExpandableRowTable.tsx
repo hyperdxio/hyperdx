@@ -154,7 +154,7 @@ const ExpandButton = memo(
           type="button"
           className={cx(styles.expandButton, {
             [styles.expanded]: isExpanded,
-            'text-success': highlightedLineId === rowId,
+            'text-brand': highlightedLineId === rowId,
             'text-muted': highlightedLineId !== rowId,
           })}
           onClick={e => {

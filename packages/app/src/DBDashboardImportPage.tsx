@@ -110,7 +110,7 @@ function FileSelection({
                 <Dropzone.Accept>
                   <IconUpload
                     size={52}
-                    color="var(--color-text-success)"
+                    color="var(--color-text-brand)"
                     stroke={1.5}
                   />
                 </Dropzone.Accept>
