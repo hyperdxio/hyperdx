@@ -1,6 +1,6 @@
 import React from 'react';
 
-import ClickStackLogo from './ClickStackLogo';
+import { ClickStackLogo } from './ClickStackLogo';
 
 export default function Logo({
   size = 'sm',
