@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Fuse from 'fuse.js';
-import { Popover, TextAreaField } from '@punkbit/cui';
+import { Popover, TextAreaField } from '@clickhouse/click-ui';
 
 import { useQueryHistory } from '@/utils';
 

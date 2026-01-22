@@ -21,7 +21,7 @@ import {
 } from '@mantine/core';
 import { DateInput, DateInputProps } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
-import { TextField } from '@punkbit/cui';
+import { TextField } from '@clickhouse/click-ui';
 import { IconBolt, IconCalendarFilled } from '@tabler/icons-react';
 
 import { useUserPreferences } from '@/useUserPreferences';

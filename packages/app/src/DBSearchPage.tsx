@@ -61,7 +61,7 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { Button, Select as CUISelect } from '@punkbit/cui';
+import { Button, Select as CUISelect } from '@clickhouse/click-ui';
 import {
   IconBolt,
   IconCirclePlus,

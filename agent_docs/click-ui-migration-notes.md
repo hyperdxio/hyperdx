@@ -1,13 +1,13 @@
 # Click UI Migration Notes
 
-This document tracks issues and limitations encountered when replacing Mantine UI components with Click UI (`@punkbit/cui`) components.
+This document tracks issues and limitations encountered when replacing Mantine UI components with Click UI (`@clickhouse/click-ui`) components.
 
 ## Import Path
 
-Import directly from `@punkbit/cui`:
+Import directly from `@clickhouse/click-ui`:
 
 ```typescript
-import { Button, IconButton, Popover, TextAreaField } from '@punkbit/cui';
+import { Button, IconButton, Popover, TextAreaField } from '@clickhouse/click-ui';
 // Note: Select is NOT migrated - use Mantine Select
 ```
 
@@ -200,7 +200,7 @@ Additionally, `Popover.Trigger` always wraps children in an internal `<div>`, ev
 
 ```typescript
 // ❌ Click UI Select - dropdown doesn't open
-import { Select } from '@punkbit/cui';
+import { Select } from '@clickhouse/click-ui';
 <Select options={[...]} onSelect={...} />
 
 // ✅ Mantine Select - works correctly
@@ -253,5 +253,5 @@ When Click UI releases fixes for these issues, search for these tags to find aff
 
 ## Version Info
 
-- `@punkbit/cui`: `0.0.248-rc.1`
+- `@clickhouse/click-ui`: `0.0.248-rc.1`
 - `styled-components`: `^6.3.5` (installed) - Note: Click UI requests `6.2.1-prerelease.0` but `6.3.5` works

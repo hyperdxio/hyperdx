@@ -3139,6 +3139,43 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@clickhouse/click-ui@npm:0.0.251-rc.16":
+  version: 0.0.251-rc.16
+  resolution: "@clickhouse/click-ui@npm:0.0.251-rc.16"
+  dependencies:
+    "@h6s/calendar": "npm:2.0.1"
+    "@radix-ui/react-accordion": "npm:1.2.12"
+    "@radix-ui/react-avatar": "npm:1.1.1"
+    "@radix-ui/react-checkbox": "npm:1.1.2"
+    "@radix-ui/react-context-menu": "npm:2.2.2"
+    "@radix-ui/react-dialog": "npm:1.1.2"
+    "@radix-ui/react-dismissable-layer": "npm:1.1.1"
+    "@radix-ui/react-dropdown-menu": "npm:2.1.2"
+    "@radix-ui/react-hover-card": "npm:1.1.2"
+    "@radix-ui/react-popover": "npm:1.1.2"
+    "@radix-ui/react-popper": "npm:1.2.1"
+    "@radix-ui/react-radio-group": "npm:1.2.1"
+    "@radix-ui/react-separator": "npm:1.1.1"
+    "@radix-ui/react-switch": "npm:1.1.1"
+    "@radix-ui/react-tabs": "npm:1.1.1"
+    "@radix-ui/react-toast": "npm:1.2.2"
+    "@radix-ui/react-tooltip": "npm:1.1.2"
+    lodash: "npm:^4.17.21"
+    react-sortablejs: "npm:^6.1.4"
+    react-syntax-highlighter: "npm:^16.1.0"
+    react-virtualized-auto-sizer: "npm:^1.0.20"
+    react-window: "npm:^1.8.9"
+    sortablejs: "npm:^1.15.0"
+    styled-components: "npm:^6.1.11"
+  peerDependencies:
+    dayjs: ^1.11.13
+    react: ^18.3.1 || ^19.0.0
+    react-dom: ^18.3.1 || ^19.0.0
+    styled-components: ^6.1.11
+  checksum: 10c0/d52ba465dc9adb60ccc18fc893be8dbd3f420ea1826eb03177c2091a69cae0fc480d8019129230828883f824d2b46c08732d706c81865203a8c406e7edcd9ea2
+  languageName: node
+  linkType: hard
+
 "@clickhouse/client-common@npm:1.12.1, @clickhouse/client-common@npm:^1.12.1":
   version: 1.12.1
   resolution: "@clickhouse/client-common@npm:1.12.1"
@@ -4352,6 +4389,7 @@ __metadata:
   resolution: "@hyperdx/app@workspace:packages/app"
   dependencies:
     "@chromatic-com/storybook": "npm:^4.1.3"
+    "@clickhouse/click-ui": "npm:0.0.251-rc.16"
     "@codemirror/lang-json": "npm:^6.0.1"
     "@codemirror/lang-sql": "npm:^6.7.0"
     "@dagrejs/dagre": "npm:^1.1.5"
@@ -4372,7 +4410,6 @@ __metadata:
     "@mantine/spotlight": "npm:^7.17.8"
     "@microsoft/fetch-event-source": "npm:^2.0.1"
     "@playwright/test": "npm:^1.57.0"
-    "@punkbit/cui": "npm:0.0.251-rc.16"
     "@storybook/addon-docs": "npm:^10.1.4"
     "@storybook/addon-links": "npm:^10.1.4"
     "@storybook/addon-styling-webpack": "npm:^3.0.0"
@@ -7995,43 +8032,6 @@ __metadata:
   version: 1.1.0
   resolution: "@protobufjs/utf8@npm:1.1.0"
   checksum: 10c0/a3fe31fe3fa29aa3349e2e04ee13dc170cc6af7c23d92ad49e3eeaf79b9766264544d3da824dba93b7855bd6a2982fb40032ef40693da98a136d835752beb487
-  languageName: node
-  linkType: hard
-
-"@punkbit/cui@npm:0.0.251-rc.16":
-  version: 0.0.251-rc.16
-  resolution: "@punkbit/cui@npm:0.0.251-rc.16"
-  dependencies:
-    "@h6s/calendar": "npm:2.0.1"
-    "@radix-ui/react-accordion": "npm:1.2.12"
-    "@radix-ui/react-avatar": "npm:1.1.1"
-    "@radix-ui/react-checkbox": "npm:1.1.2"
-    "@radix-ui/react-context-menu": "npm:2.2.2"
-    "@radix-ui/react-dialog": "npm:1.1.2"
-    "@radix-ui/react-dismissable-layer": "npm:1.1.1"
-    "@radix-ui/react-dropdown-menu": "npm:2.1.2"
-    "@radix-ui/react-hover-card": "npm:1.1.2"
-    "@radix-ui/react-popover": "npm:1.1.2"
-    "@radix-ui/react-popper": "npm:1.2.1"
-    "@radix-ui/react-radio-group": "npm:1.2.1"
-    "@radix-ui/react-separator": "npm:1.1.1"
-    "@radix-ui/react-switch": "npm:1.1.1"
-    "@radix-ui/react-tabs": "npm:1.1.1"
-    "@radix-ui/react-toast": "npm:1.2.2"
-    "@radix-ui/react-tooltip": "npm:1.1.2"
-    lodash: "npm:^4.17.21"
-    react-sortablejs: "npm:^6.1.4"
-    react-syntax-highlighter: "npm:^16.1.0"
-    react-virtualized-auto-sizer: "npm:^1.0.20"
-    react-window: "npm:^1.8.9"
-    sortablejs: "npm:^1.15.0"
-    styled-components: "npm:^6.1.11"
-  peerDependencies:
-    dayjs: ^1.11.13
-    react: ^18.3.1 || ^19.0.0
-    react-dom: ^18.3.1 || ^19.0.0
-    styled-components: ^6.1.11
-  checksum: 10c0/c99ab05396b4b03a05dd77f298fbc31abf316bbfee1253955fbc79d4d7aa7f915dfd8364c7fe2263683b971bc9856923d1319da073f762e11f5cd2ae2f1b5e71
   languageName: node
   linkType: hard
 

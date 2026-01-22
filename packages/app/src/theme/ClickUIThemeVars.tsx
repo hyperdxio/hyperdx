@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useCUITheme } from '@punkbit/cui';
+import { useCUITheme } from '@clickhouse/click-ui';
 
 /**
  * Component that injects Click UI theme values as CSS variables.
