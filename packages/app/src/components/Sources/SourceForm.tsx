@@ -41,7 +41,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
-import { useDebouncedCallback } from '@mantine/hooks';
+import { useDebouncedCallback, useDidUpdate } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconCheck,
@@ -224,12 +224,12 @@ function HighlightedAttributeRow({
     1_000,
   );
 
-  useEffect(() => {
+  useDidUpdate(() => {
     setExplainParamsDebounced({
       expression: expressionInput,
       alias: aliasInput,
     });
-  }, [expressionInput, aliasInput, setExplainParamsDebounced]);
+  }, [expressionInput, aliasInput]);
 
   const {
     data: explainData,
