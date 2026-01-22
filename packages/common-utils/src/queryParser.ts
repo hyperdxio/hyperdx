@@ -9,6 +9,9 @@ import {
   splitAndTrimWithBracket,
 } from '@/core/utils';
 
+/** Max number of tokens to pass to hasAllTokens(), which supports up to 64 tokens as of ClickHouse v25.12. */
+const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
+
 function encodeSpecialTokens(query: string): string {
   return query
     .replace(/\\\\/g, 'HDX_BACKSLASH_LITERAL')
@@ -620,8 +623,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
             const tokens = this.tokenizeTerm(term);
             const hasSeparators = this.termHasSeparators(term);
 
-            // Batch tokens into groups of 50 to avoid exceeding hasAllTokens limit (64)
-            const tokenBatches = chunk(tokens, 50);
+            // Batch tokens to avoid exceeding hasAllTokens limit (64)
+            const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
             const hasAllTokensExpressions = tokenBatches.map(batch =>
               SqlString.format(`hasAllTokens(?, ?)`, [
                 SqlString.raw(column ?? ''),
