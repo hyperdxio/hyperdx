@@ -72,8 +72,6 @@ services:
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
       - ./docker/otel-collector/supervisor_docker.yaml.tmpl:/etc/otel/supervisor.yaml.tmpl
-      # Add a custom config file
-      - ./docker/otel-collector/dev.json.config.yaml:/etc/otelcol-contrib/custom.config.yaml
     ports:
       - '14318:4318' # OTLP http receiver
     restart: always

@@ -34,6 +34,7 @@ import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
+import useFieldExpressionGenerator from './hooks/useFieldExpressionGenerator';
 import DOMPlayer from './DOMPlayer';
 import Playbar from './Playbar';
 import SearchInputV2 from './SearchInputV2';
@@ -44,6 +45,192 @@ import { formatmmss, useLocalStorage, usePrevious } from './utils';
 import styles from '../styles/SessionSubpanelV2.module.scss';
 
 const MemoPlaybar = memo(Playbar);
+
+function useSessionChartConfigs({
+  traceSource,
+  rumSessionId,
+  where,
+  whereLanguage,
+  start,
+  end,
+  tab,
+}: {
+  traceSource: TSource;
+  rumSessionId: string;
+  where: string;
+  whereLanguage?: SearchConditionLanguage;
+  start: Date;
+  end: Date;
+  tab: string;
+}) {
+  const { getFieldExpression: getTraceSourceFieldExpression } =
+    useFieldExpressionGenerator(traceSource);
+
+  if (!getTraceSourceFieldExpression) {
+    return {
+      eventsConfig: undefined,
+      aliasMap: undefined,
+    };
+  }
+
+  // Should produce rows that match the `sessionRowSchema` in packages/app/src/utils/sessions.ts
+  const select = useMemo(
+    () => [
+      {
+        valueExpression: `${getTraceSourceFieldExpression(traceSource.eventAttributesExpression ?? 'SpanAttributes', 'message')}`,
+        alias: 'body',
+      },
+      {
+        valueExpression: `${getTraceSourceFieldExpression(traceSource.eventAttributesExpression ?? 'SpanAttributes', 'component')}`,
+        alias: 'component',
+      },
+      {
+        valueExpression: `toFloat64OrZero(toString(${traceSource.durationExpression})) * pow(10, 3) / pow(10, toInt8OrZero(toString(${traceSource.durationPrecision})))`,
+        alias: 'durationInMs',
+      },
+      {
+        valueExpression: `${getTraceSourceFieldExpression(traceSource.eventAttributesExpression ?? 'SpanAttributes', 'error.message')}`,
+        alias: 'error.message',
+      },
+      {
+        valueExpression: `${getTraceSourceFieldExpression(traceSource.eventAttributesExpression ?? 'SpanAttributes', 'http.method')}`,
+        alias: 'http.method',
+      },
+      {
+        valueExpression: `${getTraceSourceFieldExpression(traceSource.eventAttributesExpression ?? 'SpanAttributes', 'http.status_code')}`,
+        alias: 'http.status_code',
+      },
+      {
+        valueExpression: `${getTraceSourceFieldExpression(traceSource.eventAttributesExpression ?? 'SpanAttributes', 'http.url')}`,
+        alias: 'http.url',
+      },
+      {
+        // Using toString here because Javascript does not have the precision to accurately represent this
+        valueExpression: `toString(cityHash64(${traceSource.traceIdExpression}, ${traceSource.parentSpanIdExpression}, ${traceSource.spanIdExpression}))`,
+        alias: 'id',
+      },
+      {
+        valueExpression: `${getTraceSourceFieldExpression(traceSource.eventAttributesExpression ?? 'SpanAttributes', 'location.href')}`,
+        alias: 'location.href',
+      },
+      {
+        valueExpression: 'ScopeName', // FIXME: add mapping
+        alias: 'otel.library.name',
+      },
+      {
+        valueExpression: `${traceSource.parentSpanIdExpression}`,
+        alias: 'parent_span_id',
+      },
+      {
+        valueExpression: `${traceSource.statusCodeExpression}`,
+        alias: 'severity_text',
+      },
+      {
+        valueExpression: `${traceSource.spanIdExpression}`,
+        alias: 'span_id',
+      },
+      {
+        valueExpression: `${traceSource.spanNameExpression}`,
+        alias: 'span_name',
+      },
+      {
+        valueExpression: `${traceSource.timestampValueExpression}`,
+        alias: 'timestamp',
+      },
+      {
+        valueExpression: `${traceSource.traceIdExpression}`,
+        alias: 'trace_id',
+      },
+      {
+        valueExpression: `CAST('span', 'String')`,
+        alias: 'type',
+      },
+    ],
+    [traceSource, getTraceSourceFieldExpression],
+  );
+
+  // Events shown in the highlighted tab
+  const highlightedEventsFilter = useMemo(
+    () => ({
+      type: 'lucene' as const,
+      condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
+    AND (
+      ${traceSource.eventAttributesExpression}.http.status_code:>299 
+      OR ${traceSource.eventAttributesExpression}.component:"error" 
+      OR ${traceSource.spanNameExpression}:"routeChange" 
+      OR ${traceSource.spanNameExpression}:"documentLoad" 
+      OR ${traceSource.spanNameExpression}:"intercom.onShow" 
+      OR ScopeName:"custom-action" 
+    )`,
+    }),
+    [traceSource, rumSessionId],
+  );
+
+  const allEventsFilter = useMemo(
+    () => ({
+      type: 'lucene' as const,
+      condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
+    AND (
+      ${traceSource.eventAttributesExpression}.http.status_code:* 
+      OR ${traceSource.eventAttributesExpression}.component:"console" 
+      OR ${traceSource.eventAttributesExpression}.component:"error" 
+      OR ${traceSource.spanNameExpression}:"routeChange" 
+      OR ${traceSource.spanNameExpression}:"documentLoad" 
+      OR ${traceSource.spanNameExpression}:"intercom.onShow" 
+      OR ScopeName:"custom-action" 
+    )`,
+    }),
+    [traceSource, rumSessionId],
+  );
+
+  const eventsConfig = useMemo<ChartConfigWithOptDateRange>(
+    () => ({
+      select: select,
+      from: traceSource.from,
+      dateRange: [start, end],
+      whereLanguage,
+      where,
+      timestampValueExpression: traceSource.timestampValueExpression,
+      implicitColumnExpression: traceSource.implicitColumnExpression,
+      connection: traceSource.connection,
+      orderBy: `${traceSource.timestampValueExpression} ASC`,
+      limit: {
+        limit: 4000,
+        offset: 0,
+      },
+      filters: [
+        tab === 'highlighted' ? highlightedEventsFilter : allEventsFilter,
+      ],
+    }),
+    [
+      select,
+      traceSource,
+      start,
+      end,
+      where,
+      whereLanguage,
+      tab,
+      highlightedEventsFilter,
+      allEventsFilter,
+    ],
+  );
+
+  const aliasMap = useMemo(() => {
+    // valueExpression: alias
+    return select.reduce(
+      (acc, { valueExpression, alias }) => {
+        acc[alias] = valueExpression;
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
+  }, [select]);
+
+  return {
+    eventsConfig,
+    aliasMap,
+  };
+}
 
 export default function SessionSubpanel({
   traceSource,
@@ -167,9 +354,7 @@ export default function SessionSubpanel({
   );
 
   // Event Filter Input =========================
-  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [_inputQuery, setInputQuery] = useState<string | undefined>(undefined);
-  const inputQuery = _inputQuery ?? '';
   const [_searchedQuery, setSearchedQuery] = useQueryState('session_q', {
     history: 'push',
   });
@@ -227,223 +412,20 @@ export default function SessionSubpanel({
     ] as DateRange['dateRange'];
   }, [playerStartTs, playerEndTs]);
 
-  const commonSelect = useMemo(
-    () => [
-      // body
-      // component
-      // duration
-      // end_timestamp
-      // error.message
-      // exception.group_id
-      // http.method
-      // http.status_code
-      // http.url
-      // id
-      // location.href
-      // otel.library.name
-      // parent_span_id
-      // severity_text
-      // sort_key
-      // span_id
-      // span_name
-      // timestamp
-      // trace_id
-      // type
-      // _host
-      // _platform
-      // _service
-      {
-        // valueExpression: `${traceSource.statusCodeExpression}`,
-        valueExpression: `${traceSource.eventAttributesExpression}['message']`,
-        alias: 'body',
-      },
-      {
-        valueExpression: `${traceSource.eventAttributesExpression}['component']`,
-        alias: 'component',
-      },
-      {
-        valueExpression: `toFloat64OrZero(toString(${traceSource.durationExpression})) * pow(10, 3) / pow(10, toInt8OrZero(toString(${traceSource.durationPrecision})))`,
-        alias: 'durationInMs',
-      },
-      {
-        valueExpression: `${traceSource.eventAttributesExpression}['error.message']`,
-        alias: 'error.message',
-      },
-      {
-        valueExpression: `${traceSource.eventAttributesExpression}['http.method']`,
-        alias: 'http.method',
-      },
-      {
-        valueExpression: `${traceSource.eventAttributesExpression}['http.status_code']`,
-        alias: 'http.status_code',
-      },
-      {
-        valueExpression: `${traceSource.eventAttributesExpression}['http.url']`,
-        alias: 'http.url',
-      },
-      {
-        // Using toString here because Javascript does not have the precision to accurately represent this
-        valueExpression: `toString(cityHash64(${traceSource.traceIdExpression}, ${traceSource.parentSpanIdExpression}, ${traceSource.spanIdExpression}))`,
-        alias: 'id',
-      },
-      {
-        valueExpression: `${traceSource.eventAttributesExpression}['location.href']`,
-        alias: 'location.href',
-      },
-      {
-        valueExpression: 'ScopeName', // FIXME: add mapping
-        alias: 'otel.library.name',
-      },
-      {
-        valueExpression: `${traceSource.parentSpanIdExpression}`,
-        alias: 'parent_span_id',
-      },
-      {
-        valueExpression: `${traceSource.statusCodeExpression}`,
-        alias: 'severity_text',
-      },
-      {
-        valueExpression: `${traceSource.spanIdExpression}`,
-        alias: 'span_id',
-      },
-      {
-        valueExpression: `${traceSource.spanNameExpression}`,
-        alias: 'span_name',
-      },
-      {
-        valueExpression: `${traceSource.timestampValueExpression}`,
-        alias: 'timestamp',
-      },
-      {
-        valueExpression: `${traceSource.traceIdExpression}`,
-        alias: 'trace_id',
-      },
-      {
-        valueExpression: `CAST('span', 'String')`,
-        alias: 'type',
-      },
-    ],
-    [traceSource],
-  );
+  const { getFieldExpression: getSessionSourceFieldExpression } =
+    useFieldExpressionGenerator(sessionSource);
 
-  // Events shown in the highlighted tab
-  const highlightedEventsFilter = useMemo(
-    () => ({
-      type: 'lucene' as const,
-      condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
-    AND (
-      ${traceSource.eventAttributesExpression}.http.status_code:>299 
-      OR ${traceSource.eventAttributesExpression}.component:"error" 
-      OR ${traceSource.spanNameExpression}:"routeChange" 
-      OR ${traceSource.spanNameExpression}:"documentLoad" 
-      OR ${traceSource.spanNameExpression}:"intercom.onShow" 
-      OR ScopeName:"custom-action" 
-    )`,
-    }),
-    [traceSource, rumSessionId],
-  );
+  const { eventsConfig, aliasMap } = useSessionChartConfigs({
+    traceSource,
+    rumSessionId,
+    where: searchedQuery,
+    whereLanguage,
+    start,
+    end,
+    tab,
+  });
 
-  const allEventsFilter = useMemo(
-    () => ({
-      type: 'lucene' as const,
-      condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
-    AND (
-      ${traceSource.eventAttributesExpression}.http.status_code:* 
-      OR ${traceSource.eventAttributesExpression}.component:"console" 
-      OR ${traceSource.eventAttributesExpression}.component:"error" 
-      OR ${traceSource.spanNameExpression}:"routeChange" 
-      OR ${traceSource.spanNameExpression}:"documentLoad" 
-      OR ${traceSource.spanNameExpression}:"intercom.onShow" 
-      OR ScopeName:"custom-action" 
-    )`,
-    }),
-    [traceSource, rumSessionId],
-  );
-
-  const playBarEventsConfig = useMemo<ChartConfigWithOptDateRange>(
-    () => ({
-      select: commonSelect,
-      from: traceSource.from,
-      dateRange: [start, end],
-      whereLanguage,
-      where: searchedQuery,
-      timestampValueExpression: traceSource.timestampValueExpression,
-      implicitColumnExpression: traceSource.implicitColumnExpression,
-      connection: traceSource.connection,
-      orderBy: `${traceSource.timestampValueExpression} ASC`,
-      limit: {
-        limit: 4000,
-        offset: 0,
-      },
-      filters: [
-        tab === 'highlighted' ? highlightedEventsFilter : allEventsFilter,
-        // ...(where ? [{ type: whereLanguage, condition: where }] : []),
-      ],
-    }),
-    [
-      commonSelect,
-      traceSource.from,
-      traceSource.timestampValueExpression,
-      traceSource.implicitColumnExpression,
-      traceSource.connection,
-      start,
-      end,
-      whereLanguage,
-      searchedQuery,
-      tab,
-      highlightedEventsFilter,
-      allEventsFilter,
-      // where,
-    ],
-  );
   const [playerFullWidth, setPlayerFullWidth] = useState(false);
-
-  const aliasMap = useMemo(() => {
-    // valueExpression: alias
-    return commonSelect.reduce(
-      (acc, { valueExpression, alias }) => {
-        acc[alias] = valueExpression;
-        return acc;
-      },
-      {} as Record<string, string>,
-    );
-  }, [commonSelect]);
-
-  const sessionEventListConfig = useMemo<ChartConfigWithOptDateRange>(
-    () => ({
-      select: commonSelect,
-      from: traceSource.from,
-      dateRange: [start, end],
-      whereLanguage,
-      where: searchedQuery,
-      timestampValueExpression: traceSource.timestampValueExpression,
-      implicitColumnExpression: traceSource.implicitColumnExpression,
-      connection: traceSource.connection,
-      orderBy: `${traceSource.timestampValueExpression} ASC`,
-      limit: {
-        limit: 4000,
-        offset: 0,
-      },
-      filters: [
-        tab === 'highlighted' ? highlightedEventsFilter : allEventsFilter,
-        // ...(where ? [{ type: whereLanguage, condition: where }] : []),
-      ],
-    }),
-    [
-      commonSelect,
-      traceSource.from,
-      traceSource.timestampValueExpression,
-      traceSource.implicitColumnExpression,
-      traceSource.connection,
-      start,
-      end,
-      whereLanguage,
-      searchedQuery,
-      tab,
-      highlightedEventsFilter,
-      allEventsFilter,
-    ],
-  );
 
   const handleSetPlayerSpeed = useCallback(() => {
     if (playerSpeed == 1) {
@@ -549,67 +531,74 @@ export default function SessionSubpanel({
           </Group>
         </div>
 
-        <SessionEventList
-          eventsFollowPlayerPosition={eventsFollowPlayerPosition}
-          aliasMap={aliasMap}
-          queriedConfig={sessionEventListConfig}
-          onClick={useCallback(
-            (rowWhere: RowWhereResult) => {
-              setDrawerOpen(true);
-              setRowId(rowWhere.where);
-              setAliasWith(rowWhere.aliasWith);
-            },
-            [setDrawerOpen, setRowId, setAliasWith],
-          )}
-          focus={focus}
-          onTimeClick={useCallback(
-            ts => {
-              setFocus({ ts, setBy: 'timeline' });
-            },
-            [setFocus],
-          )}
-          minTs={minTs}
-          showRelativeTime={showRelativeTime}
-        />
+        {eventsConfig && aliasMap && (
+          <SessionEventList
+            eventsFollowPlayerPosition={eventsFollowPlayerPosition}
+            aliasMap={aliasMap}
+            queriedConfig={eventsConfig}
+            onClick={useCallback(
+              (rowWhere: RowWhereResult) => {
+                setDrawerOpen(true);
+                setRowId(rowWhere.where);
+                setAliasWith(rowWhere.aliasWith);
+              },
+              [setDrawerOpen, setRowId, setAliasWith],
+            )}
+            focus={focus}
+            onTimeClick={useCallback(
+              ts => {
+                setFocus({ ts, setBy: 'timeline' });
+              },
+              [setFocus],
+            )}
+            minTs={minTs}
+            showRelativeTime={showRelativeTime}
+          />
+        )}
       </div>
 
       <div className={styles.player}>
-        <DOMPlayer
-          playerState={playerState}
-          setPlayerState={setPlayerState}
-          focus={focus}
-          setPlayerTime={useCallback(
-            ts => {
-              if (focus?.setBy !== 'player' || focus?.ts !== ts) {
-                setFocus({ ts, setBy: 'player' });
-              }
-            },
-            [focus, setFocus],
-          )}
-          config={{
-            serviceName: session.serviceName,
-            sourceId: sessionSource.id,
-            sessionId: rumSessionId,
-            dateRange: [start, end],
-          }}
-          playerSpeed={playerSpeed}
-          skipInactive={skipInactive}
-          setPlayerStartTimestamp={setPlayerStartTs}
-          setPlayerEndTimestamp={setPlayerEndTs}
-          setPlayerFullWidth={setPlayerFullWidth}
-          playerFullWidth={playerFullWidth}
-          resizeKey={`${playerFullWidth}`}
-        />
-
-        <div className={styles.playerPlaybar}>
-          <MemoPlaybar
+        {getSessionSourceFieldExpression && (
+          <DOMPlayer
             playerState={playerState}
             setPlayerState={setPlayerState}
             focus={focus}
-            setFocus={setFocus}
-            playbackRange={playbackRange}
-            queriedConfig={playBarEventsConfig}
+            setPlayerTime={useCallback(
+              ts => {
+                if (focus?.setBy !== 'player' || focus?.ts !== ts) {
+                  setFocus({ ts, setBy: 'player' });
+                }
+              },
+              [focus, setFocus],
+            )}
+            config={{
+              serviceName: session.serviceName,
+              sourceId: sessionSource.id,
+              sessionId: rumSessionId,
+              dateRange: [start, end],
+            }}
+            playerSpeed={playerSpeed}
+            skipInactive={skipInactive}
+            setPlayerStartTimestamp={setPlayerStartTs}
+            setPlayerEndTimestamp={setPlayerEndTs}
+            setPlayerFullWidth={setPlayerFullWidth}
+            playerFullWidth={playerFullWidth}
+            resizeKey={`${playerFullWidth}`}
+            getSessionSourceFieldExpression={getSessionSourceFieldExpression}
           />
+        )}
+
+        <div className={styles.playerPlaybar}>
+          {eventsConfig && (
+            <MemoPlaybar
+              playerState={playerState}
+              setPlayerState={setPlayerState}
+              focus={focus}
+              setFocus={setFocus}
+              playbackRange={playbackRange}
+              queriedConfig={eventsConfig}
+            />
+          )}
         </div>
         <div className={styles.playerToolbar}>
           <div className={styles.playerTimestamp}>
