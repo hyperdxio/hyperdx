@@ -61,28 +61,24 @@ export const DEFAULT_THEME: ThemeName = isValidThemeName(envTheme)
  * This is the single source of truth for resolving dev theme names.
  *
  * Priority:
- * 1. URL query param: ?theme=clickstack
- * 2. localStorage: hdx-dev-theme
+ * 1. URL query param: ?theme=clickstack (temporary, not persisted)
+ * 2. localStorage: hdx-dev-theme (persisted via explicit UI action)
  * 3. Environment variable: NEXT_PUBLIC_THEME
  * 4. Default: hyperdx
- *
- * Note: URL params are persisted to localStorage when detected.
  */
 export function getDevThemeName(): ThemeName {
   if (typeof window === 'undefined') {
     return DEFAULT_THEME;
   }
 
-  // Check URL query param first (highest priority for testing)
+  // Check URL query param first (highest priority for temporary testing)
   const urlParams = new URLSearchParams(window.location.search);
   const urlTheme = urlParams.get('theme');
   if (isValidThemeName(urlTheme)) {
-    // Persist to localStorage when set via URL
-    safeLocalStorageSet(THEME_STORAGE_KEY, urlTheme);
     return urlTheme;
   }
 
-  // Check localStorage
+  // Check localStorage (set via explicit user action in ThemeProvider)
   const storedTheme = safeLocalStorageGet(THEME_STORAGE_KEY);
   if (isValidThemeName(storedTheme)) {
     return storedTheme;
