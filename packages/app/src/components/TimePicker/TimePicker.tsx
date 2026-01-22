@@ -17,11 +17,11 @@ import {
   Stack,
   Switch,
   Text,
-  TextInput,
   Tooltip,
 } from '@mantine/core';
 import { DateInput, DateInputProps } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
+import { TextField } from '@punkbit/cui';
 import { IconBolt, IconCalendarFilled } from '@tabler/icons-react';
 
 import { useUserPreferences } from '@/useUserPreferences';
@@ -219,46 +219,67 @@ const TimePickerComponent = ({
       onClose={close}
     >
       <Popover.Target>
-        <TextInput
-          data-testid="time-picker-input"
-          leftSection={
-            isLiveMode ? (
+        <div
+          style={{ position: 'relative', width: 350, cursor: 'pointer' }}
+          onClick={toggle}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: 10,
+              top: 0,
+              bottom: 0,
+              display: 'flex',
+              alignItems: 'center',
+              zIndex: 1,
+              pointerEvents: 'none',
+            }}
+          >
+            {isLiveMode ? (
               <IconBolt size={16} className="text-brand" />
             ) : (
               <IconCalendarFilled size={16} />
-            )
-          }
-          styles={{
-            input: {
+            )}
+          </div>
+          <TextField
+            data-testid="time-picker-input"
+            value={value}
+            onChange={newValue => onChange(newValue)}
+            placeholder="Time Range"
+            style={{
+              paddingLeft: 32,
               color: isLiveMode
                 ? 'var(--color-text-brand)'
                 : 'var(--color-text)',
-            },
-          }}
-          rightSection={
-            opened && (
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+                onSubmit?.(e.target.value);
+                close();
+              }
+              if (e.key === 'Escape' && e.target instanceof HTMLInputElement) {
+                e.target.blur();
+                close();
+              }
+            }}
+          />
+          {opened && (
+            <div
+              style={{
+                position: 'absolute',
+                right: 10,
+                top: 0,
+                bottom: 0,
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
               <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
                 d
               </Text>
-            )
-          }
-          value={value}
-          onChange={event => onChange(event.currentTarget.value)}
-          onClick={toggle}
-          placeholder="Time Range"
-          size="sm"
-          w={350}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
-              onSubmit?.(e.target.value);
-              close();
-            }
-            if (e.key === 'Escape' && e.target instanceof HTMLInputElement) {
-              e.target.blur();
-              close();
-            }
-          }}
-        />
+            </div>
+          )}
+        </div>
       </Popover.Target>
       <Popover.Dropdown
         p={0}

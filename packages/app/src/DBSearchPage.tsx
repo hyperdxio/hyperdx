@@ -51,7 +51,6 @@ import {
   Menu,
   Modal,
   Paper,
-  Select,
   Stack,
   Text,
   Tooltip,
@@ -62,7 +61,7 @@ import {
   useDocumentVisibility,
 } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { Button, IconButton } from '@punkbit/cui';
+import { Button, Select as CUISelect } from '@punkbit/cui';
 import {
   IconBolt,
   IconCirclePlus,
@@ -1779,19 +1778,13 @@ function DBSearchPage() {
           />
           {isLive && (
             <Tooltip label="Live tail refresh interval">
-              <Select
-                size="sm"
-                w={80}
-                data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+              <CUISelect
+                style={{ width: 80 }}
+                options={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
                 value={String(refreshFrequency)}
-                onChange={value =>
+                onSelect={value =>
                   setRefreshFrequency(value ? parseInt(value, 10) : null)
                 }
-                allowDeselect={false}
-                comboboxProps={{
-                  withinPortal: true,
-                  zIndex: 1000,
-                }}
               />
             </Tooltip>
           )}
