@@ -9,7 +9,7 @@ import {
 } from 'nuqs';
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
@@ -21,6 +21,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Box,
   Button,
   Grid,
@@ -41,7 +42,6 @@ import {
 } from '@tabler/icons-react';
 
 import {
-  convertDateRangeToGranularityString,
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
   MS_NUMBER_FORMAT,
@@ -450,10 +450,8 @@ function HttpTab({
                 },
               ],
               dateRange: searchedTimeRange,
-              granularity: convertDateRangeToGranularityString(
-                searchedTimeRange,
-                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-              ),
+              granularity:
+                convertDateRangeToGranularityString(searchedTimeRange),
             } as ChartConfigWithOptDateRange,
             isSubquery: true,
           },
@@ -890,10 +888,8 @@ function DatabaseTab({
               ],
               // Date range and granularity add an `__hdx_time_bucket` column to select and group by
               dateRange: searchedTimeRange,
-              granularity: convertDateRangeToGranularityString(
-                searchedTimeRange,
-                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-              ),
+              granularity:
+                convertDateRangeToGranularityString(searchedTimeRange),
             } as CteChartConfig,
           },
           {
@@ -1008,10 +1004,8 @@ function DatabaseTab({
               ],
               // Date range and granularity add an `__hdx_time_bucket` column to select and group by
               dateRange: searchedTimeRange,
-              granularity: convertDateRangeToGranularityString(
-                searchedTimeRange,
-                DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
-              ),
+              granularity:
+                convertDateRangeToGranularityString(searchedTimeRange),
             } as CteChartConfig,
           },
           {
@@ -1444,6 +1438,7 @@ function ServicesDashboardPage() {
   } = usePresetDashboardFilters({
     presetDashboard: PresetDashboard.Services,
     sourceId: sourceId || '',
+    enabled: !IS_LOCAL_MODE,
   });
 
   const appliedConfig = useMemo(
@@ -1487,19 +1482,22 @@ function ServicesDashboardPage() {
     isLive,
   });
 
-  const onSubmit = useCallback(() => {
-    onSearch(displayedTimeInputValue);
-    handleSubmit(values => {
-      setAppliedConfigParams(values);
-    })();
-  }, [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue]);
+  const onSubmit = useCallback(
+    (submitTime: boolean = true) => {
+      if (submitTime) onSearch(displayedTimeInputValue);
+      handleSubmit(values => {
+        setAppliedConfigParams(values);
+      })();
+    },
+    [handleSubmit, setAppliedConfigParams, onSearch, displayedTimeInputValue],
+  );
 
   // Auto-submit when source changes
   // Note: do not include appliedConfig.source in the deps,
   // to avoid infinite render loops when navigating away from the page
   useEffect(() => {
     if (sourceId && sourceId != previousSourceId) {
-      onSubmit();
+      onSubmit(false);
     }
   }, [sourceId, onSubmit, previousSourceId]);
 
@@ -1508,7 +1506,7 @@ function ServicesDashboardPage() {
   // to avoid infinite render loops when navigating away from the page
   useEffect(() => {
     if (service != previousService) {
-      onSubmit();
+      onSubmit(false);
     }
   }, [service, onSubmit, previousService]);
 
@@ -1590,31 +1588,36 @@ function ServicesDashboardPage() {
             />
             {!IS_LOCAL_MODE && (
               <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-                <Button
-                  variant="default"
-                  px="xs"
+                <ActionIcon
+                  variant="secondary"
                   onClick={() => setShowFiltersModal(true)}
+                  size="lg"
                 >
-                  <IconFilterEdit strokeWidth={1} />
-                </Button>
+                  <IconFilterEdit size={18} />
+                </ActionIcon>
               </Tooltip>
             )}
             <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-              <Button
+              <ActionIcon
                 onClick={refresh}
                 loading={manualRefreshCooloff}
                 disabled={manualRefreshCooloff}
-                color="gray"
-                variant="outline"
+                variant="secondary"
                 title="Refresh dashboard"
                 aria-label="Refresh dashboard"
-                px="xs"
+                size="lg"
               >
                 <IconRefresh size={18} />
-              </Button>
+              </ActionIcon>
             </Tooltip>
-            <Button variant="outline" type="submit" px="sm">
-              <IconPlayerPlay size={16} />
+            <Button
+              variant="primary"
+              type="submit"
+              px="sm"
+              leftSection={<IconPlayerPlay size={16} />}
+              style={{ flexShrink: 0 }}
+            >
+              Run
             </Button>
           </Group>
         </Group>

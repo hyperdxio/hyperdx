@@ -21,10 +21,19 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       return { name: 'SeverityNumber', type: 'UInt8' };
     } else if (column === 'foo') {
       return { name: 'foo', type: 'String' };
+    } else if (column === 'MaterializedExample') {
+      return { name: 'MaterializedExample', type: 'String' };
     } else {
       return undefined;
     }
   });
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockImplementation(async () => {
+      return new Map([
+        ["LogAttributes['materialized.example']", 'MaterializedExample'],
+      ]);
+    });
   const databaseName = 'testName';
   const tableName = 'testTable';
   const connectionId = 'testId';
@@ -199,7 +208,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     },
     {
       lucene: 'LogAttributes.error.message:("Failed to fetch")',
-      sql: "(((`LogAttributes`['error.message'] ILIKE '%Failed to fetch%')))",
+      sql: "(((`LogAttributes`['error.message'] ILIKE '%Failed to fetch%' AND indexHint(mapContains(`LogAttributes`, 'error.message')))))",
       english: '(LogAttributes.error.message contains "Failed to fetch")',
     },
     {
@@ -288,6 +297,121 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       sql: "((((bar ILIKE '%baz%')) AND (foo ILIKE '%qux%')))",
       english: '((bar contains baz) AND foo contains qux)',
     },
+    // indexHint related cases
+    {
+      // We can probably trust CH to use the map keys index, but let's be explicit anyways
+      lucene: 'LogAttributes.error.message:"Failed to fetch"',
+      sql: "((`LogAttributes`['error.message'] = 'Failed to fetch' AND indexHint(mapContains(`LogAttributes`, 'error.message'))))",
+      english: "'LogAttributes.error.message' is Failed to fetch",
+    },
+    {
+      // Can't really use the map keys index
+      lucene: '-LogAttributes.error.message:"Failed to fetch"',
+      sql: "((`LogAttributes`['error.message'] != 'Failed to fetch'))",
+      english: "'LogAttributes.error.message' is not Failed to fetch",
+    },
+    {
+      // Explicitly hint to CH to use the map keys index
+      lucene: 'LogAttributes.error.message:Failed',
+      sql: "((`LogAttributes`['error.message'] ILIKE '%Failed%' AND indexHint(mapContains(`LogAttributes`, 'error.message'))))",
+      english: "'LogAttributes.error.message' contains Failed",
+    },
+    {
+      // Can't really use the map keys index
+      lucene: '-LogAttributes.error.message:Failed',
+      sql: "((`LogAttributes`['error.message'] NOT ILIKE '%Failed%'))",
+      english: "'LogAttributes.error.message' does not contain Failed",
+    },
+    {
+      // Explicitly hint to CH to use the map keys index
+      lucene: 'LogAttributes.error.message:*',
+      sql: "(notEmpty(`LogAttributes`['error.message']) = 1 AND indexHint(mapContains(`LogAttributes`, 'error.message')))",
+      english: "'LogAttributes.error.message' is not null",
+    },
+    {
+      // Can't really use the map keys index
+      lucene: '-LogAttributes.error.message:*',
+      sql: "(notEmpty(`LogAttributes`['error.message']) != 1)",
+      english: "'LogAttributes.error.message' is null",
+    },
+    {
+      // Explicitly hint to CH to use the map keys index for the non-materialized entry
+      lucene: 'MaterializedExample:"foo"',
+      sql: "((MaterializedExample = 'foo' AND indexHint(mapContains(`LogAttributes`, 'materialized.example'))))",
+      english: "'MaterializedExample' is foo",
+    },
+    {
+      // Can't really use the map keys index
+      lucene: '-MaterializedExample:"foo"',
+      sql: "((MaterializedExample != 'foo'))",
+      english: "'MaterializedExample' is not foo",
+    },
+    {
+      // Explicitly hint to CH to use the map keys index for the non-materialized entry
+      lucene: 'MaterializedExample:foo',
+      sql: "((MaterializedExample ILIKE '%foo%' AND indexHint(mapContains(`LogAttributes`, 'materialized.example'))))",
+      english: "'MaterializedExample' contains foo",
+    },
+    {
+      // Can't really use the map keys index
+      lucene: '-MaterializedExample:foo',
+      sql: "((MaterializedExample NOT ILIKE '%foo%'))",
+      english: "'MaterializedExample' does not contain foo",
+    },
+    {
+      // Explicitly hint to CH to use the map keys index
+      lucene: 'LogAttributes.materialized.example:foo',
+      sql: "((`LogAttributes`['materialized.example'] ILIKE '%foo%' AND indexHint(mapContains(`LogAttributes`, 'materialized.example'))))",
+      english: "'LogAttributes.materialized.example' contains foo",
+    },
+    {
+      // Explicitly hint to CH to use the map keys index
+      lucene: 'LogAttributes.example.number:>1',
+      sql: "((`LogAttributes`['example.number'] > '1' AND indexHint(mapContains(`LogAttributes`, 'example.number'))))",
+      english: "'LogAttributes.example.number' is greater than 1",
+    },
+    {
+      // Explicitly hint to CH to use the map keys index
+      lucene: 'LogAttributes.example.number:>=1',
+      sql: "((`LogAttributes`['example.number'] >= '1' AND indexHint(mapContains(`LogAttributes`, 'example.number'))))",
+      english: "'LogAttributes.example.number' is greater than or equal to 1",
+    },
+    {
+      // Explicitly hint to CH to use the map keys index
+      lucene: 'LogAttributes.example.number:<1',
+      sql: "((`LogAttributes`['example.number'] < '1' AND indexHint(mapContains(`LogAttributes`, 'example.number'))))",
+      english: "'LogAttributes.example.number' is less than 1",
+    },
+    {
+      // Explicitly hint to CH to use the map keys index
+      lucene: 'LogAttributes.example.number:<=1',
+      sql: "((`LogAttributes`['example.number'] <= '1' AND indexHint(mapContains(`LogAttributes`, 'example.number'))))",
+      english: "'LogAttributes.example.number' is less than or equal to 1",
+    },
+    {
+      // Explicitly hint to CH to use the map keys index
+      lucene: 'LogAttributes.example.number:[1 TO 5]',
+      sql: "((`LogAttributes`['example.number'] BETWEEN 1 AND 5 AND indexHint(mapContains(`LogAttributes`, 'example.number'))))",
+      english: 'LogAttributes.example.number is between 1 and 5',
+    },
+    {
+      // Can't really use the map keys index
+      lucene: '-LogAttributes.example.number:[1 TO 5]',
+      sql: "((`LogAttributes`['example.number'] NOT BETWEEN 1 AND 5))",
+      english: 'LogAttributes.example.number is not between 1 and 5',
+    },
+    {
+      // Explicitly hint to CH to use the map keys index
+      lucene: 'LogAttributes.error.message:("A B")',
+      sql: "(((`LogAttributes`['error.message'] ILIKE '%A B%' AND indexHint(mapContains(`LogAttributes`, 'error.message')))))",
+      english: '(LogAttributes.error.message contains "A B")',
+    },
+    {
+      // Can't really use the index here
+      lucene: '-LogAttributes.error.message:("A B")',
+      sql: "(NOT ((`LogAttributes`['error.message'] ILIKE '%A B%')))",
+      english: 'NOT (LogAttributes.error.message contains "A B")',
+    },
   ];
 
   it.each(testCases)(
@@ -323,4 +447,410 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       "((hasToken(lower(concatWithSeparator(';',Body,OtherColumn)), lower('foo'))) AND (hasToken(lower(concatWithSeparator(';',Body,OtherColumn)), lower('bar'))))";
     expect(actualSql).toBe(expectedSql);
   });
+});
+
+describe('CustomSchemaSQLSerializerV2 - bloom_filter tokens() indices', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+
+  const databaseName = 'default';
+  const tableName = 'otel_logs';
+  const connectionId = 'test';
+
+  beforeEach(() => {
+    // Mock getColumn to return Body as String column
+    metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+      if (column === 'Body') {
+        return { name: 'Body', type: 'String' };
+      } else if (column === 'ServiceName') {
+        return { name: 'ServiceName', type: 'String' };
+      }
+      return undefined;
+    });
+  });
+
+  it('should use hasAll when bloom_filter tokens() index exists', async () => {
+    // Mock getSkipIndices to return bloom_filter with tokens(lower(Body))
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower(Body))',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    expect(sql).toBe("((hasAll(tokens(lower(Body)), tokens(lower('foo')))))");
+  });
+
+  it('should use hasAll for multi-token terms with single call', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower(Body))',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('"foo bar"', serializer);
+    const sql = await builder.build();
+
+    expect(sql).toContain(
+      "hasAll(tokens(lower(Body)), tokens(lower('foo bar')))",
+    );
+    expect(sql).toContain("(lower(Body) LIKE lower('%foo bar%'))");
+  });
+
+  it('should fallback to hasToken when no bloom_filter tokens() index found', async () => {
+    // Mock getSkipIndices to return empty
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    // Should use hasToken (existing behavior)
+    expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+  });
+
+  it('should handle bloom_filter without tokens() expression', async () => {
+    // Mock index with type=bloom_filter but expression='TraceId' (not tokens)
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_trace_id',
+        type: 'bloom_filter',
+        expression: 'TraceId',
+        granularity: '1',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    // Should fallback to hasToken (index doesn't use tokens())
+    expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+  });
+
+  it('should ignore tokenbf_v1 indices and use hasToken', async () => {
+    // Mock getSkipIndices to return tokenbf_v1 (should be ignored)
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_lower_body',
+        type: 'tokenbf_v1',
+        expression: 'lower(Body)',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    // Should fallback to hasToken (tokenbf_v1 is ignored by findBloomFilterTokensIndex)
+    expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+  });
+
+  it('should handle negated searches with hasAll', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower(Body))',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('-foo', serializer);
+    const sql = await builder.build();
+
+    // Should use NOT hasAll
+    expect(sql).toBe(
+      "((NOT hasAll(tokens(lower(Body)), tokens(lower('foo')))))",
+    );
+  });
+
+  it('should not use bloom_filter index for explicit field searches', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower(Body))',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    // Query: 'ServiceName:foo'
+    const builder = new SearchQueryBuilder('ServiceName:foo', serializer);
+    const sql = await builder.build();
+
+    // Should use ILIKE, not hasAll or hasToken
+    expect(sql).toContain('ILIKE');
+    expect(sql).not.toContain('hasAll');
+    expect(sql).not.toContain('hasToken');
+  });
+
+  it('should match index expression with different whitespace', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower( Body ))', // Extra whitespace
+        granularity: 8,
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    // Should match and use hasAll (columnsMatch normalizes whitespace)
+    expect(sql).toBe("((hasAll(tokens(lower( Body )), tokens(lower('foo')))))");
+  });
+
+  it('should use hasAll for multiple separate terms', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(lower(Body))',
+        granularity: 8,
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo bar baz', serializer);
+    const sql = await builder.build();
+
+    // Should generate separate hasAll for each term (not single statement)
+    expect(sql).toContain("hasAll(tokens(lower(Body)), tokens(lower('foo')))");
+    expect(sql).toContain("hasAll(tokens(lower(Body)), tokens(lower('bar')))");
+    expect(sql).toContain("hasAll(tokens(lower(Body)), tokens(lower('baz')))");
+  });
+
+  it('should not apply lower() to the search term if the index expression includes lower with extra whitespace', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens ( lower ( Body ) ) ',
+        granularity: 8,
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('FooBar', serializer);
+    const sql = await builder.build();
+
+    // Should apply lower() to search term
+    expect(sql).toBe(
+      "((hasAll(tokens ( lower ( Body ) ) , tokens(lower('FooBar')))))",
+    );
+
+    const builder2 = new SearchQueryBuilder('"Foo Bar"', serializer);
+    const sql2 = await builder2.build();
+
+    expect(sql2).toBe(
+      "((hasAll(tokens ( lower ( Body ) ) , tokens(lower('Foo Bar'))) AND (lower(Body) LIKE lower('%Foo Bar%'))))",
+    );
+  });
+
+  it('should not apply lower() to the search term if the index expression does not have lower()', async () => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_tokens',
+        type: 'bloom_filter',
+        expression: 'tokens(Body)', // No lower()
+        granularity: 8,
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('FooBar', serializer);
+    const sql = await builder.build();
+
+    // Should not apply lower() to search term
+    expect(sql).toBe("((hasAll(tokens(Body), tokens('FooBar'))))");
+
+    const builder2 = new SearchQueryBuilder('"Foo Bar"', serializer);
+    const sql2 = await builder2.build();
+
+    expect(sql2).toBe(
+      "((hasAll(tokens(Body), tokens('Foo Bar')) AND (lower(Body) LIKE lower('%Foo Bar%'))))",
+    );
+  });
+});
+
+describe('CustomSchemaSQLSerializerV2 - indexCoversColumn', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+
+  const databaseName = 'default';
+  const tableName = 'otel_logs';
+  const connectionId = 'test';
+
+  beforeEach(() => {
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+  });
+
+  it.each([
+    {
+      indexExpression: 'Body',
+      searchExpression: 'Body',
+      expected: true,
+    },
+    {
+      indexExpression: 'tokens(Body)',
+      searchExpression: 'Body',
+      expected: true,
+    },
+    // Test cases for quoted identifiers
+    {
+      indexExpression: 'tokens(`Body`)',
+      searchExpression: 'Body',
+      expected: true,
+    },
+    {
+      indexExpression: 'tokens(Body)',
+      searchExpression: '`Body`',
+      expected: true,
+    },
+    // Test case for case sensitivity
+    {
+      indexExpression: 'tokens(body)',
+      searchExpression: 'Body',
+      expected: false,
+    },
+    // Test case for whitespace variations
+    {
+      indexExpression: 'tokens( lower( Body ) )',
+      searchExpression: 'Body',
+      expected: true,
+    },
+    // Test case for column with underscore
+    {
+      indexExpression: 'tokens(lower(fancy_Body))',
+      searchExpression: 'fancy_Body',
+      expected: true,
+    },
+    // Test cases for concatWithSeparator
+    {
+      indexExpression: "tokens(concatWithSeparator(';',Body,Message))",
+      searchExpression: 'Body',
+      expected: true,
+    },
+    // Test case where column is substring or superstring of the indexed column
+    {
+      indexExpression: "tokens(concatWithSeparator(';',Body2,Message))",
+      searchExpression: 'Body',
+      expected: false,
+    },
+    {
+      indexExpression: "tokens(concatWithSeparator(';',Body,Message))",
+      searchExpression: 'Body2',
+      expected: false,
+    },
+  ])(
+    'should return $expected for indexExpression: "$indexExpression" and searchExpression: "$searchExpression"',
+    async ({ indexExpression, searchExpression, expected }) => {
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      expect(
+        serializer.indexCoversColumn(indexExpression, searchExpression),
+      ).toBe(expected);
+    },
+  );
 });

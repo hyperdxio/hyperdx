@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import { parseAsJson, parseAsStringEnum, useQueryState } from 'nuqs';
-import { useForm, useWatch } from 'react-hook-form';
+import { parseAsJson, useQueryState } from 'nuqs';
+import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
@@ -24,7 +24,7 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
-import { DEFAULT_CHART_CONFIG, Granularity } from '@/ChartUtils';
+import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { InputControlled } from '@/components/InputControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -77,11 +77,9 @@ function AIAssistant({
       },
       {
         onSuccess(data) {
-          setConfig(data);
+          setConfig({ ...data, where: '' });
           onTimeRangeSelect(
-            // @ts-ignore TODO: fix these types
             new Date(data.dateRange[0]),
-            // @ts-ignore TODO: fix these types
             new Date(data.dateRange[1]),
           );
 
@@ -189,7 +187,7 @@ function AIAssistant({
               {chartAssistant.isPending ? (
                 <Loader size="xs" type="dots" />
               ) : (
-                <Button type="submit" size="xs" variant="light">
+                <Button type="submit" size="xs" variant="primary">
                   Generate
                 </Button>
               )}

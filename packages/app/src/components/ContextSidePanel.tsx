@@ -13,6 +13,7 @@ import { useDebouncedValue } from '@mantine/hooks';
 
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
+import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import SearchInputV2 from '@/SearchInputV2';
 import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
@@ -44,7 +45,7 @@ interface ContextSubpanelProps {
 }
 
 // Custom hook to manage nested panel state
-function useNestedPanelState(isNested: boolean) {
+export function useNestedPanelState(isNested?: boolean) {
   // Query state (URL-based) for root level
   const queryState = {
     contextRowId: useQueryState('contextRowId', parseAsString),
@@ -106,6 +107,8 @@ export default function ContextSubpanel({
     id: contextRowSource || '',
   });
 
+  const [contextAliasWith, setContextAliasWith] = useState<WithClause[]>([]);
+
   const handleContextSidePanelClose = useCallback(() => {
     setContextRowId(null);
     setContextRowSource(null);
@@ -114,8 +117,9 @@ export default function ContextSubpanel({
   const { setChildModalOpen } = useContext(RowSidePanelContext);
 
   const handleRowExpandClick = useCallback(
-    (rowWhere: string) => {
-      setContextRowId(rowWhere);
+    (rowWhere: RowWhereResult) => {
+      setContextRowId(rowWhere.where);
+      setContextAliasWith(rowWhere.aliasWith);
       setContextRowSource(source.id);
     },
     [source.id, setContextRowId, setContextRowSource],
@@ -334,6 +338,7 @@ export default function ContextSubpanel({
         <DBRowSidePanel
           source={contextRowSidePanelSource}
           rowId={contextRowId}
+          aliasWith={contextAliasWith}
           onClose={handleContextSidePanelClose}
           isNestedPanel={true}
           breadcrumbPath={[

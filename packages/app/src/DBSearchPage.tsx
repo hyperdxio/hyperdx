@@ -79,7 +79,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
@@ -93,6 +93,7 @@ import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
+import { aliasMapToWithClauses } from '@/hooks/useRowWhere';
 import { withAppNav } from '@/layout';
 import {
   useCreateSavedSearch,
@@ -1380,18 +1381,7 @@ function DBSearchPage() {
 
   const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
-  const aliasWith = useMemo(
-    () =>
-      Object.entries(aliasMap ?? {}).map(([key, value]) => ({
-        name: key,
-        sql: {
-          sql: value,
-          params: {},
-        },
-        isSubquery: false,
-      })),
-    [aliasMap],
-  );
+  const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
 
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -1668,6 +1658,7 @@ function DBSearchPage() {
               ) : (
                 <Button
                   data-testid="update-search-button"
+                  type="secondary"
                   // TODO: CLICK-UI size="xs"
                   onClick={() => {
                     setSaveSearchModalState('update');
@@ -1680,6 +1671,7 @@ function DBSearchPage() {
               {!IS_LOCAL_MODE && (
                 <Button
                   data-testid="alerts-button"
+                  type="secondary"
                   // TODO: CLICK-UI size="xs"
                   onClick={openAlertModal}
                   style={{ flexShrink: 0 }}
@@ -1696,6 +1688,7 @@ function DBSearchPage() {
                   >
                     <Button
                       data-testid="tags-button"
+                      type="secondary"
                       // TODO: CLICK-UI size="xs"
                       style={{ flexShrink: 0 }}
                       iconLeft={(<IconTags size={14} />) as any}

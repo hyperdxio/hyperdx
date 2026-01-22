@@ -1,10 +1,9 @@
 import * as React from 'react';
-import Link from 'next/link';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
-  Anchor,
   Box,
   Card,
   Drawer,
@@ -16,7 +15,6 @@ import {
 } from '@mantine/core';
 
 import {
-  convertDateRangeToGranularityString,
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
@@ -25,6 +23,7 @@ import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
+import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -138,7 +137,7 @@ function PodLogs({
   logSource: TSource;
   where: string;
   rowId: string | null;
-  onRowClick: (rowId: string) => void;
+  onRowClick: (rowWhere: RowWhereResult) => void;
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
@@ -233,8 +232,10 @@ export default function PodDetailsSidePanel({
   );
 
   const [rowId, setRowId] = React.useState<string | null>(null);
-  const handleRowClick = React.useCallback((rowWhere: string) => {
-    setRowId(rowWhere);
+  const [aliasWith, setAliasWith] = React.useState<WithClause[]>([]);
+  const handleRowClick = React.useCallback((rowWhere: RowWhereResult) => {
+    setRowId(rowWhere.where);
+    setAliasWith(rowWhere.aliasWith);
   }, []);
   const handleCloseRowSidePanel = React.useCallback(() => {
     setRowId(null);
@@ -284,6 +285,7 @@ export default function PodDetailsSidePanel({
   const { data: logServiceNames } = useGetKeyValues(
     {
       chartConfig: {
+        source: logSource.id,
         from: logSource.from,
         where: `${logSource?.resourceAttributesExpression}.k8s.pod.name:"${podName}"`,
         whereLanguage: 'lucene',
@@ -374,10 +376,8 @@ export default function PodDetailsSidePanel({
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
-                          granularity: convertDateRangeToGranularityString(
-                            dateRange,
-                            60,
-                          ),
+                          granularity:
+                            convertDateRangeToGranularityString(dateRange),
                           seriesReturnType: 'column',
                           series: [
                             {
@@ -408,10 +408,8 @@ export default function PodDetailsSidePanel({
                       config={convertV1ChartConfigToV2(
                         {
                           dateRange,
-                          granularity: convertDateRangeToGranularityString(
-                            dateRange,
-                            60,
-                          ),
+                          granularity:
+                            convertDateRangeToGranularityString(dateRange),
                           seriesReturnType: 'column',
                           series: [
                             {
@@ -471,6 +469,7 @@ export default function PodDetailsSidePanel({
             <DBRowSidePanel
               source={logSource}
               rowId={rowId}
+              aliasWith={aliasWith}
               onClose={handleCloseRowSidePanel}
               isNestedPanel={true}
             />

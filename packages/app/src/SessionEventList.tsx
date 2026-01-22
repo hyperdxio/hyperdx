@@ -2,7 +2,7 @@ import * as React from 'react';
 import cx from 'classnames';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { ScrollArea, Skeleton, Stack } from '@mantine/core';
-import { useThrottledCallback, useThrottledValue } from '@mantine/hooks';
+import { useThrottledValue } from '@mantine/hooks';
 import {
   IconArrowsLeftRight,
   IconMapPin,
@@ -13,9 +13,10 @@ import {
 } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-import useRowWhere from '@/hooks/useRowWhere';
+import useRowWhere, { RowWhereResult } from '@/hooks/useRowWhere';
 
 import { useQueriedChartConfig } from './hooks/useChartConfig';
+import { SessionRow, sessionRowSchema } from './utils/sessions';
 import { useFormatTime } from './useFormatTime';
 import { formatmmss, getShortUrl } from './utils';
 
@@ -23,11 +24,10 @@ import styles from '../styles/SessionSubpanelV2.module.scss';
 
 type SessionEvent = {
   id: string;
-  row: Record<string, string>; // original row object
-  sortKey: string;
+  row: SessionRow; // original row object
   isError: boolean;
   isSuccess: boolean;
-  eventSource: 'navigation' | 'chat' | 'network' | 'custom';
+  eventSource: 'navigation' | 'chat' | 'network' | 'custom' | 'log';
   title: string;
   description: string;
   timestamp: Date;
@@ -108,35 +108,39 @@ export const SessionEventList = ({
   focus: { ts: number; setBy: string } | undefined;
   minTs: number;
   showRelativeTime: boolean;
-  onClick: (rowId: string) => void;
+  onClick: (rowWhere: RowWhereResult) => void;
   onTimeClick: (ts: number) => void;
   eventsFollowPlayerPosition: boolean;
 }) => {
-  const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
-    useQueriedChartConfig(queriedConfig, {
-      placeholderData: (prev: any) => prev,
-      queryKey: ['SessionEventList', queriedConfig],
-    });
+  const { data, isLoading } = useQueriedChartConfig(queriedConfig, {
+    placeholderData: (prev: any) => prev,
+    queryKey: ['SessionEventList', queriedConfig],
+  });
   const formatTime = useFormatTime();
 
-  const events = React.useMemo(() => data?.data ?? [], [data?.data]);
+  const events: SessionRow[] = React.useMemo(
+    () =>
+      data?.data
+        ?.map(row => sessionRowSchema.safeParse(row))
+        .filter(parsed => parsed.success)
+        .map(parsed => parsed.data) ?? [],
+    [data?.data],
+  );
 
   const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
 
   const rows = React.useMemo(() => {
     return (
-      events.map((event, i) => {
+      events.map(event => {
         const { timestamp, durationInMs } = event;
 
         // TODO: we should just use timestamp and durationInMs instead of startOffset and endOffset
         const startOffset = new Date(timestamp).getTime();
         const endOffset = new Date(startOffset).getTime() + durationInMs;
 
-        const isHighlighted = false;
-
-        const url = event['http.url'];
-        const statusCode = event['http.status_code'];
-        const method = event['http.method'];
+        const url = event['http.url'] ?? '';
+        const statusCode = Number(event['http.status_code'] ?? '');
+        const method = event['http.method'] ?? '';
         const shortUrl = getShortUrl(url);
 
         const isNetworkRequest =
@@ -144,15 +148,12 @@ export const SessionEventList = ({
 
         const errorMessage = event['error.message'];
 
-        const body = event['body'];
+        const body = event['body'] ?? '';
         const component = event['component'];
         const spanName = event['span_name'];
-        const locationHref = event['location.href'];
+        const locationHref = event['location.href'] ?? '';
         const otelLibraryName = event['otel.library.name'];
         const shortLocationHref = getShortUrl(locationHref);
-        const isException =
-          event['exception.group_id'] != '' &&
-          event['exception.group_id'] != null;
 
         const isCustomEvent = otelLibraryName === 'custom-action';
         const isNavigation =
@@ -167,7 +168,6 @@ export const SessionEventList = ({
 
         return {
           id: event.id,
-          sortKey: event.sort_key,
           row: event,
           isError,
           isSuccess,
@@ -182,29 +182,27 @@ export const SessionEventList = ({
                   : 'log',
           title: isNavigation
             ? `Navigated`
-            : isException
-              ? 'Exception'
-              : spanName === 'console.error'
-                ? 'console.error'
-                : spanName === 'console.log'
-                  ? 'console.log'
-                  : spanName === 'console.warn'
-                    ? 'console.warn'
-                    : url.length > 0
-                      ? `${statusCode} ${method}`
-                      : spanName === 'intercom.onShow'
-                        ? 'Intercom Chat Opened'
-                        : isCustomEvent
+            : spanName === 'console.error'
+              ? 'console.error'
+              : spanName === 'console.log'
+                ? 'console.log'
+                : spanName === 'console.warn'
+                  ? 'console.warn'
+                  : url.length > 0
+                    ? `${statusCode} ${method}`
+                    : spanName === 'intercom.onShow'
+                      ? 'Intercom Chat Opened'
+                      : isCustomEvent
+                        ? spanName
+                        : component === 'console'
                           ? spanName
-                          : component === 'console'
-                            ? spanName
-                            : 'console.error',
+                          : 'console.error',
           description: isNavigation
             ? shortLocationHref
             : errorMessage != null && errorMessage.length > 0
               ? errorMessage
               : component === 'console'
-                ? body
+                ? (body ?? '')
                 : url.length > 0
                   ? shortUrl
                   : '',
@@ -215,7 +213,7 @@ export const SessionEventList = ({
                 format: 'time',
               }),
           duration: endOffset - startOffset,
-        } as SessionEvent;
+        } satisfies SessionEvent;
       }) ?? []
     );
   }, [events, showRelativeTime, minTs, formatTime]);

@@ -13,10 +13,14 @@ import {
   DashboardSchema,
   DashboardTemplateSchema,
   DashboardWithoutId,
+  QuerySettings,
   SQLInterval,
   TileTemplateSchema,
   TSourceUnion,
 } from '@/types';
+
+/** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
+export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
 
 export const isBrowser: boolean =
   typeof window !== 'undefined' && typeof window.document !== 'undefined';
@@ -218,6 +222,10 @@ export function replaceJsonExpressions(sql: string) {
   return { sqlWithReplacements, replacements };
 }
 
+/**
+ * To best support Pre-aggregation in Materialized Views, any new
+ * granularities should be multiples of all smaller granularities.
+ * */
 export enum Granularity {
   FifteenSecond = '15 second',
   ThirtySecond = '30 second',
@@ -251,7 +259,7 @@ export function hashCode(str: string) {
 
 export function convertDateRangeToGranularityString(
   dateRange: [Date, Date],
-  maxNumBuckets: number,
+  maxNumBuckets: number = DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
 ): Granularity {
   const start = dateRange[0].getTime();
   const end = dateRange[1].getTime();
@@ -266,9 +274,9 @@ export function convertDateRangeToGranularityString(
     return Granularity.OneMinute;
   } else if (granularitySizeSeconds <= 5 * 60) {
     return Granularity.FiveMinute;
-  } else if (granularitySizeSeconds <= 10 * 60) {
-    return Granularity.TenMinute;
   } else if (granularitySizeSeconds <= 15 * 60) {
+    // 10 minute granularity is skipped so that every auto-inferred granularity is a multiple
+    // of all smaller granularities, which makes it more likely that a materialized view can be used.
     return Granularity.FifteenMinute;
   } else if (granularitySizeSeconds <= 30 * 60) {
     return Granularity.ThirtyMinute;
@@ -685,4 +693,57 @@ export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
     range1[0].getTime() === range2[0].getTime() &&
     range1[1].getTime() === range2[1].getTime()
   );
+}
+
+/*
+  This function extracts the SETTINGS clause from the end(!) of the sql string.
+*/
+export function extractSettingsClauseFromEnd(
+  sqlInput: string,
+): [string, string | undefined] {
+  const sql = sqlInput.trim().endsWith(';')
+    ? sqlInput.trim().slice(0, -1)
+    : sqlInput.trim();
+
+  const settingsIndex = sql.toUpperCase().indexOf('SETTINGS');
+
+  if (settingsIndex === -1) {
+    return [sql, undefined] as const;
+  }
+
+  const settingsClause = sql.substring(settingsIndex).trim();
+  const remaining = sql.substring(0, settingsIndex).trim();
+
+  return [remaining, settingsClause] as const;
+}
+
+export function parseToNumber(input: string): number | undefined {
+  const trimmed = input.trim();
+
+  if (trimmed === '') {
+    return undefined;
+  }
+
+  const num = Number(trimmed);
+
+  return Number.isFinite(num) ? num : undefined;
+}
+
+export function joinQuerySettings(
+  querySettings: QuerySettings | undefined,
+): string | undefined {
+  if (!querySettings?.length) {
+    return undefined;
+  }
+
+  const emptyFiltered = querySettings.filter(
+    ({ setting, value }) => setting.length && value.length,
+  );
+
+  const formattedPairs = emptyFiltered.map(
+    ({ setting, value }) =>
+      `${setting} = ${parseToNumber(value) ?? `'${value}'`}`,
+  );
+
+  return formattedPairs.join(', ');
 }

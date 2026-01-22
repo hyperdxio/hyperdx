@@ -97,9 +97,8 @@ export const Tags = React.memo(
         <Popover.Target>
           {children || (
             <ActionIcon
-              variant="filled"
+              variant="secondary"
               size="sm"
-              color="gray"
               style={{ cursor: 'pointer' }}
             >
               <IconTags size={14} />
@@ -156,8 +155,7 @@ export const Tags = React.memo(
                     <Checkbox label={tag.toUpperCase()} value={tag} size="xs" />
                     {tags.length >= 2 && (
                       <Button
-                        variant="filled"
-                        color="gray"
+                        variant="secondary"
                         size="compact-xs"
                         fw="normal"
                         onClick={() => {
@@ -176,7 +174,7 @@ export const Tags = React.memo(
             <div className="ms-2 fs-8 ">{values.length || 'None'} selected</div>
             {values.length >= 1 && (
               <Button
-                variant="default"
+                variant="secondary"
                 size="compact-xs"
                 fw="normal"
                 onClick={handleClearAll}

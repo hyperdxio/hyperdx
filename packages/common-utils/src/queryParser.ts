@@ -2,7 +2,7 @@ import lucene from '@hyperdx/lucene';
 import SqlString from 'sqlstring';
 
 import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
-import { Metadata } from '@/core/metadata';
+import { Metadata, SkipIndexMetadata } from '@/core/metadata';
 import { splitAndTrimWithBracket } from '@/core/utils';
 
 function encodeSpecialTokens(query: string): string {
@@ -25,6 +25,21 @@ function decodeSpecialTokens(query: string): string {
 
 export function parse(query: string): lucene.AST {
   return lucene.parse(encodeSpecialTokens(query));
+}
+
+function buildMapContains(mapField: string) {
+  const splitMapKey = (
+    field: string,
+  ): { map: string; key: string } | undefined => {
+    const bracketIndex = field.indexOf("['");
+    if (bracketIndex === -1) return undefined;
+    const map = field.slice(0, bracketIndex);
+    const key = field.slice(bracketIndex + 2, -2);
+    return { map, key };
+  };
+  const val = splitMapKey(mapField);
+  if (!val) return undefined;
+  return SqlString.format('mapContains(??, ?)', [val.map, val.key]);
 }
 
 const IMPLICIT_FIELD = '<implicit>';
@@ -72,6 +87,7 @@ const CLICK_HOUSE_JSON_NUMBER_TYPES = [
 interface SerializerContext {
   /** The current implicit column expression, indicating which SQL expression to use when comparing a term to the '<implicit>' field */
   implicitColumnExpression?: string;
+  isNegatedAndParenthesized?: boolean;
 }
 
 interface Serializer {
@@ -228,7 +244,7 @@ class EnglishSerializer implements Serializer {
 }
 
 export abstract class SQLSerializer implements Serializer {
-  private NOT_FOUND_QUERY = '(1 = 0)';
+  protected NOT_FOUND_QUERY = '(1 = 0)';
 
   abstract getColumnForField(
     field: string,
@@ -238,6 +254,7 @@ export abstract class SQLSerializer implements Serializer {
     columnJSON?: { string: string; number: string };
     propertyType?: JSDataType;
     found: boolean;
+    mapKeyIndexExpression?: string;
   }>;
 
   operator(op: lucene.Operator) {
@@ -268,32 +285,44 @@ export abstract class SQLSerializer implements Serializer {
     isNegatedField: boolean,
     context: SerializerContext,
   ) {
-    const { column, columnJSON, found, propertyType } =
+    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
       await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
+    const expressionPostfix =
+      mapKeyIndexExpression && !isNegatedField
+        ? ` AND ${mapKeyIndexExpression}`
+        : '';
     if (propertyType === JSDataType.Bool) {
       // numeric and boolean fields must be equality matched
       const normTerm = `${term}`.trim().toLowerCase();
-      return SqlString.format(`(?? ${isNegatedField ? '!' : ''}= ?)`, [
-        column,
-        normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
-      ]);
+      return SqlString.format(
+        `(?? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
+        [
+          column,
+          normTerm === 'true'
+            ? 1
+            : normTerm === 'false'
+              ? 0
+              : parseInt(normTerm),
+        ],
+      );
     } else if (propertyType === JSDataType.Number) {
       return SqlString.format(
-        `(${column} ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`,
+        `(${column} ${isNegatedField ? '!' : ''}= CAST(?, 'Float64')${expressionPostfix})`,
         [term],
       );
     } else if (propertyType === JSDataType.JSON) {
       return SqlString.format(
-        `(${columnJSON?.string} ${isNegatedField ? '!' : ''}= ?)`,
+        `(${columnJSON?.string} ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
         [term],
       );
     }
-    return SqlString.format(`(${column} ${isNegatedField ? '!' : ''}= ?)`, [
-      term,
-    ]);
+    return SqlString.format(
+      `(${column} ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
+      [term],
+    );
   }
 
   async isNotNull(
@@ -301,63 +330,91 @@ export abstract class SQLSerializer implements Serializer {
     isNegatedField: boolean,
     context: SerializerContext,
   ) {
-    const { column, columnJSON, found, propertyType } =
+    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
       await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
+    const expressionPostfix =
+      mapKeyIndexExpression && !isNegatedField
+        ? ` AND ${mapKeyIndexExpression}`
+        : '';
     if (propertyType === JSDataType.JSON) {
-      return `notEmpty(${columnJSON?.string}) ${isNegatedField ? '!' : ''}= 1`;
+      return `notEmpty(${columnJSON?.string}) ${isNegatedField ? '!' : ''}= 1${expressionPostfix}`;
     }
-    return `notEmpty(${column}) ${isNegatedField ? '!' : ''}= 1`;
+    return `notEmpty(${column}) ${isNegatedField ? '!' : ''}= 1${expressionPostfix}`;
   }
 
   async gte(field: string, term: string, context: SerializerContext) {
-    const { column, columnJSON, found, propertyType } =
+    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
       await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
+    const expressionPostfix = mapKeyIndexExpression
+      ? ` AND ${mapKeyIndexExpression}`
+      : '';
     if (propertyType === JSDataType.JSON) {
-      return SqlString.format(`(${columnJSON?.number} >= ?)`, [term]);
+      return SqlString.format(
+        `(${columnJSON?.number} >= ?${expressionPostfix})`,
+        [term],
+      );
     }
-    return SqlString.format(`(${column} >= ?)`, [term]);
+    return SqlString.format(`(${column} >= ?${expressionPostfix})`, [term]);
   }
 
   async lte(field: string, term: string, context: SerializerContext) {
-    const { column, columnJSON, found, propertyType } =
+    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
       await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
+    const expressionPostfix = mapKeyIndexExpression
+      ? ` AND ${mapKeyIndexExpression}`
+      : '';
     if (propertyType === JSDataType.JSON) {
-      return SqlString.format(`(${columnJSON?.number} <= ?)`, [term]);
+      return SqlString.format(
+        `(${columnJSON?.number} <= ?${expressionPostfix})`,
+        [term],
+      );
     }
-    return SqlString.format(`(${column} <= ?)`, [term]);
+    return SqlString.format(`(${column} <= ?${expressionPostfix})`, [term]);
   }
 
   async lt(field: string, term: string, context: SerializerContext) {
-    const { column, columnJSON, found, propertyType } =
+    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
       await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
+    const expressionPostfix = mapKeyIndexExpression
+      ? ` AND ${mapKeyIndexExpression}`
+      : '';
     if (propertyType === JSDataType.JSON) {
-      return SqlString.format(`(${columnJSON?.number} < ?)`, [term]);
+      return SqlString.format(
+        `(${columnJSON?.number} < ?${expressionPostfix})`,
+        [term],
+      );
     }
-    return SqlString.format(`(${column} < ?)`, [term]);
+    return SqlString.format(`(${column} < ?${expressionPostfix})`, [term]);
   }
 
   async gt(field: string, term: string, context: SerializerContext) {
-    const { column, columnJSON, found, propertyType } =
+    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
       await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
+    const expressionPostfix = mapKeyIndexExpression
+      ? ` AND ${mapKeyIndexExpression}`
+      : '';
     if (propertyType === JSDataType.JSON) {
-      return SqlString.format(`(${columnJSON?.number} > ?)`, [term]);
+      return SqlString.format(
+        `(${columnJSON?.number} > ?${expressionPostfix})`,
+        [term],
+      );
     }
-    return SqlString.format(`(${column} > ?)`, [term]);
+    return SqlString.format(`(${column} > ?${expressionPostfix})`, [term]);
   }
 
   // TODO: Not sure if SQL really needs this or if it'll coerce itself
@@ -371,104 +428,22 @@ export abstract class SQLSerializer implements Serializer {
 
   // Ref: https://clickhouse.com/codebrowser/ClickHouse/src/Functions/HasTokenImpl.h.html#_ZN2DB12HasTokenImpl16isTokenSeparatorEDu
   // Split by anything that's ascii 0-128, that's not a letter or a number
-  private tokenizeTerm(term: string): string[] {
+  protected tokenizeTerm(term: string): string[] {
     return term.split(/[ -/:-@[-`{-~\t\n\r]+/).filter(t => t.length > 0);
   }
 
-  private termHasSeperators(term: string): boolean {
+  protected termHasSeparators(term: string): boolean {
     return term.match(/[ -/:-@[-`{-~\t\n\r]+/) != null;
   }
 
-  async fieldSearch(
+  abstract fieldSearch(
     field: string,
     term: string,
     isNegatedField: boolean,
     prefixWildcard: boolean,
     suffixWildcard: boolean,
     context: SerializerContext,
-  ) {
-    const isImplicitField = field === IMPLICIT_FIELD;
-    const { column, columnJSON, found, propertyType } =
-      await this.getColumnForField(field, context);
-    if (!found) {
-      return this.NOT_FOUND_QUERY;
-    }
-    // If it's a string field, we will always try to match with ilike
-
-    if (propertyType === JSDataType.Bool) {
-      // numeric and boolean fields must be equality matched
-      const normTerm = `${term}`.trim().toLowerCase();
-      return SqlString.format(`(?? ${isNegatedField ? '!' : ''}= ?)`, [
-        column,
-        normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : parseInt(normTerm),
-      ]);
-    } else if (propertyType === JSDataType.Number) {
-      return SqlString.format(
-        `(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64'))`,
-        [column, term],
-      );
-    } else if (propertyType === JSDataType.JSON) {
-      return SqlString.format(
-        `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}ILIKE ?)`,
-        [`%${term}%`],
-      );
-    }
-
-    // // If the query is empty, or is a empty quoted string ex: ""
-    // // we should match all
-    if (term.length === 0) {
-      return '(1=1)';
-    }
-
-    if (isImplicitField) {
-      // For implicit fields that come directly from the Source, we assume there is a bloom filter that can be used to
-      // optimize searches with hasToken. Overridden implicit columns (eg. "foo" in "foo:("bar baz")") are assumed
-      // to not have bloom filters.
-      const shouldUseTokenBf = !context.implicitColumnExpression;
-
-      // For the _source column, we'll try to do whole word searches by default
-      // to utilize the token bloom filter unless a prefix/suffix wildcard is specified
-      if (prefixWildcard || suffixWildcard) {
-        return SqlString.format(
-          `(lower(?) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
-          [
-            SqlString.raw(column ?? ''),
-            `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
-          ],
-        );
-      } else if (shouldUseTokenBf) {
-        // TODO: Check case sensitivity of the index before lowering by default
-        // We can't search multiple tokens with `hasToken`, so we need to split up the term into tokens
-        const hasSeperators = this.termHasSeperators(term);
-        if (hasSeperators) {
-          const tokens = this.tokenizeTerm(term);
-          return `(${isNegatedField ? 'NOT (' : ''}${[
-            ...tokens.map(token =>
-              SqlString.format(`hasToken(lower(?), lower(?))`, [
-                SqlString.raw(column ?? ''),
-                token,
-              ]),
-            ),
-            // If there are symbols in the term, we'll try to match the whole term as well (ex. Scott!)
-            SqlString.format(`(lower(?) LIKE lower(?))`, [
-              SqlString.raw(column ?? ''),
-              `%${term}%`,
-            ]),
-          ].join(' AND ')}${isNegatedField ? ')' : ''})`;
-        } else {
-          return SqlString.format(
-            `(${isNegatedField ? 'NOT ' : ''}hasToken(lower(?), lower(?)))`,
-            [SqlString.raw(column ?? ''), term],
-          );
-        }
-      }
-    }
-
-    return SqlString.format(`(${column} ${isNegatedField ? 'NOT ' : ''}? ?)`, [
-      SqlString.raw('ILIKE'),
-      `%${term}%`,
-    ]);
-  }
+  ): Promise<string>;
 
   async range(
     field: string,
@@ -477,16 +452,32 @@ export abstract class SQLSerializer implements Serializer {
     isNegatedField: boolean,
     context: SerializerContext,
   ) {
-    const { column, found } = await this.getColumnForField(field, context);
+    const { column, found, mapKeyIndexExpression } =
+      await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
+    const expressionPostfix =
+      mapKeyIndexExpression && !isNegatedField
+        ? ` AND ${mapKeyIndexExpression}`
+        : '';
     return SqlString.format(
-      `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?)`,
+      `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?${expressionPostfix})`,
       [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
     );
   }
 }
+
+type CustomSchemaSQLColumnExpression = {
+  found: boolean;
+  columnType: string;
+  columnExpression: string;
+  columnExpressionJSON?: {
+    string: string;
+    number: string;
+  };
+  mapKeyIndexExpression?: string;
+};
 
 export type CustomSchemaConfig = {
   databaseName: string;
@@ -501,6 +492,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private databaseName: string;
   private implicitColumnExpression?: string;
   private connectionId: string;
+  private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
 
   constructor({
     metadata,
@@ -515,6 +507,145 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     this.tableName = tableName;
     this.implicitColumnExpression = implicitColumnExpression;
     this.connectionId = connectionId;
+
+    // Pre-fetch skip indices for potential bloom filter optimization
+    this.skipIndicesPromise = this.metadata
+      .getSkipIndices({
+        databaseName,
+        tableName,
+        connectionId,
+      })
+      .catch(error => {
+        console.error('Error fetching skip indices:', error);
+        return [];
+      });
+  }
+
+  /**
+   * Override fieldSearch to support bloom_filter tokens() indices optimization.
+   * Falls back to base class hasToken behavior when no suitable bloom_filter index is found.
+   */
+  async fieldSearch(
+    field: string,
+    term: string,
+    isNegatedField: boolean,
+    prefixWildcard: boolean,
+    suffixWildcard: boolean,
+    context: SerializerContext,
+  ) {
+    const isImplicitField = field === IMPLICIT_FIELD;
+    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
+      await this.getColumnForField(field, context);
+    if (!found) {
+      return this.NOT_FOUND_QUERY;
+    }
+    const expressionPostfix =
+      mapKeyIndexExpression &&
+      !isNegatedField &&
+      (!isImplicitField || !context.isNegatedAndParenthesized)
+        ? ` AND ${mapKeyIndexExpression}`
+        : '';
+
+    if (propertyType === JSDataType.Bool) {
+      const normTerm = `${term}`.trim().toLowerCase();
+      return SqlString.format(
+        `(?? ${isNegatedField ? '!' : ''}= ?${expressionPostfix})`,
+        [
+          column,
+          normTerm === 'true'
+            ? 1
+            : normTerm === 'false'
+              ? 0
+              : parseInt(normTerm),
+        ],
+      );
+    } else if (propertyType === JSDataType.Number) {
+      return SqlString.format(
+        `(?? ${isNegatedField ? '!' : ''}= CAST(?, 'Float64')${expressionPostfix})`,
+        [column, term],
+      );
+    } else if (propertyType === JSDataType.JSON) {
+      return SqlString.format(
+        `(${columnJSON?.string} ${isNegatedField ? 'NOT ' : ''}ILIKE ?${expressionPostfix})`,
+        [`%${term}%`],
+      );
+    }
+
+    // If the term is empty, return a no-op that always evaluates to true
+    if (term.length === 0) {
+      return '(1=1)';
+    }
+
+    if (isImplicitField) {
+      const shouldUseTokenBf = !context.implicitColumnExpression;
+
+      if (prefixWildcard || suffixWildcard) {
+        return SqlString.format(
+          `(lower(?) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
+          [
+            SqlString.raw(column ?? ''),
+            `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
+          ],
+        );
+      } else if (shouldUseTokenBf) {
+        const hasSeparators = this.termHasSeparators(term);
+
+        // Check for bloom_filter tokens() index first
+        const bloomIndex = await this.findBloomFilterTokensIndex(column ?? '');
+
+        if (bloomIndex.found) {
+          const indexHasLower = /\blower\s*\(/.test(bloomIndex.indexExpression);
+          const termTokensExpression = indexHasLower
+            ? SqlString.format('tokens(lower(?))', [term])
+            : SqlString.format('tokens(?)', [term]);
+
+          // Use hasAll with tokens() - more efficient than hasToken
+          // Note: tokens('foo bar') automatically tokenizes, so we use a single hasAll call
+          if (hasSeparators) {
+            // Multi-term: hasAll(tokens(...), tokens('foo bar')) AND LIKE fallback
+            return `(${isNegatedField ? 'NOT (' : ''}${[
+              `hasAll(${bloomIndex.indexExpression}, ${termTokensExpression})`,
+              // If there are token separators in the term, try to match the whole term as well
+              SqlString.format(`(lower(?) LIKE lower(?))`, [
+                SqlString.raw(column ?? ''),
+                `%${term}%`,
+              ]),
+            ].join(' AND ')}${isNegatedField ? ')' : ''})`;
+          } else {
+            // Single term: hasAll(tokens(...), tokens('term'))
+            return `(${isNegatedField ? 'NOT ' : ''}hasAll(${bloomIndex.indexExpression}, ${termTokensExpression}))`;
+          }
+        }
+
+        // Fallback to using tokenbf_v1 indices if no bloom_filter index is found
+        if (hasSeparators) {
+          const tokens = this.tokenizeTerm(term);
+          return `(${isNegatedField ? 'NOT (' : ''}${[
+            ...tokens.map(token =>
+              SqlString.format(`hasToken(lower(?), lower(?))`, [
+                SqlString.raw(column ?? ''),
+                token,
+              ]),
+            ),
+            // If there are symbols in the term, try to match the whole term as well
+            SqlString.format(`(lower(?) LIKE lower(?))`, [
+              SqlString.raw(column ?? ''),
+              `%${term}%`,
+            ]),
+          ].join(' AND ')}${isNegatedField ? ')' : ''})`;
+        } else {
+          return SqlString.format(
+            `(${isNegatedField ? 'NOT ' : ''}hasToken(lower(?), lower(?)))`,
+            [SqlString.raw(column ?? ''), term],
+          );
+        }
+      }
+    }
+
+    return SqlString.format(
+      `(${column} ${isNegatedField ? 'NOT ' : ''}? ?${expressionPostfix})`,
+      [SqlString.raw('ILIKE'), `%${term}%`],
+    );
   }
 
   /**
@@ -527,7 +658,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
    * - Nested Map
    * - JSONExtract for non-string types
    */
-  private async buildColumnExpressionFromField(field: string) {
+  private async buildColumnExpressionFromField(
+    field: string,
+  ): Promise<CustomSchemaSQLColumnExpression> {
     const exactMatch = await this.metadata.getColumn({
       databaseName: this.databaseName,
       tableName: this.tableName,
@@ -536,13 +669,46 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     });
 
     if (exactMatch) {
-      return {
+      const columnExpression: CustomSchemaSQLColumnExpression = {
         found: true,
         columnType: exactMatch.type,
         columnExpression: exactMatch.name,
         // TODO
         // Add JSON excatMatch if want to support whole json compare in future, ex: json:"{a: 1234}""
       };
+      let materializedColumns: Map<string, string>;
+      try {
+        // This won't work for CTEs
+        materializedColumns =
+          await this.metadata.getMaterializedColumnsLookupTable({
+            databaseName: this.databaseName,
+            tableName: this.tableName,
+            connectionId: this.connectionId,
+          });
+      } catch (e) {
+        console.debug('Error in getMaterializedColumnsLookupTable', e);
+        materializedColumns = new Map();
+      }
+      const materializedColumn = (() => {
+        for (const [
+          materializedTarget,
+          materializedName,
+        ] of materializedColumns.entries()) {
+          if (materializedName === field) {
+            return { materializedTarget, materializedName };
+          }
+        }
+        return undefined;
+      })();
+      if (materializedColumn) {
+        const mapContainsStatement = buildMapContains(
+          materializedColumn.materializedTarget,
+        );
+        if (mapContainsStatement) {
+          columnExpression.mapKeyIndexExpression = `indexHint(${mapContainsStatement})`;
+        }
+      }
+      return columnExpression;
     }
 
     const fieldPrefix = field.split('.')[0];
@@ -564,6 +730,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
             prefixMatch.name,
             fieldPostfix,
           ]),
+          mapKeyIndexExpression: `indexHint(${buildMapContains(`${fieldPrefix}['${fieldPostfix}']`)})`,
           columnType: valueType ?? 'Unknown',
         };
       } else if (prefixMatch.type.startsWith('JSON')) {
@@ -611,6 +778,89 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     // throw new Error(`Column not found: ${field}`);
   }
 
+  /**
+   * Finds a bloom_filter skip index that uses tokens() on the given column expression.
+   * Returns the full index expression if found, otherwise returns not found.
+   *
+   * Note: Ignores tokenbf_v1 indices (those are handled by existing hasToken logic).
+   */
+  private async findBloomFilterTokensIndex(columnExpression: string): Promise<
+    | {
+        found: true;
+        indexExpression: string;
+      }
+    | { found: false }
+  > {
+    try {
+      const skipIndices = await this.skipIndicesPromise;
+
+      if (!skipIndices || skipIndices.length === 0) {
+        return { found: false };
+      }
+
+      // Look for bloom_filter indices (not tokenbf_v1)
+      const bloomFilterIndices = skipIndices.filter(
+        idx => idx.type === 'bloom_filter',
+      );
+
+      // Find index that uses tokens() on a matching column
+      for (const index of bloomFilterIndices) {
+        const parsed = Metadata.parseTokensExpression(index.expression);
+
+        if (parsed.hasTokens) {
+          // Match the inner expression against our column
+          if (
+            this.indexCoversColumn(parsed.innerExpression, columnExpression)
+          ) {
+            return {
+              found: true,
+              indexExpression: index.expression, // e.g., "tokens(lower(Body))"
+            };
+          }
+        }
+      }
+
+      return { found: false };
+    } catch (error) {
+      // If index lookup fails, fall back to default behavior
+      console.warn('Failed to fetch skip indices:', error);
+      return { found: false };
+    }
+  }
+
+  /**
+   * Compares two expressions to determine if the index expression refers to the search column.
+   * Handles cases where index expression may have transformations like lower(Body) vs Body.
+   */
+  indexCoversColumn(indexExpression: string, searchColumn: string): boolean {
+    // Normalize expressions for comparison
+    const normalize = (expr: string) =>
+      expr.replace(/\s+/g, '').replace(/`/g, '');
+
+    const normalizedIndex = normalize(indexExpression);
+    const normalizedSearch = normalize(searchColumn);
+
+    // Direct match
+    if (normalizedIndex === normalizedSearch) {
+      return true;
+    }
+
+    // Check if index expression contains the search column
+    // E.g., lower(Body) should match Body, concatWithSeparator(';',Body,Message) should match Body
+    // Extract potential column names (alphanumeric + underscore)
+    const indexExpressionWords = normalizedIndex.match(/\w+/g);
+    const searchColumnName = normalizedSearch.match(/\w+/)?.[0];
+    if (
+      searchColumnName &&
+      indexExpressionWords &&
+      indexExpressionWords.includes(searchColumnName)
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
   async getColumnForField(field: string, context: SerializerContext) {
     const implicitColumnExpression =
       context.implicitColumnExpression ?? this.implicitColumnExpression;
@@ -650,6 +900,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       propertyType:
         convertCHTypeToPrimitiveJSType(expression.columnType) ?? undefined,
       found: expression.found,
+      mapKeyIndexExpression: expression.mapKeyIndexExpression,
     };
   }
 }
@@ -764,6 +1015,9 @@ function createSerializerContext(
     return {
       ...currentContext,
       implicitColumnExpression: fieldWithoutNegation,
+      ...(isNegatedAndParenthesized(ast)
+        ? { isNegatedAndParenthesized: true }
+        : {}),
     };
   } else {
     return currentContext;

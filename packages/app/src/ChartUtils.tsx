@@ -13,8 +13,13 @@ import {
 import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  convertDateRangeToGranularityString,
+  Granularity,
+} from '@hyperdx/common-utils/dist/core/utils';
+import {
   AggregateFunction as AggFnV2,
   ChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
   ChartConfigWithOptTimestamp,
   DisplayType,
   Filter,
@@ -102,24 +107,6 @@ export const getMetricAggFns = (
     { value: 'min', label: 'Minimum' },
   ];
 };
-
-export enum Granularity {
-  FifteenSecond = '15 second',
-  ThirtySecond = '30 second',
-  OneMinute = '1 minute',
-  FiveMinute = '5 minute',
-  TenMinute = '10 minute',
-  FifteenMinute = '15 minute',
-  ThirtyMinute = '30 minute',
-  OneHour = '1 hour',
-  TwoHour = '2 hour',
-  SixHour = '6 hour',
-  TwelveHour = '12 hour',
-  OneDay = '1 day',
-  TwoDay = '2 day',
-  SevenDay = '7 day',
-  ThirtyDay = '30 day',
-}
 
 export const DEFAULT_CHART_CONFIG: Omit<
   SavedChartConfig,
@@ -252,50 +239,6 @@ export function TableToggle({
       ]}
     />
   );
-}
-
-export function convertDateRangeToGranularityString(
-  dateRange: [Date, Date],
-  maxNumBuckets: number,
-): Granularity {
-  const start = dateRange[0].getTime();
-  const end = dateRange[1].getTime();
-  const diffSeconds = Math.floor((end - start) / 1000);
-  const granularitySizeSeconds = Math.ceil(diffSeconds / maxNumBuckets);
-
-  if (granularitySizeSeconds <= 15) {
-    return Granularity.FifteenSecond;
-  } else if (granularitySizeSeconds <= 30) {
-    return Granularity.ThirtySecond;
-  } else if (granularitySizeSeconds <= 60) {
-    return Granularity.OneMinute;
-  } else if (granularitySizeSeconds <= 5 * 60) {
-    return Granularity.FiveMinute;
-  } else if (granularitySizeSeconds <= 10 * 60) {
-    return Granularity.TenMinute;
-  } else if (granularitySizeSeconds <= 15 * 60) {
-    return Granularity.FifteenMinute;
-  } else if (granularitySizeSeconds <= 30 * 60) {
-    return Granularity.ThirtyMinute;
-  } else if (granularitySizeSeconds <= 3600) {
-    return Granularity.OneHour;
-  } else if (granularitySizeSeconds <= 2 * 3600) {
-    return Granularity.TwoHour;
-  } else if (granularitySizeSeconds <= 6 * 3600) {
-    return Granularity.SixHour;
-  } else if (granularitySizeSeconds <= 12 * 3600) {
-    return Granularity.TwelveHour;
-  } else if (granularitySizeSeconds <= 24 * 3600) {
-    return Granularity.OneDay;
-  } else if (granularitySizeSeconds <= 2 * 24 * 3600) {
-    return Granularity.TwoDay;
-  } else if (granularitySizeSeconds <= 7 * 24 * 3600) {
-    return Granularity.SevenDay;
-  } else if (granularitySizeSeconds <= 30 * 24 * 3600) {
-    return Granularity.ThirtyDay;
-  }
-
-  return Granularity.ThirtyDay;
 }
 
 export const ChartKeyJoiner = ' · ';
@@ -1214,4 +1157,11 @@ export function buildMVDateRangeIndicator({
       mvGranularity={mvGranularity}
     />
   );
+}
+
+export function shouldFillNullsWithZero(
+  fillNulls: ChartConfigWithOptDateRange['fillNulls'],
+): boolean {
+  // To match legacy behavior, fill nulls with 0 unless explicitly disabled
+  return fillNulls !== false;
 }

@@ -10,12 +10,12 @@ import {
   SearchConditionLanguage,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Anchor, Badge, Group, Text, Timeline } from '@mantine/core';
+import { Badge, Group, Text, Timeline } from '@mantine/core';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { useClickhouseClient } from '@/clickhouse';
-import { getMetadata } from '@/metadata';
-import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
+import { getDisplayedTimestampValueExpression } from '@/source';
 
 import { KubePhase } from '../types';
 import { FormatTime } from '../useFormatTime';
@@ -57,6 +57,7 @@ export const useV2LogBatch = <T = any,>(
   options?: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'>,
 ) => {
   const clickhouseClient = useClickhouseClient();
+  const metadata = useMetadataWithSettings();
   return useQuery<ResponseJSON<T>, Error>({
     queryKey: [
       'v2LogBatch',
@@ -97,7 +98,8 @@ export const useV2LogBatch = <T = any,>(
           },
           orderBy: `${logSource.timestampValueExpression} ${order}`,
         },
-        getMetadata(),
+        metadata,
+        logSource.querySettings,
       );
 
       const json = await clickhouseClient

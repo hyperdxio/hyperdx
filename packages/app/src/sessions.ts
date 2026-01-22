@@ -11,12 +11,13 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
-import { getMetadata } from '@/metadata';
 import { usePrevious } from '@/utils';
 
+import useFieldExpressionGenerator, {
+  FieldExpressionGenerator,
+} from './hooks/useFieldExpressionGenerator';
+import { useMetadataWithSettings } from './hooks/useMetadata';
 import { getClickhouseClient, useClickhouseClient } from './clickhouse';
-import { IS_LOCAL_MODE } from './config';
-import { getLocalConnections } from './connection';
 import { SESSION_TABLE_EXPRESSIONS, useSource } from './source';
 
 export type Session = {
@@ -34,7 +35,6 @@ export type Session = {
   userName: string;
 };
 
-// TODO: support where filtering
 export function useSessions(
   {
     traceSource,
@@ -51,9 +51,22 @@ export function useSessions(
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
+  const { enabled = true } = options || {};
+
+  const {
+    getFieldExpression: getTraceSourceFieldExpression,
+    isLoading: isLoadingFieldExpressionGenerator,
+  } = useFieldExpressionGenerator(traceSource);
+
+  const {
+    getFieldExpression: getSessionsSourceFieldExpression,
+    isLoading: isLoadingSessionsExpressionGenerator,
+  } = useFieldExpressionGenerator(sessionSource);
+
   const FIXED_SDK_ATTRIBUTES = ['teamId', 'teamName', 'userEmail', 'userName'];
   const SESSIONS_CTE_NAME = 'sessions';
   const clickhouseClient = useClickhouseClient();
+  const metadata = useMetadataWithSettings();
   return useQuery<ResponseJSON<Session>, Error>({
     queryKey: [
       'sessions',
@@ -64,9 +77,19 @@ export function useSessions(
       whereLanguage,
     ],
     queryFn: async () => {
-      if (!traceSource || !sessionSource) {
+      if (
+        !traceSource ||
+        !sessionSource ||
+        !getTraceSourceFieldExpression ||
+        !getSessionsSourceFieldExpression
+      ) {
         return [];
       }
+
+      const traceSessionIdExpression = getTraceSourceFieldExpression(
+        traceSource.resourceAttributesExpression ?? 'ResourceAttributes',
+        'rum.sessionId',
+      );
 
       const [
         sessionsQuery,
@@ -81,7 +104,7 @@ export function useSessions(
                 alias: 'serviceName',
               },
               {
-                valueExpression: `${traceSource.resourceAttributesExpression}['rum.sessionId']`,
+                valueExpression: traceSessionIdExpression,
                 alias: 'sessionId',
               },
               // TODO: can't use aggFn max/min here for string value field
@@ -120,14 +143,14 @@ export function useSessions(
                 alias: 'recordingCount',
               },
               ...FIXED_SDK_ATTRIBUTES.map(attr => ({
-                valueExpression: `MAX(${traceSource.eventAttributesExpression}['${attr}'])`,
+                valueExpression: `MAX(${getTraceSourceFieldExpression(traceSource.eventAttributesExpression ?? 'SpanAttributes', attr)})`,
                 alias: attr,
               })),
             ],
             from: traceSource.from,
             dateRange,
-            where: `mapContains(${traceSource.resourceAttributesExpression}, 'rum.sessionId')`,
-            whereLanguage: 'sql',
+            where: `${traceSource.resourceAttributesExpression}.rum.sessionId:*`,
+            whereLanguage: 'lucene',
             ...(where && {
               filters: [
                 {
@@ -141,45 +164,46 @@ export function useSessions(
             connection: traceSource.connection,
             groupBy: 'serviceName, sessionId',
           },
-          getMetadata(),
+          metadata,
+          traceSource.querySettings,
         ),
         renderChartConfig(
           {
             select: [
               {
-                valueExpression: `DISTINCT ${SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression}['rum.sessionId']`,
+                valueExpression: `DISTINCT ${getSessionsSourceFieldExpression(sessionSource.resourceAttributesExpression ?? 'ResourceAttributes', 'rum.sessionId')}`,
                 alias: 'sessionId',
               },
             ],
             from: sessionSource.from,
             dateRange,
-            where: `${SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression}['rum.sessionId'] IN (SELECT sessions.sessionId FROM ${SESSIONS_CTE_NAME})`,
+            where: `${getSessionsSourceFieldExpression(sessionSource.resourceAttributesExpression ?? 'ResourceAttributes', 'rum.sessionId')} IN (SELECT sessions.sessionId FROM ${SESSIONS_CTE_NAME})`,
             whereLanguage: 'sql',
-            timestampValueExpression:
-              SESSION_TABLE_EXPRESSIONS.timestampValueExpression,
-            implicitColumnExpression:
-              SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
+            timestampValueExpression: sessionSource.timestampValueExpression,
+            implicitColumnExpression: sessionSource.implicitColumnExpression,
             connection: sessionSource.connection,
           },
-          getMetadata(),
+          metadata,
+          sessionSource.querySettings,
         ),
         renderChartConfig(
           {
             select: [
               {
-                valueExpression: `DISTINCT ${traceSource.resourceAttributesExpression}['rum.sessionId']`,
+                valueExpression: `DISTINCT ${getTraceSourceFieldExpression(traceSource.resourceAttributesExpression ?? 'ResourceAttributes', 'rum.sessionId')}`,
                 alias: 'sessionId',
               },
             ],
             from: traceSource.from,
             dateRange,
-            where: `(${traceSource.spanNameExpression}='record init' OR ${traceSource.spanNameExpression}='visibility') AND (${traceSource.resourceAttributesExpression}['rum.sessionId'] IN (SELECT sessions.sessionId FROM ${SESSIONS_CTE_NAME}))`,
+            where: `(${traceSource.spanNameExpression}='record init' OR ${traceSource.spanNameExpression}='visibility') AND (${getTraceSourceFieldExpression(traceSource.resourceAttributesExpression ?? 'ResourceAttributes', 'rum.sessionId')} IN (SELECT sessions.sessionId FROM ${SESSIONS_CTE_NAME}))`,
             whereLanguage: 'sql',
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
             connection: traceSource?.connection,
           },
-          getMetadata(),
+          metadata,
+          traceSource.querySettings,
         ),
       ]);
 
@@ -230,15 +254,16 @@ export function useSessions(
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     ...options,
+    enabled:
+      !!enabled &&
+      !isLoadingFieldExpressionGenerator &&
+      !isLoadingSessionsExpressionGenerator,
   });
 }
 
 // TODO: TO BE DEPRECATED
 // we want to use clickhouse-proxy instead
-class RetriableError extends Error {}
-class FatalError extends Error {}
 class TimeoutError extends Error {}
-const EventStreamContentType = 'text/event-stream';
 
 async function* streamToAsyncIterator<T = any>(
   stream: ReadableStream<T>,
@@ -272,6 +297,7 @@ export function useRRWebEventStream(
     onEvent,
     onEnd,
     resultsKey,
+    getSessionSourceFieldExpression,
   }: {
     serviceName: string;
     sessionId: string;
@@ -282,15 +308,16 @@ export function useRRWebEventStream(
     onEvent?: (event: any) => void;
     onEnd?: (error?: any) => void;
     resultsKey?: string;
+    getSessionSourceFieldExpression: FieldExpressionGenerator;
   },
-  options?: UseQueryOptions<any, Error> & {
+  options?: {
+    keepPreviousData?: boolean;
     shouldAbortPendingRequest?: boolean;
   },
 ) {
-  // FIXME: keepPreviousData type
-  // @ts-ignore
   const keepPreviousData = options?.keepPreviousData ?? false;
   const shouldAbortPendingRequest = options?.shouldAbortPendingRequest ?? true;
+  const metadata = useMetadataWithSettings();
 
   const [results, setResults] = useState<{ key: string; data: any[] }>({
     key: '',
@@ -331,7 +358,6 @@ export function useRRWebEventStream(
 
       const MAX_LIMIT = 1e6;
 
-      const metadata = getMetadata();
       const query = await renderChartConfig(
         {
           // FIXME: add mappings to session source
@@ -346,11 +372,11 @@ export function useRRWebEventStream(
               alias: 't',
             },
             {
-              valueExpression: `${SESSION_TABLE_EXPRESSIONS.eventAttributesExpression}['rr-web.chunk']`,
+              valueExpression: `${getSessionSourceFieldExpression(SESSION_TABLE_EXPRESSIONS.eventAttributesExpression, 'rr-web.chunk')}`,
               alias: 'ck',
             },
             {
-              valueExpression: `${SESSION_TABLE_EXPRESSIONS.eventAttributesExpression}['rr-web.total-chunks']`,
+              valueExpression: `${getSessionSourceFieldExpression(SESSION_TABLE_EXPRESSIONS.eventAttributesExpression, 'rr-web.total-chunks')}`,
               alias: 'tcks',
             },
           ],
@@ -361,18 +387,18 @@ export function useRRWebEventStream(
           from: source.from,
           whereLanguage: 'lucene',
           where: `ServiceName:"${serviceName}" AND ${SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
-          timestampValueExpression:
-            SESSION_TABLE_EXPRESSIONS.timestampValueExpression,
+          timestampValueExpression: source.timestampValueExpression,
           implicitColumnExpression:
             SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
           connection: source.connection,
-          orderBy: `${SESSION_TABLE_EXPRESSIONS.timestampValueExpression} ASC`,
+          orderBy: `${source.timestampValueExpression} ASC`,
           limit: {
             limit: Math.min(MAX_LIMIT, parseInt(queryLimit)),
             offset: parseInt(offset),
           },
         },
         metadata,
+        source.querySettings,
       );
 
       const format = 'JSONEachRow';
@@ -465,6 +491,8 @@ export function useRRWebEventStream(
       onEvent,
       onEnd,
       resultsKey,
+      metadata,
+      getSessionSourceFieldExpression,
     ],
   );
 
