@@ -103,6 +103,7 @@ export type TableMetadata = {
 export type SkipIndexMetadata = {
   name: string;
   type: string; // 'bloom_filter', 'tokenbf_v1', 'minmax', etc.
+  typeFull: string; // e.g., 'text(tokenizer='splitByNonAlpha')'
   expression: string; // e.g., "tokens(lower(Body))"
   granularity: number;
 };
@@ -616,6 +617,48 @@ export class Metadata {
     return tableMetadata;
   }
 
+  /** Reads the value of the setting with the given name from system.settings. */
+  async getSetting({
+    settingName,
+    connectionId,
+  }: {
+    settingName: string;
+    connectionId: string;
+  }) {
+    return this.cache.getOrFetch(`${connectionId}.${settingName}`, async () => {
+      const sql = chSql`
+          SELECT name, value
+          FROM system.settings
+          WHERE name = ${{ String: settingName }}
+        `;
+
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ name: string; value: string }>());
+
+        if (json.data.length > 0) {
+          return json.data[0].value;
+        }
+
+        return undefined;
+      } catch (e) {
+        // Don't retry permissions errors, just silently return undefined
+        if (e instanceof Error && e.message.includes('Not enough privileges')) {
+          console.warn('Not enough privileges to fetch settings:', e);
+          return undefined;
+        }
+
+        throw e;
+      }
+    });
+  }
+
   /**
    * Queries system.data_skipping_indices to retrieve skip index metadata for a table.
    * Results are cached using MetadataCache.
@@ -639,6 +682,7 @@ export class Metadata {
           SELECT
             name,
             type,
+            type_full as typeFull,
             expr as expression,
             granularity
           FROM system.data_skipping_indices

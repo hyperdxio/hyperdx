@@ -522,4 +522,35 @@ describe('Metadata Integration Tests', () => {
       );
     });
   });
+
+  describe('getSetting', () => {
+    let metadata: Metadata;
+    beforeEach(async () => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    it('should get setting that exists and is enabled', async () => {
+      const settingValue = await metadata.getSetting({
+        settingName: 'format_csv_allow_single_quotes',
+        connectionId: 'test_connection',
+      });
+      expect(settingValue).toBe('0');
+    });
+
+    it('should get setting that exists and is disabled', async () => {
+      const settingValue = await metadata.getSetting({
+        settingName: 'format_csv_allow_double_quotes',
+        connectionId: 'test_connection',
+      });
+      expect(settingValue).toBe('1');
+    });
+
+    it('should return undefined for setting that does not exist', async () => {
+      const settingValue = await metadata.getSetting({
+        settingName: 'enable_quantum_tunnelling',
+        connectionId: 'test_connection',
+      });
+      expect(settingValue).toBeUndefined();
+    });
+  });
 });
