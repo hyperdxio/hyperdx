@@ -17,6 +17,8 @@ import {
 import { useRRWebEventStream } from '@/sessions';
 import { useDebugMode } from '@/utils';
 
+import { FieldExpressionGenerator } from './hooks/useFieldExpressionGenerator';
+
 import styles from '../styles/SessionSubpanelV2.module.scss';
 
 function getPlayerCurrentTime(player: Replayer) {
@@ -27,7 +29,7 @@ const URLHoverCard = memo(({ url }: { url: string }) => {
   let parsedUrl: URL | undefined;
   try {
     parsedUrl = new URL(url);
-  } catch (e) {
+  } catch {
     // ignore
   }
 
@@ -38,7 +40,7 @@ const URLHoverCard = memo(({ url }: { url: string }) => {
     for (const [key, value] of _searchParams.entries()) {
       searchParams.push({ key, value });
     }
-  } catch (e) {
+  } catch {
     // ignore
   }
 
@@ -92,6 +94,7 @@ export default function DOMPlayer({
   setPlayerFullWidth,
   playerFullWidth,
   resizeKey,
+  getSessionSourceFieldExpression,
 }: {
   config: {
     dateRange: [Date, Date];
@@ -106,14 +109,11 @@ export default function DOMPlayer({
   playerSpeed: number;
   setPlayerStartTimestamp?: (ts: number) => void;
   setPlayerEndTimestamp?: (ts: number) => void;
-  // setPlayerSpeed: (playerSpeed: number) => void;
   skipInactive: boolean;
-  // setSkipInactive: (skipInactive: boolean) => void;
-  // highlightedResultId: string | undefined;
-  // onClick: (logId: string, sortKey: number) => void;
   resizeKey?: string;
   setPlayerFullWidth: (fullWidth: boolean) => void;
   playerFullWidth: boolean;
+  getSessionSourceFieldExpression: FieldExpressionGenerator;
 }) {
   const debug = useDebugMode();
   const wrapper = useRef<HTMLDivElement>(null);
@@ -141,7 +141,7 @@ export default function DOMPlayer({
       limit: 1000000, // large enough to get all events
       onEvent: (event: { b: string; ck: number; tcks: number; t: number }) => {
         try {
-          const { b: body, ck: chunk, tcks: totalChunks, t: type } = event;
+          const { b: body, ck: chunk, tcks: totalChunks } = event;
           currentRrwebEvent += body;
           if (!chunk || chunk === totalChunks) {
             const parsedEvent = JSON.parse(currentRrwebEvent);
@@ -202,11 +202,10 @@ export default function DOMPlayer({
           }
         }
       },
+      getSessionSourceFieldExpression,
     },
     {
-      enabled: dateRange != null,
-      // @ts-ignore
-      keepPreviousData: true, // TODO: support streaming
+      keepPreviousData: true,
       shouldAbortPendingRequest: true,
     },
   );
@@ -358,7 +357,7 @@ export default function DOMPlayer({
     setIsReplayerInitialized(true);
 
     if (debug) {
-      // @ts-ignore
+      // @ts-expect-error this is for debugging purposes only
       window.__hdx_replayer = replayer.current;
     }
 

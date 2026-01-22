@@ -30,7 +30,6 @@ import {
 import { hdxServer } from '@/api';
 import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
-import { getMetadata } from '@/metadata';
 import { parseJSON } from '@/utils';
 
 // Columns for the sessions table as of OTEL Collector v0.129.1
@@ -39,6 +38,11 @@ export const SESSION_TABLE_EXPRESSIONS = {
   eventAttributesExpression: 'LogAttributes',
   timestampValueExpression: 'TimestampTime',
   implicitColumnExpression: 'Body',
+} as const;
+
+export const JSON_SESSION_TABLE_EXPRESSIONS = {
+  ...SESSION_TABLE_EXPRESSIONS,
+  timestampValueExpression: 'Timestamp',
 } as const;
 
 const LOCAL_STORE_SOUCES_KEY = 'hdx-local-source';
@@ -96,10 +100,11 @@ export function getEventBody(eventModel: TSource) {
 function addDefaultsToSource(source: TSourceUnion): TSource {
   return {
     ...source,
-    // Session sources have hard-coded timestampValueExpressions
+    // Session sources have optional timestampValueExpressions, with default
     timestampValueExpression:
       source.kind === SourceKind.Session
-        ? SESSION_TABLE_EXPRESSIONS.timestampValueExpression
+        ? source.timestampValueExpression ||
+          SESSION_TABLE_EXPRESSIONS.timestampValueExpression
         : source.timestampValueExpression,
   };
 }
@@ -440,8 +445,6 @@ export async function isValidMetricTable({
   return hasAllColumns(columns, ReqMetricTableColumns[metricType]);
 }
 
-const ReqSessionsTableColumns = Object.values(SESSION_TABLE_EXPRESSIONS);
-
 export async function isValidSessionsTable({
   databaseName,
   tableName,
@@ -463,5 +466,8 @@ export async function isValidSessionsTable({
     connectionId,
   });
 
-  return hasAllColumns(columns, ReqSessionsTableColumns);
+  return (
+    hasAllColumns(columns, Object.values(SESSION_TABLE_EXPRESSIONS)) ||
+    hasAllColumns(columns, Object.values(JSON_SESSION_TABLE_EXPRESSIONS))
+  );
 }

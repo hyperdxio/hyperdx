@@ -735,6 +735,10 @@ const TraceSourceAugmentation = {
 const SessionSourceAugmentation = {
   kind: z.literal(SourceKind.Session),
 
+  // Optional to support legacy sources, which did not require this field.
+  // Will be defaulted to `TimestampTime` when queried, if undefined.
+  timestampValueExpression: z.string().optional(),
+
   // Required fields for sessions
   traceSourceId: z
     .string({ message: 'Correlated Trace Source is required' })
