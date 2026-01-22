@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Anchor, Burger, Button, Container, Group } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
-import { useLogo } from './theme/ThemeProvider';
+import { useWordmark } from './theme/ThemeProvider';
 import api from './api';
 
 export default function LandingHeader({
@@ -12,7 +12,7 @@ export default function LandingHeader({
   activeKey: string;
   fixed?: boolean;
 }) {
-  const Logo = useLogo();
+  const Wordmark = useWordmark();
   const { data: me } = api.useMe();
   const isLoggedIn = Boolean(me);
 
@@ -36,7 +36,7 @@ export default function LandingHeader({
         <Container fluid px="xl" py="md">
           <Group justify="space-between" align="center">
             <Link href="/" style={{ textDecoration: 'none' }}>
-              <Logo />
+              <Wordmark />
             </Link>
 
             <Burger

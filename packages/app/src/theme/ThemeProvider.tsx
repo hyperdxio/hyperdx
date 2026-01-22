@@ -221,14 +221,14 @@ export function useAppTheme(): ThemeContextValue {
 }
 
 // Convenience hooks
-export function useLogo() {
+export function useWordmark() {
   const { theme } = useAppTheme();
-  return theme.Logo;
+  return theme.Wordmark;
 }
 
-export function useIcon() {
+export function useLogomark() {
   const { theme } = useAppTheme();
-  return theme.Icon;
+  return theme.Logomark;
 }
 
 // Hook to get current theme name (useful for conditional rendering)

@@ -1,8 +1,8 @@
 /**
- * ClickStack Icon
+ * ClickStack Logomark
  * A stylized database/stack icon with the brand yellow color
  */
-export default function Icon({ size = 16 }: { size?: number }) {
+export default function Logomark({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} fill="none" viewBox="0 0 24 24">
       <rect

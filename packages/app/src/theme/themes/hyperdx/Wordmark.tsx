@@ -1,8 +1,8 @@
 import React from 'react';
 
-import Icon from './Icon';
+import Logomark from './Logomark';
 
-export default function Logo() {
+export default function Wordmark() {
   return (
     <div className="align-items-center d-flex">
       <div
@@ -12,13 +12,13 @@ export default function Logo() {
           alignItems: 'center',
         }}
       >
-        <Icon size={14} />
+        <Logomark size={20} />
       </div>
 
       <span
-        className="fw-bold mono"
+        className="fw-500 mono"
         style={{
-          fontSize: 14,
+          fontSize: 15,
         }}
       >
         HyperDX

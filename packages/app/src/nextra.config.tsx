@@ -1,12 +1,12 @@
 import React from 'react';
 
-import { useLogo } from './theme/ThemeProvider';
+import { useWordmark } from './theme/ThemeProvider';
 // import NextraMain from './NextraMain';
 import useNextraSeoProps from './useNextraSeoProps';
 
 function ThemedLogo() {
-  const Logo = useLogo();
-  return <Logo />;
+  const Wordmark = useWordmark();
+  return <Wordmark />;
 }
 
 const theme = {

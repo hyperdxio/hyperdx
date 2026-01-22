@@ -91,7 +91,7 @@
   /* Backgrounds - Using Click UI tokens */
   --color-bg-body: var(--click-global-color-background-default);
   --color-bg-surface: var(--click-global-color-background-default);
-  --color-bg-inverted: #d5d7e0;
+  --color-bg-inverted: var(--mantine-color-dark-1);
   --color-bg-muted: var(--click-global-color-background-muted);
   --color-bg-highlighted: rgb(75 78 102 / 70%);
   --color-bg-sidenav: var(--click-global-color-background-default);
@@ -107,6 +107,7 @@
   --color-bg-danger: #ef4444;
   --color-bg-warning: #f59e0b;
   --color-bg-brand: var(--click-global-color-accent-default);
+  --color-bg-brand-hover: var(--click-global-color-accent-hover);
 
   /* Primary Button */
   --color-primary-button-bg: var(--palette-brand-300);
@@ -249,7 +250,7 @@
   /* Backgrounds - Using Click UI tokens */
   --color-bg-body: var(--click-global-color-background-default);
   --color-bg-surface: var(--click-global-color-background-default);
-  --color-bg-inverted: #343a40;
+  --color-bg-inverted: var(--mantine-color-dark-3);
   --color-bg-muted: var(--click-global-color-background-muted);
   --color-bg-highlighted: rgb(241 243 245 / 80%);
   --color-bg-sidenav: var(--click-global-color-background-default);
@@ -266,6 +267,7 @@
   --color-bg-danger: #dc2626;
   --color-bg-warning: #d97706;
   --color-bg-brand: var(--click-global-color-accent-default);
+  --color-bg-brand-hover: var(--click-global-color-accent-hover);
 
   /* Primary Button */
   --color-primary-button-bg: var(--palette-slate-800);

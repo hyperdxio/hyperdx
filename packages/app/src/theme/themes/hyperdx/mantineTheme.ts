@@ -5,6 +5,7 @@ import {
   MantineThemeOverride,
   rem,
   Select,
+  Slider,
   Tabs,
   Text,
   Tooltip,
@@ -113,6 +114,16 @@ export const makeTheme = ({
       styles: {
         input: {
           border: '1px solid var(--color-border)',
+        },
+      },
+    }),
+    Slider: Slider.extend({
+      styles: {
+        bar: {
+          backgroundColor: 'var(--color-bg-brand)',
+        },
+        thumb: {
+          borderColor: 'var(--color-bg-brand)',
         },
       },
     }),

@@ -14,7 +14,7 @@ import {
   IconSettings,
 } from '@tabler/icons-react';
 
-import { useIcon } from './theme/ThemeProvider';
+import { useLogomark } from './theme/ThemeProvider';
 import api from './api';
 import { useSavedSearches } from './savedSearch';
 
@@ -22,7 +22,7 @@ import '@mantine/spotlight/styles.css';
 
 export const useSpotlightActions = () => {
   const router = useRouter();
-  const Icon = useIcon();
+  const Logomark = useLogomark();
 
   const { data: logViewsData } = useSavedSearches();
   const { data: dashboardsData } = api.useDashboards();
@@ -151,7 +151,7 @@ export const useSpotlightActions = () => {
       {
         id: 'cloud',
         group: 'Menu',
-        leftSection: <Icon size={16} />,
+        leftSection: <Logomark size={16} />,
         label: 'HyperDX Cloud',
         description: 'Ready to use HyperDX Cloud? Get started for free.',
         keywords: ['account', 'profile'],
@@ -162,7 +162,7 @@ export const useSpotlightActions = () => {
     );
 
     return logViewActions;
-  }, [Icon, logViewsData, dashboardsData, router]);
+  }, [Logomark, logViewsData, dashboardsData, router]);
 
   return { actions };
 };

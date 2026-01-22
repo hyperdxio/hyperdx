@@ -1,14 +1,14 @@
 import { ThemeConfig } from '../../types';
 
-import Icon from './Icon';
-import Logo from './Logo';
+import Logomark from './Logomark';
 import { theme } from './mantineTheme';
+import Wordmark from './Wordmark';
 
 export const clickstackTheme: ThemeConfig = {
   name: 'clickstack',
   displayName: 'ClickStack',
   mantineTheme: theme,
-  Logo,
-  Icon,
+  Wordmark,
+  Logomark,
   cssClass: 'theme-clickstack',
 };

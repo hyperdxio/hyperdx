@@ -50,7 +50,7 @@ import {
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches, useUpdateSavedSearch } from '@/savedSearch';
-import { useIcon, useLogo } from '@/theme/ThemeProvider';
+import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
 import type { SavedSearch, ServerDashboard } from '@/types';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
@@ -391,8 +391,8 @@ function useSearchableList<T extends AppNavLinkItem>({
 }
 
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
-  const Logo = useLogo();
-  const Icon = useIcon();
+  const Wordmark = useWordmark();
+  const Logomark = useLogomark();
 
   useEffect(() => {
     let redirectUrl;
@@ -668,11 +668,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             <Link href="/search" className={styles.logoLink}>
               {isCollapsed ? (
                 <div className={styles.logoIconWrapper}>
-                  <Icon size={22} />
+                  <Logomark size={22} />
                 </div>
               ) : (
                 <Group gap="xs" align="center">
-                  <Logo />
+                  <Wordmark />
                   {isUTC && (
                     <Badge
                       size="xs"

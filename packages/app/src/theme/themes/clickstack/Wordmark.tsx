@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Logo() {
+export default function Wordmark() {
   return (
     <div className="align-items-center d-flex">
       <svg
