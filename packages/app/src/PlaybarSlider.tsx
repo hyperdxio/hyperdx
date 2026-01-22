@@ -61,7 +61,7 @@ export const PlaybarSlider = ({
             className={styles.markerDot}
             style={{
               backgroundColor: mark.isSuccess
-                ? 'var(--color-text-brand)'
+                ? 'var(--color-text-success)'
                 : mark.isError
                   ? 'var(--color-text-danger)'
                   : 'var(--color-text-muted)',
