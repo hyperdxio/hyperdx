@@ -20,11 +20,13 @@ import {
   isTimestampExpressionInFirstOrderBy,
   joinQuerySettings,
   optimizeTimestampValueExpression,
+  parseTokenizerFromTextIndex,
   parseToNumber,
   parseToStartOfFunction,
   replaceJsonExpressions,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
+  TextIndexTokenizer,
 } from '../core/utils';
 
 describe('utils', () => {
@@ -1555,6 +1557,119 @@ describe('utils', () => {
       expect(
         joinQuerySettings([{ setting: 'setting_name', value: 'Infinity' }]),
       ).toEqual("setting_name = 'Infinity'");
+    });
+  });
+  describe('parseTokenizerFromTextIndex', () => {
+    it.each([
+      {
+        type: 'text',
+        expected: undefined,
+      },
+      {
+        type: 'text()',
+        expected: undefined,
+      },
+      {
+        type: ' text ( tokenizer= array ) ',
+        expected: { type: 'array' },
+      },
+      {
+        type: 'text(tokenizer=splitByNonAlpha)',
+        expected: { type: 'splitByNonAlpha' },
+      },
+      {
+        type: 'text( tokenizer = splitByNonAlpha )',
+        expected: { type: 'splitByNonAlpha' },
+      },
+      {
+        type: 'text(tokenizer = splitByString())',
+        expected: { type: 'splitByString', separators: [' '] },
+      },
+      {
+        type: `text(tokenizer = splitByString([', ', '; ', '\\n', '" ', '\\\\', '\\t', '(', ')']))`,
+        expected: {
+          type: 'splitByString',
+          separators: [', ', '; ', '\n', '" ', '\\', '\t', '(', ')'],
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams(2, 5, 10))',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 2,
+          maxLength: 5,
+          minCutoffLength: 10,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams(2, 5))',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 2,
+          maxLength: 5,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams(2))',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 2,
+          maxLength: 10,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams)',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 3,
+          maxLength: 10,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer= sparseGrams ())',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 3,
+          maxLength: 10,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=unknown)',
+        expected: undefined,
+      },
+      {
+        type: '',
+        expected: undefined,
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=array)',
+        expected: { type: 'array' },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=ngrams)',
+        expected: { type: 'ngrams', n: 3 },
+      },
+      {
+        type: 'text(tokenizer=ngrams())',
+        expected: { type: 'ngrams', n: 3 },
+      },
+      {
+        type: 'text(tokenizer=ngrams(20))',
+        expected: { type: 'ngrams', n: 20 },
+      },
+    ])('should correctly parse tokenizer from: $type', ({ type, expected }) => {
+      const result = parseTokenizerFromTextIndex({
+        type: 'text',
+        typeFull: type,
+        name: 'text_idx',
+        expression: 'Body',
+        granularity: 1000,
+      });
+      expect(result).toEqual(expected);
     });
   });
 });
