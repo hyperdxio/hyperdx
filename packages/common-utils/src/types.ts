@@ -406,7 +406,7 @@ export type Filter = z.infer<typeof FilterSchema>;
 
 export const _ChartConfigSchema = z.object({
   displayType: z.nativeEnum(DisplayType).optional(),
-  numberFormat: NumberFormatSchema.optional(),
+  numberFormat: NumberFormatSchema.optional().nullable(),
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
   granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
