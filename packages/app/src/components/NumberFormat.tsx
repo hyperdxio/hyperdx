@@ -1,35 +1,26 @@
 import * as React from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useMemo } from 'react';
+import { Control, Controller, useWatch } from 'react-hook-form';
+import { NumberFormat } from '@hyperdx/common-utils/dist/types';
 import {
-  Button,
   Checkbox as MCheckbox,
-  Drawer,
   NativeSelect,
   Paper,
   Slider,
   Stack,
   TextInput,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
 import {
   IconClock,
   IconCurrencyDollar,
   IconDatabase,
   IconNumbers,
   IconPercentage,
-  IconX,
 } from '@tabler/icons-react';
 
-import { NumberFormat } from '../types';
 import { formatNumber } from '../utils';
 
-const FORMAT_NAMES: Record<string, string> = {
-  number: 'Number',
-  currency: 'Currency',
-  percent: 'Percentage',
-  byte: 'Bytes',
-  time: 'Time',
-};
+import { ChartConfigDisplaySettings } from './ChartDisplaySettingsDrawer';
 
 const FORMAT_ICONS: Record<string, React.ReactNode> = {
   number: <IconNumbers size={14} />,
@@ -39,55 +30,26 @@ const FORMAT_ICONS: Record<string, React.ReactNode> = {
   time: <IconClock size={14} />,
 };
 
+const TEST_NUMBER = 1234;
+
+export const DEFAULT_NUMBER_FORMAT: NumberFormat = {
+  factor: 1,
+  output: 'number' as const,
+  mantissa: 2,
+  thousandSeparated: true,
+  average: false,
+  decimalBytes: false,
+};
+
 export const NumberFormatForm: React.FC<{
-  value?: NumberFormat;
-  onApply: (value: NumberFormat) => void;
-  onClose: () => void;
-}> = ({ value, onApply, onClose }) => {
-  const { register, handleSubmit, control, setValue } = useForm<NumberFormat>({
-    values: value,
-    defaultValues: {
-      factor: 1,
-      output: 'number',
-      mantissa: 2,
-      thousandSeparated: true,
-      average: false,
-      decimalBytes: false,
-    },
-  });
-
-  const values = useWatch({ control });
-  const valuesWithDefaults = values ?? {
-    factor: 1,
-    output: 'number' as const,
-    mantissa: 2,
-    thousandSeparated: true,
-    average: false,
-    decimalBytes: false,
-  };
-
-  const testNumber = 1234;
+  control: Control<ChartConfigDisplaySettings>;
+}> = ({ control }) => {
+  const format =
+    useWatch({ control, name: 'numberFormat' }) ?? DEFAULT_NUMBER_FORMAT;
 
   return (
     <>
       <Stack style={{ flex: 1 }}>
-        {/* <TextInput
-          label="Coefficient"
-          type="number"
-          description="Multiply number by this value before formatting. You can use it to convert source value to seconds, bytes, base currency, etc."
-          {...register('factor', { valueAsNumber: true })}
-          rightSectionWidth={70}
-          rightSection={
-            <Button
-              variant="default"
-              compact
-              size="sm"
-              onClick={() => setValue('factor', 1)}
-            >
-              Reset
-            </Button>
-          }
-        /> */}
         <div
           style={{
             display: 'flex',
@@ -97,36 +59,36 @@ export const NumberFormatForm: React.FC<{
             gap: 10,
           }}
         >
-          <NativeSelect
-            label="Output format"
-            leftSection={
-              valuesWithDefaults.output &&
-              FORMAT_ICONS[valuesWithDefaults.output]
-            }
-            style={{ flex: 1 }}
-            data={[
-              { value: 'number', label: 'Number' },
-              { value: 'currency', label: 'Currency' },
-              { value: 'byte', label: 'Bytes' },
-              { value: 'percent', label: 'Percentage' },
-              { value: 'time', label: 'Time' },
-            ]}
-            {...register('output')}
+          <Controller
+            control={control}
+            key="numberFormat.output"
+            name="numberFormat.output"
+            render={({ field }) => (
+              <NativeSelect
+                {...field}
+                label="Output format"
+                leftSection={format.output && FORMAT_ICONS[format.output]}
+                style={{ flex: 1 }}
+                data={[
+                  { value: 'number', label: 'Number' },
+                  { value: 'currency', label: 'Currency' },
+                  { value: 'byte', label: 'Bytes' },
+                  { value: 'percent', label: 'Percentage' },
+                  { value: 'time', label: 'Time' },
+                ]}
+              />
+            )}
           />
-          {valuesWithDefaults.output === 'currency' && (
-            <TextInput
-              w={80}
-              label="Symbol"
-              placeholder="$"
-              {...register('currencySymbol')}
+          {format.output === 'currency' && (
+            <Controller
+              control={control}
+              key="numberFormat.currencySymbol"
+              name="numberFormat.currencySymbol"
+              render={({ field }) => (
+                <TextInput {...field} w={80} label="Symbol" placeholder="$" />
+              )}
             />
           )}
-          {/* <TextInput
-            w={100}
-            label="Unit"
-            placeholder=""
-            {...register('unit')}
-          /> */}
         </div>
 
         <div style={{ marginTop: -6 }}>
@@ -138,133 +100,121 @@ export const NumberFormatForm: React.FC<{
             >
               Example
             </div>
-            {formatNumber(testNumber || 0, valuesWithDefaults as NumberFormat)}
+            {formatNumber(TEST_NUMBER || 0, format)}
           </Paper>
         </div>
 
-        {valuesWithDefaults.output !== 'time' && (
+        {format.output !== 'time' && (
           <div>
             <div className="fs-8 mt-2 fw-bold mb-1">Decimals</div>
-            <Slider
-              mb="xl"
-              min={0}
-              max={10}
-              label={value => `Decimals: ${value}`}
-              marks={[
-                { value: 0, label: '0' },
-                { value: 10, label: '10' },
-              ]}
-              value={values.mantissa}
-              onChange={value => {
-                setValue('mantissa', value);
-              }}
+            <Controller
+              control={control}
+              key="numberFormat.mantissa"
+              name="numberFormat.mantissa"
+              render={({ field: { value, onChange } }) => (
+                <Slider
+                  mb="xl"
+                  min={0}
+                  max={10}
+                  label={val => `Decimals: ${val}`}
+                  marks={[
+                    { value: 0, label: '0' },
+                    { value: 10, label: '10' },
+                  ]}
+                  value={value ?? 2}
+                  onChange={onChange}
+                />
+              )}
             />
           </div>
         )}
         <Stack gap="xs">
-          {values.output === 'byte' ? (
-            <MCheckbox
-              size="xs"
-              label="Decimal base"
-              description="Use 1KB = 1000 bytes"
-              {...register('decimalBytes')}
+          {format.output === 'byte' ? (
+            <Controller
+              control={control}
+              key="numberFormat.decimalBytes"
+              name="numberFormat.decimalBytes"
+              render={({ field: { value, onChange, ...field } }) => {
+                return (
+                  <MCheckbox
+                    {...field}
+                    size="xs"
+                    label="Decimal base"
+                    description="Use 1KB = 1000 bytes"
+                    checked={value}
+                    onChange={onChange}
+                  />
+                );
+              }}
             />
-          ) : values.output === 'time' ? (
-            <NativeSelect
-              size="sm"
-              label="Input unit"
-              {...register('factor', {
-                setValueAs: value => parseFloat(value),
-              })}
-              data={[
-                { value: '1', label: 'Seconds' },
-                { value: '0.001', label: 'Milliseconds' },
-              ]}
+          ) : format.output === 'time' ? (
+            <Controller
+              control={control}
+              key="numberFormat.factor"
+              name="numberFormat.factor"
+              render={({ field: { value, onChange, ...field } }) => {
+                const options = useMemo(
+                  () => [
+                    { value: '1', label: 'Seconds' },
+                    { value: '0.001', label: 'Milliseconds' },
+                    { value: '0.000001', label: 'Microseconds' },
+                    { value: '0.000000001', label: 'Nanoseconds' },
+                  ],
+                  [],
+                );
+
+                const stringValue =
+                  options.find(option => parseFloat(option.value) === value)
+                    ?.value ?? '1';
+
+                return (
+                  <NativeSelect
+                    {...field}
+                    size="sm"
+                    label="Input unit"
+                    value={stringValue}
+                    onChange={e => onChange(parseFloat(e.target.value))}
+                    data={options}
+                  />
+                );
+              }}
             />
           ) : (
             <>
-              <MCheckbox
-                size="xs"
-                label="Separate thousands"
-                description="For example: 1,234,567"
-                {...register('thousandSeparated')}
+              <Controller
+                control={control}
+                key="numberFormat.thousandSeparated"
+                name="numberFormat.thousandSeparated"
+                render={({ field: { value, onChange, ...field } }) => (
+                  <MCheckbox
+                    {...field}
+                    size="xs"
+                    label="Separate thousands"
+                    description="For example: 1,234,567"
+                    checked={value}
+                    onChange={onChange}
+                  />
+                )}
               />
-              <MCheckbox
-                size="xs"
-                label="Large number format"
-                description="For example: 1.2m"
-                {...register('average')}
+              <Controller
+                control={control}
+                key="numberFormat.average"
+                name="numberFormat.average"
+                render={({ field: { value, onChange, ...field } }) => (
+                  <MCheckbox
+                    {...field}
+                    size="xs"
+                    label="Large number format"
+                    description="For example: 1.2m"
+                    checked={value}
+                    onChange={onChange}
+                  />
+                )}
               />
             </>
           )}
         </Stack>
-        <Stack gap="xs" mt="xs">
-          <Button type="submit" onClick={handleSubmit(onApply)}>
-            Apply
-          </Button>
-          <Button onClick={onClose} variant="default">
-            Cancel
-          </Button>
-        </Stack>
       </Stack>
-    </>
-  );
-};
-
-const TEST_NUMBER = 1234;
-
-export const NumberFormatInput: React.FC<{
-  value?: NumberFormat;
-  onChange: (value?: NumberFormat) => void;
-}> = ({ value, onChange }) => {
-  const [opened, { open, close }] = useDisclosure(false);
-  const example = React.useMemo(
-    () => formatNumber(TEST_NUMBER, value),
-    [value],
-  );
-
-  const handleApply = React.useCallback(
-    (value?: NumberFormat) => {
-      onChange(value);
-      close();
-    },
-    [onChange, close],
-  );
-
-  return (
-    <>
-      <Drawer
-        opened={opened}
-        onClose={close}
-        title="Number format"
-        position="right"
-        padding="lg"
-        zIndex={100000}
-      >
-        <NumberFormatForm value={value} onApply={handleApply} onClose={close} />
-      </Drawer>
-      <Button.Group>
-        <Button
-          onClick={open}
-          size="compact-sm"
-          color="dark"
-          variant="default"
-          leftSection={value?.output && FORMAT_ICONS[value.output]}
-        >
-          {value?.output ? FORMAT_NAMES[value.output] : 'Set number format'}
-        </Button>
-        {value?.output && (
-          <Button
-            size="compact-sm"
-            color="dark"
-            variant="default"
-            px="xs"
-            onClick={() => handleApply(undefined)}
-          >
-            <IconX size={14} />
-          </Button>
-        )}
-      </Button.Group>
     </>
   );
 };

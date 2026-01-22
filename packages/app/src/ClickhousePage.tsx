@@ -9,8 +9,13 @@ import {
 import { useForm, useWatch } from 'react-hook-form';
 import { sql } from '@codemirror/lang-sql';
 import { format as formatSql } from '@hyperdx/common-utils/dist/sqlFormatter';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
+  ChartConfigWithDateRange,
+  DisplayType,
+  Filter,
+} from '@hyperdx/common-utils/dist/types';
+import {
+  ActionIcon,
   Box,
   Button,
   Grid,
@@ -246,6 +251,82 @@ function InsertsTab({
     'insertsBy',
     parseAsStringEnum(['queries', 'rows', 'bytes']).withDefault('queries'),
   );
+
+  const insertsPerTableConfig: ChartConfigWithDateRange = useMemo(() => {
+    const filters: Filter[] =
+      insertsBy === 'queries'
+        ? [
+            {
+              type: 'sql_ast',
+              operator: '=',
+              left: 'query_kind',
+              right: `'Insert'`,
+            },
+            // Each query will have a QueryStart and either a QueryFinish or an Exception event.
+            // Filter to only QueryStart to avoid double counting.
+            {
+              type: 'sql_ast',
+              operator: '=',
+              left: 'type',
+              right: `'QueryStart'`,
+            },
+          ]
+        : [
+            // Async inserts have no written_rows/written_bytes, when async inserts are enabled - the
+            // associated written_rows/written_bytes will be present in AsyncInsertFlush events.
+            {
+              type: 'sql',
+              condition: `query_kind IN ('Insert', 'AsyncInsertFlush')`,
+            },
+            // Filter for only QueryFinish events to count only completed inserts. QueryStart
+            // events will not have written_rows/written_bytes populated.
+            {
+              type: 'sql_ast',
+              operator: '=',
+              left: 'type',
+              right: `'QueryFinish'`,
+            },
+          ];
+
+    return {
+      select:
+        insertsBy === 'queries'
+          ? [
+              {
+                aggFn: 'count' as const,
+                valueExpression: '',
+                aggCondition: '',
+                alias: 'Queries',
+              },
+            ]
+          : insertsBy === 'rows'
+            ? [
+                {
+                  aggFn: 'sum' as const,
+                  valueExpression: 'written_rows' as const,
+                  aggCondition: '',
+                  alias: 'Rows',
+                },
+              ]
+            : [
+                {
+                  aggFn: 'sum' as const,
+                  valueExpression: 'written_bytes' as const,
+                  aggCondition: '',
+                  alias: 'Bytes',
+                },
+              ],
+      from,
+      where: '',
+      timestampValueExpression: 'event_time',
+      dateRange: searchedTimeRange,
+      displayType: DisplayType.Line,
+      filters,
+      groupBy: [{ valueExpression: 'tables' }],
+      connection,
+    };
+  }, [insertsBy, searchedTimeRange, connection]);
+
   return (
     <Grid mt="md">
       <Grid.Col span={12}>
@@ -277,50 +358,7 @@ function InsertsTab({
                 ]}
               />,
             ]}
-            config={{
-              select:
-                insertsBy === 'queries'
-                  ? [
-                      {
-                        aggFn: 'count' as const,
-                        valueExpression: '',
-                        aggCondition: '',
-                        alias: 'Queries',
-                      },
-                    ]
-                  : insertsBy === 'rows'
-                    ? [
-                        {
-                          aggFn: 'sum' as const,
-                          valueExpression: 'written_rows' as const,
-                          aggCondition: '',
-                          alias: 'Rows',
-                        },
-                      ]
-                    : [
-                        {
-                          aggFn: 'sum' as const,
-                          valueExpression: 'written_bytes' as const,
-                          aggCondition: '',
-                          alias: 'Bytes',
-                        },
-                      ],
-              from,
-              where: '',
-              timestampValueExpression: 'event_time',
-              dateRange: searchedTimeRange,
-              displayType: DisplayType.Line,
-              filters: [
-                {
-                  type: 'sql_ast',
-                  operator: '=',
-                  left: 'query_kind',
-                  right: `'Insert'`,
-                },
-              ],
-              groupBy: [{ valueExpression: 'tables' }],
-              connection,
-            }}
+            config={insertsPerTableConfig}
             onTimeRangeSelect={onTimeRangeSelect}
           />
         </ChartBox>
@@ -552,18 +590,17 @@ function ClickhousePage() {
             />
           </form>
           <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-            <Button
+            <ActionIcon
               onClick={refresh}
               loading={manualRefreshCooloff}
               disabled={manualRefreshCooloff}
-              color="gray"
-              variant="outline"
+              variant="secondary"
               title="Refresh dashboard"
               aria-label="Refresh dashboard"
-              px="xs"
+              size="lg"
             >
               <IconRefresh size={18} />
-            </Button>
+            </ActionIcon>
           </Tooltip>
         </Group>
       </Group>

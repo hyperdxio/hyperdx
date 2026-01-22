@@ -25,7 +25,7 @@ export default function InputLanguageSwitch({
         </Text>
       )}
       <Text
-        c={language === 'sql' ? 'var(--color-text-success)' : 'gray'}
+        c={language === 'sql' ? 'var(--color-text-brand)' : 'gray'}
         onClick={() => onLanguageChange('sql')}
         size="xs"
         role="button"
@@ -37,7 +37,7 @@ export default function InputLanguageSwitch({
         size="xs"
         role="button"
         fw={500}
-        c={language === 'lucene' ? 'var(--color-text-success)' : 'gray'}
+        c={language === 'lucene' ? 'var(--color-text-brand)' : 'gray'}
         onClick={() => onLanguageChange('lucene')}
       >
         Lucene

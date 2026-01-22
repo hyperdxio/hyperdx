@@ -42,14 +42,7 @@ export default function MVOptimizationModal({
 
   return (
     <Modal
-      title={
-        <Group>
-          {hasMultipleMVs ? 'Materialized Views' : 'Materialized View'}
-          <Badge size="sm" radius="sm" color="gray">
-            Beta
-          </Badge>
-        </Group>
-      }
+      title={hasMultipleMVs ? 'Materialized Views' : 'Materialized View'}
       opened={opened}
       onClose={onClose}
       size="lg"

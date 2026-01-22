@@ -122,7 +122,7 @@ export const SpanEventsSubpanel = ({
 
         {hiddenRowsCount ? (
           <Button
-            variant="default"
+            variant="secondary"
             size="xs"
             my="sm"
             onClick={handleToggleMoreRows}

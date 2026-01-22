@@ -4,6 +4,8 @@
  */
 import { Locator, Page } from '@playwright/test';
 
+import { getSqlEditor } from '../utils/locators';
+
 export class ChartEditorComponent {
   readonly page: Page;
   private readonly chartNameInput: Locator;
@@ -29,13 +31,24 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Set group by expression
+   */
+  async setGroupBy(expression: string) {
+    const groupByInput = getSqlEditor(this.page, 'SQL Columns');
+    await groupByInput.click();
+    await this.page.keyboard.type(expression);
+  }
+
+  /**
    * Select a data source
    */
   async selectSource(sourceName: string) {
     await this.sourceSelector.click();
     // Use getByRole for more reliable selection
     const sourceOption = this.page.getByRole('option', { name: sourceName });
-    await sourceOption.click({ timeout: 5000 });
+    if ((await sourceOption.getAttribute('data-combobox-active')) != 'true') {
+      await sourceOption.click({ timeout: 5000 });
+    }
   }
 
   /**
@@ -114,6 +127,30 @@ export class ChartEditorComponent {
     await this.selectSource(sourceName);
     await this.selectMetric(metricName, metricValue);
     await this.runQuery();
+    await this.save();
+  }
+
+  /**
+   * Complete workflow: create a chart with specific source and metric
+   */
+  async createTable({
+    chartName,
+    sourceName,
+    groupBy,
+  }: {
+    chartName: string;
+    sourceName: string;
+    groupBy?: string;
+  }) {
+    // Wait for data sources to load before interacting
+    await this.waitForDataToLoad();
+
+    const tableButton = this.page.getByRole('tab', { name: 'Table' });
+    await tableButton.click();
+
+    await this.setChartName(chartName);
+    await this.selectSource(sourceName);
+    if (groupBy) await this.setGroupBy(groupBy);
     await this.save();
   }
 

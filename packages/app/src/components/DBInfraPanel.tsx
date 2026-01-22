@@ -244,7 +244,7 @@ export default ({
                         add(new Date(timestamp), { days: 1 }),
                       ]}
                       anchorEvent={{
-                        label: <div className="text-success">This Event</div>,
+                        label: <div className="text-brand">This Event</div>,
                         timestamp: new Date(timestamp).toISOString(),
                       }}
                     />

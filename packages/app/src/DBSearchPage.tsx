@@ -78,7 +78,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
@@ -92,6 +92,7 @@ import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
+import { aliasMapToWithClauses } from '@/hooks/useRowWhere';
 import { withAppNav } from '@/layout';
 import {
   useCreateSavedSearch,
@@ -280,8 +281,12 @@ function ResumeLiveTailButton({
   handleResumeLiveTail: () => void;
 }) {
   return (
-    <Button size="compact-xs" variant="outline" onClick={handleResumeLiveTail}>
-      <IconBolt size={14} className="text-success me-2" />
+    <Button
+      size="compact-xs"
+      variant="primary"
+      onClick={handleResumeLiveTail}
+      leftSection={<IconBolt size={14} />}
+    >
       Resume Live Tail
     </Button>
   );
@@ -295,11 +300,12 @@ function SearchSubmitButton({
   return (
     <Button
       data-testid="search-submit-button"
-      variant="outline"
+      variant={isFormStateDirty ? 'primary' : 'secondary'}
       type="submit"
-      color={isFormStateDirty ? 'var(--color-text-success)' : 'gray'}
+      leftSection={<IconPlayerPlay size={16} />}
+      style={{ flexShrink: 0 }}
     >
-      <IconPlayerPlay size={16} />
+      Run
     </Button>
   );
 }
@@ -498,8 +504,7 @@ function SaveSearchModalComponent({
               {tags.map(tag => (
                 <Button
                   key={tag}
-                  variant="light"
-                  color="gray"
+                  variant="secondary"
                   size="xs"
                   rightSection={
                     <ActionIcon
@@ -521,8 +526,7 @@ function SaveSearchModalComponent({
               <Tags allowCreate values={tags} onChange={setTags}>
                 <Button
                   data-testid="add-tag-button"
-                  variant="outline"
-                  color="gray"
+                  variant="secondary"
                   size="xs"
                 >
                   <IconPlus size={14} className="me-1" />
@@ -533,8 +537,7 @@ function SaveSearchModalComponent({
           </Box>
           <Button
             data-testid="save-search-submit-button"
-            variant="outline"
-            color="green"
+            variant="primary"
             type="submit"
             disabled={!formState.isValid}
           >
@@ -1346,18 +1349,7 @@ function DBSearchPage() {
 
   const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
-  const aliasWith = useMemo(
-    () =>
-      Object.entries(aliasMap ?? {}).map(([key, value]) => ({
-        name: key,
-        sql: {
-          sql: value,
-          params: {},
-        },
-        isSubquery: false,
-      })),
-    [aliasMap],
-  );
+  const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
 
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -1624,7 +1616,7 @@ function DBSearchPage() {
               {!savedSearchId ? (
                 <Button
                   data-testid="save-search-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={onSaveSearch}
                   style={{ flexShrink: 0 }}
@@ -1634,7 +1626,7 @@ function DBSearchPage() {
               ) : (
                 <Button
                   data-testid="update-search-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={() => {
                     setSaveSearchModalState('update');
@@ -1647,7 +1639,7 @@ function DBSearchPage() {
               {!IS_LOCAL_MODE && (
                 <Button
                   data-testid="alerts-button"
-                  variant="default"
+                  variant="secondary"
                   size="xs"
                   onClick={openAlertModal}
                   style={{ flexShrink: 0 }}
@@ -1664,7 +1656,7 @@ function DBSearchPage() {
                   >
                     <Button
                       data-testid="tags-button"
-                      variant="default"
+                      variant="secondary"
                       px="xs"
                       size="xs"
                       style={{ flexShrink: 0 }}
@@ -1914,7 +1906,10 @@ function DBSearchPage() {
                         </Group>
                       </Box>
                       {!hasQueryError && (
-                        <Box className={searchPageStyles.timeChartContainer}>
+                        <Box
+                          className={searchPageStyles.timeChartContainer}
+                          style={{ flexShrink: 0 }}
+                        >
                           <DBTimeChart
                             sourceId={searchedConfig.source ?? undefined}
                             showLegend={false}

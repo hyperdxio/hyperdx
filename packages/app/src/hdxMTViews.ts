@@ -4,6 +4,7 @@ import {
   chSql,
   parameterizedQueryToSql,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   FIXED_TIME_BUCKET_EXPR_ALIAS,
   isNonEmptyWhereExpr,
@@ -14,10 +15,9 @@ import {
   AggregateFunction,
   ChartConfigWithOptDateRange,
   DerivedColumn,
+  QuerySettings,
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
-
-import { getMetadata } from '@/metadata';
 
 const HDX_DATABASE = 'hyperdx'; // all materialized views should sit in this database
 
@@ -97,6 +97,8 @@ const buildMTViewDDL = (name: string, table: string, query: ChSql) => {
 
 export const buildMTViewSelectQuery = async (
   chartConfig: ChartConfigWithOptDateRange,
+  metadata: Metadata,
+  querySettings: QuerySettings | undefined,
   customGranularity?: SQLInterval,
 ) => {
   const _config = {
@@ -116,7 +118,7 @@ export const buildMTViewSelectQuery = async (
     orderBy: undefined,
     limit: undefined,
   };
-  const mtViewSQL = await renderChartConfig(_config, getMetadata());
+  const mtViewSQL = await renderChartConfig(_config, metadata, querySettings);
   const mtViewSQLHash = objectHash.sha1(mtViewSQL);
   const mtViewName = `${chartConfig.from.tableName}_mv_${mtViewSQLHash}`;
   const renderMTViewConfig = {
@@ -148,7 +150,11 @@ export const buildMTViewSelectQuery = async (
     ),
     renderMTViewConfig: async () => {
       try {
-        return await renderChartConfig(renderMTViewConfig, getMetadata());
+        return await renderChartConfig(
+          renderMTViewConfig,
+          metadata,
+          querySettings,
+        );
       } catch (e) {
         console.error('Failed to render MTView config', e);
         return null;

@@ -37,7 +37,6 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
-  Button,
   Code,
   Flex,
   Group,
@@ -78,12 +77,18 @@ import { useCsvExport } from '@/hooks/useCsvExport';
 import { useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useGroupedPatterns } from '@/hooks/usePatterns';
-import useRowWhere from '@/hooks/useRowWhere';
+import useRowWhere, {
+  INTERNAL_ROW_FIELDS,
+  RowWhereResult,
+  WithClause,
+} from '@/hooks/useRowWhere';
+import { useTableSearch } from '@/hooks/useTableSearch';
 import { useSource } from '@/source';
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import {
+  COLORS,
   getLogLevelClass,
   logLevelColor,
   useLocalStorage,
@@ -93,6 +98,11 @@ import {
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import TableHeader from './DBTable/TableHeader';
+import {
+  highlightText,
+  TableSearchInput,
+  TableSearchMatchIndicator,
+} from './DBTable/TableSearchInput';
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
 import {
@@ -119,7 +129,8 @@ const ACCESSOR_MAP: Record<string, AccessorFn> = {
 const MAX_SCROLL_FETCH_LINES = 1000;
 const MAX_CELL_LENGTH = 500;
 
-const getRowId = (row: Record<string, any>): string => row.__hyperdx_id;
+const getRowId = (row: Record<string, any>): string =>
+  row[INTERNAL_ROW_FIELDS.ID];
 
 function retrieveColumnValue(column: string, row: Row): any {
   const accessor = ACCESSOR_MAP[column] ?? ACCESSOR_MAP.default;
@@ -232,14 +243,14 @@ export const PatternTrendChart = ({
               isAnimationActive={false}
               dataKey="count"
               stackId="a"
-              fill={color || '#20c997'}
+              fill={color || COLORS[0]}
               maxBarSize={24}
             />
             {/* <Line
               key={'count'}
               type="monotone"
               dataKey={'count'}
-              stroke={'#20c997'}
+              stroke={COLORS[0]}
               dot={false}
             /> */}
             <Tooltip content={<PatternTrendChartTooltip />} />
@@ -323,6 +334,7 @@ export const RawLogTable = memo(
     sortOrder,
     showExpandButton = true,
     getRowWhere,
+    variant = 'default',
   }: {
     wrapLines?: boolean;
     displayedColumns: string[];
@@ -332,7 +344,7 @@ export const RawLogTable = memo(
     isLoading?: boolean;
     fetchNextPage?: (options?: FetchNextPageOptions | undefined) => any;
     onRowDetailsClick: (row: Record<string, any>) => void;
-    generateRowId: (row: Record<string, any>) => string;
+    generateRowId: (row: Record<string, any>) => RowWhereResult;
     // onPropertySearchClick: (
     //   name: string,
     //   value: string | number | boolean,
@@ -358,32 +370,39 @@ export const RawLogTable = memo(
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
     collapseAllRows?: boolean;
     showExpandButton?: boolean;
-    renderRowDetails?: (row: Record<string, any>) => React.ReactNode;
+    renderRowDetails?: (row: {
+      id: string;
+      aliasWith?: WithClause[];
+      [key: string]: any;
+    }) => React.ReactNode;
     enableSorting?: boolean;
     sortOrder?: SortingState;
     onSortingChange?: (v: SortingState | null) => void;
-    getRowWhere?: (row: Record<string, any>) => string;
+    getRowWhere?: (row: Record<string, any>) => RowWhereResult;
+    variant?: DBRowTableVariant;
   }) => {
-    const generateRowMatcher = generateRowId;
-
     const dedupedRows = useMemo(() => {
       const lIds = new Set();
       const returnedRows = dedupRows
         ? rows.filter(l => {
-            const matcher = generateRowMatcher(l);
-            if (lIds.has(matcher)) {
+            const rowWhereResult = generateRowId(l);
+            if (lIds.has(rowWhereResult.where)) {
               return false;
             }
-            lIds.add(matcher);
+            lIds.add(rowWhereResult.where);
             return true;
           })
         : rows;
 
-      return returnedRows.map(r => ({
-        ...r,
-        __hyperdx_id: generateRowMatcher(r),
-      }));
-    }, [rows, dedupRows, generateRowMatcher]);
+      return returnedRows.map(r => {
+        const rowWhereResult = generateRowId(r);
+        return {
+          ...r,
+          [INTERNAL_ROW_FIELDS.ID]: rowWhereResult.where,
+          [INTERNAL_ROW_FIELDS.ALIAS_WITH]: rowWhereResult.aliasWith,
+        };
+      });
+    }, [rows, dedupRows, generateRowId]);
 
     const _onRowExpandClick = useCallback(
       (row: Record<string, any>) => {
@@ -442,6 +461,13 @@ export const RawLogTable = memo(
         collapseRows();
       }
     }, [collapseAllRows, collapseRows]);
+
+    // Find within page functionality using custom hook
+    const tableSearch = useTableSearch({
+      rows: dedupedRows,
+      searchableColumns: displayedColumns,
+      debounceMs: 300,
+    });
 
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
@@ -504,13 +530,27 @@ export const RawLogTable = memo(
                   ? `${strValue.slice(0, MAX_CELL_LENGTH)}...`
                   : strValue;
 
+              // Apply search highlighting if there's a search query
+              // Use React Table's row index which corresponds to dedupedRows index
+              const isCurrentMatch =
+                !!tableSearch.searchQuery &&
+                tableSearch.matchIndices.length > 0 &&
+                tableSearch.matchIndices[tableSearch.currentMatchIndex] ===
+                  info.row.index;
+
+              const displayValue = tableSearch.searchQuery
+                ? highlightText(truncatedStrValue, tableSearch.searchQuery, {
+                    isCurrentMatch,
+                  })
+                : truncatedStrValue;
+
               return (
                 <span
                   className={cx({
                     'text-muted': value === SPECIAL_VALUES.not_available,
                   })}
                 >
-                  {truncatedStrValue}
+                  {displayValue}
                 </span>
               );
             },
@@ -534,6 +574,9 @@ export const RawLogTable = memo(
         toggleRowExpansion,
         showExpandButton,
         aliasMap,
+        tableSearch.searchQuery,
+        tableSearch.matchIndices,
+        tableSearch.currentMatchIndex,
       ],
     );
 
@@ -657,6 +700,62 @@ export const RawLogTable = memo(
       onChildModalOpen?.(open);
     };
 
+    // Scroll to current match (only when explicitly navigating)
+    // Fixed: Properly synchronized scroll flag with state updates
+    useEffect(() => {
+      if (!tableSearch.shouldScrollToMatch) {
+        return;
+      }
+
+      if (
+        tableSearch.matchIndices.length > 0 &&
+        rowVirtualizer &&
+        tableSearch.currentMatchIndex < tableSearch.matchIndices.length &&
+        tableSearch.searchQuery.trim()
+      ) {
+        const matchRowIndex =
+          tableSearch.matchIndices[tableSearch.currentMatchIndex];
+        const matchedRow = dedupedRows[matchRowIndex];
+
+        if (matchedRow) {
+          // Find the corresponding row in the react-table rows
+          const tableRowIndex = _rows.findIndex(
+            row => getRowId(row.original) === getRowId(matchedRow),
+          );
+
+          if (tableRowIndex !== -1) {
+            // Use requestAnimationFrame to ensure DOM is ready
+            requestAnimationFrame(() => {
+              rowVirtualizer.scrollToIndex(tableRowIndex, {
+                align: 'center',
+              });
+              // Clear the flag after scrolling completes
+              tableSearch.clearShouldScrollToMatch();
+            });
+          } else {
+            // Row not found in virtual list, clear flag
+            tableSearch.clearShouldScrollToMatch();
+          }
+        } else {
+          // No matched row, clear flag
+          tableSearch.clearShouldScrollToMatch();
+        }
+      } else {
+        // Conditions not met, clear flag
+        tableSearch.clearShouldScrollToMatch();
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+      tableSearch.shouldScrollToMatch,
+      tableSearch.currentMatchIndex,
+      tableSearch.matchIndices,
+      tableSearch.searchQuery,
+      tableSearch.clearShouldScrollToMatch,
+      rowVirtualizer,
+      _rows,
+      dedupedRows,
+    ]);
+
     useEffect(() => {
       if (
         scrolledToHighlightedLine ||
@@ -727,356 +826,398 @@ export const RawLogTable = memo(
     });
 
     return (
-      <div
-        data-testid="search-results-table"
-        className="overflow-auto h-100 fs-8"
-        onScroll={e => {
-          fetchMoreOnBottomReached(e.target as HTMLDivElement);
-
-          if (e.target != null) {
-            const { scrollTop } = e.target as HTMLDivElement;
-            onScroll?.(scrollTop);
-          }
-        }}
-        ref={tableContainerRef}
-        // Fixes flickering scroll bar: https://github.com/TanStack/virtual/issues/426#issuecomment-1403438040
-        // style={{ overflowAnchor: 'none' }}
-      >
-        {config && (
-          <SqlModal
-            opened={showSql}
-            onClose={() => handleSqlModalOpen(false)}
-            config={config}
+      <Flex direction="column" h="100%">
+        <Box pos="relative" style={{ flex: 1, minHeight: 0 }}>
+          {/* Find within page search bar - floating on top right */}
+          <TableSearchInput
+            searchQuery={tableSearch.inputValue}
+            onSearchChange={tableSearch.handleSearchChange}
+            matchIndices={tableSearch.matchIndices}
+            currentMatchIndex={tableSearch.currentMatchIndex}
+            onPreviousMatch={tableSearch.handlePreviousMatch}
+            onNextMatch={tableSearch.handleNextMatch}
+            isVisible={tableSearch.isSearchVisible}
+            onVisibilityChange={tableSearch.setIsSearchVisible}
           />
-        )}
-        <table className={cx('w-100', styles.table)} id={tableId}>
-          <thead className={styles.tableHead}>
-            {displayedColumns.length > 0 &&
-              table.getHeaderGroups().map(headerGroup => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map((header, headerIndex) => {
-                    const isLast =
-                      headerIndex === headerGroup.headers.length - 1;
-                    return (
-                      <TableHeader
-                        key={header.id}
-                        header={header}
-                        isLast={isLast}
-                        lastItemButtons={
-                          <Group gap={8} mr={8}>
-                            {tableId &&
-                              Object.keys(columnSizeStorage).length > 0 && (
+          <div
+            data-testid="search-results-table"
+            className={cx('overflow-auto h-100 fs-8', styles.tableWrapper, {
+              [styles.muted]: variant === 'muted',
+            })}
+            onScroll={e => {
+              fetchMoreOnBottomReached(e.target as HTMLDivElement);
+
+              if (e.target != null) {
+                const { scrollTop } = e.target as HTMLDivElement;
+                onScroll?.(scrollTop);
+              }
+            }}
+            ref={tableContainerRef}
+            // Fixes flickering scroll bar: https://github.com/TanStack/virtual/issues/426#issuecomment-1403438040
+            // style={{ overflowAnchor: 'none' }}
+          >
+            {config && (
+              <SqlModal
+                opened={showSql}
+                onClose={() => handleSqlModalOpen(false)}
+                config={config}
+              />
+            )}
+            <table className={cx('w-100', styles.table)} id={tableId}>
+              <thead className={styles.tableHead}>
+                {displayedColumns.length > 0 &&
+                  table.getHeaderGroups().map(headerGroup => (
+                    <tr key={headerGroup.id}>
+                      {headerGroup.headers.map((header, headerIndex) => {
+                        const isLast =
+                          headerIndex === headerGroup.headers.length - 1;
+                        return (
+                          <TableHeader
+                            key={header.id}
+                            header={header}
+                            isLast={isLast}
+                            lastItemButtons={
+                              <Group gap={8} mr={8}>
+                                {tableId &&
+                                  Object.keys(columnSizeStorage).length > 0 && (
+                                    <UnstyledButton
+                                      onClick={() => setColumnSizeStorage({})}
+                                      title="Reset Column Widths"
+                                    >
+                                      <MantineTooltip label="Reset Column Widths">
+                                        <IconRotateClockwise size={16} />
+                                      </MantineTooltip>
+                                    </UnstyledButton>
+                                  )}
+                                {config && (
+                                  <UnstyledButton
+                                    onClick={() => handleSqlModalOpen(true)}
+                                    title="Show Generated SQL"
+                                    tabIndex={0}
+                                  >
+                                    <MantineTooltip label="Show Generated SQL">
+                                      <IconCode size={16} />
+                                    </MantineTooltip>
+                                  </UnstyledButton>
+                                )}
                                 <UnstyledButton
-                                  onClick={() => setColumnSizeStorage({})}
-                                  title="Reset Column Widths"
+                                  onClick={() =>
+                                    setWrapLinesEnabled(prev => !prev)
+                                  }
+                                  title={`${wrapLinesEnabled ? 'Disable' : 'Enable'}  Wrap Lines`}
                                 >
-                                  <MantineTooltip label="Reset Column Widths">
-                                    <IconRotateClockwise size={16} />
+                                  <MantineTooltip
+                                    label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} Wrap Lines`}
+                                  >
+                                    {wrapLinesEnabled ? (
+                                      <IconTextWrapDisabled size={16} />
+                                    ) : (
+                                      <IconTextWrap size={16} />
+                                    )}
                                   </MantineTooltip>
                                 </UnstyledButton>
-                              )}
-                            {config && (
-                              <UnstyledButton
-                                onClick={() => handleSqlModalOpen(true)}
-                                title="Show Generated SQL"
-                                tabIndex={0}
-                              >
-                                <MantineTooltip label="Show Generated SQL">
-                                  <IconCode size={16} />
-                                </MantineTooltip>
-                              </UnstyledButton>
-                            )}
-                            <UnstyledButton
-                              onClick={() => setWrapLinesEnabled(prev => !prev)}
-                              title={`${wrapLinesEnabled ? 'Disable' : 'Enable'}  Wrap Lines`}
-                            >
-                              <MantineTooltip
-                                label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} Wrap Lines`}
-                              >
-                                {wrapLinesEnabled ? (
-                                  <IconTextWrapDisabled size={16} />
-                                ) : (
-                                  <IconTextWrap size={16} />
-                                )}
-                              </MantineTooltip>
-                            </UnstyledButton>
 
-                            <CsvExportButton
-                              data={csvData}
-                              filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
-                              className="fs-6"
-                            >
-                              <MantineTooltip
-                                label={`Download Table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
-                              >
-                                <IconDownload size={16} />
-                              </MantineTooltip>
-                            </CsvExportButton>
-                            {onSettingsClick != null && (
-                              <UnstyledButton
-                                onClick={() => onSettingsClick()}
-                                title="Settings"
-                              >
-                                <MantineTooltip label="Settings">
-                                  <IconSettings size={16} />
-                                </MantineTooltip>
-                              </UnstyledButton>
-                            )}
-                          </Group>
-                        }
-                      />
-                    );
-                  })}
-                </tr>
-              ))}
-          </thead>
-          <tbody>
-            {paddingTop > 0 && (
-              <tr>
-                <td colSpan={99999} style={{ height: `${paddingTop}px` }} />
-              </tr>
-            )}
-            {items.map(virtualRow => {
-              const row = _rows[virtualRow.index] as TableRow<any>;
-              const rowId = getRowId(row.original);
-              const isExpanded = expandedRows[rowId] ?? false;
-
-              return (
-                <React.Fragment key={virtualRow.key}>
-                  <tr
-                    data-testid={`table-row-${rowId}`}
-                    className={cx(styles.tableRow, {
-                      [styles.tableRow__selected]:
-                        highlightedLineId && highlightedLineId === rowId,
-                    })}
-                    data-index={virtualRow.index}
-                    ref={rowVirtualizer.measureElement}
-                  >
-                    {/* Expand button cell */}
-                    {showExpandButton && (
-                      <td
-                        className="align-top overflow-hidden"
-                        style={{ width: '40px' }}
-                      >
-                        {flexRender(
-                          row.getVisibleCells()[0].column.columnDef.cell,
-                          row.getVisibleCells()[0].getContext(),
-                        )}
-                      </td>
-                    )}
-
-                    {/* Content columns grouped back to preserve row hover/click */}
-                    <td
-                      className="align-top overflow-hidden p-0"
-                      colSpan={columns.length - (showExpandButton ? 1 : 0)}
-                    >
-                      <button
-                        type="button"
-                        className={cx(styles.rowContentButton, {
-                          [styles.isWrapped]: wrapLinesEnabled,
-                          [styles.isTruncated]: !wrapLinesEnabled,
-                        })}
-                        onClick={e => {
-                          _onRowExpandClick(row.original);
-                        }}
-                        aria-label="View details for log entry"
-                      >
-                        {row
-                          .getVisibleCells()
-                          .slice(showExpandButton ? 1 : 0) // Skip expand
-                          .map(cell => {
-                            const columnCustomClassName = (
-                              cell.column.columnDef.meta as any
-                            )?.className;
-                            const columnSize = cell.column.getSize();
-                            const cellValue = cell.getValue<any>();
-
-                            return (
-                              <div
-                                key={cell.id}
-                                className={cx(
-                                  'flex-shrink-0 overflow-hidden position-relative',
-                                  columnCustomClassName,
-                                )}
-                                style={{
-                                  width:
-                                    columnSize === UNDEFINED_WIDTH
-                                      ? 'auto'
-                                      : `${columnSize}px`,
-                                  flex:
-                                    columnSize === UNDEFINED_WIDTH
-                                      ? '1'
-                                      : 'none',
-                                }}
-                              >
-                                <div className={styles.fieldTextContainer}>
-                                  <DBRowTableFieldWithPopover
-                                    key={cell.id}
-                                    cellValue={cellValue}
-                                    wrapLinesEnabled={wrapLinesEnabled}
-                                    tableContainerRef={tableContainerRef}
-                                    columnName={
-                                      (cell.column.columnDef.meta as any)
-                                        ?.column
-                                    }
-                                    isChart={
-                                      (cell.column.columnDef.meta as any)
-                                        ?.column === '__hdx_pattern_trend'
-                                    }
+                                <CsvExportButton
+                                  data={csvData}
+                                  filename={`hyperdx_search_results_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`}
+                                  className="fs-6"
+                                >
+                                  <MantineTooltip
+                                    label={`Download Table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
                                   >
-                                    {flexRender(
-                                      cell.column.columnDef.cell,
-                                      cell.getContext(),
-                                    )}
-                                  </DBRowTableFieldWithPopover>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        {/* Row-level copy buttons */}
-                        {getRowWhere && (
-                          <DBRowTableRowButtons
-                            row={row.original}
-                            getRowWhere={getRowWhere}
-                            sourceId={source?.id}
-                            isWrapped={wrapLinesEnabled}
-                            onToggleWrap={() =>
-                              setWrapLinesEnabled(!wrapLinesEnabled)
+                                    <IconDownload size={16} />
+                                  </MantineTooltip>
+                                </CsvExportButton>
+                                {onSettingsClick != null && (
+                                  <UnstyledButton
+                                    onClick={() => onSettingsClick()}
+                                    title="Settings"
+                                  >
+                                    <MantineTooltip label="Settings">
+                                      <IconSettings size={16} />
+                                    </MantineTooltip>
+                                  </UnstyledButton>
+                                )}
+                              </Group>
                             }
                           />
-                        )}
-                      </button>
-                    </td>
-                  </tr>
-                  {showExpandButton && isExpanded && (
-                    <ExpandedLogRow
-                      columnsLength={columns.length}
-                      virtualKey={virtualRow.key.toString()}
-                      source={source}
-                      rowId={rowId}
-                      measureElement={rowVirtualizer.measureElement}
-                      virtualIndex={virtualRow.index}
-                    >
-                      {renderRowDetails?.({
-                        id: rowId,
-                        ...row.original,
+                        );
                       })}
-                    </ExpandedLogRow>
-                  )}
-                </React.Fragment>
-              );
-            })}
-            <tr>
-              <td colSpan={800}>
-                <div className="rounded fs-7 bg-muted text-center d-flex align-items-center justify-content-center mt-3">
-                  {isLoading ? (
-                    <div className="my-3">
-                      <div className="d-inline-block">
-                        <IconRefresh size={14} className="spin-animate" />
-                      </div>{' '}
-                      {loadingDate != null && (
-                        <>
-                          Searched <FormatTime value={loadingDate} />.{' '}
-                        </>
-                      )}
-                      Loading results
-                      {dateRange?.[0] != null && dateRange?.[1] != null ? (
-                        <>
-                          {' '}
-                          across{' '}
-                          {formatDistance(dateRange?.[1], dateRange?.[0])} {'('}
-                          <FormatTime
-                            value={dateRange?.[0]}
-                            format="withYear"
-                          />{' '}
-                          to{' '}
-                          <FormatTime
-                            value={dateRange?.[1]}
-                            format="withYear"
-                          />
-                          {')'}
-                        </>
-                      ) : null}
-                      ...
-                    </div>
-                  ) : hasNextPage == false &&
-                    isLoading == false &&
-                    dedupedRows.length > 0 ? (
-                    <div className="my-3">End of Results</div>
-                  ) : isError ? (
-                    <div className="my-3">
-                      <Text ta="center" size="sm">
-                        Error loading results, please check your query or try
-                        again.
-                      </Text>
-                      <Box p="sm">
-                        <Box mt="sm">
-                          <Code
-                            block
-                            style={{
-                              whiteSpace: 'pre-wrap',
-                            }}
+                    </tr>
+                  ))}
+              </thead>
+              <tbody>
+                {paddingTop > 0 && (
+                  <tr>
+                    <td colSpan={99999} style={{ height: `${paddingTop}px` }} />
+                  </tr>
+                )}
+                {items.map(virtualRow => {
+                  const row = _rows[virtualRow.index] as TableRow<any>;
+                  const rowId = getRowId(row.original);
+                  const isExpanded = expandedRows[rowId] ?? false;
+
+                  return (
+                    <React.Fragment key={virtualRow.key}>
+                      <tr
+                        data-testid={`table-row-${rowId}`}
+                        className={cx(styles.tableRow, {
+                          [styles.tableRow__selected]:
+                            highlightedLineId && highlightedLineId === rowId,
+                        })}
+                        data-index={virtualRow.index}
+                        ref={rowVirtualizer.measureElement}
+                      >
+                        {/* Expand button cell */}
+                        {showExpandButton && (
+                          <td
+                            className="align-top overflow-hidden"
+                            style={{ width: '40px' }}
                           >
-                            {error?.message}
-                          </Code>
-                        </Box>
-                        {error instanceof ClickHouseQueryError && (
-                          <>
-                            <Text my="sm" size="sm" ta="center">
-                              Sent Query:
-                            </Text>
-                            <Flex
-                              w="100%"
-                              ta="initial"
-                              align="center"
-                              justify="center"
-                            >
-                              <SQLPreview data={error?.query} />
-                            </Flex>
-                          </>
+                            {flexRender(
+                              row.getVisibleCells()[0].column.columnDef.cell,
+                              row.getVisibleCells()[0].getContext(),
+                            )}
+                          </td>
                         )}
-                      </Box>
+
+                        {/* Content columns grouped back to preserve row hover/click */}
+                        <td
+                          className="align-top overflow-hidden p-0"
+                          colSpan={columns.length - (showExpandButton ? 1 : 0)}
+                        >
+                          <button
+                            type="button"
+                            className={cx(styles.rowContentButton, {
+                              [styles.isWrapped]: wrapLinesEnabled,
+                              [styles.isTruncated]: !wrapLinesEnabled,
+                            })}
+                            onClick={e => {
+                              _onRowExpandClick(row.original);
+                            }}
+                            aria-label="View details for log entry"
+                          >
+                            {row
+                              .getVisibleCells()
+                              .slice(showExpandButton ? 1 : 0) // Skip expand
+                              .map(cell => {
+                                const columnCustomClassName = (
+                                  cell.column.columnDef.meta as any
+                                )?.className;
+                                const columnSize = cell.column.getSize();
+                                const cellValue = cell.getValue<any>();
+
+                                return (
+                                  <div
+                                    key={cell.id}
+                                    className={cx(
+                                      'flex-shrink-0 overflow-hidden position-relative',
+                                      columnCustomClassName,
+                                    )}
+                                    style={{
+                                      width:
+                                        columnSize === UNDEFINED_WIDTH
+                                          ? 'auto'
+                                          : `${columnSize}px`,
+                                      flex:
+                                        columnSize === UNDEFINED_WIDTH
+                                          ? '1'
+                                          : 'none',
+                                    }}
+                                  >
+                                    <div className={styles.fieldTextContainer}>
+                                      <DBRowTableFieldWithPopover
+                                        key={cell.id}
+                                        cellValue={cellValue}
+                                        wrapLinesEnabled={wrapLinesEnabled}
+                                        tableContainerRef={tableContainerRef}
+                                        columnName={
+                                          (cell.column.columnDef.meta as any)
+                                            ?.column
+                                        }
+                                        isChart={
+                                          (cell.column.columnDef.meta as any)
+                                            ?.column === '__hdx_pattern_trend'
+                                        }
+                                      >
+                                        {flexRender(
+                                          cell.column.columnDef.cell,
+                                          cell.getContext(),
+                                        )}
+                                      </DBRowTableFieldWithPopover>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            {/* Row-level copy buttons */}
+                            {getRowWhere && (
+                              <DBRowTableRowButtons
+                                row={row.original}
+                                getRowWhere={getRowWhere}
+                                sourceId={source?.id}
+                                isWrapped={wrapLinesEnabled}
+                                onToggleWrap={() =>
+                                  setWrapLinesEnabled(!wrapLinesEnabled)
+                                }
+                              />
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                      {showExpandButton && isExpanded && (
+                        <ExpandedLogRow
+                          columnsLength={columns.length}
+                          virtualKey={virtualRow.key.toString()}
+                          source={source}
+                          rowId={rowId}
+                          measureElement={rowVirtualizer.measureElement}
+                          virtualIndex={virtualRow.index}
+                        >
+                          {renderRowDetails?.({
+                            id: rowId,
+                            aliasWith:
+                              row.original[INTERNAL_ROW_FIELDS.ALIAS_WITH],
+                            ...row.original,
+                          })}
+                        </ExpandedLogRow>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+                <tr>
+                  <td colSpan={800}>
+                    <div className="rounded fs-7 bg-muted text-center d-flex align-items-center justify-content-center mt-3">
+                      {isLoading ? (
+                        <div className="my-3">
+                          <div className="d-inline-block">
+                            <IconRefresh size={14} className="spin-animate" />
+                          </div>{' '}
+                          {loadingDate != null && (
+                            <>
+                              Searched <FormatTime value={loadingDate} />.{' '}
+                            </>
+                          )}
+                          Loading results
+                          {dateRange?.[0] != null && dateRange?.[1] != null ? (
+                            <>
+                              {' '}
+                              across{' '}
+                              {formatDistance(
+                                dateRange?.[1],
+                                dateRange?.[0],
+                              )}{' '}
+                              {'('}
+                              <FormatTime
+                                value={dateRange?.[0]}
+                                format="withYear"
+                              />{' '}
+                              to{' '}
+                              <FormatTime
+                                value={dateRange?.[1]}
+                                format="withYear"
+                              />
+                              {')'}
+                            </>
+                          ) : null}
+                          ...
+                        </div>
+                      ) : hasNextPage == false &&
+                        isLoading == false &&
+                        dedupedRows.length > 0 ? (
+                        <div className="my-3">End of Results</div>
+                      ) : isError ? (
+                        <div className="my-3">
+                          <Text ta="center" size="sm">
+                            Error loading results, please check your query or
+                            try again.
+                          </Text>
+                          <Box p="sm">
+                            <Box mt="sm">
+                              <Code
+                                block
+                                style={{
+                                  whiteSpace: 'pre-wrap',
+                                }}
+                              >
+                                {error?.message}
+                              </Code>
+                            </Box>
+                            {error instanceof ClickHouseQueryError && (
+                              <>
+                                <Text my="sm" size="sm" ta="center">
+                                  Sent Query:
+                                </Text>
+                                <Flex
+                                  w="100%"
+                                  ta="initial"
+                                  align="center"
+                                  justify="center"
+                                >
+                                  <SQLPreview data={error?.query} />
+                                </Flex>
+                              </>
+                            )}
+                          </Box>
+                        </div>
+                      ) : hasNextPage == false &&
+                        isLoading == false &&
+                        dedupedRows.length === 0 ? (
+                        <div
+                          className="my-3"
+                          data-testid="db-row-table-no-results"
+                        >
+                          No results found.
+                          <Text mt="sm">
+                            Try checking the query explainer in the search bar
+                            if there are any search syntax issues.
+                          </Text>
+                          {dateRange?.[0] != null && dateRange?.[1] != null ? (
+                            <Text mt="sm">
+                              Searched Time Range:{' '}
+                              {formatDistance(dateRange?.[1], dateRange?.[0])}{' '}
+                              {'('}
+                              <FormatTime
+                                value={dateRange?.[0]}
+                                format="withYear"
+                              />{' '}
+                              to{' '}
+                              <FormatTime
+                                value={dateRange?.[1]}
+                                format="withYear"
+                              />
+                              {')'}
+                            </Text>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div />
+                      )}
                     </div>
-                  ) : hasNextPage == false &&
-                    isLoading == false &&
-                    dedupedRows.length === 0 ? (
-                    <div className="my-3" data-testid="db-row-table-no-results">
-                      No results found.
-                      <Text mt="sm">
-                        Try checking the query explainer in the search bar if
-                        there are any search syntax issues.
-                      </Text>
-                      {dateRange?.[0] != null && dateRange?.[1] != null ? (
-                        <Text mt="sm">
-                          Searched Time Range:{' '}
-                          {formatDistance(dateRange?.[1], dateRange?.[0])} {'('}
-                          <FormatTime
-                            value={dateRange?.[0]}
-                            format="withYear"
-                          />{' '}
-                          to{' '}
-                          <FormatTime
-                            value={dateRange?.[1]}
-                            format="withYear"
-                          />
-                          {')'}
-                        </Text>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div />
-                  )}
-                </div>
-              </td>
-            </tr>
-            {paddingBottom > 0 && (
-              <tr>
-                <td colSpan={99999} style={{ height: `${paddingBottom}px` }} />
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                  </td>
+                </tr>
+                {paddingBottom > 0 && (
+                  <tr>
+                    <td
+                      colSpan={99999}
+                      style={{ height: `${paddingBottom}px` }}
+                    />
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {/* Match indicator on the right side */}
+          <TableSearchMatchIndicator
+            searchQuery={tableSearch.searchQuery}
+            matchIndices={tableSearch.matchIndices}
+            currentMatchIndex={tableSearch.currentMatchIndex}
+            dedupedRows={dedupedRows}
+            tableRows={_rows}
+            getRowId={getRowId}
+            onMatchClick={tableSearch.handleMatchClick}
+          />
+        </Box>
+      </Flex>
     );
   },
 );
@@ -1168,6 +1309,8 @@ export function selectColumnMapWithoutAdditionalKeys(
   );
 }
 
+export type DBRowTableVariant = 'default' | 'muted';
+
 function DBSqlRowTableComponent({
   config,
   sourceId,
@@ -1186,15 +1329,20 @@ function DBSqlRowTableComponent({
   renderRowDetails,
   onSortingChange,
   initialSortBy,
+  variant = 'default',
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
-  onRowDetailsClick?: (where: string) => void;
+  onRowDetailsClick?: (rowWhere: RowWhereResult) => void;
   highlightedLineId?: string;
   queryKeyPrefix?: string;
   enabled?: boolean;
   isLive?: boolean;
-  renderRowDetails?: (r: { [key: string]: unknown }) => React.ReactNode;
+  renderRowDetails?: (r: {
+    id: string;
+    aliasWith?: WithClause[];
+    [key: string]: unknown;
+  }) => React.ReactNode;
   onScroll?: (scrollTop: number) => void;
   onError?: (error: Error | ClickHouseQueryError) => void;
   denoiseResults?: boolean;
@@ -1204,6 +1352,7 @@ function DBSqlRowTableComponent({
   showExpandButton?: boolean;
   initialSortBy?: SortingState;
   onSortingChange?: (v: SortingState | null) => void;
+  variant?: DBRowTableVariant;
 }) {
   const { data: me } = api.useMe();
 
@@ -1464,6 +1613,7 @@ function DBSqlRowTableComponent({
         onSortingChange={_onSortingChange}
         sortOrder={orderByArray}
         getRowWhere={getRowWhere}
+        variant={variant}
       />
     </>
   );

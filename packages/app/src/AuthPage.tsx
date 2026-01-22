@@ -138,7 +138,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
               : isRegister
                 ? 'Register for '
                 : 'Login to '}
-            <span className="text-success fw-bold">HyperDX</span>
+            <span className="text-brand fw-bold">HyperDX</span>
           </div>
           {action === 'login' && (
             <div className="text-center mb-2 ">Welcome back!</div>
@@ -200,7 +200,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   <Button
                     mt={4}
                     type="submit"
-                    variant="light"
+                    variant="primary"
                     size="md"
                     disabled={isSubmitting || verificationSent}
                     loading={isSubmitting}

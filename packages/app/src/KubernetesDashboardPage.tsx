@@ -9,6 +9,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Alert,
   Badge,
   Box,
@@ -44,6 +45,7 @@ import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useJsonColumns } from './hooks/useMetadata';
 import {
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
@@ -1168,27 +1170,49 @@ function KubernetesDashboardPage() {
     ],
   });
 
-  // For future use if Live button is added
-  const [isLive, setIsLive] = React.useState(false);
-
   const { manualRefreshCooloff, refresh } = useDashboardRefresh({
     searchedTimeRange: dateRange,
     onTimeRangeSelect,
-    isLive,
+    isLive: false,
   });
 
   const whereClause = searchQuery;
 
   const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
-  const searchInputRef = React.useRef<HTMLTextAreaElement>(null);
 
-  const onSearchSubmit = React.useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      setSearchQuery(_searchQuery || null);
-    },
-    [_searchQuery, setSearchQuery],
-  );
+  const { data: logSourceJsonColumns, isLoading: isLoadingJsonColumns } =
+    useJsonColumns(
+      logSource && {
+        databaseName: logSource.from.databaseName,
+        tableName: logSource.from.tableName,
+        connectionId: logSource.connection,
+      },
+    );
+
+  const eventAttributeExpressions = useMemo(() => {
+    if (isLoadingJsonColumns || !logSource) {
+      return undefined;
+    }
+
+    if (
+      logSource.eventAttributesExpression &&
+      logSourceJsonColumns?.includes(logSource.eventAttributesExpression)
+    ) {
+      return {
+        Severity: `${logSource.eventAttributesExpression}.object.type.:String`,
+        Kind: `${logSource.eventAttributesExpression}.object.regarding.kind.:String`,
+        Name: `${logSource.eventAttributesExpression}.object.regarding.name.:String`,
+        Message: `${logSource.eventAttributesExpression}.object.note.:String`,
+      };
+    }
+
+    return {
+      Severity: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'type')`,
+      Kind: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'kind')`,
+      Name: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'name')`,
+      Message: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'note')`,
+    };
+  }, [isLoadingJsonColumns, logSource, logSourceJsonColumns]);
 
   return (
     <Box data-testid="kubernetes-dashboard-page" p="sm">
@@ -1253,18 +1277,17 @@ function KubernetesDashboardPage() {
             />
           </form>
           <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-            <Button
+            <ActionIcon
               onClick={refresh}
               loading={manualRefreshCooloff}
               disabled={manualRefreshCooloff}
-              color="gray"
-              variant="outline"
+              variant="secondary"
               title="Refresh dashboard"
               aria-label="Refresh dashboard"
-              px="xs"
+              size="lg"
             >
               <IconRefresh size={18} />
-            </Button>
+            </ActionIcon>
           </Tooltip>
         </Group>
       </Group>
@@ -1379,27 +1402,10 @@ function KubernetesDashboardPage() {
                   <Card.Section p="md" py="xs">
                     <Flex justify="space-between">
                       Latest Kubernetes Warning Events
-                      {/* 
-                      <Link
-                        href={`/search?q=${encodeURIComponent(
-                          `${
-                            whereClause.trim().length > 0
-                              ? `(${whereClause.trim()}) `
-                              : ''
-                          }(k8s.resource.name:"events" -level:"normal")`,
-                        )}&from=${dateRange[0].getTime()}&to=${dateRange[1].getTime()}`}
-                        passHref
-                        legacyBehavior
-                      >
-                        <Anchor size="xs" color="dimmed">
-                          Search <IconExternalLink size={12} style={{ display: 'inline' }} />
-                        </Anchor>
-                      </Link>
-                      */}
                     </Flex>
                   </Card.Section>
                   <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                    {logSource && (
+                    {logSource && eventAttributeExpressions && (
                       <DBSqlRowTableWithSideBar
                         sourceId={logSource.id}
                         config={{
@@ -1417,19 +1423,21 @@ function KubernetesDashboardPage() {
                               alias: 'Timestamp',
                             },
                             {
-                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'type')`,
+                              valueExpression:
+                                eventAttributeExpressions.Severity,
                               alias: 'Severity',
                             },
                             {
-                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'kind')`,
+                              valueExpression: eventAttributeExpressions.Kind,
                               alias: 'Kind',
                             },
                             {
-                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'regarding', 'name')`,
+                              valueExpression: eventAttributeExpressions.Name,
                               alias: 'Name',
                             },
                             {
-                              valueExpression: `JSONExtractString(${logSource.eventAttributesExpression}['object'], 'note')`,
+                              valueExpression:
+                                eventAttributeExpressions.Message,
                               alias: 'Message',
                             },
                           ],

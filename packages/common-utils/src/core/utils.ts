@@ -13,10 +13,13 @@ import {
   DashboardSchema,
   DashboardTemplateSchema,
   DashboardWithoutId,
+  QuerySettings,
   SQLInterval,
   TileTemplateSchema,
   TSourceUnion,
 } from '@/types';
+
+import { SkipIndexMetadata } from './metadata';
 
 /** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
 export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
@@ -692,4 +695,235 @@ export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
     range1[0].getTime() === range2[0].getTime() &&
     range1[1].getTime() === range2[1].getTime()
   );
+}
+
+/*
+  This function extracts the SETTINGS clause from the end(!) of the sql string.
+*/
+export function extractSettingsClauseFromEnd(
+  sqlInput: string,
+): [string, string | undefined] {
+  const sql = sqlInput.trim().endsWith(';')
+    ? sqlInput.trim().slice(0, -1)
+    : sqlInput.trim();
+
+  const settingsIndex = sql.toUpperCase().indexOf('SETTINGS');
+
+  if (settingsIndex === -1) {
+    return [sql, undefined] as const;
+  }
+
+  const settingsClause = sql.substring(settingsIndex).trim();
+  const remaining = sql.substring(0, settingsIndex).trim();
+
+  return [remaining, settingsClause] as const;
+}
+
+export function parseToNumber(input: string): number | undefined {
+  const trimmed = input.trim();
+
+  if (trimmed === '') {
+    return undefined;
+  }
+
+  const num = Number(trimmed);
+
+  return Number.isFinite(num) ? num : undefined;
+}
+
+export function joinQuerySettings(
+  querySettings: QuerySettings | undefined,
+): string | undefined {
+  if (!querySettings?.length) {
+    return undefined;
+  }
+
+  const emptyFiltered = querySettings.filter(
+    ({ setting, value }) => setting.length && value.length,
+  );
+
+  const formattedPairs = emptyFiltered.map(
+    ({ setting, value }) =>
+      `${setting} = ${parseToNumber(value) ?? `'${value}'`}`,
+  );
+
+  return formattedPairs.join(', ');
+}
+
+// A discriminated union type for different tokenizers above
+export type TextIndexTokenizer =
+  | { type: 'splitByNonAlpha' }
+  | { type: 'splitByString'; separators: string[] }
+  | { type: 'ngrams'; n: number }
+  | {
+      type: 'sparseGrams';
+      minLength: number;
+      maxLength: number;
+      minCutoffLength?: number;
+    }
+  | { type: 'array' };
+
+/**
+ * Parses the tokenizer and any associated tokenizer parameters from a text index type definition.
+ *
+ * Examples:
+ * - `text(tokenizer = splitByNonAlpha)` -> `{ type: 'splitByNonAlpha' }`
+ * - `text(tokenizer = splitByString([', ', '; ', '\n', '\\']))` -> `{ type: 'splitByString', separators: [', ', '; ', '\n', '\\'] }`
+ * - `text(preprocessor=lower(s), tokenizer=sparseGrams(2, 5, 10))` -> `{ type: 'sparseGrams', minLength: 2, maxLength: 5, minCutoffLength: 10 }`
+ */
+export function parseTokenizerFromTextIndex({
+  typeFull,
+}: SkipIndexMetadata): TextIndexTokenizer | undefined {
+  const textPattern = /^\s*text\s*\((.+)\)\s*$/;
+  const match = typeFull.match(textPattern);
+  if (!match) {
+    console.error(`Invalid text index type ${typeFull}.`);
+    return undefined;
+  }
+
+  const argsString = match[1].trim();
+  const args = splitAndTrimWithBracket(argsString).map(arg => {
+    const [key, value] = arg.split('=').map(s => s.trim());
+    return { key, value };
+  });
+
+  const tokenizerArg = args.find(arg => arg.key === 'tokenizer')?.value;
+  if (!tokenizerArg) {
+    console.error(
+      `Invalid tokenizer argument in index type ${typeFull}: ${tokenizerArg}`,
+      argsString,
+      splitAndTrimWithBracket(argsString),
+    );
+    return undefined;
+  }
+
+  const tokenizerName = tokenizerArg.split('(')[0].trim();
+  const tokenizerArgsString = tokenizerArg
+    .substring(tokenizerArg.indexOf('(') + 1, tokenizerArg.lastIndexOf(')'))
+    .trim();
+
+  switch (tokenizerName) {
+    case 'splitByNonAlpha':
+      return { type: 'splitByNonAlpha' };
+
+    case 'array':
+      return { type: 'array' };
+
+    case 'ngrams': {
+      // Default n is 3
+      if (!tokenizerArgsString) {
+        return { type: 'ngrams', n: 3 };
+      }
+
+      return { type: 'ngrams', n: Number.parseInt(tokenizerArgsString, 10) };
+    }
+
+    case 'sparseGrams': {
+      const args = tokenizerArgsString
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => !!s);
+
+      const tokenizer: TextIndexTokenizer = {
+        type: 'sparseGrams',
+        minLength: 3,
+        maxLength: 10,
+      };
+
+      if (args.length >= 1) tokenizer.minLength = Number.parseInt(args[0], 10);
+      if (args.length >= 2) tokenizer.maxLength = Number.parseInt(args[1], 10);
+      if (args.length >= 3)
+        tokenizer.minCutoffLength = Number.parseInt(args[2], 10);
+
+      return tokenizer;
+    }
+
+    case 'splitByString': {
+      if (!tokenizerArgsString) {
+        // Default separator is space
+        return { type: 'splitByString', separators: [' '] };
+      }
+
+      const unescape = (str: string) => {
+        const escapeCharacters = [
+          { pattern: /\\a/g, replacement: 'a' },
+          { pattern: /\\b/g, replacement: 'b' },
+          { pattern: /\\e/g, replacement: 'e' },
+          { pattern: /\\f/g, replacement: '\f' },
+          { pattern: /\\n/g, replacement: '\n' },
+          { pattern: /\\r/g, replacement: '\r' },
+          { pattern: /\\t/g, replacement: '\t' },
+          { pattern: /\\v/g, replacement: '\v' },
+          { pattern: /\\0/g, replacement: '\0' },
+          { pattern: /\\\\/g, replacement: '\\' },
+          { pattern: /\\'/g, replacement: "'" },
+          { pattern: /\\"/g, replacement: '"' },
+          { pattern: /\\`/g, replacement: '`' },
+          { pattern: /\\\//g, replacement: '/' },
+          { pattern: /\\=/g, replacement: '=' },
+        ];
+
+        for (const { pattern, replacement } of escapeCharacters) {
+          str = str.replace(pattern, replacement);
+        }
+
+        return str;
+      };
+
+      const separatorsString = tokenizerArgsString.match(/\[(.*)\]/);
+      if (!separatorsString) {
+        // If no array is provided, default to space
+        return { type: 'splitByString', separators: [' '] };
+      }
+
+      const arrayContent = separatorsString[1];
+
+      // Split by commas outside of quotes
+      const separators: string[] = [];
+      let current = '';
+      let inQuote = false;
+      let quoteChar = '';
+
+      for (let i = 0; i < arrayContent.length; i++) {
+        const char = arrayContent[i];
+
+        if ((char === "'" || char === '"') && !inQuote) {
+          inQuote = true;
+          quoteChar = char;
+        } else if (char === quoteChar && inQuote) {
+          if (arrayContent[i - 1] !== '\\' || arrayContent[i - 2] === '\\') {
+            inQuote = false;
+            quoteChar = '';
+          }
+        } else if (char === ',' && !inQuote) {
+          const trimmed = current.trim();
+          if (trimmed) {
+            // Remove quotes and unescape characters
+            const value = trimmed.replace(/^['"]|['"]$/g, '');
+            const unescapedValue = unescape(value);
+            separators.push(unescapedValue);
+          }
+
+          current = '';
+          continue;
+        }
+
+        current += char;
+      }
+
+      // Add last separator
+      const trimmed = current.trim();
+      if (trimmed) {
+        const value = trimmed.replace(/^['"]|['"]$/g, '');
+        const unescapedValue = unescape(value);
+        separators.push(unescapedValue);
+      }
+
+      return { type: 'splitByString', separators };
+    }
+
+    default:
+      console.error(`Unknown tokenizer ${tokenizerName} in type ${typeFull}.`);
+      return undefined;
+  }
 }

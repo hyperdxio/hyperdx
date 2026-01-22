@@ -251,7 +251,7 @@ export function ConnectionForm({
           {!showUpdatePassword && !isNew && (
             <Button
               data-testid="update-password-button"
-              variant="outline"
+              variant="secondary"
               onClick={() => {
                 setShowUpdatePassword(true);
               }}
@@ -271,7 +271,7 @@ export function ConnectionForm({
               {!isNew && (
                 <Button
                   data-testid="cancel-password-button"
-                  variant="outline"
+                  variant="secondary"
                   onClick={() => {
                     setShowUpdatePassword(false);
                     resetField('password');
@@ -303,7 +303,7 @@ export function ConnectionForm({
           <Group gap="xs" justify="flex-start">
             <Button
               data-testid="connection-save-button"
-              variant="outline"
+              variant="primary"
               type="submit"
               loading={
                 isNew ? createConnection.isPending : updateConnection.isPending
@@ -354,7 +354,7 @@ export function ConnectionForm({
             />
           )}
           {onClose && showCancelButton && (
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="secondary" onClick={onClose}>
               Cancel
             </Button>
           )}

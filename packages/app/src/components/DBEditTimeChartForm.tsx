@@ -3,8 +3,11 @@ import { omit } from 'lodash';
 import {
   Control,
   Controller,
+  FieldErrors,
+  FieldPath,
   useFieldArray,
   useForm,
+  UseFormClearErrors,
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
@@ -27,6 +30,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
+  ActionIcon,
   Box,
   Button,
   Center,
@@ -41,6 +45,7 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import {
   IconArrowDown,
   IconArrowUp,
@@ -78,7 +83,6 @@ import { GranularityPickerControlled } from '@/GranularityPicker';
 import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
-import { FormatTime } from '@/useFormatTime';
 import {
   getMetricTableName,
   optionsToSelectData,
@@ -95,20 +99,20 @@ import {
 } from '@/utils/alerts';
 
 import HDXMarkdownChart from '../HDXMarkdownChart';
-import type { NumberFormat } from '../types';
 
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { AggFnSelectControlled } from './AggFnSelect';
+import ChartDisplaySettingsDrawer, {
+  ChartConfigDisplaySettings,
+} from './ChartDisplaySettingsDrawer';
 import DBNumberChart from './DBNumberChart';
 import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
 import {
   CheckBoxControlled,
   InputControlled,
-  SwitchControlled,
   TextInputControlled,
 } from './InputControlled';
 import { MetricNameSelect } from './MetricNameSelect';
-import { NumberFormatInput } from './NumberFormat';
 import SaveToDashboardModal from './SaveToDashboardModal';
 import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
@@ -123,29 +127,42 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
 
 const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
 
-const NumberFormatInputControlled = ({
-  control,
-  onSubmit,
-}: {
-  control: Control<any>;
-  onSubmit: () => void;
-}) => {
-  return (
-    <Controller
-      control={control}
-      name="numberFormat"
-      render={({ field: { onChange, value } }) => (
-        <NumberFormatInput
-          onChange={(newValue?: NumberFormat) => {
-            onChange(newValue);
-            onSubmit();
-          }}
-          value={value}
-        />
-      )}
-    />
-  );
+// Helper function to safely construct field paths for series
+const getSeriesFieldPath = (
+  namePrefix: string,
+  fieldName: string,
+): FieldPath<SavedChartConfigWithSeries> => {
+  return `${namePrefix}${fieldName}` as FieldPath<SavedChartConfigWithSeries>;
 };
+
+// Helper function to validate metric names for metric sources
+const validateMetricNames = (
+  tableSource: TSource | undefined,
+  series: SavedChartConfigWithSelectArray['select'] | undefined,
+  setError: (
+    name: FieldPath<SavedChartConfigWithSeries>,
+    error: { type: string; message: string },
+  ) => void,
+): boolean => {
+  if (tableSource?.kind === SourceKind.Metric && Array.isArray(series)) {
+    let hasValidationError = false;
+    series.forEach((s, index) => {
+      if (s.metricType && !s.metricName) {
+        setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
+          type: 'manual',
+          message: 'Please select a metric name',
+        });
+        hasValidationError = true;
+      }
+    });
+    return hasValidationError;
+  }
+  return false;
+};
+
+type SeriesItem = NonNullable<
+  SavedChartConfigWithSelectArray['select']
+>[number];
 
 function ChartSeriesEditorComponent({
   control,
@@ -163,6 +180,8 @@ function ChartSeriesEditorComponent({
   parentRef,
   length,
   tableSource,
+  errors,
+  clearErrors,
 }: {
   control: Control<any>;
   databaseName: string;
@@ -179,6 +198,8 @@ function ChartSeriesEditorComponent({
   tableName: string;
   length: number;
   tableSource?: TSource;
+  errors?: FieldErrors<SeriesItem>;
+  clearErrors: UseFormClearErrors<SavedChartConfigWithSeries>;
 }) {
   const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
   const aggConditionLanguage = useWatch({
@@ -294,6 +315,10 @@ function ChartSeriesEditorComponent({
               }
               metricSource={tableSource}
               data-testid="metric-name-selector"
+              error={errors?.metricName?.message}
+              onFocus={() =>
+                clearErrors(getSeriesFieldPath(namePrefix, 'metricName'))
+              }
             />
             {metricType === 'gauge' && (
               <Flex justify="end">
@@ -457,12 +482,19 @@ export default function EditTimeChartForm({
     [chartConfig],
   );
 
-  const { control, setValue, handleSubmit, register } =
-    useForm<SavedChartConfigWithSeries>({
-      defaultValues: configWithSeries,
-      values: configWithSeries,
-      resolver: zodResolver(zSavedChartConfig),
-    });
+  const {
+    control,
+    setValue,
+    handleSubmit,
+    register,
+    setError,
+    clearErrors,
+    formState: { errors },
+  } = useForm<SavedChartConfigWithSeries>({
+    defaultValues: configWithSeries,
+    values: configWithSeries,
+    resolver: zodResolver(zSavedChartConfig),
+  });
 
   const {
     fields,
@@ -481,14 +513,6 @@ export default function EditTimeChartForm({
   const whereLanguage = useWatch({ control, name: 'whereLanguage' });
   const alert = useWatch({ control, name: 'alert' });
   const seriesReturnType = useWatch({ control, name: 'seriesReturnType' });
-  const compareToPreviousPeriod = useWatch({
-    control,
-    name: 'compareToPreviousPeriod',
-  });
-  const alignDateRangeToGranularity = useWatch({
-    control,
-    name: 'alignDateRangeToGranularity',
-  });
   const groupBy = useWatch({ control, name: 'groupBy' });
   const displayType =
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
@@ -523,6 +547,41 @@ export default function EditTimeChartForm({
 
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
   const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
+
+  const [
+    alignDateRangeToGranularity,
+    fillNulls,
+    compareToPreviousPeriod,
+    numberFormat,
+  ] = useWatch({
+    control,
+    name: [
+      'alignDateRangeToGranularity',
+      'fillNulls',
+      'compareToPreviousPeriod',
+      'numberFormat',
+    ],
+  });
+
+  const displaySettings: ChartConfigDisplaySettings = useMemo(
+    () => ({
+      alignDateRangeToGranularity,
+      fillNulls,
+      compareToPreviousPeriod,
+      numberFormat,
+    }),
+    [
+      alignDateRangeToGranularity,
+      fillNulls,
+      compareToPreviousPeriod,
+      numberFormat,
+    ],
+  );
+
+  const [
+    displaySettingsOpened,
+    { open: openDisplaySettings, close: closeDisplaySettings },
+  ] = useDisclosure(false);
 
   // Only update this on submit, otherwise we'll have issues
   // with using the source value from the last submit
@@ -563,6 +622,11 @@ export default function EditTimeChartForm({
 
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
+      // Validate metric sources have metric names selected
+      if (validateMetricNames(tableSource, form.series, setError)) {
+        return;
+      }
+
       // Merge the series and select fields back together, and prevent the series field from being submitted
       const config = {
         ...omit(form, ['series']),
@@ -606,6 +670,7 @@ export default function EditTimeChartForm({
     setQueriedConfigAndSource,
     tableSource,
     dateRange,
+    setError,
   ]);
 
   const onTableSortingChange = useCallback(
@@ -632,6 +697,11 @@ export default function EditTimeChartForm({
 
   const handleSave = useCallback(
     (v: SavedChartConfigWithSeries) => {
+      // Validate metric sources have metric names selected
+      if (validateMetricNames(tableSource, v.series, setError)) {
+        return;
+      }
+
       // If the chart type is search, we need to ensure the select is a string
       if (displayType === DisplayType.Search && typeof v.select !== 'string') {
         v.select = '';
@@ -641,7 +711,7 @@ export default function EditTimeChartForm({
       // Avoid saving the series field. Series should be persisted in the select field.
       onSave?.(omit(v, ['series']));
     },
-    [onSave, displayType],
+    [onSave, displayType, tableSource, setError],
   );
 
   // Track previous values for detecting changes
@@ -694,34 +764,6 @@ export default function EditTimeChartForm({
       };
     });
   }, [dateRange]);
-
-  // Trigger a search when "Show Complete Intervals" changes
-  useEffect(() => {
-    setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
-      if (config == null) {
-        return config;
-      }
-
-      return {
-        ...config,
-        alignDateRangeToGranularity,
-      };
-    });
-  }, [alignDateRangeToGranularity]);
-
-  // Trigger a search when "compare to previous period" changes
-  useEffect(() => {
-    setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
-      if (config == null) {
-        return config;
-      }
-
-      return {
-        ...config,
-        compareToPreviousPeriod,
-      };
-    });
-  }, [compareToPreviousPeriod]);
 
   const queryReady = isQueryReady(queriedConfig);
 
@@ -809,6 +851,22 @@ export default function EditTimeChartForm({
 
   // Need to force a rerender on change as the modal will not be mounted when initially rendered
   const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
+
+  const handleUpdateDisplaySettings = useCallback(
+    ({
+      numberFormat,
+      alignDateRangeToGranularity,
+      fillNulls,
+      compareToPreviousPeriod,
+    }: ChartConfigDisplaySettings) => {
+      setValue('numberFormat', numberFormat);
+      setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
+      setValue('fillNulls', fillNulls);
+      setValue('compareToPreviousPeriod', compareToPreviousPeriod);
+      onSubmit();
+    },
+    [setValue, onSubmit],
+  );
 
   return (
     <div ref={setParentRef} data-testid={dataTestId}>
@@ -934,6 +992,12 @@ export default function EditTimeChartForm({
                   }
                   tableName={tableName ?? ''}
                   tableSource={tableSource}
+                  errors={
+                    errors.series && Array.isArray(errors.series)
+                      ? errors.series[index]
+                      : undefined
+                  }
+                  clearErrors={clearErrors}
                 />
               ))}
               {fields.length > 1 && displayType !== DisplayType.Number && (
@@ -1018,10 +1082,13 @@ export default function EditTimeChartForm({
                       </Button>
                     )}
                 </Group>
-                <NumberFormatInputControlled
-                  control={control}
-                  onSubmit={onSubmit}
-                />
+                <Button
+                  onClick={openDisplaySettings}
+                  size="compact-sm"
+                  variant="secondary"
+                >
+                  Display Settings
+                </Button>
               </Flex>
             </>
           ) : (
@@ -1133,7 +1200,7 @@ export default function EditTimeChartForm({
             <Button
               data-testid="chart-save-button"
               loading={isSaving}
-              variant="outline"
+              variant="primary"
               onClick={handleSubmit(handleSave)}
             >
               Save
@@ -1187,19 +1254,21 @@ export default function EditTimeChartForm({
           {activeTab !== 'markdown' && (
             <Button
               data-testid="chart-run-query-button"
-              variant="outline"
+              variant="primary"
               type="submit"
               onClick={onSubmit}
+              leftSection={<IconPlayerPlay size={16} />}
+              style={{ flexShrink: 0 }}
             >
-              <IconPlayerPlay size={16} />
+              Run
             </Button>
           )}
           {!IS_LOCAL_MODE && !dashboardId && (
             <Menu width={250}>
               <Menu.Target>
-                <Button variant="outline" color="gray" px="xs" size="sm">
-                  <IconDotsVertical size={14} />
-                </Button>
+                <ActionIcon variant="secondary" size="input-sm">
+                  <IconDotsVertical size={16} />
+                </ActionIcon>
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Item
@@ -1213,33 +1282,6 @@ export default function EditTimeChartForm({
           )}
         </Flex>
       </Flex>
-      {activeTab === 'time' && (
-        <Group justify="end" mb="xs">
-          <SwitchControlled
-            control={control}
-            name="alignDateRangeToGranularity"
-            label="Show Complete Intervals"
-          />
-          <SwitchControlled
-            control={control}
-            name="compareToPreviousPeriod"
-            label={
-              <>
-                Compare to Previous Period{' '}
-                {!dashboardId && (
-                  <>
-                    (
-                    <FormatTime value={previousDateRange?.[0]} format="short" />
-                    {' - '}
-                    <FormatTime value={previousDateRange?.[1]} format="short" />
-                    )
-                  </>
-                )}
-              </>
-            }
-          />
-        </Group>
-      )}
       {!queryReady && activeTab !== 'markdown' ? (
         <Paper shadow="xs" p="xl">
           <Center mih={400}>
@@ -1386,6 +1428,14 @@ export default function EditTimeChartForm({
         chartConfig={chartConfig}
         opened={saveToDashboardModalOpen}
         onClose={() => setSaveToDashboardModalOpen(false)}
+      />
+      <ChartDisplaySettingsDrawer
+        opened={displaySettingsOpened}
+        settings={displaySettings}
+        previousDateRange={!dashboardId ? previousDateRange : undefined}
+        displayType={displayType}
+        onChange={handleUpdateDisplaySettings}
+        onClose={closeDisplaySettings}
       />
     </div>
   );
