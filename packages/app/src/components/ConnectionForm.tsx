@@ -2,8 +2,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Connection } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Flex, Group, Stack, Text, Tooltip } from '@mantine/core';
+import {
+  Anchor,
+  Box,
+  Button,
+  Flex,
+  Group,
+  Stack,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconSettings } from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -141,9 +151,12 @@ export function ConnectionForm({
 
   const onSubmit = (data: Connection) => {
     // Make sure we don't save a trailing slash in the host
+    // Convert empty hyperdxSettingPrefix to null to signal clearing the field
+    // (undefined gets stripped from JSON, null is preserved and handled by API)
     const normalizedData = {
       ...data,
       host: stripTrailingSlash(data.host),
+      hyperdxSettingPrefix: data.hyperdxSettingPrefix || null,
     };
 
     if (isNew) {
@@ -193,6 +206,7 @@ export function ConnectionForm({
   };
 
   const [showUpdatePassword, setShowUpdatePassword] = useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
 
   const { testConnectionState, handleTestConnection } = useTestConnection({
     getValues,
@@ -284,6 +298,33 @@ export function ConnectionForm({
           )}
         </Box>
         <Box>
+          {!showAdvancedSettings && (
+            <Anchor
+              underline="always"
+              onClick={() => setShowAdvancedSettings(true)}
+              size="xs"
+            >
+              <Group gap="xs">
+                <IconSettings size={14} />
+                Advanced Settings
+              </Group>
+            </Anchor>
+          )}
+          {showAdvancedSettings && (
+            <Button
+              onClick={() => setShowAdvancedSettings(false)}
+              size="xs"
+              variant="subtle"
+            >
+              Hide Advanced Settings
+            </Button>
+          )}
+        </Box>
+        <Box
+          style={{
+            display: showAdvancedSettings ? 'block' : 'none',
+          }}
+        >
           <Text size="xs" mb="xs">
             Query Log Setting Prefix (optional)
           </Text>
@@ -300,7 +341,53 @@ export function ConnectionForm({
           </Text>
         </Box>
         <Group justify="space-between">
-          <Group gap="xs" justify="flex-start">
+          <Tooltip
+            label="🔒 Password re-entry required for security"
+            position="right"
+            disabled={isNew}
+            withArrow
+          >
+            <Button
+              disabled={!formState.isValid}
+              variant="subtle"
+              type="button"
+              onClick={handleTestConnection}
+              loading={testConnectionState === TestConnectionState.Loading}
+              color={
+                testConnectionState === TestConnectionState.Invalid
+                  ? 'yellow'
+                  : 'teal'
+              }
+            >
+              {testConnectionState === TestConnectionState.Valid ? (
+                <>Connection successful</>
+              ) : testConnectionState === TestConnectionState.Invalid ? (
+                <>Unable to connect</>
+              ) : (
+                'Test Connection'
+              )}
+            </Button>
+          </Tooltip>
+          <Group gap="xs">
+            {onClose && showCancelButton && (
+              <Button variant="secondary" onClick={onClose}>
+                Cancel
+              </Button>
+            )}
+            {!isNew && showDeleteButton !== false && (
+              <ConfirmDeleteMenu
+                onDelete={() =>
+                  deleteConnection.mutate(
+                    { id: connection.id },
+                    {
+                      onSuccess: () => {
+                        onClose?.();
+                      },
+                    },
+                  )
+                }
+              />
+            )}
             <Button
               data-testid="connection-save-button"
               variant="primary"
@@ -311,53 +398,7 @@ export function ConnectionForm({
             >
               {isNew ? 'Create' : 'Save'}
             </Button>
-            <Tooltip
-              label="🔒 Password re-entry required for security"
-              position="right"
-              disabled={isNew}
-              withArrow
-            >
-              <Button
-                disabled={!formState.isValid}
-                variant="subtle"
-                type="button"
-                onClick={handleTestConnection}
-                loading={testConnectionState === TestConnectionState.Loading}
-                color={
-                  testConnectionState === TestConnectionState.Invalid
-                    ? 'yellow'
-                    : 'teal'
-                }
-              >
-                {testConnectionState === TestConnectionState.Valid ? (
-                  <>Connection successful</>
-                ) : testConnectionState === TestConnectionState.Invalid ? (
-                  <>Unable to connect</>
-                ) : (
-                  'Test Connection'
-                )}
-              </Button>
-            </Tooltip>
           </Group>
-          {!isNew && showDeleteButton !== false && (
-            <ConfirmDeleteMenu
-              onDelete={() =>
-                deleteConnection.mutate(
-                  { id: connection.id },
-                  {
-                    onSuccess: () => {
-                      onClose?.();
-                    },
-                  },
-                )
-              }
-            />
-          )}
-          {onClose && showCancelButton && (
-            <Button variant="secondary" onClick={onClose}>
-              Cancel
-            </Button>
-          )}
         </Group>
       </Stack>
     </form>

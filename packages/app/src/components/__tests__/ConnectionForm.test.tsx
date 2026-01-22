@@ -168,10 +168,15 @@ describe('ConnectionForm', () => {
       <ConnectionForm connection={baseConnection} isNew={true} />,
     );
 
-    const settingPrefixInput = screen.getByPlaceholderText('hyperdx');
     const nameInput = screen.getByPlaceholderText('My Clickhouse Server');
     const hostInput = screen.getByPlaceholderText('http://localhost:8123');
     const submitButton = screen.getByRole('button', { name: 'Create' });
+
+    // Click "Advanced Settings" to reveal the setting prefix input
+    const advancedSettingsLink = screen.getByText('Advanced Settings');
+    fireEvent.click(advancedSettingsLink);
+
+    const settingPrefixInput = screen.getByPlaceholderText('hyperdx');
 
     await fireEvent.change(nameInput, { target: { value: 'Test Name' } });
     await fireEvent.change(hostInput, {
@@ -188,6 +193,42 @@ describe('ConnectionForm', () => {
         expect.objectContaining({
           connection: expect.objectContaining({
             hyperdxSettingPrefix: 'myprefix',
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
+  it('should convert empty hyperdxSettingPrefix to null when updating', async () => {
+    const existingConnection = {
+      ...baseConnection,
+      id: 'existing-id',
+      hyperdxSettingPrefix: 'oldprefix',
+    };
+    renderWithMantine(
+      <ConnectionForm connection={existingConnection} isNew={false} />,
+    );
+
+    // Click "Advanced Settings" to reveal the setting prefix input
+    const advancedSettingsLink = screen.getByText('Advanced Settings');
+    fireEvent.click(advancedSettingsLink);
+
+    const settingPrefixInput = screen.getByPlaceholderText('hyperdx');
+    const submitButton = screen.getByRole('button', { name: 'Save' });
+
+    // Clear the setting prefix
+    await fireEvent.change(settingPrefixInput, {
+      target: { value: '' },
+    });
+
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(mockUpdateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connection: expect.objectContaining({
+            hyperdxSettingPrefix: null,
           }),
         }),
         expect.anything(),

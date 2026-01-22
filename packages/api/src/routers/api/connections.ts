@@ -64,6 +64,7 @@ router.put(
         return;
       }
 
+      // Build the base connection update
       const newConnection = {
         ...req.body,
         team: teamId,
@@ -74,10 +75,20 @@ router.put(
             }),
       };
 
+      // Remove hyperdxSettingPrefix from the update object if it's null/empty
+      // We'll handle unsetting it separately
+      const shouldUnsetPrefix =
+        req.body.hyperdxSettingPrefix === null ||
+        req.body.hyperdxSettingPrefix === '';
+      if (shouldUnsetPrefix) {
+        delete newConnection.hyperdxSettingPrefix;
+      }
+
       const updatedConnection = await updateConnection(
         teamId.toString(),
         req.params.id,
         newConnection,
+        shouldUnsetPrefix ? ['hyperdxSettingPrefix'] : [],
       );
 
       if (!updatedConnection) {
