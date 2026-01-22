@@ -603,7 +603,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         return SqlString.format(
           `(lower(?) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
           [
-            SqlString.raw(column ?? ''),
+            SqlString.raw(column),
             `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
           ],
         );
@@ -612,7 +612,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
         const isTextIndexEnabled = await this.enableTextIndexPromise;
         const textIndex = isTextIndexEnabled
-          ? await this.findTextIndex(column ?? '')
+          ? await this.findTextIndex(column)
           : undefined;
 
         if (textIndex) {
@@ -627,7 +627,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
             const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
             const hasAllTokensExpressions = tokenBatches.map(batch =>
               SqlString.format(`hasAllTokens(?, ?)`, [
-                SqlString.raw(column ?? ''),
+                SqlString.raw(column),
                 batch.join(' '),
               ]),
             );
@@ -637,7 +637,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
               return `(${isNegatedField ? 'NOT (' : ''}${[
                 ...hasAllTokensExpressions,
                 SqlString.format(`(lower(?) LIKE lower(?))`, [
-                  SqlString.raw(column ?? ''),
+                  SqlString.raw(column),
                   `%${term}%`,
                 ]),
               ].join(' AND ')}${isNegatedField ? ')' : ''})`;
@@ -650,7 +650,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
         // Check for bloom_filter tokens() index first
         const hasSeparators = this.termHasSeparators(term);
-        const bloomIndex = await this.findBloomFilterTokensIndex(column ?? '');
+        const bloomIndex = await this.findBloomFilterTokensIndex(column);
 
         if (bloomIndex.found) {
           const indexHasLower = /\blower\s*\(/.test(bloomIndex.indexExpression);
@@ -666,7 +666,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
               `hasAll(${bloomIndex.indexExpression}, ${termTokensExpression})`,
               // If there are token separators in the term, try to match the whole term as well
               SqlString.format(`(lower(?) LIKE lower(?))`, [
-                SqlString.raw(column ?? ''),
+                SqlString.raw(column),
                 `%${term}%`,
               ]),
             ].join(' AND ')}${isNegatedField ? ')' : ''})`;
@@ -682,20 +682,20 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           return `(${isNegatedField ? 'NOT (' : ''}${[
             ...tokens.map(token =>
               SqlString.format(`hasToken(lower(?), lower(?))`, [
-                SqlString.raw(column ?? ''),
+                SqlString.raw(column),
                 token,
               ]),
             ),
             // If there are symbols in the term, try to match the whole term as well
             SqlString.format(`(lower(?) LIKE lower(?))`, [
-              SqlString.raw(column ?? ''),
+              SqlString.raw(column),
               `%${term}%`,
             ]),
           ].join(' AND ')}${isNegatedField ? ')' : ''})`;
         } else {
           return SqlString.format(
             `(${isNegatedField ? 'NOT ' : ''}hasToken(lower(?), lower(?)))`,
-            [SqlString.raw(column ?? ''), term],
+            [SqlString.raw(column), term],
           );
         }
       }
