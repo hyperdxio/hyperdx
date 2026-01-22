@@ -41,6 +41,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
+import { useDebouncedCallback, useDidUpdate } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconCheck,
@@ -201,40 +202,71 @@ function HighlightedAttributeRow({
   connectionId,
   removeHighlightedAttribute,
 }: HighlightedAttributeRowProps) {
-  const expression = useWatch({
+  const expressionInput = useWatch({
     control,
     name: `${name}.${index}.sqlExpression`,
   });
 
-  const alias = useWatch({
+  const aliasInput = useWatch({
     control,
     name: `${name}.${index}.alias`,
   });
+
+  const [explainParams, setExplainParams] = useState<{
+    expression: typeof expressionInput;
+    alias: typeof aliasInput;
+  }>();
+
+  const setExplainParamsDebounced = useDebouncedCallback(
+    (params: typeof explainParams) => {
+      setExplainParams(params);
+    },
+    1_000,
+  );
+
+  useDidUpdate(() => {
+    setExplainParamsDebounced({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
+  }, [expressionInput, aliasInput]);
 
   const {
     data: explainData,
     error: explainError,
     isLoading: explainLoading,
-    refetch: explainExpression,
   } = useExplainQuery(
     {
       from: { databaseName, tableName },
       connection: connectionId,
-      select: [{ alias, valueExpression: expression }],
+      select: [
+        {
+          alias: explainParams?.alias,
+          valueExpression: explainParams?.expression ?? '',
+        },
+      ],
       where: '',
     },
 
-    { enabled: false },
+    {
+      enabled: !!explainParams?.expression,
+    },
   );
 
   const runExpression = () => {
-    if (expression) {
-      explainExpression();
-    }
+    setExplainParams({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
   };
 
   const isExpressionValid = !!explainData?.length;
   const isExpressionInvalid = explainError instanceof ClickHouseQueryError;
+
+  const shouldShowResult =
+    explainParams?.expression === expressionInput &&
+    explainParams?.alias === aliasInput &&
+    (isExpressionValid || isExpressionInvalid);
 
   return (
     <React.Fragment key={id}>
@@ -271,7 +303,7 @@ function HighlightedAttributeRow({
               variant="subtle"
               color="gray"
               loading={explainLoading}
-              disabled={!expression || explainLoading}
+              disabled={!expressionInput || explainLoading}
               onClick={runExpression}
             >
               <IconCheck size={16} />
@@ -288,7 +320,7 @@ function HighlightedAttributeRow({
         </Flex>
       </Grid.Col>
 
-      {(isExpressionValid || isExpressionInvalid) && (
+      {shouldShowResult && (
         <Grid.Col span={5} pe={0} pt={0}>
           {isExpressionValid && (
             <Text c="green" size="xs">
