@@ -74,7 +74,7 @@ export default function PatternTable({
         fetchNextPage={() => {}}
         highlightedLineId={''}
         columnTypeMap={emptyMap}
-        generateRowId={row => row.id}
+        generateRowId={row => ({ where: row.id, aliasWith: [] })}
         columnNameMap={{
           __hdx_pattern_trend: 'Trend',
           countStr: 'Count',

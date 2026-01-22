@@ -119,18 +119,18 @@ function NewDashboardButton() {
 
   if (IS_LOCAL_MODE) {
     return (
-      <Link href="/dashboards">
-        <Button
-          data-testid="create-dashboard-button"
-          variant="transparent"
-          color="var(--color-text)"
-          py="0px"
-          px="sm"
-          fw={400}
-        >
-          <span className="pe-2">+</span> Create Dashboard
-        </Button>
-      </Link>
+      <Button
+        component={Link}
+        href="/dashboards"
+        data-testid="create-dashboard-button"
+        variant="transparent"
+        color="var(--color-text)"
+        py="0px"
+        px="sm"
+        fw={400}
+      >
+        <span className="pe-2">+</span> Create Dashboard
+      </Button>
     );
   }
 

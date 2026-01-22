@@ -10,6 +10,8 @@ import {
   Tooltip,
 } from '@mantine/core';
 
+import focusClasses from '../../styles/focus.module.scss';
+
 export const makeTheme = ({
   fontFamily = '"IBM Plex Sans", monospace',
 }: {
@@ -17,6 +19,7 @@ export const makeTheme = ({
 }): MantineThemeOverride => ({
   cursorType: 'pointer',
   fontFamily,
+  focusClassName: focusClasses.focusRing,
   primaryColor: 'green',
   primaryShade: 8,
   autoContrast: true,

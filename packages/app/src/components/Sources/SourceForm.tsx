@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Control,
   Controller,
@@ -35,6 +41,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
+import { useDebouncedCallback, useDidUpdate } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconCheck,
@@ -43,7 +50,6 @@ import {
   IconSettings,
   IconTrash,
 } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
@@ -196,40 +202,71 @@ function HighlightedAttributeRow({
   connectionId,
   removeHighlightedAttribute,
 }: HighlightedAttributeRowProps) {
-  const expression = useWatch({
+  const expressionInput = useWatch({
     control,
     name: `${name}.${index}.sqlExpression`,
   });
 
-  const alias = useWatch({
+  const aliasInput = useWatch({
     control,
     name: `${name}.${index}.alias`,
   });
+
+  const [explainParams, setExplainParams] = useState<{
+    expression: typeof expressionInput;
+    alias: typeof aliasInput;
+  }>();
+
+  const setExplainParamsDebounced = useDebouncedCallback(
+    (params: typeof explainParams) => {
+      setExplainParams(params);
+    },
+    1_000,
+  );
+
+  useDidUpdate(() => {
+    setExplainParamsDebounced({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
+  }, [expressionInput, aliasInput]);
 
   const {
     data: explainData,
     error: explainError,
     isLoading: explainLoading,
-    refetch: explainExpression,
   } = useExplainQuery(
     {
       from: { databaseName, tableName },
       connection: connectionId,
-      select: [{ alias, valueExpression: expression }],
+      select: [
+        {
+          alias: explainParams?.alias,
+          valueExpression: explainParams?.expression ?? '',
+        },
+      ],
       where: '',
     },
 
-    { enabled: false },
+    {
+      enabled: !!explainParams?.expression,
+    },
   );
 
   const runExpression = () => {
-    if (expression) {
-      explainExpression();
-    }
+    setExplainParams({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
   };
 
   const isExpressionValid = !!explainData?.length;
   const isExpressionInvalid = explainError instanceof ClickHouseQueryError;
+
+  const shouldShowResult =
+    explainParams?.expression === expressionInput &&
+    explainParams?.alias === aliasInput &&
+    (isExpressionValid || isExpressionInvalid);
 
   return (
     <React.Fragment key={id}>
@@ -266,7 +303,7 @@ function HighlightedAttributeRow({
               variant="subtle"
               color="gray"
               loading={explainLoading}
-              disabled={!expression || explainLoading}
+              disabled={!expressionInput || explainLoading}
               onClick={runExpression}
             >
               <IconCheck size={16} />
@@ -283,7 +320,7 @@ function HighlightedAttributeRow({
         </Flex>
       </Grid.Col>
 
-      {(isExpressionValid || isExpressionInvalid) && (
+      {shouldShowResult && (
         <Grid.Col span={5} pe={0} pt={0}>
           {isExpressionValid && (
             <Text c="green" size="xs">
@@ -1431,6 +1468,21 @@ export function SessionTableModelForm({ control }: TableModelProps) {
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
         </FormRow>
+        <FormRow
+          label={'Timestamp Column'}
+          helpText="DateTime column or expression that is part of your table's primary key."
+        >
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name="timestampValueExpression"
+            disableKeywordAutocomplete
+          />
+        </FormRow>
       </Stack>
     </>
   );
@@ -1582,6 +1634,7 @@ export function TableSourceForm({
           databaseName: 'default',
           tableName: '',
         },
+        querySettings: source?.querySettings,
       },
       // TODO: HDX-1768 remove type assertion
       values: source as TSourceUnion,
@@ -1937,6 +1990,12 @@ export function TableSourceForm({
     defaultValue: source?.connection,
   });
 
+  const {
+    fields: querySettingFields,
+    append: appendSetting,
+    remove: removeSetting,
+  } = useFieldArray({ control, name: 'querySettings' });
+
   return (
     <div
       style={
@@ -1999,6 +2058,66 @@ export function TableSourceForm({
             />
           </FormRow>
         )}
+        <FormRow
+          label={
+            <Anchor
+              href="https://clickhouse.com/docs/operations/settings/settings"
+              size="sm"
+              target="_blank"
+            >
+              Query Settings
+            </Anchor>
+          }
+          helpText="Query-level Session Settings that will be added to each query for this source."
+        >
+          <Grid columns={11}>
+            {querySettingFields.map((field, index) => (
+              <Fragment key={field.id}>
+                <Grid.Col span={5} pe={0}>
+                  <InputControlled
+                    placeholder="Setting"
+                    control={control}
+                    name={`querySettings.${index}.setting`}
+                  />
+                </Grid.Col>
+                <Grid.Col span={5} pe={0}>
+                  <InputControlled
+                    placeholder="Value"
+                    control={control}
+                    name={`querySettings.${index}.value`}
+                  />
+                </Grid.Col>
+                <Grid.Col span={1} ps={0}>
+                  <Flex align="center" justify="center" gap="sm" h="100%">
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      title="Remove setting"
+                      onClick={() => removeSetting(index)}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Flex>
+                </Grid.Col>
+              </Fragment>
+            ))}
+          </Grid>
+          <Button
+            variant="secondary"
+            size="sm"
+            color="gray"
+            mt="md"
+            disabled={querySettingFields.length >= 10}
+            onClick={() => {
+              if (querySettingFields.length < 10) {
+                appendSetting({ setting: '', value: '' });
+              }
+            }}
+          >
+            <IconCirclePlus size={14} className="me-2" />
+            Add Setting
+          </Button>
+        </FormRow>
       </Stack>
       <TableModelForm control={control} setValue={setValue} kind={kind} />
       <Group justify="flex-end" mt="lg">

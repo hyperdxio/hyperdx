@@ -21,6 +21,7 @@ import DBRowSidePanelHeader, {
   BreadcrumbPath,
 } from '@/components/DBRowSidePanelHeader';
 import useResizable from '@/hooks/useResizable';
+import { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
@@ -84,6 +85,7 @@ enum Tab {
 type DBRowSidePanelProps = {
   source: TSource;
   rowId: string | undefined;
+  aliasWith?: WithClause[];
   onClose: () => void;
   isNestedPanel?: boolean;
   breadcrumbPath?: BreadcrumbPath;
@@ -92,6 +94,7 @@ type DBRowSidePanelProps = {
 
 const DBRowSidePanel = ({
   rowId: rowId,
+  aliasWith,
   source,
   isNestedPanel = false,
   setSubDrawerOpen,
@@ -108,6 +111,7 @@ const DBRowSidePanel = ({
   } = useRowData({
     source,
     rowId,
+    aliasWith,
   });
 
   const { dbSqlRowTableConfig } = useContext(RowSidePanelContext);
@@ -377,6 +381,7 @@ const DBRowSidePanel = ({
             data-testid="side-panel-tab-overview"
             source={source}
             rowId={rowId}
+            aliasWith={aliasWith}
             hideHeader={true}
           />
         </ErrorBoundary>
@@ -440,6 +445,7 @@ const DBRowSidePanel = ({
             data-testid="side-panel-tab-parsed"
             source={source}
             rowId={rowId}
+            aliasWith={aliasWith}
           />
         </ErrorBoundary>
       )}
@@ -518,6 +524,7 @@ const DBRowSidePanel = ({
 export default function DBRowSidePanelErrorBoundary({
   onClose,
   rowId,
+  aliasWith,
   source,
   isNestedPanel,
   breadcrumbPath = [],
@@ -594,6 +601,7 @@ export default function DBRowSidePanelErrorBoundary({
             <DBRowSidePanel
               source={source}
               rowId={rowId}
+              aliasWith={aliasWith}
               onClose={_onClose}
               isNestedPanel={isNestedPanel}
               breadcrumbPath={breadcrumbPath}
