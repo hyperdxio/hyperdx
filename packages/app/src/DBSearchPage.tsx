@@ -1906,7 +1906,10 @@ function DBSearchPage() {
                         </Group>
                       </Box>
                       {!hasQueryError && (
-                        <Box className={searchPageStyles.timeChartContainer}>
+                        <Box
+                          className={searchPageStyles.timeChartContainer}
+                          style={{ flexShrink: 0 }}
+                        >
                           <DBTimeChart
                             sourceId={searchedConfig.source ?? undefined}
                             showLegend={false}
