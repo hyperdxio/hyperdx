@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { ClickStackLogo } from './ClickStackLogo';
+import { ClickStackIcon } from './ClickStackLogo';
 
 export default function Logo({
   size = 'sm',
@@ -39,7 +39,7 @@ export default function Logo({
           alignItems: 'center',
         }}
       >
-        <ClickStackLogo size={configs[size].iconSize} />
+        <ClickStackIcon size={configs[size].iconSize} />
       </div>
 
       <span
