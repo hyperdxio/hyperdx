@@ -285,20 +285,6 @@ button:focus-visible {
   }
 }
 
-.hdx-background-image {
-  position: fixed;
-  inset: 0;
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
-  mix-blend-mode: screen;
-  z-index: 9999999;
-  pointer-events: none;
-}
-
-[data-mantine-color-scheme='light'] .hdx-background-image {
-  display: none;
-}
 
 a.mantine-focus-auto:hover {
   color: inherit;

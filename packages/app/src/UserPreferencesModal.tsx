@@ -2,19 +2,16 @@ import * as React from 'react';
 import {
   Autocomplete,
   Badge,
-  Button,
   Divider,
   Group,
-  Input,
   Modal,
   Select,
-  Slider,
   Stack,
   Switch,
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconFlask, IconWorld } from '@tabler/icons-react';
+import { IconFlask } from '@tabler/icons-react';
 
 import { OPTIONS_FONTS } from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
@@ -32,27 +29,6 @@ const OPTIONS_BRAND_THEMES = Object.values(themes).map(t => ({
   label: t.displayName,
   value: t.name,
 }));
-
-const OPTIONS_MIX_BLEND_MODE = [
-  'normal',
-  'multiply',
-  'screen',
-  'overlay',
-  'darken',
-  'lighten',
-  'color-dodge',
-  'color-burn',
-  'hard-light',
-  'soft-light',
-  'difference',
-  'exclusion',
-  'hue',
-  'saturation',
-  'color',
-  'luminosity',
-  'plus-darker',
-  'plus-lighter',
-];
 
 const SettingContainer = ({
   label,
@@ -209,108 +185,6 @@ export const UserPreferencesModal = ({
             data={OPTIONS_FONTS}
           />
         </SettingContainer>
-
-        <SettingContainer label="Background overlay">
-          <Switch
-            size="md"
-            variant="default"
-            onClick={() =>
-              setUserPreference({
-                backgroundEnabled: !userPreferences.backgroundEnabled,
-              })
-            }
-            checked={userPreferences.backgroundEnabled}
-          />
-        </SettingContainer>
-
-        {userPreferences.backgroundEnabled && (
-          <>
-            <Divider label={<>Background</>} labelPosition="left" />
-            <SettingContainer
-              label="Background URL"
-              description={
-                <Group gap={4}>
-                  <Button
-                    variant="secondary"
-                    size="compact-xs"
-                    onClick={() =>
-                      setUserPreference({
-                        backgroundUrl: 'https://i.imgur.com/CrHYfTG.jpeg',
-                      })
-                    }
-                  >
-                    Try this
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="compact-xs"
-                    onClick={() =>
-                      setUserPreference({
-                        backgroundUrl: 'https://i.imgur.com/hnkdzAX.jpeg',
-                      })
-                    }
-                  >
-                    or this
-                  </Button>
-                </Group>
-              }
-            >
-              <Input
-                placeholder="https:// or data:"
-                value={userPreferences.backgroundUrl}
-                leftSection={<IconWorld size={16} />}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setUserPreference({
-                    backgroundUrl: e.currentTarget.value,
-                  })
-                }
-              />
-            </SettingContainer>
-            <SettingContainer label="Opacity">
-              <Slider
-                defaultValue={0.1}
-                step={0.01}
-                max={1}
-                min={0}
-                value={userPreferences.backgroundOpacity}
-                onChange={value =>
-                  setUserPreference({
-                    backgroundOpacity: value,
-                  })
-                }
-              />
-            </SettingContainer>
-            <SettingContainer label="Blur">
-              <Slider
-                defaultValue={0}
-                step={0.01}
-                max={90}
-                min={0}
-                value={userPreferences.backgroundBlur}
-                onChange={value =>
-                  setUserPreference({
-                    backgroundBlur: value,
-                  })
-                }
-              />
-            </SettingContainer>
-            <SettingContainer label="Blend mode">
-              <Select
-                value={userPreferences.backgroundBlendMode}
-                defaultValue="plus-lighter"
-                onChange={value =>
-                  value &&
-                  setUserPreference({
-                    backgroundBlendMode:
-                      value as UserPreferences['backgroundBlendMode'],
-                  })
-                }
-                data={OPTIONS_MIX_BLEND_MODE}
-                allowDeselect={false}
-              />
-            </SettingContainer>
-          </>
-        )}
       </Stack>
     </Modal>
   );

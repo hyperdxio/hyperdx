@@ -28,7 +28,7 @@ import { AppThemeProvider } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { useConfirmModal } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
-import { useBackground, useUserPreferences } from '@/useUserPreferences';
+import { useUserPreferences } from '@/useUserPreferences';
 
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -67,7 +67,6 @@ type AppPropsWithLayout = AppProps & {
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const { userPreferences } = useUserPreferences();
   const confirmModal = useConfirmModal();
-  const background = useBackground(userPreferences);
 
   // Only override font if user has explicitly set a preference
   // Otherwise, let the theme use its default font
@@ -164,7 +163,6 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
                 {confirmModal}
               </ThemeWrapper>
               <ReactQueryDevtools initialIsOpen={true} />
-              {background}
             </QueryClientProvider>
           </QueryParamProvider>
         </HDXQueryParamProvider>
