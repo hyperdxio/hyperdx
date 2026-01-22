@@ -13,7 +13,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconSettings } from '@tabler/icons-react';
+import { IconHelpCircle, IconSettings } from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -325,20 +325,24 @@ export function ConnectionForm({
             display: showAdvancedSettings ? 'block' : 'none',
           }}
         >
-          <Text size="xs" mb="xs">
-            Query Log Setting Prefix (optional)
-          </Text>
+          <Group gap="xs" mb="xs">
+            <Text size="xs">Query Log Setting Prefix</Text>
+            <Tooltip
+              label="Tracks query origins by adding the current user's email to ClickHouse queries (as {prefix}_user in system.query_log). Requires 'custom_settings_prefixes' in your ClickHouse config.xml to include this exact value, otherwise queries will be rejected."
+              color="dark"
+              c="white"
+              multiline
+              maw={400}
+            >
+              <IconHelpCircle size={16} className="cursor-pointer" />
+            </Tooltip>
+          </Group>
           <InputControlled
             data-testid="connection-setting-prefix-input"
             name="hyperdxSettingPrefix"
             control={control}
             placeholder="hyperdx"
           />
-          <Text size="xs" c="dimmed" mt="xs">
-            When set, HyperDX queries will include a custom ClickHouse setting (
-            {'{prefix}_user'}) with the current user's email for tracking query
-            origins in system.query_log.
-          </Text>
         </Box>
         <Group justify="space-between">
           <Tooltip
@@ -396,7 +400,7 @@ export function ConnectionForm({
                 isNew ? createConnection.isPending : updateConnection.isPending
               }
             >
-              {isNew ? 'Create' : 'Save'}
+              {isNew ? 'Create' : 'Save'} Connection
             </Button>
           </Group>
         </Group>
