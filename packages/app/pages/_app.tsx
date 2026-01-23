@@ -68,8 +68,10 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const { userPreferences } = useUserPreferences();
   const confirmModal = useConfirmModal();
 
-  // Only override font if user has explicitly set a preference
-  // Otherwise, let the theme use its default font
+  // Only override font if user has explicitly set a preference.
+  // Otherwise, return undefined to let the theme use its default font:
+  // - HyperDX theme: "IBM Plex Sans", monospace
+  // - ClickStack theme: "Inter", sans-serif
   const selectedMantineFont = userPreferences.font
     ? MANTINE_FONT_MAP[userPreferences.font]
     : undefined;
