@@ -26,7 +26,7 @@ jest.mock('@hyperdx/common-utils/dist/core/materializedViews', () => ({
     ]),
 }));
 
-describe('useDashboardFilterKeyValues', () => {
+describe('useDashboardFilterValues', () => {
   let queryClient: QueryClient;
   let wrapper: React.ComponentType<{ children: any }>;
   let mockMetadata: jest.Mocked<Metadata>;
@@ -96,12 +96,13 @@ describe('useDashboardFilterKeyValues', () => {
     },
   ];
 
-  const mockKeyValues: Record<string, string[] | undefined> = {
+  const mockKeyValues: Record<string, string[] | number[] | undefined> = {
     environment: ['production', 'staging', 'development'],
     'service.name': ['frontend', 'backend', 'database'],
     MetricName: ['CPU_Usage', 'Memory_Usage'],
     status: ['200', '404', '500'],
     log_level: ['info', 'error'],
+    SeverityNumber: [1, 2],
   };
 
   const mockDateRange: [Date, Date] = [
@@ -121,7 +122,7 @@ describe('useDashboardFilterKeyValues', () => {
       return Promise.resolve(
         keys.map(key => ({
           key,
-          value: mockKeyValues[key] ?? [],
+          value: (mockKeyValues[key] as string[]) ?? [],
         })),
       );
     });
@@ -148,6 +149,47 @@ describe('useDashboardFilterKeyValues', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('should convert non-string key values to strings', async () => {
+    // Arrange
+    jest.spyOn(sourceModule, 'useSources').mockReturnValue({
+      data: mockSources,
+      isLoading: false,
+    } as any);
+
+    // Act
+    const { result } = renderHook(
+      () =>
+        useDashboardFilterKeyValues({
+          filters: [
+            {
+              id: 'filterSevNumber',
+              type: 'QUERY_EXPRESSION',
+              name: 'SeverityNumber',
+              expression: 'SeverityNumber',
+              source: 'logs-source',
+            },
+          ],
+          dateRange: mockDateRange,
+        }),
+      { wrapper },
+    );
+
+    // Assert
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    expect(result.current.data).toEqual(
+      new Map([
+        [
+          'SeverityNumber',
+          {
+            values: ['1', '2'],
+            isLoading: false,
+          },
+        ],
+      ]),
+    );
   });
 
   it('should fetch key values for filters grouped by source', async () => {
