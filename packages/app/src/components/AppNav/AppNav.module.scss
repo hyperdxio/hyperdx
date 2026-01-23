@@ -42,6 +42,7 @@ $transition-slow: 0.2s ease;
   transition: width 0.2s ease;
   will-change: width;
 }
+
 .nav {
   height: 100vh;
   max-height: 100vh;
@@ -78,7 +79,7 @@ $transition-slow: 0.2s ease;
 }
 
 .logoIconWrapper {
-  margin-top: 6px;  
+  margin-top: 6px;
 }
 
 .collapseButton {
