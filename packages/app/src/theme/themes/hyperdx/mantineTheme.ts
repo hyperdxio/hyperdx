@@ -249,7 +249,7 @@ export const makeTheme = ({
 
         if (props.variant === 'secondary') {
           baseVars['--button-bg'] = 'var(--color-bg-body)';
-          baseVars['--button-hover'] = 'var(--color-bg-hover)';
+          baseVars['--button-hover'] = 'var(--color-bg-muted)';
           baseVars['--button-color'] = 'var(--color-text)';
           baseVars['--button-bd'] = '1px solid var(--color-border)';
         }
