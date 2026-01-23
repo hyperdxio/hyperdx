@@ -15,6 +15,7 @@ import {
   Button,
   Center,
   Checkbox,
+  Collapse,
   Flex,
   Group,
   Loader,
@@ -33,6 +34,7 @@ import {
   IconChartBar,
   IconChartBarOff,
   IconChevronDown,
+  IconChevronLeft,
   IconChevronRight,
   IconChevronUp,
   IconFilterOff,
@@ -841,6 +843,8 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults,
   setDenoiseResults,
   setFilterRange,
+  isCollapsed = false,
+  onToggleCollapse,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
@@ -851,6 +855,8 @@ const DBSearchPageFiltersComponent = ({
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
   setFilterRange: (key: string, range: { min: number; max: number }) => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 } & FilterStateHook) => {
   const setFilterValue = useCallback(
     (
@@ -1150,22 +1156,94 @@ const DBSearchPageFiltersComponent = ({
   }, [filterState, source]);
 
   return (
-    <Box className={classes.filtersPanel} style={{ width: `${size}%` }}>
-      <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
-      <ScrollArea
+    <Box
+      className={classes.filtersPanel}
+      data-collapsed={isCollapsed}
+      style={{
+        width: isCollapsed ? 'auto' : `${size}%`,
+        minWidth: isCollapsed ? 'auto' : undefined,
+      }}
+    >
+      {!isCollapsed && (
+        <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
+      )}
+      <Stack
+        gap={0}
         h="100%"
-        scrollbarSize={4}
-        scrollbars="y"
         style={{
-          display: 'block',
-          width: '100%',
-          overflow: 'hidden',
+          position: 'relative',
         }}
       >
-        <Stack gap="sm" p="xs">
-          <Text size="xxs" c="dimmed" fw="bold">
-            Analysis Mode
-          </Text>
+        {onToggleCollapse && isCollapsed && (
+          <Flex
+            justify="center"
+            p="xs"
+            h="100%"
+          >
+            <Stack gap={8} align="center" style={{ cursor: 'pointer' }} onClick={onToggleCollapse}>
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                title="Expand Filters"
+                data-testid="toggle-filters-button"
+                color="gray"
+              >
+                <IconChevronRight size={14} />
+              </ActionIcon>
+              <Text
+                size="10px"
+                c="dimmed"
+                fw={500}
+                style={{
+                  writingMode: 'vertical-rl',
+                  textOrientation: 'mixed',
+                  letterSpacing: '1px',
+                  userSelect: 'none',
+                  transform: 'rotate(180deg)',
+                }}
+              >
+                FILTERS
+              </Text>
+            </Stack>
+          </Flex>
+        )}
+        <Collapse
+          in={!isCollapsed}
+          style={{
+            flex: 1,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <ScrollArea
+            h="100%"
+            scrollbarSize={4}
+            scrollbars="y"
+            style={{
+              display: 'block',
+              width: '100%',
+              overflow: 'hidden',
+            }}
+          >
+            <Stack gap="sm" p="xs">
+          <Flex align="center" justify="space-between">
+            <Text size="xxs" c="dimmed" fw="bold">
+              Analysis Mode
+            </Text>
+            {onToggleCollapse && (
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                title="Collapse Filters"
+                onClick={onToggleCollapse}
+                data-testid="toggle-filters-button"
+                color="gray"
+              >
+                <IconChevronLeft size={14} />
+              </ActionIcon>
+            )}
+          </Flex>
           <Tabs
             value={analysisMode}
             onChange={value =>
@@ -1432,8 +1510,10 @@ const DBSearchPageFiltersComponent = ({
               </Text>
             </div>
           )}
-        </Stack>
-      </ScrollArea>
+            </Stack>
+          </ScrollArea>
+        </Collapse>
+      </Stack>
     </Box>
   );
 };

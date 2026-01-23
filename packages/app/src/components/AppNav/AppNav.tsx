@@ -450,14 +450,15 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       defaultValue: true,
     });
   const { width } = useWindowSize();
+  const isSmallScreen = (width ?? 1000) < 900;
 
+  // Default to collapsed on mobile, but allow user to override
   const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<boolean>({
     key: 'isNavCollapsed',
-    defaultValue: false,
+    defaultValue: isSmallScreen,
   });
 
-  const isSmallScreen = (width ?? 1000) < 900;
-  const isCollapsed = isSmallScreen || isPreferCollapsed;
+  const isCollapsed = isPreferCollapsed;
 
   const navWidth = isCollapsed ? 50 : 230;
 
