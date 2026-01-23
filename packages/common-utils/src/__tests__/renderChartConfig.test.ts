@@ -38,6 +38,7 @@ describe('renderChartConfig', () => {
         .fn()
         .mockResolvedValue({ primary_key: 'timestamp' }),
       getSkipIndices: jest.fn().mockResolvedValue([]),
+      getSetting: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<Metadata>;
   });
 

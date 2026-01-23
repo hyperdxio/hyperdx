@@ -5,7 +5,6 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
-import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isMetricChartConfig,
@@ -397,10 +396,6 @@ export function useAliasMapFromChartConfig(
 
   const metadata = useMetadataWithSettings();
 
-  const { data: source, isLoading: isSourceLoading } = useSource({
-    id: config?.source,
-  });
-
   return useQuery<Record<string, string>>({
     // Only include config properties that affect SELECT structure and aliases.
     // When adding new ChartConfig fields, check renderChartConfig.ts to see if they
@@ -432,7 +427,7 @@ export function useAliasMapFromChartConfig(
 
       return aliasMap;
     },
-    enabled: config != null && !isSourceLoading,
+    enabled: config != null,
     ...options,
   });
 }
