@@ -219,61 +219,36 @@ export const makeTheme = ({
       },
     }),
     Button: Button.extend({
-      vars: (theme, props) => {
+      vars: (_theme, props) => {
+        const baseVars: Record<string, string> = {};
+
         if (props.size === 'xxs') {
-          return {
-            root: {
-              '--button-height': rem(22),
-              '--button-padding-x': rem(4),
-              '--button-fz': rem(12),
-            },
-          };
+          baseVars['--button-height'] = rem(22);
+          baseVars['--button-padding-x'] = rem(4);
+          baseVars['--button-fz'] = rem(12);
         }
 
-        return { root: {} };
-      },
-      styles: (_theme, props) => {
-        // Primary variant - light green style
+        // Use Mantine's built-in CSS vars for hover support
         if (props.variant === 'primary') {
-          return {
-            root: {
-              backgroundColor: 'var(--mantine-color-green-light)',
-              color: 'var(--mantine-color-green-light-color)',
-              '&:hover': {
-                backgroundColor: 'var(--mantine-color-green-light-hover)',
-              },
-            },
-          };
+          baseVars['--button-bg'] = 'var(--mantine-color-green-light)';
+          baseVars['--button-hover'] = 'var(--mantine-color-green-light-hover)';
+          baseVars['--button-color'] = 'var(--mantine-color-green-light-color)';
         }
 
-        // Secondary variant - similar to default
         if (props.variant === 'secondary') {
-          return {
-            root: {
-              backgroundColor: 'var(--color-bg-body)',
-              color: 'var(--color-text)',
-              border: '1px solid var(--color-border)',
-              '&:hover': {
-                backgroundColor: 'var(--color-bg-hover)',
-              },
-            },
-          };
+          baseVars['--button-bg'] = 'var(--color-bg-body)';
+          baseVars['--button-hover'] = 'var(--color-bg-muted)';
+          baseVars['--button-color'] = 'var(--color-text)';
+          baseVars['--button-bd'] = '1px solid var(--color-border)';
         }
 
-        // Danger variant - light red style
         if (props.variant === 'danger') {
-          return {
-            root: {
-              backgroundColor: 'var(--mantine-color-red-light)',
-              color: 'var(--mantine-color-red-light-color)',
-              '&:hover': {
-                backgroundColor: 'var(--mantine-color-red-light-hover)',
-              },
-            },
-          };
+          baseVars['--button-bg'] = 'var(--mantine-color-red-light)';
+          baseVars['--button-hover'] = 'var(--mantine-color-red-light-hover)';
+          baseVars['--button-color'] = 'var(--mantine-color-red-light-color)';
         }
 
-        return {};
+        return { root: baseVars };
       },
     }),
     SegmentedControl: {
@@ -291,81 +266,42 @@ export const makeTheme = ({
         variant: 'subtle',
         color: 'gray',
       },
-      styles: (_theme, props) => {
-        // Subtle variant stays transparent
+      vars: (_theme, props) => {
+        const baseVars: Record<string, string> = {};
+
         if (props.variant === 'subtle') {
-          return {
-            root: {
-              backgroundColor: 'transparent',
-              color: 'var(--color-text)',
-              '&:hover': {
-                backgroundColor: 'var(--color-bg-hover)',
-              },
-              '&:active': {
-                backgroundColor: 'var(--color-bg-muted)',
-              },
-            },
-          };
+          baseVars['--ai-bg'] = 'transparent';
+          baseVars['--ai-hover'] = 'var(--color-bg-hover)';
+          baseVars['--ai-color'] = 'var(--color-text)';
         }
 
-        // Default variant
         if (props.variant === 'default') {
-          return {
-            root: {
-              backgroundColor: 'var(--color-bg-hover)',
-              color: 'var(--color-text)',
-              border: 'none',
-              '&:hover': {
-                backgroundColor: 'var(--color-bg-muted)',
-              },
-              '&:active': {
-                backgroundColor: 'var(--color-bg-muted)',
-              },
-            },
-          };
+          baseVars['--ai-bg'] = 'var(--color-bg-hover)';
+          baseVars['--ai-hover'] = 'var(--color-bg-muted)';
+          baseVars['--ai-color'] = 'var(--color-text)';
+          baseVars['--ai-bd'] = 'none';
         }
 
-        // Primary variant - light green style
         if (props.variant === 'primary') {
-          return {
-            root: {
-              backgroundColor: 'var(--mantine-color-green-light)',
-              color: 'var(--mantine-color-green-light-color)',
-              '&:hover': {
-                backgroundColor: 'var(--mantine-color-green-light-hover)',
-              },
-            },
-          };
+          baseVars['--ai-bg'] = 'var(--mantine-color-green-light)';
+          baseVars['--ai-hover'] = 'var(--mantine-color-green-light-hover)';
+          baseVars['--ai-color'] = 'var(--mantine-color-green-light-color)';
         }
 
-        // Secondary variant - similar to default
         if (props.variant === 'secondary') {
-          return {
-            root: {
-              backgroundColor: 'var(--color-bg-surface)',
-              color: 'var(--color-text)',
-              border: '1px solid var(--color-border)',
-              '&:hover': {
-                backgroundColor: 'var(--color-bg-hover)',
-              },
-            },
-          };
+          baseVars['--ai-bg'] = 'var(--color-bg-surface)';
+          baseVars['--ai-hover'] = 'var(--color-bg-hover)';
+          baseVars['--ai-color'] = 'var(--color-text)';
+          baseVars['--ai-bd'] = '1px solid var(--color-border)';
         }
 
-        // Danger variant - light red style
         if (props.variant === 'danger') {
-          return {
-            root: {
-              backgroundColor: 'var(--mantine-color-red-light)',
-              color: 'var(--mantine-color-red-light-color)',
-              '&:hover': {
-                backgroundColor: 'var(--mantine-color-red-light-hover)',
-              },
-            },
-          };
+          baseVars['--ai-bg'] = 'var(--mantine-color-red-light)';
+          baseVars['--ai-hover'] = 'var(--mantine-color-red-light-hover)';
+          baseVars['--ai-color'] = 'var(--mantine-color-red-light-color)';
         }
 
-        return {};
+        return { root: baseVars };
       },
     }),
   },
