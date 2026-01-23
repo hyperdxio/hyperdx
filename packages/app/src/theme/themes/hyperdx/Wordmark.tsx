@@ -16,7 +16,7 @@ export default function Wordmark() {
       </div>
 
       <span
-        className="fw-500 mono"
+        className="fw-bold mono"
         style={{
           fontSize: 15,
         }}
