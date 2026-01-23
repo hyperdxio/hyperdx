@@ -90,11 +90,10 @@ export const Source = mongoose.model<ISource>(
       querySettings: {
         type: [
           {
-            setting: { type: String, required: true },
-            value: { type: String, required: true },
+            setting: { type: String, required: true, minlength: 1 },
+            value: { type: String, required: true, minlength: 1 },
           },
         ],
-        default: undefined,
         maxlength: 10,
       },
     },
