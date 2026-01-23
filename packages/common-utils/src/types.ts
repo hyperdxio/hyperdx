@@ -604,7 +604,7 @@ export enum SourceKind {
 // --------------------------
 
 const QuerySettingsSchema = z.array(
-  z.object({ setting: z.string(), value: z.string() }),
+  z.object({ setting: z.string().min(1), value: z.string().min(1) }),
 );
 
 export type QuerySettings = z.infer<typeof QuerySettingsSchema>;
