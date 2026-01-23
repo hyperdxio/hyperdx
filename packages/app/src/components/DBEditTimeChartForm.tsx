@@ -236,6 +236,17 @@ function ChartSeriesEditorComponent({
 
   const showWhere = aggFn !== 'none';
 
+  const tableConnection = useMemo(
+    () => ({
+      databaseName,
+      tableName: tableName ?? '',
+      connectionId: connectionId ?? '',
+      metricName:
+        tableSource?.kind === SourceKind.Metric ? metricName : undefined,
+    }),
+    [databaseName, tableName, connectionId, metricName, tableSource],
+  );
+
   return (
     <>
       <Divider
@@ -345,11 +356,7 @@ function ChartSeriesEditorComponent({
             }}
           >
             <SQLInlineEditorControlled
-              tableConnection={{
-                databaseName,
-                tableName: tableName ?? '',
-                connectionId: connectionId ?? '',
-              }}
+              tableConnection={tableConnection}
               control={control}
               name={`${namePrefix}valueExpression`}
               placeholder="SQL Column"
@@ -376,11 +383,7 @@ function ChartSeriesEditorComponent({
                 >
                   {aggConditionLanguage === 'sql' ? (
                     <SQLInlineEditorControlled
-                      tableConnection={{
-                        databaseName,
-                        tableName: tableName ?? '',
-                        connectionId: connectionId ?? '',
-                      }}
+                      tableConnection={tableConnection}
                       control={control}
                       name={`${namePrefix}aggCondition`}
                       placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -393,11 +396,7 @@ function ChartSeriesEditorComponent({
                     />
                   ) : (
                     <SearchInputV2
-                      tableConnection={{
-                        connectionId: connectionId ?? '',
-                        databaseName: databaseName ?? '',
-                        tableName: tableName ?? '',
-                      }}
+                      tableConnection={tableConnection}
                       control={control}
                       name={`${namePrefix}aggCondition`}
                       onLanguageChange={lang =>
@@ -427,15 +426,7 @@ function ChartSeriesEditorComponent({
                 >
                   <SQLInlineEditorControlled
                     parentRef={parentRef}
-                    tableConnection={{
-                      databaseName,
-                      tableName: tableName ?? '',
-                      connectionId: connectionId ?? '',
-                      metricName:
-                        tableSource?.kind === SourceKind.Metric
-                          ? metricName
-                          : undefined,
-                    }}
+                    tableConnection={tableConnection}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
@@ -450,15 +441,10 @@ function ChartSeriesEditorComponent({
                     </Text>
                     <div style={{ minWidth: 300, maxWidth: '100%' }}>
                       <SQLInlineEditorControlled
-                        tableConnection={{
-                          databaseName,
-                          tableName: tableName ?? '',
-                          connectionId: connectionId ?? '',
-                        }}
+                        tableConnection={tableConnection}
                         control={control}
                         name="having"
                         placeholder="SQL HAVING clause (ex. count() > 100)"
-                        additionalSuggestions={attributeKeys}
                         disableKeywordAutocomplete
                         onSubmit={onSubmit}
                       />
@@ -925,6 +911,11 @@ export default function EditTimeChartForm({
     [setValue, onSubmit],
   );
 
+  const tableConnection = useMemo(
+    () => tcFromSource(tableSource),
+    [tableSource],
+  );
+
   return (
     <div ref={setParentRef} data-testid={dataTestId}>
       <Controller
@@ -1083,7 +1074,7 @@ export default function EditTimeChartForm({
                     </div>
                     <div>
                       <SQLInlineEditorControlled
-                        tableConnection={tcFromSource(tableSource)}
+                        tableConnection={tableConnection}
                         control={control}
                         name={`groupBy`}
                         placeholder="SQL Columns"
@@ -1106,7 +1097,7 @@ export default function EditTimeChartForm({
                         </div>
                         <div>
                           <SQLInlineEditorControlled
-                            tableConnection={tcFromSource(tableSource)}
+                            tableConnection={tableConnection}
                             control={control}
                             name="having"
                             placeholder="SQL HAVING clause (ex. count() > 100)"
@@ -1186,7 +1177,7 @@ export default function EditTimeChartForm({
           ) : (
             <Flex gap="xs" direction="column">
               <SQLInlineEditorControlled
-                tableConnection={tcFromSource(tableSource)}
+                tableConnection={tableConnection}
                 control={control}
                 name="select"
                 placeholder={
@@ -1198,7 +1189,7 @@ export default function EditTimeChartForm({
               />
               {whereLanguage === 'sql' ? (
                 <SQLInlineEditorControlled
-                  tableConnection={tcFromSource(tableSource)}
+                  tableConnection={tableConnection}
                   control={control}
                   name={`where`}
                   placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -1208,11 +1199,7 @@ export default function EditTimeChartForm({
                 />
               ) : (
                 <SearchInputV2
-                  tableConnection={{
-                    connectionId: tableSource?.connection ?? '',
-                    databaseName: databaseName ?? '',
-                    tableName: tableName ?? '',
-                  }}
+                  tableConnection={tableConnection}
                   control={control}
                   name="where"
                   onLanguageChange={lang => setValue('whereLanguage', lang)}
@@ -1314,7 +1301,7 @@ export default function EditTimeChartForm({
             <div style={{ width: 400 }}>
               <SQLInlineEditorControlled
                 parentRef={parentRef}
-                tableConnection={tcFromSource(tableSource)}
+                tableConnection={tableConnection}
                 // The default order by is the current group by value
                 placeholder={typeof groupBy === 'string' ? groupBy : ''}
                 control={control}
