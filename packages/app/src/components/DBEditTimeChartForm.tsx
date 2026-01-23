@@ -135,6 +135,29 @@ const getSeriesFieldPath = (
   return `${namePrefix}${fieldName}` as FieldPath<SavedChartConfigWithSeries>;
 };
 
+export function normalizeChartConfig<
+  C extends Pick<
+    SavedChartConfig,
+    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables'
+  >,
+>(config: C, source: TSource): C {
+  const isMetricSource = source.kind === SourceKind.Metric;
+  return {
+    ...config,
+    // Strip out metric-specific fields for non-metric sources
+    select:
+      !isMetricSource && Array.isArray(config.select)
+        ? config.select.map(s => omit(s, ['metricName', 'metricType']))
+        : config.select,
+    metricTables: isMetricSource ? config.metricTables : undefined,
+    // Order By and Having can only be set by the user for table charts
+    having:
+      config.displayType === DisplayType.Table ? config.having : undefined,
+    orderBy:
+      config.displayType === DisplayType.Table ? config.orderBy : undefined,
+  };
+}
+
 // Helper function to validate metric names for metric sources
 const validateMetricNames = (
   tableSource: TSource | undefined,
@@ -684,19 +707,13 @@ export default function EditTimeChartForm({
           select: isSelectEmpty
             ? tableSource.defaultTableSelectExpression || ''
             : config.select,
-          // Order By and Having can only be set by the user for table charts
-          having: config.displayType === DisplayType.Table ? config.having : '',
-          orderBy:
-            config.displayType === DisplayType.Table
-              ? config.orderBy
-              : undefined,
         };
         setQueriedConfigAndSource(
           // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
           // YOUR STATE IS AN OBJECT. YOU'RE COPYING BY REFERENCE WHICH MIGHT
           // ACCIDENTALLY CAUSE A useQuery SOMEWHERE TO FIRE A REQUEST EVERY TIME
           // AN INPUT CHANGES. USE structuredClone TO PERFORM A DEEP COPY INSTEAD
-          structuredClone(newConfig),
+          structuredClone(normalizeChartConfig(newConfig, tableSource)),
           tableSource,
         );
       }
@@ -734,25 +751,30 @@ export default function EditTimeChartForm({
 
   const handleSave = useCallback(
     (v: SavedChartConfigWithSeries) => {
-      // Validate metric sources have metric names selected
-      if (validateMetricNames(tableSource, v.series, setError)) {
-        return;
-      }
+      if (tableSource != null) {
+        // Validate metric sources have metric names selected
+        if (validateMetricNames(tableSource, v.series, setError)) {
+          return;
+        }
 
-      // If the chart type is search, we need to ensure the select is a string
-      if (displayType === DisplayType.Search && typeof v.select !== 'string') {
-        v.select = '';
-      } else if (displayType !== DisplayType.Search) {
-        v.select = v.series;
-      }
+        // If the chart type is search, we need to ensure the select is a string
+        if (
+          displayType === DisplayType.Search &&
+          typeof v.select !== 'string'
+        ) {
+          v.select = '';
+        } else if (displayType !== DisplayType.Search) {
+          v.select = v.series;
+        }
 
-      // If the chart is not a table chart, we should clear the having clause
-      if (displayType !== DisplayType.Table) {
-        v.having = undefined;
-      }
+        const normalizedChartConfig = normalizeChartConfig(
+          // Avoid saving the series field. Series should be persisted in the select field.
+          omit(v, ['series']),
+          tableSource,
+        );
 
-      // Avoid saving the series field. Series should be persisted in the select field.
-      onSave?.(omit(v, ['series']));
+        onSave?.(normalizedChartConfig);
+      }
     },
     [onSave, displayType, tableSource, setError],
   );
