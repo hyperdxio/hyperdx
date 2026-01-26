@@ -65,9 +65,38 @@ type AppPropsWithLayout = AppProps & {
   Component: NextPageWithLayout;
 };
 
-export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
+// Component that renders Head content requiring user preferences
+// Must be rendered inside AppThemeProvider to avoid hydration mismatch
+function AppHeadContent() {
   const { userPreferences } = useUserPreferences();
-  const confirmModal = useConfirmModal();
+  const currentTheme = getCurrentTheme();
+
+  return (
+    <Head>
+      <title>{currentTheme.displayName}</title>
+      <meta name="viewport" content="width=device-width, initial-scale=0.75" />
+      <meta name="google" content="notranslate" />
+      <ColorSchemeScript
+        forceColorScheme={
+          userPreferences.colorMode === 'dark' ? 'dark' : 'light'
+        }
+      />
+    </Head>
+  );
+}
+
+// Component that uses user preferences for theme wrapper
+// Must be rendered inside AppThemeProvider to avoid hydration mismatch
+function AppContent({
+  Component,
+  pageProps,
+  confirmModal,
+}: {
+  Component: NextPageWithLayout;
+  pageProps: AppProps['pageProps'];
+  confirmModal: React.ReactNode;
+}) {
+  const { userPreferences } = useUserPreferences();
 
   // Only override font if user has explicitly set a preference.
   // Otherwise, return undefined to let the theme use its default font:
@@ -76,6 +105,30 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const selectedMantineFont = userPreferences.font
     ? MANTINE_FONT_MAP[userPreferences.font] || undefined
     : undefined;
+
+  useEffect(() => {
+    // Update CSS variable for global font cascading
+    if (typeof document !== 'undefined') {
+      const fontVar = FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR;
+      document.documentElement.style.setProperty('--app-font-family', fontVar);
+    }
+  }, [userPreferences.font]);
+
+  const getLayout = Component.getLayout ?? (page => page);
+
+  return (
+    <ThemeWrapper
+      fontFamily={selectedMantineFont}
+      colorScheme={userPreferences.colorMode === 'dark' ? 'dark' : 'light'}
+    >
+      {getLayout(<Component {...pageProps} />)}
+      {confirmModal}
+    </ThemeWrapper>
+  );
+}
+
+export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
+  const confirmModal = useConfirmModal();
 
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
@@ -127,49 +180,19 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
     }
   }, []);
 
-  useEffect(() => {
-    // Update CSS variable for global font cascading
-    if (typeof document !== 'undefined') {
-      const fontVar = FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR;
-      document.documentElement.style.setProperty('--app-font-family', fontVar);
-    }
-  }, [userPreferences.font]);
-
-  const getLayout = Component.getLayout ?? (page => page);
-
-  // Get current theme for dynamic page title
-  const currentTheme = getCurrentTheme();
-
   return (
     <React.Fragment>
-      <Head>
-        <title>{currentTheme.displayName}</title>
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=0.75"
-        />
-        <meta name="google" content="notranslate" />
-        <ColorSchemeScript
-          forceColorScheme={
-            userPreferences.colorMode === 'dark' ? 'dark' : 'light'
-          }
-        />
-      </Head>
-
       <AppThemeProvider>
+        <AppHeadContent />
         <DynamicFavicon />
         <HDXQueryParamProvider>
           <QueryParamProvider adapter={NextAdapter}>
             <QueryClientProvider client={queryClient}>
-              <ThemeWrapper
-                fontFamily={selectedMantineFont}
-                colorScheme={
-                  userPreferences.colorMode === 'dark' ? 'dark' : 'light'
-                }
-              >
-                {getLayout(<Component {...pageProps} />)}
-                {confirmModal}
-              </ThemeWrapper>
+              <AppContent
+                Component={Component}
+                pageProps={pageProps}
+                confirmModal={confirmModal}
+              />
               <ReactQueryDevtools initialIsOpen={true} />
             </QueryClientProvider>
           </QueryParamProvider>
