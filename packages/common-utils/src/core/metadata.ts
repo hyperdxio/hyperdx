@@ -945,7 +945,7 @@ export class Metadata {
         return Object.entries(json?.data?.[0]).map(([key, value]) => ({
           key: keys[parseInt(key.replace('param', ''))],
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see HDX-1548
-          value: (value as string[])?.filter(Boolean), // remove nulls
+          value: (value as string[])?.filter(v => v != null && v !== ''), // remove nulls and empty strings
         }));
       },
     );
