@@ -112,7 +112,7 @@ function useOptimizedKeyValuesCalls({
   };
 }
 
-export function useDashboardFilterKeyValues({
+export function useDashboardFilterValues({
   filters,
   dateRange,
 }: {

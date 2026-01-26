@@ -12,7 +12,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 import * as sourceModule from '@/source';
 
-import { useDashboardFilterKeyValues } from '../useDashboardFilterValues';
+import { useDashboardFilterValues } from '../useDashboardFilterValues';
 import * as useMetadataModule from '../useMetadata';
 
 // Mock modules
@@ -161,7 +161,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: [
             {
               id: 'filterSevNumber',
@@ -202,7 +202,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: mockFilters,
           dateRange: mockDateRange,
         }),
@@ -327,7 +327,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: sameSourceFilters,
           dateRange: mockDateRange,
         }),
@@ -355,7 +355,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: [],
           dateRange: mockDateRange,
         }),
@@ -377,7 +377,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: mockFilters,
           dateRange: mockDateRange,
         }),
@@ -409,7 +409,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: filtersWithInvalidSource,
           dateRange: mockDateRange,
         }),
@@ -437,7 +437,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: mockFilters,
           dateRange: mockDateRange,
         }),
@@ -460,7 +460,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: [mockFilters[0]], // Only first filter (logs-source)
           dateRange: mockDateRange,
         }),
@@ -511,7 +511,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result, rerender } = renderHook(
       ({ filters, dateRange }) =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters,
           dateRange,
         }),
@@ -577,7 +577,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: multiFilters,
           dateRange: mockDateRange,
         }),
@@ -665,7 +665,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: filtersForSameSource,
           dateRange: mockDateRange,
         }),
@@ -747,7 +747,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: mockFilters.slice(0, 2), // Only first two filters
           dateRange: mockDateRange,
         }),
@@ -808,7 +808,7 @@ describe('useDashboardFilterValues', () => {
     // Act
     const { result } = renderHook(
       () =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters: mockFilters.slice(0, 2), // Only first two filters
           dateRange: mockDateRange,
         }),
@@ -872,7 +872,7 @@ describe('useDashboardFilterValues', () => {
     // Act - Initial render
     const { result, rerender } = renderHook(
       ({ filters, dateRange }) =>
-        useDashboardFilterKeyValues({
+        useDashboardFilterValues({
           filters,
           dateRange,
         }),
