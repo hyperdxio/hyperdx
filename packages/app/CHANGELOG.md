@@ -1,5 +1,71 @@
 # @hyperdx/app
 
+## 2.13.0
+
+### Minor Changes
+
+- 94ddc7eb: Add fullscreen panel view for dashboard charts
+
+  - Add YouTube-style fullscreen panel mode for dashboard charts
+  - Add expand button to chart hover toolbar (positioned after copy button)
+  - Implement 'f' keyboard shortcut to toggle fullscreen (works like YouTube)
+  - Support ESC key to exit fullscreen
+  - Works with all chart types: Line, Bar, Table, Number, Markdown, and Search
+  - Improved modal rendering to prevent screen shake/glitching
+  - Follows Mantine useHotkeys pattern for keyboard shortcuts
+
+- 9f51920b: Add a search input that allows searching within the virtual elements on the log search page
+- bc8c4eec: feat: allow applying session settings to queries
+
+### Patch Changes
+
+- 5b3ce9fc: refactor: Standardize Button/ActionIcon variants and add ESLint enforcement
+- 1cf8cebb: feat: Support JSON Sessions
+- 190c66b8: Add metric column name validation when saving dashboard tiles
+- 9725a1fc: chore: Remove beta label from MVs
+- ddc54e43: feat: Allow customizing zero-fill behavior
+- 18222cd3: fix: Fix accuracy of ClickHouse inserts chart
+- 66b1a48a: fix: Disable usePresetDashboardFilters request in local mode
+- de680527: fix: Make pattern sampling query random
+- 418828e8: Add better types for AI features, Fix bug that could cause page crash when generating graphs
+- f39fcdac: fix: Refresh metadata after creating new connection in local mode
+- 5b252211: fix: Respect date range URL params on Services dashboard
+- ddc7dd04: various improvements to search result drawers and nesting logic
+- 79398be7: chore: Standardize granularities
+- 72d89989: Fix sessions subpanel not being closable, also fix loading indicator adding additional scrollbar to page
+- db845604: fix: bypass aliasWith so that useRowWhere works correctly
+- cf71a1cb: feat: Add text-brand semantic color tokens for theme flexibility
+- acefcbed: fix: Fix K8s events query for JSON schema
+- 3a2c33d3: feat: debounce highlighted attribute validation query
+- 1d961409: fix: Set correct values when opening number format form
+- 6752b3f8: fix: Filter DBTraceWaterfall events on timestamp expression
+- 1ed1ebf3: feat(charts): switch to Observable categorical color palette for better accessibility and theme support
+- 824a19a7: refactor(app-nav): reorganize AppNav component structure and improve maintainability
+- 78423450: Add `variant` prop to table components for muted background styling in dashboard tiles
+- f98fc519: perf: Query filter values from MVs
+- b2089fa9: fix: Prevent dashboard error when metricName is defined for non-metric source
+- 64998e0f: fix: Fix dashboard filters from Metric Tables
+- cf3ebb4b: feat: Add disabled state support and Storybook stories for Button and ActionIcon components
+
+  - Ensure all Button and ActionIcon variants use Mantine's default disabled styling for consistency
+  - Add comprehensive Storybook stories including Playground, DisabledStates, and LoadingStates
+  - Improve component documentation and testing capabilities
+
+- ac3082a5: Validate column names for metrics before creating a chart
+- 16036025: feat: Add HAVING filter to table charts
+- bf553d68: Revert "fix: alias reference bug in processRowToWhereClause"
+- 4a856173: feat: Add hasAllTokens for text index support
+- 5ba7fe00: style: Rename sidenav background color tokens for clarity and update AppNav hover/focus states
+- Updated dependencies [1cf8cebb]
+- Updated dependencies [418828e8]
+- Updated dependencies [79398be7]
+- Updated dependencies [bc8c4eec]
+- Updated dependencies [00854da8]
+- Updated dependencies [f98fc519]
+- Updated dependencies [f20fac30]
+- Updated dependencies [4a856173]
+  - @hyperdx/common-utils@0.11.0
+
 ## 2.12.0
 
 ### Minor Changes
