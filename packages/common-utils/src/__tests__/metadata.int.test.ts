@@ -197,8 +197,9 @@ describe('Metadata Integration Tests', () => {
         expect(resultLimited[0].key).toBe('SeverityText');
         expect(resultLimited[0].value).toHaveLength(2);
         expect(
-          resultLimited[0].value.every(v =>
-            ['info', 'error', 'warning'].includes(v),
+          resultLimited[0].value.every(
+            v =>
+              typeof v === 'string' && ['info', 'error', 'warning'].includes(v),
           ),
         ).toBeTruthy();
       });

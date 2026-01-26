@@ -329,13 +329,13 @@ describe('Metadata', () => {
       ]);
     });
 
-    it('should filter out falsy values from the response', async () => {
+    it('should filter out empty and nullish values from the response', async () => {
       (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
         json: () =>
           Promise.resolve({
             data: [
               {
-                param0: ['value1', null, '', 'value2', undefined],
+                param0: ['value1', null, '', 'value2', undefined, 0, 10],
               },
             ],
           }),
@@ -348,7 +348,9 @@ describe('Metadata', () => {
         source,
       });
 
-      expect(result).toEqual([{ key: 'column1', value: ['value1', 'value2'] }]);
+      expect(result).toEqual([
+        { key: 'column1', value: ['value1', 'value2', 0, 10] },
+      ]);
     });
 
     it('should return an empty list when no keys are provided', async () => {
