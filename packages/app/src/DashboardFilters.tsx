@@ -2,7 +2,7 @@ import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Select } from '@mantine/core';
 import { IconRefresh } from '@tabler/icons-react';
 
-import { useDashboardFilterKeyValues } from './hooks/useDashboardFilterValues';
+import { useDashboardFilterValues } from './hooks/useDashboardFilterValues';
 import { FilterState } from './searchFilters';
 
 interface DashboardFilterSelectProps {
@@ -58,8 +58,10 @@ const DashboardFilters = ({
   filterValues,
   onSetFilterValue,
 }: DashboardFilterProps) => {
-  const { data: filterValuesBySource, isFetching } =
-    useDashboardFilterKeyValues({ filters, dateRange });
+  const { data: filterValuesBySource, isFetching } = useDashboardFilterValues({
+    filters,
+    dateRange,
+  });
 
   return (
     <Group mt="sm">
