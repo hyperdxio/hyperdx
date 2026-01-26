@@ -1611,7 +1611,7 @@ export function TableSourceForm({
   onSave,
   onCreate,
   isNew = false,
-  defaultName,
+  defaultName = '',
   onCancel,
 }: {
   sourceId?: string;
