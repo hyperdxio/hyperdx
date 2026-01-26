@@ -460,7 +460,7 @@ const Tile = forwardRef(
             isHighlighted && 'dashboard-chart-highlighted'
           }`}
           id={`chart-${chart.id}`}
-          onMouseEnter={() => {
+          onMouseOver={() => {
             setHovered(true);
             setIsFocused(true);
           }}
