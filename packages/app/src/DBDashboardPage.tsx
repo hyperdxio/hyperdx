@@ -861,6 +861,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                     {
                       ...chart,
                       id: makeId(),
+                      config: {
+                        ...chart.config,
+                        alert: undefined,
+                      },
                     },
                   ],
                 });
