@@ -32,7 +32,9 @@ export const IS_DEV =
 export const THEME_STORAGE_KEY = 'hdx-dev-theme';
 
 // Validate that a theme name is valid
-function isValidThemeName(name: string | null | undefined): name is ThemeName {
+export function isValidThemeName(
+  name: string | null | undefined,
+): name is ThemeName {
   return name != null && name in themes;
 }
 

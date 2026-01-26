@@ -24,6 +24,7 @@ import {
   MANTINE_FONT_MAP,
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
+import { getCurrentTheme } from '@/theme';
 import { AppThemeProvider } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { useConfirmModal } from '@/useConfirm';
@@ -73,7 +74,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   // - HyperDX theme: "IBM Plex Sans", monospace
   // - ClickStack theme: "Inter", sans-serif
   const selectedMantineFont = userPreferences.font
-    ? MANTINE_FONT_MAP[userPreferences.font]
+    ? MANTINE_FONT_MAP[userPreferences.font] || undefined
     : undefined;
 
   // port to react query ? (needs to wrap with QueryClientProvider)
@@ -136,10 +137,13 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 
   const getLayout = Component.getLayout ?? (page => page);
 
+  // Get current theme for dynamic page title
+  const currentTheme = getCurrentTheme();
+
   return (
     <React.Fragment>
       <Head>
-        <title>HyperDX</title>
+        <title>{currentTheme.displayName}</title>
         <meta
           name="viewport"
           content="width=device-width, initial-scale=0.75"
