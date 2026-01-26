@@ -850,7 +850,7 @@ export class Metadata {
     source:
       | Omit<TSource, 'connection'> /* for overlap with ISource type */
       | undefined;
-  }): Promise<{ key: string; value: string[] }[]> {
+  }): Promise<{ key: string; value: string[] | number[] }[]> {
     const cacheKeyConfig = {
       ...pick(chartConfig, [
         'connection',
@@ -938,14 +938,16 @@ export class Metadata {
               : undefined,
             abort_signal: signal,
           })
-          .then(res => res.json<any>());
+          .then(res => res.json<Record<string, string[] | number[]>>());
 
         // TODO: Fix type issues mentioned in HDX-1548. value is not actually a
         // string[], sometimes it's { [key: string]: string; }
         return Object.entries(json?.data?.[0]).map(([key, value]) => ({
           key: keys[parseInt(key.replace('param', ''))],
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see HDX-1548
-          value: (value as string[])?.filter(v => v != null && v !== ''), // remove nulls and empty strings
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          value: value?.filter(v => v != null && v !== '') as  // remove nulls and empty strings
+            | string[]
+            | number[],
         }));
       },
     );
@@ -965,7 +967,7 @@ export class Metadata {
     limit?: number;
     disableRowLimit?: boolean;
     signal?: AbortSignal;
-  }): Promise<{ key: string; value: string[] }[]> {
+  }): Promise<{ key: string; value: string[] | number[] }[]> {
     const cacheKeyConfig = {
       ...pick(chartConfig, [
         'connection',
