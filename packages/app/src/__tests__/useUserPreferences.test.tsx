@@ -65,7 +65,8 @@ describe('migrateUserPreferences', () => {
         colorMode: 'dark',
         font: 'IBM Plex Mono',
       });
-      expect(result?.theme).toBeUndefined();
+      // Verify theme property was removed during migration
+      expect('theme' in (result || {})).toBe(false);
       expect(localStorageMock.setItem).toHaveBeenCalledWith(
         STORAGE_KEY,
         JSON.stringify(result),
@@ -88,7 +89,8 @@ describe('migrateUserPreferences', () => {
         colorMode: 'light',
         font: 'Inter',
       });
-      expect(result?.theme).toBeUndefined();
+      // Verify theme property was removed during migration
+      expect('theme' in (result || {})).toBe(false);
     });
 
     it('should use default colorMode when theme property is missing', () => {
@@ -293,7 +295,8 @@ describe('migrateUserPreferences', () => {
       // First migration
       const firstResult = migrateUserPreferences(legacyData);
       expect(firstResult?.colorMode).toBe('light');
-      expect(firstResult?.theme).toBeUndefined();
+      // Verify theme property was removed during migration
+      expect('theme' in (firstResult || {})).toBe(false);
 
       // Simulate that localStorage now has migrated data
       localStorageMock.getItem.mockReturnValue(JSON.stringify(firstResult));
