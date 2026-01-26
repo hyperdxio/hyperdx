@@ -760,19 +760,16 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
   const { data: source } = useSource({ id: sourceID });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
-  // If no source, return undefined so that the orderBy is not set incorrectly
-  if (!source) return undefined;
-
   // When source changes, make sure select and orderby fields are set to default
-  return useMemo(
-    () =>
-      optimizeDefaultOrderBy(
-        source?.timestampValueExpression ?? '',
-        source?.displayedTimestampValueExpression,
-        tableMetadata?.sorting_key,
-      ),
-    [source, tableMetadata],
-  );
+  return useMemo(() => {
+    // If no source, return undefined so that the orderBy is not set incorrectly
+    if (!source) return undefined;
+    return optimizeDefaultOrderBy(
+      source?.timestampValueExpression ?? '',
+      source?.displayedTimestampValueExpression,
+      tableMetadata?.sorting_key,
+    );
+  }, [source, tableMetadata]);
 }
 
 // This is outside as it needs to be a stable reference
