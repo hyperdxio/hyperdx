@@ -53,17 +53,17 @@ export function AppThemeProvider({
   children: React.ReactNode;
 }) {
   // SSR/initial render: Always use props or DEFAULT_THEME for hydration consistency.
-  // The server cannot read localStorage/URL, so we must start with a deterministic value.
+  // The server cannot read localStorage, so we must start with a deterministic value.
   //
   // HYDRATION NOTE: In dev mode, the useEffect below may update the theme after hydration
-  // if localStorage/URL contains a different theme. This is intentional for dev testing
+  // if localStorage contains a different theme. This is intentional for dev testing
   // and will cause a brief flash. In production (IS_DEV=false), theme is stable and
   // matches server render. To avoid any flash in production, pass themeName prop explicitly.
   const [resolvedThemeName, setResolvedThemeName] = useState<ThemeName>(
     () => propsThemeName ?? DEFAULT_THEME,
   );
 
-  // After hydration, read from localStorage/URL in dev mode only.
+  // After hydration, read from localStorage in dev mode only.
   // Uses consolidated getDevThemeName() from index.ts as single source of truth.
   // This effect only changes state in dev mode, so production has no hydration mismatch.
   useEffect(() => {
@@ -73,7 +73,7 @@ export function AppThemeProvider({
       return;
     }
 
-    // In dev mode only, allow URL/localStorage overrides for testing themes
+    // In dev mode only, allow localStorage override for testing themes
     if (IS_DEV) {
       const devTheme = getDevThemeName();
       setResolvedThemeName(devTheme);
@@ -154,22 +154,6 @@ export function AppThemeProvider({
     }
   }, [theme]);
 
-  // Dev mode: keyboard shortcut to toggle theme (Ctrl+Shift+T)
-  useEffect(() => {
-    if (!IS_DEV || typeof window === 'undefined') return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'T') {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleTheme();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleTheme]);
-
   // Dev mode: expose theme API to window (namespaced to avoid global pollution)
   useEffect(() => {
     if (!IS_DEV || typeof window === 'undefined') return;
@@ -177,8 +161,6 @@ export function AppThemeProvider({
     // eslint-disable-next-line no-console
     console.info(
       `🎨 Theme: ${theme.displayName} (${theme.name})`,
-      '\n   Toggle: Ctrl+Shift+T',
-      '\n   Set via URL: ?theme=clickstack',
       '\n   Set via console: window.__HDX_THEME.set("clickstack")',
     );
 

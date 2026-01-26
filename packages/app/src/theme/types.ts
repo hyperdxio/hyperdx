@@ -19,7 +19,7 @@ import { MantineThemeOverride } from '@mantine/core';
  *    - Set via `NEXT_PUBLIC_THEME` environment variable
  *    - Affects branding: logos, accent colors, favicons
  *    - Each deployment is branded for one specific product
- *    - Dev mode allows switching via URL (?theme=), localStorage, or keyboard (Ctrl+Shift+T)
+ *    - Dev mode allows switching via localStorage (set via dev UI)
  *
  * WHY SEPARATE?
  * - Color mode is personal preference (accessibility, comfort)

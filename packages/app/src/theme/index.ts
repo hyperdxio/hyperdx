@@ -12,9 +12,7 @@ import { ThemeConfig, ThemeName } from './types';
  *   Users cannot and should not change the brand theme.
  *
  * - Development: Theme switching is enabled for testing via:
- *   - URL param: ?theme=clickstack (temporary, for testing)
  *   - localStorage: hdx-dev-theme (persisted via dev UI)
- *   - Keyboard shortcut: Ctrl+Shift+T
  *
  * This is intentionally different from colorMode (light/dark), which IS user-selectable.
  */
@@ -78,21 +76,13 @@ export const DEFAULT_THEME: ThemeName = isValidThemeName(envTheme)
  * This is the single source of truth for resolving dev theme names.
  *
  * Priority:
- * 1. URL query param: ?theme=clickstack (temporary, not persisted)
- * 2. localStorage: hdx-dev-theme (persisted via explicit UI action)
- * 3. Environment variable: NEXT_PUBLIC_THEME
- * 4. Default: hyperdx
+ * 1. localStorage: hdx-dev-theme (persisted via explicit UI action)
+ * 2. Environment variable: NEXT_PUBLIC_THEME
+ * 3. Default: hyperdx
  */
 export function getDevThemeName(): ThemeName {
   if (typeof window === 'undefined') {
     return DEFAULT_THEME;
-  }
-
-  // Check URL query param first (highest priority for temporary testing)
-  const urlParams = new URLSearchParams(window.location.search);
-  const urlTheme = urlParams.get('theme');
-  if (isValidThemeName(urlTheme)) {
-    return urlTheme;
   }
 
   // Check localStorage (set via explicit user action in ThemeProvider)

@@ -8,7 +8,7 @@ feat: Multi-theme system with HyperDX and ClickStack branding support
 
 ### Multi-Theme System
 - Add infrastructure for supporting multiple brand themes (HyperDX & ClickStack)
-- Theme switching available in dev/local mode via URL param, localStorage, or keyboard shortcut (Ctrl+Shift+T)
+- Theme switching available in dev/local mode via localStorage
 - Production deployments use `NEXT_PUBLIC_THEME` environment variable (deployment-configured)
 - Each theme provides its own logos, colors, favicons, and default fonts
 

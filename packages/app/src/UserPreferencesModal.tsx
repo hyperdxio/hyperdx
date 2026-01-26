@@ -30,6 +30,14 @@ const OPTIONS_BRAND_THEMES = Object.values(themes).map(t => ({
   value: t.name,
 }));
 
+/**
+ * Runtime validation for ThemeName to ensure type safety.
+ * Validates that a value is a valid theme name before type assertion.
+ */
+function isValidThemeName(value: string | null): value is ThemeName {
+  return value === 'hyperdx' || value === 'clickstack';
+}
+
 const SettingContainer = ({
   label,
   description,
@@ -172,7 +180,11 @@ export const UserPreferencesModal = ({
           >
             <Select
               value={themeName}
-              onChange={value => value && setTheme(value as ThemeName)}
+              onChange={value => {
+                if (value && isValidThemeName(value)) {
+                  setTheme(value);
+                }
+              }}
               data={OPTIONS_BRAND_THEMES}
               allowDeselect={false}
             />

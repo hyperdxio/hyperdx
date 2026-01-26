@@ -4,11 +4,9 @@
  * Tests cover:
  * - Theme registry and validation
  * - getTheme() function
+ * - getDevThemeName() function (localStorage-based)
  * - Safe localStorage helpers
  * - THEME_STORAGE_KEY constant
- *
- * Note: getDevThemeName() tests that require URL manipulation are skipped
- * in JSDOM as window.location cannot be easily mocked.
  */
 
 import {
@@ -165,8 +163,8 @@ describe('theme/index', () => {
   });
 
   describe('getDevThemeName', () => {
-    it('should return DEFAULT_THEME when no overrides exist', () => {
-      // No URL params, no localStorage
+    it('should return DEFAULT_THEME when no localStorage override exists', () => {
+      // No localStorage override, should use default
       const result = getDevThemeName();
       expect(result).toBe(DEFAULT_THEME);
     });

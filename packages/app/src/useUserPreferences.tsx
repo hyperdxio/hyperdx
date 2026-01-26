@@ -60,8 +60,12 @@ function isLegacyUserPreferences(obj: unknown): obj is LegacyUserPreferences {
 /**
  * Migrates old localStorage data from `theme` to `colorMode`.
  * This ensures existing users don't lose their light/dark mode preference.
+ *
+ * @internal Exported for testing only
  */
-function migrateUserPreferences(stored: string | null): UserPreferences | null {
+export function migrateUserPreferences(
+  stored: string | null,
+): UserPreferences | null {
   if (!stored) {
     return null;
   }
