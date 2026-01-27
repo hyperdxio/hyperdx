@@ -1572,7 +1572,7 @@ function DBSearchPage() {
       >
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
-          <Group gap="4px" wrap="nowrap">
+          <Group gap="4px" wrap="nowrap" style={{ minWidth: 150 }}>
             <SourceSelectControlled
               key={`${savedSearchId}`}
               size="xs"
