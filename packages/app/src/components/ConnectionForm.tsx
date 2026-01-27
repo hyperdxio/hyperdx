@@ -353,15 +353,14 @@ export function ConnectionForm({
           >
             <Button
               disabled={!formState.isValid}
-              variant="subtle"
+              variant={
+                testConnectionState === TestConnectionState.Invalid
+                  ? 'danger'
+                  : 'secondary'
+              }
               type="button"
               onClick={handleTestConnection}
               loading={testConnectionState === TestConnectionState.Loading}
-              color={
-                testConnectionState === TestConnectionState.Invalid
-                  ? 'yellow'
-                  : 'teal'
-              }
             >
               {testConnectionState === TestConnectionState.Valid ? (
                 <>Connection successful</>
