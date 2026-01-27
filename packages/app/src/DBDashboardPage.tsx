@@ -863,6 +863,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                       id: makeId(),
                       config: {
                         ...chart.config,
+                        // Don't duplicate any alerts that may be set on the original tile
                         alert: undefined,
                       },
                     },
