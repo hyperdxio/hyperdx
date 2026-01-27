@@ -169,7 +169,7 @@ export function DBRowJsonViewer({
 
     // remove internal aliases (keys that start with __hdx_)
     const cleanedData = Object.fromEntries(
-      Object.entries(data).filter(entry => entry[0].startsWith('__hdx_')),
+      Object.entries(data).filter(entry => !entry[0].startsWith('__hdx_')),
     );
 
     return filterObjectRecursively(cleanedData, debouncedFilter);
