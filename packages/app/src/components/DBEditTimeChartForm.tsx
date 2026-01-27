@@ -135,6 +135,29 @@ const getSeriesFieldPath = (
   return `${namePrefix}${fieldName}` as FieldPath<SavedChartConfigWithSeries>;
 };
 
+export function normalizeChartConfig<
+  C extends Pick<
+    SavedChartConfig,
+    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables'
+  >,
+>(config: C, source: TSource): C {
+  const isMetricSource = source.kind === SourceKind.Metric;
+  return {
+    ...config,
+    // Strip out metric-specific fields for non-metric sources
+    select:
+      !isMetricSource && Array.isArray(config.select)
+        ? config.select.map(s => omit(s, ['metricName', 'metricType']))
+        : config.select,
+    metricTables: isMetricSource ? config.metricTables : undefined,
+    // Order By and Having can only be set by the user for table charts
+    having:
+      config.displayType === DisplayType.Table ? config.having : undefined,
+    orderBy:
+      config.displayType === DisplayType.Table ? config.orderBy : undefined,
+  };
+}
+
 // Helper function to validate metric names for metric sources
 const validateMetricNames = (
   tableSource: TSource | undefined,
@@ -176,6 +199,7 @@ function ChartSeriesEditorComponent({
   onSubmit,
   setValue,
   showGroupBy,
+  showHaving,
   tableName: _tableName,
   parentRef,
   length,
@@ -195,6 +219,7 @@ function ChartSeriesEditorComponent({
   onSubmit: () => void;
   setValue: UseFormSetValue<any>;
   showGroupBy: boolean;
+  showHaving: boolean;
   tableName: string;
   length: number;
   tableSource?: TSource;
@@ -231,6 +256,19 @@ function ChartSeriesEditorComponent({
     tableSource,
     isSql: aggConditionLanguage === 'sql',
   });
+
+  const showWhere = aggFn !== 'none';
+
+  const tableConnection = useMemo(
+    () => ({
+      databaseName,
+      tableName: tableName ?? '',
+      connectionId: connectionId ?? '',
+      metricName:
+        tableSource?.kind === SourceKind.Metric ? metricName : undefined,
+    }),
+    [databaseName, tableName, connectionId, metricName, tableSource],
+  );
 
   return (
     <>
@@ -337,15 +375,11 @@ function ChartSeriesEditorComponent({
           <div
             style={{
               minWidth: 220,
-              ...(aggFn === 'none' && { width: '100%' }),
+              ...(aggFn === 'none' && { flexGrow: 2 }),
             }}
           >
             <SQLInlineEditorControlled
-              tableConnection={{
-                databaseName,
-                tableName: tableName ?? '',
-                connectionId: connectionId ?? '',
-              }}
+              tableConnection={tableConnection}
               control={control}
               name={`${namePrefix}valueExpression`}
               placeholder="SQL Column"
@@ -353,71 +387,96 @@ function ChartSeriesEditorComponent({
             />
           </div>
         )}
-        {aggFn !== 'none' && (
-          <Flex align={'center'} gap={'xs'} className="flex-grow-1">
-            <Text size="sm">Where</Text>
-            {aggConditionLanguage === 'sql' ? (
-              <SQLInlineEditorControlled
-                tableConnection={{
-                  databaseName,
-                  tableName: tableName ?? '',
-                  connectionId: connectionId ?? '',
-                }}
-                control={control}
-                name={`${namePrefix}aggCondition`}
-                placeholder="SQL WHERE clause (ex. column = 'foo')"
-                onLanguageChange={lang =>
-                  setValue(`${namePrefix}aggConditionLanguage`, lang)
-                }
-                additionalSuggestions={attributeKeys}
-                language="sql"
-                onSubmit={onSubmit}
-              />
-            ) : (
-              <SearchInputV2
-                tableConnection={{
-                  connectionId: connectionId ?? '',
-                  databaseName: databaseName ?? '',
-                  tableName: tableName ?? '',
-                }}
-                control={control}
-                name={`${namePrefix}aggCondition`}
-                onLanguageChange={lang =>
-                  setValue(`${namePrefix}aggConditionLanguage`, lang)
-                }
-                language="lucene"
-                placeholder="Search your events w/ Lucene ex. column:foo"
-                onSubmit={onSubmit}
-                additionalSuggestions={attributeKeys}
-              />
+        {(showWhere || showGroupBy || showHaving) && (
+          <div
+            className="flex-grow-1 gap-2 align-items-center"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'auto 1fr auto 1fr',
+            }}
+          >
+            {showWhere && (
+              <>
+                <Text size="sm">Where</Text>
+                <div
+                  style={{
+                    gridColumn:
+                      showHaving === showGroupBy ? 'span 3' : undefined,
+                  }}
+                >
+                  {aggConditionLanguage === 'sql' ? (
+                    <SQLInlineEditorControlled
+                      tableConnection={tableConnection}
+                      control={control}
+                      name={`${namePrefix}aggCondition`}
+                      placeholder="SQL WHERE clause (ex. column = 'foo')"
+                      onLanguageChange={lang =>
+                        setValue(`${namePrefix}aggConditionLanguage`, lang)
+                      }
+                      additionalSuggestions={attributeKeys}
+                      language="sql"
+                      onSubmit={onSubmit}
+                    />
+                  ) : (
+                    <SearchInputV2
+                      tableConnection={tableConnection}
+                      control={control}
+                      name={`${namePrefix}aggCondition`}
+                      onLanguageChange={lang =>
+                        setValue(`${namePrefix}aggConditionLanguage`, lang)
+                      }
+                      language="lucene"
+                      placeholder="Search your events w/ Lucene ex. column:foo"
+                      onSubmit={onSubmit}
+                      additionalSuggestions={attributeKeys}
+                    />
+                  )}
+                </div>
+              </>
             )}
-          </Flex>
-        )}
-        {showGroupBy && (
-          <Flex align={'center'} gap={'xs'}>
-            <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-              Group By
-            </Text>
-            <div style={{ minWidth: 300 }}>
-              <SQLInlineEditorControlled
-                parentRef={parentRef}
-                tableConnection={{
-                  databaseName,
-                  tableName: tableName ?? '',
-                  connectionId: connectionId ?? '',
-                  metricName:
-                    tableSource?.kind === SourceKind.Metric
-                      ? metricName
-                      : undefined,
-                }}
-                control={control}
-                name={`groupBy`}
-                placeholder="SQL Columns"
-                disableKeywordAutocomplete
-                onSubmit={onSubmit}
-              />
-            </div>
-          </Flex>
+            {showGroupBy && (
+              <>
+                <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                  Group By
+                </Text>
+                <div
+                  style={{
+                    minWidth: 200,
+                    maxWidth: '100%',
+                    gridColumn:
+                      !showHaving && !showWhere ? 'span 3' : undefined,
+                  }}
+                >
+                  <SQLInlineEditorControlled
+                    parentRef={parentRef}
+                    tableConnection={tableConnection}
+                    control={control}
+                    name={`groupBy`}
+                    placeholder="SQL Columns"
+                    disableKeywordAutocomplete
+                    onSubmit={onSubmit}
+                  />
+                </div>
+                {showHaving && (
+                  <>
+                    <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                      Having
+                    </Text>
+                    <div style={{ minWidth: 300, maxWidth: '100%' }}>
+                      <SQLInlineEditorControlled
+                        tableConnection={tableConnection}
+                        control={control}
+                        name="having"
+                        placeholder="SQL HAVING clause (ex. count() > 100)"
+                        disableKeywordAutocomplete
+                        onSubmit={onSubmit}
+                      />
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
         )}
       </Flex>
     </>
@@ -648,18 +707,13 @@ export default function EditTimeChartForm({
           select: isSelectEmpty
             ? tableSource.defaultTableSelectExpression || ''
             : config.select,
-          // Order By can only be set by the user for table charts
-          orderBy:
-            config.displayType === DisplayType.Table
-              ? config.orderBy
-              : undefined,
         };
         setQueriedConfigAndSource(
           // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
           // YOUR STATE IS AN OBJECT. YOU'RE COPYING BY REFERENCE WHICH MIGHT
           // ACCIDENTALLY CAUSE A useQuery SOMEWHERE TO FIRE A REQUEST EVERY TIME
           // AN INPUT CHANGES. USE structuredClone TO PERFORM A DEEP COPY INSTEAD
-          structuredClone(newConfig),
+          structuredClone(normalizeChartConfig(newConfig, tableSource)),
           tableSource,
         );
       }
@@ -697,19 +751,30 @@ export default function EditTimeChartForm({
 
   const handleSave = useCallback(
     (v: SavedChartConfigWithSeries) => {
-      // Validate metric sources have metric names selected
-      if (validateMetricNames(tableSource, v.series, setError)) {
-        return;
-      }
+      if (tableSource != null) {
+        // Validate metric sources have metric names selected
+        if (validateMetricNames(tableSource, v.series, setError)) {
+          return;
+        }
 
-      // If the chart type is search, we need to ensure the select is a string
-      if (displayType === DisplayType.Search && typeof v.select !== 'string') {
-        v.select = '';
-      } else if (displayType !== DisplayType.Search) {
-        v.select = v.series;
+        // If the chart type is search, we need to ensure the select is a string
+        if (
+          displayType === DisplayType.Search &&
+          typeof v.select !== 'string'
+        ) {
+          v.select = '';
+        } else if (displayType !== DisplayType.Search) {
+          v.select = v.series;
+        }
+
+        const normalizedChartConfig = normalizeChartConfig(
+          // Avoid saving the series field. Series should be persisted in the select field.
+          omit(v, ['series']),
+          tableSource,
+        );
+
+        onSave?.(normalizedChartConfig);
       }
-      // Avoid saving the series field. Series should be persisted in the select field.
-      onSave?.(omit(v, ['series']));
     },
     [onSave, displayType, tableSource, setError],
   );
@@ -868,6 +933,11 @@ export default function EditTimeChartForm({
     [setValue, onSubmit],
   );
 
+  const tableConnection = useMemo(
+    () => tcFromSource(tableSource),
+    [tableSource],
+  );
+
   return (
     <div ref={setParentRef} data-testid={dataTestId}>
       <Controller
@@ -990,6 +1060,9 @@ export default function EditTimeChartForm({
                   showGroupBy={
                     fields.length === 1 && displayType !== DisplayType.Number
                   }
+                  showHaving={
+                    fields.length === 1 && displayType === DisplayType.Table
+                  }
                   tableName={tableName ?? ''}
                   tableSource={tableSource}
                   errors={
@@ -1003,19 +1076,27 @@ export default function EditTimeChartForm({
               {fields.length > 1 && displayType !== DisplayType.Number && (
                 <>
                   <Divider mt="md" mb="sm" />
-                  <Flex align="center" mt="sm">
-                    <Text
-                      me="sm"
-                      size="sm"
-                      style={{
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Group By
-                    </Text>
-                    <div style={{ flexGrow: 1 }}>
+                  <div
+                    className="gap-2 align-items-center"
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'auto minmax(0, 1fr)',
+                    }}
+                  >
+                    <div>
+                      <Text
+                        me="sm"
+                        size="sm"
+                        style={{
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Group By
+                      </Text>
+                    </div>
+                    <div>
                       <SQLInlineEditorControlled
-                        tableConnection={tcFromSource(tableSource)}
+                        tableConnection={tableConnection}
                         control={control}
                         name={`groupBy`}
                         placeholder="SQL Columns"
@@ -1023,7 +1104,31 @@ export default function EditTimeChartForm({
                         disableKeywordAutocomplete
                       />
                     </div>
-                  </Flex>
+                    {displayType === DisplayType.Table && (
+                      <>
+                        <div>
+                          <Text
+                            me="sm"
+                            size="sm"
+                            style={{
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            Having
+                          </Text>
+                        </div>
+                        <div>
+                          <SQLInlineEditorControlled
+                            tableConnection={tableConnection}
+                            control={control}
+                            name="having"
+                            placeholder="SQL HAVING clause (ex. count() > 100)"
+                            onSubmit={onSubmit}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </>
               )}
               <Divider mt="md" mb="sm" />
@@ -1094,7 +1199,7 @@ export default function EditTimeChartForm({
           ) : (
             <Flex gap="xs" direction="column">
               <SQLInlineEditorControlled
-                tableConnection={tcFromSource(tableSource)}
+                tableConnection={tableConnection}
                 control={control}
                 name="select"
                 placeholder={
@@ -1106,7 +1211,7 @@ export default function EditTimeChartForm({
               />
               {whereLanguage === 'sql' ? (
                 <SQLInlineEditorControlled
-                  tableConnection={tcFromSource(tableSource)}
+                  tableConnection={tableConnection}
                   control={control}
                   name={`where`}
                   placeholder="SQL WHERE clause (ex. column = 'foo')"
@@ -1116,11 +1221,7 @@ export default function EditTimeChartForm({
                 />
               ) : (
                 <SearchInputV2
-                  tableConnection={{
-                    connectionId: tableSource?.connection ?? '',
-                    databaseName: databaseName ?? '',
-                    tableName: tableName ?? '',
-                  }}
+                  tableConnection={tableConnection}
                   control={control}
                   name="where"
                   onLanguageChange={lang => setValue('whereLanguage', lang)}
@@ -1219,10 +1320,10 @@ export default function EditTimeChartForm({
         </Flex>
         <Flex gap="sm" mb="sm" align="center" justify="end">
           {activeTab === 'table' && (
-            <div style={{ minWidth: 300 }}>
+            <div style={{ width: 400 }}>
               <SQLInlineEditorControlled
                 parentRef={parentRef}
-                tableConnection={tcFromSource(tableSource)}
+                tableConnection={tableConnection}
                 // The default order by is the current group by value
                 placeholder={typeof groupBy === 'string' ? groupBy : ''}
                 control={control}

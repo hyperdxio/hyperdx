@@ -1007,7 +1007,7 @@ const DBSearchPageFiltersComponent = ({
           disableRowLimit: true,
           source,
         });
-        const newValues = newKeyVals[0].value;
+        const newValues = newKeyVals[0].value?.map(val => val.toString()) ?? [];
         if (newValues.length > 0) {
           setExtraFacets(prev => ({
             ...prev,
