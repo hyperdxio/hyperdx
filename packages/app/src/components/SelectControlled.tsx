@@ -2,6 +2,17 @@ import { useCallback } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { Select, SelectProps } from '@mantine/core';
 
+/**
+ * SelectControlled - React Hook Form wrapper for Mantine Select
+ *
+ * NOTE: Click UI Select migration was attempted but had issues with
+ * the dropdown not opening. Keeping Mantine Select for now.
+ *
+ * TODO: CLICK-UI-SELECT-NOT-WORKING
+ * Click UI Select dropdown doesn't open when clicked.
+ * Investigate and migrate when fixed.
+ */
+
 export type SelectControlledProps = SelectProps &
   UseControllerProps<any> & {
     onCreate?: () => void;

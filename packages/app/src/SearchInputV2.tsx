@@ -6,7 +6,6 @@ import {
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
-import { Group } from '@mantine/core';
 import { IconBook } from '@tabler/icons-react';
 
 import AutocompleteInput from '@/AutocompleteInput';
@@ -212,11 +211,10 @@ export default function SearchInputV2({
             target="_blank"
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/search"
             rel="noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
           >
-            <Group gap={5}>
-              <IconBook size={14} />
-              <span>Docs</span>
-            </Group>
+            <IconBook size={14} />
+            <span>Docs</span>
           </a>
         </>
       }

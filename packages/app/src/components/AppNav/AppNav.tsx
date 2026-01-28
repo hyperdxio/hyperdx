@@ -41,13 +41,13 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
+import { ClickStackIcon, ClickStackLogo } from '@/ClickStackLogo';
 import { IS_K8S_DASHBOARD_ENABLED, IS_LOCAL_MODE } from '@/config';
 import {
   useCreateDashboard,
   useDashboards,
   useUpdateDashboard,
 } from '@/dashboard';
-import Icon from '@/Icon';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import Logo from '@/Logo';
 import OnboardingChecklist from '@/OnboardingChecklist';
@@ -666,11 +666,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             <Link href="/search" className={styles.logoLink}>
               {isCollapsed ? (
                 <div className={styles.logoIconWrapper}>
-                  <Icon size={22} />
+                  <ClickStackIcon size={22} />
                 </div>
               ) : (
                 <Group gap="xs" align="center">
-                  <Logo />
+                  <ClickStackLogo />
                   {isUTC && (
                     <Badge
                       size="xs"
