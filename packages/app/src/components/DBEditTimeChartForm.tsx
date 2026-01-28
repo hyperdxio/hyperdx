@@ -516,6 +516,7 @@ export default function EditTimeChartForm({
   onClose,
   'data-testid': dataTestId,
   submitRef,
+  autoSaveRef,
 }: {
   dashboardId?: string;
   chartConfig: SavedChartConfig;
@@ -530,6 +531,7 @@ export default function EditTimeChartForm({
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   'data-testid'?: string;
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
+  autoSaveRef?: React.MutableRefObject<(() => void) | undefined>;
 }) {
   // useFieldArray only supports array type fields, and select can be either a string or array.
   // To solve for this, we maintain an extra form field called 'series' which is always an array.
@@ -743,12 +745,6 @@ export default function EditTimeChartForm({
     [queriedConfig],
   );
 
-  useEffect(() => {
-    if (submitRef) {
-      submitRef.current = onSubmit;
-    }
-  }, [onSubmit, submitRef]);
-
   const handleSave = useCallback(
     (v: SavedChartConfigWithSeries) => {
       if (tableSource != null) {
@@ -778,6 +774,18 @@ export default function EditTimeChartForm({
     },
     [onSave, displayType, tableSource, setError],
   );
+
+  useEffect(() => {
+    if (submitRef) {
+      submitRef.current = onSubmit;
+    }
+  }, [onSubmit, submitRef]);
+
+  useEffect(() => {
+    if (autoSaveRef) {
+      autoSaveRef.current = handleSubmit(handleSave);
+    }
+  }, [autoSaveRef, handleSubmit, handleSave]);
 
   // Track previous values for detecting changes
   const prevGranularityRef = useRef(granularity);

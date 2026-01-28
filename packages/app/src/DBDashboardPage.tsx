@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import dynamic from 'next/dynamic';
@@ -518,10 +519,30 @@ const EditTileModal = ({
 }) => {
   const contextZIndex = useZIndex();
   const modalZIndex = contextZIndex + 10;
+  const autoSaveRef = useRef<(() => void) | undefined>();
+  const [shouldCancel, setShouldCancel] = useState(false);
+
+  const handleClose = useCallback(() => {
+    if (!shouldCancel && autoSaveRef.current) {
+      autoSaveRef.current();
+      notifications.show({
+        color: 'green',
+        message: 'Tile changes auto-saved',
+      });
+    }
+    setShouldCancel(false);
+    onClose();
+  }, [shouldCancel, onClose]);
+
+  const handleCancel = useCallback(() => {
+    setShouldCancel(true);
+    onClose();
+  }, [onClose]);
+
   return (
     <Modal
       opened={chart != null}
-      onClose={onClose}
+      onClose={handleClose}
       withCloseButton={false}
       centered
       size="90%"
@@ -535,13 +556,14 @@ const EditTileModal = ({
             chartConfig={chart.config}
             dateRange={dateRange}
             isSaving={isSaving}
+            autoSaveRef={autoSaveRef}
             onSave={config => {
               onSave({
                 ...chart,
                 config: config,
               });
             }}
-            onClose={onClose}
+            onClose={handleCancel}
           />
         </ZIndexContext.Provider>
       )}
