@@ -1,3 +1,4 @@
+import { JSDataType } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
 import { getMetadata } from '@/core/metadata';
 import {
@@ -57,6 +58,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       },
       found: true,
       propertyType: 'json',
+      isArray: false,
     });
     const field2 = 'ResourceAttributesJSON.test.nest';
     const res2 = await serializer.getColumnForField(field2, {});
@@ -69,6 +71,7 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       },
       found: true,
       propertyType: 'json',
+      isArray: false,
     });
   });
 
@@ -448,7 +451,15 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
   it.each(testCases)(
     'converts "$lucene" to english "$english"',
     async ({ lucene, english }) => {
-      const actualEnglish = await genEnglishExplanation(lucene);
+      const actualEnglish = await genEnglishExplanation({
+        query: lucene,
+        tableConnection: {
+          tableName,
+          databaseName,
+          connectionId,
+        },
+        metadata,
+      });
       expect(actualEnglish).toBe(english);
     },
   );
@@ -1210,6 +1221,246 @@ describe('CustomSchemaSQLSerializerV2 - indexCoversColumn', () => {
       expect(
         serializer.indexCoversColumn(indexExpression, searchExpression),
       ).toBe(expected);
+    },
+  );
+});
+
+describe('CustomSchemaSQLSerializerV2 - Array and Nested Fields', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    if (column === 'Events.Name') {
+      return { name: 'Events.Name', type: 'Array(String)' };
+    } else if (column === 'Events.Count') {
+      return { name: 'Events.Count', type: 'Array(UInt64)' };
+    } else if (column === 'Events.Attributes') {
+      return { name: 'Events.Attributes', type: 'Array(Map(String, String))' };
+    } else if (column === 'Events.IsAvailable') {
+      return { name: 'Events.IsAvailable', type: 'Array(Bool)' };
+    } else {
+      return undefined;
+    }
+  });
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockResolvedValue(new Map());
+  metadata.getSetting = jest.fn().mockResolvedValue(undefined);
+  const databaseName = 'testName';
+  const tableName = 'testTable';
+  const connectionId = 'testId';
+  const serializer = new CustomSchemaSQLSerializerV2({
+    metadata,
+    databaseName,
+    tableName,
+    connectionId,
+    implicitColumnExpression: 'Body',
+  });
+
+  it('getColumnForField', async () => {
+    const field1 = 'Events.Name';
+    const res1 = await serializer.getColumnForField(field1, {});
+    expect(res1).toEqual({
+      column: 'Events.Name',
+      found: true,
+      propertyType: JSDataType.String,
+      isArray: true,
+    });
+
+    const field2 = 'Events.Count';
+    const res2 = await serializer.getColumnForField(field2, {});
+    expect(res2).toEqual({
+      column: 'Events.Count',
+      found: true,
+      propertyType: JSDataType.Number,
+      isArray: true,
+    });
+
+    const field3 = 'Events.IsAvailable';
+    const res3 = await serializer.getColumnForField(field3, {});
+    expect(res3).toEqual({
+      column: 'Events.IsAvailable',
+      found: true,
+      propertyType: JSDataType.Bool,
+      isArray: true,
+    });
+  });
+
+  it('compare - eq', async () => {
+    const eqField = 'Events.Name';
+    const eqTerm = 'error';
+
+    const eq1 = await serializer.eq(eqField, eqTerm, false, {});
+    expect(eq1).toBe("has(Events.Name, 'error')");
+
+    const eq2 = await serializer.eq(eqField, eqTerm, true, {});
+    expect(eq2).toBe("NOT has(Events.Name, 'error')");
+  });
+
+  it('compare - isNotNull', async () => {
+    const isNotNullField = 'Events.Name';
+
+    const isNotNull1 = await serializer.isNotNull(isNotNullField, false, {});
+    expect(isNotNull1).toBe('notEmpty(Events.Name) = 1');
+
+    const isNotNull2 = await serializer.isNotNull(isNotNullField, true, {});
+    expect(isNotNull2).toBe('notEmpty(Events.Name) != 1');
+  });
+
+  it('compare - gte', async () => {
+    const gteField = 'Events.Name';
+    const gteTerm = '30';
+    await expect(async () =>
+      serializer.gte(gteField, gteTerm, {}),
+    ).rejects.toThrow('>= comparison is not supported for Array-type fields');
+  });
+
+  it('compare - lte', async () => {
+    const lteField = 'Events.Name';
+    const lteTerm = '40';
+    await expect(async () =>
+      serializer.lte(lteField, lteTerm, {}),
+    ).rejects.toThrow('<= comparison is not supported for Array-type fields');
+  });
+
+  it('compare - gt', async () => {
+    const gtField = 'Events.Name';
+    const gtTerm = '70';
+    await expect(async () =>
+      serializer.gt(gtField, gtTerm, {}),
+    ).rejects.toThrow('> comparison is not supported for Array-type fields');
+  });
+
+  it('compare - lt', async () => {
+    const ltField = 'Events.Name';
+    const ltTerm = '2';
+    await expect(async () =>
+      serializer.lt(ltField, ltTerm, {}),
+    ).rejects.toThrow('< comparison is not supported for Array-type fields');
+  });
+
+  it('compare - range', async () => {
+    const rangeField = 'Events.Name';
+    await expect(async () =>
+      serializer.range(rangeField, '2', '5', false, {}),
+    ).rejects.toThrow(
+      'range comparison is not supported for Array-type fields',
+    );
+  });
+
+  const testCases = [
+    // String array field tests
+    {
+      lucene: 'Events.Name:foo',
+      sql: "(has(Events.Name, 'foo'))",
+      english: "'Events.Name' contains foo",
+    },
+    {
+      lucene: 'NOT Events.Name:foo',
+      sql: "(NOT has(Events.Name, 'foo'))",
+      english: "NOT 'Events.Name' contains foo",
+    },
+    {
+      lucene: '-Events.Name:foo',
+      sql: "(NOT has(Events.Name, 'foo'))",
+      english: "'Events.Name' does not contain foo",
+    },
+    {
+      lucene: 'Events.Name:"foo"',
+      sql: "(has(Events.Name, 'foo'))",
+      english: "'Events.Name' contains foo",
+    },
+    {
+      lucene: 'NOT Events.Name:"foo"',
+      sql: "(NOT has(Events.Name, 'foo'))",
+      english: "NOT 'Events.Name' contains foo",
+    },
+    {
+      lucene: '-Events.Name:"foo"',
+      sql: "(NOT has(Events.Name, 'foo'))",
+      english: "'Events.Name' does not contain foo",
+    },
+    {
+      lucene: 'Events.Name:"foo bar"',
+      sql: "(has(Events.Name, 'foo bar'))",
+      english: "'Events.Name' contains foo bar",
+    },
+    {
+      lucene: 'NOT Events.Name:"foo bar"',
+      sql: "(NOT has(Events.Name, 'foo bar'))",
+      english: "NOT 'Events.Name' contains foo bar",
+    },
+    {
+      lucene: '-Events.Name:"foo bar"',
+      sql: "(NOT has(Events.Name, 'foo bar'))",
+      english: "'Events.Name' does not contain foo bar",
+    },
+    // Number array field tests
+    {
+      lucene: 'Events.Count:5',
+      sql: "(has(Events.Count, CAST('5', 'Float64')))",
+      english: "'Events.Count' contains 5",
+    },
+    {
+      lucene: 'NOT Events.Count:5',
+      sql: "(NOT has(Events.Count, CAST('5', 'Float64')))",
+      english: "NOT 'Events.Count' contains 5",
+    },
+    {
+      lucene: 'Events.Count:"4"',
+      sql: "(has(Events.Count, CAST('4', 'Float64')))",
+      english: "'Events.Count' contains 4",
+    },
+    {
+      lucene: 'NOT Events.Count:"4"',
+      sql: "(NOT has(Events.Count, CAST('4', 'Float64')))",
+      english: "NOT 'Events.Count' contains 4",
+    },
+    // Boolean array field tests
+    {
+      lucene: 'Events.IsAvailable:true',
+      sql: '(has(Events.IsAvailable, 1))',
+      english: "'Events.IsAvailable' contains true",
+    },
+    {
+      lucene: 'NOT Events.IsAvailable:true',
+      sql: '(NOT has(Events.IsAvailable, 1))',
+      english: "NOT 'Events.IsAvailable' contains true",
+    },
+    {
+      lucene: 'Events.IsAvailable:false',
+      sql: '(has(Events.IsAvailable, 0))',
+      english: "'Events.IsAvailable' contains false",
+    },
+    {
+      lucene: 'NOT Events.IsAvailable:false',
+      sql: '(NOT has(Events.IsAvailable, 0))',
+      english: "NOT 'Events.IsAvailable' contains false",
+    },
+  ];
+
+  it.each(testCases)(
+    'converts "$lucene" to SQL "$sql"',
+    async ({ lucene, sql }) => {
+      const builder = new SearchQueryBuilder(lucene, serializer);
+      const actualSql = await builder.build();
+      expect(actualSql).toBe(sql);
+    },
+  );
+
+  it.each(testCases)(
+    'converts "$lucene" to english "$english"',
+    async ({ lucene, english }) => {
+      const actualEnglish = await genEnglishExplanation({
+        query: lucene,
+        tableConnection: {
+          tableName,
+          databaseName,
+          connectionId,
+        },
+        metadata,
+      });
+      expect(actualEnglish).toBe(english);
     },
   );
 });
