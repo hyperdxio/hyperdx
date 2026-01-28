@@ -27,10 +27,27 @@ export function updateConnection(
   team: string,
   connectionId: string,
   connection: Omit<IConnection, 'id' | '_id'>,
+  unsetFields: string[] = [],
 ) {
-  return Connection.findOneAndUpdate({ _id: connectionId, team }, connection, {
-    new: true,
-  });
+  const updateOperation: Record<string, unknown> = { $set: connection };
+
+  if (unsetFields.length > 0) {
+    updateOperation.$unset = unsetFields.reduce(
+      (acc, field) => {
+        acc[field] = '';
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
+  }
+
+  return Connection.findOneAndUpdate(
+    { _id: connectionId, team },
+    updateOperation,
+    {
+      new: true,
+    },
+  );
 }
 
 export function deleteConnection(team: string, connectionId: string) {

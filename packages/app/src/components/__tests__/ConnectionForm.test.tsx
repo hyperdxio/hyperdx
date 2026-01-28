@@ -67,9 +67,16 @@ describe('ConnectionForm', () => {
       <ConnectionForm connection={baseConnection} isNew={true} />,
     );
 
+    // Wait for form validation to complete
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Create/i }),
+      ).toBeInTheDocument();
+    });
+
     const hostInput = screen.getByPlaceholderText('http://localhost:8123');
     const nameInput = screen.getByPlaceholderText('My Clickhouse Server');
-    const submitButton = screen.getByRole('button', { name: 'Create' });
+    const submitButton = screen.getByRole('button', { name: /Create/i });
 
     await fireEvent.change(nameInput, { target: { value: 'Test Name' } });
     await fireEvent.change(hostInput, {
@@ -104,8 +111,13 @@ describe('ConnectionForm', () => {
       <ConnectionForm connection={existingConnection} isNew={false} />,
     );
 
+    // Wait for form validation to complete
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Save/i })).toBeInTheDocument();
+    });
+
     const hostInput = screen.getByPlaceholderText('http://localhost:8123');
-    const submitButton = screen.getByRole('button', { name: 'Save' });
+    const submitButton = screen.getByRole('button', { name: /Save/i });
 
     // Update host
     await fireEvent.change(hostInput, {
@@ -135,8 +147,15 @@ describe('ConnectionForm', () => {
     renderWithMantine(
       <ConnectionForm connection={baseConnection} isNew={true} />,
     );
-    const hostInput = screen.getByPlaceholderText('http://localhost:8123');
 
+    // Wait for form validation to complete
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Test Connection' }),
+      ).toBeInTheDocument();
+    });
+
+    const hostInput = screen.getByPlaceholderText('http://localhost:8123');
     const nameInput = screen.getByPlaceholderText('My Clickhouse Server');
     const testButton = screen.getByRole('button', { name: 'Test Connection' });
 
@@ -161,5 +180,90 @@ describe('ConnectionForm', () => {
         host: 'http://test.com:8123',
       }),
     );
+  });
+
+  it('should include hyperdxSettingPrefix when creating connection', async () => {
+    renderWithMantine(
+      <ConnectionForm connection={baseConnection} isNew={true} />,
+    );
+
+    // Wait for form validation to complete
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Create/i }),
+      ).toBeInTheDocument();
+    });
+
+    const nameInput = screen.getByPlaceholderText('My Clickhouse Server');
+    const hostInput = screen.getByPlaceholderText('http://localhost:8123');
+    const submitButton = screen.getByRole('button', { name: /Create/i });
+
+    // Click "Advanced Settings" to reveal the setting prefix input
+    const advancedSettingsLink = screen.getByText('Advanced Settings');
+    fireEvent.click(advancedSettingsLink);
+
+    const settingPrefixInput = screen.getByPlaceholderText('hyperdx');
+
+    await fireEvent.change(nameInput, { target: { value: 'Test Name' } });
+    await fireEvent.change(hostInput, {
+      target: { value: 'http://example.com:8123' },
+    });
+    await fireEvent.change(settingPrefixInput, {
+      target: { value: 'myprefix' },
+    });
+
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(mockCreateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connection: expect.objectContaining({
+            hyperdxSettingPrefix: 'myprefix',
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
+  it('should convert empty hyperdxSettingPrefix to null when updating', async () => {
+    const existingConnection = {
+      ...baseConnection,
+      id: 'existing-id',
+      hyperdxSettingPrefix: 'oldprefix',
+    };
+    renderWithMantine(
+      <ConnectionForm connection={existingConnection} isNew={false} />,
+    );
+
+    // Wait for form validation to complete
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Save/i })).toBeInTheDocument();
+    });
+
+    // Click "Advanced Settings" to reveal the setting prefix input
+    const advancedSettingsLink = screen.getByText('Advanced Settings');
+    fireEvent.click(advancedSettingsLink);
+
+    const settingPrefixInput = screen.getByPlaceholderText('hyperdx');
+    const submitButton = screen.getByRole('button', { name: /Save/i });
+
+    // Clear the setting prefix
+    await fireEvent.change(settingPrefixInput, {
+      target: { value: '' },
+    });
+
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(mockUpdateMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connection: expect.objectContaining({
+            hyperdxSettingPrefix: null,
+          }),
+        }),
+        expect.anything(),
+      );
+    });
   });
 });
