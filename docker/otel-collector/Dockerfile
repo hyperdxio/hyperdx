@@ -13,6 +13,7 @@ ARG USER_GID=10001
 RUN apk add --no-cache ca-certificates && \
   addgroup -S -g ${USER_GID} otel && \
   adduser  -S -u ${USER_UID} -G otel otel && \
+  install -d -m 0755 -o ${USER_UID} -g ${USER_GID} /etc/otelcol-contrib && \
   install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data
 
 # Copy gomplate binary from the gomplate image
@@ -30,8 +31,9 @@ COPY --chmod=755 ./log-tailer.sh /log-tailer.sh
 ## dev ##############################################################################################
 FROM base AS dev
 
-COPY ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --chown=10001:10001 --chmod=644 ./config.yaml /etc/otelcol-contrib/config.yaml
+COPY --chown=10001:10001 --chmod=644 ./standalone-config.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 --chmod=644 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
 EXPOSE 4317 4318 13133
 
@@ -40,8 +42,9 @@ ENTRYPOINT ["/entrypoint.sh", "/opampsupervisor"]
 ## prod #############################################################################################
 FROM base AS prod
 
-COPY ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --chown=10001:10001 --chmod=644 ./config.yaml /etc/otelcol-contrib/config.yaml
+COPY --chown=10001:10001 --chmod=644 ./standalone-config.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 --chmod=644 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
 EXPOSE 4317 4318 13133
 
