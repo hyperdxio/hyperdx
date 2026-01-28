@@ -745,9 +745,10 @@ export default function EditTimeChartForm({
 
   useEffect(() => {
     if (submitRef) {
-      submitRef.current = onSubmit;
+      // Expose handleSubmit(handleSave) for external save triggers (e.g., auto-save on modal close)
+      submitRef.current = () => handleSubmit(handleSave)();
     }
-  }, [onSubmit, submitRef]);
+  }, [handleSubmit, handleSave, submitRef]);
 
   const handleSave = useCallback(
     (v: SavedChartConfigWithSeries) => {
