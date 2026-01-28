@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.11.1
+
+### Patch Changes
+
+- 6aa3ac6f: fix: Fix missing negation in binary lucene expressions
+
 ## 0.11.0
 
 ### Minor Changes

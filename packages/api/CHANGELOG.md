@@ -1,5 +1,16 @@
 # @hyperdx/api
 
+## 2.14.0
+
+### Minor Changes
+
+- d07e30d5: Associates a logged in HyperDX user to the ClickHouse query recorded in the query log.
+
+### Patch Changes
+
+- Updated dependencies [6aa3ac6f]
+  - @hyperdx/common-utils@0.11.1
+
 ## 2.13.0
 
 ### Minor Changes
