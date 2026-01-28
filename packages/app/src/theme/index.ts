@@ -101,16 +101,29 @@ export function getTheme(name: ThemeName = DEFAULT_THEME): ThemeConfig {
   return themes[name] || themes.hyperdx;
 }
 
-// Get current theme based on environment and dev overrides
-export function getCurrentTheme(): ThemeConfig {
-  const themeName = IS_DEV ? getDevThemeName() : DEFAULT_THEME;
-  return getTheme(themeName);
-}
-
-// Get current theme name
-export function getCurrentThemeName(): ThemeName {
-  return IS_DEV ? getDevThemeName() : DEFAULT_THEME;
-}
+/**
+ * IMPORTANT: To get the current theme in React components, use `useAppTheme()` hook
+ * from `./ThemeProvider` instead of calling these functions directly.
+ *
+ * Why?
+ * - `useAppTheme()` ensures consistency with ThemeProvider context
+ * - Prevents hydration mismatches between SSR and client-side rendering
+ * - Properly handles theme switching in dev mode
+ * - Matches the theme resolution used throughout the app
+ *
+ * Example:
+ * ```tsx
+ * import { useAppTheme } from '@/theme/ThemeProvider';
+ *
+ * function MyComponent() {
+ *   const { theme, themeName } = useAppTheme();
+ *   return <div>{theme.displayName}</div>;
+ * }
+ * ```
+ *
+ * These utility functions (`getTheme`, `getDevThemeName`) are for internal use
+ * by ThemeProvider and should not be used directly in components.
+ */
 
 // Re-export types
 export type { ThemeConfig, ThemeName } from './types';

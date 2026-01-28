@@ -16,7 +16,7 @@ import { IconFlask } from '@tabler/icons-react';
 import { OPTIONS_FONTS } from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
 import { ThemeName } from './theme/types';
-import { themes } from './theme';
+import { isValidThemeName, themes } from './theme';
 import { UserPreferences, useUserPreferences } from './useUserPreferences';
 
 const OPTIONS_COLOR_MODE = [
@@ -29,14 +29,6 @@ const OPTIONS_BRAND_THEMES = Object.values(themes).map(t => ({
   label: t.displayName,
   value: t.name,
 }));
-
-/**
- * Runtime validation for ThemeName to ensure type safety.
- * Validates that a value is a valid theme name before type assertion.
- */
-function isValidThemeName(value: string | null): value is ThemeName {
-  return value === 'hyperdx' || value === 'clickstack';
-}
 
 const SettingContainer = ({
   label,

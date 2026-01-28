@@ -83,10 +83,16 @@ export function migrateUserPreferences(
         colorMode: theme ?? DEFAULT_PREFERENCES.colorMode,
       };
 
-      // Save migrated data back to localStorage
+      // Only write to localStorage if the migrated data differs from what's stored
+      // This prevents unnecessary writes on every render and avoids race conditions
       try {
         if (typeof window !== 'undefined') {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          const migratedJson = JSON.stringify(migrated);
+          // Compare with current stored value to avoid unnecessary write
+          const currentStored = localStorage.getItem(STORAGE_KEY);
+          if (currentStored !== migratedJson) {
+            localStorage.setItem(STORAGE_KEY, migratedJson);
+          }
         }
       } catch {
         // Ignore localStorage errors (private browsing, etc.)

@@ -24,8 +24,7 @@ import {
   MANTINE_FONT_MAP,
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
-import { getCurrentTheme } from '@/theme';
-import { AppThemeProvider } from '@/theme/ThemeProvider';
+import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { useConfirmModal } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
@@ -69,11 +68,11 @@ type AppPropsWithLayout = AppProps & {
 // Must be rendered inside AppThemeProvider to avoid hydration mismatch
 function AppHeadContent() {
   const { userPreferences } = useUserPreferences();
-  const currentTheme = getCurrentTheme();
+  const { theme } = useAppTheme();
 
   return (
     <Head>
-      <title>{currentTheme.displayName}</title>
+      <title>{theme.displayName}</title>
       <meta name="viewport" content="width=device-width, initial-scale=0.75" />
       <meta name="google" content="notranslate" />
       <ColorSchemeScript
