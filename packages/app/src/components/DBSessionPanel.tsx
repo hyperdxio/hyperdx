@@ -64,22 +64,19 @@ export const useSessionId = ({
   });
 
   const result = useMemo(() => {
-    for (const row of data?.data || []) {
-      if (row.parentSpanId === null && row.rumSessionId) {
-        return {
-          rumServiceName: row.serviceName,
-          rumSessionId: row.rumSessionId,
-        };
-      }
+    const rowData = data?.data || [];
+    let row = rowData.find(
+      row => row.parentSpanId === null && row.rumSessionId,
+    );
+    if (!row) {
+      // otherwise just return the first session id
+      row = rowData.find(row => row.rumSessionId);
     }
-    // otherwise just return the first session id
-    for (const row of data?.data || []) {
-      if (row.rumSessionId) {
-        return {
-          rumServiceName: row.serviceName,
-          rumSessionId: row.rumSessionId,
-        };
-      }
+    if (row) {
+      return {
+        rumServiceName: row.serviceName,
+        rumSessionId: row.rumSessionId,
+      };
     }
     return { rumServiceName: undefined, rumSessionId: undefined };
   }, [data]);

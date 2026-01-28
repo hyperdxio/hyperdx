@@ -4379,6 +4379,7 @@ __metadata:
     eslint-config-next: "npm:^16.0.10"
     eslint-plugin-playwright: "npm:^2.4.0"
     eslint-plugin-react-hook-form: "npm:^0.3.1"
+    eslint-plugin-react-hooks: "npm:^7.0.1"
     eslint-plugin-storybook: "npm:10.1.4"
     flat: "npm:^5.0.2"
     fuse.js: "npm:^6.6.2"

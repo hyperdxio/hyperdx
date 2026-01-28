@@ -153,15 +153,12 @@ export const NumberFormatForm: React.FC<{
               key="numberFormat.factor"
               name="numberFormat.factor"
               render={({ field: { value, onChange, ...field } }) => {
-                const options = useMemo(
-                  () => [
-                    { value: '1', label: 'Seconds' },
-                    { value: '0.001', label: 'Milliseconds' },
-                    { value: '0.000001', label: 'Microseconds' },
-                    { value: '0.000000001', label: 'Nanoseconds' },
-                  ],
-                  [],
-                );
+                const options = [
+                  { value: '1', label: 'Seconds' },
+                  { value: '0.001', label: 'Milliseconds' },
+                  { value: '0.000001', label: 'Microseconds' },
+                  { value: '0.000000001', label: 'Nanoseconds' },
+                ];
 
                 const stringValue =
                   options.find(option => parseFloat(option.value) === value)

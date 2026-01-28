@@ -60,6 +60,7 @@ export default function SQLEditor({
           minHeight={'100px'}
           extensions={[
             styleTheme,
+            // eslint-disable-next-line react-hooks/refs
             compartmentRef.current.of(
               sql({
                 upperCaseKeywords: true,
