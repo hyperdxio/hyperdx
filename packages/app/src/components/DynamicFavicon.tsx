@@ -10,6 +10,10 @@ export const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 export const DEFAULT_THEME_COLOR = '#25292e';
 
 export function sanitizeThemeColor(color: string): string {
+  // Explicit type guard to prevent type coercion issues
+  if (typeof color !== 'string') {
+    return DEFAULT_THEME_COLOR;
+  }
   return HEX_COLOR_PATTERN.test(color) ? color : DEFAULT_THEME_COLOR;
 }
 

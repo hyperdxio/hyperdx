@@ -23,10 +23,30 @@ import { ThemeConfig, ThemeName } from './types';
 // Note: React components and MantineThemeOverride are validated at runtime
 // but cannot be fully validated with Zod schemas
 const faviconConfigSchema = z.object({
-  svg: z.string().min(1),
-  png32: z.string().min(1),
-  png16: z.string().min(1),
-  appleTouchIcon: z.string().min(1),
+  svg: z
+    .string()
+    .regex(
+      /^\/favicons\/[a-z]+\/[a-z0-9-]+\.svg$/,
+      'SVG favicon path must match /favicons/{theme}/{name}.svg',
+    ),
+  png32: z
+    .string()
+    .regex(
+      /^\/favicons\/[a-z]+\/[a-z0-9-]+\.png$/,
+      'PNG32 favicon path must match /favicons/{theme}/{name}.png',
+    ),
+  png16: z
+    .string()
+    .regex(
+      /^\/favicons\/[a-z]+\/[a-z0-9-]+\.png$/,
+      'PNG16 favicon path must match /favicons/{theme}/{name}.png',
+    ),
+  appleTouchIcon: z
+    .string()
+    .regex(
+      /^\/favicons\/[a-z]+\/[a-z0-9-]+\.png$/,
+      'Apple Touch Icon path must match /favicons/{theme}/{name}.png',
+    ),
   themeColor: z.string().regex(/^#[0-9A-F]{6}$/i, 'Must be a valid hex color'),
 });
 

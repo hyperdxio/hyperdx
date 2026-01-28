@@ -25,6 +25,13 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   font: 'IBM Plex Mono',
 };
 
+// Cache migration result in memory to avoid repeated localStorage writes
+// This cache stores the migrated result for a given stored value
+let migrationCache: {
+  storedValue: string;
+  result: UserPreferences | null;
+} | null = null;
+
 /**
  * Type guard to check if an object is a valid UserPreferences (already migrated).
  */
@@ -49,11 +56,19 @@ function isLegacyUserPreferences(obj: unknown): obj is LegacyUserPreferences {
     return false;
   }
 
+  const hasTheme = 'theme' in obj;
+  const hasColorMode = 'colorMode' in obj;
+
+  if (!hasTheme || hasColorMode) {
+    return false;
+  }
+
+  const theme = (obj as { theme?: unknown }).theme;
+
+  // Validate theme is either undefined or a valid color mode value
   return (
-    'theme' in obj &&
-    !('colorMode' in obj) &&
-    (typeof (obj as { theme?: unknown }).theme === 'string' ||
-      (obj as { theme?: unknown }).theme === undefined)
+    theme === undefined ||
+    (typeof theme === 'string' && (theme === 'light' || theme === 'dark'))
   );
 }
 
@@ -61,13 +76,22 @@ function isLegacyUserPreferences(obj: unknown): obj is LegacyUserPreferences {
  * Migrates old localStorage data from `theme` to `colorMode`.
  * This ensures existing users don't lose their light/dark mode preference.
  *
+ * Uses an in-memory cache to avoid repeated localStorage writes on every read.
+ *
  * @internal Exported for testing only
  */
 export function migrateUserPreferences(
   stored: string | null,
 ): UserPreferences | null {
   if (!stored) {
+    // Clear cache if storage is empty
+    migrationCache = null;
     return null;
+  }
+
+  // Check cache first - if we've already processed this exact value, return cached result
+  if (migrationCache && migrationCache.storedValue === stored) {
+    return migrationCache.result;
   }
 
   try {
@@ -77,10 +101,15 @@ export function migrateUserPreferences(
     if (isLegacyUserPreferences(parsed)) {
       // Use destructuring to exclude `theme` property for better type safety
       const { theme, ...rest } = parsed;
+      // Ensure theme is valid before using it
+      const validTheme: 'light' | 'dark' =
+        theme === 'light' || theme === 'dark'
+          ? theme
+          : DEFAULT_PREFERENCES.colorMode;
       const migrated: UserPreferences = {
         ...DEFAULT_PREFERENCES,
         ...rest,
-        colorMode: theme ?? DEFAULT_PREFERENCES.colorMode,
+        colorMode: validTheme,
       };
 
       // Only write to localStorage if the migrated data differs from what's stored
@@ -98,18 +127,34 @@ export function migrateUserPreferences(
         // Ignore localStorage errors (private browsing, etc.)
       }
 
+      // Cache the result to avoid re-processing on subsequent calls
+      migrationCache = {
+        storedValue: stored,
+        result: migrated,
+      };
+
       return migrated;
     }
 
     // Already migrated or new format - validate it's a proper UserPreferences
     if (isUserPreferences(parsed)) {
+      // Cache the result to avoid re-processing on subsequent calls
+      migrationCache = {
+        storedValue: stored,
+        result: parsed,
+      };
       return parsed;
     }
 
     // Invalid format, return null to use defaults
+    migrationCache = {
+      storedValue: stored,
+      result: null,
+    };
     return null;
   } catch {
     // Invalid JSON, return null to use defaults
+    migrationCache = null;
     return null;
   }
 }
