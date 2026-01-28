@@ -594,6 +594,19 @@ export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
 >;
 
+export const TeamSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    allowedAuthMethods: z.array(z.literal('password')).optional(),
+    apiKey: z.string(),
+    hookId: z.string(),
+    collectorAuthenticationEnforced: z.boolean(),
+  })
+  .merge(TeamClickHouseSettingsSchema);
+
+export type Team = z.infer<typeof TeamSchema>;
+
 // --------------------------
 // TABLE SOURCES
 // --------------------------

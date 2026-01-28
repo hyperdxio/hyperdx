@@ -5,9 +5,10 @@ import type {
   Alert,
   PresetDashboard,
   PresetDashboardFilter,
+  Team,
 } from '@hyperdx/common-utils/dist/types';
 import type { UseQueryOptions } from '@tanstack/react-query';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
 import { Dashboard } from './dashboard';
@@ -304,13 +305,21 @@ const api = {
     });
   },
   useTeam() {
-    return useQuery<any, Error>({
+    return useQuery({
       queryKey: [`team`],
       queryFn: () => {
         if (IS_LOCAL_MODE) {
           return null;
         }
-        return hdxServer(`team`).json();
+
+        type TeamResponse = Pick<
+          Team,
+          'allowedAuthMethods' | 'apiKey' | 'name'
+        > & {
+          createdAt: string;
+        };
+
+        return hdxServer(`team`).json<TeamResponse>();
       },
       retry: 1,
     });
