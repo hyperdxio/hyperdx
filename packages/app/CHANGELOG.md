@@ -1,5 +1,29 @@
 # @hyperdx/app
 
+## 2.14.0
+
+### Minor Changes
+
+- d07e30d5: Associates a logged in HyperDX user to the ClickHouse query recorded in the query log.
+
+### Patch Changes
+
+- 9101a993: fix: Update ConnectionForm button variant based on test connection state
+
+  Changed the button variant in the ConnectionForm component to reflect the test connection state, using 'danger' for invalid states and 'secondary' for others. This improves user feedback during connection testing.
+
+- 08b922cd: debug: notify SourceForm error path when message is 'Required'
+- 16df5024: fix: Fix tile hover state after closing edit modal
+- 7a5a5ef6: fix: Fix histogram disappearing and scrollbar issues on event patterns and search pages
+
+  Fixes regression from PR #1598 by adding proper flex container constraints to prevent histogram from disappearing and scrollbar from cutting off 120px early.
+
+- be4b784c: fix: Make JSON line hover visible in inline panel
+- eea4fa48: fix: Prevent orphan alert when duplicating dashboard tiles
+- 0dd58543: fix: Fix dashboard error when using filter on non-String column
+- Updated dependencies [6aa3ac6f]
+  - @hyperdx/common-utils@0.11.1
+
 ## 2.13.0
 
 ### Minor Changes
