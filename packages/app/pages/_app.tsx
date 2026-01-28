@@ -28,6 +28,7 @@ import { ThemeWrapper } from '@/ThemeWrapper';
 import { useConfirmModal } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
 import { useBackground, useUserPreferences } from '@/useUserPreferences';
+import { NextApiConfigResponseData } from '@/types';
 
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -78,26 +79,20 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
     }
     fetch('/api/config')
       .then(res => res.json())
-      .then(_jsonData => {
-        if (_jsonData?.apiKey) {
-          let hostname;
-          try {
-            const url = new URL(_jsonData.apiServerUrl);
-            hostname = url.hostname;
-          } catch (err) {
-            // ignore
-          }
+      .then((_jsonData?: NextApiConfigResponseData) => {
+        if (!_jsonData?.exporterEnabled){
+          console.info('OTEL exporter disabled');
+        } else if (_jsonData?.apiKey) {
           HyperDX.init({
             apiKey: _jsonData.apiKey,
             consoleCapture: true,
             maskAllInputs: true,
             maskAllText: true,
             service: _jsonData.serviceName,
-            // tracePropagationTargets: [new RegExp(hostname ?? 'localhost', 'i')],
             url: _jsonData.collectorUrl,
           });
         } else {
-          console.warn('No API key found');
+          console.warn('No API key found to enable OTEL exporter');
         }
       })
       .catch(err => {
