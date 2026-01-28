@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import { clickstackTheme } from './themes/clickstack';
 import { hyperdxTheme } from './themes/hyperdx';
 import { ThemeConfig, ThemeName } from './types';
@@ -16,6 +18,87 @@ import { ThemeConfig, ThemeName } from './types';
  *
  * This is intentionally different from colorMode (light/dark), which IS user-selectable.
  */
+
+// Zod schema for validating ThemeConfig structure
+// Note: React components and MantineThemeOverride are validated at runtime
+// but cannot be fully validated with Zod schemas
+const faviconConfigSchema = z.object({
+  svg: z.string().min(1),
+  png32: z.string().min(1),
+  png16: z.string().min(1),
+  appleTouchIcon: z.string().min(1),
+  themeColor: z.string().regex(/^#[0-9A-F]{6}$/i, 'Must be a valid hex color'),
+});
+
+const themeConfigSchema = z.object({
+  name: z.enum(['hyperdx', 'clickstack']),
+  displayName: z.string().min(1),
+  cssClass: z.string().min(1),
+  favicon: faviconConfigSchema,
+  // Wordmark and Logomark are React components - validate they exist and are callable
+  Wordmark: z
+    .any()
+    .refine(
+      val => typeof val === 'function' || (val && typeof val === 'object'),
+      'Wordmark must be a React component',
+    ),
+  Logomark: z
+    .any()
+    .refine(
+      val => typeof val === 'function' || (val && typeof val === 'object'),
+      'Logomark must be a React component',
+    ),
+  // mantineTheme is complex - just check it exists
+  mantineTheme: z
+    .any()
+    .refine(
+      val => val !== null && val !== undefined,
+      'mantineTheme must be defined',
+    ),
+});
+
+/**
+ * Validates a theme configuration at runtime.
+ * Throws an error with details if validation fails.
+ *
+ * @param theme - Theme configuration to validate
+ * @param themeName - Name of the theme (for error messages)
+ * @throws Error if theme is invalid
+ */
+function validateThemeConfig(
+  theme: unknown,
+  themeName: string,
+): asserts theme is ThemeConfig {
+  try {
+    themeConfigSchema.parse(theme);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const details = error.errors
+        .map(e => `${e.path.join('.')}: ${e.message}`)
+        .join('; ');
+      throw new Error(
+        `Invalid theme configuration for "${themeName}": ${details}`,
+      );
+    }
+    throw error;
+  }
+}
+
+// Validate themes at module load time
+try {
+  validateThemeConfig(hyperdxTheme, 'hyperdx');
+  validateThemeConfig(clickstackTheme, 'clickstack');
+} catch (error) {
+  // Log error but don't crash - fallback to default theme
+  console.error(
+    '[Theme Validation] Failed to validate theme configurations:',
+    error,
+  );
+  // In production, we might want to throw to prevent deployment with invalid configs
+  if (process.env.NODE_ENV === 'production') {
+    throw error;
+  }
+}
 
 // Theme registry
 export const themes: Record<ThemeName, ThemeConfig> = {
@@ -69,9 +152,34 @@ export function safeLocalStorageRemove(key: string): void {
 
 // Default theme (validated against registry, falls back to hyperdx)
 const envTheme = process.env.NEXT_PUBLIC_THEME;
-export const DEFAULT_THEME: ThemeName = isValidThemeName(envTheme)
+let resolvedDefaultTheme: ThemeName = isValidThemeName(envTheme)
   ? envTheme
   : 'hyperdx';
+
+// Validate that the resolved default theme exists and is valid
+if (!themes[resolvedDefaultTheme]) {
+  console.warn(
+    `[Theme Validation] Theme "${resolvedDefaultTheme}" from NEXT_PUBLIC_THEME not found in registry. Falling back to "hyperdx".`,
+  );
+  resolvedDefaultTheme = 'hyperdx';
+} else {
+  // Validate the theme config structure
+  try {
+    validateThemeConfig(themes[resolvedDefaultTheme], resolvedDefaultTheme);
+  } catch (error) {
+    console.error(
+      `[Theme Validation] Theme "${resolvedDefaultTheme}" failed validation. Falling back to "hyperdx".`,
+      error,
+    );
+    resolvedDefaultTheme = 'hyperdx';
+    // In production, throw to prevent deployment with invalid configs
+    if (process.env.NODE_ENV === 'production') {
+      throw error;
+    }
+  }
+}
+
+export const DEFAULT_THEME: ThemeName = resolvedDefaultTheme;
 
 /**
  * Get the theme name from various sources (dev mode only).
@@ -98,7 +206,22 @@ export function getDevThemeName(): ThemeName {
 
 // Get theme configuration by name
 export function getTheme(name: ThemeName = DEFAULT_THEME): ThemeConfig {
-  return themes[name] || themes.hyperdx;
+  const theme = themes[name] || themes.hyperdx;
+
+  // Runtime validation - ensure theme is valid before returning
+  // This catches cases where theme config was corrupted after module load
+  try {
+    validateThemeConfig(theme, name);
+  } catch (error) {
+    console.error(
+      `[Theme Validation] Theme "${name}" failed runtime validation. Falling back to "hyperdx".`,
+      error,
+    );
+    // Return hyperdx theme as safe fallback
+    return themes.hyperdx;
+  }
+
+  return theme;
 }
 
 /**
