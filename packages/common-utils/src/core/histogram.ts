@@ -26,6 +26,15 @@ export const translateHistogram = ({
   if (select.aggFn === 'count') {
     return translateHistogramCount(rest);
   }
+  if (select.aggFn === 'apdex') {
+    if (!('threshold' in select) || select.threshold == null) {
+      throw new Error('apdex must have a threshold');
+    }
+    return translateHistogramApdex({
+      ...rest,
+      threshold: select.threshold,
+    });
+  }
   throw new Error(`${select.aggFn} is not supported for histograms currently`);
 };
 
@@ -185,5 +194,88 @@ const translateHistogramQuantile = ({
           FROM points
           WHERE length(point) > 1 AND total > 0
           `,
+  },
+];
+
+export const translateHistogramApdex = ({
+  threshold,
+  timeBucketSelect,
+  groupBy,
+  from,
+  where,
+  valueAlias,
+}: {
+  threshold: number;
+  timeBucketSelect: TemplatedInput;
+  groupBy?: TemplatedInput;
+  from: TemplatedInput;
+  where: TemplatedInput;
+  valueAlias: TemplatedInput;
+}): WithClauses => [
+  {
+    name: 'source',
+    sql: chSql`
+      SELECT
+        ExplicitBounds,
+        ${timeBucketSelect},
+        ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
+        sumForEach(deltas) AS bucket_counts,
+        ${{ Float64: threshold }} AS threshold
+      FROM (
+        SELECT
+          TimeUnix,
+          AggregationTemporality,
+          ExplicitBounds,
+          ResourceAttributes,
+          Attributes,
+          attr_hash,
+          any(attr_hash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_attr_hash,
+          any(bounds_hash) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_bounds_hash,
+          any(counts) OVER (ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prev_counts,
+          counts,
+          IF(
+            AggregationTemporality = 1
+              OR prev_attr_hash != attr_hash
+              OR bounds_hash != prev_bounds_hash
+              OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)),
+            counts,
+            counts - prev_counts
+          ) AS deltas
+        FROM (
+          SELECT
+            TimeUnix,
+            AggregationTemporality,
+            ExplicitBounds,
+            ResourceAttributes,
+            Attributes,
+            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+            cityHash64(ExplicitBounds) AS bounds_hash,
+            CAST(BucketCounts AS Array(Int64)) AS counts
+          FROM ${from}
+          WHERE ${where}
+          ORDER BY attr_hash, TimeUnix ASC
+        )
+      )
+      GROUP BY \`__hdx_time_bucket\`, ${groupBy ? 'group, ' : ''}ExplicitBounds
+      ORDER BY \`__hdx_time_bucket\`
+    `,
+  },
+  {
+    name: 'metrics',
+    sql: chSql`
+      SELECT
+        \`__hdx_time_bucket\`,
+        ${groupBy ? 'group,' : ''}
+        arrayResize(ExplicitBounds, length(bucket_counts), inf) AS safe_bounds,
+        arraySum((delta, bound) -> if(bound <= threshold, delta, 0), bucket_counts, safe_bounds) AS satisfied,
+        arraySum((delta, bound) -> if(bound > threshold AND bound <= (threshold * 4), delta, 0), bucket_counts, safe_bounds) AS tolerating,
+        arraySum((delta, bound) -> if(bound > (threshold * 4), delta, 0), bucket_counts, safe_bounds) AS frustrated,
+        if(
+          satisfied + tolerating + frustrated > 0,
+          (satisfied + tolerating * 0.5) / (satisfied + tolerating + frustrated),
+          NULL
+        ) AS "${valueAlias}"
+      FROM source
+    `,
   },
 ];
