@@ -29,7 +29,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   const { data: team, isLoading: teamIsLoading } = api.useTeam();
   const router = useRouter();
 
-  const isLoggedIn = Boolean(!teamIsLoading && team && !team.isDemo);
+  const isLoggedIn = Boolean(!teamIsLoading && team);
 
   useEffect(() => {
     if (isLoggedIn) {

@@ -251,16 +251,6 @@ export default function TeamMembersSection() {
                       </Group>
                     </Table.Td>
                     <Table.Td>
-                      {team.shouldEnforceRBAC && !member.groupName && (
-                        <Badge
-                          variant="light"
-                          color="red"
-                          fw="normal"
-                          tt="none"
-                        >
-                          Not Assigned to Group
-                        </Badge>
-                      )}
                       {member.groupName && (
                         <Badge
                           variant="light"
