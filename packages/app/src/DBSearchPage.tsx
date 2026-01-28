@@ -1814,7 +1814,7 @@ function DBSearchPage() {
               </ErrorBoundary>
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
-                  <Flex direction="column" w="100%" gap="0px">
+                  <Flex direction="column" w="100%" gap="0px" mih="0">
                     <Box className={searchPageStyles.searchStatsContainer}>
                       <Group justify="space-between" style={{ width: '100%' }}>
                         <SearchTotalCountChart
@@ -1831,7 +1831,10 @@ function DBSearchPage() {
                       </Group>
                     </Box>
                     {!hasQueryError && (
-                      <Box className={searchPageStyles.timeChartContainer}>
+                      <Box
+                        className={searchPageStyles.timeChartContainer}
+                        mih="0"
+                      >
                         <DBTimeChart
                           sourceId={searchedConfig.source ?? undefined}
                           showLegend={false}
@@ -1845,20 +1848,22 @@ function DBSearchPage() {
                         />
                       </Box>
                     )}
-                    <PatternTable
-                      source={searchedSource}
-                      config={{
-                        ...chartConfig,
-                        dateRange: searchedTimeRange,
-                      }}
-                      bodyValueExpression={
-                        searchedSource?.bodyExpression ??
-                        chartConfig.implicitColumnExpression ??
-                        ''
-                      }
-                      totalCountConfig={histogramTimeChartConfig}
-                      totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
-                    />
+                    <Box flex="1" mih="0">
+                      <PatternTable
+                        source={searchedSource}
+                        config={{
+                          ...chartConfig,
+                          dateRange: searchedTimeRange,
+                        }}
+                        bodyValueExpression={
+                          searchedSource?.bodyExpression ??
+                          chartConfig.implicitColumnExpression ??
+                          ''
+                        }
+                        totalCountConfig={histogramTimeChartConfig}
+                        totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
+                      />
+                    </Box>
                   </Flex>
                 )}
               {analysisMode === 'delta' && searchedSource != null && (
@@ -1872,7 +1877,7 @@ function DBSearchPage() {
                   source={searchedSource}
                 />
               )}
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <Flex direction="column" mih="0">
                 {analysisMode === 'results' &&
                   chartConfig &&
                   histogramTimeChartConfig && (
@@ -1908,7 +1913,7 @@ function DBSearchPage() {
                       {!hasQueryError && (
                         <Box
                           className={searchPageStyles.timeChartContainer}
-                          style={{ flexShrink: 0 }}
+                          mih="0"
                         >
                           <DBTimeChart
                             sourceId={searchedConfig.source ?? undefined}
@@ -2043,7 +2048,7 @@ function DBSearchPage() {
                     </div>
                   </>
                 ) : (
-                  <>
+                  <Box flex="1" mih="0">
                     {chartConfig &&
                       searchedConfig.source &&
                       dbSqlRowTableConfig &&
@@ -2065,9 +2070,9 @@ function DBSearchPage() {
                           initialSortBy={initialSortBy}
                         />
                       )}
-                  </>
+                  </Box>
                 )}
-              </div>
+              </Flex>
             </div>
           </>
         )}
