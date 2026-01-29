@@ -1,5 +1,4 @@
-import { MetricsDataTypeV1 } from '@hyperdx/common-utils/dist/core/v1';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 import { act, renderHook } from '@testing-library/react';
 
@@ -79,10 +78,10 @@ describe('getMetricTableName', () => {
   it('returns the specific metric table when metricType is provided', () => {
     const source = createSourceWithMetrics() as unknown as TSource;
 
-    expect(getMetricTableName(source, 'gauge' as MetricsDataTypeV1)).toBe(
+    expect(getMetricTableName(source, 'gauge' as MetricsDataType)).toBe(
       'gauge_table',
     );
-    expect(getMetricTableName(source, 'counter' as MetricsDataTypeV1)).toBe(
+    expect(getMetricTableName(source, 'counter' as MetricsDataType)).toBe(
       'counter_table',
     );
   });
@@ -90,10 +89,10 @@ describe('getMetricTableName', () => {
   it('handles case insensitivity for metric types', () => {
     const source = createSourceWithMetrics() as unknown as TSource;
 
-    expect(getMetricTableName(source, 'GAUGE' as MetricsDataTypeV1)).toBe(
+    expect(getMetricTableName(source, 'GAUGE' as MetricsDataType)).toBe(
       'gauge_table',
     );
-    expect(getMetricTableName(source, 'Counter' as MetricsDataTypeV1)).toBe(
+    expect(getMetricTableName(source, 'Counter' as MetricsDataType)).toBe(
       'counter_table',
     );
   });
@@ -107,7 +106,7 @@ describe('getMetricTableName', () => {
     } as unknown as TSource;
 
     expect(
-      getMetricTableName(source, 'histogram' as MetricsDataTypeV1),
+      getMetricTableName(source, 'histogram' as MetricsDataType),
     ).toBeUndefined();
   });
 
@@ -116,7 +115,7 @@ describe('getMetricTableName', () => {
 
     expect(getMetricTableName(source)).toBe('');
     expect(
-      getMetricTableName(source, 'gauge' as MetricsDataTypeV1),
+      getMetricTableName(source, 'gauge' as MetricsDataType),
     ).toBeUndefined();
   });
 });
