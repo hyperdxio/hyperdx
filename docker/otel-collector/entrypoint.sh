@@ -15,10 +15,10 @@ if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
 
   # Build goose connection string from environment variables
   # CLICKHOUSE_ENDPOINT format: tcp://host:port or clickhouse://host:port
-  # Check if endpoint already has query parameters
+  # Note: database is not specified here since SQL files use ${DATABASE} prefix explicitly
   case "$CLICKHOUSE_ENDPOINT" in
-    *\?*) GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}&username=${DB_USER}&password=${DB_PASSWORD}&database=${DB_NAME}" ;;
-    *)    GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}?username=${DB_USER}&password=${DB_PASSWORD}&database=${DB_NAME}" ;;
+    *\?*) GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}&username=${DB_USER}&password=${DB_PASSWORD}" ;;
+    *)    GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}?username=${DB_USER}&password=${DB_PASSWORD}" ;;
   esac
 
   # Create temporary directory for processed SQL files
@@ -55,13 +55,7 @@ if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
       MIGRATION_SUCCESS=false
 
       while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-        # Capture output and filter out sensitive information (password) before displaying
-        GOOSE_OUTPUT=$(goose -table "${DB_NAME}.goose_db_version_${telemetry_type}" -dir "$schema_dir" clickhouse "$GOOSE_DBSTRING" up 2>&1) && GOOSE_EXIT_CODE=0 || GOOSE_EXIT_CODE=$?
-        # Mask password in output before logging
-        SAFE_OUTPUT=$(echo "$GOOSE_OUTPUT" | sed "s/password=[^&]*/password=***REDACTED***/g")
-
-        if [ $GOOSE_EXIT_CODE -eq 0 ]; then
-          echo "$SAFE_OUTPUT"
+        if goose -table "${DB_NAME}.goose_db_version_${telemetry_type}" -dir "$schema_dir" clickhouse "$GOOSE_DBSTRING" up; then
           echo "SUCCESS: $telemetry_type migrations completed"
           MIGRATION_SUCCESS=true
           break
@@ -69,11 +63,8 @@ if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
           RETRY_COUNT=$((RETRY_COUNT + 1))
           if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
             echo "RETRY: $telemetry_type migration failed, retrying in ${RETRY_DELAY}s... (attempt $RETRY_COUNT/$MAX_RETRIES)"
-            echo "$SAFE_OUTPUT"
             sleep $RETRY_DELAY
             RETRY_DELAY=$((RETRY_DELAY * 2))
-          else
-            echo "$SAFE_OUTPUT"
           fi
         fi
       done
