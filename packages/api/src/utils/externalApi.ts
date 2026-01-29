@@ -1,4 +1,5 @@
 // @ts-nocheck TODO: Fix When Restoring Alerts
+import { FlattenMaps, LeanDocument } from 'mongoose';
 import { z } from 'zod';
 
 import { AlertDocument } from '@/models/alert';
@@ -151,47 +152,7 @@ export const translateExternalChartToInternalChart = (
   };
 };
 
-const translateChartDocumentToExternalChart = (
-  chart: z.infer<typeof chartSchema>,
-): z.infer<typeof externalChartSchemaWithId> => {
-  const { id, x, name, y, w, h, series, seriesReturnType } = chart;
-  return {
-    id,
-    name,
-    x,
-    y,
-    w,
-    h,
-    asRatio: seriesReturnType === 'ratio',
-    series: series.map(s => {
-      const {
-        type,
-        table,
-        aggFn,
-        level,
-        field,
-        where,
-        groupBy,
-        sortOrder,
-        content,
-        numberFormat,
-      } = s;
-
-      return {
-        type,
-        dataSource: table === 'metrics' ? 'metrics' : 'events',
-        aggFn,
-        level,
-        field,
-        where,
-        groupBy,
-        sortOrder,
-        content,
-        numberFormat,
-      };
-    }),
-  };
-};
+export type ExternalChart = {};
 
 export type ExternalDashboard = {
   id: string;
@@ -220,12 +181,12 @@ export function translateDashboardDocumentToExternalDashboard(
 // Alert related types and transformations
 export type ExternalAlert = {
   id: string;
-  name: string | null;
-  message: string | null;
+  name?: string | null;
+  message?: string | null;
   threshold: number;
   interval: string;
   thresholdType: string;
-  source: string;
+  source?: string;
   state: string;
   channel: any;
   team: string;
@@ -233,16 +194,50 @@ export type ExternalAlert = {
   dashboard?: string;
   savedSearch?: string;
   groupBy?: string;
-  silenced?: any;
-  createdAt: string;
-  updatedAt: string;
+  silenced?: {
+    by?: string;
+    at: string;
+    until: string;
+  };
+  createdAt?: string;
+  updatedAt?: string;
 };
+
+type AlertDocumentObject =
+  | AlertDocument
+  | FlattenMaps<LeanDocument<AlertDocument>>;
+
+function hasCreatedAt(
+  alert: AlertDocumentObject,
+): alert is AlertDocument & { createdAt: Date } {
+  return 'createdAt' in alert && alert.createdAt instanceof Date;
+}
+
+function hasUpdatedAt(
+  alert: AlertDocumentObject,
+): alert is AlertDocument & { updatedAt: Date } {
+  return 'updatedAt' in alert && alert.updatedAt instanceof Date;
+}
+
+function transformSilencedToExternalSilenced(
+  silenced: AlertDocumentObject['silenced'],
+): ExternalAlert['silenced'] {
+  return silenced
+    ? {
+        by: silenced.by?.toString(),
+        at: silenced.at.toISOString(),
+        until: silenced.until.toISOString(),
+      }
+    : undefined;
+}
 
 export function translateAlertDocumentToExternalAlert(
   alert: AlertDocument,
 ): ExternalAlert {
   // Convert to plain object if it's a Mongoose document
-  const alertObj = alert.toJSON ? alert.toJSON() : { ...alert };
+  const alertObj: AlertDocumentObject = alert.toJSON
+    ? alert.toJSON()
+    : { ...alert };
 
   // Copy all fields, renaming _id to id, ensuring ObjectId's are strings
   const result = {
@@ -260,9 +255,13 @@ export function translateAlertDocumentToExternalAlert(
     dashboard: alertObj.dashboard?.toString(),
     savedSearch: alertObj.savedSearch?.toString(),
     groupBy: alertObj.groupBy,
-    silenced: alertObj.silenced,
-    createdAt: alertObj.createdAt.toISOString(),
-    updatedAt: alertObj.updatedAt.toISOString(),
+    silenced: transformSilencedToExternalSilenced(alertObj.silenced),
+    createdAt: hasCreatedAt(alertObj)
+      ? alertObj.createdAt.toISOString()
+      : undefined,
+    updatedAt: hasUpdatedAt(alertObj)
+      ? alertObj.updatedAt.toISOString()
+      : undefined,
   };
 
   return result;
