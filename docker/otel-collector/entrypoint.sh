@@ -54,8 +54,15 @@ if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
       RETRY_DELAY=1
       MIGRATION_SUCCESS=false
 
+      # For _init schema, use 'default' database for version table since target DB doesn't exist yet
+      if [ "$telemetry_type" = "_init" ]; then
+        GOOSE_TABLE="default.clickstack_db_version_${telemetry_type}"
+      else
+        GOOSE_TABLE="${DB_NAME}.clickstack_db_version_${telemetry_type}"
+      fi
+
       while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-        if goose -table "${DB_NAME}.goose_db_version_${telemetry_type}" -dir "$schema_dir" clickhouse "$GOOSE_DBSTRING" up; then
+        if goose -table "$GOOSE_TABLE" -dir "$schema_dir" clickhouse "$GOOSE_DBSTRING" up; then
           echo "SUCCESS: $telemetry_type migrations completed"
           MIGRATION_SUCCESS=true
           break
