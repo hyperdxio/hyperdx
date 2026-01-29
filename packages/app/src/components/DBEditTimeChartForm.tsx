@@ -599,7 +599,10 @@ export default function EditTimeChartForm({
   }, [displayType]);
 
   useEffect(() => {
-    if (displayType !== DisplayType.Line) {
+    if (
+      displayType !== DisplayType.Line &&
+      displayType !== DisplayType.Number
+    ) {
       setValue('alert', undefined);
     }
   }, [displayType, setValue]);
@@ -1168,11 +1171,13 @@ export default function EditTimeChartForm({
                       checked={seriesReturnType === 'ratio'}
                     />
                   )}
-                  {displayType === DisplayType.Line &&
+                  {(displayType === DisplayType.Line ||
+                    displayType === DisplayType.Number) &&
                     dashboardId &&
                     !IS_LOCAL_MODE && (
                       <Button
                         variant="subtle"
+                        data-testid="alert-button"
                         size="sm"
                         color={alert ? 'red' : 'gray'}
                         onClick={() =>
@@ -1237,7 +1242,7 @@ export default function EditTimeChartForm({
       {alert && (
         <Paper my="sm">
           <Stack gap="xs">
-            <Paper px="md" py="sm" radius="xs">
+            <Paper px="md" py="sm" radius="xs" data-testid="alert-details">
               <Group gap="xs" justify="space-between">
                 <Group gap="xs">
                   <Text size="sm" opacity={0.7}>
