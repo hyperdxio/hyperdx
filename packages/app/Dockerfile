@@ -26,9 +26,11 @@ FROM base AS builder
 # Expose custom env variables to the browser (needs NEXT_PUBLIC_ prefix)
 # doc: https://nextjs.org/docs/pages/building-your-application/configuring/environment-variables#bundling-environment-variables-for-the-browser
 ARG OTEL_EXPORTER_OTLP_ENDPOINT
+ARG OTEL_EXPORTER_ENABLED
 ARG OTEL_SERVICE_NAME
 ARG IS_LOCAL_MODE
 ENV NEXT_PUBLIC_OTEL_EXPORTER_OTLP_ENDPOINT $OTEL_EXPORTER_OTLP_ENDPOINT
+ENV NEXT_PUBLIC_OTEL_EXPORTER_ENABLED $OTEL_EXPORTER_ENABLED
 ENV NEXT_PUBLIC_OTEL_SERVICE_NAME $OTEL_SERVICE_NAME
 ENV NEXT_PUBLIC_IS_LOCAL_MODE $IS_LOCAL_MODE
 ENV NX_DAEMON false
