@@ -4581,6 +4581,12 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@hyperdx/otel-collector@workspace:packages/otel-collector":
+  version: 0.0.0-use.local
+  resolution: "@hyperdx/otel-collector@workspace:packages/otel-collector"
+  languageName: unknown
+  linkType: soft
+
 "@hyperdx/otel-web-session-recorder@npm:0.16.2":
   version: 0.16.2
   resolution: "@hyperdx/otel-web-session-recorder@npm:0.16.2"
