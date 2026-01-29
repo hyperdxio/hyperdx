@@ -1,7 +1,6 @@
 import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
-import { validateRequest } from 'zod-express-middleware';
 
 import {
   createAlert,
@@ -10,6 +9,7 @@ import {
   getAlerts,
   updateAlert,
 } from '@/controllers/alerts';
+import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
