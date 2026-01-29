@@ -13,7 +13,7 @@ import Dashboard, { IDashboard } from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import {
   translateDashboardDocumentToExternalDashboard,
-  translateExternalChartToInternalChart,
+  translateExternalChartToTileConfig,
 } from '@/utils/externalApi';
 import {
   externalChartSchema,
@@ -427,9 +427,9 @@ router.post(
 
       const charts = tiles.map(tile => {
         const chartId = new ObjectId().toString();
-        return translateExternalChartToInternalChart({
-          id: chartId,
+        return translateExternalChartToTileConfig({
           ...tile,
+          id: chartId,
         });
       });
 
@@ -601,9 +601,7 @@ router.put(
       }
 
       // Convert external tiles to internal charts format
-      const charts = tiles.map(tile =>
-        translateExternalChartToInternalChart(tile),
-      );
+      const charts = tiles.map(translateExternalChartToTileConfig);
 
       // Use updateDashboard to handle the update and all related data (like alerts)
       const updatedDashboard = await Dashboard.findOneAndUpdate(

@@ -52,7 +52,7 @@ describe('enhancedErrors', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toEqual(
-        'Body validation failed: tiles.0.w: Expected number, received string',
+        'Body validation failed: tiles.0.w: Expected number, received string; tiles.0.series: Array must contain at least 1 element(s)',
       );
     });
 

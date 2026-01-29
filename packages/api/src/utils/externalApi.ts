@@ -1,21 +1,45 @@
 // @ts-nocheck TODO: Fix When Restoring Alerts
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  AggregateFunctionSchema,
+  DisplayType,
+  SavedChartConfig,
+  SelectList,
+} from '@hyperdx/common-utils/dist/types';
+import { pick } from 'lodash';
 import { FlattenMaps, LeanDocument } from 'mongoose';
 import { z } from 'zod';
 
-import { AlertDocument } from '@/models/alert';
-import type { IDashboard } from '@/models/dashboard';
 import {
-  chartSchema,
+  AlertChannel,
+  AlertDocument,
+  AlertInterval,
+  AlertState,
+  AlertThresholdType,
+} from '@/models/alert';
+import type { DashboardDocument } from '@/models/dashboard';
+import {
+  ChartSeries,
   externalChartSchema,
   externalChartSchemaWithId,
   histogramChartSeriesSchema,
+  MarkdownChartSeries,
   markdownChartSeriesSchema,
+  NumberChartSeries,
   numberChartSeriesSchema,
+  SearchChartSeries,
   searchChartSeriesSchema,
+  TableChartSeries,
   tableChartSeriesSchema,
+  TimeChartSeries,
   timeChartSeriesSchema,
 } from '@/utils/zod';
 
+import logger from './logger';
+
+type ExternalChartWithId = z.infer<typeof externalChartSchemaWithId>;
+
+// TODO: Replace with translateExternalChartToTileConfig
 export const translateExternalSeriesToInternalSeries = (
   s: z.infer<typeof externalChartSchema>['series'][number],
 ) => {
@@ -136,42 +160,341 @@ export const translateExternalSeriesToInternalSeries = (
   }
 };
 
-export const translateExternalChartToInternalChart = (
-  chartInput: z.infer<typeof externalChartSchemaWithId>,
-): z.infer<typeof chartSchema> => {
-  const { id, x, name, y, w, h, series, asRatio } = chartInput;
+function hasLevel(
+  series: Omit<SelectList[number], string>,
+): series is SelectList[number] & {
+  level: number;
+} {
+  return 'level' in series && typeof series.level === 'number';
+}
+
+function isSortOrderDesc(config: SavedChartConfig): boolean {
+  if (!config.orderBy) {
+    return false;
+  }
+
+  if (typeof config.orderBy === 'string') {
+    return config.orderBy.toLowerCase().endsWith(' desc');
+  }
+
+  if (Array.isArray(config.orderBy) && config.orderBy.length === 0) {
+    return false;
+  }
+
+  return Array.isArray(config.orderBy) && config.orderBy[0].ordering === 'DESC';
+}
+
+const convertChartConfigToExternalChartSeries = (
+  config: SavedChartConfig,
+): ChartSeries[] => {
+  const { displayType, source: sourceId, select, groupBy } = config;
+  const isSelectArray = Array.isArray(select);
+  const convertedGroupBy = Array.isArray(groupBy)
+    ? groupBy.map(g => g.valueExpression)
+    : splitAndTrimWithBracket(groupBy ?? '');
+
+  switch (displayType) {
+    case 'line':
+    case 'stacked_bar':
+      if (!isSelectArray) {
+        logger.error(`Expected array select for displayType ${displayType}`);
+        return [];
+      }
+
+      return select.map(s => {
+        const aggFnSanitized = AggregateFunctionSchema.safeParse(
+          s.aggFn ?? 'none',
+        );
+        return {
+          ...pick(s, ['aggFn', 'alias', 'metricName', 'numberFormat']),
+          aggFn: aggFnSanitized.success ? aggFnSanitized.data : 'none',
+          type: 'time',
+          sourceId,
+          displayType,
+          level: hasLevel(s) ? s.level : undefined,
+          field: s.valueExpression,
+          where: s.aggCondition ?? '',
+          whereLanguage: s.aggConditionLanguage ?? 'lucene',
+          groupBy: convertedGroupBy,
+          metricDataType: s.metricType,
+        } satisfies TimeChartSeries;
+      });
+
+    case 'table':
+      if (!isSelectArray) {
+        logger.error(`Expected array select for displayType ${displayType}`);
+        return [];
+      }
+
+      return select.map(s => {
+        const aggFnSanitized = AggregateFunctionSchema.safeParse(
+          s.aggFn ?? 'none',
+        );
+        return {
+          ...pick(s, ['aggFn', 'alias', 'metricName', 'numberFormat']),
+          aggFn: aggFnSanitized.success ? aggFnSanitized.data : 'none',
+          type: 'table',
+          sourceId,
+          level: hasLevel(s) ? s.level : undefined,
+          field: s.valueExpression,
+          where: s.aggCondition ?? '',
+          whereLanguage: s.aggConditionLanguage ?? 'lucene',
+          groupBy: convertedGroupBy,
+          metricDataType: s.metricType,
+          sortOrder: isSortOrderDesc(config) ? 'desc' : 'asc',
+        } satisfies TableChartSeries;
+      });
+
+    case 'number': {
+      if (!isSelectArray || select.length === 0) {
+        logger.error(
+          `Expected non-empty array select for displayType ${displayType}`,
+        );
+        return [];
+      }
+
+      const firstSelect = select[0];
+      const aggFnSanitized = AggregateFunctionSchema.safeParse(
+        firstSelect.aggFn ?? 'none',
+      );
+
+      return [
+        {
+          ...pick(firstSelect, [
+            'aggFn',
+            'alias',
+            'metricName',
+            'numberFormat',
+          ]),
+          aggFn: aggFnSanitized.success ? aggFnSanitized.data : 'none',
+          type: 'number',
+          sourceId,
+          level: hasLevel(firstSelect) ? firstSelect.level : undefined,
+          field: firstSelect.valueExpression,
+          where: firstSelect.aggCondition ?? '',
+          whereLanguage: firstSelect.aggConditionLanguage ?? 'lucene',
+          metricDataType: firstSelect.metricType,
+        },
+      ] satisfies [NumberChartSeries];
+    }
+
+    case 'search': {
+      if (isSelectArray) {
+        logger.error(
+          `Expected non-array select for displayType ${displayType}`,
+        );
+        return [];
+      }
+
+      return [
+        {
+          type: 'search',
+          sourceId,
+          fields: splitAndTrimWithBracket(select ?? ''),
+          where: config.where ?? '',
+          whereLanguage: config.whereLanguage ?? 'lucene',
+        },
+      ] satisfies [SearchChartSeries];
+    }
+
+    case 'markdown':
+      return [
+        {
+          type: 'markdown',
+          content: config.markdown || '',
+        },
+      ] satisfies [MarkdownChartSeries];
+
+    case 'heatmap': // Heatmap is not supported in external API, and should not be present in dashboards
+    default:
+      logger.error(
+        `DisplayType ${displayType} is not supported in external API`,
+      );
+      return [];
+  }
+};
+
+function translateTileToExternalChart(
+  tile: DashboardDocument['tiles'][number],
+): ExternalChartWithId {
+  const { name, seriesReturnType } = tile.config;
+  return {
+    ...pick(tile, ['id', 'x', 'y', 'w', 'h']),
+    asRatio: seriesReturnType === 'ratio',
+    name: name ?? '',
+    series: convertChartConfigToExternalChartSeries(tile.config),
+  };
+}
+
+export function translateExternalChartToTileConfig(
+  chart: ExternalChartWithId,
+): DashboardDocument['tiles'][number] {
+  const { id, name, x, y, w, h, series, asRatio } = chart;
+
+  if (series.length === 0) {
+    throw new Error('Chart must have at least one series');
+  }
+
+  // API validation ensures all series have the same type
+  const firstSeries = series[0];
+
+  // Determine the sourceId and displayType based on series type
+  let sourceId: string =
+    firstSeries.type === 'markdown' ? '' : firstSeries.sourceId;
+  let select: SavedChartConfig['select'] = '';
+  let displayType: SavedChartConfig['displayType'];
+  let groupBy: SavedChartConfig['groupBy'] = '';
+  let where: SavedChartConfig['where'] = '';
+  let whereLanguage: SavedChartConfig['whereLanguage'] = 'lucene';
+  let orderBy: SavedChartConfig['orderBy'] = '';
+  let markdown: SavedChartConfig['markdown'] = '';
+
+  switch (firstSeries.type) {
+    case 'time': {
+      displayType =
+        firstSeries.displayType === 'stacked_bar'
+          ? DisplayType.StackedBar
+          : DisplayType.Line;
+
+      // Convert time series to select array
+      select = series.map(s => {
+        if (s.type !== 'time') {
+          throw new Error('All series in a time chart must be time series');
+        }
+        return {
+          aggFn: s.aggFn ?? undefined,
+          valueExpression: s.field ?? '',
+          alias: s.alias ?? undefined,
+          aggCondition: s.where ?? '',
+          aggConditionLanguage: s.whereLanguage ?? 'lucene',
+          level: s.level ?? undefined,
+          metricType: s.metricDataType ?? undefined,
+          metricName: s.metricName ?? undefined,
+        };
+      });
+
+      groupBy = firstSeries.groupBy.join(',');
+      break;
+    }
+
+    case 'table': {
+      displayType = DisplayType.Table;
+
+      // Convert table series to select array
+      select = series.map(s => {
+        if (s.type !== 'table') {
+          throw new Error('All series in a table chart must be table series');
+        }
+        return {
+          aggFn: s.aggFn ?? undefined,
+          valueExpression: s.field ?? '',
+          alias: s.alias ?? undefined,
+          aggCondition: s.where ?? '',
+          aggConditionLanguage: s.whereLanguage ?? 'lucene',
+          level: s.level ?? undefined,
+          metricType: s.metricDataType ?? undefined,
+          metricName: s.metricName ?? undefined,
+        };
+      });
+
+      groupBy = firstSeries.groupBy.join(',');
+
+      if (firstSeries.sortOrder && firstSeries.field) {
+        orderBy = [
+          {
+            valueExpression: firstSeries.field,
+            ordering: firstSeries.sortOrder === 'desc' ? 'DESC' : 'ASC',
+          },
+        ];
+      }
+
+      break;
+    }
+
+    case 'number': {
+      displayType = DisplayType.Number;
+
+      // Number chart uses only the first series
+      select = [
+        {
+          aggFn: firstSeries.aggFn ?? undefined,
+          valueExpression: firstSeries.field ?? '',
+          alias: firstSeries.alias ?? undefined,
+          aggCondition: firstSeries.where ?? '',
+          aggConditionLanguage: firstSeries.whereLanguage ?? 'lucene',
+          level: firstSeries.level ?? undefined,
+          metricType: firstSeries.metricDataType ?? undefined,
+          metricName: firstSeries.metricName ?? undefined,
+        },
+      ];
+
+      break;
+    }
+
+    case 'search': {
+      displayType = DisplayType.Search;
+      // Search chart uses fields as a comma-separated string
+      select = firstSeries.fields.join(', ');
+      where = firstSeries.where ?? '';
+      whereLanguage = firstSeries.whereLanguage ?? 'lucene';
+      break;
+    }
+
+    case 'markdown': {
+      displayType = DisplayType.Markdown;
+      sourceId = 'markdown'; // Markdown charts don't have a sourceId, so we use a placeholder
+      markdown = firstSeries.content;
+      break;
+    }
+
+    default: {
+      throw new Error(`Unsupported chart type: ${firstSeries.type}`);
+    }
+  }
+
+  const config: SavedChartConfig = {
+    name,
+    source: sourceId,
+    displayType,
+    select,
+    groupBy,
+    where,
+    whereLanguage,
+    orderBy,
+    markdown,
+    seriesReturnType: asRatio ? 'ratio' : 'column',
+  };
+
   return {
     id,
-    name,
     x,
     y,
     w,
     h,
-    seriesReturnType: asRatio ? 'ratio' : 'column',
-    series: series.map(s => translateExternalSeriesToInternalSeries(s)),
+    config,
   };
-};
+}
 
 export type ExternalDashboard = {
   id: string;
   name: string;
-  tiles: ExternalChart[];
+  tiles: ExternalChartWithId[];
   tags?: string[];
 };
 
 export type ExternalDashboardRequest = {
   name: string;
-  tiles: ExternalChart[];
+  tiles: ExternalChartWithId[];
   tags?: string[];
 };
 
 export function translateDashboardDocumentToExternalDashboard(
-  dashboard: Pick<IDashboard, '_id' | 'name' | 'tiles' | 'tags'>,
+  dashboard: DashboardDocument,
 ): ExternalDashboard {
   return {
     id: dashboard._id.toString(),
     name: dashboard.name,
-    tiles: dashboard.tiles,
+    tiles: dashboard.tiles.map(translateTileToExternalChart),
     tags: dashboard.tags || [],
   };
 }
@@ -182,11 +505,11 @@ export type ExternalAlert = {
   name?: string | null;
   message?: string | null;
   threshold: number;
-  interval: string;
-  thresholdType: string;
+  interval: AlertInterval;
+  thresholdType: AlertThresholdType;
   source?: string;
-  state: string;
-  channel: any;
+  state: AlertState;
+  channel: AlertChannel;
   team: string;
   tileId?: string;
   dashboard?: string;

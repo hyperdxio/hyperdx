@@ -603,9 +603,10 @@ export const makeExternalChart = (opts?: { id?: string }) => ({
   series: [
     {
       type: 'time',
-      dataSource: 'events',
+      sourceId: '68dd82484f54641b08667897',
       aggFn: 'count',
       where: '',
+      groupBy: [],
     },
   ],
 });

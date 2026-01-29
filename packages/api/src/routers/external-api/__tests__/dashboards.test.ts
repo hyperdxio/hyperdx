@@ -42,7 +42,7 @@ const createTimeSeriesChart = () => ({
   series: [
     {
       type: 'time',
-      table: 'logs',
+      sourceId: '68dd82484f54641b08667897',
       aggFn: 'count',
       where: '',
       groupBy: [],
@@ -61,7 +61,7 @@ const createTableChart = () => ({
   series: [
     {
       type: 'table',
-      table: 'logs',
+      sourceId: '68dd82484f54641b08667897',
       aggFn: 'count',
       where: '',
       groupBy: [],
@@ -81,7 +81,7 @@ const createNumberChart = () => ({
   series: [
     {
       type: 'number',
-      table: 'logs',
+      sourceId: '68dd82484f54641b08667897',
       aggFn: 'count',
       where: '',
     },
@@ -173,15 +173,17 @@ describe('External API v2 Dashboards', () => {
               y: 0,
               w: 6,
               h: 3,
-              seriesReturnType: 'column',
+              asRatio: false,
               series: [
                 {
                   type: 'time',
-                  table: 'logs',
+                  sourceId: '68dd82484f54641b08667897',
                   aggFn: 'count',
                   where: '',
                   whereLanguage: 'lucene',
                   groupBy: [],
+                  displayType: 'line',
+                  field: '',
                 },
               ],
             },
@@ -192,14 +194,15 @@ describe('External API v2 Dashboards', () => {
               y: 3,
               w: 3,
               h: 3,
-              seriesReturnType: 'column',
+              asRatio: false,
               series: [
                 {
                   type: 'number',
-                  table: 'logs',
+                  sourceId: '68dd82484f54641b08667897',
                   aggFn: 'count',
                   where: '',
                   whereLanguage: 'lucene',
+                  field: '',
                 },
               ],
             },
