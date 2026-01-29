@@ -7,7 +7,7 @@ import { TSource } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
 import { dateRangeToString } from './timeQuery';
-import { MetricsDataType, NumberFormat } from './types';
+import { NumberFormat } from './types';
 
 export function omit<T extends object, K extends keyof T>(
   obj: T,
@@ -651,16 +651,6 @@ export const formatUptime = (seconds: number) => {
   } else {
     return `${Math.floor(seconds / 60 / 60 / 24)}d`;
   }
-};
-
-// FIXME: eventually we want to separate metric name into two fields
-export const legacyMetricNameToNameAndDataType = (metricName?: string) => {
-  const [mName, mDataType] = (metricName ?? '').split(' - ');
-
-  return {
-    name: mName,
-    dataType: mDataType as MetricsDataType,
-  };
 };
 
 // Date formatting

@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { add, differenceInSeconds } from 'date-fns';
 import { omit } from 'lodash';
 import SqlString from 'sqlstring';
-import { z } from 'zod';
 import {
   ColumnMetaType,
   filterColumnMetaByType,
@@ -16,14 +15,13 @@ import {
   convertDateRangeToGranularityString,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
+import { AggFnV1, SourceTableV1 } from '@hyperdx/common-utils/dist/core/v1';
 import {
-  AggregateFunction as AggFnV2,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   ChartConfigWithOptTimestamp,
   DisplayType,
   Filter,
-  MetricsDataType as MetricsDataTypeV2,
   SavedChartConfig,
   SourceKind,
   SQLInterval,
@@ -34,15 +32,6 @@ import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
-import { getMetricNameSql } from './otelSemanticConventions';
-import {
-  AggFn,
-  ChartSeries,
-  MetricsDataType,
-  SourceTable,
-  TableChartSeries,
-  TimeChartSeries,
-} from './types';
 import { NumberFormat } from './types';
 import { getColorProps, logLevelColor, logLevelColorOrder } from './utils';
 
@@ -76,37 +65,6 @@ export const AGG_FNS = [
   { value: 'any' as const, label: 'Any' },
   { value: 'none' as const, label: 'None' },
 ];
-
-export const getMetricAggFns = (
-  dataType: MetricsDataType,
-): { value: AggFn; label: string }[] => {
-  if (dataType === MetricsDataType.Histogram) {
-    return [
-      { value: 'p99', label: '99th Percentile' },
-      { value: 'p95', label: '95th Percentile' },
-      { value: 'p90', label: '90th Percentile' },
-      { value: 'p50', label: 'Median' },
-    ];
-  } else if (dataType === MetricsDataType.Summary) {
-    return [
-      { value: 'sum', label: 'Sum' },
-      { value: 'max', label: 'Maximum' },
-      { value: 'min', label: 'Minimum' },
-      { value: 'count', label: 'Sample Count' },
-    ];
-  }
-
-  return [
-    { value: 'sum', label: 'Sum' },
-    { value: 'p99', label: '99th Percentile' },
-    { value: 'p95', label: '95th Percentile' },
-    { value: 'p90', label: '90th Percentile' },
-    { value: 'p50', label: 'Median' },
-    { value: 'avg', label: 'Average' },
-    { value: 'max', label: 'Maximum' },
-    { value: 'min', label: 'Minimum' },
-  ];
-};
 
 export const DEFAULT_CHART_CONFIG: Omit<
   SavedChartConfig,
@@ -165,59 +123,11 @@ export function useTimeChartSettings(chartConfig: ChartConfigWithDateRange) {
   }, [chartConfig]);
 }
 
-export function seriesToSearchQuery({
-  series,
-  groupByValue,
-}: {
-  series: ChartSeries[];
-  groupByValue?: string;
-}) {
-  const queries = series
-    .map((s, i) => {
-      if (s.type === 'time' || s.type === 'table' || s.type === 'number') {
-        const { where, aggFn, field } = s;
-        return `${where.trim()}${
-          aggFn !== 'count' && field ? ` ${field}:*` : ''
-        }${
-          'groupBy' in s && s.groupBy != null && s.groupBy.length > 0
-            ? ` ${s.groupBy}:${groupByValue ?? '*'}`
-            : ''
-        }`.trim();
-      }
-    })
-    .filter(q => q != null && q.length > 0);
-
-  const q =
-    queries.length > 1
-      ? queries.map(q => `(${q})`).join(' OR ')
-      : queries.join('');
-
-  return q;
-}
-
-export function seriesToUrlSearchQueryParam({
-  series,
-  dateRange,
-  groupByValue = '*',
-}: {
-  series: ChartSeries[];
-  dateRange: [Date, Date];
-  groupByValue?: string | undefined;
-}) {
-  const q = seriesToSearchQuery({ series, groupByValue });
-
-  return new URLSearchParams({
-    q,
-    from: `${dateRange[0].getTime()}`,
-    to: `${dateRange[1].getTime()}`,
-  });
-}
-
 export function TableToggle({
   table,
   setTableAndAggFn,
 }: {
-  setTableAndAggFn: (table: SourceTable, fn: AggFn) => void;
+  setTableAndAggFn: (table: SourceTableV1, fn: AggFnV1) => void;
   table: string;
 }) {
   return (
@@ -226,11 +136,11 @@ export function TableToggle({
       onChange={(value: string) => {
         const val = value ?? 'logs';
         if (val === 'logs') {
-          setTableAndAggFn('logs', 'count');
+          setTableAndAggFn('logs', AggFnV1.count);
         } else if (val === 'metrics') {
           // TODO: This should set rate if metric field is a sum
           // or we should just reset the field if changing tables
-          setTableAndAggFn('metrics', 'max');
+          setTableAndAggFn('metrics', AggFnV1.max);
         }
       }}
       data={[
@@ -770,147 +680,6 @@ export function formatResponseForTimeChart({
     isSingleValueColumn,
   };
 }
-
-// Define a mapping from app AggFn to common-utils AggregateFunction
-export const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
-  if (aggFn == null) {
-    return aggFn;
-  }
-  // Map rate-based aggregations to their base aggregation
-  if (aggFn.endsWith('_rate')) {
-    return mapV1AggFnToV2(aggFn.replace('_rate', '') as AggFn);
-  }
-
-  // Map percentiles to quantile
-  if (
-    aggFn === 'p50' ||
-    aggFn === 'p90' ||
-    aggFn === 'p95' ||
-    aggFn === 'p99'
-  ) {
-    return 'quantile';
-  }
-
-  // Map per-time-unit counts to count
-  if (
-    aggFn === 'count_per_sec' ||
-    aggFn === 'count_per_min' ||
-    aggFn === 'count_per_hour'
-  ) {
-    return 'count';
-  }
-
-  // For standard aggregations that exist in both, return as is
-  if (
-    [
-      'avg',
-      'count',
-      'count_distinct',
-      'last_value',
-      'max',
-      'min',
-      'sum',
-    ].includes(aggFn)
-  ) {
-    return aggFn as AggFnV2;
-  }
-
-  throw new Error(`Unsupported aggregation function in v2: ${aggFn}`);
-};
-
-export const convertV1GroupByToV2 = (
-  metricSource: TSource,
-  groupBy: string[],
-): string => {
-  return groupBy
-    .map(g => {
-      if (g.startsWith('k8s')) {
-        return `${metricSource.resourceAttributesExpression}['${g}']`;
-      }
-      return g;
-    })
-    .join(',');
-};
-
-export const convertV1ChartConfigToV2 = (
-  chartConfig: {
-    // only support time or table series
-    series: (TimeChartSeries | TableChartSeries)[];
-    granularity?: Granularity;
-    dateRange: [Date, Date];
-    seriesReturnType: 'ratio' | 'column';
-    displayType?: 'stacked_bar' | 'line';
-    name?: string;
-    fillNulls?: number | false;
-    sortOrder?: SortOrder;
-  },
-  source: {
-    log?: TSource;
-    metric?: TSource;
-    trace?: TSource;
-  },
-): ChartConfigWithDateRange => {
-  const {
-    series,
-    granularity,
-    dateRange,
-    displayType = 'line',
-    fillNulls,
-  } = chartConfig;
-
-  if (series.length < 1) {
-    throw new Error('series is required');
-  }
-
-  const firstSeries = series[0];
-  const convertedDisplayType =
-    displayType === 'stacked_bar' ? DisplayType.StackedBar : DisplayType.Line;
-
-  if (firstSeries.table === 'logs') {
-    // TODO: this might not work properly since logs + traces are mixed in v1
-    throw new Error('IMPLEMENT ME (logs)');
-  } else if (firstSeries.table === 'metrics') {
-    if (source.metric == null) {
-      throw new Error('source.metric is required for metrics');
-    }
-    return {
-      select: series.map(s => {
-        const field = s.field ?? '';
-        const [metricName, rawMetricDataType] = field
-          .split(' - ')
-          .map(s => s.trim());
-
-        // Check if this metric name needs version-based SQL transformation
-        const metricNameSql = getMetricNameSql(metricName);
-
-        const metricDataType = z
-          .nativeEnum(MetricsDataTypeV2)
-          .parse(rawMetricDataType?.toLowerCase());
-        return {
-          aggFn: mapV1AggFnToV2(s.aggFn),
-          metricType: metricDataType,
-          valueExpression: field,
-          metricName,
-          metricNameSql,
-          aggConditionLanguage: 'lucene',
-          aggCondition: s.where,
-        };
-      }),
-      from: source.metric?.from,
-      numberFormat: firstSeries.numberFormat,
-      groupBy: convertV1GroupByToV2(source.metric, firstSeries.groupBy),
-      dateRange,
-      connection: source.metric?.connection,
-      metricTables: source.metric?.metricTables,
-      timestampValueExpression: source.metric?.timestampValueExpression,
-      granularity,
-      where: '',
-      fillNulls,
-      displayType: convertedDisplayType,
-    };
-  }
-  throw new Error(`unsupported table in v2: ${firstSeries.table}`);
-};
 
 /**
  * Build search URL for viewing events based on group-by values

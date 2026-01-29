@@ -4,6 +4,10 @@ import {
   convertDateRangeToGranularityString,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  AggFnV1,
+  convertV1ChartConfigToV2,
+} from '@hyperdx/common-utils/dist/core/v1';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
@@ -15,7 +19,6 @@ import {
   Stack,
 } from '@mantine/core';
 
-import { convertV1ChartConfigToV2 } from '@/ChartUtils';
 import { useSource } from '@/source';
 
 import {
@@ -114,7 +117,7 @@ const InfraSubpanelGroup = ({
                       type: 'time',
                       where,
                       groupBy: [],
-                      aggFn: 'avg',
+                      aggFn: AggFnV1.avg,
                       field: `${fieldPrefix}cpu.utilization - Gauge`,
                       table: 'metrics',
                       numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
@@ -144,7 +147,7 @@ const InfraSubpanelGroup = ({
                       type: 'time',
                       where,
                       groupBy: [],
-                      aggFn: 'avg',
+                      aggFn: AggFnV1.avg,
                       field: `${fieldPrefix}memory.usage - Gauge`,
                       table: 'metrics',
                       numberFormat: K8S_MEM_NUMBER_FORMAT,
@@ -174,7 +177,7 @@ const InfraSubpanelGroup = ({
                       type: 'time',
                       where,
                       groupBy: [],
-                      aggFn: 'avg',
+                      aggFn: AggFnV1.avg,
                       field: `${fieldPrefix}filesystem.available - Gauge`,
                       table: 'metrics',
                       numberFormat: K8S_FILESYSTEM_NUMBER_FORMAT,

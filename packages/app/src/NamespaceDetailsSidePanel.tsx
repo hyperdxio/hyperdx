@@ -2,6 +2,10 @@ import * as React from 'react';
 import { StringParam, useQueryParam, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  AggFnV1,
+  convertV1ChartConfigToV2,
+} from '@hyperdx/common-utils/dist/core/v1';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Badge,
@@ -14,7 +18,6 @@ import {
 } from '@mantine/core';
 
 import {
-  convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
@@ -68,7 +71,7 @@ const NamespaceDetails = ({
             table: 'metrics',
             field: 'k8s.namespace.phase - Gauge',
             type: 'table',
-            aggFn: 'last_value',
+            aggFn: AggFnV1.last_value,
             where,
             groupBy,
           },
@@ -371,7 +374,7 @@ export default function NamespaceDetailsSidePanel({
                               groupBy: ['k8s.pod.name'],
                               where: metricsWhere,
                               table: 'metrics',
-                              aggFn: 'avg',
+                              aggFn: AggFnV1.avg,
                               field: 'k8s.pod.cpu.utilization - Gauge',
                               numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
                             },
@@ -402,7 +405,7 @@ export default function NamespaceDetailsSidePanel({
                               groupBy: ['k8s.pod.name'],
                               where: metricsWhere,
                               table: 'metrics',
-                              aggFn: 'avg',
+                              aggFn: AggFnV1.avg,
                               field: 'k8s.pod.memory.usage - Gauge',
                               numberFormat: K8S_MEM_NUMBER_FORMAT,
                             },

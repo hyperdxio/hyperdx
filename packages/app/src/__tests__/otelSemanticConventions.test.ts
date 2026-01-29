@@ -1,4 +1,4 @@
-import { getMetricNameSql } from '../otelSemanticConventions';
+import { getMetricNameSql } from '@hyperdx/common-utils/src/core/otelSemanticConventions';
 
 describe('otelSemanticConventions', () => {
   describe('getMetricNameSql', () => {
