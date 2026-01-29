@@ -1,3 +1,6 @@
+# This configuration is derived from packages/api/src/opamp/controllers/opampController.ts
+# When updating this file, ensure it stays in sync with buildOtelCollectorConfig()
+
 receivers:
   otlp/hyperdx:
     protocols:
