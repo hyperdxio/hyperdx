@@ -66,6 +66,12 @@ function isBinaryAST(ast: lucene.AST | lucene.Node): ast is lucene.BinaryAST {
   return 'right' in ast && ast.right != null;
 }
 
+function hasStart(
+  ast: lucene.BinaryAST,
+): ast is lucene.BinaryAST & { start: lucene.Operator } {
+  return 'start' in ast && !!ast.start;
+}
+
 function isLeftOnlyAST(
   ast: lucene.AST | lucene.Node,
 ): ast is lucene.LeftOnlyAST {
@@ -1129,7 +1135,9 @@ async function serialize(
     const parenthesized = binaryAST.parenthesized;
 
     const newContext = createSerializerContext(context, binaryAST);
-    const serialized = `${isNegatedAndParenthesized(binaryAST) ? 'NOT ' : ''}${parenthesized ? '(' : ''}${await serialize(
+    const serialized = `${isNegatedAndParenthesized(binaryAST) ? 'NOT ' : ''}${parenthesized ? '(' : ''}${
+      hasStart(binaryAST) ? `${binaryAST.start} ` : ''
+    }${await serialize(
       binaryAST.left,
       serializer,
       newContext,
