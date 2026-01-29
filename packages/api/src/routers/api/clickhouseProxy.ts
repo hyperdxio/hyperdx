@@ -7,9 +7,13 @@ import { CODE_VERSION } from '@/config';
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
+import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
+
+const CUSTOM_SETTING_KEY_SEP = '_';
+const CUSTOM_SETTING_KEY_USER_SUFFIX = 'user';
 
 router.post(
   '/test',
@@ -94,6 +98,7 @@ const getConnection: RequestHandler =
         name: connection.name,
         password: connection.password,
         username: connection.username,
+        hyperdxSettingPrefix: connection.hyperdxSettingPrefix,
       };
       next();
     } catch (e) {
@@ -110,8 +115,24 @@ const proxyMiddleware: RequestHandler =
     pathFilter: (path, _req) => {
       return _req.method === 'GET' || _req.method === 'POST';
     },
-    pathRewrite: {
-      '^/clickhouse-proxy': '',
+    pathRewrite: function (path, req) {
+      // @ts-expect-error _req.query is type ParamQs, which doesn't play nicely with URLSearchParams. TODO: Replace with getting query params from _req.url eventually
+      const qparams = new URLSearchParams(req.query);
+
+      // Append user email as custom ClickHouse setting for query log annotation if the prefix was set
+      const hyperdxSettingPrefix = req._hdx_connection?.hyperdxSettingPrefix;
+      if (hyperdxSettingPrefix) {
+        const userEmail = req.user?.email;
+        if (userEmail) {
+          const userSettingKey = `${hyperdxSettingPrefix}${CUSTOM_SETTING_KEY_SEP}${CUSTOM_SETTING_KEY_USER_SUFFIX}`;
+          qparams.set(userSettingKey, userEmail);
+        } else {
+          logger.debug('hyperdxSettingPrefix set, no session user found');
+        }
+      }
+
+      const newPath = req.path.replace('^/clickhouse-proxy', '');
+      return `/${newPath}?${qparams.toString()}`;
     },
     router: _req => {
       if (!_req._hdx_connection?.host) {
@@ -123,9 +144,6 @@ const proxyMiddleware: RequestHandler =
       proxyReq: (proxyReq, _req) => {
         // set user-agent to the hyperdx version identifier
         proxyReq.setHeader('user-agent', `hyperdx ${CODE_VERSION}`);
-
-        // @ts-expect-error _req.query is type ParamQs, which doesn't play nicely with URLSearchParams. TODO: Replace with getting query params from _req.url eventually
-        const qparams = new URLSearchParams(_req.query);
 
         if (_req._hdx_connection?.username) {
           proxyReq.setHeader(
@@ -142,8 +160,6 @@ const proxyMiddleware: RequestHandler =
           // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
           proxyReq.write(_req.body);
         }
-        const newPath = _req.params[0];
-        proxyReq.path = `/${newPath}?${qparams}`;
       },
       proxyRes: (proxyRes, _req, res) => {
         // since clickhouse v24, the cors headers * will be attached to the response by default

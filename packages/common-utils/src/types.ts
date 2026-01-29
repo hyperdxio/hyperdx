@@ -574,6 +574,11 @@ export const ConnectionSchema = z.object({
   host: z.string(),
   username: z.string(),
   password: z.string().optional(),
+  hyperdxSettingPrefix: z
+    .string()
+    .regex(/^[a-z0-9_]+$/i)
+    .optional()
+    .nullable(),
 });
 
 export type Connection = z.infer<typeof ConnectionSchema>;
@@ -588,6 +593,19 @@ export const TeamClickHouseSettingsSchema = z.object({
 export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
 >;
+
+export const TeamSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    allowedAuthMethods: z.array(z.literal('password')).optional(),
+    apiKey: z.string(),
+    hookId: z.string(),
+    collectorAuthenticationEnforced: z.boolean(),
+  })
+  .merge(TeamClickHouseSettingsSchema);
+
+export type Team = z.infer<typeof TeamSchema>;
 
 // --------------------------
 // TABLE SOURCES

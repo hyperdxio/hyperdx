@@ -167,13 +167,13 @@ function IntegrationsSection() {
 }
 
 function TeamNameSection() {
-  const { data: team, isLoading, refetch: refetchTeam } = api.useTeam();
+  const { data: team, refetch: refetchTeam } = api.useTeam();
   const setTeamName = api.useSetTeamName();
   const hasAdminAccess = true;
   const [isEditingTeamName, setIsEditingTeamName] = useState(false);
   const form = useForm<{ name: string }>({
     defaultValues: {
-      name: team.name,
+      name: team?.name,
     },
   });
 
@@ -246,7 +246,7 @@ function TeamNameSection() {
           </form>
         ) : (
           <Group gap="lg">
-            <div className="fs-7">{team.name}</div>
+            <div className="fs-7">{team?.name}</div>
             {hasAdminAccess && (
               <Button
                 size="xs"

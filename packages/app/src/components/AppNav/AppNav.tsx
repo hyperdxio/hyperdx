@@ -648,7 +648,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   return (
     <AppNavContext.Provider value={{ isCollapsed, pathname }}>
       {fixed && (
-        <div style={{ width: navWidth + 1, minWidth: navWidth + 1 }}></div>
+        <div
+          className={styles.navGhost}
+          style={{
+            width: navWidth + 1,
+            minWidth: navWidth + 1,
+          }}
+        ></div>
       )}
       <InstallInstructionModal
         show={showInstallInstructions}
@@ -658,6 +664,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         className={cx(styles.nav, {
           [styles.navFixed]: fixed,
         })}
+        style={{ width: navWidth }}
       >
         <div style={{ width: navWidth }}>
           <div
