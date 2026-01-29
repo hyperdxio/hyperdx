@@ -38,6 +38,11 @@ $transition-slow: 0.2s ease;
 
 /* Layout */
 
+.navGhost {
+  transition: width 0.2s ease;
+  will-change: width;
+}
+
 .nav {
   height: 100vh;
   max-height: 100vh;
@@ -47,6 +52,8 @@ $transition-slow: 0.2s ease;
   border-right: 1px solid var(--color-border);
   background: var(--color-bg-sidenav);
   letter-spacing: 0.05em;
+  overflow: hidden;
+  transition: width 0.2s ease;
 
   &Fixed {
     position: fixed;
@@ -68,10 +75,11 @@ $transition-slow: 0.2s ease;
 
 .logoLink {
   text-decoration: none;
+  margin-left: -0.15rem;
 }
 
 .logoIconWrapper {
-  margin-left: -0.15rem;
+  margin-top: 6px;
 }
 
 .collapseButton {
@@ -79,6 +87,7 @@ $transition-slow: 0.2s ease;
   margin-left: -$spacing-xs;
 
   &Collapsed {
+    transform: rotate(180deg);
     margin-top: $spacing-lg;
   }
 }
