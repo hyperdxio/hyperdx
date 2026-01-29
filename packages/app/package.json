@@ -24,7 +24,7 @@
     "knip": "knip"
   },
   "dependencies": {
-    "@clickhouse/click-ui": "0.0.251-rc.16",
+    "@clickhouse/click-ui": "0.0.251-rc.17",
     "@codemirror/lang-json": "^6.0.1",
     "@codemirror/lang-sql": "^6.7.0",
     "@dagrejs/dagre": "^1.1.5",
