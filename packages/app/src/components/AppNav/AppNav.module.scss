@@ -1,0 +1,412 @@
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 12px;
+$spacing-lg: 16px;
+$nav-item-height: 34px;
+$header-height: 58px;
+$help-button-size: 28px;
+$search-input-height: 28px;
+$radius-sm: 4px;
+$radius-md: 8px;
+$radius-lg: 10px;
+$font-size-xs: 10px;
+$font-size-sm: 11px;
+$font-size-md: 13px;
+$font-size-lg: 14px;
+$transition-fast: 0.1s ease;
+$transition-normal: 0.15s ease;
+$transition-slow: 0.2s ease;
+
+/* Mixins */
+@mixin text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin interactive-press {
+  &:active {
+    transform: translate(0, 1px);
+  }
+}
+
+/* Layout */
+
+.navGhost {
+  transition: width 0.2s ease;
+  will-change: width;
+}
+
+.nav {
+  height: 100vh;
+  max-height: 100vh;
+  display: flex;
+  flex-flow: column nowrap;
+  justify-content: space-between;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg-sidenav);
+  letter-spacing: 0.05em;
+  overflow: hidden;
+  transition: width 0.2s ease;
+
+  &Fixed {
+    position: fixed;
+  }
+}
+
+.header {
+  padding-inline: $spacing-lg;
+  padding-block: $spacing-md;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+
+  &Expanded {
+    height: $header-height;
+  }
+}
+
+.logoLink {
+  text-decoration: none;
+  margin-left: -0.15rem;
+}
+
+.logoIconWrapper {
+  margin-top: 6px;
+}
+
+.collapseButton {
+  margin-right: -$spacing-xs;
+  margin-left: -$spacing-xs;
+
+  &Collapsed {
+    transform: rotate(180deg);
+    margin-top: $spacing-lg;
+  }
+}
+
+.scrollContainer {
+  max-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.footer {
+  position: absolute;
+  bottom: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    var(--color-bg-sidenav) 50%,
+    transparent 100%
+  );
+  padding-top: 40px;
+}
+
+/* Navigation Links */
+
+.navLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-inline: $spacing-sm;
+  margin-top: $spacing-sm;
+}
+
+.navItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-decoration: none;
+  color: var(--color-text-sidenav-link);
+  font-size: $font-size-lg;
+
+  @include text-truncate;
+
+  user-select: none;
+  gap: 10px;
+  padding-inline: $spacing-sm;
+  height: $nav-item-height;
+  border-radius: $radius-sm;
+
+  &:hover {
+    color: var(--color-text-sidenav-link-active);
+    background: var(--color-bg-sidenav-link-active);
+  }
+
+  &:focus-visible {
+    outline: none;
+    background: var(--color-bg-sidenav-link-active);
+  }
+
+  &Active {
+    color: var(--color-text-sidenav-link-active);
+    background: var(--color-bg-sidenav-link-active);
+  }
+}
+
+.navItemContent {
+  display: flex;
+  align-items: center;
+}
+
+.navItemIcon {
+  margin-right: $spacing-sm;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  transition: color $transition-slow;
+}
+
+.navItemBadge {
+  margin-left: auto;
+}
+
+.navItemToggle {
+  @include flex-center;
+
+  padding: $spacing-xs;
+  margin-right: -$spacing-xs;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: $radius-sm;
+  color: var(--color-text-muted);
+  transition:
+    background-color $transition-normal,
+    color $transition-normal,
+    transform $transition-fast;
+
+  &:hover {
+    background: var(--color-bg-sidenav-link-active-hover);
+    color: var(--color-text-sidenav-link-active);
+    transform: scale(1.1);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+/* Sub-menu (Collapsible sections) */
+
+.subMenu {
+  overflow-x: hidden;
+  max-width: 100%;
+  padding: $spacing-xs $spacing-xs;
+  padding-bottom: 0;
+}
+
+.subMenuItem {
+  display: block;
+  color: var(--color-text-sidenav-link);
+  text-decoration: none;
+  font-size: $font-size-md;
+  padding-left: $spacing-lg;
+  padding-block: 2px;
+  transition: color $transition-slow;
+
+  @include text-truncate;
+
+  border-radius: $radius-sm;
+  margin-bottom: 2px;
+
+  &:hover {
+    color: var(--color-text-sidenav-link-active);
+    background: var(--color-bg-sidenav-link-active);
+  }
+
+  &:focus-visible {
+    outline: none;
+    background: var(--color-bg-sidenav-link-active);
+  }
+
+  i {
+    vertical-align: top;
+  }
+
+  &Active {
+    color: var(--color-text-sidenav-link-active);
+    background: var(--color-bg-sidenav-link-active);
+  }
+}
+
+/* Groups (Saved Searches, Dashboards) */
+
+.groupLabel {
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  font-size: $font-size-sm;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+  margin-top: 6px;
+  padding-left: $spacing-lg;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-text-sidenav-link);
+  }
+}
+
+.groupDragOver {
+  opacity: 0.7;
+  background: #ffffff1a;
+  border-radius: $radius-lg;
+}
+
+/* Search Input */
+
+.searchInput {
+  input {
+    min-height: $search-input-height;
+    height: $search-input-height;
+    line-height: $search-input-height;
+  }
+}
+
+.shortcutHint {
+  white-space: nowrap;
+  letter-spacing: -1px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface);
+  border-radius: $radius-sm;
+  padding: 0 $spacing-xs;
+  font-size: $font-size-xs;
+  margin-right: $spacing-lg;
+
+  &Ctrl {
+    letter-spacing: -2px;
+  }
+}
+
+/* Empty States */
+
+.emptyMessage {
+  color: var(--color-text-muted);
+  font-size: $font-size-md - 1px;
+  margin: $spacing-sm $spacing-lg;
+
+  @include text-truncate;
+}
+
+/* User Menu */
+
+.userMenu {
+  pointer-events: all;
+  cursor: pointer;
+  margin: $spacing-sm;
+  padding: $spacing-xs $spacing-sm;
+  border-radius: $radius-md;
+  transition:
+    background-color $transition-slow,
+    transform $transition-fast;
+  max-width: 100%;
+  overflow: hidden;
+
+  &:hover {
+    background: var(--color-bg-sidenav-link-active);
+  }
+
+  @include interactive-press;
+
+  &Collapsed {
+    padding: 2px;
+    margin: $spacing-sm auto 0.875rem;
+    background: transparent;
+    border: none !important;
+    width: fit-content;
+
+    &:hover {
+      background: var(--color-bg-sidenav-link-active);
+    }
+
+    @include interactive-press;
+  }
+}
+
+.userMenuInfo {
+  flex: 1;
+  overflow: hidden;
+}
+
+.userMenuName {
+  max-width: 100%;
+
+  @include text-truncate;
+}
+
+.userMenuTeam {
+  font-size: $font-size-sm;
+  max-width: 100%;
+  max-height: $spacing-lg;
+
+  @include text-truncate;
+}
+
+/* Help Button */
+
+.helpButton {
+  @include flex-center;
+
+  pointer-events: all;
+  cursor: pointer;
+  margin: 0 $spacing-sm $spacing-sm;
+  width: $help-button-size;
+  height: $help-button-size;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  transition:
+    background-color $transition-slow,
+    transform $transition-fast,
+    border-color $transition-slow;
+
+  &:hover {
+    background: var(--color-bg-sidenav-link-active);
+    border-color: var(--color-border);
+  }
+
+  @include interactive-press;
+
+  &Collapsed {
+    margin: 0 auto $spacing-sm;
+    border: none;
+    background: transparent;
+
+    &:hover {
+      background: var(--color-bg-sidenav-link-active);
+    }
+
+    @include interactive-press;
+  }
+}
+
+/* Onboarding Section */
+
+.onboardingSection {
+  padding-left: $spacing-sm;
+  padding-right: $spacing-md;
+  margin-bottom: $spacing-sm;
+  margin-top: $spacing-lg;
+  padding-bottom: 80px;
+}
+
+/* Scrollbar Customization */
+
+.scrollbar {
+  .thumb {
+    background-color: var(--color-border);
+  }
+}

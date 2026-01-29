@@ -5,7 +5,6 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
-import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isMetricChartConfig,
@@ -17,6 +16,7 @@ import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  QuerySettings,
 } from '@hyperdx/common-utils/dist/types';
 import {
   useQuery,
@@ -128,6 +128,7 @@ async function* fetchDataInChunks({
   enableQueryChunking = false,
   enableParallelQueries = false,
   metadata,
+  querySettings,
 }: {
   config: ChartConfigWithOptDateRange;
   clickhouseClient: ClickhouseClient;
@@ -135,6 +136,7 @@ async function* fetchDataInChunks({
   enableQueryChunking?: boolean;
   enableParallelQueries?: boolean;
   metadata: Metadata;
+  querySettings: QuerySettings | undefined;
 }) {
   const windows =
     enableQueryChunking && shouldUseChunking(config)
@@ -143,7 +145,7 @@ async function* fetchDataInChunks({
 
   if (IS_MTVIEWS_ENABLED) {
     const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
-      await buildMTViewSelectQuery(config, metadata);
+      await buildMTViewSelectQuery(config, metadata, querySettings);
     // TODO: show the DDLs in the UI so users can run commands manually
     // eslint-disable-next-line no-console
     console.log('dataTableDDL:', dataTableDDL);
@@ -167,6 +169,7 @@ async function* fetchDataInChunks({
           opts: {
             abort_signal: signal,
           },
+          querySettings,
         }),
       };
     });
@@ -208,6 +211,7 @@ async function* fetchDataInChunks({
       opts: {
         abort_signal: signal,
       },
+      querySettings,
     });
 
     yield { chunk: result, isComplete: i === windows.length - 1 };
@@ -260,6 +264,10 @@ export function useQueriedChartConfig(
       placeholderData: undefined,
     });
 
+  const { data: source, isLoading: isSourceLoading } = useSource({
+    id: config.source,
+  });
+
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
     // same config but different enableQueryChunking values do not share a query
@@ -291,6 +299,7 @@ export function useQueriedChartConfig(
         enableQueryChunking: options?.enableQueryChunking,
         enableParallelQueries: options?.enableParallelQueries,
         metadata,
+        querySettings: source?.querySettings,
       });
 
       let accumulatedChunks: TQueryFnData = emptyValue;
@@ -322,7 +331,7 @@ export function useQueriedChartConfig(
     retry: 1,
     refetchOnWindowFocus: false,
     ...options,
-    enabled: enabled && !isLoadingMVOptimization,
+    enabled: enabled && !isLoadingMVOptimization && !isSourceLoading,
   });
 
   if (query.isError && options?.onError) {
@@ -348,15 +357,23 @@ export function useRenderedSqlChartConfig(
       placeholderData: undefined,
     });
 
+  const { data: source, isLoading: isSourceLoading } = useSource({
+    id: config.source,
+  });
+
   const query = useQuery({
     queryKey: ['renderedSql', config],
     queryFn: async () => {
       const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
-      const query = await renderChartConfig(optimizedConfig, metadata);
+      const query = await renderChartConfig(
+        optimizedConfig,
+        metadata,
+        source?.querySettings,
+      );
       return format(parameterizedQueryToSql(query));
     },
     ...options,
-    enabled: enabled && !isLoadingMVOptimization,
+    enabled: enabled && !isLoadingMVOptimization && !isSourceLoading,
   });
 
   return {
@@ -400,7 +417,11 @@ export function useAliasMapFromChartConfig(
         return {};
       }
 
-      const query = await renderChartConfig(config, metadata);
+      const query = await renderChartConfig(
+        config,
+        metadata,
+        undefined, // no query settings for creating alias map
+      );
 
       const aliasMap = chSqlToAliasMap(query);
 

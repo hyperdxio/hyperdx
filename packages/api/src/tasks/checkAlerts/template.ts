@@ -602,7 +602,11 @@ ${targetTemplate}`;
 
     let truncatedResults = '';
     try {
-      const query = await renderChartConfig(chartConfig, metadata);
+      const query = await renderChartConfig(
+        chartConfig,
+        metadata,
+        source.querySettings,
+      );
       const raw = await clickhouseClient
         .query<'CSV'>({
           query: query.sql,

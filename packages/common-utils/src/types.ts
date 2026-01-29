@@ -502,7 +502,7 @@ export type ChartConfigWithOptDateRange = Omit<
 
 export const SavedChartConfigSchema = z
   .object({
-    name: z.string(),
+    name: z.string().optional(),
     source: z.string(),
     alert: z.union([
       AlertBaseSchema.optional(),
@@ -585,6 +585,11 @@ export const ConnectionSchema = z.object({
   host: z.string(),
   username: z.string(),
   password: z.string().optional(),
+  hyperdxSettingPrefix: z
+    .string()
+    .regex(/^[a-z0-9_]+$/i)
+    .optional()
+    .nullable(),
 });
 
 export type Connection = z.infer<typeof ConnectionSchema>;
@@ -600,6 +605,19 @@ export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
 >;
 
+export const TeamSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    allowedAuthMethods: z.array(z.literal('password')).optional(),
+    apiKey: z.string(),
+    hookId: z.string(),
+    collectorAuthenticationEnforced: z.boolean(),
+  })
+  .merge(TeamClickHouseSettingsSchema);
+
+export type Team = z.infer<typeof TeamSchema>;
+
 // --------------------------
 // TABLE SOURCES
 // --------------------------
@@ -614,6 +632,12 @@ export enum SourceKind {
 // TABLE SOURCE FORM VALIDATION
 // --------------------------
 
+const QuerySettingsSchema = z.array(
+  z.object({ setting: z.string().min(1), value: z.string().min(1) }),
+);
+
+export type QuerySettings = z.infer<typeof QuerySettingsSchema>;
+
 // Base schema with fields common to all source types
 const SourceBaseSchema = z.object({
   id: z.string(),
@@ -624,6 +648,7 @@ const SourceBaseSchema = z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string().min(1, 'Table is required'),
   }),
+  querySettings: QuerySettingsSchema.optional(),
 });
 
 const RequiredTimestampColumnSchema = z
@@ -739,6 +764,10 @@ const TraceSourceAugmentation = {
 const SessionSourceAugmentation = {
   kind: z.literal(SourceKind.Session),
 
+  // Optional to support legacy sources, which did not require this field.
+  // Will be defaulted to `TimestampTime` when queried, if undefined.
+  timestampValueExpression: z.string().optional(),
+
   // Required fields for sessions
   traceSourceId: z
     .string({ message: 'Correlated Trace Source is required' })
@@ -837,3 +866,104 @@ type TSourceWithoutDefaults = FlattenUnion<z.infer<typeof SourceSchema>>;
 export type TSource = TSourceWithoutDefaults & {
   timestampValueExpression: string;
 };
+
+export const AssistantLineTableConfigSchema = z.object({
+  displayType: z.enum([DisplayType.Line, DisplayType.Table]),
+  markdown: z.string().optional(),
+  select: z
+    .array(
+      z.object({
+        // TODO: Change percentile to fixed functions
+        aggregationFunction: AggregateFunctionSchema.describe(
+          'SQL-like function to aggregate the property by',
+        ),
+        property: z
+          .string()
+          .describe('Property or column to be aggregated (ex. Duration)'),
+        condition: z
+          .string()
+          .optional()
+          .describe(
+            "SQL filter condition to filter on ex. `SeverityText = 'error'`",
+          ),
+      }),
+    )
+    .describe('Array of data series or columns to chart for the user'),
+  groupBy: z
+    .string()
+    .optional()
+    .describe('Group by column or properties for the chart'),
+  timeRange: z
+    .string()
+    .default('Past 1h')
+    .describe('Time range of data to query for like "Past 1h", "Past 24h"'),
+});
+
+// Base fields common to all three shapes
+const AIBaseSchema = z.object({
+  from: SelectSQLStatementSchema.shape.from,
+  source: z.string(),
+  connection: z.string(),
+  where: SearchConditionSchema.optional(),
+  whereLanguage: SearchConditionLanguageSchema,
+  timestampValueExpression: z.string(),
+  dateRange: z.tuple([z.string(), z.string()]), // keep as string tuple (ISO recommended)
+  name: z.string().optional(),
+  markdown: z.string().optional(),
+});
+
+// SEARCH
+const AISearchQuerySchema = z
+  .object({
+    displayType: z.literal(DisplayType.Search),
+    select: z.string(),
+    groupBy: z.string().optional(),
+    limit: z
+      .object({
+        limit: z.number().int().positive(),
+      })
+      .optional(),
+  })
+  .merge(
+    AIBaseSchema.required({
+      where: true,
+    }),
+  );
+
+// TABLE
+const AITableQuerySchema = z
+  .object({
+    displayType: z.literal(DisplayType.Table),
+    // Use your DerivedColumnSchema so aggFn/valueExpression/conditions are validated consistently
+    select: z.array(DerivedColumnSchema).min(1),
+    groupBy: z.string().optional(),
+    granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
+    limit: LimitSchema.optional(),
+  })
+  .merge(AIBaseSchema);
+
+// LINE
+const AILineQuerySchema = z
+  .object({
+    displayType: z.literal(DisplayType.Line),
+    select: z.array(DerivedColumnSchema).min(1),
+    groupBy: z.string().optional(),
+    granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
+    limit: LimitSchema.optional(),
+  })
+  .merge(AIBaseSchema);
+
+export type AILineTableResponse =
+  | z.infer<typeof AILineQuerySchema>
+  | z.infer<typeof AITableQuerySchema>;
+
+// Union that covers all 3 objects
+export const AssistantResponseConfig = z.discriminatedUnion('displayType', [
+  AISearchQuerySchema,
+  AITableQuerySchema,
+  AILineQuerySchema,
+]);
+
+export type AssistantResponseConfigSchema = z.infer<
+  typeof AssistantResponseConfig
+>;

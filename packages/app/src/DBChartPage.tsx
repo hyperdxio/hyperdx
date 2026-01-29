@@ -77,11 +77,9 @@ function AIAssistant({
       },
       {
         onSuccess(data) {
-          setConfig(data);
+          setConfig({ ...data, where: '' });
           onTimeRangeSelect(
-            // @ts-ignore TODO: fix these types
             new Date(data.dateRange[0]),
-            // @ts-ignore TODO: fix these types
             new Date(data.dateRange[1]),
           );
 
@@ -189,7 +187,7 @@ function AIAssistant({
               {chartAssistant.isPending ? (
                 <Loader size="xs" type="dots" />
               ) : (
-                <Button type="submit" size="xs" variant="light">
+                <Button type="submit" size="xs" variant="primary">
                   Generate
                 </Button>
               )}

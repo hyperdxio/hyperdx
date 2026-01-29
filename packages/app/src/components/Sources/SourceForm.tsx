@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Control,
   Controller,
@@ -8,6 +14,7 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { z } from 'zod';
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   MetricsDataType,
   SourceKind,
@@ -34,8 +41,10 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
+import { useDebouncedCallback, useDidUpdate } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconCheck,
   IconCirclePlus,
   IconHelpCircle,
   IconSettings,
@@ -45,6 +54,7 @@ import {
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
+import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import {
   inferTableSourceConfig,
@@ -66,6 +76,7 @@ import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
 import { ConnectionSelectControlled } from '../ConnectionSelect';
 import { DatabaseSelectControlled } from '../DatabaseSelect';
 import { DBTableSelectControlled } from '../DBTableSelect';
+import { ErrorCollapse } from '../Error/ErrorCollapse';
 import { InputControlled } from '../InputControlled';
 import SelectControlled from '../SelectControlled';
 import { SQLInlineEditorControlled } from '../SQLInlineEditor';
@@ -169,6 +180,188 @@ function FormRow({
   );
 }
 
+type HighlightedAttributeRowProps = Omit<TableModelProps, 'setValue'> & {
+  id: string;
+  index: number;
+  databaseName: string;
+  name:
+    | 'highlightedTraceAttributeExpressions'
+    | 'highlightedRowAttributeExpressions';
+  tableName: string;
+  connectionId: string;
+  removeHighlightedAttribute: (index: number) => void;
+};
+
+function HighlightedAttributeRow({
+  id,
+  index,
+  control,
+  databaseName,
+  name,
+  tableName,
+  connectionId,
+  removeHighlightedAttribute,
+}: HighlightedAttributeRowProps) {
+  const expressionInput = useWatch({
+    control,
+    name: `${name}.${index}.sqlExpression`,
+  });
+
+  const aliasInput = useWatch({
+    control,
+    name: `${name}.${index}.alias`,
+  });
+
+  const [explainParams, setExplainParams] = useState<{
+    expression: typeof expressionInput;
+    alias: typeof aliasInput;
+  }>();
+
+  const setExplainParamsDebounced = useDebouncedCallback(
+    (params: typeof explainParams) => {
+      setExplainParams(params);
+    },
+    1_000,
+  );
+
+  useDidUpdate(() => {
+    setExplainParamsDebounced({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
+  }, [expressionInput, aliasInput]);
+
+  const {
+    data: explainData,
+    error: explainError,
+    isLoading: explainLoading,
+  } = useExplainQuery(
+    {
+      from: { databaseName, tableName },
+      connection: connectionId,
+      select: [
+        {
+          alias: explainParams?.alias,
+          valueExpression: explainParams?.expression ?? '',
+        },
+      ],
+      where: '',
+    },
+
+    {
+      enabled: !!explainParams?.expression,
+    },
+  );
+
+  const runExpression = () => {
+    setExplainParams({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
+  };
+
+  const isExpressionValid = !!explainData?.length;
+  const isExpressionInvalid = explainError instanceof ClickHouseQueryError;
+
+  const shouldShowResult =
+    explainParams?.expression === expressionInput &&
+    explainParams?.alias === aliasInput &&
+    (isExpressionValid || isExpressionInvalid);
+
+  return (
+    <React.Fragment key={id}>
+      <Grid.Col span={3} pe={0}>
+        <div
+          style={{ display: 'contents' }}
+          data-name={`${name}.${index}.sqlExpression`}
+        >
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name={`${name}.${index}.sqlExpression`}
+            disableKeywordAutocomplete
+            placeholder="ResourceAttributes['http.host']"
+          />
+        </div>
+      </Grid.Col>
+      <Grid.Col span={2} ps="xs">
+        <Flex align="center" gap="sm">
+          <Text c="gray">AS</Text>
+          <SQLInlineEditorControlled
+            control={control}
+            name={`${name}.${index}.alias`}
+            placeholder="Optional Alias"
+            disableKeywordAutocomplete
+          />
+          <Tooltip label="Validate expression">
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              color="gray"
+              loading={explainLoading}
+              disabled={!expressionInput || explainLoading}
+              onClick={runExpression}
+            >
+              <IconCheck size={16} />
+            </ActionIcon>
+          </Tooltip>
+          <ActionIcon
+            size="xs"
+            variant="subtle"
+            color="gray"
+            onClick={() => removeHighlightedAttribute(index)}
+          >
+            <IconTrash size={16} />
+          </ActionIcon>
+        </Flex>
+      </Grid.Col>
+
+      {shouldShowResult && (
+        <Grid.Col span={5} pe={0} pt={0}>
+          {isExpressionValid && (
+            <Text c="green" size="xs">
+              Expression is valid.
+            </Text>
+          )}
+          {isExpressionInvalid && (
+            <ErrorCollapse
+              summary="Expression is invalid"
+              details={explainError?.message}
+            />
+          )}
+        </Grid.Col>
+      )}
+
+      <Grid.Col span={3} pe={0}>
+        <InputControlled
+          control={control}
+          name={`${name}.${index}.luceneExpression`}
+          placeholder="ResourceAttributes.http.host (Optional) "
+        />
+      </Grid.Col>
+      <Grid.Col span={1} pe={0}>
+        <Text me="sm" mt={6}>
+          <Tooltip
+            label={
+              'An optional, Lucene version of the above expression. If provided, it is used when searching for this attribute value.'
+            }
+            color="dark"
+            c="white"
+            multiline
+            maw={600}
+          >
+            <IconHelpCircle size={14} className="cursor-pointer" />
+          </Tooltip>
+        </Text>
+      </Grid.Col>
+    </React.Fragment>
+  );
+}
+
 function HighlightedAttributeExpressionsFormRow({
   control,
   name,
@@ -201,77 +394,36 @@ function HighlightedAttributeExpressionsFormRow({
   return (
     <FormRow label={label} helpText={helpText}>
       <Grid columns={5}>
-        {highlightedAttributes.map((field, index) => (
-          <React.Fragment key={field.id}>
-            <Grid.Col span={3} pe={0}>
-              <SQLInlineEditorControlled
-                tableConnection={{
-                  databaseName,
-                  tableName,
-                  connectionId,
-                }}
-                control={control}
-                name={`${name}.${index}.sqlExpression`}
-                disableKeywordAutocomplete
-                placeholder="ResourceAttributes['http.host']"
-              />
-            </Grid.Col>
-            <Grid.Col span={2} ps="xs">
-              <Flex align="center" gap="sm">
-                <Text c="gray">AS</Text>
-                <SQLInlineEditorControlled
-                  control={control}
-                  name={`${name}.${index}.alias`}
-                  placeholder="Optional Alias"
-                  disableKeywordAutocomplete
-                />
-                <ActionIcon
-                  size="xs"
-                  variant="subtle"
-                  color="gray"
-                  onClick={() => removeHighlightedAttribute(index)}
-                >
-                  <IconTrash size={16} />
-                </ActionIcon>
-              </Flex>
-            </Grid.Col>
-            <Grid.Col span={3} pe={0}>
-              <InputControlled
-                control={control}
-                name={`${name}.${index}.luceneExpression`}
-                placeholder="ResourceAttributes.http.host (Optional) "
-              />
-            </Grid.Col>
-            <Grid.Col span={1} pe={0}>
-              <Text me="sm" mt={6}>
-                <Tooltip
-                  label={
-                    'An optional, Lucene version of the above expression. If provided, it is used when searching for this attribute value.'
-                  }
-                  color="dark"
-                  c="white"
-                  multiline
-                  maw={600}
-                >
-                  <IconHelpCircle size={14} className="cursor-pointer" />
-                </Tooltip>
-              </Text>
-            </Grid.Col>
-          </React.Fragment>
+        {highlightedAttributes.map(({ id }, index) => (
+          <HighlightedAttributeRow
+            key={id}
+            {...{
+              id,
+              index,
+              name,
+              control,
+              databaseName,
+              tableName,
+              connectionId,
+              removeHighlightedAttribute,
+            }}
+          />
         ))}
       </Grid>
       <Button
-        variant="default"
+        variant="secondary"
         size="sm"
-        color="gray"
         className="align-self-start"
         mt={highlightedAttributes.length ? 'sm' : 'md'}
         onClick={() => {
-          appendHighlightedAttribute({
-            sqlExpression: '',
-            luceneExpression: '',
-            alias: '',
-          });
+          appendHighlightedAttribute(
+            {
+              sqlExpression: '',
+              luceneExpression: '',
+              alias: '',
+            },
+            { shouldFocus: false },
+          );
         }}
       >
         <IconCirclePlus size={14} className="me-2" />
@@ -301,14 +453,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
   return (
     <Stack gap="md">
       <FormRow
-        label={
-          <Group>
-            Materialized Views
-            <Badge size="sm" radius="sm" color="gray">
-              Beta
-            </Badge>
-          </Group>
-        }
+        label="Materialized Views"
         helpText="Configure materialized views for query optimization. These pre-aggregated views can significantly improve query performance on aggregation queries."
       >
         <Stack gap="md">
@@ -323,7 +468,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
           ))}
 
           <Button
-            variant="default"
+            variant="secondary"
             onClick={() => {
               appendMaterializedView({
                 databaseName: databaseName,
@@ -636,7 +781,7 @@ function AggregatedColumnsFormSection({
           />
         ))}
       </Grid>
-      <Button size="sm" variant="default" onClick={addAggregate} mt="lg">
+      <Button size="sm" variant="secondary" onClick={addAggregate} mt="lg">
         <Group>
           <IconCirclePlus size={16} />
           Add Column
@@ -1323,6 +1468,21 @@ export function SessionTableModelForm({ control }: TableModelProps) {
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
         </FormRow>
+        <FormRow
+          label={'Timestamp Column'}
+          helpText="DateTime column or expression that is part of your table's primary key."
+        >
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name="timestampValueExpression"
+            disableKeywordAutocomplete
+          />
+        </FormRow>
       </Stack>
     </>
   );
@@ -1451,7 +1611,7 @@ export function TableSourceForm({
   onSave,
   onCreate,
   isNew = false,
-  defaultName,
+  defaultName = '',
   onCancel,
 }: {
   sourceId?: string;
@@ -1474,6 +1634,7 @@ export function TableSourceForm({
           databaseName: 'default',
           tableName: '',
         },
+        querySettings: source?.querySettings,
       },
       // TODO: HDX-1768 remove type assertion
       values: source as TSourceUnion,
@@ -1687,13 +1848,30 @@ export function TableSourceForm({
 
   const sourceFormSchema = sourceSchemaWithout({ id: true });
   const handleError = useCallback(
-    (error: z.ZodError<TSourceUnion>) => {
-      const errors = error.errors;
+    ({ errors }: z.ZodError<TSourceUnion>, eventName: 'create' | 'save') => {
+      const notificationMsgs: string[] = [];
+
+      // eslint-disable-next-line no-console
+      console.debug(
+        // HDX-3148
+        `[${eventName}] SourceForm validation error`,
+        JSON.stringify(errors),
+      );
+
       for (const err of errors) {
         const errorPath: string = err.path.join('.');
         // TODO: HDX-1768 get rid of this type assertion if possible
         setError(errorPath as any, { ...err });
+
+        const message =
+          // HDX-3148
+          err.message === 'Required'
+            ? `${errorPath}: ${err.message}`
+            : err.message;
+
+        notificationMsgs.push(message);
       }
+
       notifications.show({
         color: 'red',
         message: (
@@ -1701,9 +1879,9 @@ export function TableSourceForm({
             <Text size="sm">
               <b>Failed to create source</b>
             </Text>
-            {errors.map((err, i) => (
+            {notificationMsgs.map((message, i) => (
               <Text key={i} size="sm">
-                ✖ {err.message}
+                ✖ {message}
               </Text>
             ))}
           </Stack>
@@ -1718,7 +1896,7 @@ export function TableSourceForm({
     handleSubmit(async data => {
       const parseResult = sourceFormSchema.safeParse(data);
       if (parseResult.error) {
-        handleError(parseResult.error);
+        handleError(parseResult.error, 'create');
         return;
       }
 
@@ -1786,7 +1964,7 @@ export function TableSourceForm({
     handleSubmit(data => {
       const parseResult = sourceFormSchema.safeParse(data);
       if (parseResult.error) {
-        handleError(parseResult.error);
+        handleError(parseResult.error, 'save');
         return;
       }
       updateSource.mutate(
@@ -1828,6 +2006,12 @@ export function TableSourceForm({
     name: 'connection',
     defaultValue: source?.connection,
   });
+
+  const {
+    fields: querySettingFields,
+    append: appendSetting,
+    remove: removeSetting,
+  } = useFieldArray({ control, name: 'querySettings' });
 
   return (
     <div
@@ -1891,6 +2075,66 @@ export function TableSourceForm({
             />
           </FormRow>
         )}
+        <FormRow
+          label={
+            <Anchor
+              href="https://clickhouse.com/docs/operations/settings/settings"
+              size="sm"
+              target="_blank"
+            >
+              Query Settings
+            </Anchor>
+          }
+          helpText="Query-level Session Settings that will be added to each query for this source."
+        >
+          <Grid columns={11}>
+            {querySettingFields.map((field, index) => (
+              <Fragment key={field.id}>
+                <Grid.Col span={5} pe={0}>
+                  <InputControlled
+                    placeholder="Setting"
+                    control={control}
+                    name={`querySettings.${index}.setting`}
+                  />
+                </Grid.Col>
+                <Grid.Col span={5} pe={0}>
+                  <InputControlled
+                    placeholder="Value"
+                    control={control}
+                    name={`querySettings.${index}.value`}
+                  />
+                </Grid.Col>
+                <Grid.Col span={1} ps={0}>
+                  <Flex align="center" justify="center" gap="sm" h="100%">
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      title="Remove setting"
+                      onClick={() => removeSetting(index)}
+                    >
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Flex>
+                </Grid.Col>
+              </Fragment>
+            ))}
+          </Grid>
+          <Button
+            variant="secondary"
+            size="sm"
+            color="gray"
+            mt="md"
+            disabled={querySettingFields.length >= 10}
+            onClick={() => {
+              if (querySettingFields.length < 10) {
+                appendSetting({ setting: '', value: '' });
+              }
+            }}
+          >
+            <IconCirclePlus size={14} className="me-2" />
+            Add Setting
+          </Button>
+        </FormRow>
       </Stack>
       <TableModelForm control={control} setValue={setValue} kind={kind} />
       <Group justify="flex-end" mt="lg">

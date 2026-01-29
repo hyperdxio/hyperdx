@@ -215,7 +215,7 @@ export default function TeamMembersSection() {
           <Group align="center" justify="space-between">
             <div className="fs-7">Team Members</div>
             <Button
-              variant="light"
+              variant="primary"
               leftSection={<IconUserPlus size={16} />}
               onClick={() => setTeamInviteModalShow(true)}
             >
@@ -251,16 +251,6 @@ export default function TeamMembersSection() {
                       </Group>
                     </Table.Td>
                     <Table.Td>
-                      {team.shouldEnforceRBAC && !member.groupName && (
-                        <Badge
-                          variant="light"
-                          color="red"
-                          fw="normal"
-                          tt="none"
-                        >
-                          Not Assigned to Group
-                        </Badge>
-                      )}
                       {member.groupName && (
                         <Badge
                           variant="light"
@@ -277,8 +267,7 @@ export default function TeamMembersSection() {
                         <Group justify="flex-end" gap="8">
                           <Button
                             size="compact-sm"
-                            variant="light"
-                            color="red"
+                            variant="danger"
                             onClick={() =>
                               setDeleteTeamMemberConfirmationModalData({
                                 mode: 'team',
@@ -308,7 +297,7 @@ export default function TeamMembersSection() {
                         Pending Invite
                       </Badge>
                       <CopyToClipboard text={invitation.url}>
-                        <Button size="compact-xs" variant="default" ml="xs">
+                        <Button size="compact-xs" variant="secondary" ml="xs">
                           📋 Copy URL
                         </Button>
                       </CopyToClipboard>
@@ -318,8 +307,7 @@ export default function TeamMembersSection() {
                         <Group justify="flex-end" gap="8">
                           <Button
                             size="compact-sm"
-                            variant="light"
-                            color="red"
+                            variant="danger"
                             onClick={() =>
                               setDeleteTeamMemberConfirmationModalData({
                                 mode: 'teamInvite',
@@ -374,7 +362,7 @@ export default function TeamMembersSection() {
           </Text>
           <Group justify="flex-end" gap="xs">
             <Button
-              variant="default"
+              variant="secondary"
               onClick={() =>
                 setDeleteTeamMemberConfirmationModalData({
                   mode: null,
@@ -386,8 +374,7 @@ export default function TeamMembersSection() {
               Cancel
             </Button>
             <Button
-              variant="outline"
-              color="red"
+              variant="danger"
               onClick={() =>
                 deleteTeamMemberConfirmationModalData.id &&
                 onConfirmDeleteTeamMember(
@@ -434,7 +421,11 @@ function InviteTeamMemberForm({
         <div className="fs-8">
           The invite link will automatically expire after 30 days.
         </div>
-        <Button variant="light" type="submit" disabled={!email || isSubmitting}>
+        <Button
+          variant="primary"
+          type="submit"
+          disabled={!email || isSubmitting}
+        >
           Send Invite
         </Button>
       </Stack>

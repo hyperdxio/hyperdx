@@ -12,7 +12,15 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/core/renderChartConfig';
-import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
+import type {
+  ChartConfig,
+  ChartConfigWithDateRange,
+  QuerySettings,
+  TSource,
+} from '@/types';
+
+import { optimizeGetKeyValuesCalls } from './materializedViews';
+import { objectHash } from './utils';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
@@ -90,6 +98,14 @@ export type TableMetadata = {
   active_parts: string;
   total_marks: string;
   comment: string;
+};
+
+export type SkipIndexMetadata = {
+  name: string;
+  type: string; // 'bloom_filter', 'tokenbf_v1', 'minmax', etc.
+  typeFull: string; // e.g., 'text(tokenizer='splitByNonAlpha')'
+  expression: string; // e.g., "tokens(lower(Body))"
+  granularity: number;
 };
 
 export class Metadata {
@@ -601,16 +617,146 @@ export class Metadata {
     return tableMetadata;
   }
 
+  /** Reads the value of the setting with the given name from system.settings. */
+  async getSetting({
+    settingName,
+    connectionId,
+  }: {
+    settingName: string;
+    connectionId: string;
+  }) {
+    return this.cache.getOrFetch(`${connectionId}.${settingName}`, async () => {
+      const sql = chSql`
+          SELECT name, value
+          FROM system.settings
+          WHERE name = ${{ String: settingName }}
+        `;
+
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ name: string; value: string }>());
+
+        if (json.data.length > 0) {
+          return json.data[0].value;
+        }
+
+        return undefined;
+      } catch (e) {
+        // Don't retry permissions errors, just silently return undefined
+        if (e instanceof Error && e.message.includes('Not enough privileges')) {
+          console.warn('Not enough privileges to fetch settings:', e);
+          return undefined;
+        }
+
+        throw e;
+      }
+    });
+  }
+
+  /**
+   * Queries system.data_skipping_indices to retrieve skip index metadata for a table.
+   * Results are cached using MetadataCache.
+   *
+   * Skip indices are ClickHouse data skipping indices that improve query performance
+   * by allowing the query optimizer to skip reading entire data parts.
+   */
+  async getSkipIndices({
+    databaseName,
+    tableName,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  }): Promise<SkipIndexMetadata[]> {
+    return this.cache.getOrFetch<SkipIndexMetadata[]>(
+      `${connectionId}.${databaseName}.${tableName}.skipIndices`,
+      async () => {
+        const sql = chSql`
+          SELECT
+            name,
+            type,
+            type_full as typeFull,
+            expr as expression,
+            granularity
+          FROM system.data_skipping_indices
+          WHERE database = ${{ String: databaseName }}
+            AND table = ${{ String: tableName }}
+        `;
+
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query: sql.sql,
+              query_params: sql.params,
+              clickhouse_settings: this.getClickHouseSettings(),
+            })
+            .then(res => res.json<SkipIndexMetadata>());
+
+          return json.data;
+        } catch (e) {
+          // Don't retry permissions errors, just silently return empty array
+          if (
+            e instanceof Error &&
+            e.message.includes('Not enough privileges')
+          ) {
+            console.warn('Not enough privileges to fetch skip indices:', e);
+            return [];
+          }
+
+          throw e;
+        }
+      },
+    );
+  }
+
+  /**
+   * Parses a ClickHouse index expression to check if it uses the tokens() function.
+   * Returns the inner expression if tokens() is found.
+   *
+   * Examples:
+   * - tokens(Body) -> { hasTokens: true, innerExpression: 'Body' }
+   * - tokens(lower(Body)) -> { hasTokens: true, innerExpression: 'lower(Body)' }
+   * - lower(Body) -> { hasTokens: false }
+   */
+  static parseTokensExpression(expression: string):
+    | {
+        hasTokens: true;
+        innerExpression: string;
+      }
+    | { hasTokens: false } {
+    const tokensRegex = /^tokens\s*\((.*)\)$/i;
+    const match = expression.trim().match(tokensRegex);
+
+    if (match) {
+      return {
+        hasTokens: true,
+        innerExpression: match[1].trim(),
+      };
+    }
+
+    return { hasTokens: false };
+  }
+
   async getValuesDistribution({
     chartConfig,
     key,
     samples = 100_000,
     limit = 100,
+    source,
   }: {
     chartConfig: ChartConfigWithDateRange;
     key: string;
     samples?: number;
     limit?: number;
+    source: TSource | undefined;
   }) {
     const cacheKeyConfig = pick(chartConfig, [
       'connection',
@@ -621,7 +767,7 @@ export class Metadata {
       'with',
     ]);
     return this.cache.getOrFetch(
-      `${JSON.stringify(cacheKeyConfig)}.${key}.valuesDistribution`,
+      `${objectHash(cacheKeyConfig)}.${key}.valuesDistribution`,
       async () => {
         const config: ChartConfigWithDateRange = {
           ...chartConfig,
@@ -651,7 +797,11 @@ export class Metadata {
           limit: { limit },
         };
 
-        const sql = await renderChartConfig(config, this);
+        const sql = await renderChartConfig(
+          config,
+          this,
+          source?.querySettings,
+        );
 
         const json = await this.clickhouseClient
           .query<'JSON'>({
@@ -689,14 +839,32 @@ export class Metadata {
     keys,
     limit = 20,
     disableRowLimit = false,
+    signal,
+    source,
   }: {
     chartConfig: ChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
-  }) {
+    signal?: AbortSignal;
+    source:
+      | Omit<TSource, 'connection'> /* for overlap with ISource type */
+      | undefined;
+  }): Promise<{ key: string; value: string[] | number[] }[]> {
+    const cacheKeyConfig = {
+      ...pick(chartConfig, [
+        'connection',
+        'from',
+        'dateRange',
+        'where',
+        'with',
+        'filters',
+      ]),
+      keys,
+      disableRowLimit,
+    };
     return this.cache.getOrFetch(
-      `${chartConfig.connection}.${chartConfig.from.databaseName}.${chartConfig.from.tableName}.${keys.join(',')}.${chartConfig.dateRange.toString()}.${disableRowLimit}.values`,
+      `${objectHash(cacheKeyConfig)}.getKeyValues`,
       async () => {
         if (keys.length === 0) return [];
 
@@ -747,7 +915,11 @@ export class Metadata {
               };
             })();
 
-        const sql = await renderChartConfig(sqlConfig, this);
+        const sql = await renderChartConfig(
+          sqlConfig,
+          this,
+          source?.querySettings,
+        );
 
         const json = await this.clickhouseClient
           .query<'JSON'>({
@@ -764,16 +936,81 @@ export class Metadata {
                   max_rows_to_read: '0',
                 }
               : undefined,
+            abort_signal: signal,
           })
-          .then(res => res.json<any>());
+          .then(res => res.json<Record<string, string[] | number[]>>());
 
         // TODO: Fix type issues mentioned in HDX-1548. value is not actually a
         // string[], sometimes it's { [key: string]: string; }
         return Object.entries(json?.data?.[0]).map(([key, value]) => ({
           key: keys[parseInt(key.replace('param', ''))],
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see HDX-1548
-          value: (value as string[])?.filter(Boolean), // remove nulls
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          value: value?.filter(v => v != null && v !== '') as  // remove nulls and empty strings
+            | string[]
+            | number[],
         }));
+      },
+    );
+  }
+
+  async getKeyValuesWithMVs({
+    chartConfig,
+    keys,
+    source,
+    limit = 20,
+    disableRowLimit,
+    signal,
+  }: {
+    chartConfig: ChartConfigWithDateRange;
+    keys: string[];
+    source: TSource | undefined;
+    limit?: number;
+    disableRowLimit?: boolean;
+    signal?: AbortSignal;
+  }): Promise<{ key: string; value: string[] | number[] }[]> {
+    const cacheKeyConfig = {
+      ...pick(chartConfig, [
+        'connection',
+        'from',
+        'dateRange',
+        'where',
+        'with',
+        'filters',
+      ]),
+      keys,
+      disableRowLimit,
+    };
+    return this.cache.getOrFetch(
+      `${objectHash(cacheKeyConfig)}.getKeyValuesWithMVs`,
+      async () => {
+        if (keys.length === 0) return [];
+
+        const defaultKeyValueCall = { chartConfig, keys };
+        const getKeyValueCalls = source
+          ? await optimizeGetKeyValuesCalls({
+              chartConfig,
+              keys,
+              source,
+              clickhouseClient: this.clickhouseClient,
+              metadata: this,
+              signal,
+            })
+          : [defaultKeyValueCall];
+
+        const allResults = await Promise.all(
+          getKeyValueCalls.map(async ({ chartConfig, keys }) =>
+            this.getKeyValues({
+              chartConfig,
+              keys,
+              limit,
+              disableRowLimit,
+              signal,
+              source,
+            }),
+          ),
+        );
+
+        return allResults.flat();
       },
     );
   }

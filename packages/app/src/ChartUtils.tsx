@@ -19,6 +19,7 @@ import {
 import {
   AggregateFunction as AggFnV2,
   ChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
   ChartConfigWithOptTimestamp,
   DisplayType,
   Filter,
@@ -1160,4 +1161,11 @@ export function buildMVDateRangeIndicator({
       mvGranularity={mvGranularity}
     />
   );
+}
+
+export function shouldFillNullsWithZero(
+  fillNulls: ChartConfigWithOptDateRange['fillNulls'],
+): boolean {
+  // To match legacy behavior, fill nulls with 0 unless explicitly disabled
+  return fillNulls !== false;
 }

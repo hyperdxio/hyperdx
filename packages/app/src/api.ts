@@ -5,6 +5,7 @@ import type {
   Alert,
   PresetDashboard,
   PresetDashboardFilter,
+  Team,
 } from '@hyperdx/common-utils/dist/types';
 import type { UseQueryOptions } from '@tanstack/react-query';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -176,6 +177,7 @@ const api = {
   usePresetDashboardFilters(
     presetDashboard: PresetDashboard,
     sourceId: string,
+    enabled: boolean = true,
   ) {
     return useQuery({
       queryKey: [`dashboards`, `preset`, presetDashboard, `filters`, sourceId],
@@ -184,7 +186,7 @@ const api = {
           method: 'GET',
           searchParams: { sourceId },
         }).json() as Promise<PresetDashboardFilter[]>,
-      enabled: !!sourceId,
+      enabled: !!sourceId && enabled,
     });
   },
   useCreatePresetDashboardFilter() {
@@ -303,13 +305,21 @@ const api = {
     });
   },
   useTeam() {
-    return useQuery<any, Error>({
+    return useQuery({
       queryKey: [`team`],
       queryFn: () => {
         if (IS_LOCAL_MODE) {
           return null;
         }
-        return hdxServer(`team`).json();
+
+        type TeamResponse = Pick<
+          Team,
+          'allowedAuthMethods' | 'apiKey' | 'name'
+        > & {
+          createdAt: string;
+        };
+
+        return hdxServer(`team`).json<TeamResponse>();
       },
       retry: 1,
     });

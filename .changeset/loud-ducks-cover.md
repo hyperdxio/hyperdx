@@ -4,4 +4,4 @@
 "@hyperdx/app": patch
 ---
 
-chore: Standardize granularities
+chore: improve Team typing

@@ -1,7 +1,7 @@
 import { ClickhouseClient } from '../clickhouse/node';
 import { Metadata, MetadataCache } from '../core/metadata';
 import * as renderChartConfigModule from '../core/renderChartConfig';
-import { ChartConfigWithDateRange } from '../types';
+import { ChartConfigWithDateRange, TSource } from '../types';
 
 // Mock ClickhouseClient
 const mockClickhouseClient = {
@@ -19,6 +19,13 @@ jest.mock('../core/renderChartConfig', () => ({
     .fn()
     .mockResolvedValue({ sql: 'SELECT 1', params: {} }),
 }));
+
+const source = {
+  querySettings: [
+    { setting: 'optimize_read_in_order', value: '0' },
+    { setting: 'cast_keep_nullable', value: '0' },
+  ],
+} as TSource;
 
 describe('MetadataCache', () => {
   let metadataCache: MetadataCache;
@@ -259,6 +266,7 @@ describe('Metadata', () => {
         keys: ['column1', 'column2'],
         limit: 10,
         disableRowLimit: false,
+        source,
       });
 
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
@@ -278,6 +286,7 @@ describe('Metadata', () => {
         keys: ['column1', 'column2'],
         limit: 10,
         disableRowLimit: true,
+        source,
       });
 
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
@@ -292,6 +301,7 @@ describe('Metadata', () => {
         chartConfig: mockChartConfig,
         keys: ['column1', 'column2'],
         limit: 10,
+        source,
       });
 
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
@@ -310,6 +320,7 @@ describe('Metadata', () => {
         chartConfig: mockChartConfig,
         keys: ['column1', 'column2'],
         limit: 10,
+        source,
       });
 
       expect(result).toEqual([
@@ -318,13 +329,13 @@ describe('Metadata', () => {
       ]);
     });
 
-    it('should filter out falsy values from the response', async () => {
+    it('should filter out empty and nullish values from the response', async () => {
       (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
         json: () =>
           Promise.resolve({
             data: [
               {
-                param0: ['value1', null, '', 'value2', undefined],
+                param0: ['value1', null, '', 'value2', undefined, 0, 10],
               },
             ],
           }),
@@ -334,9 +345,12 @@ describe('Metadata', () => {
         chartConfig: mockChartConfig,
         keys: ['column1'],
         limit: 10,
+        source,
       });
 
-      expect(result).toEqual([{ key: 'column1', value: ['value1', 'value2'] }]);
+      expect(result).toEqual([
+        { key: 'column1', value: ['value1', 'value2', 0, 10] },
+      ]);
     });
 
     it('should return an empty list when no keys are provided', async () => {
@@ -349,6 +363,7 @@ describe('Metadata', () => {
         chartConfig: mockChartConfig,
         keys: [],
         limit: 10,
+        source,
       });
 
       expect(results).toEqual([]);
@@ -400,6 +415,7 @@ describe('Metadata', () => {
       const result = await metadata.getValuesDistribution({
         chartConfig: mockChartConfig,
         key: 'severity',
+        source,
       });
 
       expect(result).toEqual(
@@ -442,6 +458,7 @@ describe('Metadata', () => {
       await metadata.getValuesDistribution({
         chartConfig: configWithAliases,
         key: 'severity',
+        source,
       });
 
       const actualConfig = renderChartConfigSpy.mock.calls[0][0];
@@ -481,6 +498,7 @@ describe('Metadata', () => {
       await metadata.getValuesDistribution({
         chartConfig: configWithFilters,
         key: 'severity',
+        source,
       });
 
       const actualConfig = renderChartConfigSpy.mock.calls[0][0];
@@ -489,5 +507,54 @@ describe('Metadata', () => {
         condition: "ServiceName IN ('clickhouse')",
       });
     });
+  });
+
+  describe('parseTokensExpression', () => {
+    it.each([
+      // Test cases without tokens
+      {
+        expression: 'lower(Body)',
+        expected: { hasTokens: false },
+      },
+      {
+        expression: '',
+        expected: { hasTokens: false },
+      },
+      // Test cases with tokens
+      {
+        expression: 'tokens(Body)',
+        expected: { hasTokens: true, innerExpression: 'Body' },
+      },
+      {
+        expression: 'tokens(lower(Body))',
+        expected: { hasTokens: true, innerExpression: 'lower(Body)' },
+      },
+      {
+        expression: "tokens(lower(concatWithSeparator(';',Body,Message)))",
+        expected: {
+          hasTokens: true,
+          innerExpression: "lower(concatWithSeparator(';',Body,Message))",
+        },
+      },
+      // Extra whitespace
+      {
+        expression: 'tokens( Body )',
+        expected: { hasTokens: true, innerExpression: 'Body' },
+      },
+      {
+        expression: ' tokens( Body ) ',
+        expected: { hasTokens: true, innerExpression: 'Body' },
+      },
+      {
+        expression: 'tokens ( Body )',
+        expected: { hasTokens: true, innerExpression: 'Body' },
+      },
+    ])(
+      'should correctly parse tokens from: $expression',
+      ({ expression, expected }) => {
+        const result = Metadata.parseTokensExpression(expression);
+        expect(result).toEqual(expected);
+      },
+    );
   });
 });
