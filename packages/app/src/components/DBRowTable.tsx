@@ -838,6 +838,7 @@ export const RawLogTable = memo(
             onNextMatch={tableSearch.handleNextMatch}
             isVisible={tableSearch.isSearchVisible}
             onVisibilityChange={tableSearch.setIsSearchVisible}
+            containerRef={tableContainerRef}
           />
           <div
             data-testid="search-results-table"
