@@ -1,23 +1,18 @@
-import { TileSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { uniq } from 'lodash';
 import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 
-import {
-  deleteDashboard,
-  getDashboard,
-  updateDashboard,
-} from '@/controllers/dashboard';
-import Dashboard, { IDashboard } from '@/models/dashboard';
+import { deleteDashboard, getDashboard } from '@/controllers/dashboard';
+import Dashboard from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import {
   translateDashboardDocumentToExternalDashboard,
   translateExternalChartToTileConfig,
 } from '@/utils/externalApi';
 import {
-  externalChartSchema,
-  externalChartSchemaWithId,
+  externalDashboardTileSchema,
+  externalDashboardTileSchemaWithId,
   objectIdSchema,
   tagsSchema,
 } from '@/utils/zod';
@@ -26,109 +21,409 @@ import {
  * @openapi
  * components:
  *   schemas:
- *     ChartSeries:
+ *     NumberFormat:
  *       type: object
+ *       properties:
+ *         output:
+ *           type: string
+ *           enum: [currency, percent, byte, time, number]
+ *           example: "number"
+ *         mantissa:
+ *           type: number
+ *           example: 2
+ *         thousandSeparated:
+ *           type: boolean
+ *           example: true
+ *         average:
+ *           type: boolean
+ *           example: false
+ *         decimalBytes:
+ *           type: boolean
+ *           example: false
+ *         factor:
+ *           type: number
+ *           example: 1
+ *         currencySymbol:
+ *           type: string
+ *           example: "$"
+ *         unit:
+ *           type: string
+ *           example: "ms"
+ *
+ *     TimeChartSeries:
+ *       type: object
+ *       required:
+ *         - type
+ *         - sourceId
+ *         - aggFn
+ *         - where
+ *         - groupBy
  *       properties:
  *         type:
  *           type: string
- *           enum: [time, table, number, histogram, search, markdown]
+ *           enum: [time]
  *           example: "time"
- *         dataSource:
+ *         sourceId:
  *           type: string
- *           enum: [events, metrics]
- *           example: "events"
+ *           description: ID of the data source to query
+ *           example: "65f5e4a3b9e77c001a567890"
  *         aggFn:
  *           type: string
+ *           enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]
+ *           description: Aggregation function to apply to the field or metric value
  *           example: "count"
+ *         level:
+ *           type: number
+ *           minimum: 0
+ *           maximum: 1
+ *           description: Percentile level for quantile aggregations (e.g., 0.95 for p95)
+ *           example: 0.95
+ *         field:
+ *           type: string
+ *           description: Field/property name to aggregate (required for most aggregation functions except count)
+ *           example: "duration"
+ *         alias:
+ *           type: string
+ *           description: Display name for the series in the chart
+ *           example: "Request Duration"
  *         where:
  *           type: string
- *           example: "level:error"
+ *           description: Filter query for the data (syntax depends on whereLanguage)
+ *           example: "service:api"
+ *         whereLanguage:
+ *           type: string
+ *           enum: [sql, lucene]
+ *           description: Query language for the where clause
+ *           example: "lucene"
  *         groupBy:
  *           type: array
  *           items:
  *             type: string
- *           example: []
- *
- *     Tile:
- *       type: object
- *       properties:
- *         id:
+ *           maxItems: 10
+ *           description: Fields to group results by (creates separate series for each group)
+ *           example: ["host"]
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *         metricDataType:
  *           type: string
- *           example: "65f5e4a3b9e77c001a901234"
+ *           enum: [sum, gauge, histogram, summary, exponential histogram]
+ *           example: "sum"
+ *         metricName:
+ *           type: string
+ *           description: Metric name for metrics data sources
+ *           example: "http.server.duration"
+ *         displayType:
+ *           type: string
+ *           enum: [stacked_bar, line]
+ *           description: Visual representation type for the time series
+ *           example: "line"
+ *
+ *     TableChartSeries:
+ *       type: object
+ *       required:
+ *         - type
+ *         - sourceId
+ *         - aggFn
+ *         - where
+ *         - groupBy
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [table]
+ *           example: "table"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query
+ *           example: "65f5e4a3b9e77c001a567890"
+ *         aggFn:
+ *           type: string
+ *           enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]
+ *           description: Aggregation function to apply to the field or metric value
+ *           example: "count"
+ *         level:
+ *           type: number
+ *           minimum: 0
+ *           maximum: 1
+ *           description: Percentile level for quantile aggregations (e.g., 0.95 for p95)
+ *           example: 0.95
+ *         field:
+ *           type: string
+ *           example: "duration"
+ *         alias:
+ *           type: string
+ *           example: "Total Count"
+ *         where:
+ *           type: string
+ *           example: "level:error"
+ *         whereLanguage:
+ *           type: string
+ *           enum: [sql, lucene]
+ *           example: "lucene"
+ *         groupBy:
+ *           type: array
+ *           items:
+ *             type: string
+ *           maxItems: 10
+ *           example: ["errorType"]
+ *         sortOrder:
+ *           type: string
+ *           enum: [desc, asc]
+ *           description: Sort order for table rows
+ *           example: "desc"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *         metricDataType:
+ *           type: string
+ *           enum: [sum, gauge, histogram, summary, exponential histogram]
+ *           description: Metric data type for metrics data sources
+ *           example: "sum"
+ *         metricName:
+ *           type: string
+ *           description: Metric name for metrics data sources
+ *           example: "http.server.duration"
+ *
+ *     NumberChartSeries:
+ *       type: object
+ *       required:
+ *         - type
+ *         - sourceId
+ *         - aggFn
+ *         - where
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [number]
+ *           example: "number"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query
+ *           example: "65f5e4a3b9e77c001a567890"
+ *         aggFn:
+ *           type: string
+ *           enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]
+ *           description: Aggregation function to apply to the field or metric value
+ *           example: "count"
+ *         level:
+ *           type: number
+ *           minimum: 0
+ *           maximum: 1
+ *           description: Percentile level for quantile aggregations (e.g., 0.95 for p95)
+ *           example: 0.95
+ *         field:
+ *           type: string
+ *           example: "duration"
+ *         alias:
+ *           type: string
+ *           example: "Total Requests"
+ *         where:
+ *           type: string
+ *           example: "service:api"
+ *         whereLanguage:
+ *           type: string
+ *           enum: [sql, lucene]
+ *           example: "lucene"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *         metricDataType:
+ *           type: string
+ *           enum: [sum, gauge, histogram, summary, exponential histogram]
+ *           example: "sum"
+ *         metricName:
+ *           type: string
+ *           example: "http.server.duration"
+ *
+ *     SearchChartSeries:
+ *       type: object
+ *       required:
+ *         - type
+ *         - sourceId
+ *         - fields
+ *         - where
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [search]
+ *           example: "search"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query
+ *           example: "65f5e4a3b9e77c001a567890"
+ *         fields:
+ *           type: array
+ *           items:
+ *             type: string
+ *           description: List of field names to display in the search results table
+ *           example: ["timestamp", "level", "message"]
+ *         where:
+ *           type: string
+ *           description: Filter query for the data (syntax depends on whereLanguage)
+ *           example: "level:error"
+ *         whereLanguage:
+ *           type: string
+ *           enum: [sql, lucene]
+ *           description: Query language for the where clause
+ *           example: "lucene"
+ *
+ *     MarkdownChartSeries:
+ *       type: object
+ *       required:
+ *         - type
+ *         - content
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [markdown]
+ *           example: "markdown"
+ *         content:
+ *           type: string
+ *           example: "# Dashboard Title\n\nThis is a markdown widget."
+ *
+ *     DashboardChartSeries:
+ *       oneOf:
+ *         - $ref: '#/components/schemas/TimeChartSeries'
+ *         - $ref: '#/components/schemas/TableChartSeries'
+ *         - $ref: '#/components/schemas/NumberChartSeries'
+ *         - $ref: '#/components/schemas/SearchChartSeries'
+ *         - $ref: '#/components/schemas/MarkdownChartSeries'
+ *       discriminator:
+ *         propertyName: type
+ *         mapping:
+ *           time: '#/components/schemas/TimeChartSeries'
+ *           table: '#/components/schemas/TableChartSeries'
+ *           number: '#/components/schemas/NumberChartSeries'
+ *           search: '#/components/schemas/SearchChartSeries'
+ *           markdown: '#/components/schemas/MarkdownChartSeries'
+ *
+ *     TileInput:
+ *       type: object
+ *       description: Dashboard tile/chart configuration for creation
+ *       required:
+ *         - name
+ *         - x
+ *         - y
+ *         - w
+ *         - h
+ *         - series
+ *       properties:
  *         name:
  *           type: string
+ *           description: Display name for the tile
  *           example: "Error Rate"
  *         x:
  *           type: integer
+ *           minimum: 0
+ *           maximum: 23
+ *           description: Horizontal position in the grid (0-based)
  *           example: 0
  *         y:
  *           type: integer
+ *           minimum: 0
+ *           description: Vertical position in the grid (0-based)
  *           example: 0
  *         w:
  *           type: integer
+ *           minimum: 1
+ *           maximum: 24
+ *           description: Width in grid units
  *           example: 6
  *         h:
  *           type: integer
+ *           minimum: 1
+ *           description: Height in grid units
  *           example: 3
  *         asRatio:
  *           type: boolean
+ *           description: Display two series as a ratio (series[0] / series[1])
  *           example: false
  *         series:
  *           type: array
+ *           minItems: 1
+ *           description: Data series to display in this tile (all must be the same type)
  *           items:
- *             $ref: '#/components/schemas/ChartSeries'
+ *             $ref: '#/components/schemas/DashboardChartSeries'
+ *
+ *     Tile:
+ *       allOf:
+ *         - $ref: '#/components/schemas/TileInput'
+ *         - type: object
+ *           required:
+ *             - id
+ *           properties:
+ *             id:
+ *               type: string
+ *               maxLength: 36
+ *               example: "65f5e4a3b9e77c001a901234"
  *
  *     Dashboard:
  *       type: object
+ *       description: Dashboard with tiles and configuration
  *       properties:
  *         id:
  *           type: string
+ *           description: Dashboard ID
  *           example: "65f5e4a3b9e77c001a567890"
  *         name:
  *           type: string
+ *           description: Dashboard name
+ *           maxLength: 1024
  *           example: "Service Overview"
  *         tiles:
  *           type: array
+ *           description: List of tiles/charts in the dashboard
  *           items:
  *             $ref: '#/components/schemas/Tile'
  *         tags:
  *           type: array
+ *           description: Tags for organizing and filtering dashboards
  *           items:
  *             type: string
+ *             maxLength: 32
+ *           maxItems: 50
  *           example: ["production", "monitoring"]
  *
  *     CreateDashboardRequest:
  *       type: object
  *       required:
  *         - name
+ *         - tiles
  *       properties:
  *         name:
  *           type: string
+ *           maxLength: 1024
  *           example: "New Dashboard"
  *         tiles:
  *           type: array
  *           items:
- *             $ref: '#/components/schemas/Tile'
+ *             $ref: '#/components/schemas/TileInput'
  *         tags:
  *           type: array
  *           items:
  *             type: string
+ *             maxLength: 32
+ *           maxItems: 50
  *           example: ["development"]
  *
  *     UpdateDashboardRequest:
  *       type: object
+ *       required:
+ *         - name
+ *         - tiles
  *       properties:
  *         name:
  *           type: string
+ *           maxLength: 1024
  *           example: "Updated Dashboard Name"
  *         tiles:
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/Tile'
+ *           description: Tiles must include their IDs for updates. To add a new tile, generate a unique ID (max 36 chars).
  *         tags:
  *           type: array
  *           items:
  *             type: string
+ *             maxLength: 32
+ *           maxItems: 50
  *           example: ["production", "updated"]
  *
  *     DashboardResponse:
@@ -228,7 +523,7 @@ router.get('/', async (req, res, next) => {
  *                         asRatio: false
  *                         series:
  *                           - type: "time"
- *                             dataSource: "metrics"
+ *                             sourceId: "65f5e4a3b9e77c001a111111"
  *                             aggFn: "avg"
  *                             field: "cpu.usage"
  *                             where: "host:server-01"
@@ -242,7 +537,7 @@ router.get('/', async (req, res, next) => {
  *                         asRatio: false
  *                         series:
  *                           - type: "time"
- *                             dataSource: "metrics"
+ *                             sourceId: "65f5e4a3b9e77c001a111111"
  *                             aggFn: "avg"
  *                             field: "memory.usage"
  *                             where: "host:server-01"
@@ -322,10 +617,9 @@ router.get(
  *                     y: 0
  *                     w: 6
  *                     h: 3
- *                     asRatio: false
  *                     series:
  *                       - type: "time"
- *                         dataSource: "events"
+ *                         sourceId: "65f5e4a3b9e77c001a111111"
  *                         aggFn: "count"
  *                         where: "service:api"
  *                         groupBy: []
@@ -340,10 +634,9 @@ router.get(
  *                     y: 0
  *                     w: 6
  *                     h: 3
- *                     asRatio: false
  *                     series:
  *                       - type: "time"
- *                         dataSource: "events"
+ *                         sourceId: "65f5e4a3b9e77c001a111111"
  *                         aggFn: "count"
  *                         where: "service:backend"
  *                         groupBy: []
@@ -352,10 +645,9 @@ router.get(
  *                     y: 0
  *                     w: 6
  *                     h: 3
- *                     asRatio: false
  *                     series:
  *                       - type: "table"
- *                         dataSource: "events"
+ *                         sourceId: "65f5e4a3b9e77c001a111111"
  *                         aggFn: "count"
  *                         where: "level:error"
  *                         groupBy: ["errorType"]
@@ -382,10 +674,9 @@ router.get(
  *                         y: 0
  *                         w: 6
  *                         h: 3
- *                         asRatio: false
  *                         series:
  *                           - type: "time"
- *                             dataSource: "events"
+ *                             sourceId: "65f5e4a3b9e77c001a111111"
  *                             aggFn: "count"
  *                             where: "service:api"
  *                             groupBy: []
@@ -412,7 +703,7 @@ router.post(
   validateRequest({
     body: z.object({
       name: z.string().max(1024),
-      tiles: z.array(externalChartSchema),
+      tiles: z.array(externalDashboardTileSchema),
       tags: tagsSchema,
     }),
   }),
@@ -484,22 +775,21 @@ router.post(
  *                     y: 0
  *                     w: 6
  *                     h: 3
- *                     asRatio: false
  *                     series:
  *                       - type: "time"
- *                         dataSource: "events"
+ *                         sourceId: "65f5e4a3b9e77c001a111111"
  *                         aggFn: "count"
  *                         where: "level:error"
  *                         groupBy: []
- *                   - name: "New Number Chart"
+ *                   - id: "new-tile-123"
+ *                     name: "New Number Chart"
  *                     x: 6
  *                     y: 0
  *                     w: 6
  *                     h: 3
- *                     asRatio: false
  *                     series:
  *                       - type: "number"
- *                         dataSource: "events"
+ *                         sourceId: "65f5e4a3b9e77c001a111111"
  *                         aggFn: "count"
  *                         where: "level:info"
  *                 tags: ["production", "updated"]
@@ -524,23 +814,21 @@ router.post(
  *                         y: 0
  *                         w: 6
  *                         h: 3
- *                         asRatio: false
  *                         series:
  *                           - type: "time"
- *                             dataSource: "events"
+ *                             sourceId: "65f5e4a3b9e77c001a111111"
  *                             aggFn: "count"
  *                             where: "level:error"
  *                             groupBy: []
- *                       - id: "65f5e4a3b9e77c001a901236"
+ *                       - id: "new-tile-123"
  *                         name: "New Number Chart"
  *                         x: 6
  *                         y: 0
  *                         w: 6
  *                         h: 3
- *                         asRatio: false
  *                         series:
  *                           - type: "number"
- *                             dataSource: "events"
+ *                             sourceId: "65f5e4a3b9e77c001a111111"
  *                             aggFn: "count"
  *                             where: "level:info"
  *                     tags: ["production", "updated"]
@@ -577,7 +865,7 @@ router.put(
     }),
     body: z.object({
       name: z.string().max(1024),
-      tiles: z.array(externalChartSchemaWithId),
+      tiles: z.array(externalDashboardTileSchemaWithId),
       tags: tagsSchema,
     }),
   }),

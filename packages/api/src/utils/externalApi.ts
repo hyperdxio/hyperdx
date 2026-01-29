@@ -20,8 +20,8 @@ import {
 import type { DashboardDocument } from '@/models/dashboard';
 import {
   ChartSeries,
-  externalChartSchema,
-  externalChartSchemaWithId,
+  externalDashboardTileSchema,
+  externalDashboardTileSchemaWithId,
   histogramChartSeriesSchema,
   MarkdownChartSeries,
   markdownChartSeriesSchema,
@@ -37,11 +37,11 @@ import {
 
 import logger from './logger';
 
-type ExternalChartWithId = z.infer<typeof externalChartSchemaWithId>;
+type ExternalChartWithId = z.infer<typeof externalDashboardTileSchemaWithId>;
 
-// TODO: Replace with translateExternalChartToTileConfig
+// TODO: Remove this, since only the "time" type is used, and it's full of type errors
 export const translateExternalSeriesToInternalSeries = (
-  s: z.infer<typeof externalChartSchema>['series'][number],
+  s: z.infer<typeof externalDashboardTileSchema>['series'][number],
 ) => {
   const {
     type,

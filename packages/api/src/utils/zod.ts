@@ -147,7 +147,6 @@ export const externalQueryChartSeriesSchema = z.object({
 export const chartSeriesSchema = z.discriminatedUnion('type', [
   timeChartSeriesSchema,
   tableChartSeriesSchema,
-  histogramChartSeriesSchema,
   searchChartSeriesSchema,
   numberChartSeriesSchema,
   markdownChartSeriesSchema,
@@ -155,12 +154,12 @@ export const chartSeriesSchema = z.discriminatedUnion('type', [
 
 export type ChartSeries = z.infer<typeof chartSeriesSchema>;
 
-export const externalChartSchema = z.object({
+export const externalDashboardTileSchema = z.object({
   name: z.string(),
-  x: z.number(),
-  y: z.number(),
-  w: z.number(),
-  h: z.number(),
+  x: z.number().min(0).max(23),
+  y: z.number().min(0),
+  w: z.number().min(1).max(24),
+  h: z.number().min(1),
   series: chartSeriesSchema
     .array()
     .min(1)
@@ -176,12 +175,13 @@ export const externalChartSchema = z.object({
   asRatio: z.boolean().optional(),
 });
 
-export const externalChartSchemaWithId = externalChartSchema.and(
-  z.object({
-    // User defined ID
-    id: z.string().max(36),
-  }),
-);
+export const externalDashboardTileSchemaWithId =
+  externalDashboardTileSchema.and(
+    z.object({
+      // User defined ID
+      id: z.string().max(36),
+    }),
+  );
 
 export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
 
