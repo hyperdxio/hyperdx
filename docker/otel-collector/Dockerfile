@@ -13,7 +13,8 @@ ARG USER_GID=10001
 RUN apk add --no-cache ca-certificates && \
   addgroup -S -g ${USER_GID} otel && \
   adduser  -S -u ${USER_UID} -G otel otel && \
-  install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data
+  install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data && \
+  install -d -m 0755 -o ${USER_UID} -g ${USER_GID} /etc/otelcol-contrib
 
 # Copy gomplate binary from the gomplate image
 COPY --from=gomplate /bin/gomplate /usr/local/bin/gomplate
@@ -36,8 +37,9 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
       org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
       org.opencontainers.image.licenses="MIT"
 
-COPY ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
+COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
 EXPOSE 4317 4318 13133
 
@@ -52,8 +54,9 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
       org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
       org.opencontainers.image.licenses="MIT"
 
-COPY ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
+COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
 EXPOSE 4317 4318 13133
 

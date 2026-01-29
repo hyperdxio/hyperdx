@@ -1,7 +1,6 @@
 import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
-import { validateRequest } from 'zod-express-middleware';
 
 import {
   createAlert,
@@ -10,6 +9,7 @@ import {
   getAlerts,
   updateAlert,
 } from '@/controllers/alerts';
+import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
@@ -30,15 +30,18 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "65f5e4a3b9e77c001a123456"
  *         name:
  *           type: string
+ *           nullable: true
  *           example: "High Error Rate"
  *         message:
  *           type: string
+ *           nullable: true
  *           example: "Error rate exceeds threshold"
  *         threshold:
  *           type: number
  *           example: 100
  *         interval:
  *           type: string
+ *           enum: [1m, 5m, 15m, 30m, 1h, 6h, 12h, 1d]
  *           example: "15m"
  *         thresholdType:
  *           type: string
@@ -46,16 +49,18 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "above"
  *         source:
  *           type: string
- *           enum: [tile, search]
+ *           enum: [tile, saved_search]
  *           example: "tile"
  *         state:
  *           type: string
- *           example: "inactive"
+ *           enum: [OK, ALERT, INSUFFICIENT_DATA, DISABLED]
+ *           example: "ALERT"
  *         channel:
  *           type: object
  *           properties:
  *             type:
  *               type: string
+ *               enum: [webhook]
  *               example: "webhook"
  *             webhookId:
  *               type: string
@@ -65,9 +70,11 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "65f5e4a3b9e77c001a345678"
  *         tileId:
  *           type: string
+ *           nullable: true
  *           example: "65f5e4a3b9e77c001a901234"
  *         dashboard:
  *           type: string
+ *           nullable: true
  *           example: "65f5e4a3b9e77c001a567890"
  *         savedSearch:
  *           type: string
@@ -76,14 +83,26 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           type: string
  *           nullable: true
  *         silenced:
- *           type: boolean
+ *           type: object
  *           nullable: true
+ *           properties:
+ *             by:
+ *              type: string
+ *              nullable: true
+ *             at:
+ *               type: string
+ *               format: date-time
+ *             until:
+ *               type: string
+ *               format: date-time
  *         createdAt:
  *           type: string
+ *           nullable: true
  *           format: date-time
  *           example: "2023-01-01T00:00:00.000Z"
  *         updatedAt:
  *           type: string
+ *           nullable: true
  *           format: date-time
  *           example: "2023-01-01T00:00:00.000Z"
  *
@@ -98,19 +117,30 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       properties:
  *         dashboardId:
  *           type: string
+ *           nullable: true
  *           example: "65f5e4a3b9e77c001a567890"
  *         tileId:
  *           type: string
+ *           nullable: true
  *           example: "65f5e4a3b9e77c001a901234"
+ *         savedSearchId:
+ *           type: string
+ *           nullable: true
+ *           example: "65f5e4a3b9e77c001a345678"
+ *         groupBy:
+ *           type: string
+ *           nullable: true
+ *           example: "ServiceName"
  *         threshold:
  *           type: number
  *           example: 100
  *         interval:
  *           type: string
+ *           enum: [1m, 5m, 15m, 30m, 1h, 6h, 12h, 1d]
  *           example: "1h"
  *         source:
  *           type: string
- *           enum: [tile, search]
+ *           enum: [tile, saved_search]
  *           example: "tile"
  *         thresholdType:
  *           type: string
@@ -121,55 +151,72 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           properties:
  *             type:
  *               type: string
+ *               enum: [webhook]
  *               example: "webhook"
  *             webhookId:
  *               type: string
  *               example: "65f5e4a3b9e77c001a789012"
  *         name:
  *           type: string
+ *           nullable: true
  *           example: "Test Alert"
  *         message:
  *           type: string
+ *           nullable: true
  *           example: "Test Alert Message"
  *
  *     UpdateAlertRequest:
  *       type: object
  *       properties:
+ *         dashboardId:
+ *           type: string
+ *           nullable: true
+ *           example: "65f5e4a3b9e77c001a567890"
+ *         tileId:
+ *           type: string
+ *           nullable: true
+ *           example: "65f5e4a3b9e77c001a901234"
+ *         savedSearchId:
+ *           type: string
+ *           nullable: true
+ *           example: "65f5e4a3b9e77c001a345678"
+ *         groupBy:
+ *           type: string
+ *           nullable: true
+ *           example: "ServiceName"
  *         threshold:
  *           type: number
- *           example: 500
+ *           example: 100
  *         interval:
  *           type: string
+ *           enum: [1m, 5m, 15m, 30m, 1h, 6h, 12h, 1d]
  *           example: "1h"
+ *         source:
+ *           type: string
+ *           enum: [tile, saved_search]
+ *           example: "tile"
  *         thresholdType:
  *           type: string
  *           enum: [above, below]
  *           example: "above"
- *         source:
- *           type: string
- *           enum: [tile, search]
- *           example: "tile"
- *         dashboardId:
- *           type: string
- *           example: "65f5e4a3b9e77c001a567890"
- *         tileId:
- *           type: string
- *           example: "65f5e4a3b9e77c001a901234"
  *         channel:
  *           type: object
  *           properties:
  *             type:
  *               type: string
+ *               enum: [webhook]
  *               example: "webhook"
  *             webhookId:
  *               type: string
  *               example: "65f5e4a3b9e77c001a789012"
  *         name:
  *           type: string
- *           example: "Updated Alert Name"
+ *           nullable: true
+ *           example: "Test Alert"
  *         message:
  *           type: string
- *           example: "Updated message"
+ *           nullable: true
+ *           example: "Test Alert Message"
  *
  *     AlertResponse:
  *       type: object
@@ -191,6 +238,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  */
 
 const router = express.Router();
+
 /**
  * @openapi
  * /api/v2/alerts/{id}:
@@ -220,13 +268,11 @@ const router = express.Router();
  *                 value:
  *                   data:
  *                     id: "65f5e4a3b9e77c001a123456"
- *                     name: "CPU Usage Alert"
- *                     message: "CPU usage is above 80%"
  *                     threshold: 80
  *                     interval: "5m"
  *                     thresholdType: "above"
  *                     source: "tile"
- *                     state: "active"
+ *                     state: "ALERT"
  *                     channel:
  *                       type: "webhook"
  *                       webhookId: "65f5e4a3b9e77c001a789012"
@@ -298,13 +344,11 @@ router.get(
  *                 value:
  *                   data:
  *                     - id: "65f5e4a3b9e77c001a123456"
- *                       name: "High Error Rate"
- *                       message: "Error rate exceeds threshold"
  *                       threshold: 100
  *                       interval: "15m"
  *                       thresholdType: "above"
  *                       source: "tile"
- *                       state: "inactive"
+ *                       state: "OK"
  *                       channel:
  *                         type: "webhook"
  *                         webhookId: "65f5e4a3b9e77c001a789012"
@@ -388,23 +432,29 @@ router.get('/', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', async (req, res, next) => {
-  const teamId = req.user?.team;
-  const userId = req.user?._id;
-  if (teamId == null || userId == null) {
-    return res.sendStatus(403);
-  }
-  try {
-    const alertInput = req.body;
-    const createdAlert = await createAlert(teamId, alertInput, userId);
+router.post(
+  '/',
+  validateRequest({
+    body: alertSchema,
+  }),
+  async (req, res, next) => {
+    const teamId = req.user?.team;
+    const userId = req.user?._id;
+    if (teamId == null || userId == null) {
+      return res.sendStatus(403);
+    }
+    try {
+      const alertInput = req.body;
+      const createdAlert = await createAlert(teamId, alertInput, userId);
 
-    return res.json({
-      data: translateAlertDocumentToExternalAlert(createdAlert),
-    });
-  } catch (e) {
-    next(e);
-  }
-});
+      return res.json({
+        data: translateAlertDocumentToExternalAlert(createdAlert),
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 /**
  * @openapi
