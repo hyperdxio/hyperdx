@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_logs
 (
   `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
@@ -39,3 +40,6 @@ PRIMARY KEY (ServiceName, TimestampTime)
 ORDER BY (ServiceName, TimestampTime, Timestamp)
 TTL TimestampTime + toIntervalDay(30)
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
+
+-- +goose Down
+DROP TABLE IF EXISTS ${DATABASE}.otel_logs;

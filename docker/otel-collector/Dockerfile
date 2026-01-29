@@ -38,6 +38,7 @@ FROM base AS dev
 COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
 COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
 COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --chown=10001:10001 ./schema /etc/otel/schema
 
 EXPOSE 4317 4318 13133
 
@@ -49,6 +50,7 @@ FROM base AS prod
 COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
 COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
 COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --chown=10001:10001 ./schema /etc/otel/schema
 
 EXPOSE 4317 4318 13133
 

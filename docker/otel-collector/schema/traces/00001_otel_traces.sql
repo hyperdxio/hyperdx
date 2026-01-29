@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_traces
 (
     `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
@@ -37,3 +38,6 @@ PARTITION BY toDate(Timestamp)
 ORDER BY (ServiceName, SpanName, toDateTime(Timestamp))
 TTL toDate(Timestamp) + toIntervalDay(30)
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
+
+-- +goose Down
+DROP TABLE IF EXISTS ${DATABASE}.otel_traces;
