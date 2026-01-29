@@ -56,6 +56,12 @@ RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
 # prod ############################################################################################
 FROM node:${NODE_VERSION}-alpine AS prod
 
+LABEL org.opencontainers.image.vendor="HyperDX" \
+      org.opencontainers.image.title="HyperDX Production" \
+      org.opencontainers.image.description="HyperDX production image with API and App services" \
+      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.licenses="MIT"
+
 ARG CODE_VERSION
 
 ENV CODE_VERSION=$CODE_VERSION
@@ -78,6 +84,10 @@ COPY --chown=node:node --from=builder /app/packages/app/public ./packages/app/pa
 
 # Set up start script
 COPY --chown=node:node --from=hyperdx ./entry.prod.sh /etc/local/entry.sh
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:8000/health',r=>r.statusCode===200?process.exit(0):process.exit(1)).on('error',()=>process.exit(1))"
+
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 
 # all-in-one base ############################################################################################
@@ -142,11 +152,33 @@ EXPOSE 8080 4317 4318 13133 8123 9000
 
 # all-in-one no auth ############################################################################################
 FROM all-in-one-base AS all-in-one-noauth
+
+LABEL org.opencontainers.image.vendor="HyperDX" \
+      org.opencontainers.image.title="HyperDX All-in-One (No Auth)" \
+      org.opencontainers.image.description="HyperDX all-in-one image with ClickHouse, MongoDB, and OTel Collector (no authentication)" \
+      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.licenses="MIT"
+
 COPY --from=hyperdx ./entry.local.noauth.sh /etc/local/entry.sh
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/api/health || exit 1
+
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 
 # all-in-one with auth ############################################################################################
 FROM all-in-one-base AS all-in-one-auth
+
+LABEL org.opencontainers.image.vendor="HyperDX" \
+      org.opencontainers.image.title="HyperDX All-in-One (With Auth)" \
+      org.opencontainers.image.description="HyperDX all-in-one image with ClickHouse, MongoDB, and OTel Collector (with authentication)" \
+      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.licenses="MIT"
+
 COPY --from=hyperdx ./entry.local.auth.sh /etc/local/entry.sh
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/api/health || exit 1
+
 ENTRYPOINT ["sh", "/etc/local/entry.sh"]
 

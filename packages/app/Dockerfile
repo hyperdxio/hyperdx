@@ -44,6 +44,13 @@ RUN rm -rf node_modules && yarn workspaces focus @hyperdx/app --production
 
 ## prod ############################################################################################
 FROM node:22.16.0-alpine AS prod
+
+LABEL org.opencontainers.image.vendor="HyperDX" \
+      org.opencontainers.image.title="HyperDX App" \
+      org.opencontainers.image.description="HyperDX frontend application for observability platform" \
+      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.licenses="MIT"
+
 WORKDIR /app
 
 ENV NODE_ENV production
@@ -70,5 +77,8 @@ EXPOSE ${PORT}
 # Learn more here: https://nextjs.org/telemetry
 # Uncomment the following line in case you want to disable telemetry.
 ENV NEXT_TELEMETRY_DISABLED 1
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:'+(process.env.PORT||8080)+'/api/health',r=>r.statusCode===200?process.exit(0):process.exit(1)).on('error',()=>process.exit(1))"
 
 CMD ["sh", "-c", "node_modules/.bin/next start -p ${PORT}"]
