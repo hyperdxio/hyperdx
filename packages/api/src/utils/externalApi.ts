@@ -152,8 +152,6 @@ export const translateExternalChartToInternalChart = (
   };
 };
 
-export type ExternalChart = {};
-
 export type ExternalDashboard = {
   id: string;
   name: string;
