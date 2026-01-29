@@ -242,10 +242,10 @@ describe('External API Alerts', () => {
         message: 'This should fail validation',
       };
 
-      // API returns 500 for validation errors
+      // API returns 400 for validation errors
       const response = await authRequest('post', ALERTS_BASE_URL)
         .send(invalidInput)
-        .expect(500);
+        .expect(400);
 
       expect(response.body).toHaveProperty('message');
 
