@@ -1,5 +1,14 @@
+import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
+import { omit } from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
+
+import {
+  MarkdownChartSeries,
+  NumberChartSeries,
+  TableChartSeries,
+  TimeChartSeries,
+} from '@/utils/zod';
 
 import {
   getLoggedInAgent,
@@ -337,6 +346,189 @@ describe('External API v2 Dashboards', () => {
       expect(retrieveResponse.body.data.tiles.length).toBe(4);
       expect(retrieveResponse.body.data.tags).toEqual(['test', 'chart-types']);
     });
+
+    it('can round-trip all supported chart types and all supported fields on each chart type', async () => {
+      // Arrange
+      const lineChart = {
+        name: 'Line Chart',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        asRatio: true,
+        series: [
+          {
+            type: 'time',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.95,
+            field: 'Duration',
+            alias: '95th Percentile Duration',
+            where: "env = 'production'",
+            whereLanguage: 'sql',
+            groupBy: ['service.name', 'StatusCode'],
+            numberFormat: {
+              output: 'time',
+              factor: 0.001,
+              unit: 'ms',
+            },
+            displayType: 'line',
+          } satisfies TimeChartSeries,
+          {
+            type: 'time',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.99,
+            field: 'Duration',
+            alias: '99th Percentile Duration',
+            where: 'env:production',
+            whereLanguage: 'lucene',
+            groupBy: ['service.name', 'StatusCode'],
+            numberFormat: {
+              output: 'time',
+              factor: 0.001,
+              unit: 'ms',
+            },
+            displayType: 'line',
+          } satisfies TimeChartSeries,
+        ],
+      };
+
+      const barChart = {
+        name: 'Bar Chart',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        asRatio: false,
+        series: [
+          {
+            type: 'time',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.95,
+            field: '',
+            metricName: 'ClickHouseAsyncMetrics_BlockWriteBytes_ram1',
+            metricDataType: MetricsDataType.Gauge,
+            alias: '95th Percentile Duration',
+            where: "env = 'production'",
+            whereLanguage: 'sql',
+            groupBy: [],
+            numberFormat: {
+              output: 'byte',
+              decimalBytes: true,
+              mantissa: 0,
+            },
+            displayType: 'stacked_bar',
+          } satisfies TimeChartSeries,
+        ],
+      };
+
+      const tableChart = {
+        name: 'Table Chart',
+        x: 12,
+        y: 0,
+        w: 6,
+        h: 3,
+        asRatio: false,
+        series: [
+          {
+            type: 'table',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.5,
+            field: 'Duration',
+            alias: 'Median Duration',
+            where: "env = 'production'",
+            whereLanguage: 'sql',
+            groupBy: ['service.name'],
+            sortOrder: 'desc',
+            numberFormat: {
+              output: 'percent',
+              mantissa: 2,
+              thousandSeparated: true,
+              average: true,
+            },
+          } satisfies TableChartSeries,
+          {
+            type: 'table',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.99,
+            field: 'Duration',
+            alias: '99th Percentile Duration',
+            where: "env = 'production'",
+            whereLanguage: 'sql',
+            groupBy: ['service.name'],
+            sortOrder: 'desc',
+            numberFormat: {
+              output: 'percent',
+              mantissa: 2,
+              thousandSeparated: true,
+              average: true,
+            },
+          } satisfies TableChartSeries,
+        ],
+      };
+
+      const numberChart = {
+        name: 'Number Chart',
+        x: 18,
+        y: 0,
+        w: 6,
+        h: 3,
+        asRatio: false,
+        series: [
+          {
+            type: 'number',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.5,
+            field: 'Duration',
+            alias: '50th Percentile Duration',
+            where: "env = 'production'",
+            whereLanguage: 'sql',
+            numberFormat: {
+              output: 'percent',
+              mantissa: 2,
+              thousandSeparated: true,
+              average: true,
+            },
+          } satisfies NumberChartSeries,
+        ],
+      };
+
+      const markdownChart = {
+        name: 'Markdown Chart',
+        x: 0,
+        y: 3,
+        w: 6,
+        h: 3,
+        asRatio: false,
+        series: [
+          {
+            type: 'markdown',
+            content: '# Markdown Content',
+          } satisfies MarkdownChartSeries,
+        ],
+      };
+
+      // Act
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with All Chart Types',
+          tiles: [lineChart, barChart, tableChart, numberChart, markdownChart],
+          tags: ['round-trip-test'],
+        })
+        .expect(200);
+
+      // Assert response matches input (ignoring generated IDs)
+      expect(omit(response.body.data.tiles[0], ['id'])).toEqual(lineChart);
+      expect(omit(response.body.data.tiles[1], ['id'])).toEqual(barChart);
+      expect(omit(response.body.data.tiles[2], ['id'])).toEqual(tableChart);
+      expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberChart);
+      expect(omit(response.body.data.tiles[4], ['id'])).toEqual(markdownChart);
+    });
   });
 
   describe('PUT /:id', () => {
@@ -374,6 +566,200 @@ describe('External API v2 Dashboards', () => {
       await authRequest('put', `${BASE_URL}/${nonExistentId}`)
         .send(mockDashboard)
         .expect(404);
+    });
+
+    it('can round-trip all supported chart types and all supported fields on each chart type', async () => {
+      // Arrange
+      const lineChart = {
+        id: new ObjectId().toString(),
+        name: 'Line Chart',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        asRatio: true,
+        series: [
+          {
+            type: 'time',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.95,
+            field: 'Duration',
+            alias: '95th Percentile Duration',
+            where: "env = 'production'",
+            whereLanguage: 'sql',
+            groupBy: ['service.name', 'StatusCode'],
+            numberFormat: {
+              output: 'time',
+              factor: 0.001,
+              unit: 'ms',
+            },
+            displayType: 'line',
+          } satisfies TimeChartSeries,
+          {
+            type: 'time',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.99,
+            field: 'Duration',
+            alias: '99th Percentile Duration',
+            where: 'env:production',
+            whereLanguage: 'lucene',
+            groupBy: ['service.name', 'StatusCode'],
+            numberFormat: {
+              output: 'time',
+              factor: 0.001,
+              unit: 'ms',
+            },
+            displayType: 'line',
+          } satisfies TimeChartSeries,
+        ],
+      };
+
+      const barChart = {
+        id: new ObjectId().toString(),
+        name: 'Bar Chart',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        asRatio: false,
+        series: [
+          {
+            type: 'time',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.95,
+            field: '',
+            metricName: 'ClickHouseAsyncMetrics_BlockWriteBytes_ram1',
+            metricDataType: MetricsDataType.Gauge,
+            alias: '95th Percentile Duration',
+            where: "env = 'production'",
+            whereLanguage: 'sql',
+            groupBy: [],
+            numberFormat: {
+              output: 'byte',
+              decimalBytes: true,
+              mantissa: 0,
+            },
+            displayType: 'stacked_bar',
+          } satisfies TimeChartSeries,
+        ],
+      };
+
+      const tableChart = {
+        id: new ObjectId().toString(),
+        name: 'Table Chart',
+        x: 12,
+        y: 0,
+        w: 6,
+        h: 3,
+        asRatio: false,
+        series: [
+          {
+            type: 'table',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.5,
+            field: 'Duration',
+            alias: 'Median Duration',
+            where: "env = 'production'",
+            whereLanguage: 'sql',
+            groupBy: ['service.name'],
+            sortOrder: 'desc',
+            numberFormat: {
+              output: 'percent',
+              mantissa: 2,
+              thousandSeparated: true,
+              average: true,
+            },
+          } satisfies TableChartSeries,
+          {
+            type: 'table',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.99,
+            field: 'Duration',
+            alias: '99th Percentile Duration',
+            where: "env = 'production'",
+            whereLanguage: 'sql',
+            groupBy: ['service.name'],
+            sortOrder: 'desc',
+            numberFormat: {
+              output: 'percent',
+              mantissa: 2,
+              thousandSeparated: true,
+              average: true,
+            },
+          } satisfies TableChartSeries,
+        ],
+      };
+
+      const numberChart = {
+        id: new ObjectId().toString(),
+        name: 'Number Chart',
+        x: 18,
+        y: 0,
+        w: 6,
+        h: 3,
+        asRatio: false,
+        series: [
+          {
+            type: 'number',
+            sourceId: '68dd82484f54641b08667897',
+            aggFn: 'quantile',
+            level: 0.5,
+            field: 'Duration',
+            alias: '50th Percentile Duration',
+            where: "env = 'production'",
+            whereLanguage: 'sql',
+            numberFormat: {
+              output: 'percent',
+              mantissa: 2,
+              thousandSeparated: true,
+              average: true,
+            },
+          } satisfies NumberChartSeries,
+        ],
+      };
+
+      const markdownChart = {
+        id: new ObjectId().toString(),
+        name: 'Markdown Chart',
+        x: 0,
+        y: 3,
+        w: 6,
+        h: 3,
+        asRatio: false,
+        series: [
+          {
+            type: 'markdown',
+            content: '# Markdown Content',
+          } satisfies MarkdownChartSeries,
+        ],
+      };
+
+      // Create an initial dashboard to update
+      const initialDashboard = await createTestDashboard();
+
+      // Act
+      const response = await authRequest(
+        'put',
+        `${BASE_URL}/${initialDashboard._id}`,
+      )
+        .send({
+          name: 'Dashboard with All Chart Types',
+          tiles: [lineChart, barChart, tableChart, numberChart, markdownChart],
+          tags: ['round-trip-test'],
+        })
+        .expect(200);
+
+      // Assert response matches input (ignoring generated IDs)
+      expect(response.body.data.tiles[0]).toEqual(lineChart);
+      expect(response.body.data.tiles[1]).toEqual(barChart);
+      expect(response.body.data.tiles[2]).toEqual(tableChart);
+      expect(response.body.data.tiles[3]).toEqual(numberChart);
+      expect(response.body.data.tiles[4]).toEqual(markdownChart);
     });
   });
 

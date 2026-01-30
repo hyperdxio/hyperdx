@@ -55,7 +55,13 @@ function isSortOrderDesc(config: SavedChartConfig): boolean {
 const convertChartConfigToExternalChartSeries = (
   config: SavedChartConfig,
 ): ChartSeries[] => {
-  const { displayType, source: sourceId, select, groupBy } = config;
+  const {
+    displayType,
+    source: sourceId,
+    select,
+    groupBy,
+    numberFormat,
+  } = config;
   const isSelectArray = Array.isArray(select);
   const convertedGroupBy = Array.isArray(groupBy)
     ? groupBy.map(g => g.valueExpression)
@@ -74,8 +80,8 @@ const convertChartConfigToExternalChartSeries = (
           s.aggFn ?? 'none',
         );
         return {
-          ...pick(s, ['aggFn', 'alias', 'metricName', 'numberFormat']),
           aggFn: aggFnSanitized.success ? aggFnSanitized.data : 'none',
+          alias: s.alias ?? undefined,
           type: 'time',
           sourceId,
           displayType,
@@ -84,7 +90,9 @@ const convertChartConfigToExternalChartSeries = (
           where: s.aggCondition ?? '',
           whereLanguage: s.aggConditionLanguage ?? 'lucene',
           groupBy: convertedGroupBy,
-          metricDataType: s.metricType,
+          metricName: s.metricName ?? undefined,
+          metricDataType: s.metricType ?? undefined,
+          numberFormat: numberFormat ?? undefined,
         } satisfies TimeChartSeries;
       });
 
@@ -99,8 +107,8 @@ const convertChartConfigToExternalChartSeries = (
           s.aggFn ?? 'none',
         );
         return {
-          ...pick(s, ['aggFn', 'alias', 'metricName', 'numberFormat']),
           aggFn: aggFnSanitized.success ? aggFnSanitized.data : 'none',
+          alias: s.alias ?? undefined,
           type: 'table',
           sourceId,
           level: hasLevel(s) ? s.level : undefined,
@@ -108,8 +116,10 @@ const convertChartConfigToExternalChartSeries = (
           where: s.aggCondition ?? '',
           whereLanguage: s.aggConditionLanguage ?? 'lucene',
           groupBy: convertedGroupBy,
-          metricDataType: s.metricType,
+          metricName: s.metricName ?? undefined,
+          metricDataType: s.metricType ?? undefined,
           sortOrder: isSortOrderDesc(config) ? 'desc' : 'asc',
+          numberFormat: numberFormat ?? undefined,
         } satisfies TableChartSeries;
       });
 
@@ -128,12 +138,7 @@ const convertChartConfigToExternalChartSeries = (
 
       return [
         {
-          ...pick(firstSelect, [
-            'aggFn',
-            'alias',
-            'metricName',
-            'numberFormat',
-          ]),
+          alias: firstSelect.alias ?? undefined,
           aggFn: aggFnSanitized.success ? aggFnSanitized.data : 'none',
           type: 'number',
           sourceId,
@@ -141,7 +146,9 @@ const convertChartConfigToExternalChartSeries = (
           field: firstSelect.valueExpression,
           where: firstSelect.aggCondition ?? '',
           whereLanguage: firstSelect.aggConditionLanguage ?? 'lucene',
-          metricDataType: firstSelect.metricType,
+          metricName: firstSelect.metricName ?? undefined,
+          metricDataType: firstSelect.metricType ?? undefined,
+          numberFormat: numberFormat ?? undefined,
         },
       ] satisfies [NumberChartSeries];
     }
@@ -216,6 +223,7 @@ export function translateExternalChartToTileConfig(
   let whereLanguage: SavedChartConfig['whereLanguage'] = 'lucene';
   let orderBy: SavedChartConfig['orderBy'] = '';
   let markdown: SavedChartConfig['markdown'] = '';
+  let numberFormat: SavedChartConfig['numberFormat'] = undefined;
 
   switch (firstSeries.type) {
     case 'time': {
@@ -229,6 +237,12 @@ export function translateExternalChartToTileConfig(
         if (s.type !== 'time') {
           throw new Error('All series in a time chart must be time series');
         }
+
+        // Take the first numberFormat found among series
+        if (s.numberFormat && !numberFormat) {
+          numberFormat = s.numberFormat;
+        }
+
         return {
           aggFn: s.aggFn ?? undefined,
           valueExpression: s.field ?? '',
@@ -253,6 +267,12 @@ export function translateExternalChartToTileConfig(
         if (s.type !== 'table') {
           throw new Error('All series in a table chart must be table series');
         }
+
+        // Take the first numberFormat found among series
+        if (s.numberFormat && !numberFormat) {
+          numberFormat = s.numberFormat;
+        }
+
         return {
           aggFn: s.aggFn ?? undefined,
           valueExpression: s.field ?? '',
@@ -281,6 +301,7 @@ export function translateExternalChartToTileConfig(
 
     case 'number': {
       displayType = DisplayType.Number;
+      numberFormat = firstSeries.numberFormat;
 
       // Number chart uses only the first series
       select = [
@@ -333,6 +354,7 @@ export function translateExternalChartToTileConfig(
     orderBy,
     markdown,
     seriesReturnType: asRatio ? 'ratio' : 'column',
+    numberFormat,
   };
 
   return {

@@ -22,15 +22,13 @@ export type SourceTable = z.infer<typeof sourceTableSchema>;
 // ==============================
 
 const numberFormatSchema = z.object({
-  output: z
-    .union([
-      z.literal('currency'),
-      z.literal('percent'),
-      z.literal('byte'),
-      z.literal('time'),
-      z.literal('number'),
-    ])
-    .optional(),
+  output: z.union([
+    z.literal('currency'),
+    z.literal('percent'),
+    z.literal('byte'),
+    z.literal('time'),
+    z.literal('number'),
+  ]),
   mantissa: z.number().optional(),
   thousandSeparated: z.boolean().optional(),
   average: z.boolean().optional(),
