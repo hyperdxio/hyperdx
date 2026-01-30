@@ -1,5 +1,22 @@
 # @hyperdx/api
 
+## 2.14.0
+
+### Minor Changes
+
+- 4c287b16: fix: Fix external dashboard endpoints
+- 3aa8be0a: Concat zod errors into a single message field
+- d07e30d5: Associates a logged in HyperDX user to the ClickHouse query recorded in the query log.
+
+### Patch Changes
+
+- 4e7d04c7: API: Show error "Invalid JSON payload" if the JSON body has a syntax error
+- 941bc23e: fix: Fix inaccurate openapi docs for external alerts API
+- b8ab312a: chore: improve Team typing
+- Updated dependencies [6aa3ac6f]
+- Updated dependencies [b8ab312a]
+  - @hyperdx/common-utils@0.11.1
+
 ## 2.13.0
 
 ### Minor Changes

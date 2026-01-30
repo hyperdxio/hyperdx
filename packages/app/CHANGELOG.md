@@ -1,5 +1,71 @@
 # @hyperdx/app
 
+## 2.14.0
+
+### Minor Changes
+
+- 4c287b16: fix: Fix external dashboard endpoints
+- 2f1a13cc: feat: Multi-theme system with HyperDX and ClickStack branding support
+
+  ## Major Features
+
+  ### Multi-Theme System
+
+  - Add infrastructure for supporting multiple brand themes (HyperDX & ClickStack)
+  - Theme switching available in dev/local mode via localStorage
+  - Production deployments use `NEXT_PUBLIC_THEME` environment variable (deployment-configured)
+  - Each theme provides its own logos, colors, favicons, and default fonts
+
+  ### Dynamic Favicons
+
+  - Implement theme-aware favicon system with SVG, PNG fallbacks, and Apple Touch Icon
+  - Add hydration-safe `DynamicFavicon` component
+  - Include XSS protection for theme-color meta tag validation
+
+  ### Component Refactoring
+
+  - Rename `Icon` → `Logomark` (icon/symbol only)
+  - Rename `Logo` → `Wordmark` (icon + text branding)
+  - Each theme provides its own `Logomark` and `Wordmark` components
+  - Update all component imports across the codebase
+
+  ### User Preferences Updates
+
+  - Rename `theme` property to `colorMode` to clarify light/dark mode vs brand theme
+  - Remove background overlay feature (backgroundEnabled, backgroundUrl, etc.)
+  - Add automatic data migration from legacy `theme` → `colorMode` in localStorage
+  - Ensure existing users don't lose their preferences during migration
+
+  ### Performance & Type Safety
+
+  - Optimize theme CSS class management (single class swap instead of iterating all themes)
+  - Improve type safety in migration function using destructuring
+  - Add type guards for runtime validation of localStorage data
+
+- d07e30d5: Associates a logged in HyperDX user to the ClickHouse query recorded in the query log.
+
+### Patch Changes
+
+- 9101a993: fix: Update ConnectionForm button variant based on test connection state
+
+  Changed the button variant in the ConnectionForm component to reflect the test connection state, using 'danger' for invalid states and 'secondary' for others. This improves user feedback during connection testing.
+
+- f7d8b83f: Improve sidebar expand/collapse animation
+- b8ab312a: chore: improve Team typing
+- 08b922cd: debug: notify SourceForm error path when message is 'Required'
+- 16df5024: fix: Fix tile hover state after closing edit modal
+- 22f882d6: Do not trigger table search input on modals/drawers
+- 7a5a5ef6: fix: Fix histogram disappearing and scrollbar issues on event patterns and search pages
+
+  Fixes regression from PR #1598 by adding proper flex container constraints to prevent histogram from disappearing and scrollbar from cutting off 120px early.
+
+- be4b784c: fix: Make JSON line hover visible in inline panel
+- eea4fa48: fix: Prevent orphan alert when duplicating dashboard tiles
+- 0dd58543: fix: Fix dashboard error when using filter on non-String column
+- Updated dependencies [6aa3ac6f]
+- Updated dependencies [b8ab312a]
+  - @hyperdx/common-utils@0.11.1
+
 ## 2.13.0
 
 ### Minor Changes
