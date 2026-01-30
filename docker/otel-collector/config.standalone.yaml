@@ -1,0 +1,73 @@
+# This configuration is derived from packages/api/src/opamp/controllers/opampController.ts
+# When updating this file, ensure it stays in sync with buildOtelCollectorConfig()
+
+receivers:
+  otlp/hyperdx:
+    protocols:
+      grpc:
+        include_metadata: true
+        endpoint: "0.0.0.0:4317"
+      http:
+        cors:
+          allowed_origins: ["*"]
+          allowed_headers: ["*"]
+        include_metadata: true
+        endpoint: "0.0.0.0:4318"
+
+connectors:
+  routing/logs:
+    default_pipelines: [logs/out-default]
+    error_mode: ignore
+    table:
+      - context: log
+        statement: route() where IsMatch(attributes["rr-web.event"], ".*")
+        pipelines: [logs/out-rrweb]
+
+exporters:
+  clickhouse/rrweb:
+    database: ${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
+    endpoint: ${env:CLICKHOUSE_ENDPOINT}
+    password: ${env:CLICKHOUSE_PASSWORD}
+    username: ${env:CLICKHOUSE_USER}
+    ttl: 720h
+    logs_table_name: hyperdx_sessions
+    timeout: 5s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+  clickhouse:
+    database: ${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
+    endpoint: ${env:CLICKHOUSE_ENDPOINT}
+    password: ${env:CLICKHOUSE_PASSWORD}
+    username: ${env:CLICKHOUSE_USER}
+    ttl: 720h
+    timeout: 5s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp/hyperdx]
+      processors: [memory_limiter, batch]
+      exporters: [clickhouse]
+    metrics:
+      receivers: [otlp/hyperdx]
+      processors: [memory_limiter, batch]
+      exporters: [clickhouse]
+    logs/in:
+      receivers: [otlp/hyperdx]
+      exporters: [routing/logs]
+    logs/out-default:
+      receivers: [routing/logs]
+      processors: [memory_limiter, transform, batch]
+      exporters: [clickhouse]
+    logs/out-rrweb:
+      receivers: [routing/logs]
+      processors: [memory_limiter, batch]
+      exporters: [clickhouse/rrweb]

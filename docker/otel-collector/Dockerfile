@@ -13,7 +13,8 @@ ARG USER_GID=10001
 RUN apk add --no-cache ca-certificates && \
   addgroup -S -g ${USER_GID} otel && \
   adduser  -S -u ${USER_UID} -G otel otel && \
-  install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data
+  install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data && \
+  install -d -m 0755 -o ${USER_UID} -g ${USER_GID} /etc/otelcol-contrib
 
 # Copy gomplate binary from the gomplate image
 COPY --from=gomplate /bin/gomplate /usr/local/bin/gomplate
@@ -30,8 +31,15 @@ COPY --chmod=755 ./log-tailer.sh /log-tailer.sh
 ## dev ##############################################################################################
 FROM base AS dev
 
-COPY ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+LABEL org.opencontainers.image.vendor="HyperDX" \
+      org.opencontainers.image.title="HyperDX OTel Collector (Dev)" \
+      org.opencontainers.image.description="OpenTelemetry Collector for HyperDX development" \
+      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.licenses="MIT"
+
+COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
+COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
 EXPOSE 4317 4318 13133
 
@@ -40,8 +48,15 @@ ENTRYPOINT ["/entrypoint.sh", "/opampsupervisor"]
 ## prod #############################################################################################
 FROM base AS prod
 
-COPY ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+LABEL org.opencontainers.image.vendor="HyperDX" \
+      org.opencontainers.image.title="HyperDX OTel Collector" \
+      org.opencontainers.image.description="OpenTelemetry Collector for HyperDX observability platform" \
+      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.licenses="MIT"
+
+COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
+COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
 EXPOSE 4317 4318 13133
 
