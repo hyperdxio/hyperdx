@@ -89,9 +89,11 @@ function barColor(condition: {
 }) {
   const { isError, isWarn, isHighlighted } = condition;
   if (isError)
-    return isHighlighted ? CHART_COLOR_ERROR_HIGHLIGHT : CHART_COLOR_ERROR;
+    return isHighlighted ? CHART_COLOR_ERROR_HIGHLIGHT() : CHART_COLOR_ERROR();
   if (isWarn)
-    return isHighlighted ? CHART_COLOR_WARNING_HIGHLIGHT : CHART_COLOR_WARNING;
+    return isHighlighted
+      ? CHART_COLOR_WARNING_HIGHLIGHT()
+      : CHART_COLOR_WARNING();
   return isHighlighted ? '#A9AFB7' : '#6A7077';
 }
 

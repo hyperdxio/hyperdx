@@ -31,15 +31,19 @@ const CHART_COLORS = COLORS.map((hex, i) => ({
 const SEMANTIC_CHART_COLORS = [
   {
     name: 'color-chart-success',
-    hex: CHART_COLOR_SUCCESS,
+    hex: CHART_COLOR_SUCCESS(),
     label: 'Success (Green)',
   },
   {
     name: 'color-chart-warning',
-    hex: CHART_COLOR_WARNING,
+    hex: CHART_COLOR_WARNING(),
     label: 'Warning (Orange)',
   },
-  { name: 'color-chart-error', hex: CHART_COLOR_ERROR, label: 'Error (Red)' },
+  {
+    name: 'color-chart-error',
+    hex: CHART_COLOR_ERROR(),
+    label: 'Error (Red)',
+  },
 ];
 
 const story = {

@@ -250,13 +250,13 @@ function PropertyComparisonChart({
           <Bar
             dataKey="outlierCount"
             name="Outliers"
-            fill={CHART_COLOR_ERROR}
+            fill={CHART_COLOR_ERROR()}
             isAnimationActive={false}
           />
           <Bar
             dataKey="inlierCount"
             name="Inliers"
-            fill={CHART_COLOR_SUCCESS}
+            fill={CHART_COLOR_SUCCESS()}
             isAnimationActive={false}
           />
         </BarChart>

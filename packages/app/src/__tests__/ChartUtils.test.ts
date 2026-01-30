@@ -316,7 +316,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: CHART_COLOR_ERROR,
+          color: CHART_COLOR_ERROR(),
           dataKey: 'error',
           currentPeriodKey: 'error',
           previousPeriodKey: 'error (previous)',

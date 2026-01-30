@@ -424,10 +424,28 @@ export const CHART_PALETTE = {
   orangeHighlight: '#f5c94d',
 } as const;
 
-// Ordered array for chart series - green first for brand consistency
+// ClickStack theme chart color palette
+export const CLICKSTACK_CHART_PALETTE = {
+  blue: '#437eef', // Primary color for ClickStack
+  green: '#33ff44',
+  orange: '#ff7729',
+  red: '#ff2323',
+  fuchsia: '#fb64d6',
+  violet: '#bb33ff',
+  babyblue: '#00cbeb',
+  teal: '#6df8e1',
+  sunrise: '#ffc300',
+  slate: '#9a9ea7',
+  // Highlighted variants
+  redHighlight: '#ff5c5c',
+  orangeHighlight: '#ff9944',
+} as const;
+
+// Ordered array for chart series - green first for brand consistency (HyperDX default)
 // Maps to CSS variables: COLORS[0] -> --color-chart-1, COLORS[1] -> --color-chart-2, etc.
+// NOTE: This is a fallback for SSR. In browser, getColorFromCSSVariable() reads from CSS variables
 export const COLORS = [
-  CHART_PALETTE.green, // 1 - Brand green (primary)
+  CHART_PALETTE.green, // 1 - Brand green (primary) - HyperDX default
   CHART_PALETTE.blue, // 2
   CHART_PALETTE.orange, // 3
   CHART_PALETTE.red, // 4
@@ -438,6 +456,79 @@ export const COLORS = [
   CHART_PALETTE.brown, // 9
   CHART_PALETTE.gray, // 10
 ];
+
+// ClickStack theme ordered color array - blue first for brand consistency
+// Maps to CSS variables: CLICKSTACK_COLORS[0] -> --color-chart-1, etc.
+// NOTE: This is a fallback for SSR. In browser, getColorFromCSSVariable() reads from CSS variables
+export const CLICKSTACK_COLORS = [
+  CLICKSTACK_CHART_PALETTE.blue, // 1 - Blue (primary) - ClickStack default
+  CLICKSTACK_CHART_PALETTE.green, // 2
+  CLICKSTACK_CHART_PALETTE.orange, // 3
+  CLICKSTACK_CHART_PALETTE.red, // 4
+  CLICKSTACK_CHART_PALETTE.fuchsia, // 5
+  CLICKSTACK_CHART_PALETTE.violet, // 6
+  CLICKSTACK_CHART_PALETTE.babyblue, // 7
+  CLICKSTACK_CHART_PALETTE.teal, // 8
+  CLICKSTACK_CHART_PALETTE.sunrise, // 9
+  CLICKSTACK_CHART_PALETTE.slate, // 10
+];
+
+/**
+ * Detects the active theme by checking for theme classes on documentElement.
+ * Returns 'clickstack' if theme-clickstack class is present, 'hyperdx' otherwise.
+ */
+function detectActiveTheme(): 'clickstack' | 'hyperdx' {
+  if (typeof window === 'undefined') {
+    // SSR: default to hyperdx (can't detect theme without DOM)
+    return 'hyperdx';
+  }
+
+  try {
+    const htmlElement = document.documentElement;
+    if (htmlElement.classList.contains('theme-clickstack')) {
+      return 'clickstack';
+    }
+  } catch {
+    // Fallback if DOM access fails
+  }
+
+  return 'hyperdx';
+}
+
+/**
+ * Reads chart color from CSS variable based on index.
+ * Falls back to theme-appropriate color array if CSS variable is not available (SSR or missing).
+ * This ensures theme-aware colors (ClickStack uses blue, HyperDX uses green).
+ */
+export function getColorFromCSSVariable(index: number): string {
+  const activeTheme = detectActiveTheme();
+  const fallbackColors =
+    activeTheme === 'clickstack' ? CLICKSTACK_COLORS : COLORS;
+  const colorArrayLength = fallbackColors.length;
+
+  if (typeof window === 'undefined') {
+    // SSR: fallback to theme-appropriate hardcoded colors
+    return fallbackColors[index % colorArrayLength];
+  }
+
+  try {
+    const cssVarName = `--color-chart-${(index % colorArrayLength) + 1}`;
+    // Read from documentElement - CSS variables cascade from theme classes
+    const computedStyle = getComputedStyle(document.documentElement);
+    const color = computedStyle.getPropertyValue(cssVarName).trim();
+
+    // Only use CSS variable if it's actually set (non-empty)
+    // Empty string means the variable isn't defined for current theme
+    if (color && color !== '') {
+      return color;
+    }
+  } catch {
+    // Fallback if getComputedStyle fails
+  }
+
+  // Fallback to theme-appropriate hardcoded colors
+  return fallbackColors[index % colorArrayLength];
+}
 
 export function hashCode(str: string) {
   let hash = 0,
@@ -452,14 +543,76 @@ export function hashCode(str: string) {
   return hash;
 }
 
-// Semantic colors for log levels (derived from palette)
-export const CHART_COLOR_SUCCESS = CHART_PALETTE.green;
-export const CHART_COLOR_WARNING = CHART_PALETTE.orange;
-export const CHART_COLOR_ERROR = CHART_PALETTE.red;
+/**
+ * Gets theme-aware chart color from CSS variable or falls back to palette.
+ * Reads from --color-chart-{type} CSS variable, falls back to theme-appropriate palette.
+ */
+function getSemanticChartColor(
+  cssVarName: string,
+  hyperdxColor: string,
+  clickstackColor: string,
+): string {
+  if (typeof window === 'undefined') {
+    // SSR: use HyperDX as default (can't detect theme)
+    return hyperdxColor;
+  }
 
-// Highlighted variants (derived from palette)
-export const CHART_COLOR_ERROR_HIGHLIGHT = CHART_PALETTE.redHighlight;
-export const CHART_COLOR_WARNING_HIGHLIGHT = CHART_PALETTE.orangeHighlight;
+  try {
+    const computedStyle = getComputedStyle(document.documentElement);
+    const color = computedStyle.getPropertyValue(cssVarName).trim();
+    if (color && color !== '') {
+      return color;
+    }
+  } catch {
+    // Fallback if getComputedStyle fails
+  }
+
+  // Fallback to theme-appropriate palette
+  const activeTheme = detectActiveTheme();
+  return activeTheme === 'clickstack' ? clickstackColor : hyperdxColor;
+}
+
+// Semantic colors for log levels (theme-aware)
+export function CHART_COLOR_SUCCESS(): string {
+  return getSemanticChartColor(
+    '--color-chart-success',
+    CHART_PALETTE.green,
+    CLICKSTACK_CHART_PALETTE.green,
+  );
+}
+
+export function CHART_COLOR_WARNING(): string {
+  return getSemanticChartColor(
+    '--color-chart-warning',
+    CHART_PALETTE.orange,
+    CLICKSTACK_CHART_PALETTE.orange,
+  );
+}
+
+export function CHART_COLOR_ERROR(): string {
+  return getSemanticChartColor(
+    '--color-chart-error',
+    CHART_PALETTE.red,
+    CLICKSTACK_CHART_PALETTE.red,
+  );
+}
+
+// Highlighted variants (theme-aware)
+export function CHART_COLOR_ERROR_HIGHLIGHT(): string {
+  return getSemanticChartColor(
+    '--color-chart-error-highlight',
+    CHART_PALETTE.redHighlight,
+    CLICKSTACK_CHART_PALETTE.redHighlight,
+  );
+}
+
+export function CHART_COLOR_WARNING_HIGHLIGHT(): string {
+  return getSemanticChartColor(
+    '--color-chart-warning-highlight',
+    CHART_PALETTE.orangeHighlight,
+    CLICKSTACK_CHART_PALETTE.orangeHighlight,
+  );
+}
 
 // Try to match log levels to colors
 export const semanticKeyedColor = (
@@ -469,25 +622,28 @@ export const semanticKeyedColor = (
   const logLevel = getLogLevelClass(`${key}`);
   if (logLevel != null) {
     return logLevel === 'error'
-      ? CHART_COLOR_ERROR
+      ? CHART_COLOR_ERROR()
       : logLevel === 'warn'
-        ? CHART_COLOR_WARNING
-        : CHART_COLOR_SUCCESS;
+        ? CHART_COLOR_WARNING()
+        : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
+          getColorFromCSSVariable(0);
   }
 
-  return COLORS[index % COLORS.length];
+  // Use CSS variable for theme-aware colors, fallback to hardcoded array
+  return getColorFromCSSVariable(index);
 };
 
 export const logLevelColor = (key: string | number | undefined) => {
   const logLevel = getLogLevelClass(`${key}`);
   return logLevel === 'error'
-    ? CHART_COLOR_ERROR
+    ? CHART_COLOR_ERROR()
     : logLevel === 'warn'
-      ? CHART_COLOR_WARNING
-      : CHART_COLOR_SUCCESS;
+      ? CHART_COLOR_WARNING()
+      : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
+        getColorFromCSSVariable(0);
 };
 
-// order of colors for sorting. green on bottom, then yellow, then red
+// order of colors for sorting. primary color (blue/green) on bottom, then yellow, then red
 export const logLevelColorOrder = [
   logLevelColor('info'),
   logLevelColor('warn'),
@@ -499,17 +655,19 @@ const getLevelColor = (logLevel?: string) => {
     return;
   }
   return logLevel === 'error'
-    ? CHART_COLOR_ERROR
+    ? CHART_COLOR_ERROR()
     : logLevel === 'warn'
-      ? CHART_COLOR_WARNING
-      : CHART_COLOR_SUCCESS;
+      ? CHART_COLOR_WARNING()
+      : // Info-level logs use primary chart color (blue for ClickStack, green for HyperDX)
+        getColorFromCSSVariable(0);
 };
 
 export const getColorProps = (index: number, level: string): string => {
   const logLevel = getLogLevelClass(level);
   const colorOverride = getLevelColor(logLevel);
 
-  return colorOverride ?? COLORS[index % COLORS.length];
+  // Use CSS variable for theme-aware colors, fallback to hardcoded array
+  return colorOverride ?? getColorFromCSSVariable(index);
 };
 
 export const truncateMiddle = (str: string, maxLen = 10) => {
