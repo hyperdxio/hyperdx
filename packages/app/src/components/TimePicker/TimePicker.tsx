@@ -244,7 +244,6 @@ const TimePickerComponent = ({
           <TextField
             data-testid="time-picker-input"
             value={value}
-            // @ts-expect-error - onChange is not typed correctly
             onChange={newValue => onChange(newValue)}
             placeholder="Time Range"
             style={{
@@ -253,7 +252,6 @@ const TimePickerComponent = ({
                 ? 'var(--color-text-brand)'
                 : 'var(--color-text)',
             }}
-            // @ts-expect-error - onKeyDown is not typed correctly
             onKeyDown={e => {
               if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
                 onSubmit?.(e.target.value);
