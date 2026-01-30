@@ -108,7 +108,7 @@ export type SearchChartSeries = z.infer<typeof searchChartSeriesSchema>;
 
 const markdownChartSeriesSchema = z.object({
   type: z.literal('markdown'),
-  content: z.string(),
+  content: z.string().max(100000),
 });
 
 export type MarkdownChartSeries = z.infer<typeof markdownChartSeriesSchema>;

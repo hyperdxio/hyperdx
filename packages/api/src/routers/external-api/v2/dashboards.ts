@@ -301,6 +301,7 @@ async function getMissingSources(
  *         content:
  *           type: string
  *           example: "# Dashboard Title\n\nThis is a markdown widget."
+ *           maxLength: 100000
  *
  *     DashboardChartSeries:
  *       oneOf:
