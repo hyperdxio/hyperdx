@@ -3,6 +3,7 @@ import { add, Duration, format, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { TextField } from '@clickhouse/click-ui';
 import {
   Button,
   Card,
@@ -21,7 +22,6 @@ import {
 } from '@mantine/core';
 import { DateInput, DateInputProps } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
-import { TextField } from '@clickhouse/click-ui';
 import { IconBolt, IconCalendarFilled } from '@tabler/icons-react';
 
 import { useUserPreferences } from '@/useUserPreferences';
@@ -244,6 +244,7 @@ const TimePickerComponent = ({
           <TextField
             data-testid="time-picker-input"
             value={value}
+            // @ts-expect-error - onChange is not typed correctly
             onChange={newValue => onChange(newValue)}
             placeholder="Time Range"
             style={{
@@ -252,6 +253,7 @@ const TimePickerComponent = ({
                 ? 'var(--color-text-brand)'
                 : 'var(--color-text)',
             }}
+            // @ts-expect-error - onKeyDown is not typed correctly
             onKeyDown={e => {
               if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
                 onSubmit?.(e.target.value);
