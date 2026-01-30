@@ -27,6 +27,7 @@ export class DashboardPage {
   private readonly addFiltersButton: Locator;
   private readonly closeFiltersModalButton: Locator;
   private readonly filtersSourceSelector: Locator;
+  private readonly saveButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -55,6 +56,7 @@ export class DashboardPage {
     this.addFiltersButton = page.getByTestId('add-filter-button');
     this.closeFiltersModalButton = page.getByTestId('close-filters-button');
     this.filtersSourceSelector = page.getByTestId('source-selector');
+    this.saveButton = page.getByTestId('chart-save-button');
   }
 
   /**
@@ -123,6 +125,13 @@ export class DashboardPage {
   }
 
   /**
+   * save tile to the dashboard
+   */
+  async saveTile() {
+    await this.saveButton.click();
+  }
+
+  /**
    * Add a tile with specific configuration
    */
   async addTileWithConfig(chartName: string) {
@@ -142,11 +151,8 @@ export class DashboardPage {
     await this.page.waitForResponse(
       resp => resp.url().includes('/clickhouse-proxy') && resp.status() === 200,
     );
-
-    const saveButton = this.page.locator('[data-testid="chart-save-button"]');
-    await saveButton.click();
-
     // Wait for tile to be added
+    await this.saveTile();
   }
 
   /**
@@ -175,6 +181,14 @@ export class DashboardPage {
    */
   getTileButton(action: 'edit' | 'duplicate' | 'delete' | 'alerts') {
     return this.page.locator(`[data-testid^="tile-${action}-button-"]`).first();
+  }
+
+  /**
+   * Edit a tile
+   */
+  async editTile(tileIndex: number) {
+    await this.hoverOverTile(tileIndex);
+    await this.getTileButton('edit').click();
   }
 
   /**
