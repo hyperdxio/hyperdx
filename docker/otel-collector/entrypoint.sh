@@ -14,7 +14,7 @@ if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
   echo "Target database: $DB_NAME"
 
   # Build goose connection string from environment variables
-  # CLICKHOUSE_ENDPOINT format: tcp://host:port or clickhouse://host:port
+  # CLICKHOUSE_ENDPOINT format: tcp://host:port, http://host:port, or https://host:port
   # Note: database is not specified here since SQL files use ${DATABASE} prefix explicitly
   case "$CLICKHOUSE_ENDPOINT" in
     *\?*) GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}&username=${DB_USER}&password=${DB_PASSWORD}" ;;
@@ -89,11 +89,12 @@ if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
   echo "========================================"
   if [ $MIGRATION_ERRORS -gt 0 ]; then
     echo "Schema migrations failed with $MIGRATION_ERRORS error(s)"
+    echo "========================================"
     exit 1
   else
     echo "Schema migrations completed successfully"
+    echo "========================================"
   fi
-  echo "========================================"
 fi
 
 # Check if OPAMP_SERVER_URL is defined to determine mode
