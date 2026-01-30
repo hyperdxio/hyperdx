@@ -21,7 +21,7 @@ export type SourceTable = z.infer<typeof sourceTableSchema>;
 // Charts
 // ==============================
 
-export const numberFormatSchema = z.object({
+const numberFormatSchema = z.object({
   output: z
     .union([
       z.literal('currency'),
@@ -40,11 +40,11 @@ export const numberFormatSchema = z.object({
   unit: z.string().optional(),
 });
 
-export const percentileLevelSchema = z.number().min(0).max(1).optional();
+const percentileLevelSchema = z.number().min(0).max(1).optional();
 
-export const whereLanguageSchema = z.enum(['sql', 'lucene']).optional();
+const whereLanguageSchema = z.enum(['sql', 'lucene']).optional();
 
-export const timeChartSeriesSchema = z.object({
+const timeChartSeriesSchema = z.object({
   type: z.literal('time'),
   sourceId: objectIdSchema,
   aggFn: AggregateFunctionSchema,
@@ -64,7 +64,7 @@ export const timeChartSeriesSchema = z.object({
 
 export type TimeChartSeries = z.infer<typeof timeChartSeriesSchema>;
 
-export const tableChartSeriesSchema = z.object({
+const tableChartSeriesSchema = z.object({
   type: z.literal('table'),
   sourceId: objectIdSchema,
   aggFn: AggregateFunctionSchema,
@@ -82,7 +82,7 @@ export const tableChartSeriesSchema = z.object({
 
 export type TableChartSeries = z.infer<typeof tableChartSeriesSchema>;
 
-export const numberChartSeriesSchema = z.object({
+const numberChartSeriesSchema = z.object({
   type: z.literal('number'),
   sourceId: objectIdSchema,
   aggFn: AggregateFunctionSchema,
@@ -98,22 +98,7 @@ export const numberChartSeriesSchema = z.object({
 
 export type NumberChartSeries = z.infer<typeof numberChartSeriesSchema>;
 
-// TODO: Support in V2
-export const histogramChartSeriesSchema = z.object({
-  type: z.literal('histogram'),
-  sourceId: objectIdSchema,
-  level: percentileLevelSchema,
-  field: z.string().optional(),
-  alias: z.string().optional(),
-  where: z.string(),
-  whereLanguage: whereLanguageSchema,
-  metricDataType: z.nativeEnum(MetricsDataType).optional(),
-  metricName: z.string().optional(),
-});
-
-export type HistogramChartSeries = z.infer<typeof histogramChartSeriesSchema>;
-
-export const searchChartSeriesSchema = z.object({
+const searchChartSeriesSchema = z.object({
   type: z.literal('search'),
   sourceId: objectIdSchema,
   fields: z.array(z.string()),
@@ -123,7 +108,7 @@ export const searchChartSeriesSchema = z.object({
 
 export type SearchChartSeries = z.infer<typeof searchChartSeriesSchema>;
 
-export const markdownChartSeriesSchema = z.object({
+const markdownChartSeriesSchema = z.object({
   type: z.literal('markdown'),
   content: z.string(),
 });
@@ -144,7 +129,7 @@ export const externalQueryChartSeriesSchema = z.object({
   metricName: z.string().optional(),
 });
 
-export const chartSeriesSchema = z.discriminatedUnion('type', [
+const chartSeriesSchema = z.discriminatedUnion('type', [
   timeChartSeriesSchema,
   tableChartSeriesSchema,
   searchChartSeriesSchema,
@@ -182,6 +167,10 @@ export const externalDashboardTileSchemaWithId =
       id: z.string().max(36),
     }),
   );
+
+export type ExternalDashboardTileWithId = z.infer<
+  typeof externalDashboardTileSchemaWithId
+>;
 
 export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
 

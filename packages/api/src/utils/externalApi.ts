@@ -1,4 +1,3 @@
-// @ts-nocheck TODO: Fix When Restoring Alerts
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AggregateFunctionSchema,
@@ -8,7 +7,6 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { pick } from 'lodash';
 import { FlattenMaps, LeanDocument } from 'mongoose';
-import { z } from 'zod';
 
 import {
   AlertChannel,
@@ -20,145 +18,15 @@ import {
 import type { DashboardDocument } from '@/models/dashboard';
 import {
   ChartSeries,
-  externalDashboardTileSchema,
-  externalDashboardTileSchemaWithId,
-  histogramChartSeriesSchema,
+  ExternalDashboardTileWithId,
   MarkdownChartSeries,
-  markdownChartSeriesSchema,
   NumberChartSeries,
-  numberChartSeriesSchema,
   SearchChartSeries,
-  searchChartSeriesSchema,
   TableChartSeries,
-  tableChartSeriesSchema,
   TimeChartSeries,
-  timeChartSeriesSchema,
 } from '@/utils/zod';
 
 import logger from './logger';
-
-type ExternalChartWithId = z.infer<typeof externalDashboardTileSchemaWithId>;
-
-// TODO: Remove this, since only the "time" type is used, and it's full of type errors
-export const translateExternalSeriesToInternalSeries = (
-  s: z.infer<typeof externalDashboardTileSchema>['series'][number],
-) => {
-  const {
-    type,
-    dataSource,
-    where,
-    whereLanguage,
-    metricName,
-    metricDataType,
-    ...rest
-  } = s;
-
-  // Determine common properties first
-  const table = dataSource === 'metrics' ? 'metrics' : 'logs';
-  const commonWhere = where ?? '';
-  const commonWhereLanguage = whereLanguage ?? 'lucene';
-
-  switch (type) {
-    case 'time': {
-      const { aggFn, level, field, groupBy, numberFormat } = rest;
-      if (aggFn == null) {
-        throw new Error('aggFn must be set for time chart');
-      }
-      const series: z.infer<typeof timeChartSeriesSchema> = {
-        type: 'time',
-        table,
-        aggFn,
-        level,
-        where: commonWhere,
-        whereLanguage: commonWhereLanguage,
-        groupBy: groupBy ?? [],
-        field: field ?? undefined,
-        numberFormat: numberFormat ?? undefined,
-        metricDataType: metricDataType ?? undefined,
-        metricName: metricName ?? undefined,
-      };
-      return series;
-    }
-    case 'table': {
-      const { aggFn, level, field, groupBy, sortOrder, numberFormat } = rest;
-      if (aggFn == null) {
-        throw new Error('aggFn must be set for table chart');
-      }
-      const series: z.infer<typeof tableChartSeriesSchema> = {
-        type: 'table',
-        table,
-        aggFn,
-        level,
-        where: commonWhere,
-        whereLanguage: commonWhereLanguage,
-        groupBy: groupBy ?? [],
-        sortOrder: sortOrder ?? 'desc',
-        field: field ?? undefined,
-        numberFormat: numberFormat ?? undefined,
-        metricDataType: metricDataType ?? undefined,
-        metricName: metricName ?? undefined,
-      };
-      return series;
-    }
-    case 'number': {
-      const { aggFn, level, field, numberFormat } = rest;
-      if (aggFn == null) {
-        throw new Error('aggFn must be set for number chart');
-      }
-      const series: z.infer<typeof numberChartSeriesSchema> = {
-        type: 'number',
-        table,
-        aggFn,
-        level,
-        where: commonWhere,
-        whereLanguage: commonWhereLanguage,
-        field: field ?? undefined,
-        numberFormat: numberFormat ?? undefined,
-        metricDataType: metricDataType ?? undefined,
-        metricName: metricName ?? undefined,
-      };
-      return series;
-    }
-    case 'histogram': {
-      const { aggFn, level, field } = rest;
-      const series: z.infer<typeof histogramChartSeriesSchema> = {
-        type: 'histogram',
-        table,
-        level,
-        aggFn,
-        where: commonWhere,
-        whereLanguage: commonWhereLanguage,
-        field: field ?? undefined,
-        metricDataType: metricDataType ?? undefined,
-        metricName: metricName ?? undefined,
-      };
-      return series;
-    }
-    case 'search': {
-      const { fields } = rest;
-      const series: z.infer<typeof searchChartSeriesSchema> = {
-        type: 'search',
-        fields: fields ?? [],
-        where: commonWhere,
-        whereLanguage: commonWhereLanguage,
-      };
-      return series;
-    }
-    case 'markdown': {
-      const { content } = rest;
-      const series: z.infer<typeof markdownChartSeriesSchema> = {
-        type: 'markdown',
-        content: content ?? '',
-      };
-      return series;
-    }
-    default: {
-      // Ensure exhaustive check at compile time
-      const _exhaustiveCheck: never = type;
-      throw new Error(`Invalid chart type: ${_exhaustiveCheck}`);
-    }
-  }
-};
 
 function hasLevel(
   series: Omit<SelectList[number], string>,
@@ -316,7 +184,7 @@ const convertChartConfigToExternalChartSeries = (
 
 function translateTileToExternalChart(
   tile: DashboardDocument['tiles'][number],
-): ExternalChartWithId {
+): ExternalDashboardTileWithId {
   const { name, seriesReturnType } = tile.config;
   return {
     ...pick(tile, ['id', 'x', 'y', 'w', 'h']),
@@ -327,7 +195,7 @@ function translateTileToExternalChart(
 }
 
 export function translateExternalChartToTileConfig(
-  chart: ExternalChartWithId,
+  chart: ExternalDashboardTileWithId,
 ): DashboardDocument['tiles'][number] {
   const { id, name, x, y, w, h, series, asRatio } = chart;
 
@@ -448,7 +316,9 @@ export function translateExternalChartToTileConfig(
     }
 
     default: {
-      throw new Error(`Unsupported chart type: ${firstSeries.type}`);
+      // Ensure exhaustive check at compile time
+      const _exhaustiveCheck: never = firstSeries;
+      throw new Error(`Invalid chart: ${_exhaustiveCheck}`);
     }
   }
 
@@ -478,13 +348,13 @@ export function translateExternalChartToTileConfig(
 export type ExternalDashboard = {
   id: string;
   name: string;
-  tiles: ExternalChartWithId[];
+  tiles: ExternalDashboardTileWithId[];
   tags?: string[];
 };
 
 export type ExternalDashboardRequest = {
   name: string;
-  tiles: ExternalChartWithId[];
+  tiles: ExternalDashboardTileWithId[];
   tags?: string[];
 };
 
