@@ -594,7 +594,10 @@ export const makeChartConfig = (opts?: {
 });
 
 // TODO: DEPRECATED
-export const makeExternalChart = (opts?: { id?: string }) => ({
+export const makeExternalChart = (opts?: {
+  id?: string;
+  sourceId?: string;
+}) => ({
   name: 'Test Chart',
   x: 1,
   y: 1,
@@ -603,7 +606,7 @@ export const makeExternalChart = (opts?: { id?: string }) => ({
   series: [
     {
       type: 'time',
-      sourceId: '68dd82484f54641b08667897',
+      sourceId: opts?.sourceId ?? '68dd82484f54641b08667897',
       aggFn: 'count',
       where: '',
       groupBy: [],

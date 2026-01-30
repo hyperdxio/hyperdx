@@ -1,9 +1,11 @@
 import express from 'express';
 import { uniq } from 'lodash';
 import { ObjectId } from 'mongodb';
+import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { deleteDashboard, getDashboard } from '@/controllers/dashboard';
+import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import {
@@ -13,9 +15,31 @@ import {
 import {
   externalDashboardTileSchema,
   externalDashboardTileSchemaWithId,
+  ExternalDashboardTileWithId,
   objectIdSchema,
   tagsSchema,
 } from '@/utils/zod';
+
+/** Returns an array of source IDs that are referenced in the tiles but do not exist in the team's sources */
+async function getMissingSources(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+) {
+  const sourceIds = new Set<string>();
+  for (const tile of tiles) {
+    for (const series of tile.series) {
+      if ('sourceId' in series) {
+        sourceIds.add(series.sourceId);
+      }
+    }
+  }
+
+  const existingSources = await getSources(team.toString());
+  const existingSourceIds = new Set(
+    existingSources.map(source => source._id.toString()),
+  );
+  return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
+}
 
 /**
  * @openapi
@@ -716,6 +740,15 @@ router.post(
 
       const { name, tiles, tags } = req.body;
 
+      const missingSources = await getMissingSources(teamId, tiles);
+      if (missingSources.length > 0) {
+        return res.status(404).json({
+          message: `Could not find the following source IDs: ${missingSources.join(
+            ', ',
+          )}`,
+        });
+      }
+
       const charts = tiles.map(tile => {
         const chartId = new ObjectId().toString();
         return translateExternalChartToTileConfig({
@@ -881,6 +914,15 @@ router.put(
       }
 
       const { name, tiles, tags } = req.body ?? {};
+
+      const missingSources = await getMissingSources(teamId, tiles);
+      if (missingSources.length > 0) {
+        return res.status(404).json({
+          message: `Could not find the following source IDs: ${missingSources.join(
+            ', ',
+          )}`,
+        });
+      }
 
       // Get the existing dashboard to preserve any fields not included in the update
       const existingDashboard = await getDashboard(dashboardId, teamId);

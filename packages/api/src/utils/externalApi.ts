@@ -28,11 +28,12 @@ import {
 
 import logger from './logger';
 
+type NonStringSelectItem = Exclude<SelectList[number], string>;
+type NonStringSelectWithLevel = NonStringSelectItem & { level: number };
+
 function hasLevel(
-  series: Omit<SelectList[number], string>,
-): series is SelectList[number] & {
-  level: number;
-} {
+  series: NonStringSelectItem,
+): series is NonStringSelectWithLevel {
   return 'level' in series && typeof series.level === 'number';
 }
 

@@ -18,7 +18,7 @@ export const sourceTableSchema = z.union([
 export type SourceTable = z.infer<typeof sourceTableSchema>;
 
 // ==============================
-// Charts
+// Charts & Dashboards
 // ==============================
 
 const numberFormatSchema = z.object({

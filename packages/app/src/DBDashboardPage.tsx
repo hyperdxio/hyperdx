@@ -395,6 +395,7 @@ const Tile = forwardRef(
                 config={queriedConfig}
               />
             )}
+            {/* Markdown charts may not have queriedConfig, if source is not set */}
             {(queriedConfig?.displayType === DisplayType.Markdown ||
               (!queriedConfig &&
                 chart.config.displayType === DisplayType.Markdown)) && (

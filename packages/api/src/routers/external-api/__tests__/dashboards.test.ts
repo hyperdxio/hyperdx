@@ -1,4 +1,4 @@
-import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
@@ -10,37 +10,48 @@ import {
   TimeChartSeries,
 } from '@/utils/zod';
 
+import * as config from '../../../config';
 import {
+  DEFAULT_DATABASE,
+  DEFAULT_TRACES_TABLE,
   getLoggedInAgent,
   getServer,
   makeExternalChart,
 } from '../../../fixtures';
+import Connection from '../../../models/connection';
 import Dashboard from '../../../models/dashboard';
+import { Source } from '../../../models/source';
 
 // Constants
 const BASE_URL = '/api/v2/dashboards';
 const TEST_TAGS = ['external-api', 'test'];
 
 // Test data factory functions
-const createMockDashboard = (overrides = {}) => ({
+const createMockDashboard = (sourceId: string, overrides = {}) => ({
   name: 'Test External Dashboard',
-  tiles: [makeExternalChart(), makeExternalChart()],
+  tiles: [makeExternalChart({ sourceId }), makeExternalChart({ sourceId })],
   tags: TEST_TAGS,
   ...overrides,
 });
 
-const createMockDashboardWithIds = (overrides = {}) => ({
+const createMockDashboardWithIds = (sourceId: string, overrides = {}) => ({
   name: 'Test External Dashboard with IDs',
   tiles: [
-    { ...makeExternalChart(), id: new ObjectId().toString() },
-    { ...makeExternalChart(), id: new ObjectId().toString() },
+    {
+      ...makeExternalChart({ sourceId }),
+      id: new ObjectId().toString(),
+    },
+    {
+      ...makeExternalChart({ sourceId }),
+      id: new ObjectId().toString(),
+    },
   ],
   tags: TEST_TAGS,
   ...overrides,
 });
 
 // Test chart factory functions
-const createTimeSeriesChart = () => ({
+const createTimeSeriesChart = (sourceId: string) => ({
   name: 'Time Series Chart',
   x: 0,
   y: 0,
@@ -51,7 +62,7 @@ const createTimeSeriesChart = () => ({
   series: [
     {
       type: 'time',
-      sourceId: '68dd82484f54641b08667897',
+      sourceId,
       aggFn: 'count',
       where: '',
       groupBy: [],
@@ -59,7 +70,7 @@ const createTimeSeriesChart = () => ({
   ],
 });
 
-const createTableChart = () => ({
+const createTableChart = (sourceId: string) => ({
   name: 'Table Chart',
   x: 6,
   y: 0,
@@ -70,7 +81,7 @@ const createTableChart = () => ({
   series: [
     {
       type: 'table',
-      sourceId: '68dd82484f54641b08667897',
+      sourceId,
       aggFn: 'count',
       where: '',
       groupBy: [],
@@ -79,7 +90,7 @@ const createTableChart = () => ({
   ],
 });
 
-const createNumberChart = () => ({
+const createNumberChart = (sourceId: string) => ({
   name: 'Number Chart',
   x: 0,
   y: 3,
@@ -90,7 +101,7 @@ const createNumberChart = () => ({
   series: [
     {
       type: 'number',
-      sourceId: '68dd82484f54641b08667897',
+      sourceId,
       aggFn: 'count',
       where: '',
     },
@@ -115,7 +126,7 @@ const createMarkdownChart = () => ({
 
 describe('External API v2 Dashboards', () => {
   const server = getServer();
-  let agent, team, user;
+  let agent, team, user, traceSource, metricSource;
 
   beforeAll(async () => {
     await server.start();
@@ -127,6 +138,43 @@ describe('External API v2 Dashboards', () => {
     agent = result.agent;
     team = result.team;
     user = result.user;
+
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Default',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+
+    traceSource = await Source.create({
+      kind: SourceKind.Trace,
+      team: team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_TRACES_TABLE,
+      },
+      timestampValueExpression: 'Timestamp',
+      connection: connection._id,
+      name: 'Traces',
+    });
+
+    metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      team: team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: '', // Not directly used
+      },
+      metricTables: {
+        [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+        [MetricsDataType.Sum.toLowerCase()]: 'otel_metrics_sum',
+        [MetricsDataType.Histogram.toLowerCase()]: 'otel_metrics_histogram',
+      },
+      timestampValueExpression: 'TimeUnix',
+      connection: connection._id,
+      name: 'Metrics',
+    });
   });
 
   afterEach(async () => {
@@ -157,7 +205,10 @@ describe('External API v2 Dashboards', () => {
       // Create a dashboard with known values for testing
       const testDashboard = {
         name: 'Format Test Dashboard',
-        tiles: [createTimeSeriesChart(), createNumberChart()],
+        tiles: [
+          createTimeSeriesChart(traceSource._id.toString()),
+          createNumberChart(traceSource._id.toString()),
+        ],
         tags: ['format-test'],
       };
 
@@ -186,7 +237,7 @@ describe('External API v2 Dashboards', () => {
               series: [
                 {
                   type: 'time',
-                  sourceId: '68dd82484f54641b08667897',
+                  sourceId: traceSource._id.toString(),
                   aggFn: 'count',
                   where: '',
                   whereLanguage: 'lucene',
@@ -207,7 +258,7 @@ describe('External API v2 Dashboards', () => {
               series: [
                 {
                   type: 'number',
-                  sourceId: '68dd82484f54641b08667897',
+                  sourceId: traceSource._id.toString(),
                   aggFn: 'count',
                   where: '',
                   whereLanguage: 'lucene',
@@ -297,7 +348,7 @@ describe('External API v2 Dashboards', () => {
 
   describe('POST /', () => {
     it('should create a new dashboard', async () => {
-      const mockDashboard = createMockDashboard();
+      const mockDashboard = createMockDashboard(traceSource._id.toString());
 
       const response = await authRequest('post', BASE_URL)
         .send(mockDashboard)
@@ -323,9 +374,9 @@ describe('External API v2 Dashboards', () => {
       const dashboardWithAllCharts = {
         name: 'Test Dashboard with All Chart Types',
         tiles: [
-          createTimeSeriesChart(),
-          createTableChart(),
-          createNumberChart(),
+          createTimeSeriesChart(traceSource._id.toString()),
+          createTableChart(traceSource._id.toString()),
+          createNumberChart(traceSource._id.toString()),
           createMarkdownChart(),
         ],
         tags: ['test', 'chart-types'],
@@ -359,7 +410,7 @@ describe('External API v2 Dashboards', () => {
         series: [
           {
             type: 'time',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: traceSource._id.toString(),
             aggFn: 'quantile',
             level: 0.95,
             field: 'Duration',
@@ -376,7 +427,7 @@ describe('External API v2 Dashboards', () => {
           } satisfies TimeChartSeries,
           {
             type: 'time',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: traceSource._id.toString(),
             aggFn: 'quantile',
             level: 0.99,
             field: 'Duration',
@@ -404,7 +455,7 @@ describe('External API v2 Dashboards', () => {
         series: [
           {
             type: 'time',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: metricSource._id.toString(),
             aggFn: 'quantile',
             level: 0.95,
             field: '',
@@ -434,7 +485,7 @@ describe('External API v2 Dashboards', () => {
         series: [
           {
             type: 'table',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: traceSource._id.toString(),
             aggFn: 'quantile',
             level: 0.5,
             field: 'Duration',
@@ -452,7 +503,7 @@ describe('External API v2 Dashboards', () => {
           } satisfies TableChartSeries,
           {
             type: 'table',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: traceSource._id.toString(),
             aggFn: 'quantile',
             level: 0.99,
             field: 'Duration',
@@ -481,7 +532,7 @@ describe('External API v2 Dashboards', () => {
         series: [
           {
             type: 'number',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: traceSource._id.toString(),
             aggFn: 'quantile',
             level: 0.5,
             field: 'Duration',
@@ -529,14 +580,30 @@ describe('External API v2 Dashboards', () => {
       expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberChart);
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(markdownChart);
     });
+
+    it('should return 404 when source IDs do not exist', async () => {
+      const nonExistentSourceId = new ObjectId().toString();
+      const mockDashboard = createMockDashboard(nonExistentSourceId);
+
+      const response = await authRequest('post', BASE_URL)
+        .send(mockDashboard)
+        .expect(404);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following source IDs: ${nonExistentSourceId}`,
+      });
+    });
   });
 
   describe('PUT /:id', () => {
     it('should update an existing dashboard', async () => {
       const dashboard = await createTestDashboard();
-      const updatedDashboard = createMockDashboardWithIds({
-        name: 'Updated Dashboard Name',
-      });
+      const updatedDashboard = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {
+          name: 'Updated Dashboard Name',
+        },
+      );
 
       const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
         .send(updatedDashboard)
@@ -561,7 +628,9 @@ describe('External API v2 Dashboards', () => {
 
     it('should return 404 when dashboard does not exist', async () => {
       const nonExistentId = new ObjectId().toString();
-      const mockDashboard = createMockDashboardWithIds();
+      const mockDashboard = createMockDashboardWithIds(
+        traceSource._id.toString(),
+      );
 
       await authRequest('put', `${BASE_URL}/${nonExistentId}`)
         .send(mockDashboard)
@@ -581,7 +650,7 @@ describe('External API v2 Dashboards', () => {
         series: [
           {
             type: 'time',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: traceSource._id.toString(),
             aggFn: 'quantile',
             level: 0.95,
             field: 'Duration',
@@ -598,7 +667,7 @@ describe('External API v2 Dashboards', () => {
           } satisfies TimeChartSeries,
           {
             type: 'time',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: traceSource._id.toString(),
             aggFn: 'quantile',
             level: 0.99,
             field: 'Duration',
@@ -627,7 +696,7 @@ describe('External API v2 Dashboards', () => {
         series: [
           {
             type: 'time',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: metricSource._id.toString(),
             aggFn: 'quantile',
             level: 0.95,
             field: '',
@@ -658,7 +727,7 @@ describe('External API v2 Dashboards', () => {
         series: [
           {
             type: 'table',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: traceSource._id.toString(),
             aggFn: 'quantile',
             level: 0.5,
             field: 'Duration',
@@ -676,7 +745,7 @@ describe('External API v2 Dashboards', () => {
           } satisfies TableChartSeries,
           {
             type: 'table',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: traceSource._id.toString(),
             aggFn: 'quantile',
             level: 0.99,
             field: 'Duration',
@@ -706,7 +775,7 @@ describe('External API v2 Dashboards', () => {
         series: [
           {
             type: 'number',
-            sourceId: '68dd82484f54641b08667897',
+            sourceId: traceSource._id.toString(),
             aggFn: 'quantile',
             level: 0.5,
             field: 'Duration',
@@ -760,6 +829,22 @@ describe('External API v2 Dashboards', () => {
       expect(response.body.data.tiles[2]).toEqual(tableChart);
       expect(response.body.data.tiles[3]).toEqual(numberChart);
       expect(response.body.data.tiles[4]).toEqual(markdownChart);
+    });
+
+    it('should return 404 when source IDs do not exist', async () => {
+      const dashboard = await createTestDashboard();
+      const nonExistentSourceId = new ObjectId().toString();
+      const updatedDashboard = createMockDashboardWithIds(nonExistentSourceId, {
+        name: 'Updated Dashboard Name',
+      });
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send(updatedDashboard)
+        .expect(404);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following source IDs: ${nonExistentSourceId}`,
+      });
     });
   });
 
