@@ -168,13 +168,11 @@ export function DBRowJsonViewer({
     }
 
     // remove internal aliases (keys that start with __hdx_)
-    Object.keys(data).forEach(key => {
-      if (key.startsWith('__hdx_')) {
-        delete data[key];
-      }
-    });
+    const cleanedData = Object.fromEntries(
+      Object.entries(data).filter(entry => !entry[0].startsWith('__hdx_')),
+    );
 
-    return filterObjectRecursively(data, debouncedFilter);
+    return filterObjectRecursively(cleanedData, debouncedFilter);
   }, [data, debouncedFilter]);
 
   const getLineActions = useCallback<GetLineActions>(
