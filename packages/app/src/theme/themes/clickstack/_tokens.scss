@@ -1,0 +1,326 @@
+/* ClickStack Theme Design Tokens */
+
+/* Yellow/Gold accent theme for ClickStack branding */
+
+/* Uses Click UI design tokens */
+
+/* Dark Mode */
+.theme-clickstack[data-mantine-color-scheme='dark'] {
+  /* Brand Palette - Yellow/Gold */
+  --palette-brand-50: #ffffe8;
+  --palette-brand-100: #feffba;
+  --palette-brand-200: #fdffa3;
+  --palette-brand-300: #faff69;
+  --palette-brand-400: #eef400;
+  --palette-brand-500: #c7cc00;
+  --palette-brand-600: #959900;
+  --palette-brand-700: #686b00;
+  --palette-brand-800: #3c4601;
+  --palette-brand-900: #330;
+  --palette-brand-base: #fbff46;
+
+  /* Neutral Palette - Dark Mode */
+  --palette-neutral-0: #fff;
+  --palette-neutral-100: #f9f9f9;
+  --palette-neutral-200: #dfdfdf;
+  --palette-neutral-300: #c0c0c0;
+  --palette-neutral-400: #a0a0a0;
+  --palette-neutral-500: #808080;
+  --palette-neutral-600: #606060;
+  --palette-neutral-650: #505050;
+  --palette-neutral-700: #414141;
+  --palette-neutral-712: #323232;
+  --palette-neutral-725: #282828;
+  --palette-neutral-750: #1f1f1c;
+  --palette-neutral-800: #1d1d1d;
+  --palette-neutral-900: #151515;
+  --palette-neutral-base: #212121;
+
+  /* Mantine Yellow/Primary Override - Uses Brand Palette */
+  --mantine-color-yellow-0: var(--palette-brand-50);
+  --mantine-color-yellow-1: var(--palette-brand-100);
+  --mantine-color-yellow-2: var(--palette-brand-200);
+  --mantine-color-yellow-3: var(--palette-brand-300);
+  --mantine-color-yellow-4: var(--palette-brand-400);
+  --mantine-color-yellow-5: var(--palette-brand-500);
+  --mantine-color-yellow-6: var(--palette-brand-600);
+  --mantine-color-yellow-7: var(--palette-brand-700);
+  --mantine-color-yellow-8: var(--palette-brand-800);
+  --mantine-color-yellow-9: var(--palette-brand-900);
+
+  /* Mantine Gray Override - Uses Neutral Palette */
+  --mantine-color-gray-0: var(--palette-neutral-0);
+  --mantine-color-gray-1: var(--palette-neutral-100);
+  --mantine-color-gray-2: var(--palette-neutral-200);
+  --mantine-color-gray-3: var(--palette-neutral-300);
+  --mantine-color-gray-4: var(--palette-neutral-400);
+  --mantine-color-gray-5: var(--palette-neutral-500);
+  --mantine-color-gray-6: var(--palette-neutral-600);
+  --mantine-color-gray-7: var(--palette-neutral-700);
+  --mantine-color-gray-8: var(--palette-neutral-800);
+  --mantine-color-gray-9: var(--palette-neutral-900);
+
+  /* Mantine Dark Override - Uses Neutral Palette (inverted for dark backgrounds) */
+  --mantine-color-dark-0: var(--palette-neutral-200);
+  --mantine-color-dark-1: var(--palette-neutral-300);
+  --mantine-color-dark-2: var(--palette-neutral-400);
+  --mantine-color-dark-3: var(--palette-neutral-500);
+  --mantine-color-dark-4: var(--palette-neutral-700);
+  --mantine-color-dark-5: var(--palette-neutral-650);
+  --mantine-color-dark-6: var(--palette-neutral-725);
+  --mantine-color-dark-7: var(--palette-neutral-750);
+  --mantine-color-dark-8: var(--palette-neutral-800);
+  --mantine-color-dark-9: var(--palette-neutral-900);
+
+  /* Click UI Global Tokens - Dark Mode Values */
+  --click-global-color-stroke-default: #323232;
+  --click-global-color-accent-default: #faff69;
+  --click-global-color-background-default: #1f1f1c;
+  --click-global-color-background-muted: #282828;
+  --click-global-color-text-default: #fff;
+  --click-global-color-text-muted: #b3b6bd;
+  --click-global-color-text-disabled: #808080;
+  --click-global-color-text-link-default: #faff69;
+  --click-global-color-text-link-hover: #feffc2;
+  --click-global-color-text-danger: #ffbaba;
+  --click-global-color-title-default: rgb(97.5% 97.5% 97.5%);
+  --click-global-color-title-muted: #b3b6bd;
+  --click-global-color-outline-default: #faff69;
+  --click-field-color-background-default: #2d2d2d;
+
+  /* Backgrounds - Using Click UI tokens */
+  --color-bg-body: var(--click-global-color-background-default);
+  --color-bg-surface: var(--click-global-color-background-default);
+  --color-bg-inverted: var(--mantine-color-dark-1);
+  --color-bg-muted: var(--click-global-color-background-muted);
+  --color-bg-highlighted: rgb(75 78 102 / 70%);
+  --color-bg-sidenav: var(--click-global-color-background-default);
+  --color-bg-sidenav-link-active: var(--palette-neutral-712);
+  --color-bg-sidenav-link-active-hover: var(--mantine-color-gray-7);
+  --color-bg-header: var(--click-global-color-background-default);
+  --color-bg-hover: var(--palette-neutral-725);
+  --color-bg-active: var(--palette-neutral-800);
+  --color-bg-field: var(--click-field-color-background-default);
+  --color-bg-field-highlighted: #4d4f66;
+  --color-bg-neutral: #4d4f66;
+  --color-bg-success: #22c55e;
+  --color-bg-danger: #ef4444;
+  --color-bg-warning: #f59e0b;
+  --color-bg-brand: var(--click-global-color-accent-default);
+  --color-bg-brand-hover: var(--click-global-color-accent-hover);
+
+  /* Primary Button */
+  --color-primary-button-bg: var(--palette-brand-300);
+  --color-primary-button-bg-hover: var(--palette-brand-200);
+  --color-primary-button-text: var(--color-text-inverted);
+
+  /* Borders & Dividers */
+  --color-border: var(--click-global-color-stroke-default);
+  --color-border-muted: var(--click-global-color-stroke-default);
+
+  /* Text - Using Click UI tokens */
+  --color-text: var(--click-global-color-text-default);
+  --color-text-inverted: var(--click-global-color-background-default);
+  --color-text-primary: var(--click-global-color-accent-default);
+  --color-text-primary-hover: var(--click-global-color-text-link-hover);
+  --color-text-secondary: var(--click-global-color-text-muted);
+  --color-text-muted: var(--click-global-color-text-muted);
+  --color-text-muted-hover: var(--click-global-color-title-muted);
+  --color-text-brand: var(--click-global-color-accent-default);
+  --color-text-brand-hover: var(--click-global-color-text-link-hover);
+  --color-text-success: #22c55e;
+  --color-text-success-hover: #4ade80;
+  --color-text-danger: var(--click-global-color-text-danger);
+  --color-text-sidenav-link: var(--click-global-color-text-default);
+  --color-text-sidenav-link-active: var(--click-global-color-text-default);
+
+  /* Icons */
+  --color-icon-primary: #d5d7e0;
+  --color-icon-muted: #666980;
+
+  /* Overlay & Backdrop */
+  --color-overlay: rgb(0 0 0 / 60%);
+  --color-backdrop: rgb(0 0 0 / 40%);
+
+  /* States */
+  --color-state-hover: #2b2c3d;
+  --color-state-selected: #34354a;
+  --color-state-focus: #4d4f66;
+
+  /* Code / Misc UI */
+  --color-bg-code: #1d1e30;
+  --color-border-code: #4d4f66;
+  --color-bg-kbd: var(--click-global-color-background-default);
+
+  /* JSON Syntax Highlighting - Yellow/Gold palette */
+  --color-json-string: #ffd966;
+  --color-json-number: #f59e0b;
+  --color-json-boolean: #f59e0b;
+  --color-json-key: #a78bfa;
+  --color-json-object: #ffd966;
+  --color-json-array: #ffd966;
+  --color-json-punctuation: #666980;
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body) !important;
+}
+
+/* Light Mode */
+.theme-clickstack[data-mantine-color-scheme='light'] {
+  /* Brand Palette - Yellow/Gold */
+  --palette-brand-50: #ffffe8;
+  --palette-brand-100: #feffc2;
+  --palette-brand-200: #fdffa3;
+  --palette-brand-300: #faff69;
+  --palette-brand-400: #eef400;
+  --palette-brand-500: #c7cc00;
+  --palette-brand-600: #959900;
+  --palette-brand-700: #686b00;
+  --palette-brand-800: #3c4601;
+  --palette-brand-900: #330;
+  --palette-brand-base: #fbff46;
+
+  /* Slate Palette - Light Mode */
+  --palette-slate-25: #fbfcff;
+  --palette-slate-50: #f6f7fa;
+  --palette-slate-100: #e6e7e9;
+  --palette-slate-200: #cccfd3;
+  --palette-slate-300: #b3b6bd;
+  --palette-slate-400: #9a9ea7;
+  --palette-slate-500: #808691;
+  --palette-slate-600: #696e79;
+  --palette-slate-700: #53575f;
+  --palette-slate-725: #42464b;
+  --palette-slate-800: #302e32;
+  --palette-slate-900: #161517;
+  --palette-slate-base: #373439;
+
+  /* Mantine Yellow/Primary Override - Uses Brand Palette */
+  --mantine-color-yellow-0: var(--palette-brand-50);
+  --mantine-color-yellow-1: var(--palette-brand-100);
+  --mantine-color-yellow-2: var(--palette-brand-200);
+  --mantine-color-yellow-3: var(--palette-brand-300);
+  --mantine-color-yellow-4: var(--palette-brand-400);
+  --mantine-color-yellow-5: var(--palette-brand-500);
+  --mantine-color-yellow-6: var(--palette-brand-600);
+  --mantine-color-yellow-7: var(--palette-brand-700);
+  --mantine-color-yellow-8: var(--palette-brand-800);
+  --mantine-color-yellow-9: var(--palette-brand-900);
+
+  /* Mantine Gray Override - Uses Slate Palette */
+  --mantine-color-gray-0: var(--palette-slate-25);
+  --mantine-color-gray-1: var(--palette-slate-50);
+  --mantine-color-gray-2: var(--palette-slate-100);
+  --mantine-color-gray-3: var(--palette-slate-200);
+  --mantine-color-gray-4: var(--palette-slate-300);
+  --mantine-color-gray-5: var(--palette-slate-400);
+  --mantine-color-gray-6: var(--palette-slate-500);
+  --mantine-color-gray-7: var(--palette-slate-600);
+  --mantine-color-gray-8: var(--palette-slate-700);
+  --mantine-color-gray-9: var(--palette-slate-800);
+
+  /* Mantine Dark Override - Uses Slate Palette */
+  --mantine-color-dark-0: var(--palette-slate-100);
+  --mantine-color-dark-1: var(--palette-slate-200);
+  --mantine-color-dark-2: var(--palette-slate-300);
+  --mantine-color-dark-3: var(--palette-slate-400);
+  --mantine-color-dark-4: var(--palette-slate-500);
+  --mantine-color-dark-5: var(--palette-slate-600);
+  --mantine-color-dark-6: var(--palette-slate-700);
+  --mantine-color-dark-7: var(--palette-slate-800);
+  --mantine-color-dark-8: var(--palette-slate-900);
+  --mantine-color-dark-9: var(--palette-slate-900);
+
+  /* Click UI Global Tokens - Light Mode Values */
+  --click-global-color-stroke-default: #e6e7e9;
+  --click-global-color-accent-default: #151515;
+  --click-global-color-background-default: #fff;
+  --click-global-color-background-muted: #f6f7fa;
+  --click-global-color-text-default: #161517;
+  --click-global-color-text-muted: #696e79;
+  --click-global-color-text-disabled: #a0a0a0;
+  --click-global-color-text-link-default: #437eef;
+  --click-global-color-text-link-hover: #104ec6;
+  --click-global-color-text-danger: #c10000;
+  --click-global-color-title-default: lch(11.126% 1.374 305.43deg);
+  --click-global-color-title-muted: #696e79;
+  --click-global-color-outline-default: #437eef;
+  --click-field-color-background-default: #fbfcff;
+
+  /* Backgrounds - Using Click UI tokens */
+  --color-bg-body: var(--click-global-color-background-default);
+  --color-bg-surface: var(--click-global-color-background-default);
+  --color-bg-inverted: var(--mantine-color-dark-3);
+  --color-bg-muted: var(--click-global-color-background-muted);
+  --color-bg-highlighted: rgb(241 243 245 / 80%);
+  --color-bg-sidenav: var(--click-global-color-background-default);
+  --color-bg-sidenav-link-active: var(--click-global-color-stroke-default);
+  --color-bg-sidenav-link-active-hover: var(--mantine-color-gray-3);
+  --color-bg-header: var(--click-global-color-background-muted);
+  --color-bg-modal: var(--click-global-color-background-default);
+  --color-bg-hover: #e9ecef;
+  --color-bg-active: #dee2e6;
+  --color-bg-field: var(--click-field-color-background-default);
+  --color-bg-field-highlighted: var(--click-global-color-background-default);
+  --color-bg-neutral: #adb5bd;
+  --color-bg-success: #16a34a;
+  --color-bg-danger: #dc2626;
+  --color-bg-warning: #d97706;
+  --color-bg-brand: var(--click-global-color-accent-default);
+  --color-bg-brand-hover: var(--click-global-color-accent-hover);
+
+  /* Primary Button */
+  --color-primary-button-bg: var(--palette-slate-800);
+  --color-primary-button-bg-hover: var(--palette-slate-725);
+  --color-primary-button-text: var(--color-text-inverted);
+
+  /* Borders & Dividers */
+  --color-border: var(--click-global-color-stroke-default);
+  --color-border-muted: rgb(0 0 0 / 8%);
+
+  /* Text - Using Click UI tokens */
+  --color-text: var(--click-global-color-text-default);
+  --color-text-inverted: var(--click-global-color-background-default);
+  --color-text-primary: var(--click-global-color-text-link-default);
+  --color-text-primary-hover: var(--click-global-color-text-link-hover);
+  --color-text-secondary: var(--click-global-color-text-muted);
+  --color-text-muted: var(--click-global-color-text-muted);
+  --color-text-muted-hover: var(--click-global-color-title-default);
+  --color-text-brand: var(--click-global-color-accent-default);
+  --color-text-brand-hover: var(--click-global-color-text-link-hover);
+  --color-text-success: #16a34a;
+  --color-text-success-hover: #15803d;
+  --color-text-danger: var(--click-global-color-text-danger);
+  --color-text-sidenav-link: var(--click-global-color-text-default);
+  --color-text-sidenav-link-active: var(--click-global-color-accent-default);
+
+  /* Icons */
+  --color-icon-primary: #343a40;
+  --color-icon-muted: #868e96;
+
+  /* Overlay & Backdrop */
+  --color-overlay: rgb(0 0 0 / 30%);
+  --color-backdrop: rgb(0 0 0 / 15%);
+
+  /* States */
+  --color-state-hover: #e9ecef;
+  --color-state-selected: #dee2e6;
+  --color-state-focus: #ced4da;
+
+  /* Code / Misc UI */
+  --color-bg-code: var(--click-global-color-background-muted);
+  --color-border-code: #dee2e6;
+  --color-bg-kbd: var(--click-global-color-background-muted);
+
+  /* JSON Syntax Highlighting */
+  --color-json-string: #997300;
+  --color-json-number: #d97706;
+  --color-json-boolean: #d97706;
+  --color-json-key: #7c3aed;
+  --color-json-object: #997300;
+  --color-json-array: #997300;
+  --color-json-punctuation: #868e96;
+
+  /* Mantine Overrides */
+  --mantine-color-body: var(--color-bg-body);
+}

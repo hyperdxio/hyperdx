@@ -5,11 +5,13 @@ import {
   MantineThemeOverride,
   rem,
   Select,
+  Slider,
+  Tabs,
   Text,
   Tooltip,
 } from '@mantine/core';
 
-import focusClasses from '../../styles/focus.module.scss';
+import focusClasses from '../../../../styles/focus.module.scss';
 
 export const makeTheme = ({
   fontFamily = '"IBM Plex Sans", monospace',
@@ -112,6 +114,16 @@ export const makeTheme = ({
       styles: {
         input: {
           border: '1px solid var(--color-border)',
+        },
+      },
+    }),
+    Slider: Slider.extend({
+      styles: {
+        bar: {
+          backgroundColor: 'var(--color-bg-brand)',
+        },
+        thumb: {
+          borderColor: 'var(--color-bg-brand)',
         },
       },
     }),
@@ -261,6 +273,13 @@ export const makeTheme = ({
         },
       },
     },
+    Tabs: Tabs.extend({
+      vars: () => ({
+        root: {
+          '--tabs-color': 'var(--color-text-brand)',
+        },
+      }),
+    }),
     ActionIcon: ActionIcon.extend({
       defaultProps: {
         variant: 'subtle',
