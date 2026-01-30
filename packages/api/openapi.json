@@ -959,7 +959,8 @@
           },
           "content": {
             "type": "string",
-            "example": "# Dashboard Title\n\nThis is a markdown widget."
+            "example": "# Dashboard Title\n\nThis is a markdown widget.",
+            "maxLength": 100000
           }
         }
       },

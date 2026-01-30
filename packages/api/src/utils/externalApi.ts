@@ -53,6 +53,17 @@ function isSortOrderDesc(config: SavedChartConfig): boolean {
   return Array.isArray(config.orderBy) && config.orderBy[0].ordering === 'DESC';
 }
 
+/** Returns a new object containing only the truthy, requested keys from the original object */
+const pickIfTruthy = <T, K extends keyof T>(obj: T, keys: K[]): Partial<T> => {
+  const result: Partial<T> = {};
+  for (const key of keys) {
+    if (obj[key]) {
+      result[key] = obj[key];
+    }
+  }
+  return result;
+};
+
 const convertChartConfigToExternalChartSeries = (
   config: SavedChartConfig,
 ): ChartSeries[] => {
@@ -245,14 +256,12 @@ export function translateExternalChartToTileConfig(
         }
 
         return {
-          aggFn: s.aggFn ?? undefined,
+          // Avoid including undefined values in the object, so that they are not saved as "null" in Mongo
+          ...pickIfTruthy(s, ['alias', 'aggFn', 'level', 'metricName']),
+          ...(s.metricDataType ? { metricType: s.metricDataType } : {}),
           valueExpression: s.field ?? '',
-          alias: s.alias ?? undefined,
           aggCondition: s.where ?? '',
           aggConditionLanguage: s.whereLanguage ?? 'lucene',
-          level: s.level ?? undefined,
-          metricType: s.metricDataType ?? undefined,
-          metricName: s.metricName ?? undefined,
         };
       });
 
@@ -275,14 +284,12 @@ export function translateExternalChartToTileConfig(
         }
 
         return {
-          aggFn: s.aggFn ?? undefined,
+          // Avoid including undefined values in the object, so that they are not saved as "null" in Mongo
+          ...pickIfTruthy(s, ['alias', 'aggFn', 'level', 'metricName']),
+          ...(s.metricDataType ? { metricType: s.metricDataType } : {}),
           valueExpression: s.field ?? '',
-          alias: s.alias ?? undefined,
           aggCondition: s.where ?? '',
           aggConditionLanguage: s.whereLanguage ?? 'lucene',
-          level: s.level ?? undefined,
-          metricType: s.metricDataType ?? undefined,
-          metricName: s.metricName ?? undefined,
         };
       });
 
@@ -307,14 +314,19 @@ export function translateExternalChartToTileConfig(
       // Number chart uses only the first series
       select = [
         {
-          aggFn: firstSeries.aggFn ?? undefined,
+          // Avoid including undefined values in the object, so that they are not saved as "null" in Mongo
+          ...pickIfTruthy(firstSeries, [
+            'alias',
+            'aggFn',
+            'level',
+            'metricName',
+          ]),
+          ...(firstSeries.metricDataType
+            ? { metricType: firstSeries.metricDataType }
+            : {}),
           valueExpression: firstSeries.field ?? '',
-          alias: firstSeries.alias ?? undefined,
           aggCondition: firstSeries.where ?? '',
           aggConditionLanguage: firstSeries.whereLanguage ?? 'lucene',
-          level: firstSeries.level ?? undefined,
-          metricType: firstSeries.metricDataType ?? undefined,
-          metricName: firstSeries.metricName ?? undefined,
         },
       ];
 
@@ -344,18 +356,26 @@ export function translateExternalChartToTileConfig(
     }
   }
 
+  const seriesReturnType = asRatio ? 'ratio' : 'column';
+
   const config: SavedChartConfig = {
+    // Avoid including undefined values in the object, so that they are not saved as "null" in Mongo
+    ...pickIfTruthy(
+      {
+        groupBy,
+        orderBy,
+        markdown,
+        seriesReturnType,
+        numberFormat,
+      },
+      ['groupBy', 'orderBy', 'markdown', 'seriesReturnType', 'numberFormat'],
+    ),
     name,
     source: sourceId,
     displayType,
     select,
-    groupBy,
     where,
     whereLanguage,
-    orderBy,
-    markdown,
-    seriesReturnType: asRatio ? 'ratio' : 'column',
-    numberFormat,
   };
 
   return {
