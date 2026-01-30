@@ -20,6 +20,7 @@ import {
 } from '@tabler/icons-react';
 
 import { useQueriedChartConfig } from './hooks/useChartConfig';
+import { useLogomark } from './theme/ThemeProvider';
 import api from './api';
 import { ClickStackIcon as Icon } from './ClickStackLogo';
 import { useConnections } from './connection';
@@ -41,6 +42,7 @@ const OnboardingChecklist = ({
 }: {
   onAddDataClick?: () => void;
 }) => {
+  const Logomark = useLogomark();
   const [isCollapsed, setIsCollapsed] = useLocalStorage(
     'onboardingChecklistCollapsed',
     false,

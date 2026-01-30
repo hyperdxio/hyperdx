@@ -49,9 +49,9 @@ import {
   useUpdateDashboard,
 } from '@/dashboard';
 import InstallInstructionModal from '@/InstallInstructionsModal';
-import Logo from '@/Logo';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches, useUpdateSavedSearch } from '@/savedSearch';
+import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
 import type { SavedSearch, ServerDashboard } from '@/types';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
@@ -392,6 +392,9 @@ function useSearchableList<T extends AppNavLinkItem>({
 }
 
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
+  const Wordmark = useWordmark();
+  const Logomark = useLogomark();
+
   useEffect(() => {
     let redirectUrl;
     try {
@@ -646,7 +649,13 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   return (
     <AppNavContext.Provider value={{ isCollapsed, pathname }}>
       {fixed && (
-        <div style={{ width: navWidth + 1, minWidth: navWidth + 1 }}></div>
+        <div
+          className={styles.navGhost}
+          style={{
+            width: navWidth + 1,
+            minWidth: navWidth + 1,
+          }}
+        ></div>
       )}
       <InstallInstructionModal
         show={showInstallInstructions}
@@ -656,6 +665,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         className={cx(styles.nav, {
           [styles.navFixed]: fixed,
         })}
+        style={{ width: navWidth }}
       >
         <div style={{ width: navWidth }}>
           <div
@@ -666,11 +676,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             <Link href="/search" className={styles.logoLink}>
               {isCollapsed ? (
                 <div className={styles.logoIconWrapper}>
-                  <ClickStackIcon size={22} />
+                  <Logomark size={22} />
                 </div>
               ) : (
                 <Group gap="xs" align="center">
-                  <ClickStackLogo />
+                  <Wordmark />
                   {isUTC && (
                     <Badge
                       size="xs"

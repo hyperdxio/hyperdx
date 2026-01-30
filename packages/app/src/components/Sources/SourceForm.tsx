@@ -41,6 +41,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
+import { useDebouncedCallback, useDidUpdate } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconCheck,
@@ -201,40 +202,71 @@ function HighlightedAttributeRow({
   connectionId,
   removeHighlightedAttribute,
 }: HighlightedAttributeRowProps) {
-  const expression = useWatch({
+  const expressionInput = useWatch({
     control,
     name: `${name}.${index}.sqlExpression`,
   });
 
-  const alias = useWatch({
+  const aliasInput = useWatch({
     control,
     name: `${name}.${index}.alias`,
   });
+
+  const [explainParams, setExplainParams] = useState<{
+    expression: typeof expressionInput;
+    alias: typeof aliasInput;
+  }>();
+
+  const setExplainParamsDebounced = useDebouncedCallback(
+    (params: typeof explainParams) => {
+      setExplainParams(params);
+    },
+    1_000,
+  );
+
+  useDidUpdate(() => {
+    setExplainParamsDebounced({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
+  }, [expressionInput, aliasInput]);
 
   const {
     data: explainData,
     error: explainError,
     isLoading: explainLoading,
-    refetch: explainExpression,
   } = useExplainQuery(
     {
       from: { databaseName, tableName },
       connection: connectionId,
-      select: [{ alias, valueExpression: expression }],
+      select: [
+        {
+          alias: explainParams?.alias,
+          valueExpression: explainParams?.expression ?? '',
+        },
+      ],
       where: '',
     },
 
-    { enabled: false },
+    {
+      enabled: !!explainParams?.expression,
+    },
   );
 
   const runExpression = () => {
-    if (expression) {
-      explainExpression();
-    }
+    setExplainParams({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
   };
 
   const isExpressionValid = !!explainData?.length;
   const isExpressionInvalid = explainError instanceof ClickHouseQueryError;
+
+  const shouldShowResult =
+    explainParams?.expression === expressionInput &&
+    explainParams?.alias === aliasInput &&
+    (isExpressionValid || isExpressionInvalid);
 
   return (
     <React.Fragment key={id}>
@@ -271,7 +303,7 @@ function HighlightedAttributeRow({
               variant="subtle"
               color="gray"
               loading={explainLoading}
-              disabled={!expression || explainLoading}
+              disabled={!expressionInput || explainLoading}
               onClick={runExpression}
             >
               <IconCheck size={16} />
@@ -288,7 +320,7 @@ function HighlightedAttributeRow({
         </Flex>
       </Grid.Col>
 
-      {(isExpressionValid || isExpressionInvalid) && (
+      {shouldShowResult && (
         <Grid.Col span={5} pe={0} pt={0}>
           {isExpressionValid && (
             <Text c="green" size="xs">
@@ -1579,7 +1611,7 @@ export function TableSourceForm({
   onSave,
   onCreate,
   isNew = false,
-  defaultName,
+  defaultName = '',
   onCancel,
 }: {
   sourceId?: string;
@@ -1816,13 +1848,30 @@ export function TableSourceForm({
 
   const sourceFormSchema = sourceSchemaWithout({ id: true });
   const handleError = useCallback(
-    (error: z.ZodError<TSourceUnion>) => {
-      const errors = error.errors;
+    ({ errors }: z.ZodError<TSourceUnion>, eventName: 'create' | 'save') => {
+      const notificationMsgs: string[] = [];
+
+      // eslint-disable-next-line no-console
+      console.debug(
+        // HDX-3148
+        `[${eventName}] SourceForm validation error`,
+        JSON.stringify(errors),
+      );
+
       for (const err of errors) {
         const errorPath: string = err.path.join('.');
         // TODO: HDX-1768 get rid of this type assertion if possible
         setError(errorPath as any, { ...err });
+
+        const message =
+          // HDX-3148
+          err.message === 'Required'
+            ? `${errorPath}: ${err.message}`
+            : err.message;
+
+        notificationMsgs.push(message);
       }
+
       notifications.show({
         color: 'red',
         message: (
@@ -1830,9 +1879,9 @@ export function TableSourceForm({
             <Text size="sm">
               <b>Failed to create source</b>
             </Text>
-            {errors.map((err, i) => (
+            {notificationMsgs.map((message, i) => (
               <Text key={i} size="sm">
-                ✖ {err.message}
+                ✖ {message}
               </Text>
             ))}
           </Stack>
@@ -1847,7 +1896,7 @@ export function TableSourceForm({
     handleSubmit(async data => {
       const parseResult = sourceFormSchema.safeParse(data);
       if (parseResult.error) {
-        handleError(parseResult.error);
+        handleError(parseResult.error, 'create');
         return;
       }
 
@@ -1915,7 +1964,7 @@ export function TableSourceForm({
     handleSubmit(data => {
       const parseResult = sourceFormSchema.safeParse(data);
       if (parseResult.error) {
-        handleError(parseResult.error);
+        handleError(parseResult.error, 'save');
         return;
       }
       updateSource.mutate(

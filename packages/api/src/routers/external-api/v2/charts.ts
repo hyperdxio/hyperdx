@@ -10,13 +10,13 @@ import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
-import { validateRequest } from 'zod-express-middleware';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { getTeam } from '@/controllers/team';
 import { IConnection } from '@/models/connection';
 import { ISource } from '@/models/source';
+import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { translateExternalSeriesToInternalSeries } from '@/utils/externalApi';
 import {
   externalQueryChartSeriesSchema,
