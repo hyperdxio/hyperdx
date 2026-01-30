@@ -81,6 +81,7 @@ type CollectorConfig = {
       ttl: string;
       logs_table_name: string;
       timeout: string;
+      create_schema: string;
       retry_on_failure: {
         enabled: boolean;
         initial_interval: string;
@@ -95,6 +96,7 @@ type CollectorConfig = {
       password: string;
       ttl: string;
       timeout: string;
+      create_schema: string;
       retry_on_failure: {
         enabled: boolean;
         initial_interval: string;
@@ -199,6 +201,8 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
         ttl: '720h',
         logs_table_name: 'hyperdx_sessions',
         timeout: '5s',
+        create_schema:
+          '${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}',
         retry_on_failure: {
           enabled: true,
           initial_interval: '5s',
@@ -213,6 +217,8 @@ export const buildOtelCollectorConfig = (teams: ITeam[]): CollectorConfig => {
         password: '${env:CLICKHOUSE_PASSWORD}',
         ttl: '720h',
         timeout: '5s',
+        create_schema:
+          '${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}',
         retry_on_failure: {
           enabled: true,
           initial_interval: '5s',

@@ -1,4 +1,5 @@
-CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_logs
+-- +goose Up
+CREATE TABLE IF NOT EXISTS ${DATABASE}.hyperdx_sessions
 (
   `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
   `TimestampTime` DateTime DEFAULT toDateTime(Timestamp),
@@ -16,14 +17,6 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_logs
   `ScopeVersion` LowCardinality(String) CODEC(ZSTD(1)),
   `ScopeAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
   `LogAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-  `__hdx_materialized_k8s.cluster.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.cluster.name'] CODEC(ZSTD(1)),
-  `__hdx_materialized_k8s.container.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.container.name'] CODEC(ZSTD(1)),
-  `__hdx_materialized_k8s.deployment.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.deployment.name'] CODEC(ZSTD(1)),
-  `__hdx_materialized_k8s.namespace.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.namespace.name'] CODEC(ZSTD(1)),
-  `__hdx_materialized_k8s.node.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.node.name'] CODEC(ZSTD(1)),
-  `__hdx_materialized_k8s.pod.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.pod.name'] CODEC(ZSTD(1)),
-  `__hdx_materialized_k8s.pod.uid` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.pod.uid'] CODEC(ZSTD(1)),
-  `__hdx_materialized_deployment.environment.name` LowCardinality(String) MATERIALIZED ResourceAttributes['deployment.environment.name'] CODEC(ZSTD(1)),
   INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
   INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
   INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
@@ -39,3 +32,4 @@ PRIMARY KEY (ServiceName, TimestampTime)
 ORDER BY (ServiceName, TimestampTime, Timestamp)
 TTL TimestampTime + toIntervalDay(30)
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
+
