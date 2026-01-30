@@ -1,12 +1,17 @@
 import React from 'react';
 
-import Logo from './Logo';
+import { useWordmark } from './theme/ThemeProvider';
 // import NextraMain from './NextraMain';
 import useNextraSeoProps from './useNextraSeoProps';
 
+function ThemedLogo() {
+  const Wordmark = useWordmark();
+  return <Wordmark />;
+}
+
 const theme = {
   useNextSeoProps: useNextraSeoProps,
-  logo: <Logo />,
+  logo: <ThemedLogo />,
   footer: {
     text: 'Made with ♥ in San Francisco, © 2024 DeploySentinel, Inc.',
   },
