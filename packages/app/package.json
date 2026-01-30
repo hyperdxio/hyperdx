@@ -24,6 +24,7 @@
     "knip": "knip"
   },
   "dependencies": {
+    "@clickhouse/click-ui": "0.0.251-rc.17",
     "@codemirror/lang-json": "^6.0.1",
     "@codemirror/lang-sql": "^6.7.0",
     "@dagrejs/dagre": "^1.1.5",
@@ -96,6 +97,7 @@
     "sqlstring": "^2.3.3",
     "store2": "^2.14.3",
     "strip-ansi": "^6.0.1",
+    "styled-components": "^6.3.5",
     "timestamp-nano": "^1.0.1",
     "uplot": "^1.6.31",
     "uplot-react": "^1.2.2",

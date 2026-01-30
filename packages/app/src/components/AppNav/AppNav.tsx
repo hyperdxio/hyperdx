@@ -41,6 +41,7 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
+import { ClickStackIcon, ClickStackLogo } from '@/ClickStackLogo';
 import { IS_K8S_DASHBOARD_ENABLED, IS_LOCAL_MODE } from '@/config';
 import {
   useCreateDashboard,
