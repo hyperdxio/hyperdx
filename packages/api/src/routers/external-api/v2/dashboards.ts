@@ -714,6 +714,14 @@ router.get(
  *               $ref: '#/components/schemas/Error'
  *             example:
  *               message: "Unauthorized access. API key is missing or invalid."
+ *       '400':
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Could not find the following source IDs: 68fa86308aa879b977aa6af6"
  *       '500':
  *         description: Server error or validation failure
  *         content:
@@ -743,7 +751,7 @@ router.post(
 
       const missingSources = await getMissingSources(teamId, tiles);
       if (missingSources.length > 0) {
-        return res.status(404).json({
+        return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
             ', ',
           )}`,
@@ -866,6 +874,14 @@ router.post(
  *                             aggFn: "count"
  *                             where: "level:info"
  *                     tags: ["production", "updated"]
+ *       '400':
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Could not find the following source IDs: 68fa86308aa879b977aa6af6"
  *       '401':
  *         description: Unauthorized
  *         content:
@@ -918,17 +934,11 @@ router.put(
 
       const missingSources = await getMissingSources(teamId, tiles);
       if (missingSources.length > 0) {
-        return res.status(404).json({
+        return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
             ', ',
           )}`,
         });
-      }
-
-      // Get the existing dashboard to preserve any fields not included in the update
-      const existingDashboard = await getDashboard(dashboardId, teamId);
-      if (existingDashboard == null) {
-        return res.sendStatus(404);
       }
 
       // Convert external tiles to internal charts format

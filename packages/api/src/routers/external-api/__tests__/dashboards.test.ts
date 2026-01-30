@@ -581,13 +581,13 @@ describe('External API v2 Dashboards', () => {
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(markdownChart);
     });
 
-    it('should return 404 when source IDs do not exist', async () => {
+    it('should return 400 when source IDs do not exist', async () => {
       const nonExistentSourceId = new ObjectId().toString();
       const mockDashboard = createMockDashboard(nonExistentSourceId);
 
       const response = await authRequest('post', BASE_URL)
         .send(mockDashboard)
-        .expect(404);
+        .expect(400);
 
       expect(response.body).toEqual({
         message: `Could not find the following source IDs: ${nonExistentSourceId}`,
@@ -831,7 +831,7 @@ describe('External API v2 Dashboards', () => {
       expect(response.body.data.tiles[4]).toEqual(markdownChart);
     });
 
-    it('should return 404 when source IDs do not exist', async () => {
+    it('should return 400 when source IDs do not exist', async () => {
       const dashboard = await createTestDashboard();
       const nonExistentSourceId = new ObjectId().toString();
       const updatedDashboard = createMockDashboardWithIds(nonExistentSourceId, {
@@ -840,7 +840,7 @@ describe('External API v2 Dashboards', () => {
 
       const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
         .send(updatedDashboard)
-        .expect(404);
+        .expect(400);
 
       expect(response.body).toEqual({
         message: `Could not find the following source IDs: ${nonExistentSourceId}`,
