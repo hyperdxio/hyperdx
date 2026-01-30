@@ -1,0 +1,22 @@
+/* Base Design Tokens - Fallback values when no theme class is applied */
+
+/*
+ * Uses HyperDX theme as default fallback for SSR and initial render.
+ * This ensures CSS variables are defined before JavaScript applies the theme class.
+ *
+ * The hyperdx/_tokens.scss file defines mixins that are reused here,
+ * avoiding duplication of token definitions.
+ */
+
+@use './hyperdx/tokens' as hyperdx-tokens;
+@use './clickstack/tokens' as clickstack-tokens;
+
+/* Dark Mode (default fallback) - uses HyperDX tokens */
+[data-mantine-color-scheme='dark'] {
+  @include hyperdx-tokens.dark-mode-tokens;
+}
+
+/* Light Mode (fallback) - uses HyperDX tokens */
+[data-mantine-color-scheme='light'] {
+  @include hyperdx-tokens.light-mode-tokens;
+}

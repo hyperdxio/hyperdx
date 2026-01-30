@@ -16,18 +16,19 @@ import {
 } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
+import { DynamicFavicon } from '@/components/DynamicFavicon';
 import { IS_LOCAL_MODE } from '@/config';
 import {
   DEFAULT_FONT_VAR,
-  DEFAULT_MANTINE_FONT,
   FONT_VAR_MAP,
   MANTINE_FONT_MAP,
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
+import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { useConfirmModal } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
-import { useBackground, useUserPreferences } from '@/useUserPreferences';
+import { useUserPreferences } from '@/useUserPreferences';
 
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -63,13 +64,70 @@ type AppPropsWithLayout = AppProps & {
   Component: NextPageWithLayout;
 };
 
-export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
+// Component that renders Head content requiring user preferences
+// Must be rendered inside AppThemeProvider to avoid hydration mismatch
+function AppHeadContent() {
   const { userPreferences } = useUserPreferences();
-  const confirmModal = useConfirmModal();
-  const background = useBackground(userPreferences);
+  const { theme } = useAppTheme();
 
-  const selectedMantineFont =
-    MANTINE_FONT_MAP[userPreferences.font] || DEFAULT_MANTINE_FONT;
+  return (
+    <Head>
+      <title>{theme.displayName}</title>
+      <meta name="viewport" content="width=device-width, initial-scale=0.75" />
+      <meta name="google" content="notranslate" />
+      <ColorSchemeScript
+        forceColorScheme={
+          userPreferences.colorMode === 'dark' ? 'dark' : 'light'
+        }
+      />
+    </Head>
+  );
+}
+
+// Component that uses user preferences for theme wrapper
+// Must be rendered inside AppThemeProvider to avoid hydration mismatch
+function AppContent({
+  Component,
+  pageProps,
+  confirmModal,
+}: {
+  Component: NextPageWithLayout;
+  pageProps: AppProps['pageProps'];
+  confirmModal: React.ReactNode;
+}) {
+  const { userPreferences } = useUserPreferences();
+
+  // Only override font if user has explicitly set a preference.
+  // Otherwise, return undefined to let the theme use its default font:
+  // - HyperDX theme: "IBM Plex Sans", monospace
+  // - ClickStack theme: "Inter", sans-serif
+  const selectedMantineFont = userPreferences.font
+    ? MANTINE_FONT_MAP[userPreferences.font] || undefined
+    : undefined;
+
+  useEffect(() => {
+    // Update CSS variable for global font cascading
+    if (typeof document !== 'undefined') {
+      const fontVar = FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR;
+      document.documentElement.style.setProperty('--app-font-family', fontVar);
+    }
+  }, [userPreferences.font]);
+
+  const getLayout = Component.getLayout ?? (page => page);
+
+  return (
+    <ThemeWrapper
+      fontFamily={selectedMantineFont}
+      colorScheme={userPreferences.colorMode === 'dark' ? 'dark' : 'light'}
+    >
+      {getLayout(<Component {...pageProps} />)}
+      {confirmModal}
+    </ThemeWrapper>
+  );
+}
+
+export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
+  const confirmModal = useConfirmModal();
 
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
@@ -121,47 +179,24 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
     }
   }, []);
 
-  useEffect(() => {
-    // Update CSS variable for global font cascading
-    if (typeof document !== 'undefined') {
-      const fontVar = FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR;
-      document.documentElement.style.setProperty('--app-font-family', fontVar);
-    }
-  }, [userPreferences.font]);
-
-  const getLayout = Component.getLayout ?? (page => page);
-
   return (
     <React.Fragment>
-      <Head>
-        <title>HyperDX</title>
-        <link rel="icon" type="image/png" sizes="32x32" href="/Icon32.png" />
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=0.75"
-        />
-        <meta name="theme-color" content="#25292e"></meta>
-        <meta name="google" content="notranslate" />
-        <ColorSchemeScript
-          forceColorScheme={userPreferences.theme === 'dark' ? 'dark' : 'light'}
-        />
-      </Head>
-
-      <HDXQueryParamProvider>
-        <QueryParamProvider adapter={NextAdapter}>
-          <QueryClientProvider client={queryClient}>
-            <ThemeWrapper
-              fontFamily={selectedMantineFont}
-              colorScheme={userPreferences.theme === 'dark' ? 'dark' : 'light'}
-            >
-              {getLayout(<Component {...pageProps} />)}
-              {confirmModal}
-            </ThemeWrapper>
-            <ReactQueryDevtools initialIsOpen={true} />
-            {background}
-          </QueryClientProvider>
-        </QueryParamProvider>
-      </HDXQueryParamProvider>
+      <AppThemeProvider>
+        <AppHeadContent />
+        <DynamicFavicon />
+        <HDXQueryParamProvider>
+          <QueryParamProvider adapter={NextAdapter}>
+            <QueryClientProvider client={queryClient}>
+              <AppContent
+                Component={Component}
+                pageProps={pageProps}
+                confirmModal={confirmModal}
+              />
+              <ReactQueryDevtools initialIsOpen={true} />
+            </QueryClientProvider>
+          </QueryParamProvider>
+        </HDXQueryParamProvider>
+      </AppThemeProvider>
     </React.Fragment>
   );
 }
