@@ -104,6 +104,17 @@ export const RootValueExpressionSchema = z
   )
   .or(
     z.object({
+      aggFn: z.literal('apdex'),
+      aggCondition: SearchConditionSchema,
+      aggConditionLanguage: SearchConditionLanguageSchema,
+      valueExpression: z.string(),
+      valueExpressionLanguage: z.undefined().optional(),
+      isDelta: z.boolean().optional(),
+      threshold: z.number().optional(),
+    }),
+  )
+  .or(
+    z.object({
       aggFn: z.string().optional(),
       aggCondition: z.string().optional(),
       aggConditionLanguage: SearchConditionLanguageSchema,
