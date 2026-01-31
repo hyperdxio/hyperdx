@@ -39,6 +39,7 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
 
 COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
 COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 ./config.standalone.auth.yaml /etc/otelcol-contrib/standalone-auth-config.yaml
 COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
 EXPOSE 4317 4318 13133
@@ -56,6 +57,7 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
 
 COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
 COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 ./config.standalone.auth.yaml /etc/otelcol-contrib/standalone-auth-config.yaml
 COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 
 EXPOSE 4317 4318 13133
