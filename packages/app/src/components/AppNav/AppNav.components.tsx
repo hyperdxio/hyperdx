@@ -292,8 +292,8 @@ export const AppNavLink = ({
       {!isCollapsed && isBeta && (
         <Badge
           size="xs"
-          radius="sm"
-          color="gray"
+          color="blue"
+          variant="light"
           className={styles.navItemBadge}
         >
           Beta
