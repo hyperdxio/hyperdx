@@ -6,6 +6,8 @@ import { MetricsDataType, NumberFormat } from '../types';
 import * as utils from '../utils';
 import {
   CHART_PALETTE,
+  CLICKSTACK_CHART_PALETTE,
+  CLICKSTACK_COLORS,
   COLORS,
   formatAttributeClause,
   formatNumber,
@@ -815,6 +817,20 @@ describe('Chart Color Functions', () => {
     });
   });
 
+  describe('CLICKSTACK_COLORS array', () => {
+    it('has 10 colors', () => {
+      expect(CLICKSTACK_COLORS).toHaveLength(10);
+    });
+
+    it('has blue as first color (ClickStack brand)', () => {
+      expect(CLICKSTACK_COLORS[0]).toBe(CLICKSTACK_CHART_PALETTE.blue);
+    });
+
+    it('has green in position 5 (Observable 10 order)', () => {
+      expect(CLICKSTACK_COLORS[4]).toBe(CLICKSTACK_CHART_PALETTE.green);
+    });
+  });
+
   describe('CHART_PALETTE', () => {
     it('contains all expected color keys', () => {
       expect(CHART_PALETTE).toHaveProperty('green');
@@ -835,6 +851,22 @@ describe('Chart Color Functions', () => {
       expect(CHART_PALETTE.blue).toBe('#4269d0');
       expect(CHART_PALETTE.orange).toBe('#efb118');
       expect(CHART_PALETTE.red).toBe('#ff725c');
+    });
+  });
+
+  describe('CLICKSTACK_CHART_PALETTE', () => {
+    it('contains all expected color keys', () => {
+      expect(CLICKSTACK_CHART_PALETTE).toHaveProperty('green');
+      expect(CLICKSTACK_CHART_PALETTE).toHaveProperty('blue');
+      expect(CLICKSTACK_CHART_PALETTE).toHaveProperty('orange');
+      expect(CLICKSTACK_CHART_PALETTE).toHaveProperty('red');
+    });
+
+    it('uses ClickStack color values', () => {
+      expect(CLICKSTACK_CHART_PALETTE.blue).toBe('#437EEF');
+      expect(CLICKSTACK_CHART_PALETTE.green).toBe('#3ca951');
+      expect(CLICKSTACK_CHART_PALETTE.orange).toBe('#efb118');
+      expect(CLICKSTACK_CHART_PALETTE.red).toBe('#ff725c');
     });
   });
 });
