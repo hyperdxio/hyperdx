@@ -186,6 +186,11 @@
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
+
+  /* Tabler icons default stroke width - Set default stroke-width to 1.5 for Tabler icons (instead of default 2). This only affects SVGs that have a stroke attribute set. Can be overridden on individual icons by setting strokeWidth prop */
+  .tabler-icon {
+    stroke-width: 1.5;
+  }
 }
 
 /* Light Mode */
@@ -368,4 +373,9 @@
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body);
+
+  /* Tabler icons default stroke width - Set default stroke-width to 1.5 for Tabler icons (instead of default 2). This only affects SVGs that have a stroke attribute set. Can be overridden on individual icons by setting strokeWidth prop */
+  svg {
+    stroke-width: 1.5;
+  }
 }

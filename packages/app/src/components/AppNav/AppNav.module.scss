@@ -187,6 +187,10 @@ $transition-slow: 0.2s ease;
   &Active {
     color: var(--color-text-sidenav-link-active);
     background: var(--color-bg-sidenav-link-active);
+
+    &:hover {
+      background: var(--color-bg-sidenav-link-active);
+    }
   }
 }
 
@@ -201,7 +205,6 @@ $transition-slow: 0.2s ease;
   align-items: center;
   vertical-align: middle;
   transition: color $transition-slow;
-  opacity: 0.9;
 }
 
 .navItemBadge {
@@ -259,7 +262,6 @@ $transition-slow: 0.2s ease;
 
   &:hover {
     color: var(--color-text-sidenav-link-active);
-    background: var(--color-bg-sidenav-link-active);
   }
 
   &:focus-visible {
