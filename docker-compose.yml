@@ -32,6 +32,8 @@ services:
       HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: ${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       OPAMP_SERVER_URL: 'http://app:${HYPERDX_OPAMP_PORT}'
+      # TODO: use new schema
+      HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA: 'true'
     ports:
       - '13133:13133' # health_check extension
       - '24225:24225' # fluentd receiver
