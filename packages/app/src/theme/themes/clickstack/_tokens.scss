@@ -163,7 +163,13 @@
   --color-json-array: #ffd966;
   --color-json-punctuation: #666980;
 
-  /* Chart Colors - Observable 10 categorical palette */
+  /*
+   * Chart Colors - Observable 10 categorical palette
+   * NOTE: These colors are intentionally duplicated in both dark and light mode sections.
+   * CSS specificity requires them to be defined within each [data-mantine-color-scheme] selector
+   * to ensure they're applied correctly. A shared .theme-clickstack section would have lower
+   * specificity and could be overridden by other styles.
+   */
   --color-chart-1: #437eef; /* Blue - Primary */
   --color-chart-2: #efb118; /* Orange */
   --color-chart-3: #ff725c; /* Red */
@@ -350,7 +356,7 @@
   --color-json-array: #997300;
   --color-json-punctuation: #868e96;
 
-  /* Chart Colors - Observable 10 categorical palette (same for light mode) */
+  /* Chart Colors - See dark mode section for explanation of why duplication is required */
   --color-chart-1: #437eef; /* Blue - Primary */
   --color-chart-2: #efb118; /* Orange */
   --color-chart-3: #ff725c; /* Red */
