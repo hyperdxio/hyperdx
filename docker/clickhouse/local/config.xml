@@ -172,4 +172,6 @@
     </distributed_ddl>
 
     <format_schema_path>/var/lib/clickhouse/format_schemas/</format_schema_path>
+
+    <custom_settings_prefixes>hyperdx</custom_settings_prefixes>
 </clickhouse>

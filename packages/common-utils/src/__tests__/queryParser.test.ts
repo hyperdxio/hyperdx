@@ -412,6 +412,28 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       sql: "(NOT ((`LogAttributes`['error.message'] ILIKE '%A B%')))",
       english: 'NOT (LogAttributes.error.message contains "A B")',
     },
+    // HDX-2655: Proper handling of binary expression with leading negation
+    {
+      lucene: 'NOT ServiceName:foo AND NOT ServiceName:bar',
+      sql: "(NOT (ServiceName ILIKE '%foo%') AND NOT (ServiceName ILIKE '%bar%'))",
+      english:
+        "NOT 'ServiceName' contains foo AND NOT 'ServiceName' contains bar",
+    },
+    {
+      lucene: 'NOT red AND NOT blue',
+      sql: "(NOT (hasToken(lower(Body), lower('red'))) AND NOT (hasToken(lower(Body), lower('blue'))))",
+      english: 'NOT event has whole word red AND NOT event has whole word blue',
+    },
+    {
+      lucene: 'NOT red OR NOT blue',
+      sql: "(NOT (hasToken(lower(Body), lower('red'))) OR NOT (hasToken(lower(Body), lower('blue'))))",
+      english: 'NOT event has whole word red OR NOT event has whole word blue',
+    },
+    {
+      lucene: 'NOT red NOT blue',
+      sql: "(NOT (hasToken(lower(Body), lower('red'))) AND NOT (hasToken(lower(Body), lower('blue'))))",
+      english: 'NOT event has whole word red AND NOT event has whole word blue',
+    },
   ];
 
   it.each(testCases)(

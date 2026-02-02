@@ -1,4 +1,4 @@
-export default function Icon({ size = 16 }: { size?: number }) {
+export default function Logomark({ size = 16 }: { size?: number }) {
   return (
     <svg
       width={size}
@@ -10,11 +10,11 @@ export default function Icon({ size = 16 }: { size?: number }) {
       <g clipPath="url(#clip0_614_1164)">
         <path
           d="M256 0L477.703 128V384L256 512L34.2975 384V128L256 0Z"
-          fill="var(--color-text-brand)"
+          fill="var(--color-bg-brand)"
         />
         <path
           d="M311.365 84.4663C314.818 86.9946 316.431 92.1862 315.256 96.9926L284.313 223.563H341.409C344.836 223.563 347.936 226.127 349.295 230.086C350.655 234.046 350.014 238.644 347.665 241.786L210.211 425.598C207.472 429.26 203.089 430.062 199.635 427.534C196.182 425.005 194.569 419.814 195.744 415.007L226.686 288.437H169.591C166.164 288.437 163.064 285.873 161.705 281.914C160.345 277.954 160.986 273.356 163.335 270.214L300.789 86.4023C303.528 82.7403 307.911 81.938 311.365 84.4663Z"
-          fill="var(--color-text-inverted)"
+          fill="var(--color-bg-body)"
         />
       </g>
       <defs>

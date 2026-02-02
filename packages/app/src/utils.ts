@@ -799,3 +799,21 @@ export const mapKeyBy = <T>(array: T[], key: keyof T) => {
 
   return map;
 };
+
+/**
+ * Check if an element is clickable, or if it is obscured by a modal or drawer
+ *
+ * @param el - The element to check if it is clickable
+ * @returns True if the element is clickable, false otherwise
+ */
+export const isElementClickable = (el: HTMLElement): boolean => {
+  if (!el) return false;
+
+  const rect = el.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  const elementAtPoint = document.elementFromPoint(x, y);
+  // return true if the element at point is the same as the element passed in
+  // or if the element at point is a descendant of the element passed in
+  return el === elementAtPoint || el.contains(elementAtPoint);
+};
