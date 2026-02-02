@@ -458,34 +458,10 @@ export const COLORS = [
   CHART_PALETTE.gray, // 10
 ];
 
-// ClickStack theme ordered color array - blue first for brand consistency
-// Maps to CSS variables: CLICKSTACK_COLORS[0] -> --color-chart-1, etc.
-// NOTE: This is a fallback for SSR. In browser, getColorFromCSSVariable() reads from CSS variables
-export const CLICKSTACK_COLORS = [
-  CLICKSTACK_CHART_PALETTE.blue, // 1 - Blue (primary) - ClickStack default
-  CLICKSTACK_CHART_PALETTE.orange, // 2
-  CLICKSTACK_CHART_PALETTE.red, // 3
-  CLICKSTACK_CHART_PALETTE.cyan, // 4
-  CLICKSTACK_CHART_PALETTE.green, // 5
-  CLICKSTACK_CHART_PALETTE.pink, // 6
-  CLICKSTACK_CHART_PALETTE.purple, // 7
-  CLICKSTACK_CHART_PALETTE.lightBlue, // 8
-  CLICKSTACK_CHART_PALETTE.brown, // 9
-  CLICKSTACK_CHART_PALETTE.gray, // 10
-];
-
-/**
- * Cached theme detection to avoid repeated DOM reads during rendering.
- * Uses per-frame caching via requestAnimationFrame to ensure cache is fresh
- * each render cycle while avoiding repeated reads within the same frame.
- */
-let cachedTheme: 'clickstack' | 'hyperdx' | null = null;
-let cacheInvalidationScheduled = false;
-
 /**
  * Detects the active theme by checking for theme classes on documentElement.
  * Returns 'clickstack' if theme-clickstack class is present, 'hyperdx' otherwise.
- * Result is cached per animation frame to avoid repeated DOM reads during rendering.
+ * Note: classList.contains() is O(1) and fast - no caching needed.
  */
 function detectActiveTheme(): 'clickstack' | 'hyperdx' {
   if (typeof window === 'undefined') {
@@ -493,34 +469,10 @@ function detectActiveTheme(): 'clickstack' | 'hyperdx' {
     return 'hyperdx';
   }
 
-  // Return cached value if available
-  if (cachedTheme !== null) {
-    // Schedule cache invalidation for next frame (only once per frame)
-    if (!cacheInvalidationScheduled) {
-      cacheInvalidationScheduled = true;
-      requestAnimationFrame(() => {
-        cachedTheme = null;
-        cacheInvalidationScheduled = false;
-      });
-    }
-    return cachedTheme;
-  }
-
   try {
-    const htmlElement = document.documentElement;
-    const isClickStack = htmlElement.classList.contains('theme-clickstack');
-    cachedTheme = isClickStack ? 'clickstack' : 'hyperdx';
-
-    // Schedule cache invalidation for next frame
-    if (!cacheInvalidationScheduled) {
-      cacheInvalidationScheduled = true;
-      requestAnimationFrame(() => {
-        cachedTheme = null;
-        cacheInvalidationScheduled = false;
-      });
-    }
-
-    return cachedTheme;
+    const isClickStack =
+      document.documentElement.classList.contains('theme-clickstack');
+    return isClickStack ? 'clickstack' : 'hyperdx';
   } catch {
     // Fallback if DOM access fails
     return 'hyperdx';
