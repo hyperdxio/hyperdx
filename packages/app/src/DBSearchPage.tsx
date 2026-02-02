@@ -24,6 +24,7 @@ import {
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
+import { Button, Select as CUISelect } from '@clickhouse/click-ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -41,7 +42,7 @@ import {
 import {
   ActionIcon,
   Box,
-  Button,
+  // Button,
   Card,
   Center,
   Code,
@@ -51,7 +52,6 @@ import {
   Menu,
   Modal,
   Paper,
-  Select,
   Stack,
   Text,
   Tooltip,
@@ -65,7 +65,6 @@ import { notifications } from '@mantine/notifications';
 import {
   IconBolt,
   IconCirclePlus,
-  IconPlayerPlay,
   IconPlus,
   IconSettings,
   IconTags,
@@ -282,10 +281,9 @@ function ResumeLiveTailButton({
 }) {
   return (
     <Button
-      size="compact-xs"
-      variant="primary"
+      type="secondary"
+      iconLeft={(<IconBolt size={14} />) as any}
       onClick={handleResumeLiveTail}
-      leftSection={<IconBolt size={14} />}
     >
       Resume Live Tail
     </Button>
@@ -293,20 +291,21 @@ function ResumeLiveTailButton({
 }
 
 function SearchSubmitButton({
-  isFormStateDirty,
+  isFormStateDirty: _isFormStateDirty,
 }: {
   isFormStateDirty: boolean;
 }) {
+  // Note: Click UI IconButton doesn't support dynamic colors or HTML type="submit"
+  // The form handles submission via the form's onSubmit handler
+  // Also Ideally the icon prop should accept a ReactNode, not just a string
+  // button contains a
   return (
     <Button
       data-testid="search-submit-button"
-      variant={isFormStateDirty ? 'primary' : 'secondary'}
-      type="submit"
-      leftSection={<IconPlayerPlay size={16} />}
-      style={{ flexShrink: 0 }}
-    >
-      Run
-    </Button>
+      iconLeft="play"
+      type="secondary"
+      label="Run"
+    />
   );
 }
 
@@ -504,21 +503,12 @@ function SaveSearchModalComponent({
               {tags.map(tag => (
                 <Button
                   key={tag}
-                  variant="secondary"
-                  size="xs"
-                  rightSection={
-                    <ActionIcon
-                      variant="transparent"
-                      color="gray"
-                      onClick={(e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        setTags(tags.filter(t => t !== tag));
-                      }}
-                      size="xs"
-                    >
-                      <IconX size={14} />
-                    </ActionIcon>
-                  }
+                  // TODO: CLICK-UI size="xs"
+                  iconRight={(<IconX size={14} />) as any}
+                  onClick={(e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    setTags(tags.filter(t => t !== tag));
+                  }}
                 >
                   {tag.toUpperCase()}
                 </Button>
@@ -526,8 +516,8 @@ function SaveSearchModalComponent({
               <Tags allowCreate values={tags} onChange={setTags}>
                 <Button
                   data-testid="add-tag-button"
-                  variant="secondary"
-                  size="xs"
+                  type="secondary"
+                  // TODO: CLICK-UI size="xs"
                 >
                   <IconPlus size={14} className="me-1" />
                   Add Tag
@@ -537,9 +527,50 @@ function SaveSearchModalComponent({
           </Box>
           <Button
             data-testid="save-search-submit-button"
-            variant="primary"
-            type="submit"
+            type="primary"
             disabled={!formState.isValid}
+            onClick={() => {
+              handleSubmit(({ name }) => {
+                if (isUpdate) {
+                  if (savedSearchId == null) {
+                    throw new Error('savedSearchId is required for update');
+                  }
+                  updateSavedSearch.mutate(
+                    {
+                      id: savedSearchId,
+                      name,
+                      select: searchedConfig.select ?? '',
+                      where: searchedConfig.where ?? '',
+                      whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+                      source: searchedConfig.source ?? '',
+                      orderBy: searchedConfig.orderBy ?? '',
+                      tags: tags,
+                    },
+                    { onSuccess: () => onClose() },
+                  );
+                } else {
+                  createSavedSearch.mutate(
+                    {
+                      name,
+                      select: searchedConfig.select ?? '',
+                      where: searchedConfig.where ?? '',
+                      whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+                      source: searchedConfig.source ?? '',
+                      orderBy: searchedConfig.orderBy ?? '',
+                      tags: tags,
+                    },
+                    {
+                      onSuccess: savedSearch => {
+                        router.push(
+                          `/search/${savedSearch.id}${window.location.search}`,
+                        );
+                        onClose();
+                      },
+                    },
+                  );
+                }
+              })();
+            }}
           >
             {isUpdate ? 'Update' : 'Save'}
           </Button>
@@ -1616,8 +1647,8 @@ function DBSearchPage() {
               {!savedSearchId ? (
                 <Button
                   data-testid="save-search-button"
-                  variant="secondary"
-                  size="xs"
+                  type="secondary"
+                  // TODO: CLICK-UI size="xs"
                   onClick={onSaveSearch}
                   style={{ flexShrink: 0 }}
                 >
@@ -1626,8 +1657,8 @@ function DBSearchPage() {
               ) : (
                 <Button
                   data-testid="update-search-button"
-                  variant="secondary"
-                  size="xs"
+                  type="secondary"
+                  // TODO: CLICK-UI size="xs"
                   onClick={() => {
                     setSaveSearchModalState('update');
                   }}
@@ -1639,8 +1670,8 @@ function DBSearchPage() {
               {!IS_LOCAL_MODE && (
                 <Button
                   data-testid="alerts-button"
-                  variant="secondary"
-                  size="xs"
+                  type="secondary"
+                  // TODO: CLICK-UI size="xs"
                   onClick={openAlertModal}
                   style={{ flexShrink: 0 }}
                 >
@@ -1656,12 +1687,11 @@ function DBSearchPage() {
                   >
                     <Button
                       data-testid="tags-button"
-                      variant="secondary"
-                      px="xs"
-                      size="xs"
+                      type="secondary"
+                      // TODO: CLICK-UI size="xs"
                       style={{ flexShrink: 0 }}
+                      iconLeft={(<IconTags size={14} />) as any}
                     >
-                      <IconTags size={14} className="me-1" />
                       {savedSearch.tags?.length || 0}
                     </Button>
                   </Tags>
@@ -1748,19 +1778,13 @@ function DBSearchPage() {
           />
           {isLive && (
             <Tooltip label="Live tail refresh interval">
-              <Select
-                size="sm"
-                w={80}
-                data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+              <CUISelect
+                style={{ width: 80 }}
+                options={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
                 value={String(refreshFrequency)}
-                onChange={value =>
+                onSelect={value =>
                   setRefreshFrequency(value ? parseInt(value, 10) : null)
                 }
-                allowDeselect={false}
-                comboboxProps={{
-                  withinPortal: true,
-                  zIndex: 1000,
-                }}
               />
             </Tooltip>
           )}

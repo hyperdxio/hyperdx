@@ -1,4 +1,5 @@
 import React from 'react';
+import { ClickUIProvider } from '@clickhouse/click-ui';
 import { MantineProvider, MantineThemeOverride } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 
@@ -36,8 +37,10 @@ export const ThemeWrapper = ({
 
   return (
     <MantineProvider forceColorScheme={colorScheme} theme={mantineTheme}>
-      <Notifications zIndex={999999} />
-      {children}
+      <ClickUIProvider theme={colorScheme}>
+        <Notifications zIndex={999999} />
+        {children}
+      </ClickUIProvider>
     </MantineProvider>
   );
 };
