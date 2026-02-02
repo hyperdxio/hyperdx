@@ -49,6 +49,8 @@ export const AppNavCloudBanner = () => {
           size="xs"
           component="a"
           href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started#deploy-with-clickhouse-cloud"
+          target="_blank"
+          rel="noopener noreferrer"
         >
           Get Started for Free
         </Button>
@@ -214,6 +216,8 @@ export const AppNavHelpMenu = ({
               data-testid="documentation-menu-item"
               href="https://clickhouse.com/docs/use-cases/observability/clickstack"
               component="a"
+              target="_blank"
+              rel="noopener noreferrer"
               leftSection={<IconBook size={16} />}
             >
               Documentation
@@ -224,6 +228,7 @@ export const AppNavHelpMenu = ({
               component="a"
               href="https://hyperdx.io/discord"
               target="_blank"
+              rel="noopener noreferrer"
             >
               Discord Community
             </Menu.Item>

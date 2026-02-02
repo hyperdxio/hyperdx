@@ -163,26 +163,26 @@
   --color-json-array: #ffd966;
   --color-json-punctuation: #666980;
 
-  /* Chart Colors - ClickStack palette */
-  --color-chart-1: #437eef; /* Blue - Primary */
-  --color-chart-2: #33ff44; /* stylelint-disable-line color-hex-length */ /* Green */
-  --color-chart-3: #ff7729; /* Orange */
-  --color-chart-4: #ff2323; /* Red */
-  --color-chart-5: #fb64d6; /* Fuchsia */
-  --color-chart-6: #bb33ff; /* stylelint-disable-line color-hex-length */ /* Violet */
-  --color-chart-7: #00cbeb; /* Baby Blue */
-  --color-chart-8: #6df8e1; /* Teal */
-  --color-chart-9: #ffc300; /* Sunrise */
-  --color-chart-10: #9a9ea7; /* Slate */
+  /* Chart Colors - Observable 10 categorical palette */
+  --color-chart-1: #4269d0; /* Blue - Primary */
+  --color-chart-2: #efb118; /* Orange */
+  --color-chart-3: #ff725c; /* Red */
+  --color-chart-4: #6cc5b0; /* Cyan */
+  --color-chart-5: #3ca951; /* Green */
+  --color-chart-6: #ff8ab7; /* Pink */
+  --color-chart-7: #a463f2; /* Purple */
+  --color-chart-8: #97bbf5; /* Light Blue */
+  --color-chart-9: #9c6b4e; /* Brown */
+  --color-chart-10: #9498a0; /* Gray */
 
   /* Chart Semantic Colors */
-  --color-chart-success: #33ff44; /* stylelint-disable-line color-hex-length */ /* Green */
-  --color-chart-warning: #ff7729; /* Orange */
-  --color-chart-error: #ff2323; /* Red */
+  --color-chart-success: #3ca951; /* Green */
+  --color-chart-warning: #efb118; /* Orange */
+  --color-chart-error: #ff725c; /* Red */
 
   /* Chart Semantic Colors - Highlighted (for hover/selection states) */
-  --color-chart-error-highlight: #ff5c5c;
-  --color-chart-warning-highlight: #ff9944; /* stylelint-disable-line color-hex-length */
+  --color-chart-error-highlight: #ffa090;
+  --color-chart-warning-highlight: #f5c94d;
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
@@ -350,26 +350,26 @@
   --color-json-array: #997300;
   --color-json-punctuation: #868e96;
 
-  /* Chart Colors - ClickStack palette (same for light mode) */
-  --color-chart-1: #437eef; /* Blue - Primary */
-  --color-chart-2: #33ff44; /* stylelint-disable-line color-hex-length */ /* Green */
-  --color-chart-3: #ff7729; /* Orange */
-  --color-chart-4: #ff2323; /* Red */
-  --color-chart-5: #fb64d6; /* Fuchsia */
-  --color-chart-6: #bb33ff; /* stylelint-disable-line color-hex-length */ /* Violet */
-  --color-chart-7: #00cbeb; /* Baby Blue */
-  --color-chart-8: #6df8e1; /* Teal */
-  --color-chart-9: #ffc300; /* Sunrise */
-  --color-chart-10: #9a9ea7; /* Slate */
+  /* Chart Colors - Observable 10 categorical palette (same for light mode) */
+  --color-chart-1: #4269d0; /* Blue - Primary */
+  --color-chart-2: #efb118; /* Orange */
+  --color-chart-3: #ff725c; /* Red */
+  --color-chart-4: #6cc5b0; /* Cyan */
+  --color-chart-5: #3ca951; /* Green */
+  --color-chart-6: #ff8ab7; /* Pink */
+  --color-chart-7: #a463f2; /* Purple */
+  --color-chart-8: #97bbf5; /* Light Blue */
+  --color-chart-9: #9c6b4e; /* Brown */
+  --color-chart-10: #9498a0; /* Gray */
 
   /* Chart Semantic Colors */
-  --color-chart-success: #33ff44; /* stylelint-disable-line color-hex-length */ /* Green */
-  --color-chart-warning: #ff7729; /* Orange */
-  --color-chart-error: #ff2323; /* Red */
+  --color-chart-success: #3ca951; /* Green */
+  --color-chart-warning: #efb118; /* Orange */
+  --color-chart-error: #ff725c; /* Red */
 
   /* Chart Semantic Colors - Highlighted (for hover/selection states) */
-  --color-chart-error-highlight: #ff5c5c;
-  --color-chart-warning-highlight: #ff9944; /* stylelint-disable-line color-hex-length */
+  --color-chart-error-highlight: #ffa090;
+  --color-chart-warning-highlight: #f5c94d;
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body);

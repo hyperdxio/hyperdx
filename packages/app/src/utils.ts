@@ -424,21 +424,22 @@ export const CHART_PALETTE = {
   orangeHighlight: '#f5c94d',
 } as const;
 
-// ClickStack theme chart color palette
+// ClickStack theme chart color palette - Observable 10 categorical palette
+// https://observablehq.com/@d3/color-schemes
 export const CLICKSTACK_CHART_PALETTE = {
-  blue: '#437eef', // Primary color for ClickStack
-  green: '#33ff44',
-  orange: '#ff7729',
-  red: '#ff2323',
-  fuchsia: '#fb64d6',
-  violet: '#bb33ff',
-  babyblue: '#00cbeb',
-  teal: '#6df8e1',
-  sunrise: '#ffc300',
-  slate: '#9a9ea7',
-  // Highlighted variants
-  redHighlight: '#ff5c5c',
-  orangeHighlight: '#ff9944',
+  blue: '#4269d0', // Primary color for ClickStack
+  orange: '#efb118',
+  red: '#ff725c',
+  cyan: '#6cc5b0',
+  green: '#3ca951',
+  pink: '#ff8ab7',
+  purple: '#a463f2',
+  lightBlue: '#97bbf5',
+  brown: '#9c6b4e',
+  gray: '#9498a0',
+  // Highlighted variants (lighter shades for hover/selection states)
+  redHighlight: '#ffa090',
+  orangeHighlight: '#f5c94d',
 } as const;
 
 // Ordered array for chart series - green first for brand consistency (HyperDX default)
@@ -462,21 +463,48 @@ export const COLORS = [
 // NOTE: This is a fallback for SSR. In browser, getColorFromCSSVariable() reads from CSS variables
 export const CLICKSTACK_COLORS = [
   CLICKSTACK_CHART_PALETTE.blue, // 1 - Blue (primary) - ClickStack default
-  CLICKSTACK_CHART_PALETTE.green, // 2
-  CLICKSTACK_CHART_PALETTE.orange, // 3
-  CLICKSTACK_CHART_PALETTE.red, // 4
-  CLICKSTACK_CHART_PALETTE.fuchsia, // 5
-  CLICKSTACK_CHART_PALETTE.violet, // 6
-  CLICKSTACK_CHART_PALETTE.babyblue, // 7
-  CLICKSTACK_CHART_PALETTE.teal, // 8
-  CLICKSTACK_CHART_PALETTE.sunrise, // 9
-  CLICKSTACK_CHART_PALETTE.slate, // 10
+  CLICKSTACK_CHART_PALETTE.orange, // 2
+  CLICKSTACK_CHART_PALETTE.red, // 3
+  CLICKSTACK_CHART_PALETTE.cyan, // 4
+  CLICKSTACK_CHART_PALETTE.green, // 5
+  CLICKSTACK_CHART_PALETTE.pink, // 6
+  CLICKSTACK_CHART_PALETTE.purple, // 7
+  CLICKSTACK_CHART_PALETTE.lightBlue, // 8
+  CLICKSTACK_CHART_PALETTE.brown, // 9
+  CLICKSTACK_CHART_PALETTE.gray, // 10
 ];
+
+/**
+ * Cached theme detection to avoid repeated DOM reads during rendering.
+ * Cache is invalidated by MutationObserver when theme class changes.
+ */
+let cachedTheme: 'clickstack' | 'hyperdx' | null = null;
+let themeObserverInitialized = false;
+
+function initThemeObserver(): void {
+  if (themeObserverInitialized || typeof window === 'undefined') {
+    return;
+  }
+  themeObserverInitialized = true;
+
+  try {
+    const observer = new MutationObserver(() => {
+      // Invalidate cache when class attribute changes
+      cachedTheme = null;
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+  } catch {
+    // MutationObserver not available, cache will still work but won't auto-invalidate
+  }
+}
 
 /**
  * Detects the active theme by checking for theme classes on documentElement.
  * Returns 'clickstack' if theme-clickstack class is present, 'hyperdx' otherwise.
- * getComputedStyle is fast enough to call on every color read, avoiding SSR/Next.js cache state issues.
+ * Result is cached and invalidated when the class attribute changes.
  */
 function detectActiveTheme(): 'clickstack' | 'hyperdx' {
   if (typeof window === 'undefined') {
@@ -484,10 +512,19 @@ function detectActiveTheme(): 'clickstack' | 'hyperdx' {
     return 'hyperdx';
   }
 
+  // Return cached value if available
+  if (cachedTheme !== null) {
+    return cachedTheme;
+  }
+
+  // Initialize observer to invalidate cache on theme changes
+  initThemeObserver();
+
   try {
     const htmlElement = document.documentElement;
     const isClickStack = htmlElement.classList.contains('theme-clickstack');
-    return isClickStack ? 'clickstack' : 'hyperdx';
+    cachedTheme = isClickStack ? 'clickstack' : 'hyperdx';
+    return cachedTheme;
   } catch {
     // Fallback if DOM access fails
     return 'hyperdx';
