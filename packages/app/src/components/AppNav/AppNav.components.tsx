@@ -89,7 +89,7 @@ export const AppNavUserMenu = ({
           })}
         >
           <Group gap="xs" wrap="nowrap" miw={0}>
-            <Avatar size="sm" radius="xl" color="green">
+            <Avatar size="sm" radius="xl" color="gray">
               {initials}
             </Avatar>
             {!isCollapsed && (
