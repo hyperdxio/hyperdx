@@ -476,35 +476,16 @@ export const CLICKSTACK_COLORS = [
 
 /**
  * Cached theme detection to avoid repeated DOM reads during rendering.
- * Cache is invalidated by MutationObserver when theme class changes.
+ * Uses per-frame caching via requestAnimationFrame to ensure cache is fresh
+ * each render cycle while avoiding repeated reads within the same frame.
  */
 let cachedTheme: 'clickstack' | 'hyperdx' | null = null;
-let themeObserverInitialized = false;
-
-function initThemeObserver(): void {
-  if (themeObserverInitialized || typeof window === 'undefined') {
-    return;
-  }
-  themeObserverInitialized = true;
-
-  try {
-    const observer = new MutationObserver(() => {
-      // Invalidate cache when class attribute changes
-      cachedTheme = null;
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    });
-  } catch {
-    // MutationObserver not available, cache will still work but won't auto-invalidate
-  }
-}
+let cacheInvalidationScheduled = false;
 
 /**
  * Detects the active theme by checking for theme classes on documentElement.
  * Returns 'clickstack' if theme-clickstack class is present, 'hyperdx' otherwise.
- * Result is cached and invalidated when the class attribute changes.
+ * Result is cached per animation frame to avoid repeated DOM reads during rendering.
  */
 function detectActiveTheme(): 'clickstack' | 'hyperdx' {
   if (typeof window === 'undefined') {
@@ -514,16 +495,31 @@ function detectActiveTheme(): 'clickstack' | 'hyperdx' {
 
   // Return cached value if available
   if (cachedTheme !== null) {
+    // Schedule cache invalidation for next frame (only once per frame)
+    if (!cacheInvalidationScheduled) {
+      cacheInvalidationScheduled = true;
+      requestAnimationFrame(() => {
+        cachedTheme = null;
+        cacheInvalidationScheduled = false;
+      });
+    }
     return cachedTheme;
   }
-
-  // Initialize observer to invalidate cache on theme changes
-  initThemeObserver();
 
   try {
     const htmlElement = document.documentElement;
     const isClickStack = htmlElement.classList.contains('theme-clickstack');
     cachedTheme = isClickStack ? 'clickstack' : 'hyperdx';
+
+    // Schedule cache invalidation for next frame
+    if (!cacheInvalidationScheduled) {
+      cacheInvalidationScheduled = true;
+      requestAnimationFrame(() => {
+        cachedTheme = null;
+        cacheInvalidationScheduled = false;
+      });
+    }
+
     return cachedTheme;
   } catch {
     // Fallback if DOM access fails
@@ -533,18 +529,15 @@ function detectActiveTheme(): 'clickstack' | 'hyperdx' {
 
 /**
  * Reads chart color from CSS variable based on index.
- * Falls back to theme-appropriate color array if CSS variable is not available (SSR or missing).
- * This ensures theme-aware colors (ClickStack uses blue, HyperDX uses green).
+ * CSS variables handle theme switching automatically via theme classes on documentElement.
+ * Falls back to COLORS array if CSS variable is not available (SSR or getComputedStyle fails).
  */
 export function getColorFromCSSVariable(index: number): string {
-  const activeTheme = detectActiveTheme();
-  const fallbackColors =
-    activeTheme === 'clickstack' ? CLICKSTACK_COLORS : COLORS;
-  const colorArrayLength = fallbackColors.length;
+  const colorArrayLength = COLORS.length;
 
   if (typeof window === 'undefined') {
-    // SSR: fallback to theme-appropriate hardcoded colors
-    return fallbackColors[index % colorArrayLength];
+    // SSR: fallback to default colors
+    return COLORS[index % colorArrayLength];
   }
 
   try {
@@ -554,7 +547,6 @@ export function getColorFromCSSVariable(index: number): string {
     const color = computedStyle.getPropertyValue(cssVarName).trim();
 
     // Only use CSS variable if it's actually set (non-empty)
-    // Empty string means the variable isn't defined for current theme
     if (color && color !== '') {
       return color;
     }
@@ -562,8 +554,8 @@ export function getColorFromCSSVariable(index: number): string {
     // Fallback if getComputedStyle fails
   }
 
-  // Fallback to theme-appropriate hardcoded colors
-  return fallbackColors[index % colorArrayLength];
+  // Fallback to default colors
+  return COLORS[index % colorArrayLength];
 }
 
 export function hashCode(str: string) {
@@ -680,11 +672,10 @@ export const logLevelColor = (key: string | number | undefined) => {
 };
 
 // order of colors for sorting. primary color (blue/green) on bottom, then yellow, then red
-export const logLevelColorOrder = [
-  logLevelColor('info'),
-  logLevelColor('warn'),
-  logLevelColor('error'),
-];
+// Computed lazily to avoid DOM access at module initialization (SSR-safe)
+export function getLogLevelColorOrder(): string[] {
+  return [logLevelColor('info'), logLevelColor('warn'), logLevelColor('error')];
+}
 
 const getLevelColor = (logLevel?: string) => {
   if (logLevel == null) {
