@@ -105,6 +105,12 @@ if [ -z "$OPAMP_SERVER_URL" ]; then
   # Build collector arguments with multiple config files
   COLLECTOR_ARGS="--config /etc/otelcol-contrib/config.yaml --config /etc/otelcol-contrib/standalone-config.yaml"
 
+  # Add bearer token auth config if OTLP_AUTH_TOKEN is specified (only used in standalone mode)
+  if [ -n "$OTLP_AUTH_TOKEN" ]; then
+    echo "OTLP_AUTH_TOKEN is configured, enabling bearer token authentication"
+    COLLECTOR_ARGS="$COLLECTOR_ARGS --config /etc/otelcol-contrib/standalone-auth-config.yaml"
+  fi
+
   # Add custom config file if specified
   if [ -n "$CUSTOM_OTELCOL_CONFIG_FILE" ]; then
     echo "Including custom config: $CUSTOM_OTELCOL_CONFIG_FILE"
