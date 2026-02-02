@@ -954,6 +954,43 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     );
   }, [createDashboard, router]);
 
+  const duplicateDashboard = useCallback(() => {
+    if (!dashboard) return;
+    const tilesWithoutAlerts = dashboard.tiles.map(tile => {
+      const { alert, ...configWithoutAlert } = tile.config;
+      return {
+        ...tile,
+        id: makeId(),
+        config: configWithoutAlert,
+      };
+    });
+    createDashboard.mutate(
+      {
+        name: `${dashboard.name} (Copy)`,
+        tiles: tilesWithoutAlerts,
+        filters: dashboard.filters,
+        tags: dashboard.tags,
+      },
+      {
+        onSuccess: data => {
+          notifications.show({
+            color: 'green',
+            title: 'Dashboard duplicated',
+            message: 'Dashboard has been successfully duplicated',
+          });
+          router.push(`/dashboards/${data.id}`);
+        },
+        onError: error => {
+          notifications.show({
+            color: 'red',
+            title: 'Failed to duplicate dashboard',
+            message: `An error occurred while duplicating the dashboard - ${error.message}`,
+          });
+        },
+      },
+    );
+  }, [createDashboard, dashboard, router]);
+
   const [isSaving, setIsSaving] = useState(false);
 
   const hasTiles = dashboard && dashboard.tiles.length > 0;
@@ -1046,7 +1083,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             </Tags>
           )}
           {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
-            <Menu width={250}>
+            <Menu width={250} data-testid="dashboard-options-menu">
               <Menu.Target>
                 <ActionIcon variant="secondary" size="input-xs">
                   <IconDotsVertical size={14} />
@@ -1092,6 +1129,15 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 >
                   {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
                 </Menu.Item>
+                {hasTiles && (
+                  <Menu.Item
+                    data-testid="duplicate-dashboard"
+                    leftSection={<IconCopy size={16} />}
+                    onClick={duplicateDashboard}
+                  >
+                    Duplicate Dashboard
+                  </Menu.Item>
+                )}
                 <Menu.Item
                   leftSection={<IconTrash size={16} />}
                   color="red"

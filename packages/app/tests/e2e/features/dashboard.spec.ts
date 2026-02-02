@@ -341,4 +341,67 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await expect(dashboardPage.getFilterItemByName('Metric')).toHaveCount(0);
     });
   });
+
+  test('should duplicate dashboard', async () => {
+    test.setTimeout(60000);
+    await test.step('Create new dashboard', async () => {
+      await expect(dashboardPage.createButton).toBeVisible();
+      await dashboardPage.createNewDashboard();
+
+      // Edit dashboard name using page object method
+      await dashboardPage.editDashboardName('Test Dashboard');
+    });
+
+    await test.step('Add first tile to dashboard', async () => {
+      await expect(dashboardPage.addNewTileButton).toBeVisible();
+      await dashboardPage.addTile();
+
+      // Create basic chart
+      await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+      await dashboardPage.chartEditor.createBasicChart('Test Chart');
+
+      // Verify tile was added (chart content depends on data availability)
+      const dashboardTiles = dashboardPage.getTiles();
+      await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
+    });
+
+    await test.step('Add second tile with Demo Metrics', async () => {
+      await expect(dashboardPage.addNewTileButton).toBeVisible();
+      await dashboardPage.addTile();
+
+      // Select source and create chart with specific metric
+      await expect(dashboardPage.chartEditor.source).toBeVisible();
+      await dashboardPage.chartEditor.createChartWithMetric(
+        'K8s CPU Chart',
+        'Demo Metrics',
+        'k8s.container.cpu_limit',
+        'k8s.container.cpu_limit:::::::gauge',
+      );
+
+      // Verify tile was added (chart content depends on data availability)
+      const dashboardTiles = dashboardPage.getTiles();
+      await expect(dashboardTiles).toHaveCount(2, { timeout: 10000 });
+    });
+
+    await test.step('duplicate the dashboard', async () => {
+      await dashboardPage.dashboardOptions.click();
+      await dashboardPage.duplicateDashboard.click();
+    });
+
+    await test.step('check to see if dashboard is duplicated correctly', async () => {
+      await expect(dashboardPage.dashboardName).toHaveText(
+        'Test Dashboard (Copy)',
+      );
+
+      // Verify tile was added (chart content depends on data availability)
+      const dashboardTiles = dashboardPage.getTiles();
+      await expect(dashboardTiles).toHaveCount(2, { timeout: 10000 });
+
+      const testChartTile = dashboardPage.getTile(0);
+      await expect(testChartTile.getByText('Test Chart')).toBeVisible();
+
+      const k8sTile = dashboardPage.getTile(1);
+      await expect(k8sTile.getByText('K8s CPU Chart')).toBeVisible();
+    });
+  });
 });
