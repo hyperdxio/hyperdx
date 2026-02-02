@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { validateRequestWithEnhancedErrors as validateRequest } from '../enhancedErrors';
 import {
   alertSchema,
-  externalChartSchema,
+  externalDashboardTileSchema,
   externalQueryChartSeriesSchema,
   objectIdSchema,
   tagsSchema,
@@ -26,7 +26,7 @@ describe('enhancedErrors', () => {
         validateRequest({
           body: z.object({
             name: z.string().max(1024),
-            tiles: z.array(externalChartSchema),
+            tiles: z.array(externalDashboardTileSchema),
             tags: tagsSchema,
           }),
         }),
@@ -52,7 +52,7 @@ describe('enhancedErrors', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toEqual(
-        'Body validation failed: tiles.0.w: Expected number, received string',
+        'Body validation failed: tiles.0.w: Expected number, received string; tiles.0.series: Array must contain at least 1 element(s)',
       );
     });
 

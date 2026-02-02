@@ -18,19 +18,17 @@ export const sourceTableSchema = z.union([
 export type SourceTable = z.infer<typeof sourceTableSchema>;
 
 // ==============================
-// Charts
+// Charts & Dashboards
 // ==============================
 
-export const numberFormatSchema = z.object({
-  output: z
-    .union([
-      z.literal('currency'),
-      z.literal('percent'),
-      z.literal('byte'),
-      z.literal('time'),
-      z.literal('number'),
-    ])
-    .optional(),
+const numberFormatSchema = z.object({
+  output: z.union([
+    z.literal('currency'),
+    z.literal('percent'),
+    z.literal('byte'),
+    z.literal('time'),
+    z.literal('number'),
+  ]),
   mantissa: z.number().optional(),
   thousandSeparated: z.boolean().optional(),
   average: z.boolean().optional(),
@@ -40,16 +38,19 @@ export const numberFormatSchema = z.object({
   unit: z.string().optional(),
 });
 
-export const percentileLevelSchema = z.number().min(0).max(1).optional();
+const percentileLevelSchema = z.number().min(0).max(1).optional();
 
-export const timeChartSeriesSchema = z.object({
-  table: sourceTableSchema.optional(),
+const whereLanguageSchema = z.enum(['sql', 'lucene']).optional();
+
+const timeChartSeriesSchema = z.object({
   type: z.literal('time'),
+  sourceId: objectIdSchema,
   aggFn: AggregateFunctionSchema,
   level: percentileLevelSchema,
-  field: z.union([z.string(), z.undefined()]),
+  field: z.string().optional(),
+  alias: z.string().optional(),
   where: z.string(),
-  whereLanguage: z.enum(['sql', 'lucene']).optional(),
+  whereLanguage: whereLanguageSchema,
   groupBy: z.array(z.string()).max(10),
   numberFormat: numberFormatSchema.optional(),
   metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
@@ -59,14 +60,17 @@ export const timeChartSeriesSchema = z.object({
     .optional(),
 });
 
-export const tableChartSeriesSchema = z.object({
+export type TimeChartSeries = z.infer<typeof timeChartSeriesSchema>;
+
+const tableChartSeriesSchema = z.object({
   type: z.literal('table'),
-  table: sourceTableSchema.optional(),
+  sourceId: objectIdSchema,
   aggFn: AggregateFunctionSchema,
   level: percentileLevelSchema,
   field: z.string().optional(),
+  alias: z.string().optional(),
   where: z.string(),
-  whereLanguage: z.enum(['sql', 'lucene']).optional(),
+  whereLanguage: whereLanguageSchema,
   groupBy: z.array(z.string()).max(10),
   sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
   numberFormat: numberFormatSchema.optional(),
@@ -74,41 +78,40 @@ export const tableChartSeriesSchema = z.object({
   metricName: z.string().optional(),
 });
 
-export const numberChartSeriesSchema = z.object({
+export type TableChartSeries = z.infer<typeof tableChartSeriesSchema>;
+
+const numberChartSeriesSchema = z.object({
   type: z.literal('number'),
-  table: sourceTableSchema.optional(),
+  sourceId: objectIdSchema,
   aggFn: AggregateFunctionSchema,
   level: percentileLevelSchema,
-  field: z.union([z.string(), z.undefined()]),
+  field: z.string().optional(),
+  alias: z.string().optional(),
   where: z.string(),
-  whereLanguage: z.enum(['sql', 'lucene']).optional(),
+  whereLanguage: whereLanguageSchema,
   numberFormat: numberFormatSchema.optional(),
   metricDataType: z.nativeEnum(MetricsDataType).optional(),
   metricName: z.string().optional(),
 });
 
-export const histogramChartSeriesSchema = z.object({
-  table: sourceTableSchema.optional(),
-  type: z.literal('histogram'),
-  level: percentileLevelSchema,
-  field: z.union([z.string(), z.undefined()]),
-  where: z.string(),
-  whereLanguage: z.enum(['sql', 'lucene']).optional(),
-  metricDataType: z.nativeEnum(MetricsDataType).optional(),
-  metricName: z.string().optional(),
-});
+export type NumberChartSeries = z.infer<typeof numberChartSeriesSchema>;
 
-export const searchChartSeriesSchema = z.object({
+const searchChartSeriesSchema = z.object({
   type: z.literal('search'),
+  sourceId: objectIdSchema,
   fields: z.array(z.string()),
   where: z.string(),
-  whereLanguage: z.enum(['sql', 'lucene']).optional(),
+  whereLanguage: whereLanguageSchema,
 });
 
-export const markdownChartSeriesSchema = z.object({
+export type SearchChartSeries = z.infer<typeof searchChartSeriesSchema>;
+
+const markdownChartSeriesSchema = z.object({
   type: z.literal('markdown'),
-  content: z.string(),
+  content: z.string().max(100000),
 });
+
+export type MarkdownChartSeries = z.infer<typeof markdownChartSeriesSchema>;
 
 export const externalQueryChartSeriesSchema = z.object({
   sourceId: objectIdSchema,
@@ -117,97 +120,55 @@ export const externalQueryChartSeriesSchema = z.object({
   level: percentileLevelSchema,
   field: z.string().optional(),
   where: z.string(),
-  whereLanguage: z.enum(['sql', 'lucene']).optional(),
+  whereLanguage: whereLanguageSchema,
   groupBy: z.array(z.string()).max(10),
   sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
   metricDataType: z.nativeEnum(MetricsDataType).optional(),
   metricName: z.string().optional(),
 });
 
-export const chartSeriesSchema = z.union([
+const chartSeriesSchema = z.discriminatedUnion('type', [
   timeChartSeriesSchema,
   tableChartSeriesSchema,
-  histogramChartSeriesSchema,
   searchChartSeriesSchema,
   numberChartSeriesSchema,
   markdownChartSeriesSchema,
 ]);
 
-export const chartSchema = z.object({
-  // User defined ID
-  id: z.string().max(36),
-  name: z.string(),
-  x: z.number(),
-  y: z.number(),
-  w: z.number(),
-  h: z.number(),
-  series: z.array(
-    // We can't do a strict validation here since mongo and the frontend
-    // have a bug where chart types will not delete extraneous properties
-    // when attempting to save.
-    z.object({
-      type: z.enum([
-        'time',
-        'histogram',
-        'search',
-        'number',
-        'table',
-        'markdown',
-      ]),
-      table: z.string().optional(),
-      aggFn: AggregateFunctionSchema.optional(),
-      field: z.union([z.string(), z.undefined()]).optional(),
-      fields: z.array(z.string()).optional(),
-      where: z.string().optional(),
-      groupBy: z.array(z.string()).optional(),
-      sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
-      content: z.string().optional(),
-      numberFormat: numberFormatSchema.optional(),
-      metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
-      displayType: z.optional(
-        z.union([z.literal('stacked_bar'), z.literal('line')]),
-      ),
-    }),
-  ),
-  seriesReturnType: z.enum(['ratio', 'column']).optional(),
-});
+export type ChartSeries = z.infer<typeof chartSeriesSchema>;
 
-export const externalChartSchema = z.object({
+export const externalDashboardTileSchema = z.object({
   name: z.string(),
-  x: z.number(),
-  y: z.number(),
-  w: z.number(),
-  h: z.number(),
-  series: z.array(
-    z.object({
-      type: z.enum([
-        'time',
-        'histogram',
-        'search',
-        'number',
-        'table',
-        'markdown',
-      ]),
-      dataSource: z.enum(['events', 'metrics']).optional(),
-      aggFn: AggregateFunctionSchema.optional(),
-      field: z.union([z.string(), z.undefined()]).optional(),
-      fields: z.array(z.string()).optional(),
-      where: z.string().optional(),
-      groupBy: z.array(z.string()).optional(),
-      sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
-      content: z.string().optional(),
-      numberFormat: numberFormatSchema.optional(),
-      metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
+  x: z.number().min(0).max(23),
+  y: z.number().min(0),
+  w: z.number().min(1).max(24),
+  h: z.number().min(1),
+  series: chartSeriesSchema
+    .array()
+    .min(1)
+    .superRefine((series, ctx) => {
+      const types = series.map(s => s.type);
+      if (!types.every(t => t === types[0])) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'All series must have the same type',
+        });
+      }
     }),
-  ),
   asRatio: z.boolean().optional(),
 });
-export const externalChartSchemaWithId = externalChartSchema.and(
-  z.object({
-    // User defined ID
-    id: z.string().max(36),
-  }),
-);
+
+export const externalDashboardTileSchemaWithId =
+  externalDashboardTileSchema.and(
+    z.object({
+      // User defined ID
+      id: z.string().max(36),
+    }),
+  );
+
+export type ExternalDashboardTileWithId = z.infer<
+  typeof externalDashboardTileSchemaWithId
+>;
 
 export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
 
