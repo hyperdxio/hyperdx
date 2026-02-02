@@ -12,7 +12,7 @@ import {
   SEVERITY_TEXT_COLUMN_ALIAS,
   TIMESTAMP_COLUMN_ALIAS,
 } from '@/hooks/usePatterns';
-import useRowWhere from '@/hooks/useRowWhere';
+import useRowWhere, { RowWhereResult } from '@/hooks/useRowWhere';
 import { getFirstTimestampValueExpression } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -34,9 +34,8 @@ export default function PatternSidePanel({
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 100;
 
-  const [selectedRowWhere, setSelectedRowWhere] = React.useState<string | null>(
-    null,
-  );
+  const [selectedRowWhere, setSelectedRowWhere] =
+    React.useState<RowWhereResult | null>(null);
 
   const serviceNameExpression = source?.serviceNameExpression || 'Service';
 
@@ -81,11 +80,11 @@ export default function PatternSidePanel({
 
   const handleRowClick = React.useCallback(
     (row: Record<string, any>) => {
-      const whereClause = getRowWhere({
+      const rowWhereResult = getRowWhere({
         body: row[PATTERN_COLUMN_ALIAS],
         ts: row[TIMESTAMP_COLUMN_ALIAS],
       });
-      setSelectedRowWhere(whereClause);
+      setSelectedRowWhere(rowWhereResult);
     },
     [getRowWhere],
   );
@@ -125,7 +124,7 @@ export default function PatternSidePanel({
                 </Card.Section>
                 <RawLogTable
                   rows={pattern.samples}
-                  generateRowId={row => row.id}
+                  generateRowId={row => ({ where: row.id, aliasWith: [] })}
                   displayedColumns={displayedColumns}
                   columnTypeMap={columnTypeMap}
                   columnNameMap={columnNameMap}
@@ -140,7 +139,8 @@ export default function PatternSidePanel({
           {selectedRowWhere && (
             <DBRowSidePanel
               source={source}
-              rowId={selectedRowWhere}
+              rowId={selectedRowWhere.where}
+              aliasWith={selectedRowWhere.aliasWith}
               onClose={handleCloseRowSidePanel}
               isNestedPanel={true}
               breadcrumbPath={[{ label: 'Pattern Overview' }]}

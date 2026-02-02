@@ -10,19 +10,14 @@ import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
-import { validateRequest } from 'zod-express-middleware';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { getTeam } from '@/controllers/team';
 import { IConnection } from '@/models/connection';
 import { ISource } from '@/models/source';
-import { translateExternalSeriesToInternalSeries } from '@/utils/externalApi';
-import {
-  externalQueryChartSeriesSchema,
-  objectIdSchema,
-  timeChartSeriesSchema,
-} from '@/utils/zod';
+import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
+import { externalQueryChartSeriesSchema } from '@/utils/zod';
 
 /**
  * @openapi
@@ -216,17 +211,26 @@ const buildChartConfigFromRequest = async (
   chartConfig: ChartConfigWithOptDateRange;
   groupByFields: string[] | undefined;
 }> => {
-  const internalSeries = translateExternalSeriesToInternalSeries({
-    type: 'time', // Assume type 'time' for this endpoint
-    ...params.externalSeries,
-  }) as z.infer<typeof timeChartSeriesSchema>;
-
-  const hasGroupBy = internalSeries.groupBy?.length > 0;
-  const groupByFields = internalSeries.groupBy;
-
   const translatedGranularity = translateGranularityToInterval(
     params.granularity,
   );
+
+  const {
+    aggFn,
+    level,
+    field = undefined,
+    where = undefined,
+    whereLanguage,
+    metricDataType,
+    metricName,
+    groupBy,
+  } = params.externalSeries;
+
+  const hasGroupBy = groupBy?.length > 0;
+
+  if (aggFn == null) {
+    throw new Error('aggFn must be set for time chart');
+  }
 
   const chartConfig: ChartConfigWithOptDateRange = {
     displayType: DisplayType.Line,
@@ -240,18 +244,17 @@ const buildChartConfigFromRequest = async (
     }),
     select: [
       {
-        aggFn: internalSeries.aggFn,
-        level: internalSeries.level,
-        valueExpression: internalSeries.field?.includes('.')
-          ? `'${internalSeries.field}'`
-          : (internalSeries.field ??
-            (source.kind === SourceKind.Metric ? 'Value' : '')),
-        aggCondition: internalSeries.where?.trim() ?? '',
-        aggConditionLanguage: internalSeries.whereLanguage ?? 'lucene',
+        aggFn,
+        level,
+        valueExpression: field?.includes('.')
+          ? `'${field}'`
+          : (field ?? (source.kind === SourceKind.Metric ? 'Value' : '')),
+        aggCondition: where?.trim() ?? '',
+        aggConditionLanguage: whereLanguage ?? 'lucene',
         alias: `series_${params.seriesIndex}`,
         ...(source.kind === SourceKind.Metric && {
-          metricName: internalSeries.metricName,
-          metricType: internalSeries.metricDataType,
+          metricName,
+          metricType: metricDataType,
         }),
       },
     ],
@@ -264,13 +267,13 @@ const buildChartConfigFromRequest = async (
     granularity: translatedGranularity ?? 'auto',
     seriesReturnType: params.seriesReturnType,
     ...(hasGroupBy && {
-      groupBy: (groupByFields as string[]).map(field => ({
+      groupBy: groupBy.map(field => ({
         valueExpression: field,
       })),
     }),
   };
 
-  return { chartConfig, groupByFields };
+  return { chartConfig, groupByFields: groupBy ?? [] };
 };
 
 /**
@@ -513,7 +516,7 @@ router.post(
       seriesReturnType: z.enum(['ratio', 'column']).optional(),
     }),
   }),
-  async (req, res, next) => {
+  async (req, res) => {
     const span = opentelemetry.trace.getActiveSpan();
     try {
       const teamId = req.user?.team;

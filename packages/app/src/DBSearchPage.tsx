@@ -92,6 +92,7 @@ import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
+import { aliasMapToWithClauses } from '@/hooks/useRowWhere';
 import { withAppNav } from '@/layout';
 import {
   useCreateSavedSearch,
@@ -1348,18 +1349,7 @@ function DBSearchPage() {
 
   const { data: aliasMap } = useAliasMapFromChartConfig(dbSqlRowTableConfig);
 
-  const aliasWith = useMemo(
-    () =>
-      Object.entries(aliasMap ?? {}).map(([key, value]) => ({
-        name: key,
-        sql: {
-          sql: value,
-          params: {},
-        },
-        isSubquery: false,
-      })),
-    [aliasMap],
-  );
+  const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
 
   const histogramTimeChartConfig = useMemo(() => {
     if (chartConfig == null) {
@@ -1582,7 +1572,7 @@ function DBSearchPage() {
       >
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
-          <Group gap="4px" wrap="nowrap">
+          <Group gap="4px" wrap="nowrap" style={{ minWidth: 150 }}>
             <SourceSelectControlled
               key={`${savedSearchId}`}
               size="xs"
@@ -1824,7 +1814,7 @@ function DBSearchPage() {
               </ErrorBoundary>
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
-                  <Flex direction="column" w="100%" gap="0px">
+                  <Flex direction="column" w="100%" gap="0px" mih="0">
                     <Box className={searchPageStyles.searchStatsContainer}>
                       <Group justify="space-between" style={{ width: '100%' }}>
                         <SearchTotalCountChart
@@ -1841,7 +1831,10 @@ function DBSearchPage() {
                       </Group>
                     </Box>
                     {!hasQueryError && (
-                      <Box className={searchPageStyles.timeChartContainer}>
+                      <Box
+                        className={searchPageStyles.timeChartContainer}
+                        mih="0"
+                      >
                         <DBTimeChart
                           sourceId={searchedConfig.source ?? undefined}
                           showLegend={false}
@@ -1855,20 +1848,22 @@ function DBSearchPage() {
                         />
                       </Box>
                     )}
-                    <PatternTable
-                      source={searchedSource}
-                      config={{
-                        ...chartConfig,
-                        dateRange: searchedTimeRange,
-                      }}
-                      bodyValueExpression={
-                        searchedSource?.bodyExpression ??
-                        chartConfig.implicitColumnExpression ??
-                        ''
-                      }
-                      totalCountConfig={histogramTimeChartConfig}
-                      totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
-                    />
+                    <Box flex="1" mih="0">
+                      <PatternTable
+                        source={searchedSource}
+                        config={{
+                          ...chartConfig,
+                          dateRange: searchedTimeRange,
+                        }}
+                        bodyValueExpression={
+                          searchedSource?.bodyExpression ??
+                          chartConfig.implicitColumnExpression ??
+                          ''
+                        }
+                        totalCountConfig={histogramTimeChartConfig}
+                        totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
+                      />
+                    </Box>
                   </Flex>
                 )}
               {analysisMode === 'delta' && searchedSource != null && (
@@ -1882,7 +1877,7 @@ function DBSearchPage() {
                   source={searchedSource}
                 />
               )}
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <Flex direction="column" mih="0">
                 {analysisMode === 'results' &&
                   chartConfig &&
                   histogramTimeChartConfig && (
@@ -1916,7 +1911,10 @@ function DBSearchPage() {
                         </Group>
                       </Box>
                       {!hasQueryError && (
-                        <Box className={searchPageStyles.timeChartContainer}>
+                        <Box
+                          className={searchPageStyles.timeChartContainer}
+                          mih="0"
+                        >
                           <DBTimeChart
                             sourceId={searchedConfig.source ?? undefined}
                             showLegend={false}
@@ -2050,7 +2048,7 @@ function DBSearchPage() {
                     </div>
                   </>
                 ) : (
-                  <>
+                  <Box flex="1" mih="0">
                     {chartConfig &&
                       searchedConfig.source &&
                       dbSqlRowTableConfig &&
@@ -2072,9 +2070,9 @@ function DBSearchPage() {
                           initialSortBy={initialSortBy}
                         />
                       )}
-                  </>
+                  </Box>
                 )}
-              </div>
+              </Flex>
             </div>
           </>
         )}

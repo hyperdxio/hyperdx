@@ -5,8 +5,11 @@ import {
   appendSelectWithPrimaryAndPartitionKey,
   RawLogTable,
 } from '@/components/DBRowTable';
+import { RowWhereResult } from '@/hooks/useRowWhere';
 
 import * as useChartConfigModule from '../../hooks/useChartConfig';
+
+const mockRowWhereResult: RowWhereResult = { where: '', aliasWith: [] };
 
 describe('RawLogTable', () => {
   beforeEach(() => {
@@ -34,7 +37,7 @@ describe('RawLogTable', () => {
         dedupRows={false}
         hasNextPage={false}
         onRowDetailsClick={() => {}}
-        generateRowId={() => ''}
+        generateRowId={() => mockRowWhereResult}
         columnTypeMap={new Map()}
       />,
     );
@@ -55,7 +58,7 @@ describe('RawLogTable', () => {
       dedupRows: false,
       hasNextPage: false,
       onRowDetailsClick: () => {},
-      generateRowId: () => '',
+      generateRowId: () => mockRowWhereResult,
       columnTypeMap: new Map(),
     };
     it('Should not allow changing sort if disabled', () => {

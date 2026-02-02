@@ -16,6 +16,7 @@ import {
 import { IconPencil } from '@tabler/icons-react';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
+import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
 
@@ -95,7 +96,7 @@ export default function DBTracePanel({
 
   const [eventRowWhere, setEventRowWhere] = useQueryState(
     'eventRowWhere',
-    parseAsJson<{ id: string; type: string }>(),
+    parseAsJson<{ id: string; type: string; aliasWith: WithClause[] }>(),
   );
 
   const {
@@ -231,6 +232,7 @@ export default function DBTracePanel({
                   : traceSourceData
               }
               rowId={eventRowWhere?.id}
+              aliasWith={eventRowWhere?.aliasWith}
             />
           )}
           {displayedTab === Tab.Parsed && (
@@ -241,6 +243,7 @@ export default function DBTracePanel({
                   : traceSourceData
               }
               rowId={eventRowWhere?.id}
+              aliasWith={eventRowWhere?.aliasWith}
             />
           )}
         </>

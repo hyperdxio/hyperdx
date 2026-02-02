@@ -1,5 +1,28 @@
 # @hyperdx/common-utils
 
+## 0.11.1
+
+### Patch Changes
+
+- 6aa3ac6f: fix: Fix missing negation in binary lucene expressions
+- b8ab312a: chore: improve Team typing
+
+## 0.11.0
+
+### Minor Changes
+
+- bc8c4eec: feat: allow applying session settings to queries
+
+### Patch Changes
+
+- 1cf8cebb: feat: Support JSON Sessions
+- 418828e8: Add better types for AI features, Fix bug that could cause page crash when generating graphs
+- 79398be7: chore: Standardize granularities
+- 00854da8: feat: Add support for searching with bloom_filter(tokens()) indexes
+- f98fc519: perf: Query filter values from MVs
+- f20fac30: feat: force usage of the map key index with lucene rendered queries
+- 4a856173: feat: Add hasAllTokens for text index support
+
 ## 0.10.2
 
 ### Patch Changes

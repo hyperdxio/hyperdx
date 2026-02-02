@@ -20,6 +20,7 @@ import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/util
 import {
   AlertState,
   DashboardFilter,
+  SourceKind,
   TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -182,10 +183,14 @@ const Tile = forwardRef(
 
     useEffect(() => {
       if (source != null) {
+        const isMetricSource = source.kind === SourceKind.Metric;
+
         // TODO: will need to update this when we allow for multiple metrics per chart
         const firstSelect = chart.config.select[0];
         const metricType =
-          typeof firstSelect !== 'string' ? firstSelect?.metricType : undefined;
+          isMetricSource && typeof firstSelect !== 'string'
+            ? firstSelect?.metricType
+            : undefined;
         const tableName = getMetricTableName(source, metricType);
         if (source.connection) {
           setQueriedConfig({
@@ -200,7 +205,7 @@ const Tile = forwardRef(
             },
             implicitColumnExpression: source.implicitColumnExpression,
             filters,
-            metricTables: source.metricTables,
+            metricTables: isMetricSource ? source.metricTables : undefined,
           });
         }
       }
@@ -390,12 +395,15 @@ const Tile = forwardRef(
                 config={queriedConfig}
               />
             )}
-            {queriedConfig?.displayType === DisplayType.Markdown && (
+            {/* Markdown charts may not have queriedConfig, if source is not set */}
+            {(queriedConfig?.displayType === DisplayType.Markdown ||
+              (!queriedConfig &&
+                chart.config.displayType === DisplayType.Markdown)) && (
               <HDXMarkdownChart
                 key={`${keyPrefix}-${chart.id}`}
                 title={title}
                 toolbarItems={toolbar}
-                config={queriedConfig}
+                config={queriedConfig ?? chart.config}
               />
             )}
             {queriedConfig?.displayType === DisplayType.Search && (
@@ -455,7 +463,7 @@ const Tile = forwardRef(
             isHighlighted && 'dashboard-chart-highlighted'
           }`}
           id={`chart-${chart.id}`}
-          onMouseEnter={() => {
+          onMouseOver={() => {
             setHovered(true);
             setIsFocused(true);
           }}
@@ -856,6 +864,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                     {
                       ...chart,
                       id: makeId(),
+                      config: {
+                        ...chart.config,
+                        // Don't duplicate any alerts that may be set on the original tile
+                        alert: undefined,
+                      },
                     },
                   ],
                 });

@@ -112,7 +112,7 @@ function useOptimizedKeyValuesCalls({
   };
 }
 
-export function useDashboardFilterKeyValues({
+export function useDashboardFilterValues({
   filters,
   dateRange,
 }: {
@@ -185,7 +185,7 @@ export function useDashboardFilterKeyValues({
           return data.map(({ key, value }) => [
             key,
             {
-              values: value,
+              values: value.map(v => v.toString()),
               isLoading,
             },
           ]);

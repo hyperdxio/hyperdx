@@ -1,9 +1,16 @@
 import lucene from '@hyperdx/lucene';
+import { chunk } from 'lodash';
 import SqlString from 'sqlstring';
 
 import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
 import { Metadata, SkipIndexMetadata } from '@/core/metadata';
-import { splitAndTrimWithBracket } from '@/core/utils';
+import {
+  parseTokenizerFromTextIndex,
+  splitAndTrimWithBracket,
+} from '@/core/utils';
+
+/** Max number of tokens to pass to hasAllTokens(), which supports up to 64 tokens as of ClickHouse v25.12. */
+const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
 
 function encodeSpecialTokens(query: string): string {
   return query
@@ -57,6 +64,12 @@ function isNodeRangedTerm(
 
 function isBinaryAST(ast: lucene.AST | lucene.Node): ast is lucene.BinaryAST {
   return 'right' in ast && ast.right != null;
+}
+
+function hasStart(
+  ast: lucene.BinaryAST,
+): ast is lucene.BinaryAST & { start: lucene.Operator } {
+  return 'start' in ast && !!ast.start;
 }
 
 function isLeftOnlyAST(
@@ -493,6 +506,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private implicitColumnExpression?: string;
   private connectionId: string;
   private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
+  private enableTextIndexPromise?: Promise<boolean>;
 
   constructor({
     metadata,
@@ -518,6 +532,18 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       .catch(error => {
         console.error('Error fetching skip indices:', error);
         return [];
+      });
+
+    // Pre-fetch value of the enable_full_text_index setting
+    this.enableTextIndexPromise = this.metadata
+      .getSetting({
+        settingName: 'enable_full_text_index',
+        connectionId,
+      })
+      .then(value => value === '1')
+      .catch(error => {
+        console.error('Error fetching enable_full_text_index setting:', error);
+        return false;
       });
   }
 
@@ -583,15 +609,54 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         return SqlString.format(
           `(lower(?) ${isNegatedField ? 'NOT ' : ''}LIKE lower(?))`,
           [
-            SqlString.raw(column ?? ''),
+            SqlString.raw(column),
             `${prefixWildcard ? '%' : ''}${term}${suffixWildcard ? '%' : ''}`,
           ],
         );
       } else if (shouldUseTokenBf) {
-        const hasSeparators = this.termHasSeparators(term);
+        // First check for a text index, and use it if possible
+        // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
+        const isTextIndexEnabled = await this.enableTextIndexPromise;
+        const textIndex = isTextIndexEnabled
+          ? await this.findTextIndex(column)
+          : undefined;
+
+        if (textIndex) {
+          const tokenizer = parseTokenizerFromTextIndex(textIndex);
+
+          // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
+          if (tokenizer?.type === 'splitByNonAlpha') {
+            const tokens = this.tokenizeTerm(term);
+            const hasSeparators = this.termHasSeparators(term);
+
+            // Batch tokens to avoid exceeding hasAllTokens limit (64)
+            const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
+            const hasAllTokensExpressions = tokenBatches.map(batch =>
+              SqlString.format(`hasAllTokens(?, ?)`, [
+                SqlString.raw(column),
+                batch.join(' '),
+              ]),
+            );
+
+            if (hasSeparators || tokenBatches.length > 1) {
+              // Multi-token, or term containing token separators: hasAllTokens(..., 'foo bar') AND lower(...) LIKE '%foo bar%'
+              return `(${isNegatedField ? 'NOT (' : ''}${[
+                ...hasAllTokensExpressions,
+                SqlString.format(`(lower(?) LIKE lower(?))`, [
+                  SqlString.raw(column),
+                  `%${term}%`,
+                ]),
+              ].join(' AND ')}${isNegatedField ? ')' : ''})`;
+            } else {
+              // Single token, without token separators: hasAllTokens(..., 'term')
+              return `(${isNegatedField ? 'NOT ' : ''}${hasAllTokensExpressions.join(' AND ')})`;
+            }
+          }
+        }
 
         // Check for bloom_filter tokens() index first
-        const bloomIndex = await this.findBloomFilterTokensIndex(column ?? '');
+        const hasSeparators = this.termHasSeparators(term);
+        const bloomIndex = await this.findBloomFilterTokensIndex(column);
 
         if (bloomIndex.found) {
           const indexHasLower = /\blower\s*\(/.test(bloomIndex.indexExpression);
@@ -607,7 +672,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
               `hasAll(${bloomIndex.indexExpression}, ${termTokensExpression})`,
               // If there are token separators in the term, try to match the whole term as well
               SqlString.format(`(lower(?) LIKE lower(?))`, [
-                SqlString.raw(column ?? ''),
+                SqlString.raw(column),
                 `%${term}%`,
               ]),
             ].join(' AND ')}${isNegatedField ? ')' : ''})`;
@@ -623,20 +688,20 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           return `(${isNegatedField ? 'NOT (' : ''}${[
             ...tokens.map(token =>
               SqlString.format(`hasToken(lower(?), lower(?))`, [
-                SqlString.raw(column ?? ''),
+                SqlString.raw(column),
                 token,
               ]),
             ),
             // If there are symbols in the term, try to match the whole term as well
             SqlString.format(`(lower(?) LIKE lower(?))`, [
-              SqlString.raw(column ?? ''),
+              SqlString.raw(column),
               `%${term}%`,
             ]),
           ].join(' AND ')}${isNegatedField ? ')' : ''})`;
         } else {
           return SqlString.format(
             `(${isNegatedField ? 'NOT ' : ''}hasToken(lower(?), lower(?)))`,
-            [SqlString.raw(column ?? ''), term],
+            [SqlString.raw(column), term],
           );
         }
       }
@@ -776,6 +841,23 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       columnType: 'Unknown',
     };
     // throw new Error(`Column not found: ${field}`);
+  }
+
+  private async findTextIndex(
+    columnExpression: string,
+  ): Promise<SkipIndexMetadata | undefined> {
+    const skipIndices = await this.skipIndicesPromise;
+
+    if (!skipIndices || skipIndices.length === 0) {
+      return undefined;
+    }
+
+    // Note: Text index expressions should not be wrapped in tokens() or preprocessing functions like lower().
+    return skipIndices.find(
+      idx =>
+        idx.type === 'text' &&
+        this.indexCoversColumn(idx.expression, columnExpression),
+    );
   }
 
   /**
@@ -1053,7 +1135,9 @@ async function serialize(
     const parenthesized = binaryAST.parenthesized;
 
     const newContext = createSerializerContext(context, binaryAST);
-    const serialized = `${isNegatedAndParenthesized(binaryAST) ? 'NOT ' : ''}${parenthesized ? '(' : ''}${await serialize(
+    const serialized = `${isNegatedAndParenthesized(binaryAST) ? 'NOT ' : ''}${parenthesized ? '(' : ''}${
+      hasStart(binaryAST) ? `${binaryAST.start} ` : ''
+    }${await serialize(
       binaryAST.left,
       serializer,
       newContext,

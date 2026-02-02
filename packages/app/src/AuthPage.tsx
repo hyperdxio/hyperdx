@@ -29,7 +29,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   const { data: team, isLoading: teamIsLoading } = api.useTeam();
   const router = useRouter();
 
-  const isLoggedIn = Boolean(!teamIsLoading && team && !team.isDemo);
+  const isLoggedIn = Boolean(!teamIsLoading && team);
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -138,7 +138,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
               : isRegister
                 ? 'Register for '
                 : 'Login to '}
-            <span className="text-success fw-bold">HyperDX</span>
+            <span className="text-brand fw-bold">HyperDX</span>
           </div>
           {action === 'login' && (
             <div className="text-center mb-2 ">Welcome back!</div>

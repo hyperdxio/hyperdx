@@ -1,5 +1,45 @@
 # @hyperdx/api
 
+## 2.14.0
+
+### Minor Changes
+
+- 4c287b16: fix: Fix external dashboard endpoints
+- 3aa8be0a: Concat zod errors into a single message field
+- d07e30d5: Associates a logged in HyperDX user to the ClickHouse query recorded in the query log.
+
+### Patch Changes
+
+- 4e7d04c7: API: Show error "Invalid JSON payload" if the JSON body has a syntax error
+- 941bc23e: fix: Fix inaccurate openapi docs for external alerts API
+- b8ab312a: chore: improve Team typing
+- Updated dependencies [6aa3ac6f]
+- Updated dependencies [b8ab312a]
+  - @hyperdx/common-utils@0.11.1
+
+## 2.13.0
+
+### Minor Changes
+
+- bc8c4eec: feat: allow applying session settings to queries
+
+### Patch Changes
+
+- d769f88d: Fix issue when a source type is switched after creation
+- 418828e8: Add better types for AI features, Fix bug that could cause page crash when generating graphs
+- 79398be7: chore: Standardize granularities
+- eef80b7e: Add ability to define different anthropic api BASE_URLs, add core logic for different ai providers
+- 4a856173: feat: Add hasAllTokens for text index support
+- Updated dependencies [1cf8cebb]
+- Updated dependencies [418828e8]
+- Updated dependencies [79398be7]
+- Updated dependencies [bc8c4eec]
+- Updated dependencies [00854da8]
+- Updated dependencies [f98fc519]
+- Updated dependencies [f20fac30]
+- Updated dependencies [4a856173]
+  - @hyperdx/common-utils@0.11.0
+
 ## 2.12.0
 
 ### Patch Changes

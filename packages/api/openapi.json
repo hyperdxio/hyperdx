@@ -38,226 +38,247 @@
           }
         }
       },
-      "Alert": {
+      "AlertInterval": {
+        "type": "string",
+        "enum": [
+          "1m",
+          "5m",
+          "15m",
+          "30m",
+          "1h",
+          "6h",
+          "12h",
+          "1d"
+        ],
+        "description": "Evaluation interval."
+      },
+      "AlertThresholdType": {
+        "type": "string",
+        "enum": [
+          "above",
+          "below"
+        ],
+        "description": "Threshold comparison direction."
+      },
+      "AlertSource": {
+        "type": "string",
+        "enum": [
+          "saved_search",
+          "tile"
+        ],
+        "description": "Alert source type."
+      },
+      "AlertState": {
+        "type": "string",
+        "enum": [
+          "ALERT",
+          "OK",
+          "INSUFFICIENT_DATA",
+          "DISABLED"
+        ],
+        "description": "Current alert state."
+      },
+      "AlertChannelType": {
+        "type": "string",
+        "enum": [
+          "webhook"
+        ],
+        "description": "Channel type."
+      },
+      "AlertSilenced": {
         "type": "object",
+        "description": "Silencing metadata.",
         "properties": {
-          "id": {
+          "by": {
             "type": "string",
-            "example": "65f5e4a3b9e77c001a123456"
-          },
-          "name": {
-            "type": "string",
-            "example": "High Error Rate"
-          },
-          "message": {
-            "type": "string",
-            "example": "Error rate exceeds threshold"
-          },
-          "threshold": {
-            "type": "number",
-            "example": 100
-          },
-          "interval": {
-            "type": "string",
-            "example": "15m"
-          },
-          "thresholdType": {
-            "type": "string",
-            "enum": [
-              "above",
-              "below"
-            ],
-            "example": "above"
-          },
-          "source": {
-            "type": "string",
-            "enum": [
-              "tile",
-              "search"
-            ],
-            "example": "tile"
-          },
-          "state": {
-            "type": "string",
-            "example": "inactive"
-          },
-          "channel": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "example": "webhook"
-              },
-              "webhookId": {
-                "type": "string",
-                "example": "65f5e4a3b9e77c001a789012"
-              }
-            }
-          },
-          "team": {
-            "type": "string",
-            "example": "65f5e4a3b9e77c001a345678"
-          },
-          "tileId": {
-            "type": "string",
-            "example": "65f5e4a3b9e77c001a901234"
-          },
-          "dashboard": {
-            "type": "string",
-            "example": "65f5e4a3b9e77c001a567890"
-          },
-          "savedSearch": {
-            "type": "string",
+            "description": "User ID who silenced the alert.",
             "nullable": true
           },
-          "groupBy": {
+          "at": {
             "type": "string",
-            "nullable": true
+            "description": "Silence start timestamp.",
+            "format": "date-time"
           },
-          "silenced": {
-            "type": "boolean",
-            "nullable": true
-          },
-          "createdAt": {
+          "until": {
             "type": "string",
-            "format": "date-time",
-            "example": "2023-01-01T00:00:00.000Z"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2023-01-01T00:00:00.000Z"
+            "description": "Silence end timestamp.",
+            "format": "date-time"
           }
         }
       },
-      "CreateAlertRequest": {
+      "AlertChannelWebhook": {
         "type": "object",
         "required": [
-          "threshold",
-          "interval",
-          "source",
-          "thresholdType",
-          "channel"
+          "type",
+          "webhookId"
         ],
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/AlertChannelType"
+          },
+          "webhookId": {
+            "type": "string",
+            "description": "Webhook destination ID.",
+            "example": "65f5e4a3b9e77c001a789012"
+          }
+        }
+      },
+      "AlertChannel": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AlertChannelWebhook"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type"
+        }
+      },
+      "Alert": {
+        "type": "object",
         "properties": {
           "dashboardId": {
             "type": "string",
+            "description": "Dashboard ID for tile-based alerts.",
+            "nullable": true,
             "example": "65f5e4a3b9e77c001a567890"
           },
           "tileId": {
             "type": "string",
+            "description": "Tile ID for tile-based alerts.",
+            "nullable": true,
             "example": "65f5e4a3b9e77c001a901234"
+          },
+          "savedSearchId": {
+            "type": "string",
+            "description": "Saved search ID for saved_search alerts.",
+            "nullable": true,
+            "example": "65f5e4a3b9e77c001a345678"
+          },
+          "groupBy": {
+            "type": "string",
+            "description": "Group-by key for saved search alerts.",
+            "nullable": true,
+            "example": "ServiceName"
           },
           "threshold": {
             "type": "number",
+            "description": "Threshold value for triggering the alert.",
             "example": 100
           },
           "interval": {
-            "type": "string",
+            "$ref": "#/components/schemas/AlertInterval",
             "example": "1h"
           },
           "source": {
-            "type": "string",
-            "enum": [
-              "tile",
-              "search"
-            ],
+            "$ref": "#/components/schemas/AlertSource",
             "example": "tile"
           },
           "thresholdType": {
-            "type": "string",
-            "enum": [
-              "above",
-              "below"
-            ],
+            "$ref": "#/components/schemas/AlertThresholdType",
             "example": "above"
           },
           "channel": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "example": "webhook"
-              },
-              "webhookId": {
-                "type": "string",
-                "example": "65f5e4a3b9e77c001a789012"
-              }
-            }
+            "$ref": "#/components/schemas/AlertChannel",
+            "description": "Alert notification channel configuration."
           },
           "name": {
             "type": "string",
+            "description": "Human-friendly alert name.",
+            "nullable": true,
             "example": "Test Alert"
           },
           "message": {
             "type": "string",
+            "description": "Alert message template.",
+            "nullable": true,
             "example": "Test Alert Message"
           }
         }
       },
-      "UpdateAlertRequest": {
-        "type": "object",
-        "properties": {
-          "threshold": {
-            "type": "number",
-            "example": 500
+      "AlertResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Alert"
           },
-          "interval": {
-            "type": "string",
-            "example": "1h"
-          },
-          "thresholdType": {
-            "type": "string",
-            "enum": [
-              "above",
-              "below"
-            ],
-            "example": "above"
-          },
-          "source": {
-            "type": "string",
-            "enum": [
-              "tile",
-              "search"
-            ],
-            "example": "tile"
-          },
-          "dashboardId": {
-            "type": "string",
-            "example": "65f5e4a3b9e77c001a567890"
-          },
-          "tileId": {
-            "type": "string",
-            "example": "65f5e4a3b9e77c001a901234"
-          },
-          "channel": {
+          {
             "type": "object",
             "properties": {
-              "type": {
+              "id": {
                 "type": "string",
-                "example": "webhook"
+                "description": "Unique alert identifier.",
+                "example": "65f5e4a3b9e77c001a123456"
               },
-              "webhookId": {
+              "state": {
+                "$ref": "#/components/schemas/AlertState",
+                "example": "ALERT"
+              },
+              "teamId": {
                 "type": "string",
-                "example": "65f5e4a3b9e77c001a789012"
+                "description": "Team identifier.",
+                "example": "65f5e4a3b9e77c001a345678"
+              },
+              "silenced": {
+                "$ref": "#/components/schemas/AlertSilenced",
+                "description": "Silencing metadata.",
+                "nullable": true
+              },
+              "createdAt": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time",
+                "description": "Creation timestamp.",
+                "example": "2023-01-01T00:00:00.000Z"
+              },
+              "updatedAt": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time",
+                "description": "Last update timestamp.",
+                "example": "2023-01-01T00:00:00.000Z"
               }
             }
-          },
-          "name": {
-            "type": "string",
-            "example": "Updated Alert Name"
-          },
-          "message": {
-            "type": "string",
-            "example": "Updated message"
           }
-        }
+        ]
       },
-      "AlertResponse": {
+      "CreateAlertRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Alert"
+          },
+          {
+            "type": "object",
+            "required": [
+              "threshold",
+              "interval",
+              "source",
+              "thresholdType",
+              "channel"
+            ]
+          }
+        ]
+      },
+      "UpdateAlertRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Alert"
+          },
+          {
+            "type": "object",
+            "required": [
+              "threshold",
+              "interval",
+              "source",
+              "thresholdType",
+              "channel"
+            ]
+          }
+        ]
+      },
+      "AlertResponseEnvelope": {
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/Alert"
+            "$ref": "#/components/schemas/AlertResponse"
           }
         }
       },
@@ -267,7 +288,7 @@
           "data": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Alert"
+              "$ref": "#/components/schemas/AlertResponse"
             }
           }
         }
@@ -313,7 +334,7 @@
           "where": {
             "type": "string",
             "description": "Filter condition in Lucene query syntax",
-            "example": "level:error"
+            "example": "service:api AND level:error"
           },
           "whereLanguage": {
             "type": "string",
@@ -349,26 +370,6 @@
               "histogram"
             ],
             "example": "gauge"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "time",
-              "table",
-              "number",
-              "histogram",
-              "search",
-              "markdown"
-            ],
-            "example": "time"
-          },
-          "dataSource": {
-            "type": "string",
-            "enum": [
-              "events",
-              "metrics"
-            ],
-            "example": "events"
           }
         }
       },
@@ -474,67 +475,541 @@
           }
         }
       },
-      "Tile": {
+      "NumberFormatOutput": {
+        "type": "string",
+        "enum": [
+          "currency",
+          "percent",
+          "byte",
+          "time",
+          "number"
+        ],
+        "description": "Output format type (currency, percent, byte, time, number)."
+      },
+      "AggregationFunction": {
+        "type": "string",
+        "enum": [
+          "avg",
+          "count",
+          "count_distinct",
+          "last_value",
+          "max",
+          "min",
+          "quantile",
+          "sum",
+          "any",
+          "none"
+        ],
+        "description": "Aggregation function to apply to the field or metric value."
+      },
+      "QueryLanguage": {
+        "type": "string",
+        "enum": [
+          "sql",
+          "lucene"
+        ],
+        "description": "Query language for the where clause."
+      },
+      "MetricDataType": {
+        "type": "string",
+        "enum": [
+          "sum",
+          "gauge",
+          "histogram",
+          "summary",
+          "exponential histogram"
+        ],
+        "description": "Metric data type for metrics data sources."
+      },
+      "TimeSeriesDisplayType": {
+        "type": "string",
+        "enum": [
+          "stacked_bar",
+          "line"
+        ],
+        "description": "Visual representation type for the time series."
+      },
+      "SortOrder": {
+        "type": "string",
+        "enum": [
+          "desc",
+          "asc"
+        ],
+        "description": "Sort order for table rows."
+      },
+      "NumberFormat": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string",
-            "example": "65f5e4a3b9e77c001a901234"
+          "output": {
+            "$ref": "#/components/schemas/NumberFormatOutput",
+            "example": "number"
           },
+          "mantissa": {
+            "type": "number",
+            "description": "Number of decimal places.",
+            "example": 2
+          },
+          "thousandSeparated": {
+            "type": "boolean",
+            "description": "Whether to use thousand separators.",
+            "example": true
+          },
+          "average": {
+            "type": "boolean",
+            "description": "Whether to show as average.",
+            "example": false
+          },
+          "decimalBytes": {
+            "type": "boolean",
+            "description": "Use decimal bytes (1000) vs binary bytes (1024).",
+            "example": false
+          },
+          "factor": {
+            "type": "number",
+            "description": "Multiplication factor.",
+            "example": 1
+          },
+          "currencySymbol": {
+            "type": "string",
+            "description": "Currency symbol for currency format.",
+            "example": "$"
+          },
+          "unit": {
+            "type": "string",
+            "description": "Custom unit label.",
+            "example": "ms"
+          }
+        }
+      },
+      "TimeChartSeries": {
+        "type": "object",
+        "required": [
+          "type",
+          "sourceId",
+          "aggFn",
+          "where",
+          "groupBy"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "time"
+            ],
+            "example": "time"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query",
+            "example": "65f5e4a3b9e77c001a567890"
+          },
+          "aggFn": {
+            "$ref": "#/components/schemas/AggregationFunction",
+            "description": "Aggregation function to apply to the field or metric value",
+            "example": "count"
+          },
+          "level": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Percentile level for quantile aggregations (e.g., 0.95 for p95)",
+            "example": 0.95
+          },
+          "field": {
+            "type": "string",
+            "description": "Field/property name to aggregate (required for most aggregation functions except count)",
+            "example": "duration"
+          },
+          "alias": {
+            "type": "string",
+            "description": "Display name for the series in the chart",
+            "example": "Request Duration"
+          },
+          "where": {
+            "type": "string",
+            "description": "Filter query for the data (syntax depends on whereLanguage)",
+            "example": "service:api"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Query language for the where clause",
+            "example": "lucene"
+          },
+          "groupBy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "description": "Fields to group results by (creates separate series for each group)",
+            "example": [
+              "host"
+            ]
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat"
+          },
+          "metricDataType": {
+            "$ref": "#/components/schemas/MetricDataType",
+            "example": "sum"
+          },
+          "metricName": {
+            "type": "string",
+            "description": "Metric name for metrics data sources",
+            "example": "http.server.duration"
+          },
+          "displayType": {
+            "$ref": "#/components/schemas/TimeSeriesDisplayType",
+            "description": "Visual representation type for the time series",
+            "example": "line"
+          }
+        }
+      },
+      "TableChartSeries": {
+        "type": "object",
+        "required": [
+          "type",
+          "sourceId",
+          "aggFn",
+          "where",
+          "groupBy"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "table"
+            ],
+            "example": "table"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query",
+            "example": "65f5e4a3b9e77c001a567890"
+          },
+          "aggFn": {
+            "$ref": "#/components/schemas/AggregationFunction",
+            "description": "Aggregation function to apply to the field or metric value",
+            "example": "count"
+          },
+          "level": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Percentile level for quantile aggregations (e.g., 0.95 for p95)",
+            "example": 0.95
+          },
+          "field": {
+            "type": "string",
+            "example": "duration"
+          },
+          "alias": {
+            "type": "string",
+            "example": "Total Count"
+          },
+          "where": {
+            "type": "string",
+            "example": "level:error"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "example": "lucene"
+          },
+          "groupBy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "example": [
+              "errorType"
+            ]
+          },
+          "sortOrder": {
+            "$ref": "#/components/schemas/SortOrder",
+            "description": "Sort order for table rows",
+            "example": "desc"
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat"
+          },
+          "metricDataType": {
+            "$ref": "#/components/schemas/MetricDataType",
+            "description": "Metric data type for metrics data sources",
+            "example": "sum"
+          },
+          "metricName": {
+            "type": "string",
+            "description": "Metric name for metrics data sources",
+            "example": "http.server.duration"
+          }
+        }
+      },
+      "NumberChartSeries": {
+        "type": "object",
+        "required": [
+          "type",
+          "sourceId",
+          "aggFn",
+          "where"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "number"
+            ],
+            "example": "number"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query",
+            "example": "65f5e4a3b9e77c001a567890"
+          },
+          "aggFn": {
+            "$ref": "#/components/schemas/AggregationFunction",
+            "description": "Aggregation function to apply to the field or metric value",
+            "example": "count"
+          },
+          "level": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Percentile level for quantile aggregations (e.g., 0.95 for p95)",
+            "example": 0.95
+          },
+          "field": {
+            "type": "string",
+            "example": "duration"
+          },
+          "alias": {
+            "type": "string",
+            "example": "Total Requests"
+          },
+          "where": {
+            "type": "string",
+            "example": "service:api"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "example": "lucene"
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat"
+          },
+          "metricDataType": {
+            "$ref": "#/components/schemas/MetricDataType",
+            "example": "sum"
+          },
+          "metricName": {
+            "type": "string",
+            "example": "http.server.duration"
+          }
+        }
+      },
+      "SearchChartSeries": {
+        "type": "object",
+        "required": [
+          "type",
+          "sourceId",
+          "fields",
+          "where"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "search"
+            ],
+            "example": "search"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query",
+            "example": "65f5e4a3b9e77c001a567890"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of field names to display in the search results table",
+            "example": [
+              "timestamp",
+              "level",
+              "message"
+            ]
+          },
+          "where": {
+            "type": "string",
+            "description": "Filter query for the data (syntax depends on whereLanguage)",
+            "example": "level:error"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Query language for the where clause",
+            "example": "lucene"
+          }
+        }
+      },
+      "MarkdownChartSeries": {
+        "type": "object",
+        "required": [
+          "type",
+          "content"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "markdown"
+            ],
+            "example": "markdown"
+          },
+          "content": {
+            "type": "string",
+            "example": "# Dashboard Title\n\nThis is a markdown widget.",
+            "maxLength": 100000
+          }
+        }
+      },
+      "DashboardChartSeries": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TimeChartSeries"
+          },
+          {
+            "$ref": "#/components/schemas/TableChartSeries"
+          },
+          {
+            "$ref": "#/components/schemas/NumberChartSeries"
+          },
+          {
+            "$ref": "#/components/schemas/SearchChartSeries"
+          },
+          {
+            "$ref": "#/components/schemas/MarkdownChartSeries"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "time": "#/components/schemas/TimeChartSeries",
+            "table": "#/components/schemas/TableChartSeries",
+            "number": "#/components/schemas/NumberChartSeries",
+            "search": "#/components/schemas/SearchChartSeries",
+            "markdown": "#/components/schemas/MarkdownChartSeries"
+          }
+        }
+      },
+      "TileInput": {
+        "type": "object",
+        "description": "Dashboard tile/chart configuration for creation",
+        "required": [
+          "name",
+          "x",
+          "y",
+          "w",
+          "h",
+          "series"
+        ],
+        "properties": {
           "name": {
             "type": "string",
+            "description": "Display name for the tile",
             "example": "Error Rate"
           },
           "x": {
             "type": "integer",
+            "minimum": 0,
+            "maximum": 23,
+            "description": "Horizontal position in the grid (0-based)",
             "example": 0
           },
           "y": {
             "type": "integer",
+            "minimum": 0,
+            "description": "Vertical position in the grid (0-based)",
             "example": 0
           },
           "w": {
             "type": "integer",
+            "minimum": 1,
+            "maximum": 24,
+            "description": "Width in grid units",
             "example": 6
           },
           "h": {
             "type": "integer",
+            "minimum": 1,
+            "description": "Height in grid units",
             "example": 3
           },
           "asRatio": {
             "type": "boolean",
+            "description": "Display two series as a ratio (series[0] / series[1])",
             "example": false
           },
           "series": {
             "type": "array",
+            "minItems": 1,
+            "description": "Data series to display in this tile (all must be the same type)",
             "items": {
-              "$ref": "#/components/schemas/ChartSeries"
+              "$ref": "#/components/schemas/DashboardChartSeries"
             }
           }
         }
       },
+      "Tile": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TileInput"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "maxLength": 36,
+                "example": "65f5e4a3b9e77c001a901234"
+              }
+            }
+          }
+        ]
+      },
       "Dashboard": {
         "type": "object",
+        "description": "Dashboard with tiles and configuration",
         "properties": {
           "id": {
             "type": "string",
+            "description": "Dashboard ID",
             "example": "65f5e4a3b9e77c001a567890"
           },
           "name": {
             "type": "string",
+            "description": "Dashboard name",
+            "maxLength": 1024,
             "example": "Service Overview"
           },
           "tiles": {
             "type": "array",
+            "description": "List of tiles/charts in the dashboard",
             "items": {
               "$ref": "#/components/schemas/Tile"
             }
           },
           "tags": {
             "type": "array",
+            "description": "Tags for organizing and filtering dashboards",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 32
             },
+            "maxItems": 50,
             "example": [
               "production",
               "monitoring"
@@ -545,24 +1020,28 @@
       "CreateDashboardRequest": {
         "type": "object",
         "required": [
-          "name"
+          "name",
+          "tiles"
         ],
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 1024,
             "example": "New Dashboard"
           },
           "tiles": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Tile"
+              "$ref": "#/components/schemas/TileInput"
             }
           },
           "tags": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 32
             },
+            "maxItems": 50,
             "example": [
               "development"
             ]
@@ -571,22 +1050,30 @@
       },
       "UpdateDashboardRequest": {
         "type": "object",
+        "required": [
+          "name",
+          "tiles"
+        ],
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 1024,
             "example": "Updated Dashboard Name"
           },
           "tiles": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Tile"
-            }
+            },
+            "description": "Tiles must include their IDs for updates. To add a new tile, generate a unique ID (max 36 chars)."
           },
           "tags": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 32
             },
+            "maxItems": 50,
             "example": [
               "production",
               "updated"
@@ -595,10 +1082,17 @@
         }
       },
       "DashboardResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Dashboard"
+          }
+        ]
+      },
+      "DashboardResponseEnvelope": {
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/Dashboard"
+            "$ref": "#/components/schemas/DashboardResponse"
           }
         }
       },
@@ -608,7 +1102,7 @@
           "data": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Dashboard"
+              "$ref": "#/components/schemas/DashboardResponse"
             }
           }
         }
@@ -647,7 +1141,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AlertResponse"
+                  "$ref": "#/components/schemas/AlertResponseEnvelope"
                 },
                 "examples": {
                   "alertResponse": {
@@ -655,20 +1149,18 @@
                     "value": {
                       "data": {
                         "id": "65f5e4a3b9e77c001a123456",
-                        "name": "CPU Usage Alert",
-                        "message": "CPU usage is above 80%",
                         "threshold": 80,
                         "interval": "5m",
                         "thresholdType": "above",
                         "source": "tile",
-                        "state": "active",
+                        "state": "ALERT",
                         "channel": {
                           "type": "webhook",
                           "webhookId": "65f5e4a3b9e77c001a789012"
                         },
-                        "team": "65f5e4a3b9e77c001a345678",
+                        "teamId": "65f5e4a3b9e77c001a345678",
                         "tileId": "65f5e4a3b9e77c001a901234",
-                        "dashboard": "65f5e4a3b9e77c001a567890",
+                        "dashboardId": "65f5e4a3b9e77c001a567890",
                         "createdAt": "2023-03-15T10:20:30.000Z",
                         "updatedAt": "2023-03-15T14:25:10.000Z"
                       }
@@ -754,7 +1246,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AlertResponse"
+                  "$ref": "#/components/schemas/AlertResponseEnvelope"
                 }
               }
             }
@@ -868,20 +1360,18 @@
                       "data": [
                         {
                           "id": "65f5e4a3b9e77c001a123456",
-                          "name": "High Error Rate",
-                          "message": "Error rate exceeds threshold",
                           "threshold": 100,
                           "interval": "15m",
                           "thresholdType": "above",
                           "source": "tile",
-                          "state": "inactive",
+                          "state": "OK",
                           "channel": {
                             "type": "webhook",
                             "webhookId": "65f5e4a3b9e77c001a789012"
                           },
-                          "team": "65f5e4a3b9e77c001a345678",
+                          "teamId": "65f5e4a3b9e77c001a345678",
                           "tileId": "65f5e4a3b9e77c001a901234",
-                          "dashboard": "65f5e4a3b9e77c001a567890",
+                          "dashboardId": "65f5e4a3b9e77c001a567890",
                           "createdAt": "2023-01-01T00:00:00.000Z",
                           "updatedAt": "2023-01-01T00:00:00.000Z"
                         }
@@ -949,7 +1439,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AlertResponse"
+                  "$ref": "#/components/schemas/AlertResponseEnvelope"
                 }
               }
             }
@@ -1241,6 +1731,74 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DashboardsListResponse"
+                },
+                "examples": {
+                  "dashboards": {
+                    "summary": "Dashboards list response",
+                    "value": {
+                      "data": [
+                        {
+                          "id": "65f5e4a3b9e77c001a567890",
+                          "name": "Infrastructure Monitoring",
+                          "tiles": [
+                            {
+                              "id": "65f5e4a3b9e77c001a901234",
+                              "name": "Server CPU",
+                              "x": 0,
+                              "y": 0,
+                              "w": 6,
+                              "h": 3,
+                              "asRatio": false,
+                              "series": [
+                                {
+                                  "type": "time",
+                                  "sourceId": "65f5e4a3b9e77c001a111111",
+                                  "aggFn": "avg",
+                                  "field": "cpu.usage",
+                                  "where": "host:server-01",
+                                  "groupBy": []
+                                }
+                              ]
+                            }
+                          ],
+                          "tags": [
+                            "infrastructure",
+                            "monitoring"
+                          ]
+                        },
+                        {
+                          "id": "65f5e4a3b9e77c001a567891",
+                          "name": "API Monitoring",
+                          "tiles": [
+                            {
+                              "id": "65f5e4a3b9e77c001a901235",
+                              "name": "API Errors",
+                              "x": 0,
+                              "y": 0,
+                              "w": 6,
+                              "h": 3,
+                              "series": [
+                                {
+                                  "type": "table",
+                                  "sourceId": "65f5e4a3b9e77c001a111112",
+                                  "aggFn": "count",
+                                  "where": "level:error",
+                                  "groupBy": [
+                                    "service"
+                                  ],
+                                  "sortOrder": "desc"
+                                }
+                              ]
+                            }
+                          ],
+                          "tags": [
+                            "api",
+                            "monitoring"
+                          ]
+                        }
+                      ]
+                    }
+                  }
                 }
               }
             }
@@ -1276,11 +1834,10 @@
                         "y": 0,
                         "w": 6,
                         "h": 3,
-                        "asRatio": false,
                         "series": [
                           {
                             "type": "time",
-                            "dataSource": "events",
+                            "sourceId": "65f5e4a3b9e77c001a111111",
                             "aggFn": "count",
                             "where": "service:api",
                             "groupBy": []
@@ -1305,11 +1862,10 @@
                         "y": 0,
                         "w": 6,
                         "h": 3,
-                        "asRatio": false,
                         "series": [
                           {
                             "type": "time",
-                            "dataSource": "events",
+                            "sourceId": "65f5e4a3b9e77c001a111111",
                             "aggFn": "count",
                             "where": "service:backend",
                             "groupBy": []
@@ -1322,11 +1878,10 @@
                         "y": 0,
                         "w": 6,
                         "h": 3,
-                        "asRatio": false,
                         "series": [
                           {
                             "type": "table",
-                            "dataSource": "events",
+                            "sourceId": "65f5e4a3b9e77c001a111111",
                             "aggFn": "count",
                             "where": "level:error",
                             "groupBy": [
@@ -1353,7 +1908,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DashboardResponse"
+                  "$ref": "#/components/schemas/DashboardResponseEnvelope"
                 },
                 "examples": {
                   "createdDashboard": {
@@ -1370,11 +1925,10 @@
                             "y": 0,
                             "w": 6,
                             "h": 3,
-                            "asRatio": false,
                             "series": [
                               {
                                 "type": "time",
-                                "dataSource": "events",
+                                "sourceId": "65f5e4a3b9e77c001a111111",
                                 "aggFn": "count",
                                 "where": "service:api",
                                 "groupBy": []
@@ -1389,6 +1943,19 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Could not find the following source IDs: 68fa86308aa879b977aa6af6"
                 }
               }
             }
@@ -1448,7 +2015,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DashboardResponse"
+                  "$ref": "#/components/schemas/DashboardResponseEnvelope"
                 },
                 "examples": {
                   "dashboard": {
@@ -1469,7 +2036,7 @@
                             "series": [
                               {
                                 "type": "time",
-                                "dataSource": "metrics",
+                                "sourceId": "65f5e4a3b9e77c001a111111",
                                 "aggFn": "avg",
                                 "field": "cpu.usage",
                                 "where": "host:server-01",
@@ -1488,7 +2055,7 @@
                             "series": [
                               {
                                 "type": "time",
-                                "dataSource": "metrics",
+                                "sourceId": "65f5e4a3b9e77c001a111111",
                                 "aggFn": "avg",
                                 "field": "memory.usage",
                                 "where": "host:server-01",
@@ -1575,11 +2142,10 @@
                         "y": 0,
                         "w": 6,
                         "h": 3,
-                        "asRatio": false,
                         "series": [
                           {
                             "type": "time",
-                            "dataSource": "events",
+                            "sourceId": "65f5e4a3b9e77c001a111111",
                             "aggFn": "count",
                             "where": "level:error",
                             "groupBy": []
@@ -1587,16 +2153,16 @@
                         ]
                       },
                       {
+                        "id": "new-tile-123",
                         "name": "New Number Chart",
                         "x": 6,
                         "y": 0,
                         "w": 6,
                         "h": 3,
-                        "asRatio": false,
                         "series": [
                           {
                             "type": "number",
-                            "dataSource": "events",
+                            "sourceId": "65f5e4a3b9e77c001a111111",
                             "aggFn": "count",
                             "where": "level:info"
                           }
@@ -1619,7 +2185,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DashboardResponse"
+                  "$ref": "#/components/schemas/DashboardResponseEnvelope"
                 },
                 "examples": {
                   "updatedDashboard": {
@@ -1636,11 +2202,10 @@
                             "y": 0,
                             "w": 6,
                             "h": 3,
-                            "asRatio": false,
                             "series": [
                               {
                                 "type": "time",
-                                "dataSource": "events",
+                                "sourceId": "65f5e4a3b9e77c001a111111",
                                 "aggFn": "count",
                                 "where": "level:error",
                                 "groupBy": []
@@ -1648,17 +2213,16 @@
                             ]
                           },
                           {
-                            "id": "65f5e4a3b9e77c001a901236",
+                            "id": "new-tile-123",
                             "name": "New Number Chart",
                             "x": 6,
                             "y": 0,
                             "w": 6,
                             "h": 3,
-                            "asRatio": false,
                             "series": [
                               {
                                 "type": "number",
-                                "dataSource": "events",
+                                "sourceId": "65f5e4a3b9e77c001a111111",
                                 "aggFn": "count",
                                 "where": "level:info"
                               }
@@ -1672,6 +2236,19 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Could not find the following source IDs: 68fa86308aa879b977aa6af6"
                 }
               }
             }

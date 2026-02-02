@@ -38,6 +38,11 @@ $transition-slow: 0.2s ease;
 
 /* Layout */
 
+.navGhost {
+  transition: width 0.2s ease;
+  will-change: width;
+}
+
 .nav {
   height: 100vh;
   max-height: 100vh;
@@ -47,6 +52,8 @@ $transition-slow: 0.2s ease;
   border-right: 1px solid var(--color-border);
   background: var(--color-bg-sidenav);
   letter-spacing: 0.05em;
+  overflow: hidden;
+  transition: width 0.2s ease;
 
   &Fixed {
     position: fixed;
@@ -68,10 +75,11 @@ $transition-slow: 0.2s ease;
 
 .logoLink {
   text-decoration: none;
+  margin-left: -0.15rem;
 }
 
 .logoIconWrapper {
-  margin-left: -0.15rem;
+  margin-top: 6px;
 }
 
 .collapseButton {
@@ -79,6 +87,7 @@ $transition-slow: 0.2s ease;
   margin-left: -$spacing-xs;
 
   &Collapsed {
+    transform: rotate(180deg);
     margin-top: $spacing-lg;
   }
 }
@@ -131,17 +140,17 @@ $transition-slow: 0.2s ease;
 
   &:hover {
     color: var(--color-text-sidenav-link-active);
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 
   &:focus-visible {
     outline: none;
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 
   &Active {
     color: var(--color-text-sidenav-link-active);
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 }
 
@@ -178,7 +187,7 @@ $transition-slow: 0.2s ease;
     transform $transition-fast;
 
   &:hover {
-    background: var(--color-bg-sidenav-link-hover);
+    background: var(--color-bg-sidenav-link-active-hover);
     color: var(--color-text-sidenav-link-active);
     transform: scale(1.1);
   }
@@ -213,12 +222,12 @@ $transition-slow: 0.2s ease;
 
   &:hover {
     color: var(--color-text-sidenav-link-active);
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 
   &:focus-visible {
     outline: none;
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 
   i {
@@ -227,7 +236,7 @@ $transition-slow: 0.2s ease;
 
   &Active {
     color: var(--color-text-sidenav-link-active);
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 }
 
@@ -308,7 +317,7 @@ $transition-slow: 0.2s ease;
   overflow: hidden;
 
   &:hover {
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
   }
 
   @include interactive-press;
@@ -321,7 +330,7 @@ $transition-slow: 0.2s ease;
     width: fit-content;
 
     &:hover {
-      background: var(--color-bg-sidenav-link);
+      background: var(--color-bg-sidenav-link-active);
     }
 
     @include interactive-press;
@@ -365,7 +374,7 @@ $transition-slow: 0.2s ease;
     border-color $transition-slow;
 
   &:hover {
-    background: var(--color-bg-sidenav-link);
+    background: var(--color-bg-sidenav-link-active);
     border-color: var(--color-border);
   }
 
@@ -377,7 +386,7 @@ $transition-slow: 0.2s ease;
     background: transparent;
 
     &:hover {
-      background: var(--color-bg-sidenav-link);
+      background: var(--color-bg-sidenav-link-active);
     }
 
     @include interactive-press;

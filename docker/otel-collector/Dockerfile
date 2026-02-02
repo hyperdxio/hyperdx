@@ -2,6 +2,7 @@
 FROM otel/opentelemetry-collector-contrib:0.129.1 AS col
 FROM otel/opentelemetry-collector-opampsupervisor:0.128.0 AS supervisor
 FROM hairyhenderson/gomplate:v4.3.3-alpine AS gomplate
+FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
 
 # From: https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/aa5c3aa4c7ec174361fcaf908de8eaca72263078/cmd/opampsupervisor/Dockerfile#L18
 FROM alpine:latest@sha256:a8560b36e8b8210634f77d9f7f9efd7ffa463e380b75e2e74aff4511df3ef88c AS base
@@ -13,10 +14,14 @@ ARG USER_GID=10001
 RUN apk add --no-cache ca-certificates && \
   addgroup -S -g ${USER_GID} otel && \
   adduser  -S -u ${USER_UID} -G otel otel && \
-  install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data
+  install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data && \
+  install -d -m 0755 -o ${USER_UID} -g ${USER_GID} /etc/otelcol-contrib
 
 # Copy gomplate binary from the gomplate image
 COPY --from=gomplate /bin/gomplate /usr/local/bin/gomplate
+
+# Copy goose binary from the goose image
+COPY --from=goose /bin/goose /usr/local/bin/goose
 
 USER ${USER_UID}:${USER_GID}
 
@@ -30,8 +35,17 @@ COPY --chmod=755 ./log-tailer.sh /log-tailer.sh
 ## dev ##############################################################################################
 FROM base AS dev
 
-COPY ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+LABEL org.opencontainers.image.vendor="HyperDX" \
+      org.opencontainers.image.title="HyperDX OTel Collector (Dev)" \
+      org.opencontainers.image.description="OpenTelemetry Collector for HyperDX development" \
+      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.licenses="MIT"
+
+COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
+COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 ./config.standalone.auth.yaml /etc/otelcol-contrib/standalone-auth-config.yaml
+COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --chown=10001:10001 ./schema /etc/otel/schema
 
 EXPOSE 4317 4318 13133
 
@@ -40,8 +54,17 @@ ENTRYPOINT ["/entrypoint.sh", "/opampsupervisor"]
 ## prod #############################################################################################
 FROM base AS prod
 
-COPY ./config.yaml /etc/otelcol-contrib/config.yaml
-COPY ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+LABEL org.opencontainers.image.vendor="HyperDX" \
+      org.opencontainers.image.title="HyperDX OTel Collector" \
+      org.opencontainers.image.description="OpenTelemetry Collector for HyperDX observability platform" \
+      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.licenses="MIT"
+
+COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
+COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 ./config.standalone.auth.yaml /etc/otelcol-contrib/standalone-auth-config.yaml
+COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --chown=10001:10001 ./schema /etc/otel/schema
 
 EXPOSE 4317 4318 13133
 
