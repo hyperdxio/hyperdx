@@ -475,14 +475,23 @@ export const CLICKSTACK_COLORS = [
 
 /**
  * Cached theme detection to avoid repeated DOM checks.
- * Theme doesn't change dynamically in production, so caching is safe.
+ * Cache is invalidated when theme changes via invalidateThemeCache().
  */
 let cachedTheme: 'clickstack' | 'hyperdx' | null = null;
+
+/**
+ * Invalidates the theme cache. Call this when the theme changes at runtime.
+ * This ensures color functions use the correct theme after theme switches.
+ */
+export function invalidateThemeCache(): void {
+  cachedTheme = null;
+}
 
 /**
  * Detects the active theme by checking for theme classes on documentElement.
  * Returns 'clickstack' if theme-clickstack class is present, 'hyperdx' otherwise.
  * Uses cached result to avoid repeated DOM checks for performance.
+ * Cache is automatically invalidated when theme changes via ThemeProvider.
  */
 function detectActiveTheme(): 'clickstack' | 'hyperdx' {
   if (typeof window === 'undefined') {
@@ -490,11 +499,29 @@ function detectActiveTheme(): 'clickstack' | 'hyperdx' {
     return 'hyperdx';
   }
 
-  // Return cached result if available
-  if (cachedTheme !== null) {
-    return cachedTheme;
+  // Verify cache is still valid by checking DOM (defensive check)
+  // This handles edge cases where cache might be stale
+  const currentCachedTheme = cachedTheme;
+  if (currentCachedTheme !== null) {
+    try {
+      const htmlElement = document.documentElement;
+      const isClickStack = htmlElement.classList.contains('theme-clickstack');
+      const expectedTheme = isClickStack ? 'clickstack' : 'hyperdx';
+
+      // If cache matches current DOM state, return cached value
+      if (currentCachedTheme === expectedTheme) {
+        return currentCachedTheme;
+      }
+
+      // Cache is stale, invalidate it
+      cachedTheme = null;
+    } catch {
+      // If DOM check fails, trust the cache (better than failing)
+      return currentCachedTheme;
+    }
   }
 
+  // Cache miss or invalidated - detect and cache theme
   try {
     const htmlElement = document.documentElement;
     const isClickStack = htmlElement.classList.contains('theme-clickstack');
