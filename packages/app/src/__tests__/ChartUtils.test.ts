@@ -10,7 +10,7 @@ import {
   convertToTimeChartConfig,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
-import { CHART_COLOR_ERROR, COLORS } from '@/utils';
+import { COLORS, getChartColorError } from '@/utils';
 
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
@@ -316,7 +316,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: CHART_COLOR_ERROR(),
+          color: getChartColorError(),
           dataKey: 'error',
           currentPeriodKey: 'error',
           previousPeriodKey: 'error (previous)',
