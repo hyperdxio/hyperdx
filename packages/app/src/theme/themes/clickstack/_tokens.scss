@@ -4,34 +4,6 @@
 
 /* Uses Click UI design tokens */
 
-/* Shared Chart Colors - Observable 10 categorical palette (same for both color schemes) */
-.theme-clickstack {
-  --color-chart-1: #437eef; /* Blue - Primary */
-  --color-chart-2: #efb118; /* Orange */
-  --color-chart-3: #ff725c; /* Red */
-  --color-chart-4: #6cc5b0; /* Cyan */
-  --color-chart-5: #3ca951; /* Green */
-  --color-chart-6: #ff8ab7; /* Pink */
-  --color-chart-7: #a463f2; /* Purple */
-  --color-chart-8: #97bbf5; /* Light Blue */
-  --color-chart-9: #9c6b4e; /* Brown */
-  --color-chart-10: #9498a0; /* Gray */
-
-  /* Chart Semantic Colors */
-  --color-chart-success: #3ca951; /* Green */
-  --color-chart-warning: #efb118; /* Orange */
-  --color-chart-error: #ff725c; /* Red */
-
-  /* Chart Semantic Colors - Highlighted (for hover/selection states) */
-  --color-chart-error-highlight: #ffa090;
-  --color-chart-warning-highlight: #f5c94d;
-
-  /* Tabler icons default stroke width */
-  .tabler-icon {
-    stroke-width: 1.5;
-  }
-}
-
 /* Dark Mode */
 .theme-clickstack[data-mantine-color-scheme='dark'] {
   /* Brand Palette - Yellow/Gold */
@@ -191,8 +163,34 @@
   --color-json-array: #ffd966;
   --color-json-punctuation: #666980;
 
+  /* Chart Colors - Observable 10 categorical palette */
+  --color-chart-1: #437eef; /* Blue - Primary */
+  --color-chart-2: #efb118; /* Orange */
+  --color-chart-3: #ff725c; /* Red */
+  --color-chart-4: #6cc5b0; /* Cyan */
+  --color-chart-5: #3ca951; /* Green */
+  --color-chart-6: #ff8ab7; /* Pink */
+  --color-chart-7: #a463f2; /* Purple */
+  --color-chart-8: #97bbf5; /* Light Blue */
+  --color-chart-9: #9c6b4e; /* Brown */
+  --color-chart-10: #9498a0; /* Gray */
+
+  /* Chart Semantic Colors */
+  --color-chart-success: #3ca951; /* Green */
+  --color-chart-warning: #efb118; /* Orange */
+  --color-chart-error: #ff725c; /* Red */
+
+  /* Chart Semantic Colors - Highlighted (for hover/selection states) */
+  --color-chart-error-highlight: #ffa090;
+  --color-chart-warning-highlight: #f5c94d;
+
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
+
+  /* Tabler icons default stroke width - Set default stroke-width to 1.5 for Tabler icons (instead of default 2). This only affects SVGs that have a stroke attribute set. Can be overridden on individual icons by setting strokeWidth prop */
+  .tabler-icon {
+    stroke-width: 1.5;
+  }
 }
 
 /* Light Mode */
@@ -352,6 +350,32 @@
   --color-json-array: #997300;
   --color-json-punctuation: #868e96;
 
+  /* Chart Colors - Observable 10 categorical palette (same for light mode) */
+  --color-chart-1: #437eef; /* Blue - Primary */
+  --color-chart-2: #efb118; /* Orange */
+  --color-chart-3: #ff725c; /* Red */
+  --color-chart-4: #6cc5b0; /* Cyan */
+  --color-chart-5: #3ca951; /* Green */
+  --color-chart-6: #ff8ab7; /* Pink */
+  --color-chart-7: #a463f2; /* Purple */
+  --color-chart-8: #97bbf5; /* Light Blue */
+  --color-chart-9: #9c6b4e; /* Brown */
+  --color-chart-10: #9498a0; /* Gray */
+
+  /* Chart Semantic Colors */
+  --color-chart-success: #3ca951; /* Green */
+  --color-chart-warning: #efb118; /* Orange */
+  --color-chart-error: #ff725c; /* Red */
+
+  /* Chart Semantic Colors - Highlighted (for hover/selection states) */
+  --color-chart-error-highlight: #ffa090;
+  --color-chart-warning-highlight: #f5c94d;
+
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body);
+
+  /* Tabler icons default stroke width - Set default stroke-width to 1.5 for Tabler icons (instead of default 2). This only affects SVGs that have a stroke attribute set. Can be overridden on individual icons by setting strokeWidth prop */
+  .tabler-icon {
+    stroke-width: 1.5;
+  }
 }

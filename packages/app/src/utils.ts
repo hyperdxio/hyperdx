@@ -405,7 +405,7 @@ export const getLogLevelClass = (lvl: string | undefined) => {
         : undefined;
 };
 
-// HyperDX chart color palette - single source of truth
+// Chart color palette - single source of truth
 // Colors from Observable categorical palette, with custom brand green
 // https://observablehq.com/@d3/color-schemes
 export const CHART_PALETTE = {
@@ -424,7 +424,7 @@ export const CHART_PALETTE = {
   orangeHighlight: '#f5c94d',
 } as const;
 
-// ClickStack chart color palette - Observable 10 categorical palette
+// ClickStack theme chart color palette - Observable 10 categorical palette
 // https://observablehq.com/@d3/color-schemes
 export const CLICKSTACK_CHART_PALETTE = {
   blue: '#437EEF', // Primary color for ClickStack
@@ -458,24 +458,10 @@ export const COLORS = [
   CHART_PALETTE.gray, // 10
 ];
 
-// ClickStack ordered array - blue first for brand consistency
-export const CLICKSTACK_COLORS = [
-  CLICKSTACK_CHART_PALETTE.blue, // 1 - Blue (primary) - ClickStack default
-  CLICKSTACK_CHART_PALETTE.orange, // 2
-  CLICKSTACK_CHART_PALETTE.red, // 3
-  CLICKSTACK_CHART_PALETTE.cyan, // 4
-  CLICKSTACK_CHART_PALETTE.green, // 5
-  CLICKSTACK_CHART_PALETTE.pink, // 6
-  CLICKSTACK_CHART_PALETTE.purple, // 7
-  CLICKSTACK_CHART_PALETTE.lightBlue, // 8
-  CLICKSTACK_CHART_PALETTE.brown, // 9
-  CLICKSTACK_CHART_PALETTE.gray, // 10
-];
-
 /**
  * Detects the active theme by checking for theme classes on documentElement.
  * Returns 'clickstack' if theme-clickstack class is present, 'hyperdx' otherwise.
- * Note: classList.contains() is O(1) and fast.
+ * Note: classList.contains() is O(1) and fast - no caching needed.
  */
 function detectActiveTheme(): 'clickstack' | 'hyperdx' {
   if (typeof window === 'undefined') {
@@ -496,10 +482,12 @@ function detectActiveTheme(): 'clickstack' | 'hyperdx' {
 /**
  * Reads chart color from CSS variable based on index.
  * CSS variables handle theme switching automatically via theme classes on documentElement.
- * Falls back to theme-appropriate color array if CSS variable is not available.
+ * Falls back to COLORS array if CSS variable is not available (SSR or getComputedStyle fails).
  *
- * Note on SSR/Hydration: During SSR, this returns HyperDX fallback colors.
- * On client, it reads from CSS variables or falls back to theme-appropriate palette.
+ * Note on SSR/Hydration: During SSR, this returns fallback colors (HyperDX green palette).
+ * On client hydration, it reads from CSS variables which may differ for ClickStack theme.
+ * This is expected behavior - charts typically render after data fetching (client-side),
+ * so hydration mismatches are rare. If needed, wrap chart components with suppressHydrationWarning.
  */
 export function getColorFromCSSVariable(index: number): string {
   const colorArrayLength = COLORS.length;
@@ -523,11 +511,8 @@ export function getColorFromCSSVariable(index: number): string {
     // Fallback if getComputedStyle fails
   }
 
-  // Fallback to theme-appropriate colors
-  const activeTheme = detectActiveTheme();
-  const fallbackColors =
-    activeTheme === 'clickstack' ? CLICKSTACK_COLORS : COLORS;
-  return fallbackColors[index % colorArrayLength];
+  // Fallback to default colors
+  return COLORS[index % colorArrayLength];
 }
 
 export function hashCode(str: string) {
@@ -544,21 +529,21 @@ export function hashCode(str: string) {
 }
 
 /**
- * Gets theme-aware chart color from CSS variable or falls back to theme-appropriate palette.
- * CSS variables are the primary mechanism for theme-aware colors - they cascade from
- * theme classes on documentElement and handle theme switching automatically.
+ * Gets theme-aware chart color from CSS variable or falls back to palette.
+ * Reads from --color-chart-{type} CSS variable, falls back to theme-appropriate palette.
  *
  * Note on SSR/Hydration: During SSR, returns HyperDX colors as default.
- * On client, reads from CSS variables or falls back to theme-appropriate palette.
+ * On client, reads from CSS variables for accurate theme colors.
+ * Charts typically render client-side after data fetching, minimizing hydration issues.
  */
 function getSemanticChartColor(
   cssVarName: string,
-  hyperdxFallbackColor: string,
-  clickstackFallbackColor: string,
+  hyperdxColor: string,
+  clickstackColor: string,
 ): string {
   if (typeof window === 'undefined') {
     // SSR: use HyperDX as default (can't detect theme without DOM)
-    return hyperdxFallbackColor;
+    return hyperdxColor;
   }
 
   try {
@@ -573,13 +558,11 @@ function getSemanticChartColor(
 
   // Fallback to theme-appropriate palette
   const activeTheme = detectActiveTheme();
-  return activeTheme === 'clickstack'
-    ? clickstackFallbackColor
-    : hyperdxFallbackColor;
+  return activeTheme === 'clickstack' ? clickstackColor : hyperdxColor;
 }
 
 // Semantic colors for log levels (theme-aware)
-// These functions read from CSS variables (primary) with theme-appropriate fallback
+// These are functions that read from CSS variables with theme-appropriate fallbacks
 export function getChartColorSuccess(): string {
   return getSemanticChartColor(
     '--color-chart-success',
