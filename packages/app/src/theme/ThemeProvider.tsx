@@ -8,8 +8,6 @@ import React, {
   useState,
 } from 'react';
 
-import { invalidateThemeCache } from '@/utils';
-
 import {
   DEFAULT_THEME,
   getDevThemeName,
@@ -141,21 +139,15 @@ export function AppThemeProvider({
     if (typeof document !== 'undefined') {
       const html = document.documentElement;
       const newClass = theme.cssClass;
-      const themeChanged = prevThemeClassRef.current !== newClass;
 
       // Remove only the previous theme class (not all themes)
-      if (prevThemeClassRef.current && themeChanged) {
+      if (prevThemeClassRef.current && prevThemeClassRef.current !== newClass) {
         html.classList.remove(prevThemeClassRef.current);
       }
 
       // Add new theme class if not already present
       if (!html.classList.contains(newClass)) {
         html.classList.add(newClass);
-      }
-
-      // Invalidate theme cache when theme changes to ensure color functions use correct theme
-      if (themeChanged) {
-        invalidateThemeCache();
       }
 
       prevThemeClassRef.current = newClass;
