@@ -1,6 +1,102 @@
 #!/bin/sh
 set -e
 
+# Run ClickHouse schema migrations if not using legacy schema creation
+if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
+  echo "========================================"
+  echo "Running ClickHouse schema migrations..."
+  echo "========================================"
+
+  # Set connection defaults
+  DB_NAME="${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE:-default}"
+  DB_USER="${CLICKHOUSE_USER:-default}"
+  DB_PASSWORD="${CLICKHOUSE_PASSWORD:-}"
+  echo "Target database: $DB_NAME"
+
+  # Build goose connection string from environment variables
+  # CLICKHOUSE_ENDPOINT format: tcp://host:port, http://host:port, or https://host:port
+  # Note: database is not specified here since SQL files use ${DATABASE} prefix explicitly
+  case "$CLICKHOUSE_ENDPOINT" in
+    *\?*) GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}&username=${DB_USER}&password=${DB_PASSWORD}" ;;
+    *)    GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}?username=${DB_USER}&password=${DB_PASSWORD}" ;;
+  esac
+
+  # Create temporary directory for processed SQL files
+  TEMP_SCHEMA_DIR="/tmp/schema"
+  mkdir -p "$TEMP_SCHEMA_DIR"
+
+  # Copy and process SQL files, replacing ${DATABASE} macro with actual database name
+  echo "Preparing SQL files with database: $DB_NAME"
+  cp -r /etc/otel/schema/* "$TEMP_SCHEMA_DIR/"
+  find "$TEMP_SCHEMA_DIR" -name "*.sql" -exec sed -i "s/\${DATABASE}/${DB_NAME}/g" {} \;
+
+  # Track migration status
+  MIGRATION_ERRORS=0
+
+  # Run migrations for each telemetry type
+  for schema_dir in "$TEMP_SCHEMA_DIR"/*/; do
+    if [ -d "$schema_dir" ]; then
+      telemetry_type=$(basename "$schema_dir")
+      echo "----------------------------------------"
+      echo "Migrating $telemetry_type schemas..."
+      echo "Directory: $schema_dir"
+
+      # List SQL files to be executed
+      for sql_file in "$schema_dir"/*.sql; do
+        if [ -f "$sql_file" ]; then
+          echo "  - $(basename "$sql_file")"
+        fi
+      done
+
+      # Run goose migration with exponential backoff retry for connection issues
+      MAX_RETRIES=5
+      RETRY_COUNT=0
+      RETRY_DELAY=1
+      MIGRATION_SUCCESS=false
+
+      # For _init schema, use 'default' database for version table since target DB doesn't exist yet
+      if [ "$telemetry_type" = "_init" ]; then
+        GOOSE_TABLE="default.clickstack_db_version_${telemetry_type}"
+      else
+        GOOSE_TABLE="${DB_NAME}.clickstack_db_version_${telemetry_type}"
+      fi
+
+      while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        if goose -table "$GOOSE_TABLE" -dir "$schema_dir" clickhouse "$GOOSE_DBSTRING" up; then
+          echo "SUCCESS: $telemetry_type migrations completed"
+          MIGRATION_SUCCESS=true
+          break
+        else
+          RETRY_COUNT=$((RETRY_COUNT + 1))
+          if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+            echo "RETRY: $telemetry_type migration failed, retrying in ${RETRY_DELAY}s... (attempt $RETRY_COUNT/$MAX_RETRIES)"
+            sleep $RETRY_DELAY
+            RETRY_DELAY=$((RETRY_DELAY * 2))
+          fi
+        fi
+      done
+
+      if [ "$MIGRATION_SUCCESS" = false ]; then
+        echo "ERROR: $telemetry_type migrations failed after $MAX_RETRIES attempts"
+        MIGRATION_ERRORS=$((MIGRATION_ERRORS + 1))
+      fi
+    fi
+  done
+
+  # Cleanup temporary directory
+  rm -rf "$TEMP_SCHEMA_DIR"
+
+  echo "========================================"
+  if [ $MIGRATION_ERRORS -gt 0 ]; then
+    echo "Schema migrations failed with $MIGRATION_ERRORS error(s)"
+    echo "========================================"
+    exit 1
+  else
+    echo "Schema migrations completed successfully"
+    echo "========================================"
+  fi
+fi
+
 # Check if OPAMP_SERVER_URL is defined to determine mode
 if [ -z "$OPAMP_SERVER_URL" ]; then
   # Standalone mode - run collector directly without supervisor

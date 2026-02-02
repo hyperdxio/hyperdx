@@ -32,6 +32,7 @@ exporters:
     ttl: 720h
     logs_table_name: hyperdx_sessions
     timeout: 5s
+    create_schema: ${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -44,6 +45,7 @@ exporters:
     username: ${env:CLICKHOUSE_USER}
     ttl: 720h
     timeout: 5s
+    create_schema: ${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}
     retry_on_failure:
       enabled: true
       initial_interval: 5s
