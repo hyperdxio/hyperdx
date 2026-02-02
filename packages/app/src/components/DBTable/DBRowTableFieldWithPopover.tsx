@@ -15,7 +15,7 @@ export interface DBRowTableFieldWithPopoverProps {
   cellValue: unknown;
   wrapLinesEnabled: boolean;
   columnName?: string;
-  tableContainerRef: React.RefObject<HTMLDivElement | null>;
+  tableContainerRef: HTMLDivElement | null;
   isChart?: boolean;
 }
 
@@ -32,14 +32,6 @@ export const DBRowTableFieldWithPopover = ({
   const [hoverDisabled, setHoverDisabled] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const hoverDisableTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
-  const [tableContainerElement, setTableContainerElement] = useState<
-    HTMLDivElement | undefined
-  >(undefined);
-  useEffect(() => {
-    if (tableContainerRef.current) {
-      setTableContainerElement(tableContainerRef.current);
-    }
-  }, [tableContainerRef]);
 
   // Cleanup timeouts on unmount to prevent memory leaks
   useEffect(() => {
@@ -156,7 +148,7 @@ export const DBRowTableFieldWithPopover = ({
         position="top-start"
         offset={5}
         opened={opened}
-        portalProps={{ target: tableContainerElement }}
+        portalProps={{ target: tableContainerRef ?? undefined }}
         closeOnClickOutside={false}
         clickOutsideEvents={[]}
       >
