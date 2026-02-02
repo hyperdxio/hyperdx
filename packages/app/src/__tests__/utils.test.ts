@@ -5,8 +5,14 @@ import { act, renderHook } from '@testing-library/react';
 import { MetricsDataType, NumberFormat } from '../types';
 import * as utils from '../utils';
 import {
+  CHART_PALETTE,
+  COLORS,
   formatAttributeClause,
   formatNumber,
+  getChartColorError,
+  getChartColorSuccess,
+  getChartColorWarning,
+  getColorFromCSSVariable,
   getMetricTableName,
   mapKeyBy,
   orderByStringToSortingState,
@@ -685,5 +691,150 @@ describe('mapKeyBy', () => {
     const result = mapKeyBy(data, 'id');
     expect(result.size).toBe(1);
     expect(result.get('a')).toBe(data.at(1));
+  });
+});
+
+describe('Chart Color Functions', () => {
+  // Store original getComputedStyle
+  const originalGetComputedStyle = window.getComputedStyle;
+
+  afterEach(() => {
+    // Restore original getComputedStyle
+    window.getComputedStyle = originalGetComputedStyle;
+  });
+
+  describe('getColorFromCSSVariable', () => {
+    it('returns color from CSS variable when available', () => {
+      // Mock getComputedStyle to return a CSS variable value
+      window.getComputedStyle = jest.fn().mockReturnValue({
+        getPropertyValue: jest.fn().mockReturnValue('#4269d0'),
+      });
+
+      const color = getColorFromCSSVariable(0);
+      expect(color).toBe('#4269d0');
+    });
+
+    it('returns fallback color when CSS variable is empty', () => {
+      // Mock getComputedStyle to return empty string
+      window.getComputedStyle = jest.fn().mockReturnValue({
+        getPropertyValue: jest.fn().mockReturnValue(''),
+      });
+
+      const color = getColorFromCSSVariable(0);
+      // Should return first color from COLORS array (green)
+      expect(color).toBe(COLORS[0]);
+    });
+
+    it('wraps index around color array length', () => {
+      window.getComputedStyle = jest.fn().mockReturnValue({
+        getPropertyValue: jest.fn().mockReturnValue(''),
+      });
+
+      // Index 10 should wrap to index 0 (COLORS has 10 items)
+      const color = getColorFromCSSVariable(10);
+      expect(color).toBe(COLORS[0]);
+    });
+
+    it('returns fallback when getComputedStyle throws', () => {
+      window.getComputedStyle = jest.fn().mockImplementation(() => {
+        throw new Error('DOM access failed');
+      });
+
+      const color = getColorFromCSSVariable(0);
+      expect(color).toBe(COLORS[0]);
+    });
+  });
+
+  describe('getChartColorSuccess', () => {
+    it('returns color from CSS variable when available', () => {
+      window.getComputedStyle = jest.fn().mockReturnValue({
+        getPropertyValue: jest.fn().mockReturnValue('#3ca951'),
+      });
+
+      const color = getChartColorSuccess();
+      expect(color).toBe('#3ca951');
+    });
+
+    it('returns fallback when CSS variable is empty', () => {
+      window.getComputedStyle = jest.fn().mockReturnValue({
+        getPropertyValue: jest.fn().mockReturnValue(''),
+      });
+
+      const color = getChartColorSuccess();
+      expect(color).toBe(CHART_PALETTE.green);
+    });
+  });
+
+  describe('getChartColorWarning', () => {
+    it('returns color from CSS variable when available', () => {
+      window.getComputedStyle = jest.fn().mockReturnValue({
+        getPropertyValue: jest.fn().mockReturnValue('#efb118'),
+      });
+
+      const color = getChartColorWarning();
+      expect(color).toBe('#efb118');
+    });
+
+    it('returns fallback when CSS variable is empty', () => {
+      window.getComputedStyle = jest.fn().mockReturnValue({
+        getPropertyValue: jest.fn().mockReturnValue(''),
+      });
+
+      const color = getChartColorWarning();
+      expect(color).toBe(CHART_PALETTE.orange);
+    });
+  });
+
+  describe('getChartColorError', () => {
+    it('returns color from CSS variable when available', () => {
+      window.getComputedStyle = jest.fn().mockReturnValue({
+        getPropertyValue: jest.fn().mockReturnValue('#ff725c'),
+      });
+
+      const color = getChartColorError();
+      expect(color).toBe('#ff725c');
+    });
+
+    it('returns fallback when CSS variable is empty', () => {
+      window.getComputedStyle = jest.fn().mockReturnValue({
+        getPropertyValue: jest.fn().mockReturnValue(''),
+      });
+
+      const color = getChartColorError();
+      expect(color).toBe(CHART_PALETTE.red);
+    });
+  });
+
+  describe('COLORS array', () => {
+    it('has 10 colors', () => {
+      expect(COLORS).toHaveLength(10);
+    });
+
+    it('has green as first color (HyperDX brand)', () => {
+      expect(COLORS[0]).toBe(CHART_PALETTE.green);
+    });
+  });
+
+  describe('CHART_PALETTE', () => {
+    it('contains all expected color keys', () => {
+      expect(CHART_PALETTE).toHaveProperty('green');
+      expect(CHART_PALETTE).toHaveProperty('blue');
+      expect(CHART_PALETTE).toHaveProperty('orange');
+      expect(CHART_PALETTE).toHaveProperty('red');
+      expect(CHART_PALETTE).toHaveProperty('cyan');
+      expect(CHART_PALETTE).toHaveProperty('pink');
+      expect(CHART_PALETTE).toHaveProperty('purple');
+      expect(CHART_PALETTE).toHaveProperty('lightBlue');
+      expect(CHART_PALETTE).toHaveProperty('brown');
+      expect(CHART_PALETTE).toHaveProperty('gray');
+      expect(CHART_PALETTE).toHaveProperty('redHighlight');
+      expect(CHART_PALETTE).toHaveProperty('orangeHighlight');
+    });
+
+    it('uses Observable 10 color values', () => {
+      expect(CHART_PALETTE.blue).toBe('#4269d0');
+      expect(CHART_PALETTE.orange).toBe('#efb118');
+      expect(CHART_PALETTE.red).toBe('#ff725c');
+    });
   });
 });

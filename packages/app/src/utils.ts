@@ -424,24 +424,6 @@ export const CHART_PALETTE = {
   orangeHighlight: '#f5c94d',
 } as const;
 
-// ClickStack theme chart color palette - Observable 10 categorical palette
-// https://observablehq.com/@d3/color-schemes
-export const CLICKSTACK_CHART_PALETTE = {
-  blue: '#4269d0', // Primary color for ClickStack
-  orange: '#efb118',
-  red: '#ff725c',
-  cyan: '#6cc5b0',
-  green: '#3ca951',
-  pink: '#ff8ab7',
-  purple: '#a463f2',
-  lightBlue: '#97bbf5',
-  brown: '#9c6b4e',
-  gray: '#9498a0',
-  // Highlighted variants (lighter shades for hover/selection states)
-  redHighlight: '#ffa090',
-  orangeHighlight: '#f5c94d',
-} as const;
-
 // Ordered array for chart series - green first for brand consistency (HyperDX default)
 // Maps to CSS variables: COLORS[0] -> --color-chart-1, COLORS[1] -> --color-chart-2, etc.
 // NOTE: This is a fallback for SSR. In browser, getColorFromCSSVariable() reads from CSS variables
@@ -457,27 +439,6 @@ export const COLORS = [
   CHART_PALETTE.brown, // 9
   CHART_PALETTE.gray, // 10
 ];
-
-/**
- * Detects the active theme by checking for theme classes on documentElement.
- * Returns 'clickstack' if theme-clickstack class is present, 'hyperdx' otherwise.
- * Note: classList.contains() is O(1) and fast - no caching needed.
- */
-function detectActiveTheme(): 'clickstack' | 'hyperdx' {
-  if (typeof window === 'undefined') {
-    // SSR: default to hyperdx (can't detect theme without DOM)
-    return 'hyperdx';
-  }
-
-  try {
-    const isClickStack =
-      document.documentElement.classList.contains('theme-clickstack');
-    return isClickStack ? 'clickstack' : 'hyperdx';
-  } catch {
-    // Fallback if DOM access fails
-    return 'hyperdx';
-  }
-}
 
 /**
  * Reads chart color from CSS variable based on index.
@@ -529,8 +490,9 @@ export function hashCode(str: string) {
 }
 
 /**
- * Gets theme-aware chart color from CSS variable or falls back to palette.
- * Reads from --color-chart-{type} CSS variable, falls back to theme-appropriate palette.
+ * Gets theme-aware chart color from CSS variable or falls back to HyperDX palette.
+ * CSS variables are the primary mechanism for theme-aware colors - they cascade from
+ * theme classes on documentElement and handle theme switching automatically.
  *
  * Note on SSR/Hydration: During SSR, returns HyperDX colors as default.
  * On client, reads from CSS variables for accurate theme colors.
@@ -538,12 +500,11 @@ export function hashCode(str: string) {
  */
 function getSemanticChartColor(
   cssVarName: string,
-  hyperdxColor: string,
-  clickstackColor: string,
+  hyperdxFallbackColor: string,
 ): string {
   if (typeof window === 'undefined') {
     // SSR: use HyperDX as default (can't detect theme without DOM)
-    return hyperdxColor;
+    return hyperdxFallbackColor;
   }
 
   try {
@@ -556,35 +517,22 @@ function getSemanticChartColor(
     // Fallback if getComputedStyle fails
   }
 
-  // Fallback to theme-appropriate palette
-  const activeTheme = detectActiveTheme();
-  return activeTheme === 'clickstack' ? clickstackColor : hyperdxColor;
+  // Fallback to HyperDX palette (consistent with SSR)
+  return hyperdxFallbackColor;
 }
 
 // Semantic colors for log levels (theme-aware)
-// These are functions that read from CSS variables with theme-appropriate fallbacks
+// These functions read from CSS variables (primary) with HyperDX fallback for SSR
 export function getChartColorSuccess(): string {
-  return getSemanticChartColor(
-    '--color-chart-success',
-    CHART_PALETTE.green,
-    CLICKSTACK_CHART_PALETTE.green,
-  );
+  return getSemanticChartColor('--color-chart-success', CHART_PALETTE.green);
 }
 
 export function getChartColorWarning(): string {
-  return getSemanticChartColor(
-    '--color-chart-warning',
-    CHART_PALETTE.orange,
-    CLICKSTACK_CHART_PALETTE.orange,
-  );
+  return getSemanticChartColor('--color-chart-warning', CHART_PALETTE.orange);
 }
 
 export function getChartColorError(): string {
-  return getSemanticChartColor(
-    '--color-chart-error',
-    CHART_PALETTE.red,
-    CLICKSTACK_CHART_PALETTE.red,
-  );
+  return getSemanticChartColor('--color-chart-error', CHART_PALETTE.red);
 }
 
 // Highlighted variants (theme-aware)
@@ -592,7 +540,6 @@ export function getChartColorErrorHighlight(): string {
   return getSemanticChartColor(
     '--color-chart-error-highlight',
     CHART_PALETTE.redHighlight,
-    CLICKSTACK_CHART_PALETTE.redHighlight,
   );
 }
 
@@ -600,7 +547,6 @@ export function getChartColorWarningHighlight(): string {
   return getSemanticChartColor(
     '--color-chart-warning-highlight',
     CHART_PALETTE.orangeHighlight,
-    CLICKSTACK_CHART_PALETTE.orangeHighlight,
   );
 }
 
