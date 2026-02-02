@@ -16,9 +16,12 @@ if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
   # Build goose connection string from environment variables
   # CLICKHOUSE_ENDPOINT format: tcp://host:port, http://host:port, or https://host:port
   # Note: database is not specified here since SQL files use ${DATABASE} prefix explicitly
+  # For https:// endpoints, add secure=true&skip_verify=false for TLS as required by the goose ClickHouse driver
   case "$CLICKHOUSE_ENDPOINT" in
-    *\?*) GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}&username=${DB_USER}&password=${DB_PASSWORD}" ;;
-    *)    GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}?username=${DB_USER}&password=${DB_PASSWORD}" ;;
+    https://*\?*) GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}&username=${DB_USER}&password=${DB_PASSWORD}&secure=true&skip_verify=false" ;;
+    https://*)    GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}?username=${DB_USER}&password=${DB_PASSWORD}&secure=true&skip_verify=false" ;;
+    *\?*)         GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}&username=${DB_USER}&password=${DB_PASSWORD}" ;;
+    *)            GOOSE_DBSTRING="${CLICKHOUSE_ENDPOINT}?username=${DB_USER}&password=${DB_PASSWORD}" ;;
   esac
 
   # Create temporary directory for processed SQL files
