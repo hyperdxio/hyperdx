@@ -4,7 +4,7 @@ import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
-import { deleteDashboard, getDashboard } from '@/controllers/dashboard';
+import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
@@ -45,33 +45,63 @@ async function getMissingSources(
  * @openapi
  * components:
  *   schemas:
+ *     NumberFormatOutput:
+ *       type: string
+ *       enum: [currency, percent, byte, time, number]
+ *       description: Output format type (currency, percent, byte, time, number).
+ *     AggregationFunction:
+ *       type: string
+ *       enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]
+ *       description: Aggregation function to apply to the field or metric value.
+ *     QueryLanguage:
+ *       type: string
+ *       enum: [sql, lucene]
+ *       description: Query language for the where clause.
+ *     MetricDataType:
+ *       type: string
+ *       enum: [sum, gauge, histogram, summary, exponential histogram]
+ *       description: Metric data type for metrics data sources.
+ *     TimeSeriesDisplayType:
+ *       type: string
+ *       enum: [stacked_bar, line]
+ *       description: Visual representation type for the time series.
+ *     SortOrder:
+ *       type: string
+ *       enum: [desc, asc]
+ *       description: Sort order for table rows.
  *     NumberFormat:
  *       type: object
  *       properties:
  *         output:
- *           type: string
- *           enum: [currency, percent, byte, time, number]
+ *           $ref: '#/components/schemas/NumberFormatOutput'
  *           example: "number"
  *         mantissa:
  *           type: number
+ *           description: Number of decimal places.
  *           example: 2
  *         thousandSeparated:
  *           type: boolean
+ *           description: Whether to use thousand separators.
  *           example: true
  *         average:
  *           type: boolean
+ *           description: Whether to show as average.
  *           example: false
  *         decimalBytes:
  *           type: boolean
+ *           description: Use decimal bytes (1000) vs binary bytes (1024).
  *           example: false
  *         factor:
  *           type: number
+ *           description: Multiplication factor.
  *           example: 1
  *         currencySymbol:
  *           type: string
+ *           description: Currency symbol for currency format.
  *           example: "$"
  *         unit:
  *           type: string
+ *           description: Custom unit label.
  *           example: "ms"
  *
  *     TimeChartSeries:
@@ -92,8 +122,7 @@ async function getMissingSources(
  *           description: ID of the data source to query
  *           example: "65f5e4a3b9e77c001a567890"
  *         aggFn:
- *           type: string
- *           enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]
+ *           $ref: '#/components/schemas/AggregationFunction'
  *           description: Aggregation function to apply to the field or metric value
  *           example: "count"
  *         level:
@@ -115,8 +144,7 @@ async function getMissingSources(
  *           description: Filter query for the data (syntax depends on whereLanguage)
  *           example: "service:api"
  *         whereLanguage:
- *           type: string
- *           enum: [sql, lucene]
+ *           $ref: '#/components/schemas/QueryLanguage'
  *           description: Query language for the where clause
  *           example: "lucene"
  *         groupBy:
@@ -129,16 +157,14 @@ async function getMissingSources(
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *         metricDataType:
- *           type: string
- *           enum: [sum, gauge, histogram, summary, exponential histogram]
+ *           $ref: '#/components/schemas/MetricDataType'
  *           example: "sum"
  *         metricName:
  *           type: string
  *           description: Metric name for metrics data sources
  *           example: "http.server.duration"
  *         displayType:
- *           type: string
- *           enum: [stacked_bar, line]
+ *           $ref: '#/components/schemas/TimeSeriesDisplayType'
  *           description: Visual representation type for the time series
  *           example: "line"
  *
@@ -160,8 +186,7 @@ async function getMissingSources(
  *           description: ID of the data source to query
  *           example: "65f5e4a3b9e77c001a567890"
  *         aggFn:
- *           type: string
- *           enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]
+ *           $ref: '#/components/schemas/AggregationFunction'
  *           description: Aggregation function to apply to the field or metric value
  *           example: "count"
  *         level:
@@ -180,8 +205,7 @@ async function getMissingSources(
  *           type: string
  *           example: "level:error"
  *         whereLanguage:
- *           type: string
- *           enum: [sql, lucene]
+ *           $ref: '#/components/schemas/QueryLanguage'
  *           example: "lucene"
  *         groupBy:
  *           type: array
@@ -190,15 +214,13 @@ async function getMissingSources(
  *           maxItems: 10
  *           example: ["errorType"]
  *         sortOrder:
- *           type: string
- *           enum: [desc, asc]
+ *           $ref: '#/components/schemas/SortOrder'
  *           description: Sort order for table rows
  *           example: "desc"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *         metricDataType:
- *           type: string
- *           enum: [sum, gauge, histogram, summary, exponential histogram]
+ *           $ref: '#/components/schemas/MetricDataType'
  *           description: Metric data type for metrics data sources
  *           example: "sum"
  *         metricName:
@@ -223,8 +245,7 @@ async function getMissingSources(
  *           description: ID of the data source to query
  *           example: "65f5e4a3b9e77c001a567890"
  *         aggFn:
- *           type: string
- *           enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]
+ *           $ref: '#/components/schemas/AggregationFunction'
  *           description: Aggregation function to apply to the field or metric value
  *           example: "count"
  *         level:
@@ -243,14 +264,12 @@ async function getMissingSources(
  *           type: string
  *           example: "service:api"
  *         whereLanguage:
- *           type: string
- *           enum: [sql, lucene]
+ *           $ref: '#/components/schemas/QueryLanguage'
  *           example: "lucene"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *         metricDataType:
- *           type: string
- *           enum: [sum, gauge, histogram, summary, exponential histogram]
+ *           $ref: '#/components/schemas/MetricDataType'
  *           example: "sum"
  *         metricName:
  *           type: string
@@ -283,8 +302,7 @@ async function getMissingSources(
  *           description: Filter query for the data (syntax depends on whereLanguage)
  *           example: "level:error"
  *         whereLanguage:
- *           type: string
- *           enum: [sql, lucene]
+ *           $ref: '#/components/schemas/QueryLanguage'
  *           description: Query language for the where clause
  *           example: "lucene"
  *
@@ -452,10 +470,14 @@ async function getMissingSources(
  *           example: ["production", "updated"]
  *
  *     DashboardResponse:
+ *       allOf:
+ *         - $ref: '#/components/schemas/Dashboard'
+ *
+ *     DashboardResponseEnvelope:
  *       type: object
  *       properties:
  *         data:
- *           $ref: '#/components/schemas/Dashboard'
+ *           $ref: '#/components/schemas/DashboardResponse'
  *
  *     DashboardsListResponse:
  *       type: object
@@ -463,7 +485,7 @@ async function getMissingSources(
  *         data:
  *           type: array
  *           items:
- *             $ref: '#/components/schemas/Dashboard'
+ *             $ref: '#/components/schemas/DashboardResponse'
  */
 
 const router = express.Router();
@@ -483,6 +505,46 @@ const router = express.Router();
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/DashboardsListResponse'
+ *             examples:
+ *               dashboards:
+ *                 summary: Dashboards list response
+ *                 value:
+ *                   data:
+ *                     - id: "65f5e4a3b9e77c001a567890"
+ *                       name: "Infrastructure Monitoring"
+ *                       tiles:
+ *                         - id: "65f5e4a3b9e77c001a901234"
+ *                           name: "Server CPU"
+ *                           x: 0
+ *                           y: 0
+ *                           w: 6
+ *                           h: 3
+ *                           asRatio: false
+ *                           series:
+ *                             - type: "time"
+ *                               sourceId: "65f5e4a3b9e77c001a111111"
+ *                               aggFn: "avg"
+ *                               field: "cpu.usage"
+ *                               where: "host:server-01"
+ *                               groupBy: []
+ *                       tags: ["infrastructure", "monitoring"]
+ *                     - id: "65f5e4a3b9e77c001a567891"
+ *                       name: "API Monitoring"
+ *                       tiles:
+ *                         - id: "65f5e4a3b9e77c001a901235"
+ *                           name: "API Errors"
+ *                           x: 0
+ *                           y: 0
+ *                           w: 6
+ *                           h: 3
+ *                           series:
+ *                             - type: "table"
+ *                               sourceId: "65f5e4a3b9e77c001a111112"
+ *                               aggFn: "count"
+ *                               where: "level:error"
+ *                               groupBy: ["service"]
+ *                               sortOrder: "desc"
+ *                       tags: ["api", "monitoring"]
  *       '401':
  *         description: Unauthorized
  */
@@ -530,7 +592,7 @@ router.get('/', async (req, res, next) => {
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/DashboardResponse'
+ *               $ref: '#/components/schemas/DashboardResponseEnvelope'
  *             examples:
  *               dashboard:
  *                 summary: Single dashboard response
@@ -684,7 +746,7 @@ router.get(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/DashboardResponse'
+ *               $ref: '#/components/schemas/DashboardResponseEnvelope'
  *             examples:
  *               createdDashboard:
  *                 summary: Created dashboard response
@@ -841,7 +903,7 @@ router.post(
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/DashboardResponse'
+ *               $ref: '#/components/schemas/DashboardResponseEnvelope'
  *             examples:
  *               updatedDashboard:
  *                 summary: Updated dashboard response

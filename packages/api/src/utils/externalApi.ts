@@ -423,10 +423,10 @@ export type ExternalAlert = {
   source?: string;
   state: AlertState;
   channel: AlertChannel;
-  team: string;
+  teamId: string;
   tileId?: string;
-  dashboard?: string;
-  savedSearch?: string;
+  dashboardId?: string;
+  savedSearchId?: string;
   groupBy?: string;
   silenced?: {
     by?: string;
@@ -484,10 +484,10 @@ export function translateAlertDocumentToExternalAlert(
     source: alertObj.source,
     state: alertObj.state,
     channel: alertObj.channel,
-    team: alertObj.team.toString(),
+    teamId: alertObj.team.toString(),
     tileId: alertObj.tileId,
-    dashboard: alertObj.dashboard?.toString(),
-    savedSearch: alertObj.savedSearch?.toString(),
+    dashboardId: alertObj.dashboard?.toString(),
+    savedSearchId: alertObj.savedSearch?.toString(),
     groupBy: alertObj.groupBy,
     silenced: transformSilencedToExternalSilenced(alertObj.silenced),
     createdAt: hasCreatedAt(alertObj)
