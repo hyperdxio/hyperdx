@@ -474,8 +474,15 @@ export const CLICKSTACK_COLORS = [
 ];
 
 /**
+ * Cached theme detection to avoid repeated DOM checks.
+ * Theme doesn't change dynamically in production, so caching is safe.
+ */
+let cachedTheme: 'clickstack' | 'hyperdx' | null = null;
+
+/**
  * Detects the active theme by checking for theme classes on documentElement.
  * Returns 'clickstack' if theme-clickstack class is present, 'hyperdx' otherwise.
+ * Uses cached result to avoid repeated DOM checks for performance.
  */
 function detectActiveTheme(): 'clickstack' | 'hyperdx' {
   if (typeof window === 'undefined') {
@@ -483,16 +490,21 @@ function detectActiveTheme(): 'clickstack' | 'hyperdx' {
     return 'hyperdx';
   }
 
-  try {
-    const htmlElement = document.documentElement;
-    if (htmlElement.classList.contains('theme-clickstack')) {
-      return 'clickstack';
-    }
-  } catch {
-    // Fallback if DOM access fails
+  // Return cached result if available
+  if (cachedTheme !== null) {
+    return cachedTheme;
   }
 
-  return 'hyperdx';
+  try {
+    const htmlElement = document.documentElement;
+    const isClickStack = htmlElement.classList.contains('theme-clickstack');
+    cachedTheme = isClickStack ? 'clickstack' : 'hyperdx';
+    return cachedTheme;
+  } catch {
+    // Fallback if DOM access fails
+    cachedTheme = 'hyperdx';
+    return cachedTheme;
+  }
 }
 
 /**

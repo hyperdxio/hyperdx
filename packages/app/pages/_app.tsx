@@ -96,11 +96,11 @@ function AppContent({
   confirmModal: React.ReactNode;
 }) {
   const { userPreferences } = useUserPreferences();
-  const { theme: appTheme } = useAppTheme();
+  const { themeName } = useAppTheme();
 
   // ClickStack theme always uses Inter font - user preference is ignored
   // HyperDX theme allows user to select font preference
-  const isClickStackTheme = appTheme.name === 'clickstack';
+  const isClickStackTheme = themeName === 'clickstack';
   const effectiveFont = isClickStackTheme ? 'Inter' : userPreferences.font;
   const selectedMantineFont = effectiveFont
     ? MANTINE_FONT_MAP[effectiveFont] || undefined
