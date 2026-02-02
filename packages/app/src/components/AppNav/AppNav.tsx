@@ -47,11 +47,10 @@ import {
   useDashboards,
   useUpdateDashboard,
 } from '@/dashboard';
-import Icon from '@/Icon';
 import InstallInstructionModal from '@/InstallInstructionsModal';
-import Logo from '@/Logo';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches, useUpdateSavedSearch } from '@/savedSearch';
+import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
 import type { SavedSearch, ServerDashboard } from '@/types';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
@@ -392,6 +391,9 @@ function useSearchableList<T extends AppNavLinkItem>({
 }
 
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
+  const Wordmark = useWordmark();
+  const Logomark = useLogomark();
+
   useEffect(() => {
     let redirectUrl;
     try {
@@ -673,22 +675,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             <Link href="/search" className={styles.logoLink}>
               {isCollapsed ? (
                 <div className={styles.logoIconWrapper}>
-                  <Icon size={22} />
+                  <Logomark size={22} />
                 </div>
               ) : (
                 <Group gap="xs" align="center">
-                  <Group gap="xs" align="center">
-                    <Icon size={22} />
-
-                    <span
-                      className="fw-bold mono"
-                      style={{
-                        fontSize: '14px',
-                      }}
-                    >
-                      HyperDX
-                    </span>
-                  </Group>
+                  <Wordmark />
                   {isUTC && (
                     <Badge
                       size="xs"
