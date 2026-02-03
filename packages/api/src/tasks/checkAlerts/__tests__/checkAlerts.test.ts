@@ -143,6 +143,8 @@ describe('checkAlerts', () => {
       getTableMetadata: jest.fn().mockResolvedValue({}),
       getClickHouseSettings: jest.fn().mockReturnValue({}),
       setClickHouseSettings: jest.fn(),
+      getSkipIndices: jest.fn().mockResolvedValue([]),
+      getSetting: jest.fn().mockResolvedValue(undefined),
     } as any;
 
     // Create a mock clickhouse client
