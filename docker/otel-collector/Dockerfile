@@ -2,6 +2,7 @@
 FROM otel/opentelemetry-collector-contrib:0.129.1 AS col
 FROM otel/opentelemetry-collector-opampsupervisor:0.128.0 AS supervisor
 FROM hairyhenderson/gomplate:v4.3.3-alpine AS gomplate
+FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
 
 # From: https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/aa5c3aa4c7ec174361fcaf908de8eaca72263078/cmd/opampsupervisor/Dockerfile#L18
 FROM alpine:latest@sha256:a8560b36e8b8210634f77d9f7f9efd7ffa463e380b75e2e74aff4511df3ef88c AS base
@@ -18,6 +19,9 @@ RUN apk add --no-cache ca-certificates && \
 
 # Copy gomplate binary from the gomplate image
 COPY --from=gomplate /bin/gomplate /usr/local/bin/gomplate
+
+# Copy goose binary from the goose image
+COPY --from=goose /bin/goose /usr/local/bin/goose
 
 USER ${USER_UID}:${USER_GID}
 
@@ -39,7 +43,9 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
 
 COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
 COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 ./config.standalone.auth.yaml /etc/otelcol-contrib/standalone-auth-config.yaml
 COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --chown=10001:10001 ./schema /etc/otel/schema
 
 EXPOSE 4317 4318 13133
 
@@ -56,7 +62,9 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
 
 COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
 COPY --chown=10001:10001 ./config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
+COPY --chown=10001:10001 ./config.standalone.auth.yaml /etc/otelcol-contrib/standalone-auth-config.yaml
 COPY --chown=10001:10001 ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --chown=10001:10001 ./schema /etc/otel/schema
 
 EXPOSE 4317 4318 13133
 

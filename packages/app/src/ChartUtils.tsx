@@ -74,7 +74,7 @@ export const AGG_FNS = [
     isAttributable: false,
   },
   { value: 'any' as const, label: 'Any' },
-  { value: 'none' as const, label: 'None' },
+  { value: 'none' as const, label: 'Custom' },
 ];
 
 export const getMetricAggFns = (
