@@ -15,7 +15,6 @@ import { IconFlask } from '@tabler/icons-react';
 
 import { OPTIONS_FONTS } from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
-import { ThemeName } from './theme/types';
 import { isValidThemeName, themes } from './theme';
 import { UserPreferences, useUserPreferences } from './useUserPreferences';
 
@@ -183,21 +182,25 @@ export const UserPreferencesModal = ({
           </SettingContainer>
         )}
 
-        <SettingContainer
-          label="Font"
-          description="If using custom font, make sure it's installed on your system"
-        >
-          <Autocomplete
-            value={userPreferences.font}
-            filter={({ options }) => options}
-            onChange={value =>
-              setUserPreference({
-                font: value as UserPreferences['font'],
-              })
-            }
-            data={OPTIONS_FONTS}
-          />
-        </SettingContainer>
+        {/* Font selection is only available for HyperDX theme */}
+        {/* ClickStack theme always uses Inter font and doesn't show this setting */}
+        {themeName !== 'clickstack' && (
+          <SettingContainer
+            label="Font"
+            description="If using custom font, make sure it's installed on your system"
+          >
+            <Autocomplete
+              value={userPreferences.font}
+              filter={({ options }) => options}
+              onChange={value =>
+                setUserPreference({
+                  font: value as UserPreferences['font'],
+                })
+              }
+              data={OPTIONS_FONTS}
+            />
+          </SettingContainer>
+        )}
       </Stack>
     </Modal>
   );
