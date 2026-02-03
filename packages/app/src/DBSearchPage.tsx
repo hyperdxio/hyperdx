@@ -1789,8 +1789,8 @@ function DBSearchPage() {
           <Paper shadow="xs" p="xl" h="100%">
             <Center mih={100} h="100%">
               <Text size="sm">
-                Please start by selecting a database, table, and timestamp
-                column above to view data.
+                Please start by selecting a source and then click the play
+                button to query data.
               </Text>
             </Center>
           </Paper>

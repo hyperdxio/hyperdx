@@ -557,4 +557,161 @@ describe('Metadata', () => {
       },
     );
   });
+
+  describe('getOtelTables', () => {
+    beforeEach(() => {
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
+    });
+
+    it('should return null when no OTEL tables are found', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [],
+        }),
+      });
+
+      const result = await metadata.getOtelTables({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('should return a coherent set of tables from a single database', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [
+            { database: 'default', name: 'otel_logs' },
+            { database: 'default', name: 'otel_traces' },
+            { database: 'default', name: 'hyperdx_sessions' },
+            { database: 'default', name: 'otel_metrics_gauge' },
+            { database: 'default', name: 'otel_metrics_sum' },
+            { database: 'default', name: 'otel_metrics_histogram' },
+          ],
+        }),
+      });
+
+      const result = await metadata.getOtelTables({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toEqual({
+        database: 'default',
+        tables: {
+          logs: 'otel_logs',
+          traces: 'otel_traces',
+          sessions: 'hyperdx_sessions',
+          metrics: {
+            gauge: 'otel_metrics_gauge',
+            sum: 'otel_metrics_sum',
+            histogram: 'otel_metrics_histogram',
+            summary: undefined,
+            expHistogram: undefined,
+          },
+        },
+      });
+    });
+
+    it('should select the database with the most complete set when multiple databases exist', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [
+            { database: 'default', name: 'hyperdx_sessions' },
+            { database: 'default', name: 'otel_logs' },
+            { database: 'default', name: 'otel_metrics_gauge' },
+            { database: 'default', name: 'otel_metrics_histogram' },
+            { database: 'default', name: 'otel_metrics_sum' },
+            { database: 'default', name: 'otel_metrics_summary' },
+            { database: 'default', name: 'otel_traces' },
+            { database: 'otel_json', name: 'hyperdx_sessions' },
+            { database: 'otel_json', name: 'otel_logs' },
+            { database: 'otel_json', name: 'otel_metrics_gauge' },
+            { database: 'otel_json', name: 'otel_metrics_histogram' },
+            { database: 'otel_json', name: 'otel_metrics_sum' },
+            { database: 'otel_json', name: 'otel_metrics_summary' },
+            { database: 'otel_json', name: 'otel_traces' },
+          ],
+        }),
+      });
+
+      const result = await metadata.getOtelTables({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toBeDefined();
+      expect(result?.database).toBe('default'); // Both have same score, first one wins
+      expect(result?.tables.logs).toBe('otel_logs');
+      expect(result?.tables.traces).toBe('otel_traces');
+      expect(result?.tables.sessions).toBe('hyperdx_sessions');
+    });
+
+    it('should prioritize database with logs and traces over one with only metrics', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [
+            { database: 'metrics_db', name: 'otel_metrics_gauge' },
+            { database: 'metrics_db', name: 'otel_metrics_sum' },
+            { database: 'full_db', name: 'otel_logs' },
+            { database: 'full_db', name: 'otel_traces' },
+          ],
+        }),
+      });
+
+      const result = await metadata.getOtelTables({
+        connectionId: 'test_connection',
+      });
+
+      expect(result?.database).toBe('full_db');
+    });
+
+    it('should use cache when retrieving OTEL tables', async () => {
+      mockCache.getOrFetch.mockReset();
+
+      const mockResult = {
+        database: 'default',
+        tables: {
+          logs: 'otel_logs',
+          traces: 'otel_traces',
+          sessions: 'hyperdx_sessions',
+          metrics: {
+            gauge: 'otel_metrics_gauge',
+            sum: undefined,
+            histogram: undefined,
+            summary: undefined,
+            expHistogram: undefined,
+          },
+        },
+      };
+
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => {
+        if (key === 'test_connection.otelTables') {
+          return Promise.resolve(mockResult);
+        }
+        return queryFn();
+      });
+
+      const result = await metadata.getOtelTables({
+        connectionId: 'test_connection',
+      });
+
+      expect(mockCache.getOrFetch).toHaveBeenCalledWith(
+        'test_connection.otelTables',
+        expect.any(Function),
+      );
+      expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should return null when permissions error occurs', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockRejectedValue(
+        new Error('Not enough privileges'),
+      );
+
+      const result = await metadata.getOtelTables({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toBeNull();
+    });
+  });
 });
