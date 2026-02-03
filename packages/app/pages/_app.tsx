@@ -96,22 +96,23 @@ function AppContent({
   confirmModal: React.ReactNode;
 }) {
   const { userPreferences } = useUserPreferences();
+  const { themeName } = useAppTheme();
 
-  // Only override font if user has explicitly set a preference.
-  // Otherwise, return undefined to let the theme use its default font:
-  // - HyperDX theme: "IBM Plex Sans", monospace
-  // - ClickStack theme: "Inter", sans-serif
-  const selectedMantineFont = userPreferences.font
-    ? MANTINE_FONT_MAP[userPreferences.font] || undefined
+  // ClickStack theme always uses Inter font - user preference is ignored
+  // HyperDX theme allows user to select font preference
+  const isClickStackTheme = themeName === 'clickstack';
+  const effectiveFont = isClickStackTheme ? 'Inter' : userPreferences.font;
+  const selectedMantineFont = effectiveFont
+    ? MANTINE_FONT_MAP[effectiveFont] || undefined
     : undefined;
 
   useEffect(() => {
     // Update CSS variable for global font cascading
     if (typeof document !== 'undefined') {
-      const fontVar = FONT_VAR_MAP[userPreferences.font] || DEFAULT_FONT_VAR;
+      const fontVar = FONT_VAR_MAP[effectiveFont] || DEFAULT_FONT_VAR;
       document.documentElement.style.setProperty('--app-font-family', fontVar);
     }
-  }, [userPreferences.font]);
+  }, [effectiveFont]);
 
   const getLayout = Component.getLayout ?? (page => page);
 
