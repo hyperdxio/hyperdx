@@ -221,7 +221,7 @@ function OnboardingModalComponent({
         : undefined;
 
   const [_step, setStep] = useState<
-    'connection' | 'auto-detect' | 'source' | undefined
+    'connection' | 'auto-detect' | 'source' | 'closed' | undefined
   >(undefined);
 
   const step = _step;
@@ -231,14 +231,6 @@ function OnboardingModalComponent({
       setStep(startStep);
     }
   }, [startStep, step]);
-
-  // const step = _step ?? startStep;
-
-  // useEffect(() => {
-  //   if (step === 'source' && sources != null && sources.length > 0) {
-  //     setStep(undefined);
-  //   }
-  // }, [step, sources]);
 
   const createSourceMutation = useCreateSource();
   const createConnectionMutation = useCreateConnection();
@@ -472,17 +464,6 @@ function OnboardingModalComponent({
           );
         }
 
-        if (sessionSource && traceSource) {
-          updatePromises.push(
-            updateSourceMutation.mutateAsync({
-              source: {
-                ...sessionSource,
-                traceSourceId: traceSource.id,
-              },
-            }),
-          );
-        }
-
         await Promise.all(updatePromises);
 
         setAutoDetectedSources(createdSources);
@@ -490,6 +471,7 @@ function OnboardingModalComponent({
           title: 'Success',
           message: `Automatically detected and created ${createdSources.length} source${createdSources.length > 1 ? 's' : ''}.`,
         });
+        setStep('closed');
       } catch (err) {
         console.error('Error auto-detecting sources:', err);
         notifications.show({
@@ -501,7 +483,6 @@ function OnboardingModalComponent({
         // Fall back to manual source setup
         setStep('source');
       } finally {
-        setStep(undefined);
         setIsAutoDetecting(false);
       }
     },
@@ -672,7 +653,7 @@ function OnboardingModalComponent({
         title: 'Success',
         message: 'Connected to HyperDX demo server.',
       });
-      setStep(undefined);
+      setStep('closed');
     } catch (err) {
       console.error(err);
       notifications.show({
@@ -693,7 +674,7 @@ function OnboardingModalComponent({
   return (
     <Modal
       data-testid="onboarding-modal"
-      opened={step != null}
+      opened={step != null && step !== 'closed'}
       onClose={() => {}}
       title="Welcome to HyperDX"
       size="xl"
@@ -714,7 +695,11 @@ function OnboardingModalComponent({
                 password: '',
               }}
               onSave={() => {
-                setStep('auto-detect');
+                if (hasAutodetected) {
+                  setStep('source');
+                } else {
+                  setStep('auto-detect');
+                }
               }}
               isNew={true}
             />
@@ -723,7 +708,12 @@ function OnboardingModalComponent({
               connection={connections[0]}
               isNew={false}
               onSave={() => {
-                setStep('auto-detect');
+                // If we've already auto-detected, just go to manual source setup
+                if (hasAutodetected) {
+                  setStep('source');
+                } else {
+                  setStep('auto-detect');
+                }
               }}
               showCancelButton={false}
               showDeleteButton={false}
@@ -799,14 +789,30 @@ function OnboardingModalComponent({
                 <Button
                   variant="primary"
                   onClick={() => {
-                    setStep(undefined);
+                    setStep('closed');
                   }}
                 >
                   Continue
                 </Button>
               </Flex>
             </>
-          ) : null}
+          ) : (
+            <Flex justify="center" align="center" direction="column" py="xl">
+              {/* We don't expect users to hit this - but this allows them to get unstuck if they do */}
+              <Text size="sm" c="dimmed" mb="md">
+                No OTel tables detected automatically, please setup sources
+                manually.
+              </Text>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setStep('source');
+                }}
+              >
+                Continue
+              </Button>
+            </Flex>
+          )}
         </>
       )}
       {step === 'source' && (
@@ -826,7 +832,7 @@ function OnboardingModalComponent({
             isNew
             defaultName="Logs"
             onCreate={() => {
-              setStep(undefined);
+              setStep('closed');
             }}
           />
           <Text size="xs" mt="lg">
