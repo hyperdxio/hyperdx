@@ -1,10 +1,10 @@
 import React from 'react';
 
 import {
-  CHART_COLOR_ERROR,
-  CHART_COLOR_SUCCESS,
-  CHART_COLOR_WARNING,
   COLORS,
+  getChartColorError,
+  getChartColorSuccess,
+  getChartColorWarning,
 } from '@/utils';
 
 // Labels for chart colors - brand green first, then Observable palette
@@ -31,15 +31,19 @@ const CHART_COLORS = COLORS.map((hex, i) => ({
 const SEMANTIC_CHART_COLORS = [
   {
     name: 'color-chart-success',
-    hex: CHART_COLOR_SUCCESS,
+    hex: getChartColorSuccess(),
     label: 'Success (Green)',
   },
   {
     name: 'color-chart-warning',
-    hex: CHART_COLOR_WARNING,
+    hex: getChartColorWarning(),
     label: 'Warning (Orange)',
   },
-  { name: 'color-chart-error', hex: CHART_COLOR_ERROR, label: 'Error (Red)' },
+  {
+    name: 'color-chart-error',
+    hex: getChartColorError(),
+    label: 'Error (Red)',
+  },
 ];
 
 const story = {

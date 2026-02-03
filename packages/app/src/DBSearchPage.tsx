@@ -107,6 +107,7 @@ import {
   useSource,
   useSources,
 } from '@/source';
+import { useAppTheme } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
   parseTimeQuery,
@@ -280,10 +281,13 @@ function ResumeLiveTailButton({
 }: {
   handleResumeLiveTail: () => void;
 }) {
+  const { themeName } = useAppTheme();
+  const variant = themeName === 'clickstack' ? 'secondary' : 'primary';
+
   return (
     <Button
       size="compact-xs"
-      variant="primary"
+      variant={variant}
       onClick={handleResumeLiveTail}
       leftSection={<IconBolt size={14} />}
     >

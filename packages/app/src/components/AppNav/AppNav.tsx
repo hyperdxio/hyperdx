@@ -461,7 +461,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const isSmallScreen = (width ?? 1000) < 900;
   const isCollapsed = isSmallScreen || isPreferCollapsed;
 
-  const navWidth = isCollapsed ? 50 : 230;
+  const navWidth = isCollapsed ? 50 : 250;
 
   useEffect(() => {
     HyperDX.addAction('user navigated', {
@@ -663,6 +663,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       <div
         className={cx(styles.nav, {
           [styles.navFixed]: fixed,
+          [styles.navCollapsed]: isCollapsed,
         })}
         style={{ width: navWidth }}
       >
@@ -670,6 +671,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           <div
             className={cx(styles.header, {
               [styles.headerExpanded]: !isCollapsed,
+              [styles.headerCollapsed]: isCollapsed,
             })}
           >
             <Link href="/search" className={styles.logoLink}>

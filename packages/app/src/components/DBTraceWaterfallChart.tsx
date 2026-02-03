@@ -40,10 +40,10 @@ import {
 import TimelineChart from '@/TimelineChart';
 import { useFormatTime } from '@/useFormatTime';
 import {
-  CHART_COLOR_ERROR,
-  CHART_COLOR_ERROR_HIGHLIGHT,
-  CHART_COLOR_WARNING,
-  CHART_COLOR_WARNING_HIGHLIGHT,
+  getChartColorError,
+  getChartColorErrorHighlight,
+  getChartColorWarning,
+  getChartColorWarningHighlight,
 } from '@/utils';
 import {
   getHighlightedAttributesFromData,
@@ -89,9 +89,11 @@ function barColor(condition: {
 }) {
   const { isError, isWarn, isHighlighted } = condition;
   if (isError)
-    return isHighlighted ? CHART_COLOR_ERROR_HIGHLIGHT : CHART_COLOR_ERROR;
+    return isHighlighted ? getChartColorErrorHighlight() : getChartColorError();
   if (isWarn)
-    return isHighlighted ? CHART_COLOR_WARNING_HIGHLIGHT : CHART_COLOR_WARNING;
+    return isHighlighted
+      ? getChartColorWarningHighlight()
+      : getChartColorWarning();
   return isHighlighted ? '#A9AFB7' : '#6A7077';
 }
 
