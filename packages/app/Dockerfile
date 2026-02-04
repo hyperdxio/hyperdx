@@ -48,7 +48,7 @@ FROM node:22.16.0-alpine AS prod
 LABEL org.opencontainers.image.vendor="HyperDX" \
       org.opencontainers.image.title="HyperDX App" \
       org.opencontainers.image.description="HyperDX frontend application for observability platform" \
-      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.source="https://github.com/hyperdxio/hyperdx" \
       org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
