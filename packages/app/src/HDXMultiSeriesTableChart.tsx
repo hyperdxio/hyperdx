@@ -219,7 +219,11 @@ export const Table = ({
     <div className="overflow-auto h-100 fs-8" ref={tableContainerRef}>
       <table
         className="w-100"
-        style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}
+        style={{
+          tableLayout: 'fixed',
+          borderCollapse: 'collapse',
+          fontFamily: 'var(--font-ibm-plex-mono)',
+        }}
       >
         <thead
           style={{

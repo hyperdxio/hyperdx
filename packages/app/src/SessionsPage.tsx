@@ -13,13 +13,19 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
+  Anchor,
   Box,
   Button,
-  Center,
+  Card,
+  Code,
+  Divider,
   Flex,
   Group,
   Stack,
+  Stepper,
   Text,
+  ThemeIcon,
+  Title,
 } from '@mantine/core';
 import {
   IconDeviceLaptop,
@@ -526,44 +532,68 @@ SessionsPage.getLayout = withAppNav;
 function SessionSetupInstructions() {
   return (
     <>
-      <Stack w={500} mx="auto" mt="xl" gap="xxs">
-        <IconDeviceLaptop size={32} className="text-muted" />
-        <Text c="gray" fw={500} size="xs">
-          Instructions
-        </Text>
-        <Text c="gray">
-          You can set up Session Replays when the HyperDX Otel Collector is
-          used.
-        </Text>
-        <Text c="gray" fw={500} mt="sm">
-          1. Create a new source with <strong>Session</strong> type
-        </Text>
-        <Text c="dimmed" size="xs">
-          Go to Team Settings, click <strong>Add Source</strong> under Sources
-          section, and select <strong>Session</strong> as the source type.
-        </Text>
-        <Text c="gray" fw={500} mt="sm">
-          2. Choose the <strong>hyperdx_sessions</strong> table
-        </Text>
-        <Text c="dimmed" size="xs">
-          Select the <strong>hyperdx_sessions</strong> table from the dropdown,
-          and select the corresponding trace source.
-        </Text>
-
-        <Text c="gray" fw={500} mt="sm">
-          3. Start recording sessions
-        </Text>
-        <Text c="dimmed" size="xs">
-          Install the{' '}
-          <a
-            href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
-            target="_blank"
-          >
-            HyperDX Browser Integration
-          </a>{' '}
-          to start recording sessions.
-        </Text>
-      </Stack>
+      <Card w={500} mx="auto" mt="xl" p="xl" withBorder>
+        <Stack gap="lg">
+          <Stack align="center" gap="xs">
+            <ThemeIcon size={56} radius="xl" variant="light" color="gray">
+              <IconDeviceLaptop size={32} />
+            </ThemeIcon>
+            <Title order={3} fw={600}>
+              Set up session replays
+            </Title>
+            <Text size="sm" c="dimmed" ta="center">
+              Follow these steps to start recording and viewing session replays
+              with the HyperDX Otel Collector.
+            </Text>
+          </Stack>
+          <Divider />
+          <Stepper active={-1} orientation="vertical" size="md">
+            <Stepper.Step
+              label={
+                <>
+                  Create a new source with <Code>Session</Code> type
+                </>
+              }
+              description={
+                <>
+                  Go to Team Settings, click <Code>Add Source</Code> under
+                  Sources section, and select <Code>Session</Code> as the source
+                  type.
+                </>
+              }
+            />
+            <Stepper.Step
+              label={
+                <>
+                  Choose the <Code>hyperdx_sessions</Code> table
+                </>
+              }
+              description={
+                <>
+                  Select the <Code>hyperdx_sessions</Code> table from the
+                  dropdown, and select the corresponding trace source.
+                </>
+              }
+            />
+            <Stepper.Step
+              label="Start recording sessions"
+              description={
+                <>
+                  Install the{' '}
+                  <Anchor
+                    href="https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    HyperDX Browser Integration
+                  </Anchor>{' '}
+                  to start recording sessions.
+                </>
+              }
+            />
+          </Stepper>
+        </Stack>
+      </Card>
     </>
   );
 }
