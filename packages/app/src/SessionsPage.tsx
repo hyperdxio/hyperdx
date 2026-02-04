@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
-import Link from 'next/link';
 import { sub } from 'date-fns';
 import { parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
