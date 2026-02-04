@@ -1,5 +1,12 @@
 # @hyperdx/api
 
+## 2.15.0
+
+### Patch Changes
+
+- Updated dependencies [f44923ba]
+  - @hyperdx/common-utils@0.12.0
+
 ## 2.14.0
 
 ### Minor Changes
