@@ -2,8 +2,14 @@ import lucene from '@hyperdx/lucene';
 import { chunk } from 'lodash';
 import SqlString from 'sqlstring';
 
-import { convertCHTypeToPrimitiveJSType, JSDataType } from '@/clickhouse';
-import { Metadata, SkipIndexMetadata } from '@/core/metadata';
+import {
+  ColumnMeta,
+  convertCHDataTypeToJSType,
+  convertCHTypeToLuceneSearchType,
+  extractInnerCHArrayJSType,
+  JSDataType,
+} from '@/clickhouse';
+import { Metadata, SkipIndexMetadata, TableConnection } from '@/core/metadata';
 import {
   parseTokenizerFromTextIndex,
   splitAndTrimWithBracket,
@@ -97,6 +103,44 @@ const CLICK_HOUSE_JSON_NUMBER_TYPES = [
   'Float64',
 ];
 
+/**
+ * Find and return the column metadata for the column in the
+ * given table with the shortest name that matches a
+ * prefix of the given dot-separated field.
+ *
+ * eg. for field 'a.b.c', check for columns 'a', 'a.b', 'a.b.c' in order.
+ **/
+async function findPrefixMatch({
+  field,
+  metadata,
+  databaseName,
+  tableName,
+  connectionId,
+}: {
+  field: string;
+  metadata: Metadata;
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+}): Promise<ColumnMeta | undefined> {
+  const fieldParts = field.split('.');
+  let fieldPrefix = '';
+
+  for (const part of fieldParts) {
+    fieldPrefix = fieldPrefix ? `${fieldPrefix}.${part}` : part;
+    const prefixMatch = await metadata.getColumn({
+      databaseName,
+      tableName,
+      column: fieldPrefix,
+      connectionId,
+    });
+
+    if (prefixMatch) {
+      return prefixMatch;
+    }
+  }
+}
+
 interface SerializerContext {
   /** The current implicit column expression, indicating which SQL expression to use when comparing a term to the '<implicit>' field */
   implicitColumnExpression?: string;
@@ -138,12 +182,58 @@ interface Serializer {
 }
 
 class EnglishSerializer implements Serializer {
+  private metadata: Metadata;
+  private tableName: string;
+  private databaseName: string;
+  private connectionId: string;
+
+  constructor({
+    metadata,
+    databaseName,
+    tableName,
+    connectionId,
+  }: { metadata: Metadata } & CustomSchemaConfig) {
+    this.metadata = metadata;
+    this.databaseName = databaseName;
+    this.tableName = tableName;
+    this.connectionId = connectionId;
+  }
+
   private translateField(field: string, context: SerializerContext) {
     if (field === IMPLICIT_FIELD) {
       return context.implicitColumnExpression ?? 'event';
     }
 
     return `'${field}'`;
+  }
+
+  private async getFieldType(field: string) {
+    const column = await findPrefixMatch({
+      field,
+      metadata: this.metadata,
+      databaseName: this.databaseName,
+      tableName: this.tableName,
+      connectionId: this.connectionId,
+    });
+    const fieldParts = field.split('.');
+    const fieldPostfix = fieldParts
+      .slice(column ? column.name.split('.').length : 0)
+      .join('.');
+
+    if (!column) {
+      return {
+        isArray: false,
+        type: null,
+      };
+    }
+
+    let jsType = convertCHDataTypeToJSType(column.type);
+    const isArray = jsType === JSDataType.Array;
+    if (isArray && extractInnerCHArrayJSType(column.type)) {
+      jsType = extractInnerCHArrayJSType(column.type);
+    }
+
+    return { isArray, type: jsType, fieldPostfix, column: column.name };
   }
 
   operator(op: lucene.Operator) {
@@ -153,12 +243,12 @@ class EnglishSerializer implements Serializer {
         return 'AND NOT';
       case 'OR NOT':
         return 'OR NOT';
-      // @ts-ignore TODO: Types need to be fixed upstream
+      // @ts-expect-error TODO: Types need to be fixed upstream
       case '&&':
       case '<implicit>':
       case 'AND':
         return 'AND';
-      // @ts-ignore TODO: Types need to be fixed upstream
+      // @ts-expect-error TODO: Types need to be fixed upstream
       case '||':
       case 'OR':
         return 'OR';
@@ -173,8 +263,16 @@ class EnglishSerializer implements Serializer {
     isNegatedField: boolean,
     context: SerializerContext,
   ) {
+    const { isArray } = await this.getFieldType(field);
+
     return `${this.translateField(field, context)} ${
-      isNegatedField ? 'is not' : 'is'
+      isArray
+        ? isNegatedField
+          ? 'does not contain'
+          : 'contains'
+        : isNegatedField
+          ? 'is not'
+          : 'is'
     } ${term}`;
   }
 
@@ -183,6 +281,19 @@ class EnglishSerializer implements Serializer {
     isNegatedField: boolean,
     context: SerializerContext,
   ) {
+    const { isArray, type, fieldPostfix, column } =
+      await this.getFieldType(field);
+    const isArrayOfMaps =
+      isArray && (type === JSDataType.Map || type === JSDataType.JSON);
+
+    if (column && isArrayOfMaps && fieldPostfix) {
+      return `${this.translateField(column, context)} ${
+        isNegatedField
+          ? `does not contain an element with non-null ${fieldPostfix}`
+          : `contains an element with non-null ${fieldPostfix}`
+      }`;
+    }
+
     return `${this.translateField(field, context)} ${
       isNegatedField ? 'is null' : 'is not null'
     }`;
@@ -238,8 +349,25 @@ class EnglishSerializer implements Serializer {
                   : 'contains'
       } ${formattedTerm}`;
     } else {
-      return `${this.translateField(field, context)} ${
-        isNegatedField ? 'does not contain' : 'contains'
+      const { isArray, type, column, fieldPostfix } =
+        await this.getFieldType(field);
+      const isExactMatchType =
+        type === JSDataType.Bool || type === JSDataType.Number;
+      const isArrayOfMaps =
+        isArray && (type === JSDataType.Map || type === JSDataType.JSON);
+      const fieldToTranslate = isArrayOfMaps && column ? column : field;
+      return `${this.translateField(fieldToTranslate, context)} ${
+        isArrayOfMaps
+          ? isNegatedField
+            ? `does not contain an element with key ${fieldPostfix} and value`
+            : `contains an element with key ${fieldPostfix} and value`
+          : isArray && !isExactMatchType
+            ? isNegatedField
+              ? 'does not contain an element containing'
+              : 'contains an element containing'
+            : isNegatedField
+              ? 'does not contain'
+              : 'contains'
       } ${formattedTerm}`;
     }
   }
@@ -266,8 +394,10 @@ export abstract class SQLSerializer implements Serializer {
     column?: string;
     columnJSON?: { string: string; number: string };
     propertyType?: JSDataType;
+    isArray?: boolean;
     found: boolean;
     mapKeyIndexExpression?: string;
+    arrayMapKeyExpression?: string;
   }>;
 
   operator(op: lucene.Operator) {
@@ -277,12 +407,12 @@ export abstract class SQLSerializer implements Serializer {
         return 'AND NOT';
       case 'OR NOT':
         return 'OR NOT';
-      // @ts-ignore TODO: Types need to be fixed upstream
+      // @ts-expect-error TODO: Types need to be fixed upstream
       case '&&':
       case '<implicit>':
       case 'AND':
         return 'AND';
-      // @ts-ignore TODO: Types need to be fixed upstream
+      // @ts-expect-error TODO: Types need to be fixed upstream
       case '||':
       case 'OR':
         return 'OR';
@@ -298,11 +428,30 @@ export abstract class SQLSerializer implements Serializer {
     isNegatedField: boolean,
     context: SerializerContext,
   ) {
-    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
-      await this.getColumnForField(field, context);
+    const {
+      column,
+      columnJSON,
+      found,
+      propertyType,
+      isArray,
+      mapKeyIndexExpression,
+      arrayMapKeyExpression,
+    } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
+
+    if (column && isArray) {
+      return renderArrayFieldExpression({
+        column,
+        mapKey: arrayMapKeyExpression,
+        term,
+        propertyType,
+        isNegatedField,
+        exactMatch: true,
+      });
+    }
+
     const expressionPostfix =
       mapKeyIndexExpression && !isNegatedField
         ? ` AND ${mapKeyIndexExpression}`
@@ -343,8 +492,15 @@ export abstract class SQLSerializer implements Serializer {
     isNegatedField: boolean,
     context: SerializerContext,
   ) {
-    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
-      await this.getColumnForField(field, context);
+    const {
+      column,
+      columnJSON,
+      found,
+      propertyType,
+      mapKeyIndexExpression,
+      isArray,
+      arrayMapKeyExpression,
+    } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -352,17 +508,43 @@ export abstract class SQLSerializer implements Serializer {
       mapKeyIndexExpression && !isNegatedField
         ? ` AND ${mapKeyIndexExpression}`
         : '';
-    if (propertyType === JSDataType.JSON) {
+
+    if (
+      column &&
+      isArray &&
+      (propertyType === JSDataType.Map || propertyType === JSDataType.JSON) &&
+      arrayMapKeyExpression
+    ) {
+      const fieldAccess =
+        propertyType === JSDataType.Map
+          ? SqlString.format('el[?]', [arrayMapKeyExpression])
+          : SqlString.format('el.??', [arrayMapKeyExpression]);
+      return SqlString.format(
+        `${isNegatedField ? 'NOT ' : ''}arrayExists(el -> notEmpty(toString(${fieldAccess})) = 1, ?)`,
+        [SqlString.raw(column)],
+      );
+    }
+
+    if (propertyType === JSDataType.JSON && !isArray) {
       return `notEmpty(${columnJSON?.string}) ${isNegatedField ? '!' : ''}= 1${expressionPostfix}`;
     }
     return `notEmpty(${column}) ${isNegatedField ? '!' : ''}= 1${expressionPostfix}`;
   }
 
   async gte(field: string, term: string, context: SerializerContext) {
-    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
-      await this.getColumnForField(field, context);
+    const {
+      column,
+      columnJSON,
+      found,
+      propertyType,
+      isArray,
+      mapKeyIndexExpression,
+    } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
+    }
+    if (isArray) {
+      throw new Error('>= comparison is not supported for Array-type fields');
     }
     const expressionPostfix = mapKeyIndexExpression
       ? ` AND ${mapKeyIndexExpression}`
@@ -377,10 +559,19 @@ export abstract class SQLSerializer implements Serializer {
   }
 
   async lte(field: string, term: string, context: SerializerContext) {
-    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
-      await this.getColumnForField(field, context);
+    const {
+      column,
+      columnJSON,
+      found,
+      propertyType,
+      isArray,
+      mapKeyIndexExpression,
+    } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
+    }
+    if (isArray) {
+      throw new Error('<= comparison is not supported for Array-type fields');
     }
     const expressionPostfix = mapKeyIndexExpression
       ? ` AND ${mapKeyIndexExpression}`
@@ -395,10 +586,19 @@ export abstract class SQLSerializer implements Serializer {
   }
 
   async lt(field: string, term: string, context: SerializerContext) {
-    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
-      await this.getColumnForField(field, context);
+    const {
+      column,
+      columnJSON,
+      found,
+      propertyType,
+      isArray,
+      mapKeyIndexExpression,
+    } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
+    }
+    if (isArray) {
+      throw new Error('< comparison is not supported for Array-type fields');
     }
     const expressionPostfix = mapKeyIndexExpression
       ? ` AND ${mapKeyIndexExpression}`
@@ -413,10 +613,19 @@ export abstract class SQLSerializer implements Serializer {
   }
 
   async gt(field: string, term: string, context: SerializerContext) {
-    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
-      await this.getColumnForField(field, context);
+    const {
+      column,
+      columnJSON,
+      found,
+      propertyType,
+      isArray,
+      mapKeyIndexExpression,
+    } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
+    }
+    if (isArray) {
+      throw new Error('> comparison is not supported for Array-type fields');
     }
     const expressionPostfix = mapKeyIndexExpression
       ? ` AND ${mapKeyIndexExpression}`
@@ -465,10 +674,15 @@ export abstract class SQLSerializer implements Serializer {
     isNegatedField: boolean,
     context: SerializerContext,
   ) {
-    const { column, found, mapKeyIndexExpression } =
+    const { column, found, mapKeyIndexExpression, isArray } =
       await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
+    }
+    if (isArray) {
+      throw new Error(
+        'range comparison is not supported for Array-type fields',
+      );
     }
     const expressionPostfix =
       mapKeyIndexExpression && !isNegatedField
@@ -490,6 +704,7 @@ type CustomSchemaSQLColumnExpression = {
     number: string;
   };
   mapKeyIndexExpression?: string;
+  arrayMapKeyExpression?: string;
 };
 
 export type CustomSchemaConfig = {
@@ -498,6 +713,95 @@ export type CustomSchemaConfig = {
   tableName: string;
   connectionId: string;
 };
+
+function renderArrayFieldExpression({
+  column,
+  mapKey,
+  term,
+  isNegatedField,
+  propertyType,
+  exactMatch,
+}: {
+  column: string;
+  mapKey?: string;
+  term: string;
+  isNegatedField: boolean;
+  propertyType?: JSDataType;
+  exactMatch: boolean;
+}) {
+  const prefix = isNegatedField ? 'NOT ' : '';
+
+  if (propertyType === JSDataType.Number) {
+    return SqlString.format(`${prefix}has(?, CAST(?, 'Float64'))`, [
+      SqlString.raw(column),
+      term,
+    ]);
+  }
+
+  if (propertyType === JSDataType.Bool) {
+    const normTerm = `${term}`.trim().toLowerCase();
+    const comparisonValue =
+      normTerm === 'true' ? 1 : normTerm === 'false' ? 0 : term;
+    return SqlString.format(`${prefix}has(?, ?)`, [
+      SqlString.raw(column),
+      comparisonValue,
+    ]);
+  }
+
+  if (propertyType === JSDataType.Map) {
+    if (!mapKey) {
+      throw new Error(
+        `Map key expression is required for searching column ${column}. Try '${column}.key:value'`,
+      );
+    }
+    return exactMatch
+      ? SqlString.format(`${prefix}arrayExists(el -> el[?] = ?, ?)`, [
+          mapKey,
+          term,
+          SqlString.raw(column),
+        ])
+      : SqlString.format(`${prefix}arrayExists(el -> el[?] ILIKE ?, ?)`, [
+          mapKey,
+          `%${term}%`,
+          SqlString.raw(column),
+        ]);
+  }
+
+  if (propertyType === JSDataType.JSON) {
+    if (!mapKey) {
+      throw new Error(
+        `Map key expression is required for searching column ${column}. Try '${column}.key:value'`,
+      );
+    }
+    return exactMatch
+      ? SqlString.format(`${prefix}arrayExists(el -> toString(el.??) = ?, ?)`, [
+          mapKey,
+          term,
+          SqlString.raw(column),
+        ])
+      : SqlString.format(
+          `${prefix}arrayExists(el -> toString(el.??) ILIKE ?, ?)`,
+          [mapKey, `%${term}%`, SqlString.raw(column)],
+        );
+  }
+
+  const stringifiedElement =
+    propertyType === JSDataType.String
+      ? 'el'
+      : SqlString.format('toString(el)', [SqlString.raw(column)]);
+
+  return exactMatch && propertyType === JSDataType.String
+    ? SqlString.format(`${prefix}has(?, ?)`, [SqlString.raw(column), term])
+    : exactMatch
+      ? SqlString.format(
+          `${prefix}arrayExists(el -> ${stringifiedElement} = ?, ?)`,
+          [term, SqlString.raw(column)],
+        )
+      : SqlString.format(
+          `${prefix}arrayExists(el -> ${stringifiedElement} ILIKE ?, ?)`,
+          [`%${term}%`, SqlString.raw(column)],
+        );
+}
 
 export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private metadata: Metadata;
@@ -560,8 +864,15 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     context: SerializerContext,
   ) {
     const isImplicitField = field === IMPLICIT_FIELD;
-    const { column, columnJSON, found, propertyType, mapKeyIndexExpression } =
-      await this.getColumnForField(field, context);
+    const {
+      column,
+      columnJSON,
+      found,
+      propertyType,
+      isArray,
+      mapKeyIndexExpression,
+      arrayMapKeyExpression,
+    } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -571,6 +882,17 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       (!isImplicitField || !context.isNegatedAndParenthesized)
         ? ` AND ${mapKeyIndexExpression}`
         : '';
+
+    if (isArray) {
+      return renderArrayFieldExpression({
+        column,
+        mapKey: arrayMapKeyExpression,
+        term,
+        propertyType,
+        isNegatedField,
+        exactMatch: false,
+      });
+    }
 
     if (propertyType === JSDataType.Bool) {
       const normTerm = `${term}`.trim().toLowerCase();
@@ -739,7 +1061,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         columnType: exactMatch.type,
         columnExpression: exactMatch.name,
         // TODO
-        // Add JSON excatMatch if want to support whole json compare in future, ex: json:"{a: 1234}""
+        // Add JSON exactMatch if want to support whole json compare in future, ex: json:"{a: 1234}""
       };
       let materializedColumns: Map<string, string>;
       try {
@@ -776,16 +1098,17 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       return columnExpression;
     }
 
-    const fieldPrefix = field.split('.')[0];
-    const prefixMatch = await this.metadata.getColumn({
+    const prefixMatch = await findPrefixMatch({
+      field,
+      metadata: this.metadata,
       databaseName: this.databaseName,
       tableName: this.tableName,
-      column: fieldPrefix,
       connectionId: this.connectionId,
     });
 
     if (prefixMatch) {
-      const fieldPostfix = field.split('.').slice(1).join('.');
+      const prefixParts = prefixMatch.name.split('.');
+      const fieldPostfix = field.split('.').slice(prefixParts.length).join('.');
 
       if (prefixMatch.type.startsWith('Map')) {
         const valueType = prefixMatch.type.match(/,\s+(\w+)\)$/)?.[1];
@@ -795,7 +1118,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
             prefixMatch.name,
             fieldPostfix,
           ]),
-          mapKeyIndexExpression: `indexHint(${buildMapContains(`${fieldPrefix}['${fieldPostfix}']`)})`,
+          mapKeyIndexExpression: `indexHint(${buildMapContains(`${prefixMatch.name}['${fieldPostfix}']`)})`,
           columnType: valueType ?? 'Unknown',
         };
       } else if (prefixMatch.type.startsWith('JSON')) {
@@ -828,8 +1151,15 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ),
           columnType: 'String',
         };
+      } else if (prefixMatch.type.startsWith('Array')) {
+        return {
+          found: true,
+          columnType: prefixMatch.type,
+          columnExpression: prefixMatch.name,
+          arrayMapKeyExpression: fieldPostfix,
+        };
       }
-      // TODO: Support arrays and tuples
+      // TODO: Support tuples
       throw new Error('Unsupported column type for prefix match');
     }
 
@@ -976,13 +1306,20 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
     const expression = await this.buildColumnExpressionFromField(fieldFinal);
 
+    const { type, isArray } = convertCHTypeToLuceneSearchType(
+      expression.columnType,
+    );
+
     return {
       column: expression.columnExpression,
       columnJSON: expression?.columnExpressionJSON,
-      propertyType:
-        convertCHTypeToPrimitiveJSType(expression.columnType) ?? undefined,
+      propertyType: type ?? undefined,
+      isArray,
       found: expression.found,
       mapKeyIndexExpression: expression.mapKeyIndexExpression,
+      arrayMapKeyExpression: isArray
+        ? expression.arrayMapKeyExpression
+        : undefined,
     };
   }
 }
@@ -1001,7 +1338,7 @@ async function nodeTerm(
     const nodeTerm = node;
     let term = decodeSpecialTokens(nodeTerm.term);
     // We should only negate the search for negated bare terms (ex. '-5')
-    // This meeans the field is implicit and the prefix is -
+    // This means the field is implicit and the prefix is -
     if (isImplicitField && nodeTerm.prefix === '-') {
       isNegatedField = true;
     }
@@ -1203,20 +1540,6 @@ export class SearchQueryBuilder {
       return '';
     }
 
-    // const implicitColumn = await this.serializer.getColumnForField(
-    //   IMPLICIT_FIELD,
-    // );
-
-    // let querySql = this.searchQ
-    //   .split(/\s+/)
-    //   .map(queryToken =>
-    //     SqlString.format(`lower(??) LIKE lower(?)`, [
-    //       implicitColumn.column,
-    //       `%${queryToken}%`,
-    //     ]),
-    //   )
-    //   .join(' AND ');
-
     const parsedQ = parse(this.searchQ);
 
     return await genWhereSQL(parsedQ, this.serializer);
@@ -1238,12 +1561,26 @@ export class SearchQueryBuilder {
   }
 }
 
-export async function genEnglishExplanation(query: string): Promise<string> {
+export async function genEnglishExplanation({
+  query,
+  metadata,
+  tableConnection,
+}: {
+  query: string;
+  tableConnection: TableConnection;
+  metadata: Metadata;
+}): Promise<string> {
   try {
+    const { tableName, databaseName, connectionId } = tableConnection;
     const parsedQ = parse(query);
 
     if (parsedQ) {
-      const serializer = new EnglishSerializer();
+      const serializer = new EnglishSerializer({
+        metadata,
+        tableName,
+        databaseName,
+        connectionId,
+      });
       return await serialize(parsedQ, serializer, {});
     }
   } catch (e) {
