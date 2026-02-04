@@ -280,7 +280,9 @@ function ExpandableLegendItem({
           />
         </svg>
       </div>
-      {isExpanded ? entry.value : truncateMiddle(`${entry.value}`, 35)}
+      {isExpanded || isSelected
+        ? entry.value
+        : truncateMiddle(`${entry.value}`, 35)}
     </span>
   );
 }
