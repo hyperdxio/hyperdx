@@ -497,6 +497,7 @@ export const SavedChartConfigSchema = z
       AlertBaseSchema.optional(),
       ChartAlertBaseSchema.optional(),
     ]),
+    rawSqlMode: z.boolean().optional(), // Toggle between builder and raw SQL mode
   })
   .extend(
     _ChartConfigSchema.omit({

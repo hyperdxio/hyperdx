@@ -319,7 +319,8 @@ function DBTimeChartComponent({
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
     const previousPeriodDateRange =
-      queriedConfig.alignDateRangeToGranularity === false
+      queriedConfig.alignDateRangeToGranularity === false ||
+      !queriedConfig.granularity
         ? getPreviousDateRange(originalDateRange)
         : getAlignedDateRange(
             getPreviousDateRange(originalDateRange),
@@ -565,9 +566,12 @@ function DBTimeChartComponent({
 
       // Calculate time range from clicked date and granularity
       const from = clickedActiveLabelDate;
-      const to = add(clickedActiveLabelDate, {
-        seconds: convertGranularityToSeconds(granularity),
-      });
+      // In raw SQL mode, granularity is undefined - use full date range instead
+      const to = granularity
+        ? add(clickedActiveLabelDate, {
+            seconds: convertGranularityToSeconds(granularity),
+          })
+        : dateRange[1];
 
       return buildEventsSearchUrl({
         source,
@@ -581,6 +585,7 @@ function DBTimeChartComponent({
       clickedActiveLabelDate,
       config,
       granularity,
+      dateRange,
       source,
       groupColumns,
       valueColumns,

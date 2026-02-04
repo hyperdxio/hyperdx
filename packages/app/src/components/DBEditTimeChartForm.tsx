@@ -102,6 +102,7 @@ import HDXMarkdownChart from '../HDXMarkdownChart';
 
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { AggFnSelectControlled } from './AggFnSelect';
+import RawSqlChartEditor from './RawSqlChartEditor';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from './ChartDisplaySettingsDrawer';
@@ -117,13 +118,25 @@ import SaveToDashboardModal from './SaveToDashboardModal';
 import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
-const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
-  ((queriedConfig?.select?.length ?? 0) > 0 ||
-    typeof queriedConfig?.select === 'string') &&
-  queriedConfig?.from?.databaseName &&
-  // tableName is empty for metric sources
-  (queriedConfig?.from?.tableName || queriedConfig?.metricTables) &&
-  queriedConfig?.timestampValueExpression;
+const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) => {
+  // In raw SQL mode, we only need the select string to be non-empty
+  if (queriedConfig && 'rawSqlMode' in queriedConfig && queriedConfig.rawSqlMode) {
+    return (
+      typeof queriedConfig.select === 'string' &&
+      queriedConfig.select.trim().length > 0
+    );
+  }
+
+  // Standard mode requires select, from, and timestamp expression
+  return (
+    ((queriedConfig?.select?.length ?? 0) > 0 ||
+      typeof queriedConfig?.select === 'string') &&
+    queriedConfig?.from?.databaseName &&
+    // tableName is empty for metric sources
+    (queriedConfig?.from?.tableName || queriedConfig?.metricTables) &&
+    queriedConfig?.timestampValueExpression
+  );
+};
 
 const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
 
@@ -578,6 +591,7 @@ export default function EditTimeChartForm({
   const markdown = useWatch({ control, name: 'markdown' });
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
   const granularity = useWatch({ control, name: 'granularity' });
+  const rawSqlMode = useWatch({ control, name: 'rawSqlMode' }) ?? false;
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -687,10 +701,13 @@ export default function EditTimeChartForm({
       }
 
       // Merge the series and select fields back together, and prevent the series field from being submitted
+      // In raw SQL mode or search mode, select is a string; otherwise it's the series array
       const config = {
         ...omit(form, ['series']),
         select:
-          form.displayType === DisplayType.Search ? form.select : form.series,
+          form.displayType === DisplayType.Search || form.rawSqlMode
+            ? form.select
+            : form.series,
       };
 
       setChartConfig?.(config);
@@ -757,13 +774,13 @@ export default function EditTimeChartForm({
           return;
         }
 
-        // If the chart type is search, we need to ensure the select is a string
+        // If the chart type is search or raw SQL mode, we need to ensure the select is a string
         if (
-          displayType === DisplayType.Search &&
+          (displayType === DisplayType.Search || v.rawSqlMode) &&
           typeof v.select !== 'string'
         ) {
           v.select = '';
-        } else if (displayType !== DisplayType.Search) {
+        } else if (displayType !== DisplayType.Search && !v.rawSqlMode) {
           v.select = v.series;
         }
 
@@ -1040,7 +1057,59 @@ export default function EditTimeChartForm({
             )}
           </Flex>
 
-          {displayType !== DisplayType.Search && Array.isArray(select) ? (
+          {/* Raw SQL Mode Toggle - only show for chart types that support it */}
+          {displayType !== DisplayType.Search &&
+            displayType !== DisplayType.Markdown &&
+            tableSource?.kind !== SourceKind.Metric && (
+              <Flex mb="md" align="center" gap="sm">
+                <Switch
+                  label="Raw SQL Mode"
+                  size="sm"
+                  checked={rawSqlMode}
+                  onChange={e => {
+                    const newRawSqlMode = e.currentTarget.checked;
+                    setValue('rawSqlMode', newRawSqlMode);
+                    if (newRawSqlMode) {
+                      // When enabling raw SQL mode, clear the series and set select to empty string
+                      setValue('select', '');
+                      setValue('series', []);
+                      setValue('groupBy', undefined);
+                      setValue('granularity', undefined);
+                    } else {
+                      // When disabling raw SQL mode, reset to default builder state
+                      const defaultSeries: SavedChartConfigWithSelectArray['select'] =
+                        [
+                          {
+                            aggFn: 'count',
+                            aggCondition: '',
+                            aggConditionLanguage: 'lucene',
+                            valueExpression: '',
+                          },
+                        ];
+                      setValue('select', defaultSeries);
+                      setValue('series', defaultSeries);
+                      setValue('granularity', 'auto');
+                    }
+                    onSubmit();
+                  }}
+                />
+                <Text size="xs" c="dimmed">
+                  Write your own SQL query instead of using the builder
+                </Text>
+              </Flex>
+            )}
+
+          {/* Raw SQL Mode Editor */}
+          {rawSqlMode &&
+          displayType !== DisplayType.Search &&
+          displayType !== DisplayType.Markdown ? (
+            <RawSqlChartEditor
+              control={control}
+              name="select"
+              displayType={displayType}
+              onSubmit={onSubmit}
+            />
+          ) : displayType !== DisplayType.Search && Array.isArray(select) ? (
             <>
               {fields.map((field, index) => (
                 <ChartSeriesEditor
@@ -1349,7 +1418,7 @@ export default function EditTimeChartForm({
                 }}
               />
             )}
-          {activeTab === 'time' && (
+          {activeTab === 'time' && !rawSqlMode && (
             <GranularityPickerControlled control={control} name="granularity" />
           )}
           {activeTab !== 'markdown' && (

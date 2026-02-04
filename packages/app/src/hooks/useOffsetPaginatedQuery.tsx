@@ -90,6 +90,15 @@ function getTimeWindowFromPageParam(
   return window;
 }
 
+// Check if config is in raw SQL mode
+function isRawSqlMode(config: ChartConfigWithOptTimestamp): boolean {
+  return (
+    'rawSqlMode' in config &&
+    (config as any).rawSqlMode === true &&
+    typeof config.select === 'string'
+  );
+}
+
 // Calculate next page param based on current results and window
 function getNextPageParam(
   lastPage: TQueryFnData | null,
@@ -97,6 +106,11 @@ function getNextPageParam(
   config: ChartConfigWithOptTimestamp,
 ): TPageParam | undefined {
   if (lastPage == null) {
+    return undefined;
+  }
+
+  // In raw SQL mode, pagination is not supported since the user controls their own LIMIT/OFFSET
+  if (isRawSqlMode(config)) {
     return undefined;
   }
 

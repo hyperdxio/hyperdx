@@ -106,7 +106,13 @@ export const Table = ({
           }) => {
             const value = getValue();
             let formattedValue: string | number | null = value ?? null;
-            if (numberFormat) {
+            // Handle complex types (Map, Array, Object) by stringifying them
+            if (
+              formattedValue !== null &&
+              typeof formattedValue === 'object'
+            ) {
+              formattedValue = JSON.stringify(formattedValue);
+            } else if (numberFormat) {
               formattedValue = formatNumber(value, numberFormat);
             }
             if (getRowSearchLink == null) {
@@ -282,8 +288,13 @@ export const Table = ({
                 ref={rowVirtualizer.measureElement}
               >
                 {row.getVisibleCells().map(cell => {
+                  const cellValue = cell.getValue();
+                  const titleValue =
+                    cellValue !== null && typeof cellValue === 'object'
+                      ? JSON.stringify(cellValue)
+                      : `${cellValue}`;
                   return (
-                    <td key={cell.id} title={`${cell.getValue()}`}>
+                    <td key={cell.id} title={titleValue}>
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext(),

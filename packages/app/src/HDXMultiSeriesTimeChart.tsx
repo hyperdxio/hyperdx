@@ -429,7 +429,7 @@ export const MemoChart = memo(function MemoChart({
   previousPeriodOffsetSeconds?: number;
   selectedSeriesNames?: Set<string>;
   onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
-  granularity: string;
+  granularity?: string;
   dateRangeEndInclusive?: boolean;
 }) {
   const _id = useId();
@@ -586,6 +586,11 @@ export const MemoChart = memo(function MemoChart({
   }, [lineData]);
 
   const xAxisDomain: AxisDomain = useMemo(() => {
+    // In raw SQL mode, granularity is undefined - use date range directly
+    if (!granularity) {
+      return [dateRange[0].getTime() / 1000, dateRange[1].getTime() / 1000];
+    }
+
     let startTime = toStartOfInterval(dateRange[0], granularity);
     let endTime = toStartOfInterval(dateRange[1], granularity);
     const endTimeIsBoundaryAligned = isSameSecond(dateRange[1], endTime);

@@ -1362,11 +1362,30 @@ async function translateMetricChartConfig(
   throw new Error(`no query support for metric type=${metricType}`);
 }
 
+/**
+ * Check if the chart config is in raw SQL mode.
+ * Raw SQL mode allows users to write complete SQL queries.
+ */
+export function isRawSqlMode(
+  chartConfig: ChartConfigWithOptDateRangeEx,
+): boolean {
+  return (
+    'rawSqlMode' in chartConfig &&
+    chartConfig.rawSqlMode === true &&
+    typeof chartConfig.select === 'string'
+  );
+}
+
 export async function renderChartConfig(
   rawChartConfig: ChartConfigWithOptDateRangeEx,
   metadata: Metadata,
   querySettings: QuerySettings | undefined,
 ): Promise<ChSql> {
+  // Handle raw SQL mode - user provides complete SQL query
+  if (isRawSqlMode(rawChartConfig)) {
+    return renderRawSqlChartConfig(rawChartConfig, querySettings);
+  }
+
   // metric types require more rewriting since we know more about the schema
   // but goes through the same generation process
   const chartConfig = isMetricChartConfig(rawChartConfig)
@@ -1398,6 +1417,34 @@ export async function renderChartConfig(
     // SETTINGS must be last - see `extractSettingsClause` in "./utils.ts"
     chSql`${settings.sql ? chSql`SETTINGS ${settings}` : []}`,
   ]);
+}
+
+/**
+ * Render a chart config in raw SQL mode.
+ * The user provides a complete SQL query in the `select` field.
+ */
+function renderRawSqlChartConfig(
+  chartConfig: ChartConfigWithOptDateRangeEx,
+  querySettings: QuerySettings | undefined,
+): ChSql {
+  // In raw SQL mode, select contains the complete SQL query
+  const rawSql = chartConfig.select as string;
+
+  // Extract any existing SETTINGS clause from the raw SQL
+  const [sqlWithoutSettings, existingSettings] =
+    extractSettingsClauseFromEnd(rawSql);
+
+  // Build the settings clause by combining existing settings with query settings
+  const querySettingsJoined = joinQuerySettings(querySettings);
+  const combinedSettings = [existingSettings, querySettingsJoined]
+    .filter(Boolean)
+    .join(', ');
+
+  if (combinedSettings) {
+    return chSql`${{ UNSAFE_RAW_SQL: sqlWithoutSettings }} SETTINGS ${{ UNSAFE_RAW_SQL: combinedSettings }}`;
+  }
+
+  return chSql`${{ UNSAFE_RAW_SQL: rawSql }}`;
 }
 
 // EditForm -> translateToQueriedChartConfig -> QueriedChartConfig

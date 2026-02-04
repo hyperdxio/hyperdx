@@ -133,21 +133,29 @@ export const isGranularity = (value: string): value is Granularity => {
 };
 
 export function convertToTimeChartConfig(config: ChartConfigWithDateRange) {
-  const granularity =
-    config.granularity === 'auto' || config.granularity == null
+  // In raw SQL mode, user controls time bucketing - don't auto-calculate granularity
+  const isRawSqlMode =
+    'rawSqlMode' in config && config.rawSqlMode === true;
+
+  const granularity = isRawSqlMode
+    ? undefined
+    : config.granularity === 'auto' || config.granularity == null
       ? convertDateRangeToGranularityString(config.dateRange, 80)
       : config.granularity;
 
+  // In raw SQL mode, don't align date range since user controls the query
   const dateRange =
-    config.alignDateRangeToGranularity === false
+    isRawSqlMode || config.alignDateRangeToGranularity === false
       ? config.dateRange
-      : getAlignedDateRange(config.dateRange, granularity);
+      : getAlignedDateRange(config.dateRange, granularity!);
 
   return {
     ...config,
     dateRange,
     dateRangeEndInclusive: false,
     granularity,
+    // In raw SQL mode, disable fill nulls since we can't know the bucketing interval
+    fillNulls: isRawSqlMode ? false : config.fillNulls,
     limit: { limit: 100000 },
   };
 }
