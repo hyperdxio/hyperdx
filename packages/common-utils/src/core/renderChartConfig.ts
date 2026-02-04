@@ -1207,6 +1207,13 @@ async function translateMetricChartConfig(
       metadata,
     );
 
+    /**
+     * See: https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/metrics/v1/metrics.proto
+     * AGGREGATION_TEMPORALITY_DELTA = 1;
+     * AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
+     *
+     * Note, IsMonotonic = 0, has Cumulative agg temporality
+     */
     return {
       ...restChartConfig,
       with: [
@@ -1218,7 +1225,10 @@ async function translateMetricChartConfig(
                   cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
                   IF(AggregationTemporality = 1,
                     SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
-                    deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                    IF(IsMonotonic = 0, 
+                      Value,
+                      deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                    )
                   ) AS Rate,
                   IF(AggregationTemporality = 1, Rate, Value) AS Sum
                 FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Sum] } })}
@@ -1232,7 +1242,7 @@ async function translateMetricChartConfig(
               AttributesHash,
               last_value(Source.Rate) AS ${valueHighCol},
               any(${valueHighCol}) OVER(PARTITION BY AttributesHash ORDER BY \`${timeBucketCol}\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
-              ${valueHighCol} - ${valueHighPrevCol} AS Rate,
+              IF(IsMonotonic = 1, ${valueHighCol} - ${valueHighPrevCol}, ${valueHighCol}) AS Rate,
               last_value(Source.Sum) AS Sum,
               any(ResourceAttributes) AS ResourceAttributes,
               any(ResourceSchemaUrl) AS ResourceSchemaUrl,
