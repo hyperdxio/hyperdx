@@ -552,7 +552,10 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
                   cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
                   IF(AggregationTemporality = 1,
                     SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
-                    deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                    IF(IsMonotonic = 0, 
+                      Value,
+                      deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                    )
                   ) AS Rate,
                   IF(AggregationTemporality = 1, Rate, Value) AS Sum
                 FROM default.otel_metrics_sum
@@ -562,7 +565,7 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
               AttributesHash,
               last_value(Source.Rate) AS \`__hdx_value_high\`,
               any(\`__hdx_value_high\`) OVER(PARTITION BY AttributesHash ORDER BY \`__hdx_time_bucket2\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS \`__hdx_value_high_prev\`,
-              \`__hdx_value_high\` - \`__hdx_value_high_prev\` AS Rate,
+              IF(IsMonotonic = 1, \`__hdx_value_high\` - \`__hdx_value_high_prev\`, \`__hdx_value_high\`) AS Rate,
               last_value(Source.Sum) AS Sum,
               any(ResourceAttributes) AS ResourceAttributes,
               any(ResourceSchemaUrl) AS ResourceSchemaUrl,
@@ -725,7 +728,10 @@ exports[`renderChartConfig should generate sql for a single sum metric 1`] = `
                   cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
                   IF(AggregationTemporality = 1,
                     SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
-                    deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                    IF(IsMonotonic = 0, 
+                      Value,
+                      deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                    )
                   ) AS Rate,
                   IF(AggregationTemporality = 1, Rate, Value) AS Sum
                 FROM default.otel_metrics_sum
@@ -735,7 +741,7 @@ exports[`renderChartConfig should generate sql for a single sum metric 1`] = `
               AttributesHash,
               last_value(Source.Rate) AS \`__hdx_value_high\`,
               any(\`__hdx_value_high\`) OVER(PARTITION BY AttributesHash ORDER BY \`__hdx_time_bucket2\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS \`__hdx_value_high_prev\`,
-              \`__hdx_value_high\` - \`__hdx_value_high_prev\` AS Rate,
+              IF(IsMonotonic = 1, \`__hdx_value_high\` - \`__hdx_value_high_prev\`, \`__hdx_value_high\`) AS Rate,
               last_value(Source.Sum) AS Sum,
               any(ResourceAttributes) AS ResourceAttributes,
               any(ResourceSchemaUrl) AS ResourceSchemaUrl,
