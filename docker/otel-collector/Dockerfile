@@ -38,7 +38,7 @@ FROM base AS dev
 LABEL org.opencontainers.image.vendor="HyperDX" \
       org.opencontainers.image.title="HyperDX OTel Collector (Dev)" \
       org.opencontainers.image.description="OpenTelemetry Collector for HyperDX development" \
-      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.source="https://github.com/hyperdxio/hyperdx" \
       org.opencontainers.image.licenses="MIT"
 
 COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml
@@ -57,7 +57,7 @@ FROM base AS prod
 LABEL org.opencontainers.image.vendor="HyperDX" \
       org.opencontainers.image.title="HyperDX OTel Collector" \
       org.opencontainers.image.description="OpenTelemetry Collector for HyperDX observability platform" \
-      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.source="https://github.com/hyperdxio/hyperdx" \
       org.opencontainers.image.licenses="MIT"
 
 COPY --chown=10001:10001 ./config.yaml /etc/otelcol-contrib/config.yaml

@@ -16,6 +16,7 @@ ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.128.0
 # == Otel Collector Image ==
 FROM otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION} AS otel_collector_base
 FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION} AS otel_collector_opampsupervisor_base
+FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
 
 FROM node:${NODE_VERSION}-alpine AS node_base
 
@@ -59,7 +60,7 @@ FROM node:${NODE_VERSION}-alpine AS prod
 LABEL org.opencontainers.image.vendor="HyperDX" \
       org.opencontainers.image.title="HyperDX Production" \
       org.opencontainers.image.description="HyperDX production image with API and App services" \
-      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.source="https://github.com/hyperdxio/hyperdx" \
       org.opencontainers.image.licenses="MIT"
 
 ARG CODE_VERSION
@@ -119,12 +120,16 @@ COPY --from=hyperdx ./clickhouseConfig.xml /etc/clickhouse-server/config.xml
 # Set up Otel Collector
 COPY --from=otel-collector ./config.yaml /etc/otelcol-contrib/config.yaml
 COPY --from=otel-collector ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --from=otel-collector ./schema /etc/otel/schema
 
 # Copy otel-collector entrypoint script
 COPY --from=otel-collector --chmod=755 ./entrypoint.sh /otel-entrypoint.sh
 
 # Copy gomplate binary from the gomplate image
 COPY --from=gomplate /bin/gomplate /usr/local/bin/gomplate
+
+# Copy goose binary from the goose image
+COPY --from=goose /bin/goose /usr/local/bin/goose
 
 # Install MongoDB and other dependencies (consolidated into a single RUN command)
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories && \
@@ -156,7 +161,7 @@ FROM all-in-one-base AS all-in-one-noauth
 LABEL org.opencontainers.image.vendor="HyperDX" \
       org.opencontainers.image.title="HyperDX All-in-One (No Auth)" \
       org.opencontainers.image.description="HyperDX all-in-one image with ClickHouse, MongoDB, and OTel Collector (no authentication)" \
-      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.source="https://github.com/hyperdxio/hyperdx" \
       org.opencontainers.image.licenses="MIT"
 
 COPY --from=hyperdx ./entry.local.noauth.sh /etc/local/entry.sh
@@ -172,7 +177,7 @@ FROM all-in-one-base AS all-in-one-auth
 LABEL org.opencontainers.image.vendor="HyperDX" \
       org.opencontainers.image.title="HyperDX All-in-One (With Auth)" \
       org.opencontainers.image.description="HyperDX all-in-one image with ClickHouse, MongoDB, and OTel Collector (with authentication)" \
-      org.opencontainers.image.source="https://github.com/hyperdx/hyperdx" \
+      org.opencontainers.image.source="https://github.com/hyperdxio/hyperdx" \
       org.opencontainers.image.licenses="MIT"
 
 COPY --from=hyperdx ./entry.local.auth.sh /etc/local/entry.sh

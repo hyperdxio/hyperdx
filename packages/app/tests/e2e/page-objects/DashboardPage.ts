@@ -2,11 +2,34 @@
  * DashboardPage - Page object for dashboard pages
  * Encapsulates interactions with dashboard creation, editing, and tile management
  */
-import { Locator, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 import { getSqlEditor } from '../utils/locators';
+
+/**
+ * Series data structure for chart verification
+ * Supports all chart types: time, number, table, search, markdown
+ */
+export type SeriesData = {
+  type: 'time' | 'number' | 'table' | 'search' | 'markdown';
+  sourceId?: string;
+  aggFn?: string;
+  field?: string;
+  where?: string;
+  whereLanguage?: 'sql' | 'lucene';
+  groupBy?: string[];
+  alias?: string;
+  displayType?: 'line' | 'stacked_bar';
+  sortOrder?: 'desc' | 'asc';
+  fields?: string[]; // For search type
+  content?: string; // For markdown type
+  numberFormat?: Record<string, unknown>;
+  metricDataType?: string;
+  metricName?: string;
+  level?: number;
+};
 
 export class DashboardPage {
   readonly page: Page;
@@ -27,6 +50,10 @@ export class DashboardPage {
   private readonly addFiltersButton: Locator;
   private readonly closeFiltersModalButton: Locator;
   private readonly filtersSourceSelector: Locator;
+  private readonly tileSourceSelector: Locator;
+  private readonly aliasInput: Locator;
+  private readonly aggFnSelect: Locator;
+  private readonly markdownTextarea: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -55,6 +82,12 @@ export class DashboardPage {
     this.addFiltersButton = page.getByTestId('add-filter-button');
     this.closeFiltersModalButton = page.getByTestId('close-filters-button');
     this.filtersSourceSelector = page.getByTestId('source-selector');
+
+    // Tile editor selectors
+    this.tileSourceSelector = page.getByTestId('source-selector');
+    this.aliasInput = page.getByTestId('series-alias-input');
+    this.aggFnSelect = page.getByTestId('agg-fn-select');
+    this.markdownTextarea = page.locator('textarea[name="markdown"]');
   }
 
   /**
@@ -326,6 +359,88 @@ export class DashboardPage {
       exact: true,
     });
     await optionLocator.click();
+  }
+
+  /**
+   * Get CodeMirror editor by filtering for specific text content
+   */
+  getCodeMirrorEditor(text: string) {
+    return this.page.locator('.cm-content').filter({ hasText: text });
+  }
+
+  getChartTypeTab(type: 'time' | 'table' | 'number' | 'search' | 'markdown') {
+    if (type === 'time') {
+      return this.page.getByRole('tab', { name: /line/i });
+    }
+    return this.page.getByRole('tab', { name: new RegExp(type, 'i') });
+  }
+
+  /**
+   * Verify tile edit form matches the given series data
+   * @param series - Array of series data from the API request
+   * @param expectedSourceName - Optional expected source name for verification
+   */
+  async verifyTileForm(series: SeriesData[], expectedSourceName?: string) {
+    for (let i = 0; i < series.length; i++) {
+      const seriesData = series[i];
+
+      // Verify markdown content for markdown tiles
+      if (seriesData.content) {
+        const content = await this.markdownTextarea.first().inputValue();
+        expect(content).toContain(seriesData.content);
+      }
+
+      const chartTypeTab = this.getChartTypeTab(seriesData.type);
+      await expect(chartTypeTab).toHaveAttribute('aria-selected', 'true');
+
+      // Verify source selector for charts with sources
+      if (seriesData.sourceId && expectedSourceName) {
+        await expect(this.tileSourceSelector).toBeVisible();
+        await expect(this.tileSourceSelector).toHaveValue(expectedSourceName);
+      }
+
+      // Verify alias
+      if (seriesData.alias) {
+        await expect(this.aliasInput.nth(i)).toBeVisible();
+        await expect(this.aliasInput.nth(i)).toHaveValue(seriesData.alias);
+      }
+
+      // Verify aggregation function
+      if (seriesData.aggFn) {
+        await expect(this.aggFnSelect.nth(i)).toBeVisible();
+        await expect(this.aggFnSelect.nth(i)).toHaveValue(
+          new RegExp(seriesData.aggFn, 'i'),
+        );
+      }
+
+      // Verify field expression
+      if (seriesData.field) {
+        const fieldEditor = this.getCodeMirrorEditor(seriesData.field);
+        const fieldValue = await fieldEditor.first().textContent();
+        expect(fieldValue).toContain(seriesData.field);
+      }
+
+      // Verify where clause (handles both Lucene textarea and SQL CodeMirror)
+      if (seriesData.where) {
+        if (seriesData.whereLanguage === 'sql') {
+          const whereEditor = this.getCodeMirrorEditor(seriesData.where);
+          const whereValue = await whereEditor.first().textContent();
+          expect(whereValue).toContain(seriesData.where);
+        } else {
+          const whereTextarea = this.page.locator('textarea').filter({
+            hasText: seriesData.where,
+          });
+          await expect(whereTextarea).toBeVisible();
+        }
+      }
+
+      // Verify group by
+      if (seriesData.groupBy && seriesData.groupBy.length > 0) {
+        const groupByEditor = this.getCodeMirrorEditor(seriesData.groupBy[0]);
+        const groupByValue = await groupByEditor.first().textContent();
+        expect(groupByValue).toContain(seriesData.groupBy[0]);
+      }
+    }
   }
 
   // Getters for assertions

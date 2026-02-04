@@ -1,5 +1,20 @@
 # @hyperdx/api
 
+## 2.15.1
+
+### Patch Changes
+
+- 6cfa40a0: feat: Add support for querying nested/array columns with lucene
+- Updated dependencies [6cfa40a0]
+  - @hyperdx/common-utils@0.12.1
+
+## 2.15.0
+
+### Patch Changes
+
+- Updated dependencies [f44923ba]
+  - @hyperdx/common-utils@0.12.0
+
 ## 2.14.0
 
 ### Minor Changes

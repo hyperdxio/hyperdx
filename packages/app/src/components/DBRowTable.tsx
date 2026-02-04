@@ -1581,7 +1581,7 @@ function DBSqlRowTableComponent({
   return (
     <>
       {denoiseResults && (
-        <Box mb="xxs" px="sm" mt="-24px">
+        <Box mb="xxs" px="sm">
           <Text fw="bold" fz="xs" mb="xxs">
             Removed Noisy Event Patterns
           </Text>
