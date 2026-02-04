@@ -16,6 +16,7 @@ ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.128.0
 # == Otel Collector Image ==
 FROM otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION} AS otel_collector_base
 FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION} AS otel_collector_opampsupervisor_base
+FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
 
 FROM node:${NODE_VERSION}-alpine AS node_base
 
@@ -126,6 +127,9 @@ COPY --from=otel-collector --chmod=755 ./entrypoint.sh /otel-entrypoint.sh
 
 # Copy gomplate binary from the gomplate image
 COPY --from=gomplate /bin/gomplate /usr/local/bin/gomplate
+
+# Copy goose binary from the goose image
+COPY --from=goose /bin/goose /usr/local/bin/goose
 
 # Install MongoDB and other dependencies (consolidated into a single RUN command)
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories && \
