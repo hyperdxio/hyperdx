@@ -15,6 +15,7 @@ import {
   ILanguageFormatter,
   useAutoCompleteOptions,
 } from './hooks/useAutoCompleteOptions';
+import { useMetadataWithSettings } from './hooks/useMetadata';
 
 export class LuceneLanguageFormatter implements ILanguageFormatter {
   formatFieldValue(f: Field): string {
@@ -60,6 +61,7 @@ export default function SearchInputV2({
     field: { onChange, value },
   } = useController(props);
 
+  const metadata = useMetadataWithSettings();
   const ref = useRef<HTMLTextAreaElement>(null);
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
 
@@ -73,10 +75,16 @@ export default function SearchInputV2({
   );
 
   useEffect(() => {
-    genEnglishExplanation(value).then(q => {
-      setParsedEnglishQuery(q);
-    });
-  }, [value]);
+    if (tableConnection) {
+      genEnglishExplanation({
+        query: value,
+        tableConnection,
+        metadata,
+      }).then(q => {
+        setParsedEnglishQuery(q);
+      });
+    }
+  }, [value, tableConnection, metadata]);
 
   useHotkeys(
     '/',
