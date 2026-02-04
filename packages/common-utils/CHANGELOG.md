@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.12.0
+
+### Minor Changes
+
+- f44923ba: feat: Add auto-detecting and creating OTel sources during onboarding
+
 ## 0.11.1
 
 ### Patch Changes
