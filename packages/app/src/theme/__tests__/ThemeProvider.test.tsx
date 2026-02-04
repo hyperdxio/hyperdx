@@ -127,7 +127,7 @@ describe('ThemeProvider', () => {
       const { result } = renderHook(() => useWordmark(), { wrapper });
 
       expect(result.current).toBeDefined();
-      expect(typeof result.current).toBe('function');
+      expect(typeof result.current).toBe('object');
     });
   });
 
@@ -140,7 +140,7 @@ describe('ThemeProvider', () => {
       const { result } = renderHook(() => useLogomark(), { wrapper });
 
       expect(result.current).toBeDefined();
-      expect(typeof result.current).toBe('function');
+      expect(typeof result.current).toBe('object');
     });
   });
 

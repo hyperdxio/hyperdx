@@ -391,8 +391,8 @@ function useSearchableList<T extends AppNavLinkItem>({
 }
 
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
-  const Wordmark = useWordmark();
-  const Logomark = useLogomark();
+  const wordmark = useWordmark();
+  const logomark = useLogomark({ size: 22 });
 
   useEffect(() => {
     let redirectUrl;
@@ -676,12 +676,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           >
             <Link href="/search" className={styles.logoLink}>
               {isCollapsed ? (
-                <div className={styles.logoIconWrapper}>
-                  <Logomark size={22} />
-                </div>
+                <div className={styles.logoIconWrapper}>{logomark}</div>
               ) : (
                 <Group gap="xs" align="center">
-                  <Wordmark />
+                  {wordmark}
                   {isUTC && (
                     <Badge
                       size="xs"
