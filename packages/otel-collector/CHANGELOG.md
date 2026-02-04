@@ -1,5 +1,11 @@
 # @hyperdx/otel-collector
 
+## 2.15.1
+
+### Patch Changes
+
+- 3dae0e01: fix: copy otel-collector schema directory to AIO image
+
 ## 2.15.0
 
 ### Minor Changes

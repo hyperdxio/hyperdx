@@ -1,5 +1,18 @@
 # @hyperdx/app
 
+## 2.15.1
+
+### Patch Changes
+
+- 6cfa40a0: feat: Add support for querying nested/array columns with lucene
+- 3c38272f: UI improvements for ClickStack/HyperDX:
+
+  - Improve Sessions page empty state with enhanced Card and Stepper component for setup instructions
+  - Apply consistent IBM Plex Mono font family to log tables, JSON viewer, and multi-series table charts
+
+- Updated dependencies [6cfa40a0]
+  - @hyperdx/common-utils@0.12.1
+
 ## 2.15.0
 
 ### Minor Changes
