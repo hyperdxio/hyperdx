@@ -4,7 +4,7 @@ const USE_FULLSTACK = process.env.E2E_FULLSTACK === 'true';
 
 // Extend the base test to automatically handle Tanstack devtools
 export const test = base.extend({
-  page: async ({ page }, use) => {
+  page: async ({ page }, fn) => {
     // Note: page.addInitScript runs in the browser context, which cannot access Node.js
     // environment variables directly. We pass USE_FULLSTACK as a parameter so the browser
     // script can determine whether to set up demo connections (local mode) or rely on
@@ -153,7 +153,7 @@ export const test = base.extend({
         );
       }
     }, USE_FULLSTACK);
-    await use(page);
+    await fn(page);
   },
 });
 

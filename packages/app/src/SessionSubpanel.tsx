@@ -17,6 +17,7 @@ import {
   Button,
   Divider,
   Group,
+  Portal,
   SegmentedControl,
   Tooltip,
 } from '@mantine/core';
@@ -66,16 +67,10 @@ function useSessionChartConfigs({
   const { getFieldExpression: getTraceSourceFieldExpression } =
     useFieldExpressionGenerator(traceSource);
 
-  if (!getTraceSourceFieldExpression) {
-    return {
-      eventsConfig: undefined,
-      aliasMap: undefined,
-    };
-  }
-
   // Should produce rows that match the `sessionRowSchema` in packages/app/src/utils/sessions.ts
-  const select = useMemo(
-    () => [
+  const select = useMemo(() => {
+    if (!getTraceSourceFieldExpression) return [];
+    return [
       {
         valueExpression: `${getTraceSourceFieldExpression(traceSource.eventAttributesExpression ?? 'SpanAttributes', 'message')}`,
         alias: 'body',
@@ -145,9 +140,8 @@ function useSessionChartConfigs({
         valueExpression: `CAST('span', 'String')`,
         alias: 'type',
       },
-    ],
-    [traceSource, getTraceSourceFieldExpression],
-  );
+    ];
+  }, [traceSource, getTraceSourceFieldExpression]);
 
   // Events shown in the highlighted tab
   const highlightedEventsFilter = useMemo(
@@ -166,8 +160,9 @@ function useSessionChartConfigs({
     [traceSource, rumSessionId],
   );
 
-  const allEventsFilter = useMemo(
-    () => ({
+  const allEventsFilter = useMemo(() => {
+    if (!getTraceSourceFieldExpression) return undefined;
+    return {
       type: 'lucene' as const,
       condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
     AND (
@@ -179,12 +174,13 @@ function useSessionChartConfigs({
       OR ${traceSource.spanNameExpression}:"intercom.onShow" 
       OR ScopeName:"custom-action" 
     )`,
-    }),
-    [traceSource, rumSessionId],
-  );
+    };
+  }, [traceSource, rumSessionId, getTraceSourceFieldExpression]);
 
-  const eventsConfig = useMemo<ChartConfigWithOptDateRange>(
-    () => ({
+  const eventsConfig = useMemo<ChartConfigWithOptDateRange | undefined>(() => {
+    if (!getTraceSourceFieldExpression || !select || !allEventsFilter)
+      return undefined;
+    return {
       select: select,
       from: traceSource.from,
       dateRange: [start, end],
@@ -201,21 +197,22 @@ function useSessionChartConfigs({
       filters: [
         tab === 'highlighted' ? highlightedEventsFilter : allEventsFilter,
       ],
-    }),
-    [
-      select,
-      traceSource,
-      start,
-      end,
-      where,
-      whereLanguage,
-      tab,
-      highlightedEventsFilter,
-      allEventsFilter,
-    ],
-  );
+    };
+  }, [
+    select,
+    traceSource,
+    start,
+    end,
+    where,
+    whereLanguage,
+    tab,
+    highlightedEventsFilter,
+    allEventsFilter,
+    getTraceSourceFieldExpression,
+  ]);
 
   const aliasMap = useMemo(() => {
+    if (!getTraceSourceFieldExpression) return undefined;
     // valueExpression: alias
     return select.reduce(
       (acc, { valueExpression, alias }) => {
@@ -224,7 +221,7 @@ function useSessionChartConfigs({
       },
       {} as Record<string, string>,
     );
-  }, [select]);
+  }, [select, getTraceSourceFieldExpression]);
 
   return {
     eventsConfig,
@@ -269,45 +266,22 @@ export default function SessionSubpanel({
   const [rowId, setRowId] = useState<string | undefined>(undefined);
   const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
 
-  // Without portaling the nested drawer close overlay will not render properly
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    containerRef.current = document.createElement('div');
-
-    if (containerRef.current) {
-      document.body.appendChild(containerRef.current);
-    }
-
-    return () => {
-      if (containerRef.current) {
-        document.body.removeChild(containerRef.current);
-      }
-    };
-  }, []);
-
-  const portaledPanel =
-    containerRef.current != null
-      ? ReactDOM.createPortal(
-          traceSource && (
-            <DBRowSidePanel
-              source={traceSource}
-              rowId={rowId}
-              aliasWith={aliasWith}
-              onClose={() => {
-                setDrawerOpen(false);
-                setRowId(undefined);
-              }}
-            />
-          ),
-          containerRef.current,
-        )
-      : null;
-
   const [tsQuery, setTsQuery] = useQueryState(
     'ts',
     parseAsInteger.withOptions({ history: 'replace' }),
   );
   const prevTsQuery = usePrevious(tsQuery);
+
+  const [focus, _setFocus] = useState<
+    { ts: number; setBy: string } | undefined
+  >(
+    initialTs != null
+      ? {
+          ts: initialTs,
+          setBy: 'parent',
+        }
+      : undefined,
+  );
 
   useEffect(() => {
     if (prevTsQuery == null && tsQuery != null) {
@@ -326,17 +300,6 @@ export default function SessionSubpanel({
       setTsQuery(null);
     };
   }, [setTsQuery]);
-
-  const [focus, _setFocus] = useState<
-    { ts: number; setBy: string } | undefined
-  >(
-    initialTs != null
-      ? {
-          ts: initialTs,
-          setBy: 'parent',
-        }
-      : undefined,
-  );
 
   const setFocus = useCallback(
     (focus: { ts: number; setBy: string }) => {
@@ -471,10 +434,44 @@ export default function SessionSubpanel({
     },
     [setSearchedQuery],
   );
+  const onSessionEventClick = useCallback(
+    (rowWhere: RowWhereResult) => {
+      setDrawerOpen(true);
+      setRowId(rowWhere.where);
+      setAliasWith(rowWhere.aliasWith);
+    },
+    [setDrawerOpen, setRowId, setAliasWith],
+  );
+  const onSessionEventTimeClick = useCallback(
+    (ts: number) => {
+      setFocus({ ts, setBy: 'timeline' });
+    },
+    [setFocus],
+  );
+  const setPlayerTime = useCallback(
+    (ts: number) => {
+      if (focus?.setBy !== 'player' || focus?.ts !== ts) {
+        setFocus({ ts, setBy: 'player' });
+      }
+    },
+    [focus, setFocus],
+  );
 
   return (
     <div className={styles.wrapper}>
-      {rowId != null && portaledPanel}
+      {rowId != null && traceSource && (
+        <Portal>
+          <DBRowSidePanel
+            source={traceSource}
+            rowId={rowId}
+            aliasWith={aliasWith}
+            onClose={() => {
+              setDrawerOpen(false);
+              setRowId(undefined);
+            }}
+          />
+        </Portal>
+      )}
       <div className={cx(styles.eventList, { 'd-none': playerFullWidth })}>
         <div className={styles.eventListHeader}>
           <form
@@ -536,21 +533,9 @@ export default function SessionSubpanel({
             eventsFollowPlayerPosition={eventsFollowPlayerPosition}
             aliasMap={aliasMap}
             queriedConfig={eventsConfig}
-            onClick={useCallback(
-              (rowWhere: RowWhereResult) => {
-                setDrawerOpen(true);
-                setRowId(rowWhere.where);
-                setAliasWith(rowWhere.aliasWith);
-              },
-              [setDrawerOpen, setRowId, setAliasWith],
-            )}
+            onClick={onSessionEventClick}
             focus={focus}
-            onTimeClick={useCallback(
-              ts => {
-                setFocus({ ts, setBy: 'timeline' });
-              },
-              [setFocus],
-            )}
+            onTimeClick={onSessionEventTimeClick}
             minTs={minTs}
             showRelativeTime={showRelativeTime}
           />
@@ -563,14 +548,7 @@ export default function SessionSubpanel({
             playerState={playerState}
             setPlayerState={setPlayerState}
             focus={focus}
-            setPlayerTime={useCallback(
-              ts => {
-                if (focus?.setBy !== 'player' || focus?.ts !== ts) {
-                  setFocus({ ts, setBy: 'player' });
-                }
-              },
-              [focus, setFocus],
-            )}
+            setPlayerTime={setPlayerTime}
             config={{
               serviceName: session.serviceName,
               sourceId: sessionSource.id,

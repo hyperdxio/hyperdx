@@ -93,7 +93,7 @@ interface TableSearchInputProps {
   /**
    * Reference to a container element to check if it's clickable (not obscured by modal/drawer)
    */
-  containerRef?: React.RefObject<HTMLElement | null>;
+  containerRef?: HTMLElement | null;
 }
 
 /**
@@ -145,8 +145,7 @@ export const TableSearchInput = ({
       // Detect Cmd+F (Mac) or Ctrl+F (Windows/Linux)
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         // if container exists, verify it's actually clickable
-        if (containerRef?.current && !isElementClickable(containerRef.current))
-          return;
+        if (containerRef && !isElementClickable(containerRef)) return;
 
         e.preventDefault();
         handleShow();

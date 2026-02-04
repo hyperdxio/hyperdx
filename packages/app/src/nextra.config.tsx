@@ -5,8 +5,7 @@ import { useWordmark } from './theme/ThemeProvider';
 import useNextraSeoProps from './useNextraSeoProps';
 
 function ThemedLogo() {
-  const Wordmark = useWordmark();
-  return <Wordmark />;
+  return useWordmark();
 }
 
 const theme = {

@@ -20,7 +20,6 @@ import {
 } from '@tabler/icons-react';
 
 import { useQueriedChartConfig } from './hooks/useChartConfig';
-import { useLogomark } from './theme/ThemeProvider';
 import api from './api';
 import { useConnections } from './connection';
 import { useSources } from './source';
@@ -36,12 +35,12 @@ interface OnboardingStep {
   onClick?: () => void;
 }
 
+const NOW = Date.now();
 const OnboardingChecklist = ({
   onAddDataClick,
 }: {
   onAddDataClick?: () => void;
 }) => {
-  const Logomark = useLogomark();
   const [isCollapsed, setIsCollapsed] = useLocalStorage(
     'onboardingChecklistCollapsed',
     false,
@@ -55,7 +54,7 @@ const OnboardingChecklist = ({
   // Check if team is new (less than 3 days old)
   const isNewTeam = useMemo(() => {
     if (!team?.createdAt) return false;
-    const threeDaysAgo = new Date(Date.now() - 1000 * 60 * 60 * 24 * 3);
+    const threeDaysAgo = new Date(NOW - 1000 * 60 * 60 * 24 * 3);
     return new Date(team.createdAt) > threeDaysAgo;
   }, [team]);
 

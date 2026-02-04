@@ -137,6 +137,7 @@
     "eslint-config-next": "^16.0.10",
     "eslint-plugin-playwright": "^2.4.0",
     "eslint-plugin-react-hook-form": "^0.3.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-storybook": "10.1.4",
     "identity-obj-proxy": "^3.0.0",
     "jest": "^30.2.0",

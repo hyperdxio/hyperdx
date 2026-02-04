@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 
 /// Interface for all suggestion engines
 interface ISuggestionEngine {
@@ -82,12 +82,9 @@ export function useSqlSuggestions({
   input: string;
   enabled: boolean;
 }): Suggestion[] | null {
-  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
-
-  useEffect(() => {
+  return useMemo(() => {
     if (!enabled) {
-      setSuggestions(null);
-      return;
+      return null;
     }
 
     const suggestions: Suggestion[] = [];
@@ -99,8 +96,6 @@ export function useSqlSuggestions({
         });
       }
     }
-    setSuggestions(suggestions.length > 0 ? suggestions : null);
+    return suggestions.length > 0 ? suggestions : null;
   }, [input, enabled]);
-
-  return suggestions;
 }
