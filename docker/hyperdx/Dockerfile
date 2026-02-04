@@ -119,6 +119,7 @@ COPY --from=hyperdx ./clickhouseConfig.xml /etc/clickhouse-server/config.xml
 # Set up Otel Collector
 COPY --from=otel-collector ./config.yaml /etc/otelcol-contrib/config.yaml
 COPY --from=otel-collector ./supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
+COPY --from=otel-collector ./schema /etc/otel/schema
 
 # Copy otel-collector entrypoint script
 COPY --from=otel-collector --chmod=755 ./entrypoint.sh /otel-entrypoint.sh
