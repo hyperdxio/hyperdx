@@ -14,6 +14,8 @@ export class DashboardPage {
   readonly chartEditor: ChartEditorComponent;
   readonly granularityPicker: Locator;
 
+  private readonly dashboardOptionsMenu: Locator;
+  private readonly duplicateDashboardButton: Locator;
   private readonly createDashboardButton: Locator;
   private readonly addTileButton: Locator;
   private readonly dashboardNameHeading: Locator;
@@ -32,6 +34,9 @@ export class DashboardPage {
     this.page = page;
     this.timePicker = new TimePickerComponent(page);
     this.chartEditor = new ChartEditorComponent(page);
+
+    this.dashboardOptionsMenu = page.getByTestId('dashboard-options-menu');
+    this.duplicateDashboardButton = page.getByTestId('duplicate-dashboard');
 
     this.createDashboardButton = page.locator(
       '[data-testid="create-dashboard-button"]',
@@ -326,6 +331,14 @@ export class DashboardPage {
       exact: true,
     });
     await optionLocator.click();
+  }
+
+  get dashboardOptions() {
+    return this.dashboardOptionsMenu;
+  }
+
+  get duplicateDashboard() {
+    return this.duplicateDashboardButton;
   }
 
   // Getters for assertions

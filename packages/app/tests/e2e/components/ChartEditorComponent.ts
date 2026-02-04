@@ -124,6 +124,7 @@ export class ChartEditorComponent {
   ) {
     // Wait for data sources to load before interacting
     await this.waitForDataToLoad();
+    await this.setChartName(chartName);
     await this.selectSource(sourceName);
     await this.selectMetric(metricName, metricValue);
     await this.runQuery();
