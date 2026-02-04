@@ -1,5 +1,28 @@
 # @hyperdx/app
 
+## 2.15.0
+
+### Minor Changes
+
+- f44923ba: feat: Add auto-detecting and creating OTel sources during onboarding
+
+### Patch Changes
+
+- 9f75fe2e: fix: Ensure Noisy Patterns message isn't clipped
+- d89a2db2: fix: Fix side panel tab colors in ClickStack theme
+- ea56d11f: chore: Change "None" aggregation label to "Custom" in charts.
+- 7448508d: feat: Theme-aware UI improvements for ClickStack
+
+  - **Chart colors**: Made chart color palette theme-aware - ClickStack uses blue as primary color, HyperDX uses green. Charts now correctly display blue bars for ClickStack theme.
+  - **Semantic colors**: Updated semantic color functions (getChartColorSuccess, getChartColorWarning, getChartColorError) to be theme-aware, reading from CSS variables or falling back to theme-appropriate palettes.
+  - **Info log colors**: Changed info-level logs to use primary chart color (blue for ClickStack, green for HyperDX) instead of success green.
+  - **Button variants**: Made ResumeLiveTailButton variant conditional - uses 'secondary' for ClickStack theme, 'primary' for HyperDX theme.
+  - **Nav styles**: Fixed collapsed navigation styles for proper alignment and spacing when nav is collapsed to 50px width.
+  - **Icon stroke width**: Added custom stroke width (1.5) for Tabler icons in ClickStack theme only, providing a more refined appearance.
+
+- Updated dependencies [f44923ba]
+  - @hyperdx/common-utils@0.12.0
+
 ## 2.14.0
 
 ### Minor Changes

@@ -1,4 +1,4 @@
-/* stylelint-disable */
+/* stylelint-disable-file */
 // stylelint adds '}}' to end of file.. not sure why. Disabled for now.
 
 @use '../src/theme/themes/base-tokens';
@@ -277,17 +277,6 @@ button:focus-visible {
   font-weight: normal !important;
   font-size: 0.8rem;
   opacity: 0.8;
-}
-
-.hover-color-white {
-  &:hover {
-    color: white;
-  }
-}
-
-
-a.mantine-focus-auto:hover {
-  color: inherit;
 }
 
 .recharts-tooltip-wrapper {

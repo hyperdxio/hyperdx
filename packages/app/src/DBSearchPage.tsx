@@ -107,6 +107,7 @@ import {
   useSource,
   useSources,
 } from '@/source';
+import { useAppTheme } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
   parseTimeQuery,
@@ -280,10 +281,13 @@ function ResumeLiveTailButton({
 }: {
   handleResumeLiveTail: () => void;
 }) {
+  const { themeName } = useAppTheme();
+  const variant = themeName === 'clickstack' ? 'secondary' : 'primary';
+
   return (
     <Button
       size="compact-xs"
-      variant="primary"
+      variant={variant}
       onClick={handleResumeLiveTail}
       leftSection={<IconBolt size={14} />}
     >
@@ -1785,8 +1789,8 @@ function DBSearchPage() {
           <Paper shadow="xs" p="xl" h="100%">
             <Center mih={100} h="100%">
               <Text size="sm">
-                Please start by selecting a database, table, and timestamp
-                column above to view data.
+                Please start by selecting a source and then click the play
+                button to query data.
               </Text>
             </Center>
           </Paper>
