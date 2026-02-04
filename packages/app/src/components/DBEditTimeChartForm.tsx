@@ -284,6 +284,7 @@ function ChartSeriesEditorComponent({
                 placeholder="Series alias"
                 onChange={() => onSubmit()}
                 size="xs"
+                data-testid="series-alias-input"
               />
             </div>
             {(index ?? -1) > 0 && (
