@@ -1,5 +1,9 @@
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { expect, test } from '../utils/base-test';
+import {
+  DEFAULT_LOGS_SOURCE_NAME,
+  DEFAULT_METRICS_SOURCE_NAME,
+} from '../utils/constants';
 
 test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   let dashboardPage: DashboardPage;
@@ -266,7 +270,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       await dashboardPage.chartEditor.createTable({
         chartName: 'Test Table',
-        sourceName: 'Demo Logs',
+        sourceName: DEFAULT_LOGS_SOURCE_NAME,
         groupBy: 'ServiceName',
       });
 
@@ -284,7 +288,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       await dashboardPage.addFilterToDashboard(
         'Service',
-        'Demo Logs',
+        DEFAULT_LOGS_SOURCE_NAME,
         'ServiceName',
       );
 
@@ -299,7 +303,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       await dashboardPage.addFilterToDashboard(
         'Metric',
-        'Demo Metrics',
+        DEFAULT_METRICS_SOURCE_NAME,
         'MetricName',
         'gauge',
       );
