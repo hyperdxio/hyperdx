@@ -3,40 +3,22 @@ import { expect, test } from '../../utils/base-test';
 
 test.describe('Search Filters', { tag: ['@search'] }, () => {
   let searchPage: SearchPage;
-  let availableFilterValue: string | null = null;
+  // Using known seeded data - 'info' severity always exists in test data
+  const TEST_FILTER_VALUE = 'info';
 
   test.beforeEach(async ({ page }) => {
     searchPage = new SearchPage(page);
     await searchPage.goto();
-
-    // Find an available filter value once and reuse across tests
-    if (!availableFilterValue) {
-      await searchPage.filters.openFilterGroup('SeverityText');
-
-      // Get first visible filter checkbox
-      const firstCheckbox = searchPage.page
-        .locator('[data-testid^="filter-checkbox-"]')
-        .first();
-      const testId = await firstCheckbox.getAttribute('data-testid');
-
-      // Extract the value name from data-testid="filter-checkbox-{value}"
-      if (testId) {
-        availableFilterValue = testId.replace('filter-checkbox-', '');
-      }
-    }
+    await searchPage.filters.openFilterGroup('SeverityText');
   });
 
   test('Should apply filters', async () => {
-    // Use filter component to open filter group
-    await searchPage.filters.openFilterGroup('SeverityText');
-
     // Apply the filter using component method
-    const filterInput = searchPage.filters.getFilterCheckboxInput(
-      availableFilterValue!,
-    );
+    const filterInput =
+      searchPage.filters.getFilterCheckboxInput(TEST_FILTER_VALUE);
     await expect(filterInput).toBeVisible();
 
-    await searchPage.filters.applyFilter(availableFilterValue!);
+    await searchPage.filters.applyFilter(TEST_FILTER_VALUE);
 
     // Verify filter is checked
     await expect(filterInput).toBeChecked();
@@ -47,22 +29,20 @@ test.describe('Search Filters', { tag: ['@search'] }, () => {
 
   test('Should exclude filters', async () => {
     // Use filter component to exclude the filter
-    await searchPage.filters.excludeFilter(availableFilterValue!);
+    await searchPage.filters.excludeFilter(TEST_FILTER_VALUE);
 
     // Verify filter shows as excluded using web-first assertion
-    const isExcluded = await searchPage.filters.isFilterExcluded(
-      availableFilterValue!,
-    );
+    const isExcluded =
+      await searchPage.filters.isFilterExcluded(TEST_FILTER_VALUE);
     expect(isExcluded).toBe(true);
   });
 
   test('Should clear filters', async () => {
-    await searchPage.filters.clearFilter(availableFilterValue!);
+    await searchPage.filters.clearFilter(TEST_FILTER_VALUE);
 
     // Verify filter is no longer checked
-    const filterInput = searchPage.filters.getFilterCheckboxInput(
-      availableFilterValue!,
-    );
+    const filterInput =
+      searchPage.filters.getFilterCheckboxInput(TEST_FILTER_VALUE);
     await expect(filterInput).not.toBeChecked();
   });
 
@@ -90,20 +70,19 @@ test.describe('Search Filters', { tag: ['@search'] }, () => {
   });
 
   test('Should pin filter and verify it persists after reload', async () => {
-    await searchPage.filters.pinFilter(availableFilterValue!);
+    await searchPage.filters.pinFilter(TEST_FILTER_VALUE);
 
     // Reload page and verify filter persists
     await searchPage.page.reload();
 
     // Verify filter checkbox is still visible
-    const filterCheckbox = searchPage.filters.getFilterCheckbox(
-      availableFilterValue!,
-    );
+    const filterCheckbox =
+      searchPage.filters.getFilterCheckbox(TEST_FILTER_VALUE);
     await expect(filterCheckbox).toBeVisible();
 
     //verify there is a pin icon
     const pinIcon = searchPage.page.getByTestId(
-      `filter-pin-${availableFilterValue!}-pinned`,
+      `filter-pin-${TEST_FILTER_VALUE}-pinned`,
     );
     await expect(pinIcon).toBeVisible();
   });
