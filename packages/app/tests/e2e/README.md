@@ -15,10 +15,10 @@ feature-specific test suites.
 ### Default: Full-Stack Mode
 
 By default, `make e2e` runs tests in **full-stack mode** with MongoDB + API +
-demo ClickHouse for maximum consistency and real backend features:
+local Docker ClickHouse for maximum consistency and real backend features:
 
 ```bash
-# Run all tests (full-stack with MongoDB + API + demo ClickHouse)
+# Run all tests (full-stack with MongoDB + API + local Docker ClickHouse)
 make e2e
 
 # Run specific tests (full-stack)
@@ -98,7 +98,7 @@ ClickHouse data.
 - MongoDB (port 29998) - authentication, teams, users, persistence
 - API Server (port 29000) - full backend logic
 - App Server (port 28081) - frontend
-- **Demo ClickHouse** (remote) - pre-populated logs/traces/metrics/K8s data
+- **Local Docker ClickHouse** (localhost:8123) - seeded E2E test data (logs/traces/metrics/K8s)
 
 **Benefits:**
 
@@ -114,22 +114,26 @@ make e2e
 make e2e tags="@kubernetes"
 ```
 
-#### Local Mode (for testing frontend-only mode)
+#### Local Mode (for testing frontend-only features)
 
-**Frontend-only mode** - skips MongoDB/API, connects directly to demo ClickHouse
-from browser.
+**Frontend + ClickHouse mode** - skips MongoDB/API, uses local Docker ClickHouse
+with seeded test data.
 
 **Use for:**
 
 - Quick frontend iteration during development
 - Testing UI components that don't need auth
 - Faster test execution when backend features aren't needed
+- Consistent test data (same as full-stack mode)
 
 **Limitations:**
 
 - No authentication (no login/signup)
-- No persistence (can't save searches/dashboards)
-- No API calls (queries go directly to demo ClickHouse)
+- No persistence (can't save searches/dashboards via API)
+- No API calls (queries go directly to local ClickHouse)
+
+**Note:** Uses the same Docker ClickHouse and seeded data as full-stack mode,
+ensuring consistency between local and full-stack tests.
 
 ```bash
 # Opt-in to local mode for speed
@@ -150,7 +154,7 @@ test.describe('My Feature', () => {
     // User is already authenticated (via global setup in full-stack mode)
     await page.goto('/search');
 
-    // Query demo ClickHouse data
+    // Query local Docker ClickHouse seeded data
     await page.fill('[data-testid="search-input"]', 'ServiceName:"frontend"');
     await page.click('[data-testid="search-submit-button"]');
 
@@ -367,13 +371,13 @@ multiple servers:
 **Sources don't appear in UI:**
 
 - Check API logs for `setupTeamDefaults` errors
-- Verify `DEFAULT_SOURCES` in `.env.e2e` points to demo ClickHouse
+- Verify `DEFAULT_SOURCES` in `.env.e2e` points to local Docker ClickHouse (localhost:8123)
 - Ensure you registered a new user (DEFAULT_SOURCES only applies to new teams)
 
 **Tests can't find demo data:**
 
-- Verify sources use `otel_v2` database (demo ClickHouse)
-- Check Network tab - should query `sql-clickhouse.clickhouse.com`
+- Verify sources use `default` database with `e2e_` prefixed tables
+- Check Network tab - should query `localhost:8123`
 - Verify a source is selected in UI dropdown
 
 ### Flaky Tests
@@ -391,7 +395,7 @@ For intermittent failures:
 Tests run in **full-stack mode** on CI (GitHub Actions) with:
 
 - MongoDB service container for authentication and persistence
-- Demo ClickHouse for telemetry data
+- Local Docker ClickHouse for telemetry data (same as local mode)
 - 60-second test timeout (same as local)
 - Multiple retry attempts (2 retries on CI vs 1 locally)
 - Artifact collection for failed tests
