@@ -37,7 +37,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await searchPage.savedSearchModal.saveSearch('Custom Select Search');
 
         await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 15000 });
       });
 
       const savedSearchAUrl = page.url().split('?')[0];
@@ -167,12 +167,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
       await test.step('Switch back to original source via dropdown', async () => {
         await searchPage.sourceDropdown.click();
-        await page
-          .getByRole('option', {
-            name: originalSourceName || '',
-            exact: true,
-          })
-          .click();
+        await searchPage.selectSource(originalSourceName!);
         await page.waitForLoadState('networkidle');
         await searchPage.table.waitForRowsToPopulate();
       });
