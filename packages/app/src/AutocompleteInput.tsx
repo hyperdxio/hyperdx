@@ -133,196 +133,221 @@ export default function AutocompleteInput({
     }
   }, [language, onLanguageChange, inputRef]);
 
-  return (
-    <Popover
-      opened={isInputDropdownOpen}
-      onChange={setIsInputDropdownOpen}
-      position="bottom-start"
-      offset={8}
-      width="target"
-      withinPortal
-      closeOnClickOutside
-      closeOnEscape
-      styles={{
-        dropdown: {
-          maxWidth: inputWidth > 300 ? inputWidth : 720,
-          width: '100%',
-          zIndex,
-        },
-      }}
-    >
-      <Popover.Target>
-        <Textarea
-          ref={inputRef}
-          placeholder={placeholder}
-          className="fs-8"
-          value={value}
-          size={size}
-          autosize
-          minRows={1}
-          maxRows={4}
-          style={{
-            flexGrow: 1,
-            resize: 'none',
-          }}
-          data-testid={dataTestId}
-          onChange={e => onChange(e.target.value)}
-          onFocus={() => {
-            setSelectedAutocompleteIndex(-1);
-            setSelectedQueryHistoryIndex(-1);
-            setIsSearchInputFocused(true);
-          }}
-          onBlur={() => {
-            setSelectedAutocompleteIndex(-1);
-            setSelectedQueryHistoryIndex(-1);
-            setIsSearchInputFocused(false);
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Escape' && e.target instanceof HTMLTextAreaElement) {
-              e.preventDefault();
-              setIsInputDropdownOpen(false);
-              e.target.blur();
-            }
+  // Calculate base height based on size
+  const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 42 : 36;
 
-            // Autocomplete Navigation/Acceptance Keys
-            if (e.key === 'Tab' && e.target instanceof HTMLTextAreaElement) {
-              if (
-                suggestedProperties.length > 0 &&
-                selectedAutocompleteIndex < suggestedProperties.length &&
-                selectedAutocompleteIndex >= 0
-              ) {
-                e.preventDefault();
-                onAcceptSuggestion(
-                  suggestedProperties[selectedAutocompleteIndex].value,
-                );
-              }
-            }
-            if (e.key === 'Enter' && e.target instanceof HTMLTextAreaElement) {
-              if (
-                suggestedProperties.length > 0 &&
-                selectedAutocompleteIndex < suggestedProperties.length &&
-                selectedAutocompleteIndex >= 0
-              ) {
-                e.preventDefault();
-                onAcceptSuggestion(
-                  suggestedProperties[selectedAutocompleteIndex].value,
-                );
-              } else {
-                // Allow shift+enter to still create new lines
-                if (!e.shiftKey) {
-                  e.preventDefault();
-                  if (queryHistoryType && value) {
-                    setQueryHistory(value);
+  return (
+    <div style={{ position: 'relative', flex: 1 }}>
+      <Popover
+        opened={isInputDropdownOpen}
+        onChange={setIsInputDropdownOpen}
+        position="bottom-start"
+        offset={8}
+        width="target"
+        withinPortal
+        closeOnClickOutside
+        closeOnEscape
+        styles={{
+          dropdown: {
+            maxWidth: inputWidth > 300 ? inputWidth : 720,
+            width: '100%',
+            zIndex,
+          },
+        }}
+      >
+        <Popover.Target>
+          <Textarea
+            ref={inputRef}
+            placeholder={placeholder}
+            className="fs-8"
+            value={value}
+            size={size}
+            autosize
+            minRows={1}
+            maxRows={isSearchInputFocused ? 4 : 1}
+            style={{
+              flexGrow: 1,
+              resize: 'none',
+              // When focused, overlay on top of content
+              ...(isSearchInputFocused
+                ? {
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    zIndex: 100,
+                    boxShadow:
+                      '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
                   }
-                  onSubmit?.();
+                : {}),
+            }}
+            data-testid={dataTestId}
+            onChange={e => onChange(e.target.value)}
+            onFocus={() => {
+              setSelectedAutocompleteIndex(-1);
+              setSelectedQueryHistoryIndex(-1);
+              setIsSearchInputFocused(true);
+            }}
+            onBlur={() => {
+              setSelectedAutocompleteIndex(-1);
+              setSelectedQueryHistoryIndex(-1);
+              setIsSearchInputFocused(false);
+            }}
+            onKeyDown={e => {
+              if (
+                e.key === 'Escape' &&
+                e.target instanceof HTMLTextAreaElement
+              ) {
+                e.preventDefault();
+                setIsInputDropdownOpen(false);
+                e.target.blur();
+              }
+
+              // Autocomplete Navigation/Acceptance Keys
+              if (e.key === 'Tab' && e.target instanceof HTMLTextAreaElement) {
+                if (
+                  suggestedProperties.length > 0 &&
+                  selectedAutocompleteIndex < suggestedProperties.length &&
+                  selectedAutocompleteIndex >= 0
+                ) {
+                  e.preventDefault();
+                  onAcceptSuggestion(
+                    suggestedProperties[selectedAutocompleteIndex].value,
+                  );
                 }
               }
-            }
-            if (
-              e.key === 'ArrowDown' &&
-              e.target instanceof HTMLTextAreaElement
-            ) {
-              if (suggestedProperties.length > 0) {
-                setSelectedAutocompleteIndex(
-                  Math.min(
-                    selectedAutocompleteIndex + 1,
-                    suggestedProperties.length - 1,
-                    suggestionsLimit - 1,
-                  ),
-                );
+              if (
+                e.key === 'Enter' &&
+                e.target instanceof HTMLTextAreaElement
+              ) {
+                if (
+                  suggestedProperties.length > 0 &&
+                  selectedAutocompleteIndex < suggestedProperties.length &&
+                  selectedAutocompleteIndex >= 0
+                ) {
+                  e.preventDefault();
+                  onAcceptSuggestion(
+                    suggestedProperties[selectedAutocompleteIndex].value,
+                  );
+                } else {
+                  // Allow shift+enter to still create new lines
+                  if (!e.shiftKey) {
+                    e.preventDefault();
+                    if (queryHistoryType && value) {
+                      setQueryHistory(value);
+                    }
+                    onSubmit?.();
+                  }
+                }
               }
-            }
-            if (
-              e.key === 'ArrowUp' &&
-              e.target instanceof HTMLTextAreaElement
-            ) {
-              if (suggestedProperties.length > 0) {
-                setSelectedAutocompleteIndex(
-                  Math.max(selectedAutocompleteIndex - 1, 0),
-                );
+              if (
+                e.key === 'ArrowDown' &&
+                e.target instanceof HTMLTextAreaElement
+              ) {
+                if (suggestedProperties.length > 0) {
+                  setSelectedAutocompleteIndex(
+                    Math.min(
+                      selectedAutocompleteIndex + 1,
+                      suggestedProperties.length - 1,
+                      suggestionsLimit - 1,
+                    ),
+                  );
+                }
               }
+              if (
+                e.key === 'ArrowUp' &&
+                e.target instanceof HTMLTextAreaElement
+              ) {
+                if (suggestedProperties.length > 0) {
+                  setSelectedAutocompleteIndex(
+                    Math.max(selectedAutocompleteIndex - 1, 0),
+                  );
+                }
+              }
+            }}
+            rightSectionWidth={rightSectionWidth}
+            rightSection={
+              language != null && onLanguageChange != null ? (
+                <div ref={ref}>
+                  <InputLanguageSwitch
+                    showHotkey={showHotkey && isSearchInputFocused}
+                    language={language}
+                    onLanguageChange={onLanguageChange}
+                  />
+                </div>
+              ) : undefined
             }
-          }}
-          rightSectionWidth={rightSectionWidth}
-          rightSection={
-            language != null && onLanguageChange != null ? (
-              <div ref={ref}>
-                <InputLanguageSwitch
-                  showHotkey={showHotkey && isSearchInputFocused}
-                  language={language}
-                  onLanguageChange={onLanguageChange}
-                />
-              </div>
-            ) : undefined
-          }
-        />
-      </Popover.Target>
-      <Popover.Dropdown className="p-0">
-        {aboveSuggestions != null && (
-          <div className="d-flex p-2 flex-wrap px-3">{aboveSuggestions}</div>
-        )}
-        <div>
-          {suggestedProperties.length > 0 && (
-            <div className="border-top border-dark fs-8 py-2">
-              <div className="d-flex justify-content-between px-3 mb-2">
-                <div className="me-2 text-light">{suggestionsHeader}</div>
-                {suggestedProperties.length > suggestionsLimit && (
-                  <div className="text-muted">
-                    (Showing Top {suggestionsLimit})
-                  </div>
-                )}
-              </div>
-              {suggestedProperties
-                .slice(0, suggestionsLimit)
-                .map(({ value, label }, i) => (
-                  <div
-                    className={`py-2 px-3 ${
-                      selectedAutocompleteIndex === i ? 'bg-muted' : ''
-                    }`}
-                    role="button"
-                    key={value}
-                    onMouseOver={() => {
-                      setSelectedAutocompleteIndex(i);
-                    }}
-                    onClick={() => {
-                      onAcceptSuggestion(value);
-                    }}
-                  >
-                    <span className="me-1">{label}</span>
-                  </div>
-                ))}
-            </div>
+          />
+        </Popover.Target>
+        <Popover.Dropdown className="p-0">
+          {aboveSuggestions != null && (
+            <div className="d-flex p-2 flex-wrap px-3">{aboveSuggestions}</div>
           )}
-        </div>
-        {belowSuggestions != null && (
-          <div className="border-top px-3 pt-2 pb-1 fs-8 d-flex align-items-center text-muted flex-wrap">
-            {belowSuggestions}
+          <div>
+            {suggestedProperties.length > 0 && (
+              <div className="border-top border-dark fs-8 py-2">
+                <div className="d-flex justify-content-between px-3 mb-2">
+                  <div className="me-2 text-light">{suggestionsHeader}</div>
+                  {suggestedProperties.length > suggestionsLimit && (
+                    <div className="text-muted">
+                      (Showing Top {suggestionsLimit})
+                    </div>
+                  )}
+                </div>
+                {suggestedProperties
+                  .slice(0, suggestionsLimit)
+                  .map(({ value, label }, i) => (
+                    <div
+                      className={`py-2 px-3 ${
+                        selectedAutocompleteIndex === i ? 'bg-muted' : ''
+                      }`}
+                      role="button"
+                      key={value}
+                      onMouseOver={() => {
+                        setSelectedAutocompleteIndex(i);
+                      }}
+                      onClick={() => {
+                        onAcceptSuggestion(value);
+                      }}
+                    >
+                      <span className="me-1">{label}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
-        )}
-        <div>
-          {showSearchHistory && (
-            <div className="border-top border-dark fs-8 py-2">
-              <div className="text-muted fs-8 fw-bold me-1 px-3">
-                Search History:
-              </div>
-              {queryHistoryList.map(({ value, label }, i) => {
-                return (
-                  <UnstyledButton
-                    className={`d-block w-100 text-start text-muted fw-normal px-3 py-2 fs-8 ${
-                      selectedQueryHistoryIndex === i ? 'bg-muted' : ''
-                    }`}
-                    key={value}
-                    onMouseOver={() => setSelectedQueryHistoryIndex(i)}
-                    onClick={() => onSelectSearchHistory(value)}
-                  >
-                    <span className="me-1 text-truncate">{label}</span>
-                  </UnstyledButton>
-                );
-              })}
+          {belowSuggestions != null && (
+            <div className="border-top px-3 pt-2 pb-1 fs-8 d-flex align-items-center text-muted flex-wrap">
+              {belowSuggestions}
             </div>
           )}
-        </div>
-      </Popover.Dropdown>
-    </Popover>
+          <div>
+            {showSearchHistory && (
+              <div className="border-top border-dark fs-8 py-2">
+                <div className="text-muted fs-8 fw-bold me-1 px-3">
+                  Search History:
+                </div>
+                {queryHistoryList.map(({ value, label }, i) => {
+                  return (
+                    <UnstyledButton
+                      className={`d-block w-100 text-start text-muted fw-normal px-3 py-2 fs-8 ${
+                        selectedQueryHistoryIndex === i ? 'bg-muted' : ''
+                      }`}
+                      key={value}
+                      onMouseOver={() => setSelectedQueryHistoryIndex(i)}
+                      onClick={() => onSelectSearchHistory(value)}
+                    >
+                      <span className="me-1 text-truncate">{label}</span>
+                    </UnstyledButton>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </Popover.Dropdown>
+      </Popover>
+      {/* Spacer div to maintain layout height when textarea is positioned absolutely */}
+      {isSearchInputFocused && <div style={{ height: baseHeight }} />}
+    </div>
   );
 }
