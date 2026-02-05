@@ -51,12 +51,6 @@ const CATEGORY_LABELS: Record<AttributeCategory, string> = {
   ScopeAttributes: 'Scope',
 };
 
-const CATEGORY_COLORS: Record<AttributeCategory, string> = {
-  ResourceAttributes: 'blue',
-  Attributes: 'green',
-  ScopeAttributes: 'orange',
-};
-
 // UCUM (Unified Code for Units of Measure) case-sensitive codes to human-readable names
 // Reference: https://ucum.org/ucum
 const UCUM_UNIT_NAMES: Record<string, string> = {
@@ -235,7 +229,7 @@ function AttributeValueList({
             <Text size="sm" fw={500}>
               {attribute.name}
             </Text>
-            <Badge size="xs" color={CATEGORY_COLORS[attribute.category]}>
+            <Badge size="xs" variant="default">
               {CATEGORY_LABELS[attribute.category]}
             </Badge>
           </Group>
@@ -360,7 +354,7 @@ function AttributeList({
                   <Text size="xs" fw={600} c="dimmed">
                     {CATEGORY_LABELS[category]}
                   </Text>
-                  <Badge size="xs" color={CATEGORY_COLORS[category]}>
+                  <Badge size="xs" variant="default">
                     {attrs.length}
                   </Badge>
                 </Group>
