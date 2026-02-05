@@ -1114,6 +1114,12 @@ export function convertToNumberChartConfig(
   return omit(config, ['granularity', 'groupBy']);
 }
 
+export function convertToPieChartConfig(
+  config: ChartConfigWithOptTimestamp,
+): ChartConfigWithOptTimestamp {
+  return omit(config, ['granularity']);
+}
+
 export function convertToTableChartConfig(
   config: ChartConfigWithOptTimestamp,
 ): ChartConfigWithOptTimestamp {
