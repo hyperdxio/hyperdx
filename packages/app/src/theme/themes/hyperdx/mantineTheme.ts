@@ -231,6 +231,9 @@ export const makeTheme = ({
       },
     }),
     Button: Button.extend({
+      defaultProps: {
+        variant: 'primary',
+      },
       vars: (_theme, props) => {
         const baseVars: Record<string, string> = {};
 
