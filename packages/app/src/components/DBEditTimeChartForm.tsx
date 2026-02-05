@@ -262,7 +262,6 @@ function ChartSeriesEditorComponent({
   const { data: attributeSuggestions, isLoading: isLoadingAttributes } =
     useFetchMetricResourceAttrs({
       databaseName,
-      tableName: tableName || '',
       metricType,
       metricName,
       tableSource,
@@ -528,7 +527,7 @@ function ChartSeriesEditorComponent({
       {tableSource?.kind === SourceKind.Metric && metricName && (
         <MetricAttributeHelperPanel
           databaseName={databaseName}
-          tableName={tableName || ''}
+          metricType={metricType}
           metricName={metricName}
           tableSource={tableSource}
           attributeKeys={attributeKeys}

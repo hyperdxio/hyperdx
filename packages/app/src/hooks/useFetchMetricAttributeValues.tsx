@@ -7,6 +7,7 @@ import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
 import { getClickhouseClient } from '@/clickhouse';
+import { getMetricTableName } from '@/utils';
 
 import { AttributeCategory } from './useFetchMetricResourceAttrs';
 
@@ -14,12 +15,12 @@ const ATTRIBUTE_VALUES_LIMIT = 100;
 
 interface MetricAttributeValuesProps {
   databaseName: string;
-  tableName: string;
   metricName: string;
   attributeName: string;
   attributeCategory: AttributeCategory;
   searchTerm?: string;
   tableSource: TSource | undefined;
+  metricType: string;
   enabled?: boolean;
 }
 
@@ -29,7 +30,7 @@ interface AttributeValueResponse {
 
 export const useFetchMetricAttributeValues = ({
   databaseName,
-  tableName,
+  metricType,
   metricName,
   attributeName,
   attributeCategory,
@@ -37,10 +38,15 @@ export const useFetchMetricAttributeValues = ({
   tableSource,
   enabled = true,
 }: MetricAttributeValuesProps) => {
+  const tableName = tableSource
+    ? (getMetricTableName(tableSource, metricType) ?? '')
+    : '';
+
   const shouldFetch = Boolean(
     enabled &&
       databaseName &&
       tableName &&
+      metricType &&
       metricName &&
       attributeName &&
       attributeCategory &&
@@ -51,12 +57,12 @@ export const useFetchMetricAttributeValues = ({
   return useQuery({
     queryKey: [
       'metric-attribute-values',
-      databaseName,
-      tableName,
       metricName,
+      metricType,
       attributeName,
       attributeCategory,
       searchTerm,
+      tableSource,
     ],
     queryFn: async ({ signal }) => {
       if (!shouldFetch) {

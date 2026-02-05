@@ -34,7 +34,7 @@ import {
 
 interface MetricAttributeHelperPanelProps {
   databaseName: string;
-  tableName: string;
+  metricType: string;
   metricName: string;
   tableSource: TSource | undefined;
   attributeKeys: AttributeKey[];
@@ -169,7 +169,7 @@ function formatGroupByClause(
 
 interface AttributeValueListProps {
   databaseName: string;
-  tableName: string;
+  metricType: string;
   metricName: string;
   tableSource: TSource | undefined;
   attribute: AttributeKey;
@@ -181,7 +181,7 @@ interface AttributeValueListProps {
 
 function AttributeValueList({
   databaseName,
-  tableName,
+  metricType,
   metricName,
   tableSource,
   attribute,
@@ -195,7 +195,7 @@ function AttributeValueList({
 
   const { data: values, isLoading } = useFetchMetricAttributeValues({
     databaseName,
-    tableName,
+    metricType,
     metricName,
     attributeName: attribute.name,
     attributeCategory: attribute.category,
@@ -396,9 +396,9 @@ function AttributeList({
 
 export function MetricAttributeHelperPanel({
   databaseName,
-  tableName,
   metricName,
   tableSource,
+  metricType,
   attributeKeys,
   isLoading,
   language,
@@ -477,7 +477,7 @@ export function MetricAttributeHelperPanel({
           ) : selectedAttribute ? (
             <AttributeValueList
               databaseName={databaseName}
-              tableName={tableName}
+              metricType={metricType}
               metricName={metricName}
               tableSource={tableSource}
               attribute={selectedAttribute}
