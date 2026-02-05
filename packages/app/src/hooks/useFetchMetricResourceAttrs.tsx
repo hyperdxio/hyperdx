@@ -12,6 +12,75 @@ import { formatAttributeClause } from '@/utils';
 
 const METRIC_FETCH_LIMIT = 10000;
 
+export type AttributeCategory =
+  | 'ResourceAttributes'
+  | 'ScopeAttributes'
+  | 'Attributes';
+
+export interface AttributeKey {
+  name: string;
+  category: AttributeCategory;
+}
+
+// Parse suggestion strings to extract unique attribute keys
+// SQL format: ResourceAttributes['key']='value'
+// Lucene format: ResourceAttributes.key:"value"
+export const parseAttributeKeysFromSuggestions = (
+  suggestions: string[],
+): AttributeKey[] => {
+  const categories: AttributeCategory[] = [
+    'ResourceAttributes',
+    'ScopeAttributes',
+    'Attributes',
+  ];
+  const seen = new Set<string>();
+  const attributeKeys: AttributeKey[] = [];
+
+  for (const suggestion of suggestions) {
+    for (const category of categories) {
+      if (!suggestion.startsWith(category)) continue;
+
+      let name: string | null = null;
+
+      // Try SQL format: Category['key']
+      const sqlMatch = suggestion.match(
+        new RegExp(`^${category}\\['([^']+)'\\]`),
+      );
+      if (sqlMatch) {
+        name = sqlMatch[1];
+      } else {
+        // Try Lucene format: Category.key:
+        const luceneMatch = suggestion.match(
+          new RegExp(`^${category}\\.([^:]+):`),
+        );
+        if (luceneMatch) {
+          name = luceneMatch[1];
+        }
+      }
+
+      if (name) {
+        const uniqueKey = `${category}:${name}`;
+        if (!seen.has(uniqueKey)) {
+          seen.add(uniqueKey);
+          attributeKeys.push({ name, category });
+        }
+      }
+      break;
+    }
+  }
+
+  // Sort by category then name
+  attributeKeys.sort((a, b) => {
+    if (a.category !== b.category) {
+      const order = ['ResourceAttributes', 'Attributes', 'ScopeAttributes'];
+      return order.indexOf(a.category) - order.indexOf(b.category);
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  return attributeKeys;
+};
+
 const extractAttributeKeys = (
   attributesArr: MetricAttributesResponse[],
   isSql: boolean,
@@ -52,7 +121,7 @@ const extractAttributeKeys = (
     }
     return Array.from(resultSet);
   } catch (e) {
-    console.error('Error parsing metric autocompleteattributes', e);
+    console.error('Error parsing metric autocomplete attributes', e);
     return [];
   }
 };
