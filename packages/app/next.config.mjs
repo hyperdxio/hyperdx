@@ -75,11 +75,17 @@ const nextConfig = {
       ];
     },
     productionBrowserSourceMaps: false,
-    ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
+    output:
+      process.env.NEXT_OUTPUT_STANDALONE === 'true'
+        ? 'standalone'
+        : process.env.NEXT_PUBLIC_STATIC_BUILD
+          ? 'export'
+          : undefined,
+    images: process.env.NEXT_PUBLIC_STATIC_BUILD
       ? {
-          output: 'standalone',
+          unoptimized: true,
         }
-      : {}),
+      : undefined,
   }),
   logging: {
     incomingRequests: {
