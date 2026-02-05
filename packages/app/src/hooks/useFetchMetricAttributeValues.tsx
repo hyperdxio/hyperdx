@@ -65,9 +65,6 @@ export const useFetchMetricAttributeValues = ({
 
       const clickhouseClient = getClickhouseClient();
 
-      // Build the attribute access expression
-      const attributeExpr = `${attributeCategory}['${attributeName}']`;
-
       // Build optional search filter
       const searchFilter = searchTerm
         ? chSql` AND ${attributeCategory}[${{ String: attributeName }}] ILIKE ${{ String: `%${searchTerm}%` }}`
@@ -90,6 +87,10 @@ export const useFetchMetricAttributeValues = ({
           format: 'JSON',
           abort_signal: signal,
           connectionId: tableSource!.connection,
+          clickhouse_settings: {
+            max_execution_time: 60,
+            timeout_overflow_mode: 'break',
+          },
         })
         .then(res => res.json())) as ResponseJSON<AttributeValueResponse>;
 
