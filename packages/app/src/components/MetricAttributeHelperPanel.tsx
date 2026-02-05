@@ -26,6 +26,7 @@ import {
 } from '@tabler/icons-react';
 
 import { useFetchMetricAttributeValues } from '@/hooks/useFetchMetricAttributeValues';
+import { MetricMetadata } from '@/hooks/useFetchMetricMetadata';
 import {
   AttributeCategory,
   AttributeKey,
@@ -39,6 +40,7 @@ interface MetricAttributeHelperPanelProps {
   attributeKeys: AttributeKey[];
   isLoading?: boolean;
   language: 'sql' | 'lucene';
+  metricMetadata?: MetricMetadata | null;
   onAddToWhere: (clause: string) => void;
   onAddToGroupBy: (clause: string) => void;
 }
@@ -54,6 +56,93 @@ const CATEGORY_COLORS: Record<AttributeCategory, string> = {
   Attributes: 'green',
   ScopeAttributes: 'orange',
 };
+
+// UCUM (Unified Code for Units of Measure) case-sensitive codes to human-readable names
+// Reference: https://ucum.org/ucum
+const UCUM_UNIT_NAMES: Record<string, string> = {
+  // Time units
+  s: 'Seconds',
+  ms: 'Milliseconds',
+  us: 'Microseconds',
+  ns: 'Nanoseconds',
+  min: 'Minutes',
+  h: 'Hours',
+  d: 'Days',
+  wk: 'Weeks',
+  mo: 'Months',
+  a: 'Years',
+  // Data units
+  By: 'Bytes',
+  KiBy: 'Kibibytes',
+  MiBy: 'Mebibytes',
+  GiBy: 'Gibibytes',
+  TiBy: 'Tebibytes',
+  kBy: 'Kilobytes',
+  MBy: 'Megabytes',
+  GBy: 'Gigabytes',
+  TBy: 'Terabytes',
+  bit: 'Bits',
+  Kibit: 'Kibibits',
+  Mibit: 'Mebibits',
+  Gibit: 'Gibibits',
+  // Frequency
+  Hz: 'Hertz',
+  kHz: 'Kilohertz',
+  MHz: 'Megahertz',
+  GHz: 'Gigahertz',
+  // Temperature
+  Cel: 'Celsius',
+  K: 'Kelvin',
+  '[degF]': 'Fahrenheit',
+  // Percentage and dimensionless
+  '%': 'Percent',
+  '1': 'Count',
+  '{request}': 'Requests',
+  '{connection}': 'Connections',
+  '{error}': 'Errors',
+  '{packet}': 'Packets',
+  '{thread}': 'Threads',
+  '{process}': 'Processes',
+  '{message}': 'Messages',
+  '{operation}': 'Operations',
+  '{call}': 'Calls',
+  '{fault}': 'Faults',
+  '{cpu}': 'CPUs',
+  // Physical units
+  m: 'Meters',
+  km: 'Kilometers',
+  g: 'Grams',
+  kg: 'Kilograms',
+  A: 'Amperes',
+  V: 'Volts',
+  W: 'Watts',
+  kW: 'Kilowatts',
+  J: 'Joules',
+  kJ: 'Kilojoules',
+};
+
+// Format UCUM unit code to human-readable name
+function formatUnitDisplay(unit: string): string {
+  // Direct match
+  if (UCUM_UNIT_NAMES[unit]) {
+    return UCUM_UNIT_NAMES[unit];
+  }
+
+  // Handle compound units like "By/s" -> "Bytes/Second"
+  if (unit.includes('/')) {
+    const [numerator, denominator] = unit.split('/');
+    const numName = UCUM_UNIT_NAMES[numerator] || numerator;
+    const denomName = UCUM_UNIT_NAMES[denominator] || denominator;
+    // Singularize denominator (remove trailing 's' if present)
+    const singularDenom = denomName.endsWith('s')
+      ? denomName.slice(0, -1)
+      : denomName;
+    return `${numName}/${singularDenom}`;
+  }
+
+  // Return original if no mapping found
+  return unit;
+}
 
 function formatWhereClause(
   category: AttributeCategory,
@@ -313,6 +402,7 @@ export function MetricAttributeHelperPanel({
   attributeKeys,
   isLoading,
   language,
+  metricMetadata,
   onAddToWhere,
   onAddToGroupBy,
 }: MetricAttributeHelperPanelProps) {
@@ -335,24 +425,42 @@ export function MetricAttributeHelperPanel({
   return (
     <Paper withBorder p="xs" mt="xs">
       <UnstyledButton onClick={toggle} w="100%">
-        <Group justify="space-between">
-          <Group gap="xs">
-            <Text size="sm" fw={500}>
-              Attributes
-            </Text>
+        <Group justify="space-between" wrap="nowrap">
+          <Box style={{ flex: 1, minWidth: 0 }}>
+            {metricMetadata?.description ? (
+              <Text size="xs" c="dimmed" truncate>
+                {metricMetadata.description}
+              </Text>
+            ) : (
+              <Text size="xs" c="dimmed">
+                {metricName}
+              </Text>
+            )}
+            {metricMetadata?.unit && (
+              <Group gap={4} mt={2}>
+                <Text size="xs" c="dimmed">
+                  Unit:
+                </Text>
+                <Badge size="xs" variant="light">
+                  {formatUnitDisplay(metricMetadata.unit)}
+                </Badge>
+              </Group>
+            )}
+          </Box>
+          <Group gap="xs" wrap="nowrap">
             {attributeKeys.length > 0 && (
               <Badge size="xs" variant="light">
-                {attributeKeys.length}
+                {attributeKeys.length} attributes
               </Badge>
             )}
+            <IconChevronDown
+              size={16}
+              style={{
+                transform: opened ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 200ms',
+              }}
+            />
           </Group>
-          <IconChevronDown
-            size={16}
-            style={{
-              transform: opened ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 200ms',
-            }}
-          />
         </Group>
       </UnstyledButton>
 

@@ -80,6 +80,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
+import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
 import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
@@ -272,6 +273,13 @@ function ChartSeriesEditorComponent({
     () => parseAttributeKeysFromSuggestions(attributeSuggestions ?? []),
     [attributeSuggestions],
   );
+
+  const { data: metricMetadata } = useFetchMetricMetadata({
+    databaseName,
+    tableName: tableName || '',
+    metricName,
+    tableSource,
+  });
 
   const handleAddToWhere = useCallback(
     (clause: string) => {
@@ -526,6 +534,7 @@ function ChartSeriesEditorComponent({
           attributeKeys={attributeKeys}
           isLoading={isLoadingAttributes}
           language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
+          metricMetadata={metricMetadata}
           onAddToWhere={handleAddToWhere}
           onAddToGroupBy={handleAddToGroupBy}
         />
