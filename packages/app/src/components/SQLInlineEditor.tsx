@@ -368,7 +368,8 @@ export default function SQLInlineEditor({
     () => [
       ...tooltipExt,
       createStyleTheme(),
-      ...(allowMultiline ? [EditorView.lineWrapping] : []),
+      // Only enable line wrapping when focused and multiline is allowed
+      ...(allowMultiline && isFocused ? [EditorView.lineWrapping] : []),
       // eslint-disable-next-line react-hooks/refs
       compartmentRef.current.of(
         sql({
@@ -410,7 +411,14 @@ export default function SQLInlineEditor({
         },
       ]),
     ],
-    [allowMultiline, onSubmit, queryHistoryType, setQueryHistory, tooltipExt],
+    [
+      allowMultiline,
+      isFocused,
+      onSubmit,
+      queryHistoryType,
+      setQueryHistory,
+      tooltipExt,
+    ],
   );
 
   const onClickCodeMirror = useCallback(() => {
@@ -419,68 +427,94 @@ export default function SQLInlineEditor({
     }
   }, []);
 
+  // Only apply expanded styling when multiline is enabled and focused
+  const isExpanded = allowMultiline && isFocused;
+  const baseHeight = size === 'xs' ? 30 : 36;
+
   return (
-    <Paper
-      flex="auto"
-      shadow="none"
-      style={{
-        backgroundColor: 'var(--color-bg-field)',
-        border: `1px solid ${error ? 'var(--color-bg-danger)' : 'var(--color-border)'}`,
-        display: 'flex',
-        alignItems: 'center',
-        minHeight: size === 'xs' ? 30 : 36,
-      }}
-      ps="4px"
-    >
-      {label != null && (
-        <Text
-          mx="4px"
-          size="xs"
-          fw="bold"
-          style={{
-            whiteSpace: 'nowrap',
-          }}
-          component="div"
-        >
-          <Tooltip label={tooltipText} disabled={!tooltipText}>
-            <Flex align="center" gap={2}>
-              {label}
-              {tooltipText && <IconInfoCircle size={20} />}
-            </Flex>
-          </Tooltip>
-        </Text>
-      )}
-      <div
-        style={{ minWidth: 10, width: '100%' }}
-        className={allowMultiline ? 'cm-editor-multiline' : ''}
+    <div style={{ position: 'relative', flex: 'auto' }}>
+      <Paper
+        shadow="none"
+        style={{
+          backgroundColor: 'var(--color-bg-field)',
+          border: `1px solid ${error ? 'var(--color-bg-danger)' : 'var(--color-border)'}`,
+          display: 'flex',
+          alignItems: isExpanded ? 'flex-start' : 'center',
+          minHeight: baseHeight,
+          // When expanded, position absolutely to overlay content
+          ...(isExpanded
+            ? {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                zIndex: 100,
+                boxShadow:
+                  '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+              }
+            : {
+                // When collapsed, lock to single line height
+                maxHeight: baseHeight,
+              }),
+        }}
+        ps="4px"
       >
-        <CodeMirror
-          indentWithTab={false}
-          ref={ref}
-          value={value}
-          onChange={onChange}
-          theme={colorScheme === 'dark' ? 'dark' : 'light'}
-          onFocus={useCallback(() => {
-            setIsFocused(true);
-          }, [setIsFocused])}
-          onBlur={useCallback(() => {
-            setIsFocused(false);
-          }, [setIsFocused])}
-          extensions={cmExtensions}
-          onCreateEditor={updateAutocompleteColumns}
-          basicSetup={cmBasicSetup}
-          placeholder={placeholder}
-          onClick={onClickCodeMirror}
-        />
-      </div>
-      {onLanguageChange != null && language != null && (
-        <InputLanguageSwitch
-          showHotkey={enableHotkey && isFocused}
-          language={language}
-          onLanguageChange={onLanguageChange}
-        />
-      )}
-    </Paper>
+        {label != null && (
+          <Text
+            mx="4px"
+            size="xs"
+            fw="bold"
+            style={{
+              whiteSpace: 'nowrap',
+              // Keep label at top when multiline is expanded
+              ...(isExpanded ? { paddingTop: size === 'xs' ? 6 : 8 } : {}),
+            }}
+            component="div"
+          >
+            <Tooltip label={tooltipText} disabled={!tooltipText}>
+              <Flex align="center" gap={2}>
+                {label}
+                {tooltipText && <IconInfoCircle size={20} />}
+              </Flex>
+            </Tooltip>
+          </Text>
+        )}
+        <div
+          style={{
+            minWidth: 10,
+            width: '100%',
+            ...(!isExpanded ? { overflow: 'hidden' } : {}),
+          }}
+          className={isExpanded ? 'cm-editor-multiline' : ''}
+        >
+          <CodeMirror
+            indentWithTab={false}
+            ref={ref}
+            value={value}
+            onChange={onChange}
+            theme={colorScheme === 'dark' ? 'dark' : 'light'}
+            onFocus={useCallback(() => {
+              setIsFocused(true);
+            }, [setIsFocused])}
+            onBlur={useCallback(() => {
+              setIsFocused(false);
+            }, [setIsFocused])}
+            extensions={cmExtensions}
+            onCreateEditor={updateAutocompleteColumns}
+            basicSetup={cmBasicSetup}
+            placeholder={placeholder}
+            onClick={onClickCodeMirror}
+          />
+        </div>
+        {onLanguageChange != null && language != null && (
+          <InputLanguageSwitch
+            showHotkey={enableHotkey && isFocused}
+            language={language}
+            onLanguageChange={onLanguageChange}
+          />
+        )}
+      </Paper>
+    </div>
   );
 }
 
