@@ -31,9 +31,9 @@
   --color-bg-warning: var(--mantine-color-orange-5);
 
   /* Primary Button - uses brand green colors */
-  --color-primary-button-bg: var(--color-bg-brand);
-  --color-primary-button-bg-hover: var(--color-bg-brand-hover);
-  --color-primary-button-text: var(--color-text-inverted);
+  --color-primary-button-bg: var(--mantine-color-green-light);
+  --color-primary-button-bg-hover: var(--mantine-color-green-light-hover);
+  --color-primary-button-text: var(--mantine-color-green-light-color);
 
   /* Borders & Dividers */
   --color-border: var(--mantine-color-dark-5);
@@ -137,9 +137,9 @@
   --color-bg-warning: var(--mantine-color-orange-8);
 
   /* Primary Button - uses brand green colors */
-  --color-primary-button-bg: var(--color-bg-brand);
-  --color-primary-button-bg-hover: var(--color-bg-brand-hover);
-  --color-primary-button-text: var(--color-text-inverted);
+  --color-primary-button-bg: var(--mantine-color-green-light);
+  --color-primary-button-bg-hover: var(--mantine-color-green-light-hover);
+  --color-primary-button-text: var(--mantine-color-green-light-color);
 
   /* Borders & Dividers - inverted */
   --color-border: var(--mantine-color-gray-1);
