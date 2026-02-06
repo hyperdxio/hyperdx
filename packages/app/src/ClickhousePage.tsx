@@ -109,6 +109,10 @@ function InfrastructureTab({
               dateRange: searchedTimeRange,
               timestampValueExpression: 'event_time',
               displayType: DisplayType.Line,
+              numberFormat: {
+                output: 'byte',
+                mantissa: 2,
+              },
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
@@ -142,6 +146,10 @@ function InfrastructureTab({
               dateRange: searchedTimeRange,
               timestampValueExpression: 'event_time',
               displayType: DisplayType.Line,
+              numberFormat: {
+                output: 'byte',
+                mantissa: 2,
+              },
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
@@ -229,6 +237,10 @@ function InfrastructureTab({
               dateRange: searchedTimeRange,
               timestampValueExpression: 'event_time',
               displayType: DisplayType.Line,
+              numberFormat: {
+                output: 'byte',
+                mantissa: 2,
+              },
             }}
             onTimeRangeSelect={onTimeRangeSelect}
           />
@@ -324,6 +336,13 @@ function InsertsTab({
       filters,
       groupBy: [{ valueExpression: 'tables' }],
       connection,
+      numberFormat:
+        insertsBy === 'bytes'
+          ? {
+              output: 'byte',
+              mantissa: 2,
+            }
+          : undefined,
     };
   }, [insertsBy, searchedTimeRange, connection]);
 
