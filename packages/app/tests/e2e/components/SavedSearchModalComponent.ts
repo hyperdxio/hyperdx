@@ -3,7 +3,7 @@
  * Used for creating and managing saved searches
  * Not used until Saved Search functionality is implemented
  */
-import { Locator, Page } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 export class SavedSearchModalComponent {
   readonly page: Page;
@@ -67,6 +67,34 @@ export class SavedSearchModalComponent {
     }
 
     await this.submit();
+  }
+
+  /**
+   * Save search and wait for URL to change to the saved search page
+   * This is more reliable than waiting separately for modal close and URL change
+   */
+  async saveSearchAndWaitForNavigation(
+    name: string,
+    tags: string[] = [],
+  ): Promise<void> {
+    await this.fillName(name);
+
+    for (const tag of tags) {
+      await this.addTag(tag);
+    }
+
+    // Start waiting for URL change BEFORE clicking submit to avoid race condition
+    const urlPromise = this.page.waitForURL(/\/search\/[a-f0-9]+/, {
+      timeout: 15000,
+    });
+
+    await this.submit();
+
+    // Wait for navigation to complete
+    await urlPromise;
+
+    // Optionally wait for modal to fully close
+    await expect(this.container).toBeHidden();
   }
 
   /**

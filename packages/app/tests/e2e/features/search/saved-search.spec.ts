@@ -1,3 +1,8 @@
+import {
+  DEFAULT_LOGS_SOURCE_NAME,
+  DEFAULT_TRACES_SOURCE_NAME,
+} from 'tests/e2e/utils/constants';
+
 import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
 
@@ -34,10 +39,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await searchPage.setCustomSELECT(customSelect);
         await searchPage.submitEmptySearch();
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch('Custom Select Search');
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 15000 });
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Custom Select Search',
+        );
       });
 
       const savedSearchAUrl = page.url().split('?')[0];
@@ -48,10 +52,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         // Keep default SELECT (don't modify it)
         await searchPage.submitEmptySearch();
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch('Default Select Search');
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 10000 });
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Default Select Search',
+        );
       });
 
       await test.step('Navigate back to first saved search', async () => {
@@ -87,12 +90,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await searchPage.setCustomSELECT(customSelect);
         await searchPage.submitEmptySearch();
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch(
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'Custom Select Source Test',
         );
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
       });
 
       const savedSearchUrl = page.url().split('?')[0];
@@ -132,25 +132,20 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
     'should use default SELECT when switching sources within a saved search',
     { tag: '@full-stack' },
     async ({ page }) => {
-      let originalSourceName: string | null = null;
-
       await test.step('Create and navigate to saved search', async () => {
         const customSelect =
           'Timestamp, Body, lower(ServiceName) as service_name';
         await searchPage.setCustomSELECT(customSelect);
         await searchPage.submitEmptySearch();
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch('Source Switching Test');
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Source Switching Test',
+        );
       });
 
       await test.step('Switch to different source via dropdown', async () => {
-        originalSourceName = await searchPage.currentSource.inputValue();
-
         await searchPage.sourceDropdown.click();
-        await searchPage.otherSources.first().click();
+        await searchPage.selectSource(DEFAULT_TRACES_SOURCE_NAME);
         await page.waitForLoadState('networkidle');
         await searchPage.table.waitForRowsToPopulate();
       });
@@ -167,7 +162,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
       await test.step('Switch back to original source via dropdown', async () => {
         await searchPage.sourceDropdown.click();
-        await searchPage.selectSource(originalSourceName!);
+        await searchPage.selectSource(DEFAULT_LOGS_SOURCE_NAME);
         await page.waitForLoadState('networkidle');
         await searchPage.table.waitForRowsToPopulate();
       });
@@ -280,12 +275,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await searchPage.setCustomSELECT(customSelect);
         await searchPage.performSearch('ServiceName:frontend');
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch(
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'Custom Select Navigation Test',
         );
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
 
         savedSearchUrl = page.url().split('?')[0];
       });
@@ -326,10 +318,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
       await test.step('Create and save a search', async () => {
         await searchPage.performSearch('SeverityText:info');
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch('Browser Navigation Test');
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Browser Navigation Test',
+        );
       });
 
       await test.step('Navigate to sessions page', async () => {
@@ -383,12 +374,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         // Submit and save the search
         await searchPage.submitEmptySearch();
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch(
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'ORDER BY Multiple Source Switch Test',
         );
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
       });
 
       await test.step('Switch to second source', async () => {

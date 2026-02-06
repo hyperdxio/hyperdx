@@ -47,26 +47,13 @@ test.describe('Search Filters', { tag: ['@search'] }, () => {
   });
 
   test('Should search for and apply filters', async () => {
-    // Use filter component's helper to find a filter with search capability
-    const skipFilters = ['severity', 'level'];
-    const filterName =
-      await searchPage.filters.findFilterWithSearch(skipFilters);
-
-    if (filterName) {
-      // Search input is already visible from findFilterWithSearch
-      // Test the search functionality
-      await searchPage.filters.searchFilterValues(filterName, 'test');
-
-      // Verify search input has the value
-      const searchInput = searchPage.filters.getFilterSearchInput(filterName);
-      await expect(searchInput).toHaveValue('test');
-
-      // Clear the search
-      await searchPage.filters.clearFilterSearch(filterName);
-
-      // Verify search input is cleared
-      await expect(searchInput).toHaveValue('');
-    }
+    const filterName = 'SeverityText';
+    await searchPage.filters.openFilterGroup(filterName);
+    await searchPage.filters.searchFilterValues(filterName, 'test');
+    const searchInput = searchPage.filters.getFilterSearchInput(filterName);
+    await expect(searchInput).toHaveValue('test');
+    await searchPage.filters.clearFilterSearch(filterName);
+    await expect(searchInput).toHaveValue('');
   });
 
   test('Should pin filter and verify it persists after reload', async () => {
