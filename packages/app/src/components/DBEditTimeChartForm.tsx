@@ -275,7 +275,7 @@ function ChartSeriesEditorComponent({
 
   const { data: metricMetadata } = useFetchMetricMetadata({
     databaseName,
-    tableName: tableName || '',
+    metricType,
     metricName,
     tableSource,
   });
