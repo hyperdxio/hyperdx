@@ -491,25 +491,44 @@ function generateK8sEventLogs(count: number = 20): string {
   return rows.join(',\n');
 }
 
-const CLICKHOUSE_READY_TIMEOUT_SECONDS = 30;
+// CI can be slower, so use a longer timeout
+const CLICKHOUSE_READY_TIMEOUT_SECONDS = parseInt(
+  process.env.E2E_CLICKHOUSE_READY_TIMEOUT || '60',
+  10,
+);
 
 async function waitForClickHouse(
   client: ReturnType<typeof createClickHouseClient>,
 ): Promise<void> {
   console.log('  Waiting for ClickHouse to be ready...');
+  console.log(
+    `  Attempting connection to: ${DEFAULT_CONFIG.host} (user: ${DEFAULT_CONFIG.user})`,
+  );
+
+  let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < CLICKHOUSE_READY_TIMEOUT_SECONDS; attempt++) {
     try {
       await client.query('SELECT 1');
       console.log('  ClickHouse is ready');
       return;
-    } catch {
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt % 5 === 0) {
+        // Log every 5 seconds
+        console.log(
+          `  Still waiting... (${attempt}/${CLICKHOUSE_READY_TIMEOUT_SECONDS}s)`,
+        );
+      }
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
 
+  console.error('  Last connection error:', lastError?.message);
   throw new Error(
-    `ClickHouse not ready after ${CLICKHOUSE_READY_TIMEOUT_SECONDS} seconds`,
+    `ClickHouse not ready after ${CLICKHOUSE_READY_TIMEOUT_SECONDS} seconds. ` +
+      `Host: ${DEFAULT_CONFIG.host}. ` +
+      `Last error: ${lastError?.message || 'Unknown'}`,
   );
 }
 

@@ -83,6 +83,9 @@ export class SavedSearchModalComponent {
       await this.addTag(tag);
     }
 
+    // Wait for submit button to be enabled (form might need validation time)
+    await expect(this.submitButton).toBeEnabled({ timeout: 5000 });
+
     // Start waiting for URL change BEFORE clicking submit to avoid race condition
     const urlPromise = this.page.waitForURL(/\/search\/[a-f0-9]+/, {
       timeout: 15000,
