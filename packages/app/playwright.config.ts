@@ -18,7 +18,7 @@ export default defineConfig({
   /* Global setup to ensure server is ready */
   globalSetup: USE_FULLSTACK
     ? require.resolve('./tests/e2e/global-setup-fullstack.ts')
-    : require.resolve('./global-setup.js'),
+    : require.resolve('./tests/e2e/global-setup-local.ts'),
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
