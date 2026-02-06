@@ -375,8 +375,6 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
        */
 
       let originalSourceName: string | null = null;
-      let secondSourceName: string | null = null;
-      const thirdSourceName: string | null = null;
       const customOrderBy = 'Body DESC';
 
       await test.step('Create saved search with custom ORDER BY', async () => {
@@ -398,7 +396,6 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
       await test.step('Switch to second source', async () => {
         await searchPage.sourceDropdown.click();
-        secondSourceName = await searchPage.otherSources.first().textContent();
         await searchPage.otherSources.first().click();
         await page.waitForLoadState('networkidle');
         await searchPage.table.waitForRowsToPopulate();
@@ -406,7 +403,6 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
       await test.step('Verify ORDER BY changed to second source default', async () => {
         const orderByEditor = searchPage.getOrderByEditor();
-        const orderByContent = await orderByEditor.textContent();
 
         // Should not contain the custom ORDER BY from the saved search
 
@@ -433,6 +429,258 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
       await test.step('Verify ORDER BY restored to saved search custom value', async () => {
         const orderByEditor = searchPage.getOrderByEditor();
         await expect(orderByEditor).toHaveText('Body DESC', { timeout: 5000 });
+      });
+    },
+  );
+
+  test(
+    'should save and restore filters with saved searches',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      /**
+       * This test verifies that filters applied in the sidebar are saved
+       * along with saved searches and restored when loading the saved search.
+       *
+       * Test flow:
+       * 1. Apply filters in the sidebar
+       * 2. Create a saved search
+       * 3. Navigate away and clear filters
+       * 4. Navigate back to the saved search
+       * 5. Verify filters are restored
+       */
+
+      let savedSearchUrl: string;
+      let appliedFilterValue: string;
+
+      await test.step('Apply filters in the sidebar', async () => {
+        // Open a filter group
+        await searchPage.filters.openFilterGroup('SeverityText');
+
+        // Get the first available filter value
+        const firstCheckbox = page
+          .locator('[data-testid^="filter-checkbox-"]')
+          .first();
+        const testId = await firstCheckbox.getAttribute('data-testid');
+
+        appliedFilterValue = testId?.replace('filter-checkbox-', '') ?? 'info';
+
+        // Apply the filter
+        await searchPage.filters.applyFilter(appliedFilterValue);
+
+        // Verify filter is checked
+        const filterInput =
+          searchPage.filters.getFilterCheckboxInput(appliedFilterValue);
+        await expect(filterInput).toBeChecked();
+
+        // Submit search to apply filters
+        await searchPage.submitButton.click();
+        await searchPage.table.waitForRowsToPopulate();
+      });
+
+      await test.step('Create and save the search with filters', async () => {
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.saveSearch(
+          'Search with Filters Test',
+        );
+
+        await expect(searchPage.savedSearchModal.container).toBeHidden();
+        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+
+        // Capture the saved search URL
+        savedSearchUrl = page.url().split('?')[0];
+      });
+
+      await test.step('Navigate to a fresh search page', async () => {
+        await searchPage.goto();
+        await searchPage.table.waitForRowsToPopulate();
+      });
+
+      await test.step('Verify filters are cleared on new search page', async () => {
+        // Open the same filter group
+        await searchPage.filters.openFilterGroup('SeverityText');
+
+        // Verify filter is not checked
+        const filterInput =
+          searchPage.filters.getFilterCheckboxInput(appliedFilterValue);
+        await expect(filterInput).not.toBeChecked();
+      });
+
+      await test.step('Navigate back to the saved search', async () => {
+        await page.goto(savedSearchUrl);
+        await expect(page.getByTestId('search-page')).toBeVisible();
+        await searchPage.table.waitForRowsToPopulate();
+      });
+
+      await test.step('Verify filters are restored from saved search', async () => {
+        // Open the filter group
+        await searchPage.filters.openFilterGroup('SeverityText');
+
+        // Verify filter is checked again
+        const filterInput =
+          searchPage.filters.getFilterCheckboxInput(appliedFilterValue);
+        await expect(filterInput).toBeChecked();
+      });
+    },
+  );
+
+  test(
+    'should save and restore multiple filters with saved searches',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      /**
+       * This test verifies that multiple filters from different groups
+       * are saved and restored correctly.
+       */
+
+      let savedSearchUrl: string;
+      const appliedFilters: { group: string; value: string }[] = [];
+
+      await test.step('Apply multiple filters from different groups', async () => {
+        // Apply filter from SeverityText group
+        await searchPage.filters.openFilterGroup('SeverityText');
+        const severityCheckbox = page
+          .locator('[data-testid^="filter-checkbox-"]')
+          .first();
+        const severityTestId =
+          await severityCheckbox.getAttribute('data-testid');
+        const severityValue =
+          severityTestId?.replace('filter-checkbox-', '') ?? 'info';
+        appliedFilters.push({ group: 'SeverityText', value: severityValue });
+        await searchPage.filters.applyFilter(severityValue);
+
+        // Apply filter from ServiceName group (if available)
+        const serviceNameGroup = page.getByTestId('filter-group-ServiceName');
+        const isServiceNameAvailable = await serviceNameGroup.isVisible();
+        if (isServiceNameAvailable) {
+          await searchPage.filters.openFilterGroup('ServiceName');
+          const serviceCheckbox = page
+            .locator('[data-testid^="filter-checkbox-"]')
+            .first();
+          const serviceTestId =
+            await serviceCheckbox.getAttribute('data-testid');
+          const serviceValue =
+            serviceTestId?.replace('filter-checkbox-', '') ?? 'frontend';
+          appliedFilters.push({ group: 'ServiceName', value: serviceValue });
+          await searchPage.filters.applyFilter(serviceValue);
+        }
+
+        // Submit search to apply filters
+        await searchPage.submitButton.click();
+        await searchPage.table.waitForRowsToPopulate();
+      });
+
+      await test.step('Save the search with multiple filters', async () => {
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.saveSearch(
+          'Search with Multiple Filters',
+        );
+
+        await expect(searchPage.savedSearchModal.container).toBeHidden();
+        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+
+        savedSearchUrl = page.url().split('?')[0];
+      });
+
+      await test.step('Navigate away to a fresh search', async () => {
+        await searchPage.goto();
+        await searchPage.table.waitForRowsToPopulate();
+      });
+
+      await test.step('Navigate back to saved search', async () => {
+        await page.goto(savedSearchUrl);
+        await expect(page.getByTestId('search-page')).toBeVisible();
+        await searchPage.table.waitForRowsToPopulate();
+      });
+
+      await test.step('Verify all filters are restored', async () => {
+        for (const filter of appliedFilters) {
+          await searchPage.filters.openFilterGroup(filter.group);
+          const filterInput = searchPage.filters.getFilterCheckboxInput(
+            filter.value,
+          );
+          await expect(filterInput).toBeChecked();
+        }
+      });
+    },
+  );
+
+  test(
+    'should update filters when updating a saved search',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      /**
+       * This test verifies that when updating a saved search with new filters,
+       * the filters are properly saved and restored.
+       */
+
+      let savedSearchUrl: string;
+      let firstFilterValue: string;
+      let secondFilterValue: string;
+
+      await test.step('Create initial saved search with one filter', async () => {
+        await searchPage.filters.openFilterGroup('SeverityText');
+
+        const firstCheckbox = page
+          .locator('[data-testid^="filter-checkbox-"]')
+          .first();
+        const testId = await firstCheckbox.getAttribute('data-testid');
+
+        firstFilterValue = testId?.replace('filter-checkbox-', '') ?? 'info';
+
+        await searchPage.filters.applyFilter(firstFilterValue);
+        await searchPage.submitButton.click();
+        await searchPage.table.waitForRowsToPopulate();
+
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.saveSearch('Updatable Filter Search');
+
+        await expect(searchPage.savedSearchModal.container).toBeHidden();
+        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+
+        savedSearchUrl = page.url();
+      });
+
+      await test.step('Update the saved search with additional filter', async () => {
+        // Add a second filter
+        await searchPage.filters.openFilterGroup('SeverityText');
+
+        const secondCheckbox = page
+          .locator('[data-testid^="filter-checkbox-"]')
+          .nth(1);
+        const secondTestId = await secondCheckbox.getAttribute('data-testid');
+
+        secondFilterValue =
+          secondTestId?.replace('filter-checkbox-', '') ?? 'error';
+
+        await searchPage.filters.applyFilter(secondFilterValue);
+        await searchPage.submitButton.click();
+        await searchPage.table.waitForRowsToPopulate();
+
+        // Update the saved search by clicking the save button
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.submit();
+        await page.waitForLoadState('networkidle');
+      });
+
+      await test.step('Navigate away and back', async () => {
+        await searchPage.goto();
+        await searchPage.table.waitForRowsToPopulate();
+
+        await page.goto(savedSearchUrl);
+        await expect(page.getByTestId('search-page')).toBeVisible();
+        await searchPage.table.waitForRowsToPopulate();
+      });
+
+      await test.step('Verify both filters are restored', async () => {
+        await searchPage.filters.openFilterGroup('SeverityText');
+
+        const firstFilterInput =
+          searchPage.filters.getFilterCheckboxInput(firstFilterValue);
+        const secondFilterInput =
+          searchPage.filters.getFilterCheckboxInput(secondFilterValue);
+
+        await expect(firstFilterInput).toBeChecked();
+        await expect(secondFilterInput).toBeChecked();
       });
     },
   );

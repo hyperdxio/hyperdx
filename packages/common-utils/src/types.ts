@@ -353,6 +353,28 @@ export type AlertHistory = {
 };
 
 // --------------------------
+// FILTERS
+// --------------------------
+export const SqlAstFilterSchema = z.object({
+  type: z.literal('sql_ast'),
+  operator: z.enum(['=', '<', '>', '!=', '<=', '>=']),
+  left: z.string(),
+  right: z.string(),
+});
+
+export type SqlAstFilter = z.infer<typeof SqlAstFilterSchema>;
+
+export const FilterSchema = z.union([
+  z.object({
+    type: z.enum(['lucene', 'sql']),
+    condition: z.string(),
+  }),
+  SqlAstFilterSchema,
+]);
+
+export type Filter = z.infer<typeof FilterSchema>;
+
+// --------------------------
 // SAVED SEARCH
 // --------------------------
 export const SavedSearchSchema = z.object({
@@ -364,6 +386,7 @@ export const SavedSearchSchema = z.object({
   source: z.string(),
   tags: z.array(z.string()),
   orderBy: z.string().optional(),
+  filters: z.array(FilterSchema).optional(),
   alerts: z.array(AlertSchema).optional(),
 });
 
@@ -384,25 +407,6 @@ export const NumberFormatSchema = z.object({
 });
 
 export type NumberFormat = z.infer<typeof NumberFormatSchema>;
-
-export const SqlAstFilterSchema = z.object({
-  type: z.literal('sql_ast'),
-  operator: z.enum(['=', '<', '>', '!=', '<=', '>=']),
-  left: z.string(),
-  right: z.string(),
-});
-
-export type SqlAstFilter = z.infer<typeof SqlAstFilterSchema>;
-
-export const FilterSchema = z.union([
-  z.object({
-    type: z.enum(['lucene', 'sql']),
-    condition: z.string(),
-  }),
-  SqlAstFilterSchema,
-]);
-
-export type Filter = z.infer<typeof FilterSchema>;
 
 export const _ChartConfigSchema = z.object({
   displayType: z.nativeEnum(DisplayType).optional(),

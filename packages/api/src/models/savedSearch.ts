@@ -33,6 +33,7 @@ export const SavedSearch = mongoose.model<ISavedSearch>(
         ref: 'Source',
       },
       tags: [String],
+      filters: [{ type: mongoose.Schema.Types.Mixed }],
     },
     {
       toJSON: { virtuals: true },
