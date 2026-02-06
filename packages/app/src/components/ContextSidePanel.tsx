@@ -145,7 +145,7 @@ export default function ContextSubpanel({
     'k8s.pod.name': k8sPodName,
     'host.name': host,
     'service.name': service,
-  } = rowData.ResourceAttributes ?? {};
+  } = rowData[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES] ?? {};
 
   const CONTEXT_MAPPING = useMemo(
     () =>
