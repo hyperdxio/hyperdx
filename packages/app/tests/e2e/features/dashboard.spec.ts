@@ -142,7 +142,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await expect(dashboardPage.chartEditor.source).toBeVisible();
       await dashboardPage.chartEditor.createChartWithMetric(
         'K8s CPU Chart',
-        'Demo Metrics',
+        DEFAULT_METRICS_SOURCE_NAME,
         'k8s.container.cpu_limit',
         'k8s.container.cpu_limit:::::::gauge',
       );
