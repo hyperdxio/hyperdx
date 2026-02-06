@@ -11,9 +11,9 @@
     "node": ">=22.16.0"
   },
   "dependencies": {
-    "@clickhouse/client": "^1.12.1",
-    "@clickhouse/client-common": "^1.12.1",
-    "@clickhouse/client-web": "^1.12.1",
+    "@clickhouse/client": "beta",
+    "@clickhouse/client-common": "beta",
+    "@clickhouse/client-web": "beta",
     "@hyperdx/lucene": "^3.1.1",
     "date-fns": "^2.28.0",
     "date-fns-tz": "^2.0.0",
