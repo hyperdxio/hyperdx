@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.12.2
+
+### Patch Changes
+
+- b6c34b13: fix: Handling non-monotonic sums
+
 ## 0.12.1
 
 ### Patch Changes

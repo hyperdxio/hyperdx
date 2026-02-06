@@ -1,5 +1,24 @@
 # @hyperdx/app
 
+## 2.16.0
+
+### Minor Changes
+
+- 6241c388: feat: Add metrics attribute explorer in chart builder
+
+### Patch Changes
+
+- fa2b73ca: feat: Format byte numbers on ClickHouse page
+- b6c34b13: fix: Handling non-monotonic sums
+- 79356c4c: Set Button component default variant to "primary" for consistent styling across the app
+- 42820f39: fix: Apply theme CSS class during SSR to prevent button styling mismatch
+
+  Adds the theme class (e.g., `theme-hyperdx`) to the HTML element during server-side rendering in `_document.tsx`. This ensures CSS variables for button styling are correctly applied from the first render, preventing a hydration mismatch that caused primary buttons to display with Mantine's default styling instead of the custom theme styling when `NEXT_PUBLIC_THEME` was explicitly set.
+
+- e11b3138: fix: add react-hooks-eslint-plugin and fix issues across app
+- Updated dependencies [b6c34b13]
+  - @hyperdx/common-utils@0.12.2
+
 ## 2.15.1
 
 ### Patch Changes

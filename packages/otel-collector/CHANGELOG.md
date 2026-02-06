@@ -1,5 +1,7 @@
 # @hyperdx/otel-collector
 
+## 2.16.0
+
 ## 2.15.1
 
 ### Patch Changes
