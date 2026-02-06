@@ -2,7 +2,8 @@ name: hdx-ci
 services:
   otel-collector:
     build:
-      context: ./docker/otel-collector
+      context: .
+      dockerfile: docker/otel-collector/Dockerfile
       target: dev
     environment:
       CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
