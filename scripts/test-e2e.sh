@@ -79,8 +79,9 @@ check_mongodb_health() {
 }
 
 check_clickhouse_health() {
-  # Health check using wget on ClickHouse ping endpoint
-  docker compose -p e2e -f "$DOCKER_COMPOSE_FILE" exec -T ch-server wget --spider -q http://127.0.0.1:8123/ping 2>&1
+  # Health check from HOST perspective (not inside container)
+  # This ensures the port is actually accessible to Playwright
+  curl -sf http://localhost:8123/ping >/dev/null 2>&1 || wget --spider -q http://localhost:8123/ping 2>&1
 }
 
 wait_for_clickhouse() {
