@@ -369,6 +369,7 @@ export default function SQLInlineEditor({
       ...tooltipExt,
       createStyleTheme(),
       ...(allowMultiline ? [EditorView.lineWrapping] : []),
+      // eslint-disable-next-line react-hooks/refs
       compartmentRef.current.of(
         sql({
           upperCaseKeywords: true,

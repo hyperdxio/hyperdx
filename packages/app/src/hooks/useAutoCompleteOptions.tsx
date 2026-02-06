@@ -66,6 +66,7 @@ export function useAutoCompleteOptions(
   }, [formatter, fields, additionalSuggestions]);
 
   // searchField is used for the purpose of checking if a key is valid and key values should be fetched
+  // TODO: Come back and refactor how this works - it's not great and wouldn't catch a person copy-pasting some text
   const [searchField, setSearchField] = useState<Field | null>(null);
   // check if any search field matches
   useEffect(() => {

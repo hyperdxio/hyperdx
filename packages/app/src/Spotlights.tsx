@@ -22,7 +22,7 @@ import '@mantine/spotlight/styles.css';
 
 export const useSpotlightActions = () => {
   const router = useRouter();
-  const Logomark = useLogomark();
+  const logomark = useLogomark({ size: 16 });
 
   const { data: logViewsData } = useSavedSearches();
   const { data: dashboardsData } = api.useDashboards();
@@ -151,7 +151,7 @@ export const useSpotlightActions = () => {
       {
         id: 'cloud',
         group: 'Menu',
-        leftSection: <Logomark size={16} />,
+        leftSection: logomark,
         label: 'HyperDX Cloud',
         description: 'Ready to use HyperDX Cloud? Get started for free.',
         keywords: ['account', 'profile'],
@@ -162,7 +162,7 @@ export const useSpotlightActions = () => {
     );
 
     return logViewActions;
-  }, [Logomark, logViewsData, dashboardsData, router]);
+  }, [logomark, logViewsData, dashboardsData, router]);
 
   return { actions };
 };

@@ -217,14 +217,21 @@ export function useAppTheme(): ThemeContextValue {
 }
 
 // Convenience hooks
+// NOTE: These hooks return JSX elements, not component references, to avoid
+// creating components during render (which would violate react-hooks/static-components)
 export function useWordmark() {
   const { theme } = useAppTheme();
-  return theme.Wordmark;
+  const WordmarkComponent = theme.Wordmark;
+  return useMemo(() => <WordmarkComponent />, [WordmarkComponent]);
 }
 
-export function useLogomark() {
+export function useLogomark(props?: { size?: number }) {
   const { theme } = useAppTheme();
-  return theme.Logomark;
+  const LogomarkComponent = theme.Logomark;
+  return useMemo(
+    () => <LogomarkComponent {...props} />,
+    [LogomarkComponent, props],
+  );
 }
 
 // Hook to get current theme name (useful for conditional rendering)

@@ -12,7 +12,7 @@ export default function LandingHeader({
   activeKey: string;
   fixed?: boolean;
 }) {
-  const Wordmark = useWordmark();
+  const wordmark = useWordmark();
   const { data: me } = api.useMe();
   const isLoggedIn = Boolean(me);
 
@@ -36,7 +36,7 @@ export default function LandingHeader({
         <Container fluid px="xl" py="md">
           <Group justify="space-between" align="center">
             <Link href="/" style={{ textDecoration: 'none' }}>
-              <Wordmark />
+              {wordmark}
             </Link>
 
             <Burger
