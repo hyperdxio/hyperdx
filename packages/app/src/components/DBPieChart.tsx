@@ -169,7 +169,13 @@ export const DBPieChart = ({
           No data found within time range.
         </div>
       ) : (
-        <Flex align="center" justify="center" h="100%" style={{ flexGrow: 1 }}>
+        <Flex
+          data-testid="pie-chart-container"
+          align="center"
+          justify="center"
+          h="100%"
+          style={{ flexGrow: 1 }}
+        >
           <ResponsiveContainer
             height="100%"
             width="100%"
