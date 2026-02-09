@@ -33,7 +33,6 @@ COPY --from=gomplate /bin/gomplate /usr/local/bin/gomplate
 COPY --from=goose /bin/goose /usr/local/bin/goose
 
 # Copy migrate binary (Go-based goose migration tool with full TLS support)
-# Enable with HYPERDX_USE_GO_MIGRATE=true
 COPY --from=migrate-builder /migrate /usr/local/bin/migrate
 
 USER ${USER_UID}:${USER_GID}

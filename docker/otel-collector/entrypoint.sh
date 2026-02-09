@@ -3,8 +3,8 @@ set -e
 
 # Run ClickHouse schema migrations if not using legacy schema creation
 if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
-  # Check if we should use the Go-based migrate tool with full TLS support
-  # Set HYPERDX_USE_GO_MIGRATE=true to enable TLS configuration:
+  # Run Go-based migrate tool with TLS support
+  # TLS configuration:
   # - CLICKHOUSE_TLS_CA_FILE: CA certificate file
   # - CLICKHOUSE_TLS_CERT_FILE: Client certificate file
   # - CLICKHOUSE_TLS_KEY_FILE: Client private key file
