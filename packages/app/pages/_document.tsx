@@ -1,5 +1,6 @@
 import { Head, Html, Main, NextScript } from 'next/document';
 
+import { IS_CLICKHOUSE_BUILD } from '@/config';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 
 export default function Document() {
@@ -15,8 +16,12 @@ export default function Document() {
       <Head>
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script src="/__ENV.js" />
-        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script src="/pyodide/pyodide.js"></script>
+        {!IS_CLICKHOUSE_BUILD && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+            <script src="/pyodide/pyodide.js"></script>
+          </>
+        )}
       </Head>
       <body>
         <Main />

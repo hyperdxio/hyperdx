@@ -10,6 +10,8 @@
     "dev": "npx dotenv -e .env.development -- next dev --webpack",
     "dev:local": "NEXT_PUBLIC_IS_LOCAL_MODE=true npx dotenv -e .env.development -- next dev --webpack",
     "build": "next build --webpack",
+    "build:clickhouse": "NEXT_PUBLIC_THEME=clickstack NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_PUBLIC_CLICKHOUSE_BUILD=true next build --webpack && node scripts/prepare-clickhouse-build-export.js",
+    "build:clickhouse:move": "yarn build:clickhouse && node scripts/move-to-clickhouse.js",
     "start": "next start",
     "lint": "npx eslint --quiet . --ext .ts,.tsx",
     "lint:fix": "npx eslint . --ext .ts,.tsx --fix",
