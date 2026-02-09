@@ -12,6 +12,7 @@ import {
   getAlertsEnhanced,
   updateAlert,
 } from '@/controllers/alerts';
+import AlertSchema, { IAlert } from '@/models/alert';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -67,6 +68,8 @@ router.get('/', async (req, res, next) => {
           ..._.pick(alert, [
             '_id',
             'interval',
+            'scheduleOffsetMinutes',
+            'scheduleStartAt',
             'threshold',
             'thresholdType',
             'state',
@@ -96,7 +99,7 @@ router.post(
       return res.sendStatus(403);
     }
     try {
-      const alertInput = req.body;
+      const alertInput = req.body as unknown as IAlert;
       return res.json({
         data: await createAlert(teamId, alertInput, userId),
       });

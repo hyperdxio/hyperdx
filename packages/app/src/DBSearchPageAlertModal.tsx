@@ -1,6 +1,6 @@
 import React from 'react';
 import router from 'next/router';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -29,7 +29,6 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
-  IconBrandSlack,
   IconChartLine,
   IconInfoCircleFilled,
   IconPlus,
@@ -43,6 +42,7 @@ import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
   ALERT_THRESHOLD_TYPE_OPTIONS,
+  intervalToMinutes,
 } from '@/utils/alerts';
 
 import { AlertPreviewChart } from './components/AlertPreviewChart';
@@ -57,10 +57,25 @@ const SavedSearchAlertFormSchema = z
   .object({
     interval: AlertIntervalSchema,
     threshold: z.number().int().min(1),
+    scheduleOffsetMinutes: z.number().int().min(0).default(0),
+    scheduleStartAt: z.preprocess(
+      value => (value === '' ? null : value),
+      z.string().datetime().nullable().optional(),
+    ),
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((alert, ctx) => {
+    const intervalMinutes = intervalToMinutes(alert.interval);
+    if (alert.scheduleOffsetMinutes >= intervalMinutes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Must be less than ${intervalMinutes} minute${intervalMinutes === 1 ? '' : 's'}`,
+        path: ['scheduleOffsetMinutes'],
+      });
+    }
+  });
 
 const AlertForm = ({
   sourceId,
@@ -90,16 +105,24 @@ const AlertForm = ({
   const { data: source } = useSource({ id: sourceId });
 
   const { control, handleSubmit } = useForm<Alert>({
-    defaultValues: defaultValues || {
-      interval: '5m',
-      threshold: 1,
-      thresholdType: AlertThresholdType.ABOVE,
-      source: AlertSource.SAVED_SEARCH,
-      channel: {
-        type: 'webhook',
-        webhookId: '',
-      },
-    },
+    defaultValues: defaultValues
+      ? {
+          ...defaultValues,
+          scheduleOffsetMinutes: defaultValues.scheduleOffsetMinutes ?? 0,
+          scheduleStartAt: defaultValues.scheduleStartAt ?? null,
+        }
+      : {
+          interval: '5m',
+          threshold: 1,
+          scheduleOffsetMinutes: 0,
+          scheduleStartAt: null,
+          thresholdType: AlertThresholdType.ABOVE,
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: '',
+          },
+        },
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
 
@@ -109,6 +132,11 @@ const AlertForm = ({
   const interval = useWatch({ control, name: 'interval' });
   const groupByValue = useWatch({ control, name: 'groupBy' });
   const threshold = useWatch({ control, name: 'threshold' });
+  const maxScheduleOffsetMinutes = Math.max(
+    intervalToMinutes(interval ?? '5m') - 1,
+    0,
+  );
+  const intervalLabel = ALERT_INTERVAL_OPTIONS[interval ?? '5m'];
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
@@ -151,6 +179,48 @@ const AlertForm = ({
               size="xs"
               name={`channel.type`}
               control={control}
+            />
+          </Group>
+          <Group gap="xs" mt="xs">
+            <Text size="sm" opacity={0.7}>
+              Start offset (min)
+            </Text>
+            <NumberInput
+              min={0}
+              max={maxScheduleOffsetMinutes}
+              step={1}
+              size="xs"
+              w={100}
+              control={control}
+              name={`scheduleOffsetMinutes`}
+            />
+            <Text size="sm" opacity={0.7}>
+              from each {intervalLabel} window
+            </Text>
+          </Group>
+          <Group gap="xs" mt="xs" align="start">
+            <Text size="sm" opacity={0.7} mt={6}>
+              Start at (UTC ISO)
+            </Text>
+            <Controller
+              control={control}
+              name="scheduleStartAt"
+              render={({ field, fieldState: { error } }) => (
+                <TextInput
+                  size="xs"
+                  w={260}
+                  placeholder="2026-02-08T10:00:00Z"
+                  value={field.value ?? ''}
+                  onChange={e =>
+                    field.onChange(
+                      e.currentTarget.value === ''
+                        ? null
+                        : e.currentTarget.value,
+                    )
+                  }
+                  error={error?.message}
+                />
+              )}
             />
           </Group>
           <Text size="xxs" opacity={0.5} mb={4} mt="xs">

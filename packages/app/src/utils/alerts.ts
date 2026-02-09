@@ -26,6 +26,18 @@ export function intervalToGranularity(interval: AlertInterval) {
   return Granularity.OneDay;
 }
 
+export function intervalToMinutes(interval: AlertInterval): number {
+  if (interval === '1m') return 1;
+  if (interval === '5m') return 5;
+  if (interval === '15m') return 15;
+  if (interval === '30m') return 30;
+  if (interval === '1h') return 60;
+  if (interval === '6h') return 360;
+  if (interval === '12h') return 720;
+  if (interval === '1d') return 1440;
+  return 1440;
+}
+
 export function intervalToDateRange(interval: AlertInterval): [Date, Date] {
   const now = new Date();
   if (interval === '1m') return [sub(now, { minutes: 15 }), now];
@@ -112,6 +124,7 @@ export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
   threshold: 1,
   thresholdType: AlertThresholdType.ABOVE,
   interval: '5m',
+  scheduleOffsetMinutes: 0,
   channel: {
     type: 'webhook',
     webhookId: '',

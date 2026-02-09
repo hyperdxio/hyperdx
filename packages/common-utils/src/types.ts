@@ -295,6 +295,17 @@ export const AlertIntervalSchema = z.union([
 
 export type AlertInterval = z.infer<typeof AlertIntervalSchema>;
 
+const ALERT_INTERVAL_TO_MINUTES: Record<AlertInterval, number> = {
+  '1m': 1,
+  '5m': 5,
+  '15m': 15,
+  '30m': 30,
+  '1h': 60,
+  '6h': 360,
+  '12h': 720,
+  '1d': 1440,
+};
+
 export const zAlertChannelType = z.literal('webhook');
 
 export type AlertChannelType = z.infer<typeof zAlertChannelType>;
@@ -316,9 +327,32 @@ export const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-export const AlertBaseSchema = z.object({
+const validateAlertScheduleOffsetMinutes = (
+  alert: { interval: AlertInterval; scheduleOffsetMinutes?: number },
+  ctx: z.RefinementCtx,
+) => {
+  const scheduleOffsetMinutes = alert.scheduleOffsetMinutes ?? 0;
+  const intervalMinutes = ALERT_INTERVAL_TO_MINUTES[alert.interval];
+
+  if (scheduleOffsetMinutes >= intervalMinutes) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `scheduleOffsetMinutes must be less than ${intervalMinutes} minute${intervalMinutes === 1 ? '' : 's'}`,
+      path: ['scheduleOffsetMinutes'],
+    });
+  }
+};
+
+const scheduleStartAtSchema = z.preprocess(
+  value => (value === '' ? null : value),
+  z.string().datetime().nullable().optional(),
+);
+
+const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
   interval: AlertIntervalSchema,
+  scheduleOffsetMinutes: z.number().int().min(0).optional(),
+  scheduleStartAt: scheduleStartAtSchema,
   threshold: z.number().int().min(1),
   thresholdType: z.nativeEnum(AlertThresholdType),
   channel: zAlertChannel,
@@ -334,9 +368,13 @@ export const AlertBaseSchema = z.object({
     .optional(),
 });
 
-export const ChartAlertBaseSchema = AlertBaseSchema.extend({
+export const AlertBaseSchema = AlertBaseObjectSchema.superRefine(
+  validateAlertScheduleOffsetMinutes,
+);
+
+export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number().positive(),
-});
+}).superRefine(validateAlertScheduleOffsetMinutes);
 
 export const AlertSchema = z.union([
   z.intersection(AlertBaseSchema, zSavedSearchAlert),

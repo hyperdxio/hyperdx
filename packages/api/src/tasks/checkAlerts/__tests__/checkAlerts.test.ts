@@ -32,6 +32,7 @@ import * as checkAlert from '@/tasks/checkAlerts';
 import {
   doesExceedThreshold,
   getPreviousAlertHistories,
+  getScheduledWindowStart,
   processAlert,
 } from '@/tasks/checkAlerts';
 import {
@@ -119,6 +120,45 @@ describe('checkAlerts', () => {
       expect(doesExceedThreshold(AlertThresholdType.BELOW, 10.5, 11.0)).toBe(
         false,
       );
+    });
+  });
+
+  describe('getScheduledWindowStart', () => {
+    it('should align to the default interval boundary when offset is 0', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 0);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:10:00.000Z'));
+    });
+
+    it('should align to an offset boundary when schedule offset is provided', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 2);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:12:00.000Z'));
+    });
+
+    it('should keep previous offset window until the next offset boundary', () => {
+      const now = new Date('2024-01-01T12:11:59.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 2);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:07:00.000Z'));
+    });
+
+    it('should align windows using scheduleStartAt as an absolute anchor', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const scheduleStartAt = new Date('2024-01-01T12:02:30.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 0, scheduleStartAt);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:12:30.000Z'));
+    });
+
+    it('should prioritize scheduleStartAt over offset alignment', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const scheduleStartAt = new Date('2024-01-01T12:02:30.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 2, scheduleStartAt);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:12:30.000Z'));
     });
   });
 

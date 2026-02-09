@@ -44,6 +44,7 @@ import {
   Tabs,
   Text,
   Textarea,
+  TextInput,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -98,6 +99,7 @@ import {
   DEFAULT_TILE_ALERT,
   extendDateRangeToInterval,
   intervalToGranularity,
+  intervalToMinutes,
   TILE_ALERT_INTERVAL_OPTIONS,
   TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
 } from '@/utils/alerts';
@@ -637,6 +639,9 @@ export default function EditTimeChartForm({
   const markdown = useWatch({ control, name: 'markdown' });
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
   const granularity = useWatch({ control, name: 'granularity' });
+  const maxAlertScheduleOffsetMinutes = alert?.interval
+    ? Math.max(intervalToMinutes(alert.interval) - 1, 0)
+    : 0;
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -662,6 +667,12 @@ export default function EditTimeChartForm({
       setValue('alert', undefined);
     }
   }, [displayType, setValue]);
+
+  useEffect(() => {
+    if (alert && alert.scheduleOffsetMinutes == null) {
+      setValue('alert.scheduleOffsetMinutes', 0);
+    }
+  }, [alert, setValue]);
 
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
   const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
@@ -1341,6 +1352,48 @@ export default function EditTimeChartForm({
                       (alert as any).createdBy?.email}
                   </Text>
                 )}
+              </Group>
+              <Group gap="xs" mt="xs">
+                <Text size="sm" opacity={0.7}>
+                  Start offset (min)
+                </Text>
+                <NumberInput
+                  min={0}
+                  max={maxAlertScheduleOffsetMinutes}
+                  step={1}
+                  size="xs"
+                  w={100}
+                  control={control}
+                  name={`alert.scheduleOffsetMinutes`}
+                />
+                <Text size="sm" opacity={0.7}>
+                  from each alert window
+                </Text>
+              </Group>
+              <Group gap="xs" mt="xs" align="start">
+                <Text size="sm" opacity={0.7} mt={6}>
+                  Start at (UTC ISO)
+                </Text>
+                <Controller
+                  name="alert.scheduleStartAt"
+                  control={control}
+                  render={({ field, fieldState: { error } }) => (
+                    <TextInput
+                      size="xs"
+                      w={260}
+                      placeholder="2026-02-08T10:00:00Z"
+                      value={field.value ?? ''}
+                      onChange={e =>
+                        field.onChange(
+                          e.currentTarget.value === ''
+                            ? null
+                            : e.currentTarget.value,
+                        )
+                      }
+                      error={error?.message}
+                    />
+                  )}
+                />
               </Group>
               <Text size="xxs" opacity={0.5} mb={4} mt="xs">
                 Send to

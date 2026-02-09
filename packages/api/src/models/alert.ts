@@ -44,6 +44,8 @@ export interface IAlert {
   id: string;
   channel: AlertChannel;
   interval: AlertInterval;
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: Date | null;
   source?: AlertSource;
   state: AlertState;
   team: ObjectId;
@@ -87,6 +89,15 @@ const AlertSchema = new Schema<IAlert>(
     interval: {
       type: String,
       required: true,
+    },
+    scheduleOffsetMinutes: {
+      type: Number,
+      min: 0,
+      required: false,
+    },
+    scheduleStartAt: {
+      type: Date,
+      required: false,
     },
     channel: Schema.Types.Mixed, // slack, email, etc
     state: {

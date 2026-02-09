@@ -22,6 +22,8 @@ export type AlertInput = {
   source?: AlertSource;
   channel: AlertChannel;
   interval: AlertInterval;
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: string | null;
   thresholdType: AlertThresholdType;
   threshold: number;
 
@@ -46,9 +48,21 @@ export type AlertInput = {
 };
 
 const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
+  const hasScheduleStartAt = Object.prototype.hasOwnProperty.call(
+    alert,
+    'scheduleStartAt',
+  );
+
   return {
     channel: alert.channel,
     interval: alert.interval,
+    ...(alert.scheduleOffsetMinutes != null && {
+      scheduleOffsetMinutes: alert.scheduleOffsetMinutes,
+    }),
+    ...(hasScheduleStartAt && {
+      scheduleStartAt:
+        alert.scheduleStartAt == null ? null : new Date(alert.scheduleStartAt),
+    }),
     source: alert.source,
     threshold: alert.threshold,
     thresholdType: alert.thresholdType,
