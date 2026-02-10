@@ -292,3 +292,32 @@ jobs:
             } catch (error) {
               core.setFailed(`Failed to read test results: ${error.message}`);
             }
+
+  clickhouse-static-build:
+    name: ClickHouse Bundle Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Build dependencies
+        run: npx nx run-many -t ci:build
+
+      - name: Build App
+        run: cd packages/app && yarn build:clickhouse
