@@ -330,8 +330,5 @@ jobs:
       - name: Install dependencies
         run: yarn install
 
-      - name: Build dependencies
-        run: npx nx run-many -t ci:build
-
       - name: Build App
-        run: cd packages/app && yarn build:clickhouse
+        run: yarn build:clickhouse
