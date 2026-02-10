@@ -141,10 +141,10 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       // Select source and create chart with specific metric
       await expect(dashboardPage.chartEditor.source).toBeVisible();
       await dashboardPage.chartEditor.createChartWithMetric(
-        'K8s CPU Chart',
+        'K8s Pod CPU Chart',
         DEFAULT_METRICS_SOURCE_NAME,
-        'k8s.container.cpu_limit',
-        'k8s.container.cpu_limit:::::::gauge',
+        'k8s.pod.cpu.utilization',
+        'k8s.pod.cpu.utilization:::::::gauge',
       );
     });
 
