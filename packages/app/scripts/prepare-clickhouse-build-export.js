@@ -84,7 +84,7 @@ async function gzipFiles(dir) {
         // Gzip the file
         try {
           const content = fs.readFileSync(fullPath);
-          const gzipped = await gzip(content, { limit: 9 });
+          const gzipped = await gzip(content, { level: 9 });
           const gzippedPath = path.join(outGzippedDir, `${relativePath}.gz`);
 
           // Ensure the directory exists in out-gzipped
