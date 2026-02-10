@@ -54,7 +54,7 @@ func loadConfig() (*Config, error) {
 		User:                  getEnv("CLICKHOUSE_USER", "default"),
 		Password:              getEnv("CLICKHOUSE_PASSWORD", ""),
 		Database:              getEnv("HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE", "default"),
-		TablesTTL:             getEnv("HYPERDX_OTEL_EXPORTER_TABLES_TTL", "30d"),
+		TablesTTL:             getEnv("HYPERDX_OTEL_EXPORTER_TABLES_TTL", "720h"),
 		TLSCAFile:             getEnv("CLICKHOUSE_TLS_CA_FILE", ""),
 		TLSCertFile:           getEnv("CLICKHOUSE_TLS_CERT_FILE", ""),
 		TLSKeyFile:            getEnv("CLICKHOUSE_TLS_KEY_FILE", ""),
