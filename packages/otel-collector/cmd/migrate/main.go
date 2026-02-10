@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,7 +54,7 @@ func loadConfig() (*Config, error) {
 		User:                  getEnv("CLICKHOUSE_USER", "default"),
 		Password:              getEnv("CLICKHOUSE_PASSWORD", ""),
 		Database:              getEnv("HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE", "default"),
-		TablesTTL:             getEnv("HYPERDX_OTEL_EXPORTER_TABLES_TTL", "720h"),
+		TablesTTL:             getEnv("HYPERDX_OTEL_EXPORTER_TABLES_TTL", "30d"),
 		TLSCAFile:             getEnv("CLICKHOUSE_TLS_CA_FILE", ""),
 		TLSCertFile:           getEnv("CLICKHOUSE_TLS_CERT_FILE", ""),
 		TLSKeyFile:            getEnv("CLICKHOUSE_TLS_KEY_FILE", ""),
@@ -219,18 +220,41 @@ func createClickHouseDB(cfg *Config) (*sql.DB, error) {
 	return db, nil
 }
 
-// ttlToClickHouseInterval converts a Go duration string (e.g. "720h") to a
-// ClickHouse interval expression (e.g. "toIntervalHour(720)")
+// parseTTLDuration parses a duration string that supports days ("30d") in
+// addition to the standard Go duration format ("720h", "90m", "3600s").
+func parseTTLDuration(s string) (time.Duration, error) {
+	// Handle "d" suffix (days) which Go's time.ParseDuration doesn't support
+	if strings.HasSuffix(s, "d") {
+		days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+		if err != nil {
+			return 0, fmt.Errorf("invalid duration %q: %w", s, err)
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
+	}
+	return time.ParseDuration(s)
+}
+
+// ttlToClickHouseInterval converts a duration string (e.g. "30d", "720h",
+// "90m") to a ClickHouse interval expression, following the same approach as
+// the upstream otel-collector-contrib ClickHouse exporter's GenerateTTLExpr.
 func ttlToClickHouseInterval(ttl string) (string, error) {
-	d, err := time.ParseDuration(ttl)
+	d, err := parseTTLDuration(ttl)
 	if err != nil {
 		return "", fmt.Errorf("invalid TTL duration %q: %w", ttl, err)
 	}
-	hours := int(d.Hours())
-	if hours <= 0 {
+	if d <= 0 {
 		return "", fmt.Errorf("TTL must be positive, got %q", ttl)
 	}
-	return fmt.Sprintf("toIntervalHour(%d)", hours), nil
+	switch {
+	case d%(24*time.Hour) == 0:
+		return fmt.Sprintf("toIntervalDay(%d)", d/(24*time.Hour)), nil
+	case d%time.Hour == 0:
+		return fmt.Sprintf("toIntervalHour(%d)", d/time.Hour), nil
+	case d%time.Minute == 0:
+		return fmt.Sprintf("toIntervalMinute(%d)", d/time.Minute), nil
+	default:
+		return fmt.Sprintf("toIntervalSecond(%d)", d/time.Second), nil
+	}
 }
 
 // processSchemaDir creates a temporary directory with SQL files that have
