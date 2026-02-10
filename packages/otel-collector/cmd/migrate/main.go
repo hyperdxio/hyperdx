@@ -31,6 +31,9 @@ type Config struct {
 	Password string
 	Database string
 
+	// Table TTL (Go duration string, e.g. "720h")
+	TablesTTL string
+
 	// TLS settings
 	TLSCAFile             string
 	TLSCertFile           string
@@ -50,6 +53,7 @@ func loadConfig() (*Config, error) {
 		User:                  getEnv("CLICKHOUSE_USER", "default"),
 		Password:              getEnv("CLICKHOUSE_PASSWORD", ""),
 		Database:              getEnv("HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE", "default"),
+		TablesTTL:             getEnv("HYPERDX_OTEL_EXPORTER_TABLES_TTL", "720h"),
 		TLSCAFile:             getEnv("CLICKHOUSE_TLS_CA_FILE", ""),
 		TLSCertFile:           getEnv("CLICKHOUSE_TLS_CERT_FILE", ""),
 		TLSKeyFile:            getEnv("CLICKHOUSE_TLS_KEY_FILE", ""),
@@ -215,9 +219,23 @@ func createClickHouseDB(cfg *Config) (*sql.DB, error) {
 	return db, nil
 }
 
+// ttlToClickHouseInterval converts a Go duration string (e.g. "720h") to a
+// ClickHouse interval expression (e.g. "toIntervalHour(720)")
+func ttlToClickHouseInterval(ttl string) (string, error) {
+	d, err := time.ParseDuration(ttl)
+	if err != nil {
+		return "", fmt.Errorf("invalid TTL duration %q: %w", ttl, err)
+	}
+	hours := int(d.Hours())
+	if hours <= 0 {
+		return "", fmt.Errorf("TTL must be positive, got %q", ttl)
+	}
+	return fmt.Sprintf("toIntervalHour(%d)", hours), nil
+}
+
 // processSchemaDir creates a temporary directory with SQL files that have
-// the ${DATABASE} macro replaced with the actual database name
-func processSchemaDir(schemaDir, database string) (string, error) {
+// the ${DATABASE} and ${TABLES_TTL} macros replaced with actual values
+func processSchemaDir(schemaDir, database, tablesTTLExpr string) (string, error) {
 	tempDir, err := os.MkdirTemp("", "schema-*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp directory: %w", err)
@@ -247,8 +265,9 @@ func processSchemaDir(schemaDir, database string) (string, error) {
 			return fmt.Errorf("failed to read file %s: %w", path, err)
 		}
 
-		// Replace ${DATABASE} macro with actual database name
+		// Replace macros with actual values
 		processedContent := strings.ReplaceAll(string(content), "${DATABASE}", database)
+		processedContent = strings.ReplaceAll(processedContent, "${TABLES_TTL}", tablesTTLExpr)
 
 		// Write processed content to temp directory
 		if err := os.WriteFile(destPath, []byte(processedContent), 0644); err != nil {
@@ -345,9 +364,16 @@ func main() {
 	}
 	log.Println("Successfully connected to ClickHouse")
 
-	// Process schema directory (replace ${DATABASE} macro)
+	// Parse tables TTL
+	tablesTTLExpr, err := ttlToClickHouseInterval(cfg.TablesTTL)
+	if err != nil {
+		log.Fatalf("Invalid HYPERDX_OTEL_EXPORTER_TABLES_TTL: %v", err)
+	}
+	log.Printf("Tables TTL: %s (%s)", cfg.TablesTTL, tablesTTLExpr)
+
+	// Process schema directory (replace ${DATABASE} and ${TABLES_TTL} macros)
 	log.Printf("Preparing SQL files with database: %s", cfg.Database)
-	tempDir, err := processSchemaDir(cfg.SchemaDir, cfg.Database)
+	tempDir, err := processSchemaDir(cfg.SchemaDir, cfg.Database, tablesTTLExpr)
 	if err != nil {
 		log.Fatalf("Failed to process schema directory: %v", err)
 	}
