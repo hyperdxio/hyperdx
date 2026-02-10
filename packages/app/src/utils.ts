@@ -760,6 +760,12 @@ export const formatNumber = (
     return 'N/A';
   }
 
+  // Guard against non-numeric values at runtime (e.g., string column values)
+  // that slip past the TypeScript type system
+  if (typeof value !== 'number' || isNaN(value)) {
+    return String(value);
+  }
+
   if (!options) {
     return value.toString();
   }
