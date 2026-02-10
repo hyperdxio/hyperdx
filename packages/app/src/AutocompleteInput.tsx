@@ -266,6 +266,13 @@ export default function AutocompleteInput({
               }
             }}
             rightSectionWidth={rightSectionWidth}
+            rightSectionProps={{
+              style: {
+                // Align to top when focused/expanded
+                alignItems: isSearchInputFocused ? 'flex-start' : 'center',
+                paddingTop: isSearchInputFocused ? 8 : 0,
+              },
+            }}
             rightSection={
               language != null && onLanguageChange != null ? (
                 <div ref={ref}>

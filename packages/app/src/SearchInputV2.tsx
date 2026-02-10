@@ -107,7 +107,6 @@ export default function SearchInputV2({
       size={size}
       zIndex={zIndex}
       language={language}
-      showHotkey={enableHotkey}
       onLanguageChange={onLanguageChange}
       onSubmit={onSubmit}
       queryHistoryType={queryHistoryType}

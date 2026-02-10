@@ -144,7 +144,7 @@ const createStyleTheme = () =>
       whiteSpace: 'nowrap',
       wordWrap: 'break-word',
       maxWidth: '100%',
-      backgroundColor: 'var(--color-bg-field) !important',
+      backgroundColor: 'var(--color-bg-surface) !important',
       border: '1px solid var(--color-border) !important',
       borderRadius: '8px',
       boxShadow:
@@ -162,7 +162,7 @@ const createStyleTheme = () =>
       color: 'var(--color-text)',
     },
     '& .cm-tooltip-autocomplete > ul > li[aria-selected]': {
-      backgroundColor: 'var(--color-bg-field-highlighted) !important',
+      backgroundColor: 'var(--color-bg-highlighted) !important',
       color: 'var(--color-text-muted) !important',
     },
     '& .cm-tooltip-autocomplete .cm-completionLabel': {
@@ -174,7 +174,7 @@ const createStyleTheme = () =>
       marginLeft: '8px',
     },
     '& .cm-tooltip-autocomplete .cm-completionInfo': {
-      backgroundColor: 'var(--color-bg-field)',
+      backgroundColor: 'red !important',
       border: '1px solid var(--color-border)',
       borderRadius: '4px',
       padding: '8px',
@@ -368,8 +368,8 @@ export default function SQLInlineEditor({
     () => [
       ...tooltipExt,
       createStyleTheme(),
-      // Only enable line wrapping when focused and multiline is allowed
-      ...(allowMultiline && isFocused ? [EditorView.lineWrapping] : []),
+      // Enable line wrapping when multiline is allowed (regardless of focus)
+      ...(allowMultiline ? [EditorView.lineWrapping] : []),
       // eslint-disable-next-line react-hooks/refs
       compartmentRef.current.of(
         sql({
@@ -411,14 +411,7 @@ export default function SQLInlineEditor({
         },
       ]),
     ],
-    [
-      allowMultiline,
-      isFocused,
-      onSubmit,
-      queryHistoryType,
-      setQueryHistory,
-      tooltipExt,
-    ],
+    [allowMultiline, onSubmit, queryHistoryType, setQueryHistory, tooltipExt],
   );
 
   const onClickCodeMirror = useCallback(() => {
@@ -439,6 +432,7 @@ export default function SQLInlineEditor({
           backgroundColor: 'var(--color-bg-field)',
           border: `1px solid ${error ? 'var(--color-bg-danger)' : 'var(--color-border)'}`,
           display: 'flex',
+          // Center items when collapsed, align to top when expanded
           alignItems: isExpanded ? 'flex-start' : 'center',
           minHeight: baseHeight,
           // When expanded, position absolutely to overlay content
@@ -449,12 +443,12 @@ export default function SQLInlineEditor({
                 left: 0,
                 right: 0,
                 zIndex: 100,
-                boxShadow:
-                  '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                boxShadow: 'var(--mb-shadow, var(--mantine-shadow-sm))',
               }
             : {
-                // When collapsed, lock to single line height
+                // When collapsed, lock to single line height and hide overflow
                 maxHeight: baseHeight,
+                overflow: 'hidden',
               }),
         }}
         ps="4px"
@@ -483,7 +477,13 @@ export default function SQLInlineEditor({
           style={{
             minWidth: 10,
             width: '100%',
-            ...(!isExpanded ? { overflow: 'hidden' } : {}),
+            ...(!isExpanded
+              ? {
+                  overflow: 'hidden',
+                  // When multiline but collapsed, align content to top to show first line
+                  ...(allowMultiline ? { alignSelf: 'flex-start' } : {}),
+                }
+              : {}),
           }}
           className={isExpanded ? 'cm-editor-multiline' : ''}
         >
@@ -507,11 +507,17 @@ export default function SQLInlineEditor({
           />
         </div>
         {onLanguageChange != null && language != null && (
-          <InputLanguageSwitch
-            showHotkey={enableHotkey && isFocused}
-            language={language}
-            onLanguageChange={onLanguageChange}
-          />
+          <div
+            style={{
+              // Keep language switch at top when multiline is expanded
+              ...(isExpanded ? { paddingTop: size === 'xs' ? 6 : 8 } : {}),
+            }}
+          >
+            <InputLanguageSwitch
+              language={language}
+              onLanguageChange={onLanguageChange}
+            />
+          </div>
         )}
       </Paper>
     </div>

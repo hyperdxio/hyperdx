@@ -49,9 +49,13 @@ type SearchWhereInputProps = {
    */
   lucenePlaceholder?: string;
   /**
-   * Width style for the wrapper Box (only applies to SQL input)
+   * Width style for the wrapper Box
    */
   width?: string | number;
+  /**
+   * Max width style for the wrapper Box
+   */
+  maxWidth?: string | number;
   /**
    * Test ID for the input
    */
@@ -95,7 +99,8 @@ export default function SearchWhereInput({
   luceneQueryHistoryType,
   sqlPlaceholder = "SQL WHERE clause (ex. column = 'foo')",
   lucenePlaceholder = 'Search your events w/ Lucene ex. column:foo',
-  width = '75%',
+  width = '100%',
+  maxWidth = '100%',
   'data-testid': dataTestId,
   ...props
 }: SearchWhereInputProps) {
@@ -118,7 +123,7 @@ export default function SearchWhereInput({
 
   if (isSql) {
     return (
-      <Box style={{ width, flexGrow: 1 }}>
+      <Box style={{ width, maxWidth, flexGrow: 1 }}>
         <SQLInlineEditorControlled
           {...tc}
           control={control}
@@ -139,19 +144,21 @@ export default function SearchWhereInput({
   }
 
   return (
-    <SearchInputV2
-      {...tc}
-      control={control}
-      name={name}
-      onLanguageChange={handleLanguageChange}
-      onSubmit={onSubmit}
-      language="lucene"
-      placeholder={lucenePlaceholder}
-      queryHistoryType={luceneQueryHistoryType}
-      enableHotkey={enableHotkey}
-      size={size}
-      data-testid={dataTestId}
-      {...props}
-    />
+    <Box style={{ width, maxWidth, flexGrow: 1 }}>
+      <SearchInputV2
+        {...tc}
+        control={control}
+        name={name}
+        onLanguageChange={handleLanguageChange}
+        onSubmit={onSubmit}
+        language="lucene"
+        placeholder={lucenePlaceholder}
+        queryHistoryType={luceneQueryHistoryType}
+        enableHotkey={enableHotkey}
+        size={size}
+        data-testid={dataTestId}
+        {...props}
+      />
+    </Box>
   );
 }

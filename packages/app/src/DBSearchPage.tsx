@@ -1695,6 +1695,7 @@ function DBSearchPage() {
             luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
             enableHotkey
             data-testid="search-input"
+            maxWidth="800px"
           />
           <TimePicker
             data-testid="time-picker"
