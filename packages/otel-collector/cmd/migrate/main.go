@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +31,9 @@ type Config struct {
 	User     string
 	Password string
 	Database string
+
+	// Table TTL (Go duration string, e.g. "720h")
+	TablesTTL string
 
 	// TLS settings
 	TLSCAFile             string
@@ -50,6 +54,7 @@ func loadConfig() (*Config, error) {
 		User:                  getEnv("CLICKHOUSE_USER", "default"),
 		Password:              getEnv("CLICKHOUSE_PASSWORD", ""),
 		Database:              getEnv("HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE", "default"),
+		TablesTTL:             getEnv("HYPERDX_OTEL_EXPORTER_TABLES_TTL", "720h"),
 		TLSCAFile:             getEnv("CLICKHOUSE_TLS_CA_FILE", ""),
 		TLSCertFile:           getEnv("CLICKHOUSE_TLS_CERT_FILE", ""),
 		TLSKeyFile:            getEnv("CLICKHOUSE_TLS_KEY_FILE", ""),
@@ -215,9 +220,46 @@ func createClickHouseDB(cfg *Config) (*sql.DB, error) {
 	return db, nil
 }
 
+// parseTTLDuration parses a duration string that supports days ("30d") in
+// addition to the standard Go duration format ("720h", "90m", "3600s").
+func parseTTLDuration(s string) (time.Duration, error) {
+	// Handle "d" suffix (days) which Go's time.ParseDuration doesn't support
+	if strings.HasSuffix(s, "d") {
+		days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+		if err != nil {
+			return 0, fmt.Errorf("invalid duration %q: %w", s, err)
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
+	}
+	return time.ParseDuration(s)
+}
+
+// ttlToClickHouseInterval converts a duration string (e.g. "30d", "720h",
+// "90m") to a ClickHouse interval expression, following the same approach as
+// the upstream otel-collector-contrib ClickHouse exporter's GenerateTTLExpr.
+func ttlToClickHouseInterval(ttl string) (string, error) {
+	d, err := parseTTLDuration(ttl)
+	if err != nil {
+		return "", fmt.Errorf("invalid TTL duration %q: %w", ttl, err)
+	}
+	if d <= 0 {
+		return "", fmt.Errorf("TTL must be positive, got %q", ttl)
+	}
+	switch {
+	case d%(24*time.Hour) == 0:
+		return fmt.Sprintf("toIntervalDay(%d)", d/(24*time.Hour)), nil
+	case d%time.Hour == 0:
+		return fmt.Sprintf("toIntervalHour(%d)", d/time.Hour), nil
+	case d%time.Minute == 0:
+		return fmt.Sprintf("toIntervalMinute(%d)", d/time.Minute), nil
+	default:
+		return fmt.Sprintf("toIntervalSecond(%d)", d/time.Second), nil
+	}
+}
+
 // processSchemaDir creates a temporary directory with SQL files that have
-// the ${DATABASE} macro replaced with the actual database name
-func processSchemaDir(schemaDir, database string) (string, error) {
+// the ${DATABASE} and ${TABLES_TTL} macros replaced with actual values
+func processSchemaDir(schemaDir, database, tablesTTLExpr string) (string, error) {
 	tempDir, err := os.MkdirTemp("", "schema-*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp directory: %w", err)
@@ -247,8 +289,9 @@ func processSchemaDir(schemaDir, database string) (string, error) {
 			return fmt.Errorf("failed to read file %s: %w", path, err)
 		}
 
-		// Replace ${DATABASE} macro with actual database name
+		// Replace macros with actual values
 		processedContent := strings.ReplaceAll(string(content), "${DATABASE}", database)
+		processedContent = strings.ReplaceAll(processedContent, "${TABLES_TTL}", tablesTTLExpr)
 
 		// Write processed content to temp directory
 		if err := os.WriteFile(destPath, []byte(processedContent), 0644); err != nil {
@@ -345,9 +388,16 @@ func main() {
 	}
 	log.Println("Successfully connected to ClickHouse")
 
-	// Process schema directory (replace ${DATABASE} macro)
+	// Parse tables TTL
+	tablesTTLExpr, err := ttlToClickHouseInterval(cfg.TablesTTL)
+	if err != nil {
+		log.Fatalf("Invalid HYPERDX_OTEL_EXPORTER_TABLES_TTL: %v", err)
+	}
+	log.Printf("Tables TTL: %s (%s)", cfg.TablesTTL, tablesTTLExpr)
+
+	// Process schema directory (replace ${DATABASE} and ${TABLES_TTL} macros)
 	log.Printf("Preparing SQL files with database: %s", cfg.Database)
-	tempDir, err := processSchemaDir(cfg.SchemaDir, cfg.Database)
+	tempDir, err := processSchemaDir(cfg.SchemaDir, cfg.Database, tablesTTLExpr)
 	if err != nil {
 		log.Fatalf("Failed to process schema directory: %v", err)
 	}
