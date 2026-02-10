@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_gauge
 )
 ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
-ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix));
+ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
+TTL toDateTime(TimeUnix) + ${TABLES_TTL}
+SETTINGS ttl_only_drop_parts = 1;
 
 -- +goose StatementBegin
 CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_sum
@@ -68,7 +70,9 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_sum
 )
 ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
-ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix));
+ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
+TTL toDateTime(TimeUnix) + ${TABLES_TTL}
+SETTINGS ttl_only_drop_parts = 1;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
@@ -110,7 +114,9 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_histogram
 )
 ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
-ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix));
+ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
+TTL toDateTime(TimeUnix) + ${TABLES_TTL}
+SETTINGS ttl_only_drop_parts = 1;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
@@ -156,7 +162,9 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_exponential_histogram
 )
 ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
-ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix));
+ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
+TTL toDateTime(TimeUnix) + ${TABLES_TTL}
+SETTINGS ttl_only_drop_parts = 1;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
@@ -190,6 +198,8 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_summary
 )
 ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
-ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix));
+ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
+TTL toDateTime(TimeUnix) + ${TABLES_TTL}
+SETTINGS ttl_only_drop_parts = 1;
 -- +goose StatementEnd
 

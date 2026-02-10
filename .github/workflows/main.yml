@@ -70,6 +70,28 @@ jobs:
         run: make ci-build
       - name: Run integration tests
         run: make ci-int
+  otel-unit-test:
+    timeout-minutes: 8
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v46
+        with:
+          files: |
+            packages/otel-collector/**
+      - name: Setup Go
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/otel-collector/go.mod
+          cache-dependency-path: packages/otel-collector/go.sum
+      - name: Run unit tests
+        if: steps.changed-files.outputs.any_changed == 'true'
+        working-directory: ./packages/otel-collector
+        run: go test ./...
   otel-smoke-test:
     timeout-minutes: 8
     runs-on: ubuntu-24.04

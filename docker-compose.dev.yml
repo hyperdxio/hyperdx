@@ -35,6 +35,7 @@ services:
       CUSTOM_OTELCOL_CONFIG_FILE: '/etc/otelcol-contrib/custom.config.yaml'
       # Uncomment to enable stdout logging for the OTel collector
       OTEL_SUPERVISOR_LOGS: 'true'
+      HYPERDX_OTEL_EXPORTER_TABLES_TTL: '24h'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
       - ./docker/otel-collector/supervisor_docker.yaml.tmpl:/etc/otel/supervisor.yaml.tmpl
