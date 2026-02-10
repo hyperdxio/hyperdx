@@ -34,7 +34,6 @@ packages/app/.pnp.js
 packages/app/.vercel
 packages/app/coverage
 packages/app/out
-packages/app/out-gzipped
 packages/app/next-env.d.ts
 
 # optional npm cache directory
