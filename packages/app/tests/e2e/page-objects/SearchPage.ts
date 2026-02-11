@@ -11,6 +11,9 @@ import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 
+type SaveSearchModalProps = {
+  update: boolean;
+};
 export class SearchPage {
   readonly page: Page;
   readonly table: TableComponent;
@@ -27,6 +30,7 @@ export class SearchPage {
   private readonly searchInput: Locator;
   private readonly searchButton: Locator;
   private readonly saveSearchButton: Locator;
+  private readonly updateSearchButton: Locator;
   private readonly luceneTab: Locator;
   private readonly sqlTab: Locator;
   private readonly sourceSelector: Locator;
@@ -52,6 +56,7 @@ export class SearchPage {
     this.searchInput = page.getByTestId('search-input');
     this.searchButton = page.getByTestId('search-submit-button');
     this.saveSearchButton = page.getByTestId('save-search-button');
+    this.updateSearchButton = page.getByTestId('update-search-button');
     this.luceneTab = page.getByRole('button', { name: 'Lucene', exact: true });
     this.sqlTab = page.getByRole('button', { name: 'SQL', exact: true });
     this.sourceSelector = page.getByTestId('source-selector');
@@ -169,9 +174,12 @@ export class SearchPage {
   /**
    * Open save search modal
    */
-  async openSaveSearchModal() {
-    await this.saveSearchButton.scrollIntoViewIfNeeded();
-    await this.saveSearchButton.click();
+  async openSaveSearchModal(options: SaveSearchModalProps = { update: false }) {
+    const button = options.update
+      ? this.updateSearchButton
+      : this.saveSearchButton;
+    await button.scrollIntoViewIfNeeded();
+    await button.click();
   }
 
   /**
