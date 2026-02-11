@@ -1,7 +1,8 @@
 import { useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
-import { Box } from '@mantine/core';
+import { Box, Flex } from '@mantine/core';
 
+import InputLanguageSwitch from './InputLanguageSwitch';
 import SearchInputV2 from './SearchInputV2';
 import { SQLInlineEditorControlled } from './SQLInlineEditor';
 
@@ -120,44 +121,56 @@ export default function SearchWhereInput({
 
   const tc = tableConnection ? { tableConnection } : { tableConnections };
 
-  if (isSql) {
-    return (
-      <Box style={{ width, maxWidth, flexGrow: 1 }}>
+  // Calculate the height for the language switch container based on size
+  const inputHeight = size === 'xs' ? 30 : 36;
+
+  return (
+    <Box style={{ width, maxWidth, flexGrow: 1, position: 'relative' }}>
+      {isSql ? (
         <SQLInlineEditorControlled
           {...tc}
           control={control}
           name={name}
           placeholder={sqlPlaceholder}
-          onLanguageChange={handleLanguageChange}
-          language="sql"
           onSubmit={onSubmit}
           label={showLabel ? 'WHERE' : undefined}
           queryHistoryType={sqlQueryHistoryType}
           enableHotkey={enableHotkey}
           allowMultiline={allowMultiline}
           size={size}
+          pr="0px"
           {...props}
         />
-      </Box>
-    );
-  }
-
-  return (
-    <Box style={{ width, maxWidth, flexGrow: 1 }}>
-      <SearchInputV2
-        {...tc}
-        control={control}
-        name={name}
-        onLanguageChange={handleLanguageChange}
-        onSubmit={onSubmit}
-        language="lucene"
-        placeholder={lucenePlaceholder}
-        queryHistoryType={luceneQueryHistoryType}
-        enableHotkey={enableHotkey}
-        size={size}
-        data-testid={dataTestId}
-        {...props}
-      />
+      ) : (
+        <SearchInputV2
+          {...tc}
+          control={control}
+          name={name}
+          onSubmit={onSubmit}
+          placeholder={lucenePlaceholder}
+          queryHistoryType={luceneQueryHistoryType}
+          enableHotkey={enableHotkey}
+          size={size}
+          data-testid={dataTestId}
+          {...props}
+        />
+      )}
+      <Flex
+        align="center"
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 8,
+          height: inputHeight,
+          pointerEvents: 'auto',
+          zIndex: 101,
+        }}
+      >
+        <InputLanguageSwitch
+          language={language}
+          onLanguageChange={handleLanguageChange}
+        />
+      </Flex>
     </Box>
   );
 }

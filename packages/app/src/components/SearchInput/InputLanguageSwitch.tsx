@@ -12,6 +12,7 @@ export default function InputLanguageSwitch({
   return (
     <SegmentedControl
       size="xs"
+      variant="primary"
       value={language}
       onChange={value => {
         if (value === 'sql' || value === 'lucene') {
