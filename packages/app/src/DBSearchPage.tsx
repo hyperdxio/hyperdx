@@ -1591,6 +1591,7 @@ function DBSearchPage() {
               onSubmit={onSubmit}
               label="SELECT"
               size="xs"
+              allowMultiline
             />
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
