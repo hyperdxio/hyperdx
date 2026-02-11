@@ -157,6 +157,31 @@ export type ExternalDashboardTileWithId = z.infer<
 
 export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
 
+const externalDashboardFilterBaseSchema = z
+  .object({
+    type: z.literal('QUERY_EXPRESSION'),
+    name: z.string().min(1),
+    expression: z.string().min(1),
+    sourceId: objectIdSchema,
+    sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
+  })
+  .strict();
+
+export const externalDashboardFilterSchema = externalDashboardFilterBaseSchema;
+
+export type ExternalDashboardFilter = z.infer<
+  typeof externalDashboardFilterSchema
+>;
+
+export const externalDashboardFilterSchemaWithId =
+  externalDashboardFilterBaseSchema.extend({
+    id: z.string(),
+  });
+
+export type ExternalDashboardFilterWithId = z.infer<
+  typeof externalDashboardFilterSchemaWithId
+>;
+
 // ==============================
 // Alerts
 // ==============================
