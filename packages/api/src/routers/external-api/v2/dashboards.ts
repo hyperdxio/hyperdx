@@ -76,7 +76,7 @@ async function getMissingSources(
  *           $ref: '#/components/schemas/NumberFormatOutput'
  *           example: "number"
  *         mantissa:
- *           type: number
+ *           type: integer
  *           description: Number of decimal places.
  *           example: 2
  *         thousandSeparated:

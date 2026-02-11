@@ -102,6 +102,7 @@ import {
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
 import {
+  getEventBody,
   getFirstTimestampValueExpression,
   useSource,
   useSources,
@@ -1819,9 +1820,9 @@ function DBSearchPage() {
                           dateRange: searchedTimeRange,
                         }}
                         bodyValueExpression={
-                          searchedSource?.bodyExpression ??
-                          chartConfig.implicitColumnExpression ??
-                          ''
+                          searchedSource
+                            ? (getEventBody(searchedSource) ?? '')
+                            : (chartConfig.implicitColumnExpression ?? '')
                         }
                         totalCountConfig={histogramTimeChartConfig}
                         totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}

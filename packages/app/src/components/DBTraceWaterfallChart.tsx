@@ -35,6 +35,7 @@ import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import {
   getDisplayedTimestampValueExpression,
   getDurationSecondsExpression,
+  getEventBody,
   getSpanEventBody,
 } from '@/source';
 import TimelineChart from '@/TimelineChart';
@@ -101,9 +102,7 @@ function getTableBody(tableModel: TSource) {
   if (tableModel?.kind === SourceKind.Trace) {
     return getSpanEventBody(tableModel) ?? '';
   } else if (tableModel?.kind === SourceKind.Log) {
-    return (
-      (tableModel.bodyExpression || tableModel.implicitColumnExpression) ?? ''
-    );
+    return getEventBody(tableModel) ?? '';
   } else {
     return '';
   }

@@ -374,7 +374,7 @@ export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 // --------------------------
 export const NumberFormatSchema = z.object({
   output: z.enum(['currency', 'percent', 'byte', 'time', 'number']),
-  mantissa: z.number().optional(),
+  mantissa: z.number().int().optional(),
   thousandSeparated: z.boolean().optional(),
   average: z.boolean().optional(),
   decimalBytes: z.boolean().optional(),
@@ -742,6 +742,7 @@ const TraceSourceAugmentation = {
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
+  displayedTimestampValueExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   highlightedRowAttributeExpressions:
