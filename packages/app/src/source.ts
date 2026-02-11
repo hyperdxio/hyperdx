@@ -20,12 +20,7 @@ import {
   TSource,
   TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  UseQueryOptions,
-} from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
 import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
@@ -75,7 +70,7 @@ export function getFirstTimestampValueExpression(valueExpression: string) {
 }
 
 export function getSpanEventBody(eventModel: TSource) {
-  return eventModel.bodyExpression ?? eventModel?.spanNameExpression;
+  return eventModel.spanNameExpression;
 }
 
 export function getDisplayedTimestampValueExpression(eventModel: TSource) {
@@ -87,14 +82,11 @@ export function getDisplayedTimestampValueExpression(eventModel: TSource) {
 
 export function getEventBody(eventModel: TSource) {
   const expression =
-    eventModel.bodyExpression ??
-    ('spanNameExpression' in eventModel
-      ? eventModel?.spanNameExpression
-      : undefined) ??
-    eventModel.implicitColumnExpression; //??
-  // (eventModel.kind === 'log' ? 'Body' : 'SpanName')
+    eventModel.kind === SourceKind.Trace
+      ? (eventModel.spanNameExpression ?? undefined)
+      : (eventModel.bodyExpression ?? eventModel.implicitColumnExpression);
   const multiExpr = splitAndTrimWithBracket(expression ?? '');
-  return multiExpr.length === 1 ? expression : multiExpr[0]; // TODO: check if we want to show multiple columns
+  return multiExpr.length === 1 ? expression : multiExpr[0];
 }
 
 function addDefaultsToSource(source: TSourceUnion): TSource {
@@ -329,7 +321,6 @@ export async function inferTableSourceConfig({
       ? {
           displayedTimestampValueExpression: 'Timestamp',
           implicitColumnExpression: 'SpanName',
-          bodyExpression: 'SpanName',
           defaultTableSelectExpression:
             'Timestamp, ServiceName as service, StatusCode as level, round(Duration / 1e6) as duration, SpanName',
           eventAttributesExpression: 'SpanAttributes',
