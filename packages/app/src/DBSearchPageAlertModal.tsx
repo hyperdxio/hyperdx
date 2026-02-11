@@ -312,6 +312,7 @@ export const DBSearchPageAlertModal = ({
           whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
           source: searchedConfig.source ?? '',
           orderBy: searchedConfig.orderBy ?? '',
+          filters: searchedConfig.filters ?? [],
           tags: [],
         });
         await createAlert.mutate({

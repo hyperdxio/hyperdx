@@ -417,6 +417,7 @@ function SaveSearchModalComponent({
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
+            filters: searchedConfig.filters ?? [],
             tags: tags,
           },
           {
@@ -434,6 +435,7 @@ function SaveSearchModalComponent({
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
+            filters: searchedConfig.filters ?? [],
             tags: tags,
           },
           {
@@ -486,6 +488,22 @@ function SaveSearchModalComponent({
                 ORDER BY
               </Text>
               <Text size="xs">{chartConfig.orderBy}</Text>
+              {searchedConfig.filters && searchedConfig.filters.length > 0 && (
+                <>
+                  <Text size="xs" mb="xs" mt="sm">
+                    FILTERS
+                  </Text>
+                  <Stack gap="xs">
+                    {searchedConfig.filters.map((filter, idx) => (
+                      <Text key={idx} size="xs" c="dimmed">
+                        {filter.type === 'sql_ast'
+                          ? `${filter.left} ${filter.operator} ${filter.right}`
+                          : filter.condition}
+                      </Text>
+                    ))}
+                  </Stack>
+                </>
+              )}
             </Card>
           ) : (
             <Text>Loading Chart Config...</Text>
@@ -895,6 +913,7 @@ function DBSearchPage() {
       where: _savedSearch?.where ?? '',
       whereLanguage: _savedSearch?.whereLanguage ?? 'lucene',
       source: _savedSearch?.source,
+      filters: _savedSearch?.filters ?? [],
       orderBy: _savedSearch?.orderBy || defaultOrderBy,
     };
   }, [searchedSource, inputSource, savedSearch, defaultOrderBy, savedSearchId]);
@@ -939,33 +958,34 @@ function DBSearchPage() {
     const isSearchConfigEmpty =
       !source && !where && !select && !whereLanguage && !filters?.length;
 
-    if (isSearchConfigEmpty) {
-      // Landed on saved search (if we just landed on a searchId route)
-      if (
-        savedSearch != null && // Make sure saved search data is loaded
-        savedSearch.id === savedSearchId // Make sure we've loaded the correct saved search
-      ) {
-        setSearchedConfig({
-          source: savedSearch.source,
-          where: savedSearch.where,
-          select: savedSearch.select,
-          whereLanguage: savedSearch.whereLanguage as 'sql' | 'lucene',
-          orderBy: savedSearch.orderBy ?? '',
-        });
-        return;
-      }
+    // Landed on saved search (if we just landed on a searchId route)
+    if (
+      savedSearch != null && // Make sure saved search data is loaded
+      savedSearch.id === savedSearchId && // Make sure we've loaded the correct saved search
+      isSearchConfigEmpty // Only populate if URL doesn't have explicit config
+    ) {
+      setSearchedConfig({
+        source: savedSearch.source,
+        where: savedSearch.where,
+        select: savedSearch.select,
+        whereLanguage: savedSearch.whereLanguage as 'sql' | 'lucene',
+        filters: savedSearch.filters ?? [],
+        orderBy: savedSearch.orderBy ?? '',
+      });
+      return;
+    }
 
-      // Landed on a new search - ensure we have a source selected
-      if (savedSearchId == null && defaultSourceId) {
-        setSearchedConfig({
-          source: defaultSourceId,
-          where: '',
-          select: '',
-          whereLanguage: 'lucene',
-          orderBy: '',
-        });
-        return;
-      }
+    // Landed on a new search - ensure we have a source selected
+    if (savedSearchId == null && defaultSourceId && isSearchConfigEmpty) {
+      setSearchedConfig({
+        source: defaultSourceId,
+        where: '',
+        select: '',
+        whereLanguage: 'lucene',
+        filters: [],
+        orderBy: '',
+      });
+      return;
     }
   }, [
     savedSearch,
@@ -1057,13 +1077,14 @@ function DBSearchPage() {
         if (savedSearchId == null || savedSearch?.source !== watchedSource) {
           setValue('select', '');
           setValue('orderBy', '');
+          // Clear all search filters only when switching to a different source
+          searchFilters.clearAllFilters();
           // If the user is in a saved search, prefer the saved search's select/orderBy if available
         } else {
           setValue('select', savedSearch?.select ?? '');
           setValue('orderBy', savedSearch?.orderBy ?? '');
+          // Don't clear filters - we're loading from saved search
         }
-        // Clear all search filters
-        searchFilters.clearAllFilters();
       }
     }
   }, [
@@ -1154,6 +1175,7 @@ function DBSearchPage() {
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
+            filters: searchedConfig.filters ?? [],
             tags: newTags,
           },
           {
