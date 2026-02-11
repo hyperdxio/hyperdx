@@ -1581,7 +1581,7 @@ function DBSearchPage() {
               setModelFormExpanded={setModelFormExpanded}
             />
           </Group>
-          <Box style={{ minWidth: 100, flexGrow: 1 }}>
+          <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
             <SQLInlineEditorControlled
               tableConnection={inputSourceTableConnection}
               control={control}

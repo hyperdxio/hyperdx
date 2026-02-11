@@ -425,7 +425,21 @@ export default function SQLInlineEditor({
   const baseHeight = size === 'xs' ? 30 : 36;
 
   return (
-    <div style={{ position: 'relative', flex: 'auto' }}>
+    <div
+      style={{
+        position: 'relative',
+        flex: 'auto',
+        width: '100%',
+        minWidth: 0,
+      }}
+    >
+      {/* When expanded, Paper is absolute; this keeps the wrapper width stable */}
+      {isExpanded && (
+        <div
+          style={{ minHeight: baseHeight, width: '100%' }}
+          aria-hidden="true"
+        />
+      )}
       <Paper
         shadow="none"
         style={{
