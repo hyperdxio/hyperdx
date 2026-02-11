@@ -2,8 +2,7 @@ import { useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
 import { Box } from '@mantine/core';
 
-import SearchInputV2 from '@/SearchInputV2';
-
+import SearchInputV2 from './SearchInputV2';
 import { SQLInlineEditorControlled } from './SQLInlineEditor';
 
 type SearchWhereInputProps = {

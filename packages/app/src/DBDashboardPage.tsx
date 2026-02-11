@@ -69,7 +69,7 @@ import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
@@ -81,6 +81,7 @@ import {
 import ChartContainer from './components/charts/ChartContainer';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
+import SearchInputV2 from './components/SearchInput/SearchInputV2';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
@@ -93,7 +94,6 @@ import DashboardFiltersModal from './DashboardFiltersModal';
 import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
-import SearchInputV2 from './SearchInputV2';
 import {
   getFirstTimestampValueExpression,
   useSource,

@@ -27,11 +27,11 @@ import {
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
+import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useResizable from '@/hooks/useResizable';
 import useRowWhere, { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import SearchInputV2 from '@/SearchInputV2';
 import {
   getDisplayedTimestampValueExpression,
   getDurationSecondsExpression,

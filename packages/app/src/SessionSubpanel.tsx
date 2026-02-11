@@ -34,11 +34,11 @@ import {
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 
-import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
+import SearchInputV2 from './components/SearchInput/SearchInputV2';
+import { SQLInlineEditorControlled } from './components/SearchInput/SQLInlineEditor';
 import useFieldExpressionGenerator from './hooks/useFieldExpressionGenerator';
 import DOMPlayer from './DOMPlayer';
 import Playbar from './Playbar';
-import SearchInputV2 from './SearchInputV2';
 import { SessionEventList } from './SessionEventList';
 import { FormatTime } from './useFormatTime';
 import { formatmmss, useLocalStorage, usePrevious } from './utils';

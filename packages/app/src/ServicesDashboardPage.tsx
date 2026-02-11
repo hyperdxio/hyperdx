@@ -52,7 +52,7 @@ import DBListBarChart from '@/components/DBListBarChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import OnboardingModal from '@/components/OnboardingModal';
-import SearchWhereInput from '@/components/SearchWhereInput';
+import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SelectControlled from '@/components/SelectControlled';
 import ServiceDashboardDbQuerySidePanel from '@/components/ServiceDashboardDbQuerySidePanel';
 import ServiceDashboardEndpointSidePanel from '@/components/ServiceDashboardEndpointSidePanel';

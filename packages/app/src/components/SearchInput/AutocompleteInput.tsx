@@ -3,9 +3,9 @@ import Fuse from 'fuse.js';
 import { Popover, Textarea, UnstyledButton } from '@mantine/core';
 
 import { useQueryHistory } from '@/utils';
+import { useDebounce } from '@/utils';
 
-import InputLanguageSwitch from './components/InputLanguageSwitch';
-import { useDebounce } from './utils';
+import InputLanguageSwitch from './InputLanguageSwitch';
 
 export default function AutocompleteInput({
   inputRef,

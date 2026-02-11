@@ -9,13 +9,13 @@ import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 import { Group } from '@mantine/core';
 import { IconBook } from '@tabler/icons-react';
 
-import AutocompleteInput from '@/AutocompleteInput';
-
 import {
   ILanguageFormatter,
   useAutoCompleteOptions,
-} from './hooks/useAutoCompleteOptions';
-import { useMetadataWithSettings } from './hooks/useMetadata';
+} from '@/hooks/useAutoCompleteOptions';
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
+
+import AutocompleteInput from './AutocompleteInput';
 
 export class LuceneLanguageFormatter implements ILanguageFormatter {
   formatFieldValue(f: Field): string {

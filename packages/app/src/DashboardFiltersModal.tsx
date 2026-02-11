@@ -31,9 +31,9 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
+import { SQLInlineEditorControlled } from './components/SearchInput/SQLInlineEditor';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
-import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import { useSource, useSources } from './source';
 import { getMetricTableName } from './utils';
 

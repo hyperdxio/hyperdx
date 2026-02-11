@@ -76,12 +76,12 @@ import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
+import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
-import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import {
   getMetricTableName,
