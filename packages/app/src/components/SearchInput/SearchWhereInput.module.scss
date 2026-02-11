@@ -1,0 +1,38 @@
+.root {
+  position: relative;
+  flex-grow: 1;
+}
+
+.inputWrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+
+  // Fade at the bottom edge when input is single-line (not focused) so text doesn't appear hard-cut
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 12px;
+    background: linear-gradient(to bottom, transparent, var(--color-bg-field));
+    pointer-events: none;
+  }
+}
+
+.languageSwitch {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  pointer-events: auto;
+  align-items: center;
+
+  &.sizeXs {
+    height: 30px;
+  }
+
+  &.sizeSm {
+    height: 36px;
+  }
+}

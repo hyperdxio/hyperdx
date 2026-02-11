@@ -273,12 +273,6 @@ export const makeTheme = ({
         root: {
           background: 'var(--color-bg-field)',
         },
-        indicator: {
-          background:
-            props.variant === 'primary'
-              ? 'var(--mantine-color-green-light)'
-              : 'var(--color-bg-field-highlighted)',
-        },
       }),
     }),
     Tabs: Tabs.extend({

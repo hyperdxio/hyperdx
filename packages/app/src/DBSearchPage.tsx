@@ -1712,20 +1712,22 @@ function DBSearchPage() {
           />
           {isLive && (
             <Tooltip label="Live tail refresh interval">
-              <Select
-                size="sm"
-                w={80}
-                data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
-                value={String(refreshFrequency)}
-                onChange={value =>
-                  setRefreshFrequency(value ? parseInt(value, 10) : null)
-                }
-                allowDeselect={false}
-                comboboxProps={{
-                  withinPortal: true,
-                  zIndex: 1000,
-                }}
-              />
+              <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
+                <Select
+                  size="sm"
+                  w="100%"
+                  data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+                  value={String(refreshFrequency)}
+                  onChange={value =>
+                    setRefreshFrequency(value ? parseInt(value, 10) : null)
+                  }
+                  allowDeselect={false}
+                  comboboxProps={{
+                    withinPortal: true,
+                    zIndex: 1000,
+                  }}
+                />
+              </Box>
             </Tooltip>
           )}
           <SearchSubmitButton isFormStateDirty={formState.isDirty} />

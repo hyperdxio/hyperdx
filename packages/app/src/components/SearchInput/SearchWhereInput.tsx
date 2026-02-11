@@ -6,7 +6,9 @@ import InputLanguageSwitch from './InputLanguageSwitch';
 import SearchInputV2 from './SearchInputV2';
 import { SQLInlineEditorControlled } from './SQLInlineEditor';
 
-type SearchWhereInputProps = {
+import styles from './SearchWhereInput.module.scss';
+
+export type SearchWhereInputProps = {
   /**
    * Callback when form should be submitted
    */
@@ -121,50 +123,42 @@ export default function SearchWhereInput({
 
   const tc = tableConnection ? { tableConnection } : { tableConnections };
 
-  // Calculate the height for the language switch container based on size
-  const inputHeight = size === 'xs' ? 30 : 36;
-
   return (
-    <Box style={{ width, maxWidth, flexGrow: 1, position: 'relative' }}>
-      {isSql ? (
-        <SQLInlineEditorControlled
-          {...tc}
-          control={control}
-          name={name}
-          placeholder={sqlPlaceholder}
-          onSubmit={onSubmit}
-          label={showLabel ? 'WHERE' : undefined}
-          queryHistoryType={sqlQueryHistoryType}
-          enableHotkey={enableHotkey}
-          allowMultiline={allowMultiline}
-          size={size}
-          pr="0px"
-          {...props}
-        />
-      ) : (
-        <SearchInputV2
-          {...tc}
-          control={control}
-          name={name}
-          onSubmit={onSubmit}
-          placeholder={lucenePlaceholder}
-          queryHistoryType={luceneQueryHistoryType}
-          enableHotkey={enableHotkey}
-          size={size}
-          data-testid={dataTestId}
-          {...props}
-        />
-      )}
+    <Box className={styles.root} style={{ width, maxWidth }}>
+      <Box className={styles.inputWrapper}>
+        {isSql ? (
+          <SQLInlineEditorControlled
+            {...tc}
+            control={control}
+            name={name}
+            placeholder={sqlPlaceholder}
+            onSubmit={onSubmit}
+            label={showLabel ? 'WHERE' : undefined}
+            queryHistoryType={sqlQueryHistoryType}
+            enableHotkey={enableHotkey}
+            allowMultiline={allowMultiline}
+            size={size}
+            {...props}
+          />
+        ) : (
+          <SearchInputV2
+            {...tc}
+            control={control}
+            name={name}
+            onSubmit={onSubmit}
+            placeholder={lucenePlaceholder}
+            queryHistoryType={luceneQueryHistoryType}
+            enableHotkey={enableHotkey}
+            size={size}
+            data-testid={dataTestId}
+            {...props}
+          />
+        )}
+      </Box>
       <Flex
         align="center"
-        style={{
-          position: 'absolute',
-          top: 0,
-          right: 8,
-          height: inputHeight,
-          pointerEvents: 'auto',
-          zIndex: 101,
-        }}
+        className={`${styles.languageSwitch} ${size === 'xs' ? styles.sizeXs : styles.sizeSm}`}
+        onMouseDown={e => e.preventDefault()}
       >
         <InputLanguageSwitch
           language={language}

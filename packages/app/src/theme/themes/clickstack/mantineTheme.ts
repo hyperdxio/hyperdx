@@ -256,12 +256,6 @@ export const makeTheme = ({
         root: {
           background: 'var(--color-bg-field)',
         },
-        indicator: {
-          background:
-            props.variant === 'primary'
-              ? 'var(--color-primary-button-bg)'
-              : 'var(--color-bg-field-highlighted)',
-        },
       }),
     }),
     Tabs: Tabs.extend({
