@@ -7,6 +7,8 @@ import { useDebounce } from '@/utils';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
 
+import styles from './AutocompleteInput.module.scss';
+
 export default function AutocompleteInput({
   inputRef,
   value,
@@ -135,7 +137,10 @@ export default function AutocompleteInput({
   const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 42 : 36;
 
   return (
-    <div style={{ position: 'relative', flex: 1 }}>
+    <div
+      style={{ position: 'relative', flex: 1 }}
+      className={!isSearchInputFocused ? styles.collapseFade : undefined}
+    >
       <Popover
         opened={isInputDropdownOpen}
         onChange={setIsInputDropdownOpen}

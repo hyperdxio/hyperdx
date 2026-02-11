@@ -35,6 +35,8 @@ import { useQueryHistory } from '@/utils';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
 
+import styles from './SQLInlineEditor.module.scss';
+
 const AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS = [
   // used with WHERE
   'AND',
@@ -174,7 +176,7 @@ const createStyleTheme = () =>
       marginLeft: '8px',
     },
     '& .cm-tooltip-autocomplete .cm-completionInfo': {
-      backgroundColor: 'red !important',
+      backgroundColor: 'var(--color-bg-field)',
       border: '1px solid var(--color-border)',
       borderRadius: '4px',
       padding: '8px',
@@ -461,10 +463,14 @@ export default function SQLInlineEditor({
               }
             : {
                 // When collapsed, lock to single line height and hide overflow
+                position: 'relative',
                 maxHeight: baseHeight,
                 overflow: 'hidden',
               }),
         }}
+        className={
+          allowMultiline && !isExpanded ? styles.collapseFade : undefined
+        }
         ps="4px"
       >
         {label != null && (

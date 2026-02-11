@@ -1,0 +1,12 @@
+/* Fade at the bottom when collapsed (single-line, not focused) so text doesn't appear hard-cut */
+.collapseFade::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 12px;
+  background: linear-gradient(to bottom, transparent, var(--color-bg-field));
+  pointer-events: none;
+  border-radius: var(--mantine-radius-default);
+}
