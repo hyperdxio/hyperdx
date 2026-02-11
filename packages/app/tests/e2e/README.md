@@ -21,28 +21,23 @@ local Docker ClickHouse for maximum consistency and real backend features:
 # Run all tests (full-stack with MongoDB + API + local Docker ClickHouse)
 make e2e
 
-# Run specific tests (full-stack)
-make e2e tags="@kubernetes"
-make e2e tags="@smoke"
-
-# Run tests with UI
-make e2e ui=true
+# For UI, specific tests, or other options, use the script from repo root:
+./scripts/test-e2e.sh --ui                 # Run with Playwright UI
+./scripts/test-e2e.sh --grep "@kubernetes"  # Run specific tests
+./scripts/test-e2e.sh --grep "@smoke"
+./scripts/test-e2e.sh --ui --last-failed   # Re-run only failed tests with UI
 ```
 
 ### Optional: Local Mode (Frontend Only)
 
-For faster iteration during development, use `local=true` to skip MongoDB and
-run frontend-only tests:
+For faster iteration during development, use the script with `--local` to skip
+MongoDB and run frontend-only tests:
 
 ```bash
-# Run all tests in local mode (no MongoDB, frontend only)
-make e2e local=true
-
-# Run tests with UI
-make e2e local=true ui=true
-
-# Run specific tests in local mode
-make e2e local=true tags="@search"
+# From repo root - run local tests (no MongoDB, frontend only)
+./scripts/test-e2e.sh --local
+./scripts/test-e2e.sh --local --ui
+./scripts/test-e2e.sh --local --grep "@search"
 
 # From packages/app - run local tests (frontend only)
 cd packages/app
@@ -98,7 +93,7 @@ ClickHouse data.
 - MongoDB (port 29998) - authentication, teams, users, persistence
 - API Server (port 29000) - full backend logic
 - App Server (port 28081) - frontend
-- **Local Docker ClickHouse** (localhost:8123) - seeded E2E test data (logs/traces/metrics/K8s)
+- **Local Docker ClickHouse** (localhost:8123) - seeded E2E test data (logs/traces/metrics/K8s). Seeded timestamps span a past+future window (~1h past, ~2h future from seed time) so relative ranges like "last 5 minutes" keep finding data. If you run tests more than ~2 hours after the last seed, re-run the global setup (or full test run) to re-seed.
 
 **Benefits:**
 
@@ -111,7 +106,7 @@ ClickHouse data.
 ```bash
 # Default: full-stack mode
 make e2e
-make e2e tags="@kubernetes"
+./scripts/test-e2e.sh --grep "@kubernetes"   # from repo root, for specific tags
 ```
 
 #### Local Mode (for testing frontend-only features)
@@ -136,9 +131,9 @@ with seeded test data.
 ensuring consistency between local and full-stack tests.
 
 ```bash
-# Opt-in to local mode for speed
-make e2e local=true
-make e2e local=true tags="@search"
+# Opt-in to local mode for speed (from repo root)
+./scripts/test-e2e.sh --local
+./scripts/test-e2e.sh --local --grep "@search"
 ```
 
 ## Writing Tests
@@ -171,8 +166,8 @@ test.describe('My Feature', () => {
 ```
 
 **Note:** Tests that need to run in full stack mode should be tagged with
-`@full-stack` so that when `make e2e local=true` is run, they are skipped
-appropriately.
+`@full-stack` so that when running with `./scripts/test-e2e.sh --local`, they
+are skipped appropriately.
 
 ## Test Organization
 

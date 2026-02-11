@@ -67,15 +67,10 @@ ci-unit:
 
 .PHONY: e2e
 e2e:
-	@# Run full-stack by default (MongoDB + API + local Docker ClickHouse)
-	@# Use 'make e2e local=true' to skip MongoDB and run local mode only
-	@# For more control (--ui, --last-failed, --headed, etc), call the script directly:
-	@#   ./scripts/test-e2e.sh --ui --last-failed
-	if [ "$(local)" = "true" ]; then \
-		./scripts/test-e2e.sh --local; \
-	else \
-		./scripts/test-e2e.sh; \
-	fi
+	# Run full-stack by default (MongoDB + API + local Docker ClickHouse)
+	# For more control (--ui, --last-failed, --headed, etc), call the script directly:
+	#   ./scripts/test-e2e.sh --ui --last-failed
+	./scripts/test-e2e.sh
 
 
 

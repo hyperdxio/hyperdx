@@ -2,8 +2,11 @@
  * Seeds local ClickHouse instance with test data for E2E tests
  *
  * Populates e2e_otel_logs, e2e_otel_traces, and e2e_hyperdx_sessions tables
- * with sample data. Timestamps are relative to "now" to ensure queries work
- * regardless of when tests run.
+ * with sample data. Timestamps are spread across a window that includes both
+ * past and future relative to seed time ([seedRef - PAST_MS, seedRef + FUTURE_MS]).
+ * This keeps "last 5 minutes" and similar relative time ranges finding data for
+ * a reasonable period after seeding (e.g. ~2h). Optional: E2E_SEED_FUTURE_MS env
+ * to tune the future buffer.
  */
 
 interface ClickHouseConfig {
@@ -127,12 +130,24 @@ const K8S_POD_PHASES = {
   UNKNOWN: 5,
 } as const;
 
-function generateLogData(count: number = 50): string {
-  const now = Date.now();
+// Time window for seeded data: past + future so "last N minutes" finds data after seed
+const PAST_MS = 60 * 60 * 1000; // 1 hour
+const FUTURE_MS =
+  (process.env.E2E_SEED_FUTURE_MS &&
+    parseInt(process.env.E2E_SEED_FUTURE_MS, 10)) ||
+  2 * 60 * 60 * 1000; // 2 hours default
+
+function generateLogData(
+  count: number,
+  startMs: number,
+  endMs: number,
+): string {
   const rows: string[] = [];
+  const span = endMs - startMs;
 
   for (let i = 0; i < count; i++) {
-    const timestampNs = (now - i * 60000) * 1000000; // 1 minute intervals
+    const t = count > 1 ? startMs + (i / (count - 1)) * span : startMs;
+    const timestampNs = Math.round(t) * 1000000;
     const severity = SEVERITIES[i % SEVERITIES.length];
     const service = SERVICES[i % SERVICES.length];
     const message = LOG_MESSAGES[i % LOG_MESSAGES.length];
@@ -146,12 +161,17 @@ function generateLogData(count: number = 50): string {
   return rows.join(',\n');
 }
 
-function generateK8sLogData(count: number = 50): string {
-  const now = Date.now();
+function generateK8sLogData(
+  count: number,
+  startMs: number,
+  endMs: number,
+): string {
   const rows: string[] = [];
+  const span = endMs - startMs;
 
   for (let i = 0; i < count; i++) {
-    const timestampNs = (now - i * 60000) * 1000000; // 1 minute intervals
+    const t = count > 1 ? startMs + (i / (count - 1)) * span : startMs;
+    const timestampNs = Math.round(t) * 1000000;
     const severity = SEVERITIES[i % SEVERITIES.length];
     const message = LOG_MESSAGES[i % LOG_MESSAGES.length];
 
@@ -174,26 +194,30 @@ function generateK8sLogData(count: number = 50): string {
   return rows.join(',\n');
 }
 
-function generateTraceData(count: number = 20): string {
-  const now = Date.now();
+function generateTraceData(
+  count: number,
+  startMs: number,
+  endMs: number,
+): string {
   const rows: string[] = [];
-
-  // Create traces with multiple spans each
   const spansPerTrace = 4; // Each trace will have 4 spans
   const numTraces = Math.ceil(count / spansPerTrace);
+  const span = endMs - startMs;
 
   for (let traceIdx = 0; traceIdx < numTraces; traceIdx++) {
     const traceId = `trace-${traceIdx}`;
-    const traceStartTime = now - traceIdx * 10000; // Traces start 10 seconds apart
+    // Anchor each trace in the window; spans stay close (10s apart)
+    const traceAnchor =
+      numTraces > 1 ? startMs + (traceIdx / (numTraces - 1)) * span : startMs;
+    const traceStartTime = traceAnchor;
 
     // Create spans within this trace
     for (let spanIdx = 0; spanIdx < spansPerTrace; spanIdx++) {
       const spanId = `span-${traceIdx}-${spanIdx}`;
-      // Root span has no parent, others reference the previous span
       const parentSpanId =
         spanIdx === 0 ? '' : `span-${traceIdx}-${spanIdx - 1}`;
 
-      // Each span starts slightly after the previous one
+      // Each span starts slightly after the previous one (same trace grouping)
       const timestampNs = (traceStartTime - spanIdx * 100) * 1000000;
 
       const service = SERVICES[spanIdx % SERVICES.length];
@@ -228,12 +252,17 @@ function generateTraceData(count: number = 20): string {
   return rows.join(',\n');
 }
 
-function generateSessionData(count: number = 10): string {
-  const now = Date.now();
+function generateSessionData(
+  count: number,
+  startMs: number,
+  endMs: number,
+): string {
   const rows: string[] = [];
+  const span = endMs - startMs;
 
   for (let i = 0; i < count; i++) {
-    const timestampNs = (now - i * 300000) * 1000000; // 5 minute intervals
+    const t = count > 1 ? startMs + (i / (count - 1)) * span : startMs;
+    const timestampNs = Math.round(t) * 1000000;
     const sessionId = `session-${i}`;
     const traceId = `trace-${i}`;
 
@@ -245,18 +274,21 @@ function generateSessionData(count: number = 10): string {
   return rows.join(',\n');
 }
 
-function generateSessionTraces(count: number = 10): string {
-  const now = Date.now();
+function generateSessionTraces(
+  count: number,
+  startMs: number,
+  endMs: number,
+): string {
   const rows: string[] = [];
+  const span = endMs - startMs;
 
   for (let i = 0; i < count; i++) {
     const sessionId = `session-${i}`;
-    const baseTime = now - i * 300000; // 5 minute intervals between sessions
+    const baseTime = count > 1 ? startMs + (i / (count - 1)) * span : startMs;
 
-    // Generate multiple events per session to create realistic sessions
     const eventsPerSession = 5 + Math.floor(Math.random() * 10); // 5-15 events per session
     for (let eventIdx = 0; eventIdx < eventsPerSession; eventIdx++) {
-      const timestampNs = (baseTime - eventIdx * 10000) * 1000000; // Events 10 seconds apart
+      const timestampNs = (baseTime - eventIdx * 10000) * 1000000; // Events 10s apart
       const traceId = `session-trace-${i}-${eventIdx}`;
       const spanId = `session-span-${i}-${eventIdx}`;
 
@@ -286,33 +318,39 @@ function generateSessionTraces(count: number = 10): string {
 }
 
 function generateK8sGaugeMetrics(
-  podCount: number = 30,
-  samplesPerPod: number = 12,
+  podCount: number,
+  samplesPerPod: number,
+  startMs: number,
+  endMs: number,
 ): string {
-  const now = Date.now();
   const rows: string[] = [];
+  const span = endMs - startMs;
+  const seriesDurationMs = samplesPerPod * 60000; // 12 min per series
+  const stepMs = 60000; // 60 second intervals
 
-  // Generate metrics for each pod
+  // Generate metrics for each pod; spread each pod's series in the window
   for (let podIdx = 0; podIdx < podCount; podIdx++) {
     const namespace = K8S_NAMESPACES[podIdx % K8S_NAMESPACES.length];
     const node = K8S_NODES[podIdx % K8S_NODES.length];
     const cluster = K8S_CLUSTERS[0];
     const podName = `pod-${namespace}-${podIdx}`;
     const containerName = `container-${podIdx}`;
-    // Generate mostly Running pods, with some Pending and a few Failed
     let phase: number;
     if (podIdx % 15 === 0) {
-      phase = K8S_POD_PHASES.FAILED; // ~7% failed
+      phase = K8S_POD_PHASES.FAILED;
     } else if (podIdx % 7 === 0) {
-      phase = K8S_POD_PHASES.PENDING; // ~14% pending
+      phase = K8S_POD_PHASES.PENDING;
     } else {
-      phase = K8S_POD_PHASES.RUNNING; // ~79% running
+      phase = K8S_POD_PHASES.RUNNING;
     }
-    const restarts = podIdx % 7; // 0-6 restarts
+    const restarts = podIdx % 7;
 
-    // Generate time series for this pod (last 10 minutes to cover typical query window)
+    const podSlotStart =
+      podCount > 1
+        ? startMs + (podIdx / (podCount - 1)) * (span - seriesDurationMs)
+        : startMs;
     for (let sample = 0; sample < samplesPerPod; sample++) {
-      const timestampMs = now - sample * 60000; // 60 second intervals (12 minutes total)
+      const timestampMs = podSlotStart + sample * stepMs;
       const timestampNs = timestampMs * 1000000;
       const _timeUnix = timestampMs / 1000;
 
@@ -367,13 +405,18 @@ function generateK8sGaugeMetrics(
     }
   }
 
-  // Generate node metrics
+  // Generate node metrics (spread across window)
   for (let nodeIdx = 0; nodeIdx < K8S_NODES.length; nodeIdx++) {
     const node = K8S_NODES[nodeIdx];
     const cluster = K8S_CLUSTERS[0];
+    const nodeSlotStart =
+      K8S_NODES.length > 1
+        ? startMs +
+          (nodeIdx / (K8S_NODES.length - 1)) * (span - seriesDurationMs)
+        : startMs;
 
     for (let sample = 0; sample < samplesPerPod; sample++) {
-      const timestampMs = now - sample * 60000; // Same 60 second intervals
+      const timestampMs = nodeSlotStart + sample * stepMs;
       const timestampNs = timestampMs * 1000000;
 
       const nodeCpuUsage = 30 + (nodeIdx % 30) + Math.sin(sample / 2) * 10;
@@ -399,14 +442,19 @@ function generateK8sGaugeMetrics(
     }
   }
 
-  // Generate namespace metrics
+  // Generate namespace metrics (spread across window)
   for (let nsIdx = 0; nsIdx < K8S_NAMESPACES.length; nsIdx++) {
     const namespace = K8S_NAMESPACES[nsIdx];
     const cluster = K8S_CLUSTERS[0];
-    const namespacePhase = 1; // 1 = Active/Ready, 0 = Terminating
+    const namespacePhase = 1;
+    const nsSlotStart =
+      K8S_NAMESPACES.length > 1
+        ? startMs +
+          (nsIdx / (K8S_NAMESPACES.length - 1)) * (span - seriesDurationMs)
+        : startMs;
 
     for (let sample = 0; sample < samplesPerPod; sample++) {
-      const timestampMs = now - sample * 60000; // Same 60 second intervals
+      const timestampMs = nsSlotStart + sample * stepMs;
       const timestampNs = timestampMs * 1000000;
 
       const resourceAttrs = `{'k8s.cluster.name':'${cluster}','k8s.namespace.name':'${namespace}'}`;
@@ -421,9 +469,13 @@ function generateK8sGaugeMetrics(
   return rows.join(',\n');
 }
 
-function generateK8sSumMetrics(podCount: number = 30): string {
-  const now = Date.now();
+function generateK8sSumMetrics(
+  podCount: number,
+  startMs: number,
+  endMs: number,
+): string {
   const rows: string[] = [];
+  const span = endMs - startMs;
 
   for (let podIdx = 0; podIdx < podCount; podIdx++) {
     const namespace = K8S_NAMESPACES[podIdx % K8S_NAMESPACES.length];
@@ -432,7 +484,8 @@ function generateK8sSumMetrics(podCount: number = 30): string {
     const podName = `pod-${namespace}-${podIdx}`;
     const containerName = `container-${podIdx}`;
 
-    const timestampMs = now;
+    const timestampMs =
+      podCount > 1 ? startMs + (podIdx / (podCount - 1)) * span : startMs;
     const timestampNs = timestampMs * 1000000;
 
     // Pod uptime in seconds (1-10 hours)
@@ -450,12 +503,17 @@ function generateK8sSumMetrics(podCount: number = 30): string {
   return rows.join(',\n');
 }
 
-function generateK8sEventLogs(count: number = 20): string {
-  const now = Date.now();
+function generateK8sEventLogs(
+  count: number,
+  startMs: number,
+  endMs: number,
+): string {
   const rows: string[] = [];
+  const span = endMs - startMs;
 
   for (let i = 0; i < count; i++) {
-    const timestampNs = (now - i * 300000) * 1000000; // 5 minute intervals
+    const t = count > 1 ? startMs + (i / (count - 1)) * span : startMs;
+    const timestampNs = Math.round(t) * 1000000;
     const namespace = K8S_NAMESPACES[i % K8S_NAMESPACES.length];
     const node = K8S_NODES[i % K8S_NODES.length];
     const cluster = K8S_CLUSTERS[0];
@@ -551,6 +609,10 @@ export async function seedClickHouse(): Promise<void> {
   await waitForClickHouse(client);
   await clearTestData(client);
 
+  const seedRef = Date.now();
+  const startMs = seedRef - PAST_MS;
+  const endMs = seedRef + FUTURE_MS;
+
   // Insert log data
   console.log('  Inserting log data...');
   await client.query(`
@@ -558,7 +620,7 @@ export async function seedClickHouse(): Promise<void> {
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
-    ) VALUES ${generateLogData(100)}
+    ) VALUES ${generateLogData(100, startMs, endMs)}
   `);
   console.log('  Inserted 100 log entries');
 
@@ -569,7 +631,7 @@ export async function seedClickHouse(): Promise<void> {
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
-    ) VALUES ${generateK8sLogData(50)}
+    ) VALUES ${generateK8sLogData(50, startMs, endMs)}
   `);
   console.log('  Inserted 50 K8s log entries');
 
@@ -582,7 +644,7 @@ export async function seedClickHouse(): Promise<void> {
       Duration, StatusCode, StatusMessage, \`Events.Timestamp\`, \`Events.Name\`,
       \`Events.Attributes\`, \`Links.TraceId\`, \`Links.SpanId\`, \`Links.TraceState\`,
       \`Links.Attributes\`
-    ) VALUES ${generateTraceData(100)}
+    ) VALUES ${generateTraceData(100, startMs, endMs)}
   `);
   console.log('  Inserted 100 trace spans');
 
@@ -595,7 +657,7 @@ export async function seedClickHouse(): Promise<void> {
       Duration, StatusCode, StatusMessage, \`Events.Timestamp\`, \`Events.Name\`,
       \`Events.Attributes\`, \`Links.TraceId\`, \`Links.SpanId\`, \`Links.TraceState\`,
       \`Links.Attributes\`
-    ) VALUES ${generateSessionTraces(20)}
+    ) VALUES ${generateSessionTraces(20, startMs, endMs)}
   `);
   console.log('  Inserted session trace data');
 
@@ -606,7 +668,7 @@ export async function seedClickHouse(): Promise<void> {
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
-    ) VALUES ${generateSessionData(100)}
+    ) VALUES ${generateSessionData(100, startMs, endMs)}
   `);
   console.log('  Inserted 100 session entries');
 
@@ -619,7 +681,7 @@ export async function seedClickHouse(): Promise<void> {
       MetricUnit, Attributes, StartTimeUnix, TimeUnix, Value, Flags,
       \`Exemplars.FilteredAttributes\`, \`Exemplars.TimeUnix\`, \`Exemplars.Value\`,
       \`Exemplars.SpanId\`, \`Exemplars.TraceId\`
-    ) VALUES ${generateK8sGaugeMetrics(100, 12)}
+    ) VALUES ${generateK8sGaugeMetrics(100, 12, startMs, endMs)}
   `);
   console.log('  Inserted Kubernetes gauge metrics (pods and nodes)');
 
@@ -633,7 +695,7 @@ export async function seedClickHouse(): Promise<void> {
       AggregationTemporality, IsMonotonic,
       \`Exemplars.FilteredAttributes\`, \`Exemplars.TimeUnix\`, \`Exemplars.Value\`,
       \`Exemplars.SpanId\`, \`Exemplars.TraceId\`
-    ) VALUES ${generateK8sSumMetrics(100)}
+    ) VALUES ${generateK8sSumMetrics(100, startMs, endMs)}
   `);
   console.log('  Inserted Kubernetes sum metrics (uptime)');
 
@@ -644,7 +706,7 @@ export async function seedClickHouse(): Promise<void> {
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
-    ) VALUES ${generateK8sEventLogs(100)}
+    ) VALUES ${generateK8sEventLogs(100, startMs, endMs)}
   `);
   console.log('  Inserted 100 Kubernetes event logs');
 
