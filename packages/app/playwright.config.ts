@@ -72,8 +72,7 @@ export default defineConfig({
     ? [
         // Full-stack mode: Start API and App servers (infrastructure started separately)
         {
-          // Loads configuration from .env.e2e (connections, settings)
-          // Environment variables (MONGO_URI, etc.) can override .env.e2e values
+          // Connections/sources come from env (injected by run-e2e.js from e2e-fixtures.json)
           command: `cd ../api && ${process.env.MONGO_URI ? `MONGO_URI="${process.env.MONGO_URI}"` : ''} DOTENV_CONFIG_PATH=.env.e2e npx ts-node --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r @hyperdx/node-opentelemetry/build/src/tracing src/index.ts`,
           port: 29000,
           reuseExistingServer: !process.env.CI,

@@ -257,92 +257,102 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     },
   );
 
-  test('should create and populate filters', async () => {
-    test.setTimeout(30000);
+  test(
+    'should create and populate filters',
+    { tag: '@full-stack' },
+    async () => {
+      test.setTimeout(30000);
 
-    await test.step('Create new dashboard', async () => {
-      await expect(dashboardPage.createButton).toBeVisible();
-      await dashboardPage.createNewDashboard();
-    });
-
-    await test.step('Create a table tile to filter', async () => {
-      await dashboardPage.addTile();
-
-      await dashboardPage.chartEditor.createTable({
-        chartName: 'Test Table',
-        sourceName: DEFAULT_LOGS_SOURCE_NAME,
-        groupBy: 'ServiceName',
+      await test.step('Create new dashboard', async () => {
+        await expect(dashboardPage.createButton).toBeVisible();
+        await dashboardPage.createNewDashboard();
       });
 
-      const accountCell = dashboardPage.page.getByTitle('accounting', {
-        exact: true,
+      await test.step('Create a table tile to filter', async () => {
+        await dashboardPage.addTile();
+
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Test Table',
+          sourceName: DEFAULT_LOGS_SOURCE_NAME,
+          groupBy: 'ServiceName',
+        });
+
+        const accountCell = dashboardPage.page.getByTitle('accounting', {
+          exact: true,
+        });
+        const adCell = dashboardPage.page.getByTitle('ad', { exact: true });
+        await expect(accountCell).toBeVisible();
+        await expect(adCell).toBeVisible();
       });
-      const adCell = dashboardPage.page.getByTitle('ad', { exact: true });
-      await expect(accountCell).toBeVisible();
-      await expect(adCell).toBeVisible();
-    });
 
-    await test.step('Add ServiceName filter to dashboard', async () => {
-      await dashboardPage.openEditFiltersModal();
-      await expect(dashboardPage.emptyFiltersList).toBeVisible();
+      await test.step('Add ServiceName filter to dashboard', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await expect(dashboardPage.emptyFiltersList).toBeVisible();
 
-      await dashboardPage.addFilterToDashboard(
-        'Service',
-        DEFAULT_LOGS_SOURCE_NAME,
-        'ServiceName',
-      );
+        await dashboardPage.addFilterToDashboard(
+          'Service',
+          DEFAULT_LOGS_SOURCE_NAME,
+          'ServiceName',
+        );
 
-      await expect(dashboardPage.getFilterItemByName('Service')).toBeVisible();
+        await expect(
+          dashboardPage.getFilterItemByName('Service'),
+        ).toBeVisible();
 
-      await dashboardPage.closeFiltersModal();
-    });
-
-    await test.step('Add MetricName filter to dashboard', async () => {
-      await dashboardPage.openEditFiltersModal();
-      await expect(dashboardPage.filtersList).toBeVisible();
-
-      await dashboardPage.addFilterToDashboard(
-        'Metric',
-        DEFAULT_METRICS_SOURCE_NAME,
-        'MetricName',
-        'gauge',
-      );
-
-      await expect(dashboardPage.getFilterItemByName('Metric')).toBeVisible();
-
-      await dashboardPage.closeFiltersModal();
-    });
-
-    await test.step('Verify tiles are filtered', async () => {
-      // Select 'accounting' in Service filter
-      await dashboardPage.clickFilterOption('Service', 'accounting');
-
-      const accountCell = dashboardPage.page.getByTitle('accounting', {
-        exact: true,
+        await dashboardPage.closeFiltersModal();
       });
-      await expect(accountCell).toBeVisible();
 
-      // 'ad' ServiceName row should be filtered out
-      const adCell = dashboardPage.page.getByTitle('ad', { exact: true });
-      await expect(adCell).toHaveCount(0);
-    });
+      await test.step('Add MetricName filter to dashboard', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await expect(dashboardPage.filtersList).toBeVisible();
 
-    await test.step('Verify metric filter is populated', async () => {
-      await dashboardPage.clickFilterOption(
-        'Metric',
-        'container.cpu.utilization',
-      );
-    });
+        await dashboardPage.addFilterToDashboard(
+          'Metric',
+          DEFAULT_METRICS_SOURCE_NAME,
+          'MetricName',
+          'gauge',
+        );
 
-    await test.step('Delete a filter and verify it is removed', async () => {
-      await dashboardPage.openEditFiltersModal();
-      await dashboardPage.deleteFilterFromDashboard('Metric');
+        await expect(dashboardPage.getFilterItemByName('Metric')).toBeVisible();
 
-      // Service filter should still be visible
-      await expect(dashboardPage.getFilterItemByName('Service')).toBeVisible();
+        await dashboardPage.closeFiltersModal();
+      });
 
-      // Metric filter should be gone
-      await expect(dashboardPage.getFilterItemByName('Metric')).toHaveCount(0);
-    });
-  });
+      await test.step('Verify tiles are filtered', async () => {
+        // Select 'accounting' in Service filter
+        await dashboardPage.clickFilterOption('Service', 'accounting');
+
+        const accountCell = dashboardPage.page.getByTitle('accounting', {
+          exact: true,
+        });
+        await expect(accountCell).toBeVisible();
+
+        // 'ad' ServiceName row should be filtered out
+        const adCell = dashboardPage.page.getByTitle('ad', { exact: true });
+        await expect(adCell).toHaveCount(0);
+      });
+
+      await test.step('Verify metric filter is populated', async () => {
+        await dashboardPage.clickFilterOption(
+          'Metric',
+          'container.cpu.utilization',
+        );
+      });
+
+      await test.step('Delete a filter and verify it is removed', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.deleteFilterFromDashboard('Metric');
+
+        // Service filter should still be visible
+        await expect(
+          dashboardPage.getFilterItemByName('Service'),
+        ).toBeVisible();
+
+        // Metric filter should be gone
+        await expect(dashboardPage.getFilterItemByName('Metric')).toHaveCount(
+          0,
+        );
+      });
+    },
+  );
 });
