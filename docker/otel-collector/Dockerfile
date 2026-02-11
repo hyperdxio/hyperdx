@@ -1,6 +1,6 @@
 ## base #############################################################################################
-FROM otel/opentelemetry-collector-contrib:0.136.0 AS col
-FROM otel/opentelemetry-collector-opampsupervisor:0.136.0 AS supervisor
+FROM otel/opentelemetry-collector-contrib:0.145.0 AS col
+FROM otel/opentelemetry-collector-opampsupervisor:0.145.0 AS supervisor
 FROM hairyhenderson/gomplate:v4.3.3-alpine AS gomplate
 FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
 
@@ -14,7 +14,7 @@ COPY packages/otel-collector/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /migrate ./cmd/migrate
 
 # From: https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/aa5c3aa4c7ec174361fcaf908de8eaca72263078/cmd/opampsupervisor/Dockerfile#L18
-FROM alpine:latest@sha256:a8560b36e8b8210634f77d9f7f9efd7ffa463e380b75e2e74aff4511df3ef88c AS base
+FROM alpine:3.21@sha256:c3f8e73fdb79deaebaa2037150150191b9dcbfba68b4a46d70103204c53f4709 AS base
 
 ARG USER_UID=10001
 ARG USER_GID=10001
@@ -61,6 +61,9 @@ COPY --chown=10001:10001 docker/otel-collector/schema /etc/otel/schema
 
 EXPOSE 4317 4318 13133
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -q --spider http://localhost:13133/ || exit 1
+
 ENTRYPOINT ["/entrypoint.sh", "/opampsupervisor"]
 
 ## prod #############################################################################################
@@ -79,5 +82,8 @@ COPY --chown=10001:10001 docker/otel-collector/supervisor_docker.yaml.tmpl /etc/
 COPY --chown=10001:10001 docker/otel-collector/schema /etc/otel/schema
 
 EXPOSE 4317 4318 13133
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -q --spider http://localhost:13133/ || exit 1
 
 ENTRYPOINT ["/entrypoint.sh", "/opampsupervisor"]
