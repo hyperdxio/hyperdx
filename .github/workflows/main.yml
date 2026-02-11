@@ -339,7 +339,7 @@ jobs:
     steps:
       - uses: actions/github-script@v7
         env:
-          TAG: 'aaron/next-static-build'
+          TAG: '2.16.0'
         with:
           github-token: ${{ secrets.CH_BOT_PAT }}
           script: |
