@@ -120,7 +120,7 @@ jest.mock('../DBNumberChart', () => ({
   default: () => <div>Number Chart</div>,
 }));
 
-jest.mock('@/SearchInputV2', () => ({
+jest.mock('@/components/SearchInput/SearchInputV2', () => ({
   __esModule: true,
   default: () => <div>Search Input</div>,
 }));
@@ -130,7 +130,7 @@ jest.mock('../MaterializedViews/MVOptimizationIndicator', () => ({
   default: () => <div>MV Indicator</div>,
 }));
 
-jest.mock('../SQLInlineEditor', () => ({
+jest.mock('../SearchInput/SQLInlineEditor', () => ({
   SQLInlineEditorControlled: () => <div>SQL Editor</div>,
 }));
 
