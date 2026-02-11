@@ -432,8 +432,8 @@ export default function SQLInlineEditor({
           backgroundColor: 'var(--color-bg-field)',
           border: `1px solid ${error ? 'var(--color-bg-danger)' : 'var(--color-border)'}`,
           display: 'flex',
-          // Center items when collapsed, align to top when expanded
-          alignItems: isExpanded ? 'flex-start' : 'center',
+          // Always align to top to prevent content jump on focus
+          alignItems: 'flex-start',
           minHeight: baseHeight,
           // When expanded, position absolutely to overlay content
           ...(isExpanded
@@ -443,7 +443,7 @@ export default function SQLInlineEditor({
                 left: 0,
                 right: 0,
                 zIndex: 100,
-                boxShadow: 'var(--mb-shadow, var(--mantine-shadow-sm))',
+                boxShadow: 'var(--mb-shadow, var(--mantine-shadow-xs))',
               }
             : {
                 // When collapsed, lock to single line height and hide overflow
@@ -460,8 +460,8 @@ export default function SQLInlineEditor({
             fw="bold"
             style={{
               whiteSpace: 'nowrap',
-              // Keep label at top when multiline is expanded
-              ...(isExpanded ? { paddingTop: size === 'xs' ? 6 : 8 } : {}),
+              // Consistent top padding for vertical alignment
+              paddingTop: size === 'xs' ? 6 : 8,
             }}
             component="div"
           >
@@ -477,13 +477,9 @@ export default function SQLInlineEditor({
           style={{
             minWidth: 10,
             width: '100%',
-            ...(!isExpanded
-              ? {
-                  overflow: 'hidden',
-                  // When multiline but collapsed, align content to top to show first line
-                  ...(allowMultiline ? { alignSelf: 'flex-start' } : {}),
-                }
-              : {}),
+            // Consistent top padding for vertical alignment with label and language switch
+            paddingTop: size === 'xs' ? 0.5 : 3,
+            ...(!isExpanded ? { overflow: 'hidden' } : {}),
           }}
           className={isExpanded ? 'cm-editor-multiline' : ''}
         >
@@ -509,8 +505,10 @@ export default function SQLInlineEditor({
         {onLanguageChange != null && language != null && (
           <div
             style={{
-              // Keep language switch at top when multiline is expanded
-              ...(isExpanded ? { paddingTop: size === 'xs' ? 6 : 8 } : {}),
+              display: 'flex',
+              alignItems: 'center',
+              minHeight: baseHeight,
+              paddingRight: 4,
             }}
           >
             <InputLanguageSwitch

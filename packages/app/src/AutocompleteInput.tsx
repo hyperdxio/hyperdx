@@ -21,7 +21,6 @@ export default function AutocompleteInput({
   zIndex = 999,
   onLanguageChange,
   language,
-  showHotkey,
   onSubmit,
   queryHistoryType,
   'data-testid': dataTestId,
@@ -40,7 +39,6 @@ export default function AutocompleteInput({
   zIndex?: number;
   onLanguageChange?: (language: 'sql' | 'lucene') => void;
   language?: 'sql' | 'lucene';
-  showHotkey?: boolean;
   queryHistoryType?: string;
   'data-testid'?: string;
 }) {
@@ -176,8 +174,13 @@ export default function AutocompleteInput({
                     left: 0,
                     right: 0,
                     zIndex: 100,
-                    boxShadow:
-                      '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                    boxShadow: 'var(--mb-shadow, var(--mantine-shadow-xs))',
+                    // Flatten bottom corners when dropdown is open
+                    ...(isInputDropdownOpen
+                      ? {
+                          borderRadius: 'var(--mantine-radius-default)',
+                        }
+                      : {}),
                   }
                 : {}),
             }}
@@ -266,18 +269,10 @@ export default function AutocompleteInput({
               }
             }}
             rightSectionWidth={rightSectionWidth}
-            rightSectionProps={{
-              style: {
-                // Align to top when focused/expanded
-                alignItems: isSearchInputFocused ? 'flex-start' : 'center',
-                paddingTop: isSearchInputFocused ? 8 : 0,
-              },
-            }}
             rightSection={
               language != null && onLanguageChange != null ? (
                 <div ref={ref}>
                   <InputLanguageSwitch
-                    showHotkey={showHotkey && isSearchInputFocused}
                     language={language}
                     onLanguageChange={onLanguageChange}
                   />
