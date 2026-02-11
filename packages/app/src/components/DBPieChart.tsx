@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import randomUUID from 'crypto-randomuuid';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { color } from 'storybook/theming';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Flex, Text } from '@mantine/core';
@@ -111,25 +110,74 @@ export const DBPieChart = ({
     queriedConfig,
   ]);
 
+  // Extract group column names from groupBy config
+  const groupByKeys = useMemo(() => {
+    if (!queriedConfig.groupBy) return [];
+
+    if (typeof queriedConfig.groupBy === 'string') {
+      return queriedConfig.groupBy.split(',').map(v => v.trim());
+    }
+
+    return queriedConfig.groupBy.map(g =>
+      typeof g === 'string' ? g : g.valueExpression,
+    );
+  }, [queriedConfig.groupBy]);
+
   const pieChartData = useMemo(() => {
-    if (!data) return [];
-    if (data.data.length > 1) return [];
+    if (!data || data.data.length === 0) return [];
 
-    const queryData = data.data[0];
+    if (groupByKeys.length > 0 && data.data.length > 0) {
+      const groupColumnSet = new Set(groupByKeys);
 
-    return Object.keys(queryData).map((key, index) => ({
-      // If it's an alias, wrap in quotes to support a variety of formats (ex "Time (ms)", "Req/s", etc)
-      label: aliasMap.includes(key) ? `"${key}"` : key,
-      value: parseFloat(queryData[key]),
-      color:
-        index > COLORS.length
-          ? // Source - https://stackoverflow.com/a/5092872
-            '#000000'.replace(/0/g, () => {
-              return (~~(Math.random() * 16)).toString(16);
-            })
-          : COLORS[index],
-    }));
-  }, [data, aliasMap]);
+      return data.data.map((row, index) => {
+        const label =
+          groupByKeys.length === 1
+            ? String(row[groupByKeys[0]])
+            : groupByKeys.map(key => row[key]).join(' - ');
+
+        let totalValue = 0;
+        for (const key in row) {
+          if (!groupColumnSet.has(key)) {
+            const numValue = parseFloat(row[key]);
+            if (!isNaN(numValue)) {
+              totalValue += numValue;
+            }
+          }
+        }
+
+        return {
+          label,
+          value: totalValue,
+          color:
+            index >= COLORS.length
+              ? // Source - https://stackoverflow.com/a/5092872
+                '#000000'.replace(/0/g, () => {
+                  return (~~(Math.random() * 16)).toString(16);
+                })
+              : COLORS[index],
+        };
+      });
+    }
+
+    if (data.data.length === 1) {
+      const queryData = data.data[0];
+
+      return Object.keys(queryData).map((key, index) => ({
+        // If it's an alias, wrap in quotes to support a variety of formats (ex "Time (ms)", "Req/s", etc)
+        label: aliasMap.includes(key) ? `${key}` : key,
+        value: parseFloat(queryData[key]),
+        color:
+          index >= COLORS.length
+            ? // Source - https://stackoverflow.com/a/5092872
+              '#000000'.replace(/0/g, () => {
+                return (~~(Math.random() * 16)).toString(16);
+              })
+            : COLORS[index],
+      }));
+    }
+
+    return [];
+  }, [data, aliasMap, groupByKeys]);
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
