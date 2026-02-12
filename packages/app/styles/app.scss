@@ -213,12 +213,6 @@ button:focus-visible {
   border-bottom: 2px solid var(--color-text) !important;
 }
 
-// Nextra Overrides
-.nextra-toc,
-.nextra-sidebar-container {
-  font-family: var(--font-inter) !important;
-}
-
 // custom overrides for jsontree
 .react-json-tree {
   & > ul {
