@@ -1,27 +1,27 @@
 const fs = require('fs');
 const path = require('path');
 
+const OUT_DIR = path.join(__dirname, '../out');
+const PYODIDE_PATH = path.join(OUT_DIR, 'pyodide');
+const ALLOWED_EXTENSIONS = [
+  '.html',
+  '.js',
+  '.css',
+  '.map',
+  '.woff2',
+  '.png',
+  '.svg',
+  '.ico',
+];
+
 // removes pyodide from a next static build. We want a small bundle size, so that feature would just be ignored
-const pyodidePath = path.join(__dirname, '../out/pyodide');
-if (fs.existsSync(pyodidePath)) {
-  fs.rmSync(pyodidePath, { recursive: true, force: true });
+if (fs.existsSync(PYODIDE_PATH)) {
+  fs.rmSync(PYODIDE_PATH, { recursive: true, force: true });
   console.log('Removed pyodide from static build');
 }
 
-const outDir = path.join(__dirname, '../out');
-
 // Remove all files that are not html, js, or css
 function removeNonEssentialFiles(dir) {
-  const allowedExtensions = [
-    '.html',
-    '.js',
-    '.css',
-    '.map',
-    '.woff2',
-    '.png',
-    '.svg',
-    '.ico',
-  ];
   let removedCount = 0;
 
   function walkDir(currentPath) {
@@ -34,10 +34,10 @@ function removeNonEssentialFiles(dir) {
         walkDir(fullPath);
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
-        if (!allowedExtensions.includes(ext)) {
+        if (!ALLOWED_EXTENSIONS.includes(ext)) {
           fs.unlinkSync(fullPath);
           console.log(
-            `Removed non-essential file: ${path.relative(outDir, fullPath)}`,
+            `Removed non-essential file: ${path.relative(OUT_DIR, fullPath)}`,
           );
           removedCount++;
         }
@@ -50,8 +50,8 @@ function removeNonEssentialFiles(dir) {
 }
 
 // Execute cleanup and optimization
-if (fs.existsSync(outDir)) {
-  removeNonEssentialFiles(outDir);
+if (fs.existsSync(OUT_DIR)) {
+  removeNonEssentialFiles(OUT_DIR);
 } else {
   console.error('No out directory found. Build preparation failed.');
   process.exit(1);
