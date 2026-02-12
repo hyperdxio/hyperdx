@@ -81,6 +81,14 @@ const nextConfig = {
         }
       : {}),
   }),
+  ...(process.env.NEXT_PUBLIC_CLICKHOUSE_BUILD
+    ? {
+        assetPrefix: '/clickstack',
+        basePath: '/clickstack',
+        images: { unoptimized: true },
+        output: 'export',
+      }
+    : {}),
   logging: {
     incomingRequests: {
       // We also log this in the API server, so we don't want to log it twice.

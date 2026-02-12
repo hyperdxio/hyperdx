@@ -44,6 +44,7 @@ import {
   IconSitemap,
 } from '@tabler/icons-react';
 
+import { IS_CLICKHOUSE_BUILD } from '@/config';
 import {
   useAllFields,
   useColumns,
@@ -1184,9 +1185,11 @@ const DBSearchPageFiltersComponent = ({
                   <Text size="xs">Event Deltas</Text>
                 </Tabs.Tab>
               )}
-              <Tabs.Tab value="pattern" size="xs" h="24px">
-                <Text size="xs">Event Patterns</Text>
-              </Tabs.Tab>
+              {!IS_CLICKHOUSE_BUILD && (
+                <Tabs.Tab value="pattern" size="xs" h="24px">
+                  <Text size="xs">Event Patterns</Text>
+                </Tabs.Tab>
+              )}
             </Tabs.List>
           </Tabs>
 

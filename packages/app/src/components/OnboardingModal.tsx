@@ -10,7 +10,7 @@ import { notifications } from '@mantine/notifications';
 import { IconArrowLeft } from '@tabler/icons-react';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_CLICKHOUSE_BUILD, IS_LOCAL_MODE } from '@/config';
 import { useConnections, useCreateConnection } from '@/connection';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import {
@@ -517,6 +517,7 @@ function OnboardingModalComponent({
   ]);
 
   const handleDemoServerClick = useCallback(async () => {
+    if (IS_CLICKHOUSE_BUILD) return;
     try {
       if (sources) {
         for (const source of sources) {
@@ -724,15 +725,19 @@ function OnboardingModalComponent({
               You can always add and edit connections later.
             </Text>
           )}
-          <Divider label="OR" my="md" />
-          <Button
-            data-testid="demo-server-button"
-            variant="secondary"
-            w="100%"
-            onClick={handleDemoServerClick}
-          >
-            Connect to Demo Server
-          </Button>
+          {!IS_CLICKHOUSE_BUILD && (
+            <>
+              <Divider label="OR" my="md" />
+              <Button
+                data-testid="demo-server-button"
+                variant="secondary"
+                w="100%"
+                onClick={handleDemoServerClick}
+              >
+                Connect to Demo Server
+              </Button>
+            </>
+          )}
         </>
       )}
       {step === 'auto-detect' && (
