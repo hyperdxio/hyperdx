@@ -148,7 +148,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await searchPage.sourceDropdown.click();
         await searchPage.selectSource(DEFAULT_TRACES_SOURCE_NAME);
         await page.waitForLoadState('networkidle');
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify SELECT changed to the new source default', async () => {
@@ -165,7 +165,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await searchPage.sourceDropdown.click();
         await searchPage.selectSource(DEFAULT_LOGS_SOURCE_NAME);
         await page.waitForLoadState('networkidle');
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify SELECT is search custom SELECT', async () => {
@@ -205,17 +205,13 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
         // Submit the search to ensure configuration is applied
         await searchPage.submitButton.click();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
 
         // Save the search
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch(
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'Info Logs Navigation Test',
         );
-
-        // Wait for save to complete and URL to change
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
 
         // Capture the saved search URL (without query params)
         savedSearchUrl = page.url().split('?')[0];
@@ -248,7 +244,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         expect(orderByContent).toContain('ServiceName ASC');
 
         // Verify search results are visible (search executed automatically)
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
         const rowCount = await searchPage.table.getRows().count();
         expect(rowCount).toBeGreaterThan(0);
 
@@ -295,7 +291,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
       await test.step('Verify custom SELECT is preserved', async () => {
         // Wait for results to load
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
 
         // Verify SELECT content
         const selectEditor = searchPage.getSELECTEditor();
@@ -340,7 +336,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await expect(whereInput).toHaveValue('SeverityText:info');
 
         // Verify results load
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
         const rowCount = await searchPage.table.getRows().count();
         expect(rowCount).toBeGreaterThan(0);
       });
@@ -382,7 +378,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await searchPage.sourceDropdown.click();
         await searchPage.otherSources.first().click();
         await page.waitForLoadState('networkidle');
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify ORDER BY changed to second source default', async () => {
@@ -407,7 +403,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
           })
           .click();
         await page.waitForLoadState('networkidle');
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify ORDER BY restored to saved search custom value', async () => {
