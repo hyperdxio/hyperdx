@@ -9,14 +9,22 @@
 
 ARG NODE_VERSION=22.16.0
 ARG CLICKHOUSE_VERSION=25.6
-ARG OTEL_COLLECTOR_VERSION=0.129.1
-ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.128.0
+ARG OTEL_COLLECTOR_VERSION=0.145.0
+ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.145.0
 
 # base #############################################################################################
 # == Otel Collector Image ==
 FROM otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION} AS otel_collector_base
 FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION} AS otel_collector_opampsupervisor_base
 FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
+
+# Build the Go migration tool with full TLS support for ClickHouse
+FROM golang:1.25-alpine AS migrate-builder
+WORKDIR /build
+COPY packages/otel-collector/go.mod packages/otel-collector/go.sum ./
+RUN go mod download
+COPY packages/otel-collector/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /migrate ./cmd/migrate
 
 FROM node:${NODE_VERSION}-alpine AS node_base
 
@@ -130,6 +138,9 @@ COPY --from=gomplate /bin/gomplate /usr/local/bin/gomplate
 
 # Copy goose binary from the goose image
 COPY --from=goose /bin/goose /usr/local/bin/goose
+
+# Copy migrate binary (Go-based goose migration tool with full TLS support)
+COPY --from=migrate-builder /migrate /usr/local/bin/migrate
 
 # Install MongoDB and other dependencies (consolidated into a single RUN command)
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories && \

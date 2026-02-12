@@ -36,6 +36,6 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_traces
 ENGINE = MergeTree
 PARTITION BY toDate(Timestamp)
 ORDER BY (ServiceName, SpanName, toDateTime(Timestamp))
-TTL toDate(Timestamp) + toIntervalDay(30)
+TTL toDate(Timestamp) + ${TABLES_TTL}
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 

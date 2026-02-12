@@ -70,6 +70,28 @@ jobs:
         run: make ci-build
       - name: Run integration tests
         run: make ci-int
+  otel-unit-test:
+    timeout-minutes: 8
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v46
+        with:
+          files: |
+            packages/otel-collector/**
+      - name: Setup Go
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/otel-collector/go.mod
+          cache-dependency-path: packages/otel-collector/go.sum
+      - name: Run unit tests
+        if: steps.changed-files.outputs.any_changed == 'true'
+        working-directory: ./packages/otel-collector
+        run: go test ./...
   otel-smoke-test:
     timeout-minutes: 8
     runs-on: ubuntu-24.04
@@ -289,29 +311,21 @@ jobs:
           message-id: e2e-test-results
 
       - name: Check test results
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
-
-            let totalFailed = 0;
-
-            try {
-              const resultsDir = 'all-test-results';
-              const shards = fs.readdirSync(resultsDir);
-
-              for (const shard of shards) {
-                const resultsPath = path.join(resultsDir, shard, 'results.json');
-                if (fs.existsSync(resultsPath)) {
-                  const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
-                  totalFailed += results.stats.unexpected || 0;
-                }
-              }
-
-              if (totalFailed > 0) {
-                core.setFailed(`${totalFailed} test(s) failed`);
-              }
-            } catch (error) {
-              core.setFailed(`Failed to read test results: ${error.message}`);
-            }
+        id: check-results
+        run: |
+          total_failed=0
+          for dir in all-test-results/*/; do
+            if [ -f "${dir}results.json" ]; then
+              unexpected=$(jq -r '.stats.unexpected // 0' "${dir}results.json")
+              total_failed=$((total_failed + unexpected))
+            fi
+          done
+          if [ "$total_failed" -gt 0 ]; then
+            echo "::error::$total_failed E2E test(s) failed"
+            exit 1
+          fi
+          # Fail when any shard failed even if we couldn't read failure count from artifacts
+          if [ "${{ needs.e2e-tests.result }}" = "failure" ]; then
+            echo "::error::One or more E2E test shards failed"
+            exit 1
+          fi

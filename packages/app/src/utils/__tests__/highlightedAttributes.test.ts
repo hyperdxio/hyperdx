@@ -120,7 +120,6 @@ describe('getHighlightedAttributesFromData', () => {
       displayedTimestampValueExpression: 'Timestamp',
       implicitColumnExpression: 'SpanName',
       serviceNameExpression: 'ServiceName',
-      bodyExpression: 'SpanName',
       eventAttributesExpression: 'SpanAttributes',
       resourceAttributesExpression: 'ResourceAttributes',
       defaultTableSelectExpression:

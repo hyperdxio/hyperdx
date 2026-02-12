@@ -90,7 +90,7 @@ version:
 
 .PHONY: build-otel-collector
 build-otel-collector:
-	docker build ./docker/otel-collector \
+	docker build . -f docker/otel-collector/Dockerfile \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--target prod
@@ -133,7 +133,7 @@ build-app:
 
 .PHONY: build-otel-collector-nightly
 build-otel-collector-nightly:
-	docker build ./docker/otel-collector \
+	docker build . -f docker/otel-collector/Dockerfile \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target prod
@@ -183,7 +183,7 @@ release-otel-collector:
 		echo "Tag ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} already exists. Skipping push."; \
 	else \
 		echo "Tag ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} does not exist. Building and pushing..."; \
-		docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
+		docker buildx build --platform ${BUILD_PLATFORMS} . -f docker/otel-collector/Dockerfile \
 			-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 			-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
 			-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_LATEST_TAG} \
@@ -275,7 +275,7 @@ release-app:
 .PHONY: release-otel-collector-nightly
 release-otel-collector-nightly:
 	@echo "Building and pushing nightly tag ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}..."; \
-	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
+	docker buildx build --platform ${BUILD_PLATFORMS} . -f docker/otel-collector/Dockerfile \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target prod \
