@@ -412,7 +412,7 @@ async function getMissingSources(
  *
  *     FilterInput:
  *       type: object
- *       description: Dashboard filter for creation
+ *       description: Dashboard filter key that can be added to a dashboard
  *       required:
  *         - type
  *         - name
@@ -425,14 +425,14 @@ async function getMissingSources(
  *         name:
  *           type: string
  *           minLength: 1
- *           description: Display name for the filter
+ *           description: Display name for the dashboard filter key
  *         expression:
  *           type: string
  *           minLength: 1
- *           description: Filter query expression (syntax depends on source)
+ *           description: Key expression used when applying this dashboard filter key
  *         sourceId:
  *           type: string
- *           description: Source ID the filter values are queried from
+ *           description: Source ID this dashboard filter key applies to
  *         sourceMetricType:
  *           type: string
  *           enum: [sum, gauge, histogram, summary, exponential histogram]
@@ -447,7 +447,7 @@ async function getMissingSources(
  *           properties:
  *             id:
  *               type: string
- *               description: Unique filter ID
+ *               description: Unique dashboard filter key ID
  *
  *     Dashboard:
  *       type: object
@@ -477,7 +477,7 @@ async function getMissingSources(
  *           example: ["production", "monitoring"]
  *         filters:
  *           type: array
- *           description: Dashboard-level filters applied to all tiles
+ *           description: Dashboard filter keys added to the dashboard and applied to all tiles
  *           items:
  *             $ref: '#/components/schemas/Filter'
  *
@@ -504,7 +504,7 @@ async function getMissingSources(
  *           example: ["development"]
  *         filters:
  *           type: array
- *           description: Dashboard-level filters applied to all tiles
+ *           description: Dashboard filter keys to add to the dashboard and apply across all tiles
  *           items:
  *             $ref: '#/components/schemas/FilterInput'
  *
@@ -532,7 +532,7 @@ async function getMissingSources(
  *           example: ["production", "updated"]
  *         filters:
  *           type: array
- *           description: Dashboard-level filters applied to all tiles
+ *           description: Dashboard filter keys on the dashboard, applied across all tiles
  *           items:
  *             $ref: '#/components/schemas/Filter'
  *

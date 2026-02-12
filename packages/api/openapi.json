@@ -1082,8 +1082,7 @@
             "description": "Dashboard filter keys added to the dashboard and applied to all tiles",
             "items": {
               "$ref": "#/components/schemas/Filter"
-            },
-            "maxItems": 50
+            }
           }
         }
       },
