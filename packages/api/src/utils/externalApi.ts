@@ -1,11 +1,12 @@
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AggregateFunctionSchema,
+  DashboardFilter,
   DisplayType,
   SavedChartConfig,
   SelectList,
 } from '@hyperdx/common-utils/dist/types';
-import { pick } from 'lodash';
+import { omit, pick } from 'lodash';
 import { FlattenMaps, LeanDocument } from 'mongoose';
 
 import {
@@ -18,6 +19,8 @@ import {
 import type { DashboardDocument } from '@/models/dashboard';
 import {
   ChartSeries,
+  ExternalDashboardFilter,
+  ExternalDashboardFilterWithId,
   ExternalDashboardTileWithId,
   MarkdownChartSeries,
   NumberChartSeries,
@@ -393,13 +396,33 @@ export type ExternalDashboard = {
   name: string;
   tiles: ExternalDashboardTileWithId[];
   tags?: string[];
+  filters?: ExternalDashboardFilterWithId[];
 };
 
 export type ExternalDashboardRequest = {
   name: string;
   tiles: ExternalDashboardTileWithId[];
   tags?: string[];
+  filters?: ExternalDashboardFilter[];
 };
+
+export function translateFilterToExternalFilter(
+  filter: DashboardFilter,
+): ExternalDashboardFilterWithId {
+  return {
+    ...omit(filter, 'source'),
+    sourceId: filter.source.toString(),
+  };
+}
+
+export function translateExternalFilterToFilter(
+  filter: ExternalDashboardFilterWithId,
+): DashboardFilter {
+  return {
+    ...omit(filter, 'sourceId'),
+    source: filter.sourceId,
+  };
+}
 
 export function translateDashboardDocumentToExternalDashboard(
   dashboard: DashboardDocument,
@@ -409,6 +432,7 @@ export function translateDashboardDocumentToExternalDashboard(
     name: dashboard.name,
     tiles: dashboard.tiles.map(translateTileToExternalChart),
     tags: dashboard.tags || [],
+    filters: dashboard.filters?.map(translateFilterToExternalFilter) || [],
   };
 }
 
