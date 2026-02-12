@@ -218,6 +218,7 @@ jobs:
             });
 
   notify_clickhouse_clickstack:
+    needs: [check_changesets, release, check_release_app_pushed]
     if: needs.check_release_app_pushed.outputs.app_was_pushed == 'true'
     timeout-minutes: 5
     runs-on: ubuntu-24.04

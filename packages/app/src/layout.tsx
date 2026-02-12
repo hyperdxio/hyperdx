@@ -35,6 +35,7 @@ export const withAppNav = (page: React.ReactNode) => {
                   <Link
                     href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
                     target="_blank"
+                    rel="noopener norefeer"
                   >
                     ClickStack Docs
                   </Link>

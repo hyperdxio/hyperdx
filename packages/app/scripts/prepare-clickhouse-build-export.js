@@ -20,7 +20,7 @@ if (fs.existsSync(PYODIDE_PATH)) {
   console.log('Removed pyodide from static build');
 }
 
-// Remove all files that are not html, js, or css
+// Remove all files that are not in ALLOWED_EXTENSIONS
 function removeNonEssentialFiles(dir) {
   let removedCount = 0;
 
