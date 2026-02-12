@@ -814,8 +814,12 @@ describe('External API v2 Dashboards', () => {
           sourceId: traceSource._id.toString(),
         },
       ];
+      const storedFilters = existingFilters.map(({ sourceId, ...filter }) => ({
+        ...filter,
+        source: sourceId,
+      }));
       const dashboard = await createTestDashboard({
-        filters: existingFilters,
+        filters: storedFilters,
       });
       const updatedPayload = createMockDashboardWithIds(
         traceSource._id.toString(),
@@ -867,8 +871,12 @@ describe('External API v2 Dashboards', () => {
           sourceId: traceSource._id.toString(),
         },
       ];
+      const storedFilters = existingFilters.map(({ sourceId, ...filter }) => ({
+        ...filter,
+        source: sourceId,
+      }));
       const dashboard = await createTestDashboard({
-        filters: existingFilters,
+        filters: storedFilters,
       });
       const updatedPayload = createMockDashboardWithIds(
         traceSource._id.toString(),
