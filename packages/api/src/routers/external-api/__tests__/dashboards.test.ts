@@ -795,6 +795,105 @@ describe('External API v2 Dashboards', () => {
       expect(getResponse.body.data.filters).toEqual(response.body.data.filters);
     });
 
+    it('should preserve existing dashboard filters when filters are not provided', async () => {
+      const existingFilterId1 = new ObjectId().toString();
+      const existingFilterId2 = new ObjectId().toString();
+      const existingFilters = [
+        {
+          id: existingFilterId1,
+          type: 'QUERY_EXPRESSION' as const,
+          name: 'Existing Filter 1',
+          expression: 'environment',
+          sourceId: traceSource._id.toString(),
+        },
+        {
+          id: existingFilterId2,
+          type: 'QUERY_EXPRESSION' as const,
+          name: 'Existing Filter 2',
+          expression: 'service_name',
+          sourceId: traceSource._id.toString(),
+        },
+      ];
+      const dashboard = await createTestDashboard({
+        filters: existingFilters,
+      });
+      const updatedPayload = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {
+          name: 'Dashboard Name Updated Without Filters',
+        },
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send(omit(updatedPayload, 'filters'))
+        .expect(200);
+
+      expect(response.body.data.name).toBe(
+        'Dashboard Name Updated Without Filters',
+      );
+      expect(response.body.data.filters).toHaveLength(2);
+      expect(response.body.data.filters[0]).toMatchObject(existingFilters[0]);
+      expect(response.body.data.filters[1]).toMatchObject(existingFilters[1]);
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+      expect(getResponse.body.data.filters).toHaveLength(2);
+      expect(getResponse.body.data.filters[0]).toMatchObject(
+        existingFilters[0],
+      );
+      expect(getResponse.body.data.filters[1]).toMatchObject(
+        existingFilters[1],
+      );
+    });
+
+    it('should clear existing dashboard filters when provided an empty filters array', async () => {
+      const existingFilterId1 = new ObjectId().toString();
+      const existingFilterId2 = new ObjectId().toString();
+      const existingFilters = [
+        {
+          id: existingFilterId1,
+          type: 'QUERY_EXPRESSION' as const,
+          name: 'Existing Filter 1',
+          expression: 'environment',
+          sourceId: traceSource._id.toString(),
+        },
+        {
+          id: existingFilterId2,
+          type: 'QUERY_EXPRESSION' as const,
+          name: 'Existing Filter 2',
+          expression: 'service_name',
+          sourceId: traceSource._id.toString(),
+        },
+      ];
+      const dashboard = await createTestDashboard({
+        filters: existingFilters,
+      });
+      const updatedPayload = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {
+          name: 'Dashboard Name Updated With Empty Filters',
+          filters: [],
+        },
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send(updatedPayload)
+        .expect(200);
+
+      expect(response.body.data.name).toBe(
+        'Dashboard Name Updated With Empty Filters',
+      );
+      expect(response.body.data.filters).toEqual([]);
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+      expect(getResponse.body.data.filters).toEqual([]);
+    });
+
     it('should return 400 when filter source ID does not exist on update', async () => {
       const dashboard = await createTestDashboard();
       const nonExistentSourceId = new ObjectId().toString();
