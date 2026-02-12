@@ -48,9 +48,9 @@ function createClickHouseClient(config: ClickHouseConfig = DEFAULT_CONFIG) {
   };
 }
 
-// Test data constants
-const SEVERITIES = ['info', 'warn', 'error', 'debug'] as const;
-const SERVICES = [
+// Test data constants (exported for E2E tests to pick visible filter values)
+export const SEVERITIES = ['info', 'warn', 'error', 'debug'] as const;
+export const SERVICES = [
   'api-server',
   'frontend',
   'CartService',
@@ -612,6 +612,7 @@ export async function seedClickHouse(): Promise<void> {
   const seedRef = Date.now();
   const startMs = seedRef - PAST_MS;
   const endMs = seedRef + FUTURE_MS;
+  const numDataPoints = 500;
 
   // Insert log data
   console.log('  Inserting log data...');
@@ -620,9 +621,9 @@ export async function seedClickHouse(): Promise<void> {
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
-    ) VALUES ${generateLogData(100, startMs, endMs)}
+    ) VALUES ${generateLogData(numDataPoints, startMs, endMs)}
   `);
-  console.log('  Inserted 100 log entries');
+  console.log(`  Inserted ${numDataPoints} log entries`);
 
   // Insert K8s-aware log data (logs with k8s resource attributes for infrastructure correlation)
   console.log('  Inserting K8s log data...');
@@ -631,9 +632,9 @@ export async function seedClickHouse(): Promise<void> {
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
-    ) VALUES ${generateK8sLogData(50, startMs, endMs)}
+    ) VALUES ${generateK8sLogData(numDataPoints, startMs, endMs)}
   `);
-  console.log('  Inserted 50 K8s log entries');
+  console.log(`  Inserted ${numDataPoints} K8s log entries`);
 
   // Insert trace data
   console.log('  Inserting trace data...');
@@ -644,9 +645,9 @@ export async function seedClickHouse(): Promise<void> {
       Duration, StatusCode, StatusMessage, \`Events.Timestamp\`, \`Events.Name\`,
       \`Events.Attributes\`, \`Links.TraceId\`, \`Links.SpanId\`, \`Links.TraceState\`,
       \`Links.Attributes\`
-    ) VALUES ${generateTraceData(100, startMs, endMs)}
+    ) VALUES ${generateTraceData(numDataPoints, startMs, endMs)}
   `);
-  console.log('  Inserted 100 trace spans');
+  console.log(`  Inserted ${numDataPoints} trace spans`);
 
   // Insert session trace data (spans with rum.sessionId for session tracking)
   console.log('  Inserting session trace data...');
@@ -657,9 +658,9 @@ export async function seedClickHouse(): Promise<void> {
       Duration, StatusCode, StatusMessage, \`Events.Timestamp\`, \`Events.Name\`,
       \`Events.Attributes\`, \`Links.TraceId\`, \`Links.SpanId\`, \`Links.TraceState\`,
       \`Links.Attributes\`
-    ) VALUES ${generateSessionTraces(20, startMs, endMs)}
+    ) VALUES ${generateSessionTraces(numDataPoints, startMs, endMs)}
   `);
-  console.log('  Inserted session trace data');
+  console.log(`  Inserted ${numDataPoints} session trace data`);
 
   // Insert session data
   console.log('  Inserting session data...');
@@ -668,9 +669,9 @@ export async function seedClickHouse(): Promise<void> {
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
-    ) VALUES ${generateSessionData(100, startMs, endMs)}
+    ) VALUES ${generateSessionData(numDataPoints, startMs, endMs)}
   `);
-  console.log('  Inserted 100 session entries');
+  console.log(`  Inserted ${numDataPoints} session entries`);
 
   // Insert Kubernetes gauge metrics (pods and nodes)
   console.log('  Inserting Kubernetes gauge metrics...');
@@ -681,9 +682,11 @@ export async function seedClickHouse(): Promise<void> {
       MetricUnit, Attributes, StartTimeUnix, TimeUnix, Value, Flags,
       \`Exemplars.FilteredAttributes\`, \`Exemplars.TimeUnix\`, \`Exemplars.Value\`,
       \`Exemplars.SpanId\`, \`Exemplars.TraceId\`
-    ) VALUES ${generateK8sGaugeMetrics(100, 12, startMs, endMs)}
+    ) VALUES ${generateK8sGaugeMetrics(numDataPoints, 12, startMs, endMs)}
   `);
-  console.log('  Inserted Kubernetes gauge metrics (pods and nodes)');
+  console.log(
+    `  Inserted ${numDataPoints} Kubernetes gauge metrics (pods and nodes)`,
+  );
 
   // Insert Kubernetes sum metrics (uptime)
   console.log('  Inserting Kubernetes sum metrics...');
@@ -695,9 +698,9 @@ export async function seedClickHouse(): Promise<void> {
       AggregationTemporality, IsMonotonic,
       \`Exemplars.FilteredAttributes\`, \`Exemplars.TimeUnix\`, \`Exemplars.Value\`,
       \`Exemplars.SpanId\`, \`Exemplars.TraceId\`
-    ) VALUES ${generateK8sSumMetrics(100, startMs, endMs)}
+    ) VALUES ${generateK8sSumMetrics(numDataPoints, startMs, endMs)}
   `);
-  console.log('  Inserted Kubernetes sum metrics (uptime)');
+  console.log(`  Inserted ${numDataPoints} Kubernetes sum metrics (uptime)`);
 
   // Insert Kubernetes event logs
   console.log('  Inserting Kubernetes event logs...');
@@ -706,9 +709,9 @@ export async function seedClickHouse(): Promise<void> {
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
-    ) VALUES ${generateK8sEventLogs(100, startMs, endMs)}
+    ) VALUES ${generateK8sEventLogs(numDataPoints, startMs, endMs)}
   `);
-  console.log('  Inserted 100 Kubernetes event logs');
+  console.log(`  Inserted ${numDataPoints} Kubernetes event logs`);
 
   console.log('ClickHouse seeding complete');
 }

@@ -2,8 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { expect, test as base } from '@playwright/test';
 
-const USE_FULLSTACK = process.env.E2E_FULLSTACK === 'true';
-
 // Single source of truth: e2e-fixtures.json (connections/sources). API gets them via run-api-with-fixtures.js.
 const E2E_FIXTURES_PATH = path.join(__dirname, '../fixtures/e2e-fixtures.json');
 function loadE2EFixtures(): { connections: unknown[]; sources: unknown[] } {

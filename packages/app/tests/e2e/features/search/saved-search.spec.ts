@@ -1,3 +1,4 @@
+import { SERVICES, SEVERITIES } from 'tests/e2e/seed-clickhouse';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
@@ -435,7 +436,12 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
       let savedSearchUrl: string;
       let appliedFilterValue: string;
       await test.step('Apply filters in the sidebar', async () => {
-        appliedFilterValue = 'accounting';
+        const [picked] = await searchPage.filters.pickVisibleFilterValues(
+          'SeverityText',
+          SEVERITIES,
+          1,
+        );
+        appliedFilterValue = picked;
 
         // Apply the filter
         await searchPage.filters.applyFilter(appliedFilterValue);
@@ -503,11 +509,19 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
       /**
        * Verifies that updating a saved search with additional filters
        * persists and restores both the original and new filters.
-       * Uses the same fixed filter values as "should save and restore filters"
-       * for consistency and reliability.
+       * Picks visible filter values from seed (SEVERITIES) so tests don't
+       * rely on a single value that may not appear in the UI.
        */
-      const firstFilter = 'accounting';
-      const secondFilter = 'info';
+      const [firstFilter] = await searchPage.filters.pickVisibleFilterValues(
+        'ServiceName',
+        SERVICES,
+        1,
+      );
+      const [secondFilter] = await searchPage.filters.pickVisibleFilterValues(
+        'SeverityText',
+        SEVERITIES,
+        1,
+      );
       let savedSearchUrl: string;
 
       await test.step('Create saved search with one filter', async () => {
