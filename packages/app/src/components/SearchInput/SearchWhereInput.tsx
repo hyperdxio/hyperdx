@@ -125,6 +125,17 @@ export default function SearchWhereInput({
 
   return (
     <Box className={styles.root} style={{ width, maxWidth }}>
+      <Flex
+        align="center"
+        className={`${styles.languageSwitch} ${size === 'xs' ? styles.sizeXs : styles.sizeSm}`}
+        data-testid="where-language-switch"
+        onMouseDown={e => e.preventDefault()}
+      >
+        <InputLanguageSwitch
+          language={language}
+          onLanguageChange={handleLanguageChange}
+        />
+      </Flex>
       <Box className={styles.inputWrapper}>
         {isSql ? (
           <SQLInlineEditorControlled
@@ -155,16 +166,6 @@ export default function SearchWhereInput({
           />
         )}
       </Box>
-      <Flex
-        align="center"
-        className={`${styles.languageSwitch} ${size === 'xs' ? styles.sizeXs : styles.sizeSm}`}
-        onMouseDown={e => e.preventDefault()}
-      >
-        <InputLanguageSwitch
-          language={language}
-          onLanguageChange={handleLanguageChange}
-        />
-      </Flex>
     </Box>
   );
 }

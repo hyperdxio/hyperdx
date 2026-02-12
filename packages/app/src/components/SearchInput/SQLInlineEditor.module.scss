@@ -1,4 +1,76 @@
-// Fade at the bottom when allowMultiline and collapsed (single-line) so text doesn't appear hard-cut
+.wrapper {
+  position: relative;
+  flex: auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.placeholder {
+  min-height: var(--editor-base-height, 36px);
+  width: 100%;
+}
+
+.paper {
+  background-color: var(--color-bg-field);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: flex-start;
+  min-height: var(--editor-base-height, 36px);
+  box-shadow: none;
+
+  &.error {
+    border-color: var(--color-bg-danger);
+  }
+
+  &.expanded {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    box-shadow: var(--mb-shadow, var(--mantine-shadow-xs));
+  }
+
+  &:not(.expanded) {
+    position: relative;
+    max-height: var(--editor-base-height, 36px);
+    overflow: hidden;
+  }
+}
+
+.label {
+  white-space: nowrap;
+
+  &.sizeXs {
+    padding-top: 6px;
+  }
+
+  &:not(.sizeXs) {
+    padding-top: 8px;
+  }
+}
+
+.cmWrapper {
+  min-width: 10px;
+  width: 100%;
+  padding-top: 3px;
+
+  &.sizeXs {
+    padding-top: 0.5px;
+  }
+
+  &.collapsed {
+    overflow: hidden;
+  }
+}
+
+.languageSwitchWrapper {
+  display: flex;
+  align-items: center;
+  min-height: 100%;
+}
+
+/* Fade at the bottom when allowMultiline and collapsed (single-line) so text doesn't appear hard-cut */
 .collapseFade::after {
   content: '';
   position: absolute;
@@ -8,4 +80,8 @@
   height: 12px;
   background: linear-gradient(to bottom, transparent, var(--color-bg-field));
   pointer-events: none;
+}
+
+.expanded {
+  /* Expanded state: no fade, full height */
 }

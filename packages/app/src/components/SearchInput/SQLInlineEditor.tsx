@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import cx from 'classnames';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -428,49 +429,20 @@ export default function SQLInlineEditor({
 
   return (
     <div
-      style={{
-        position: 'relative',
-        flex: 'auto',
-        width: '100%',
-        minWidth: 0,
-      }}
+      className={styles.wrapper}
+      style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
+      data-expanded={isExpanded ? 'true' : undefined}
     >
       {/* When expanded, Paper is absolute; this keeps the wrapper width stable */}
-      {isExpanded && (
-        <div
-          style={{ minHeight: baseHeight, width: '100%' }}
-          aria-hidden="true"
-        />
-      )}
+      {isExpanded && <div className={styles.placeholder} aria-hidden="true" />}
       <Paper
         shadow="none"
-        style={{
-          backgroundColor: 'var(--color-bg-field)',
-          border: `1px solid ${error ? 'var(--color-bg-danger)' : 'var(--color-border)'}`,
-          display: 'flex',
-          // Always align to top to prevent content jump on focus
-          alignItems: 'flex-start',
-          minHeight: baseHeight,
-          // When expanded, position absolutely to overlay content
-          ...(isExpanded
-            ? {
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                zIndex: 100,
-                boxShadow: 'var(--mb-shadow, var(--mantine-shadow-xs))',
-              }
-            : {
-                // When collapsed, lock to single line height and hide overflow
-                position: 'relative',
-                maxHeight: baseHeight,
-                overflow: 'hidden',
-              }),
-        }}
-        className={
-          allowMultiline && !isExpanded ? styles.collapseFade : undefined
-        }
+        className={cx(
+          styles.paper,
+          error ? styles.error : undefined,
+          isExpanded ? styles.expanded : undefined,
+          allowMultiline && !isExpanded ? styles.collapseFade : undefined,
+        )}
         ps="4px"
       >
         {label != null && (
@@ -478,11 +450,10 @@ export default function SQLInlineEditor({
             mx="4px"
             size="xs"
             fw="bold"
-            style={{
-              whiteSpace: 'nowrap',
-              // Consistent top padding for vertical alignment
-              paddingTop: size === 'xs' ? 6 : 8,
-            }}
+            className={cx(
+              styles.label,
+              size === 'xs' ? styles.sizeXs : undefined,
+            )}
             component="div"
           >
             <Tooltip label={tooltipText} disabled={!tooltipText}>
@@ -494,14 +465,12 @@ export default function SQLInlineEditor({
           </Text>
         )}
         <div
-          style={{
-            minWidth: 10,
-            width: '100%',
-            // Consistent top padding for vertical alignment with label and language switch
-            paddingTop: size === 'xs' ? 0.5 : 3,
-            ...(!isExpanded ? { overflow: 'hidden' } : {}),
-          }}
-          className={isExpanded ? 'cm-editor-multiline' : ''}
+          className={cx(
+            styles.cmWrapper,
+            size === 'xs' ? styles.sizeXs : undefined,
+            !isExpanded ? styles.collapsed : undefined,
+            isExpanded ? 'cm-editor-multiline' : undefined,
+          )}
         >
           <CodeMirror
             indentWithTab={false}
@@ -523,13 +492,7 @@ export default function SQLInlineEditor({
           />
         </div>
         {onLanguageChange != null && language != null && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              minHeight: '100%',
-            }}
-          >
+          <div className={styles.languageSwitchWrapper}>
             <InputLanguageSwitch
               language={language}
               onLanguageChange={onLanguageChange}

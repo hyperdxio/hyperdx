@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import cx from 'classnames';
 import Fuse from 'fuse.js';
 import { Popover, Textarea, UnstyledButton } from '@mantine/core';
 
@@ -138,8 +139,9 @@ export default function AutocompleteInput({
 
   return (
     <div
-      style={{ position: 'relative', flex: 1 }}
-      className={!isSearchInputFocused ? styles.collapseFade : undefined}
+      className={styles.root}
+      style={{ ['--autocomplete-base-height' as string]: `${baseHeight}px` }}
+      data-expanded={isSearchInputFocused ? 'true' : undefined}
     >
       <Popover
         opened={isInputDropdownOpen}
@@ -162,33 +164,20 @@ export default function AutocompleteInput({
           <Textarea
             ref={inputRef}
             placeholder={placeholder}
-            className="fs-8"
+            className={cx(
+              'fs-8',
+              styles.textarea,
+              !isSearchInputFocused && styles.collapseFade,
+              isSearchInputFocused && styles.focused,
+              isSearchInputFocused &&
+                isInputDropdownOpen &&
+                styles.dropdownOpen,
+            )}
             value={value}
             size={size}
             autosize
             minRows={1}
             maxRows={isSearchInputFocused ? 4 : 1}
-            style={{
-              flexGrow: 1,
-              resize: 'none',
-              // When focused, overlay on top of content
-              ...(isSearchInputFocused
-                ? {
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    zIndex: 100,
-                    boxShadow: 'var(--mb-shadow, var(--mantine-shadow-xs))',
-                    // Flatten bottom corners when dropdown is open
-                    ...(isInputDropdownOpen
-                      ? {
-                          borderRadius: 'var(--mantine-radius-default)',
-                        }
-                      : {}),
-                  }
-                : {}),
-            }}
             data-testid={dataTestId}
             onChange={e => onChange(e.target.value)}
             onFocus={() => {
@@ -286,17 +275,19 @@ export default function AutocompleteInput({
             }
           />
         </Popover.Target>
-        <Popover.Dropdown className="p-0">
+        <Popover.Dropdown className={styles.dropdown}>
           {aboveSuggestions != null && (
-            <div className="d-flex p-2 flex-wrap px-3">{aboveSuggestions}</div>
+            <div className={styles.aboveSuggestions}>{aboveSuggestions}</div>
           )}
           <div>
             {suggestedProperties.length > 0 && (
-              <div className="border-top border-dark fs-8 py-2">
-                <div className="d-flex justify-content-between px-3 mb-2">
-                  <div className="me-2 text-light">{suggestionsHeader}</div>
+              <div className={styles.suggestionsSection}>
+                <div className={styles.suggestionsHeaderRow}>
+                  <div className={styles.suggestionsHeader}>
+                    {suggestionsHeader}
+                  </div>
                   {suggestedProperties.length > suggestionsLimit && (
-                    <div className="text-muted">
+                    <div className={styles.suggestionsLimit}>
                       (Showing Top {suggestionsLimit})
                     </div>
                   )}
@@ -305,9 +296,10 @@ export default function AutocompleteInput({
                   .slice(0, suggestionsLimit)
                   .map(({ value, label }, i) => (
                     <div
-                      className={`py-2 px-3 ${
-                        selectedAutocompleteIndex === i ? 'bg-muted' : ''
-                      }`}
+                      className={cx(
+                        styles.suggestionItem,
+                        selectedAutocompleteIndex === i && styles.selected,
+                      )}
                       role="button"
                       key={value}
                       onMouseOver={() => {
@@ -317,34 +309,31 @@ export default function AutocompleteInput({
                         onAcceptSuggestion(value);
                       }}
                     >
-                      <span className="me-1">{label}</span>
+                      <span className={styles.suggestionLabel}>{label}</span>
                     </div>
                   ))}
               </div>
             )}
           </div>
           {belowSuggestions != null && (
-            <div className="border-top px-3 pt-2 pb-1 fs-8 d-flex align-items-center text-muted flex-wrap">
-              {belowSuggestions}
-            </div>
+            <div className={styles.belowSuggestions}>{belowSuggestions}</div>
           )}
           <div>
             {showSearchHistory && (
-              <div className="border-top border-dark fs-8 py-2">
-                <div className="text-muted fs-8 fw-bold me-1 px-3">
-                  Search History:
-                </div>
+              <div className={styles.historySection}>
+                <div className={styles.historyTitle}>Search History:</div>
                 {queryHistoryList.map(({ value, label }, i) => {
                   return (
                     <UnstyledButton
-                      className={`d-block w-100 text-start text-muted fw-normal px-3 py-2 fs-8 ${
-                        selectedQueryHistoryIndex === i ? 'bg-muted' : ''
-                      }`}
+                      className={cx(
+                        styles.historyItem,
+                        selectedQueryHistoryIndex === i && styles.selected,
+                      )}
                       key={value}
                       onMouseOver={() => setSelectedQueryHistoryIndex(i)}
                       onClick={() => onSelectSearchHistory(value)}
                     >
-                      <span className="me-1 text-truncate">{label}</span>
+                      <span className={styles.historyItemLabel}>{label}</span>
                     </UnstyledButton>
                   );
                 })}
@@ -353,8 +342,6 @@ export default function AutocompleteInput({
           </div>
         </Popover.Dropdown>
       </Popover>
-      {/* Spacer div to maintain layout height when textarea is positioned absolutely */}
-      {isSearchInputFocused && <div style={{ height: baseHeight }} />}
     </div>
   );
 }

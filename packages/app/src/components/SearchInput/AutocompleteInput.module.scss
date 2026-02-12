@@ -1,12 +1,144 @@
-/* Fade at the bottom when collapsed (single-line, not focused) so text doesn't appear hard-cut */
-.collapseFade::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 12px;
-  background: linear-gradient(to bottom, transparent, var(--color-bg-field));
-  pointer-events: none;
+.root {
+  position: relative;
+  flex: 1;
+}
+
+.textarea {
+  flex-grow: 1;
+  resize: none;
+  border: 1px solid var(--color-border);
   border-radius: var(--mantine-radius-default);
+
+  textarea {
+    border: none !important;
+  }
+
+  &.focused {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    box-shadow: var(--mb-shadow, var(--mantine-shadow-xs));
+  }
+
+  /* Fade at the bottom when collapsed (single-line, not focused); applied to textarea */
+  &.collapseFade {
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 12px;
+      background: linear-gradient(
+        to bottom,
+        transparent,
+        var(--color-bg-field)
+      );
+      pointer-events: none;
+      border-radius: var(--mantine-radius-default);
+    }
+  }
+}
+
+/* Dropdown content */
+.aboveSuggestions {
+  display: flex;
+  padding: 0.5rem 0.75rem;
+  flex-wrap: wrap;
+}
+
+.suggestionsSection {
+  border-top: 1px solid var(--color-border);
+  font-size: var(--mantine-font-size-sm);
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.suggestionsHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.suggestionsHeader {
+  margin-right: 0.5rem;
+  color: var(--color-text);
+}
+
+.suggestionsLimit {
+  color: var(--color-text-muted);
+}
+
+.suggestionItem {
+  padding: 0.5rem 0.75rem;
+
+  &.selected {
+    background-color: var(--color-bg-muted);
+  }
+}
+
+.suggestionLabel {
+  margin-right: 0.25rem;
+}
+
+.belowSuggestions {
+  border-top: 1px solid var(--color-border);
+  padding: 0.5rem 0.75rem 0.25rem;
+  font-size: var(--mantine-font-size-sm);
+  display: flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  flex-wrap: wrap;
+}
+
+.historySection {
+  border-top: 1px solid var(--color-border);
+  font-size: var(--mantine-font-size-sm);
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.historyTitle {
+  color: var(--color-text-muted);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 700;
+  margin-right: 0.25rem;
+  padding: 0 0.75rem;
+}
+
+.historyItem {
+  display: block;
+  width: 100%;
+  text-align: start;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  padding: 0.5rem 0.75rem;
+  font-size: var(--mantine-font-size-sm);
+  border: none;
+  background: none;
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--color-bg-muted);
+  }
+
+  &.selected {
+    background-color: var(--color-bg-muted);
+  }
+}
+
+.historyItemLabel {
+  margin-right: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown {
+  padding: 0;
 }

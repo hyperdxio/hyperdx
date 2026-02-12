@@ -72,9 +72,11 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       } else {
         const dashboardPage = new DashboardPage(page);
         await dashboardPage.goto();
-        // Switch to SQL mode
-        const container = page;
-        await container.locator('text=SQL').first().click();
+        await page
+          .getByTestId('where-language-switch')
+          .getByRole('combobox', { name: 'Query language' })
+          .click();
+        await page.getByRole('option', { name: 'SQL', exact: true }).click();
       }
 
       const editor = getEditor(page, 'SQL', formSelector, whereText);
@@ -94,9 +96,11 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       } else {
         const dashboardPage = new DashboardPage(page);
         await dashboardPage.goto();
-        // Switch to Lucene mode
-        const container = page;
-        await container.locator('text=Lucene').first().click();
+        await page
+          .getByTestId('where-language-switch')
+          .getByRole('combobox', { name: 'Query language' })
+          .click();
+        await page.getByRole('option', { name: 'Lucene', exact: true }).click();
       }
 
       const editor = getEditor(page, 'Lucene', formSelector, whereText);
