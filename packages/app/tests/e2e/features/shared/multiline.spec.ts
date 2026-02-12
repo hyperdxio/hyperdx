@@ -74,7 +74,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         await dashboardPage.goto();
         await page
           .getByTestId('where-language-switch')
-          .getByRole('combobox', { name: 'Query language' })
+          .getByRole('textbox', { name: 'Query language' })
           .click();
         await page.getByRole('option', { name: 'SQL', exact: true }).click();
       }
@@ -98,7 +98,7 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         await dashboardPage.goto();
         await page
           .getByTestId('where-language-switch')
-          .getByRole('combobox', { name: 'Query language' })
+          .getByRole('textbox', { name: 'Query language' })
           .click();
         await page.getByRole('option', { name: 'Lucene', exact: true }).click();
       }
