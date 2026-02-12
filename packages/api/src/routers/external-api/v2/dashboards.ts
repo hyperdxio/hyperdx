@@ -432,7 +432,7 @@ async function getMissingSources(
  *           description: Filter query expression (syntax depends on source)
  *         sourceId:
  *           type: string
- *           description: Source ID the filter applies to
+ *           description: Source ID the filter values are queried from
  *         sourceMetricType:
  *           type: string
  *           enum: [sum, gauge, histogram, summary, exponential histogram]
@@ -480,7 +480,6 @@ async function getMissingSources(
  *           description: Dashboard-level filters applied to all tiles
  *           items:
  *             $ref: '#/components/schemas/Filter'
- *           maxItems: 50
  *
  *     CreateDashboardRequest:
  *       type: object
