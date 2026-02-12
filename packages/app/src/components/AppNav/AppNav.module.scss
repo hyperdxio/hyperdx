@@ -54,6 +54,7 @@ $transition-slow: 0.2s ease;
   background: var(--color-bg-sidenav);
   overflow: hidden;
   transition: width 0.2s ease;
+  flex-shrink: 0;
 
   &Fixed {
     position: fixed;
