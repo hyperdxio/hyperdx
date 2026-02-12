@@ -3,7 +3,7 @@ import { atom, useAtomValue, useSetAtom } from 'jotai';
 import { Button, Group, Modal, Text } from '@mantine/core';
 
 type ConfirmAtom = {
-  message: string;
+  message: React.ReactNode;
   confirmLabel?: string;
   onConfirm: () => void;
   onClose?: () => void;
@@ -15,7 +15,10 @@ export const useConfirm = () => {
   const setConfirm = useSetAtom(confirmAtom);
 
   return React.useCallback(
-    async (message: string, confirmLabel?: string): Promise<boolean> => {
+    async (
+      message: React.ReactNode,
+      confirmLabel?: string,
+    ): Promise<boolean> => {
       return new Promise(resolve => {
         setConfirm({
           message,
@@ -67,7 +70,6 @@ export const useConfirmModal = () => {
         <Button
           data-testid="confirm-confirm-button"
           size="xs"
-          variant="danger"
           onClick={confirm?.onConfirm}
         >
           {confirm?.confirmLabel || 'Confirm'}
