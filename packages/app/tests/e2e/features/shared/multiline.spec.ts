@@ -72,10 +72,8 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       } else {
         const dashboardPage = new DashboardPage(page);
         await dashboardPage.goto();
-        await page
-          .getByTestId('where-language-switch')
-          .getByRole('textbox', { name: 'Query language' })
-          .click();
+        // Dashboard uses Controller + SQL/SearchInputV2 directly (no where-language-switch wrapper)
+        await page.getByRole('textbox', { name: 'Query language' }).click();
         await page.getByRole('option', { name: 'SQL', exact: true }).click();
       }
 
@@ -96,10 +94,8 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       } else {
         const dashboardPage = new DashboardPage(page);
         await dashboardPage.goto();
-        await page
-          .getByTestId('where-language-switch')
-          .getByRole('textbox', { name: 'Query language' })
-          .click();
+        // Dashboard has no where-language-switch wrapper; use Query language textbox directly
+        await page.getByRole('textbox', { name: 'Query language' }).click();
         await page.getByRole('option', { name: 'Lucene', exact: true }).click();
       }
 
