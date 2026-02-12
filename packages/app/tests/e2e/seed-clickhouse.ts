@@ -183,11 +183,12 @@ function generateK8sLogData(
     const podName = `pod-${namespace}-${podIdx}`;
     const podUid = `uid-${podName}`;
     const containerName = `container-${podIdx}`;
+    const serviceName = SERVICES[podIdx % SERVICES.length];
 
     const traceId = i < 10 ? `trace-${i}` : '';
 
     rows.push(
-      `('${timestampNs}', '${traceId}', '', 0, '${severity}', 0, '${podName}', '${message}', '', {'k8s.cluster.name':'${cluster}','k8s.namespace.name':'${namespace}','k8s.node.name':'${node}','k8s.pod.name':'${podName}','k8s.pod.uid':'${podUid}','k8s.container.name':'${containerName}','service.name':'${podName}','environment':'test'}, '', '', '', {}, {'request.id':'req-${i}','container.id':'${containerName}'})`,
+      `('${timestampNs}', '${traceId}', '', 0, '${severity}', 0, '${serviceName}', '${message}', '', {'k8s.cluster.name':'${cluster}','k8s.namespace.name':'${namespace}','k8s.node.name':'${node}','k8s.pod.name':'${podName}','k8s.pod.uid':'${podUid}','k8s.container.name':'${containerName}','service.name':'${podName}','environment':'test'}, '', '', '', {}, {'request.id':'req-${i}','container.id':'${containerName}'})`,
     );
   }
 
@@ -521,7 +522,6 @@ function generateK8sEventLogs(
     const isWarning = i % 3 === 0; // More warning events (33%)
     const severity = isWarning ? 'Warning' : 'Normal';
     const eventType = isWarning ? 'Warning' : 'Normal';
-    const _eventReason = isWarning ? 'BackOff' : 'Started';
     const message = isWarning
       ? `Back-off restarting failed container ${podName}`
       : `Started container ${podName}`;

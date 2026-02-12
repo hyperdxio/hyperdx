@@ -453,17 +453,14 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
         // Submit search to apply filters
         await searchPage.submitButton.click();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Create and save the search with filters', async () => {
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch(
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'Search with Filters Test',
         );
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
 
         // Capture the saved search URL
         savedSearchUrl = page.url().split('?')[0];
@@ -471,7 +468,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
       await test.step('Navigate to a fresh search page', async () => {
         await searchPage.goto();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify filters are cleared on new search page', async () => {
@@ -487,7 +484,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
       await test.step('Navigate back to the saved search', async () => {
         await page.goto(savedSearchUrl);
         await expect(page.getByTestId('search-page')).toBeVisible();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify filters are restored from saved search', async () => {
@@ -522,43 +519,46 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         SEVERITIES,
         1,
       );
+      const firstFilterGroup = 'ServiceName';
+      const secondFilterGroup = 'SeverityText';
       let savedSearchUrl: string;
 
       await test.step('Create saved search with one filter', async () => {
-        await searchPage.filters.openFilterGroup('SeverityText');
+        await searchPage.filters.openFilterGroup(firstFilterGroup);
         await searchPage.filters.applyFilter(firstFilter);
         await searchPage.submitButton.click();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
 
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch('Updatable Filter Search');
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Updatable Filter Search',
+        );
         savedSearchUrl = page.url().split('?')[0];
       });
 
       await test.step('Update saved search with second filter', async () => {
-        await searchPage.filters.openFilterGroup('SeverityText');
+        await searchPage.filters.openFilterGroup(secondFilterGroup);
         await searchPage.filters.applyFilter(secondFilter);
         await searchPage.submitButton.click();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
 
         await searchPage.openSaveSearchModal({ update: true });
-        await searchPage.savedSearchModal.submit();
-        await page.waitForLoadState('networkidle');
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Updatable Filter Search updated',
+        );
       });
 
       await test.step('Navigate away and back', async () => {
         await searchPage.goto();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
         await page.goto(savedSearchUrl);
         await expect(page.getByTestId('search-page')).toBeVisible();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify both filters are restored', async () => {
-        await searchPage.filters.openFilterGroup('SeverityText');
+        await searchPage.filters.openFilterGroup(firstFilterGroup);
+        await searchPage.filters.openFilterGroup(secondFilterGroup);
         await expect(
           searchPage.filters.getFilterCheckboxInput(firstFilter),
         ).toBeChecked();
