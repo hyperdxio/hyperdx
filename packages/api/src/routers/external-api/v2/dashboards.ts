@@ -11,8 +11,13 @@ import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/en
 import {
   translateDashboardDocumentToExternalDashboard,
   translateExternalChartToTileConfig,
+  translateExternalFilterToFilter,
 } from '@/utils/externalApi';
 import {
+  ExternalDashboardFilter,
+  externalDashboardFilterSchema,
+  externalDashboardFilterSchemaWithId,
+  ExternalDashboardFilterWithId,
   externalDashboardTileSchema,
   externalDashboardTileSchemaWithId,
   ExternalDashboardTileWithId,
@@ -20,16 +25,24 @@ import {
   tagsSchema,
 } from '@/utils/zod';
 
-/** Returns an array of source IDs that are referenced in the tiles but do not exist in the team's sources */
+/** Returns an array of source IDs that are referenced in the tiles/filters but do not exist in the team's sources */
 async function getMissingSources(
   team: string | mongoose.Types.ObjectId,
   tiles: ExternalDashboardTileWithId[],
-) {
+  filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
+): Promise<string[]> {
   const sourceIds = new Set<string>();
   for (const tile of tiles) {
     for (const series of tile.series) {
       if ('sourceId' in series) {
         sourceIds.add(series.sourceId);
+      }
+    }
+  }
+  if (filters?.length) {
+    for (const filter of filters) {
+      if ('sourceId' in filter) {
+        sourceIds.add(filter.sourceId);
       }
     }
   }
@@ -397,6 +410,45 @@ async function getMissingSources(
  *               maxLength: 36
  *               example: "65f5e4a3b9e77c001a901234"
  *
+ *     FilterInput:
+ *       type: object
+ *       description: Dashboard filter key that can be added to a dashboard
+ *       required:
+ *         - type
+ *         - name
+ *         - expression
+ *         - sourceId
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [QUERY_EXPRESSION]
+ *         name:
+ *           type: string
+ *           minLength: 1
+ *           description: Display name for the dashboard filter key
+ *         expression:
+ *           type: string
+ *           minLength: 1
+ *           description: Key expression used when applying this dashboard filter key
+ *         sourceId:
+ *           type: string
+ *           description: Source ID this dashboard filter key applies to
+ *         sourceMetricType:
+ *           type: string
+ *           enum: [sum, gauge, histogram, summary, exponential histogram]
+ *           description: Metric type when source is metrics
+ *
+ *     Filter:
+ *       allOf:
+ *         - $ref: '#/components/schemas/FilterInput'
+ *         - type: object
+ *           required:
+ *             - id
+ *           properties:
+ *             id:
+ *               type: string
+ *               description: Unique dashboard filter key ID
+ *
  *     Dashboard:
  *       type: object
  *       description: Dashboard with tiles and configuration
@@ -423,6 +475,11 @@ async function getMissingSources(
  *             maxLength: 32
  *           maxItems: 50
  *           example: ["production", "monitoring"]
+ *         filters:
+ *           type: array
+ *           description: Dashboard filter keys added to the dashboard and applied to all tiles
+ *           items:
+ *             $ref: '#/components/schemas/Filter'
  *
  *     CreateDashboardRequest:
  *       type: object
@@ -445,6 +502,11 @@ async function getMissingSources(
  *             maxLength: 32
  *           maxItems: 50
  *           example: ["development"]
+ *         filters:
+ *           type: array
+ *           description: Dashboard filter keys to add to the dashboard and apply across all tiles
+ *           items:
+ *             $ref: '#/components/schemas/FilterInput'
  *
  *     UpdateDashboardRequest:
  *       type: object
@@ -468,6 +530,11 @@ async function getMissingSources(
  *             maxLength: 32
  *           maxItems: 50
  *           example: ["production", "updated"]
+ *         filters:
+ *           type: array
+ *           description: Dashboard filter keys on the dashboard, applied across all tiles
+ *           items:
+ *             $ref: '#/components/schemas/Filter'
  *
  *     DashboardResponse:
  *       allOf:
@@ -528,6 +595,12 @@ const router = express.Router();
  *                               where: "host:server-01"
  *                               groupBy: []
  *                       tags: ["infrastructure", "monitoring"]
+ *                       filters:
+ *                         - id: "65f5e4a3b9e77c001a301001"
+ *                           type: "QUERY_EXPRESSION"
+ *                           name: "Environment"
+ *                           expression: "environment"
+ *                           sourceId: "65f5e4a3b9e77c001a111111"
  *                     - id: "65f5e4a3b9e77c001a567891"
  *                       name: "API Monitoring"
  *                       tiles:
@@ -545,6 +618,12 @@ const router = express.Router();
  *                               groupBy: ["service"]
  *                               sortOrder: "desc"
  *                       tags: ["api", "monitoring"]
+ *                       filters:
+ *                         - id: "65f5e4a3b9e77c001a301002"
+ *                           type: "QUERY_EXPRESSION"
+ *                           name: "Service"
+ *                           expression: "service_name"
+ *                           sourceId: "65f5e4a3b9e77c001a111112"
  *       '401':
  *         description: Unauthorized
  */
@@ -557,7 +636,7 @@ router.get('/', async (req, res, next) => {
 
     const dashboards = await Dashboard.find(
       { team: teamId },
-      { _id: 1, name: 1, tiles: 1, tags: 1 },
+      { _id: 1, name: 1, tiles: 1, tags: 1, filters: 1 },
     ).sort({ name: -1 });
 
     res.json({
@@ -630,6 +709,12 @@ router.get('/', async (req, res, next) => {
  *                             where: "host:server-01"
  *                             groupBy: []
  *                     tags: ["infrastructure", "monitoring"]
+ *                     filters:
+ *                       - id: "65f5e4a3b9e77c001a301003"
+ *                         type: "QUERY_EXPRESSION"
+ *                         name: "Environment"
+ *                         expression: "environment"
+ *                         sourceId: "65f5e4a3b9e77c001a111111"
  *       '401':
  *         description: Unauthorized
  *         content:
@@ -663,7 +748,7 @@ router.get(
 
       const dashboard = await Dashboard.findOne(
         { team: teamId, _id: req.params.id },
-        { _id: 1, name: 1, tiles: 1, tags: 1 },
+        { _id: 1, name: 1, tiles: 1, tags: 1, filters: 1 },
       );
 
       if (dashboard == null) {
@@ -711,6 +796,11 @@ router.get(
  *                         where: "service:api"
  *                         groupBy: []
  *                 tags: ["api", "monitoring"]
+ *                 filters:
+ *                   - type: "QUERY_EXPRESSION"
+ *                     name: "Environment"
+ *                     expression: "environment"
+ *                     sourceId: "65f5e4a3b9e77c001a111111"
  *             complexDashboard:
  *               summary: Dashboard with multiple chart types
  *               value:
@@ -740,6 +830,11 @@ router.get(
  *                         groupBy: ["errorType"]
  *                         sortOrder: "desc"
  *                 tags: ["service-health", "production"]
+ *                 filters:
+ *                   - type: "QUERY_EXPRESSION"
+ *                     name: "Service"
+ *                     expression: "service_name"
+ *                     sourceId: "65f5e4a3b9e77c001a111111"
  *     responses:
  *       '200':
  *         description: Successfully created dashboard
@@ -768,6 +863,12 @@ router.get(
  *                             where: "service:api"
  *                             groupBy: []
  *                     tags: ["api", "monitoring"]
+ *                     filters:
+ *                       - id: "65f5e4a3b9e77c001a301004"
+ *                         type: "QUERY_EXPRESSION"
+ *                         name: "Environment"
+ *                         expression: "environment"
+ *                         sourceId: "65f5e4a3b9e77c001a111111"
  *       '401':
  *         description: Unauthorized
  *         content:
@@ -800,6 +901,7 @@ router.post(
       name: z.string().max(1024),
       tiles: z.array(externalDashboardTileSchema),
       tags: tagsSchema,
+      filters: z.array(externalDashboardFilterSchema).optional(),
     }),
   }),
   async (req, res, next) => {
@@ -809,9 +911,9 @@ router.post(
         return res.sendStatus(403);
       }
 
-      const { name, tiles, tags } = req.body;
+      const { name, tiles, tags, filters } = req.body;
 
-      const missingSources = await getMissingSources(teamId, tiles);
+      const missingSources = await getMissingSources(teamId, tiles, filters);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -828,11 +930,18 @@ router.post(
         });
       });
 
-      // Create new dashboard from name and charts
+      const filtersWithIds = (filters || []).map(filter =>
+        translateExternalFilterToFilter({
+          ...filter,
+          id: new ObjectId().toString(),
+        }),
+      );
+
       const newDashboard = await new Dashboard({
         name,
         tiles: charts,
         tags: tags && uniq(tags),
+        filters: filtersWithIds,
         team: teamId,
       }).save();
 
@@ -897,6 +1006,12 @@ router.post(
  *                         aggFn: "count"
  *                         where: "level:info"
  *                 tags: ["production", "updated"]
+ *                 filters:
+ *                   - id: "65f5e4a3b9e77c001a301005"
+ *                     type: "QUERY_EXPRESSION"
+ *                     name: "Environment"
+ *                     expression: "environment"
+ *                     sourceId: "65f5e4a3b9e77c001a111111"
  *     responses:
  *       '200':
  *         description: Successfully updated dashboard
@@ -936,6 +1051,12 @@ router.post(
  *                             aggFn: "count"
  *                             where: "level:info"
  *                     tags: ["production", "updated"]
+ *                     filters:
+ *                       - id: "65f5e4a3b9e77c001a301005"
+ *                         type: "QUERY_EXPRESSION"
+ *                         name: "Environment"
+ *                         expression: "environment"
+ *                         sourceId: "65f5e4a3b9e77c001a111111"
  *       '400':
  *         description: Bad request
  *         content:
@@ -979,6 +1100,7 @@ router.put(
       name: z.string().max(1024),
       tiles: z.array(externalDashboardTileSchemaWithId),
       tags: tagsSchema,
+      filters: z.array(externalDashboardFilterSchemaWithId).optional(),
     }),
   }),
   async (req, res, next) => {
@@ -992,9 +1114,9 @@ router.put(
         return res.sendStatus(400);
       }
 
-      const { name, tiles, tags } = req.body ?? {};
+      const { name, tiles, tags, filters } = req.body ?? {};
 
-      const missingSources = await getMissingSources(teamId, tiles);
+      const missingSources = await getMissingSources(teamId, tiles, filters);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -1006,16 +1128,18 @@ router.put(
       // Convert external tiles to internal charts format
       const charts = tiles.map(translateExternalChartToTileConfig);
 
-      // Use updateDashboard to handle the update and all related data (like alerts)
+      const setPayload: Record<string, unknown> = {
+        name,
+        tiles: charts,
+        tags: tags && uniq(tags),
+      };
+      if (filters !== undefined) {
+        setPayload.filters = filters.map(translateExternalFilterToFilter);
+      }
+
       const updatedDashboard = await Dashboard.findOneAndUpdate(
         { _id: dashboardId, team: teamId },
-        {
-          $set: {
-            name,
-            tiles: charts,
-            tags: tags && uniq(tags),
-          },
-        },
+        { $set: setPayload },
         { new: true },
       );
 

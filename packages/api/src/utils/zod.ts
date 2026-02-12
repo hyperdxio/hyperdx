@@ -1,5 +1,6 @@
 import {
   AggregateFunctionSchema,
+  DashboardFilterSchema,
   MetricsDataType,
   NumberFormatSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
@@ -156,6 +157,23 @@ export type ExternalDashboardTileWithId = z.infer<
 >;
 
 export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
+
+export const externalDashboardFilterSchemaWithId = DashboardFilterSchema.omit({
+  source: true,
+})
+  .extend({ sourceId: objectIdSchema })
+  .strict();
+
+export type ExternalDashboardFilterWithId = z.infer<
+  typeof externalDashboardFilterSchemaWithId
+>;
+
+export const externalDashboardFilterSchema =
+  externalDashboardFilterSchemaWithId.omit({ id: true });
+
+export type ExternalDashboardFilter = z.infer<
+  typeof externalDashboardFilterSchema
+>;
 
 // ==============================
 // Alerts
