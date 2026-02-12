@@ -398,8 +398,6 @@ export class Metadata {
     column: string;
     maxKeys?: number;
   } & TableConnection) {
-    // HDX-2480 delete line below to reenable json filters
-    return []; // Need to disable JSON keys for the time being.
     const cacheKey = metricName
       ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.keys`
       : `${connectionId}.${databaseName}.${tableName}.${column}.keys`;
@@ -407,18 +405,9 @@ export class Metadata {
     return this.cache.getOrFetch<{ key: string; chType: string }[]>(
       cacheKey,
       async () => {
-        const where = metricName
-          ? chSql`WHERE MetricName=${{ String: metricName }}`
-          : '';
-        const sql = chSql`WITH all_paths AS
-        (
-            SELECT DISTINCT JSONDynamicPathsWithTypes(${{ Identifier: column }}) as paths
-            FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
-            LIMIT ${{ Int32: maxKeys }}
-            SETTINGS timeout_overflow_mode = 'break', max_execution_time = 2
-        )
-        SELECT groupUniqArrayMap(paths) as pathMap
-        FROM all_paths;`;
+        const sql = chSql`SELECT distinctJSONPaths(json) as paths
+            FROM ${tableExpr({ database: databaseName, table: tableName })}
+            LIMIT ${{ Int32: maxKeys }}`;
 
         const keys = await this.clickhouseClient
           .query<'JSON'>({
