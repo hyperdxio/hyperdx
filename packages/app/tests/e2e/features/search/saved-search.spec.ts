@@ -244,7 +244,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         expect(orderByContent).toContain('ServiceName ASC');
 
         // Verify search results are visible (search executed automatically)
-        await searchPage.table.waitForRowsToPopulate(true);
+        await searchPage.table.waitForRowsToPopulate();
         const rowCount = await searchPage.table.getRows().count();
         expect(rowCount).toBeGreaterThan(0);
 
@@ -336,7 +336,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await expect(whereInput).toHaveValue('SeverityText:info');
 
         // Verify results load
-        await searchPage.table.waitForRowsToPopulate(true);
+        await searchPage.table.waitForRowsToPopulate();
         const rowCount = await searchPage.table.getRows().count();
         expect(rowCount).toBeGreaterThan(0);
       });
