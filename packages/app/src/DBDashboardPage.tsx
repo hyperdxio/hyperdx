@@ -885,13 +885,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 if (
                   !(await confirm(
                     <>
-                      Delete
+                      Delete{' '}
                       <Text component="span" fw={700}>
                         {chart.config.name}
                       </Text>
                       ?
                     </>,
                     'Delete',
+                    { variant: 'danger' },
                   ))
                 ) {
                   return;
