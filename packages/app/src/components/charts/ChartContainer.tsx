@@ -41,8 +41,7 @@ function ChartContainer({
           style={{
             position: 'relative',
             width: '100%',
-            flex: 1,
-            minHeight: 0,
+            height: '100%',
           }}
         >
           <div
