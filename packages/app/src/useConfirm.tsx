@@ -2,9 +2,14 @@ import * as React from 'react';
 import { atom, useAtomValue, useSetAtom } from 'jotai';
 import { Button, Group, Modal, Text } from '@mantine/core';
 
+type ConfirmOptions = {
+  variant?: 'primary' | 'danger';
+};
+
 type ConfirmAtom = {
-  message: string;
+  message: React.ReactNode;
   confirmLabel?: string;
+  confirmVariant?: 'primary' | 'danger';
   onConfirm: () => void;
   onClose?: () => void;
 } | null;
@@ -15,11 +20,16 @@ export const useConfirm = () => {
   const setConfirm = useSetAtom(confirmAtom);
 
   return React.useCallback(
-    async (message: string, confirmLabel?: string): Promise<boolean> => {
+    async (
+      message: React.ReactNode,
+      confirmLabel?: string,
+      options?: ConfirmOptions,
+    ): Promise<boolean> => {
       return new Promise(resolve => {
         setConfirm({
           message,
           confirmLabel,
+          confirmVariant: options?.variant ?? 'primary',
           onConfirm: () => {
             resolve(true);
             setConfirm(null);
@@ -67,7 +77,7 @@ export const useConfirmModal = () => {
         <Button
           data-testid="confirm-confirm-button"
           size="xs"
-          variant="danger"
+          variant={confirm?.confirmVariant ?? 'primary'}
           onClick={confirm?.onConfirm}
         >
           {confirm?.confirmLabel || 'Confirm'}
