@@ -11,6 +11,20 @@ export class FilterComponent {
     this.page = page;
   }
 
+  private async scrollAndClick(locator: Locator, testId: string) {
+    // Filters live in a side nav with its own ScrollArea. Use native scrollIntoView
+    // so the browser scrolls within that container; Playwright's scrollIntoViewIfNeeded
+    // can be unreliable with nested scroll containers.
+    await locator.evaluate(el =>
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest' }),
+    );
+    await locator.hover();
+
+    const button = locator.getByTestId(testId);
+    await button.waitFor({ state: 'visible' });
+    await button.click();
+  }
+
   /**
    * Get filter group by name
    * @param filterName - e.g., 'SeverityText', 'ServiceName'
@@ -62,10 +76,7 @@ export class FilterComponent {
    */
   async excludeFilter(valueName: string) {
     const filterCheckbox = this.getFilterCheckbox(valueName);
-    await filterCheckbox.hover();
-
-    const excludeButton = this.page.getByTestId(`filter-exclude-${valueName}`);
-    await excludeButton.first().click();
+    await this.scrollAndClick(filterCheckbox, `filter-exclude-${valueName}`);
   }
 
   /**
@@ -73,10 +84,7 @@ export class FilterComponent {
    */
   async pinFilter(valueName: string) {
     const filterCheckbox = this.getFilterCheckbox(valueName);
-    await filterCheckbox.hover();
-
-    const pinButton = this.page.getByTestId(`filter-pin-${valueName}`);
-    await pinButton.click();
+    await this.scrollAndClick(filterCheckbox, `filter-pin-${valueName}`);
   }
 
   /**

@@ -81,9 +81,8 @@ export default defineConfig({
           stderr: 'pipe',
         },
         {
-          command: process.env.CI
-            ? 'SERVER_URL=http://localhost:29000 PORT=28081 yarn build && SERVER_URL=http://localhost:29000 PORT=28081 yarn start'
-            : 'SERVER_URL=http://localhost:29000 PORT=28081 NEXT_TELEMETRY_DISABLED=1 yarn run dev',
+          command:
+            'SERVER_URL=http://localhost:29000 PORT=28081 yarn build && SERVER_URL=http://localhost:29000 PORT=28081 yarn start',
           port: 28081,
           reuseExistingServer: !process.env.CI,
           timeout: APP_SERVER_STARTUP_TIMEOUT_MS,
@@ -93,9 +92,8 @@ export default defineConfig({
       ]
     : {
         // Local mode: Frontend only
-        command: process.env.CI
-          ? 'NEXT_PUBLIC_IS_LOCAL_MODE=true yarn build && NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=8081 yarn start'
-          : 'NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_TELEMETRY_DISABLED=1 PORT=8081 yarn run dev',
+        command:
+          'NEXT_PUBLIC_IS_LOCAL_MODE=true yarn build && NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=8081 yarn start',
         port: 8081,
         reuseExistingServer: !process.env.CI,
         timeout: APP_SERVER_STARTUP_TIMEOUT_MS,

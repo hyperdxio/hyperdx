@@ -96,7 +96,7 @@ export class SavedSearchModalComponent {
     // Wait for navigation to complete
     await urlPromise;
 
-    // Optionally wait for modal to fully close
+    // Wait for modal to fully close
     await expect(this.container).toBeHidden();
   }
 

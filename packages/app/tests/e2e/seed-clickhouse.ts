@@ -169,11 +169,17 @@ function generateK8sLogData(
   const rows: string[] = [];
   const span = endMs - startMs;
 
+  // Use a distinct message prefix so (Timestamp, Body, ServiceName, SeverityText) is unique
+  // vs regular logs. The table builds row WHERE from those columns only; if they matched a
+  // regular log, the side panel would fetch the wrong row and the Infrastructure tab wouldn't show.
+  const K8S_LOG_MESSAGE_PREFIX = 'K8s ';
+
   for (let i = 0; i < count; i++) {
     const t = count > 1 ? startMs + (i / (count - 1)) * span : startMs;
     const timestampNs = Math.round(t) * 1000000;
     const severity = SEVERITIES[i % SEVERITIES.length];
-    const message = LOG_MESSAGES[i % LOG_MESSAGES.length];
+    const message =
+      K8S_LOG_MESSAGE_PREFIX + LOG_MESSAGES[i % LOG_MESSAGES.length];
 
     // Use existing pod/node/namespace data to correlate with metrics
     const podIdx = i % 30; // Match with the pods we generate in K8s metrics
@@ -519,6 +525,7 @@ function generateK8sEventLogs(
     const node = K8S_NODES[i % K8S_NODES.length];
     const cluster = K8S_CLUSTERS[0];
     const podName = `pod-${namespace}-${i % 10}`;
+    const podUid = `uid-${podName}`;
     const isWarning = i % 3 === 0; // More warning events (33%)
     const severity = isWarning ? 'Warning' : 'Normal';
     const eventType = isWarning ? 'Warning' : 'Normal';
@@ -541,8 +548,10 @@ function generateK8sEventLogs(
       .replace(/"/g, '\\"')
       .replace(/'/g, "\\'");
 
+    // Include k8s.pod.uid so the infrastructure tab shows the Pod subpanel when this row is
+    // clicked (DBInfraPanel requires rowData.__hdx_resource_attributes['k8s.pod.uid']).
     rows.push(
-      `('${timestampNs}', '', '', 0, '${severity}', 0, 'k8s-events', '${message}', '', {'k8s.cluster.name':'${cluster}','k8s.namespace.name':'${namespace}','k8s.node.name':'${node}','k8s.pod.name':'${podName}','service.name':'k8s-events'}, '', '', '', {}, {'k8s.resource.name':'events','object':'${eventObjectJson}'})`,
+      `('${timestampNs}', '', '', 0, '${severity}', 0, 'k8s-events', '${message}', '', {'k8s.cluster.name':'${cluster}','k8s.namespace.name':'${namespace}','k8s.node.name':'${node}','k8s.pod.name':'${podName}','k8s.pod.uid':'${podUid}','service.name':'k8s-events'}, '', '', '', {}, {'k8s.resource.name':'events','object':'${eventObjectJson}'})`,
     );
   }
 
