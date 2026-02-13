@@ -15,6 +15,33 @@ services:
         reservations:
           memory: 512M
           cpus: '0.5'
+  ch-server:
+    image: clickhouse/clickhouse-server:25.6-alpine
+    ports:
+      - 8123:8123 # http api
+      - 9000:9000 # native
+    environment:
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - ../../../../docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
+      - ../../../../docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
+      - ../../../../docker/clickhouse/local/init-db-e2e.sh:/docker-entrypoint-initdb.d/init-db.sh
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:8123/ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
 networks:
   internal:
     name: 'hyperdx-e2e-internal-network'

@@ -1,3 +1,9 @@
+import { SERVICES, SEVERITIES } from 'tests/e2e/seed-clickhouse';
+import {
+  DEFAULT_LOGS_SOURCE_NAME,
+  DEFAULT_TRACES_SOURCE_NAME,
+} from 'tests/e2e/utils/constants';
+
 import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
 
@@ -34,10 +40,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await searchPage.setCustomSELECT(customSelect);
         await searchPage.submitEmptySearch();
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch('Custom Select Search');
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Custom Select Search',
+        );
       });
 
       const savedSearchAUrl = page.url().split('?')[0];
@@ -48,10 +53,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         // Keep default SELECT (don't modify it)
         await searchPage.submitEmptySearch();
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch('Default Select Search');
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 10000 });
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Default Select Search',
+        );
       });
 
       await test.step('Navigate back to first saved search', async () => {
@@ -87,12 +91,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await searchPage.setCustomSELECT(customSelect);
         await searchPage.submitEmptySearch();
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch(
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'Custom Select Source Test',
         );
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
       });
 
       const savedSearchUrl = page.url().split('?')[0];
@@ -132,27 +133,22 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
     'should use default SELECT when switching sources within a saved search',
     { tag: '@full-stack' },
     async ({ page }) => {
-      let originalSourceName: string | null = null;
-
       await test.step('Create and navigate to saved search', async () => {
         const customSelect =
           'Timestamp, Body, lower(ServiceName) as service_name';
         await searchPage.setCustomSELECT(customSelect);
         await searchPage.submitEmptySearch();
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch('Source Switching Test');
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Source Switching Test',
+        );
       });
 
       await test.step('Switch to different source via dropdown', async () => {
-        originalSourceName = await searchPage.currentSource.inputValue();
-
         await searchPage.sourceDropdown.click();
-        await searchPage.otherSources.first().click();
+        await searchPage.selectSource(DEFAULT_TRACES_SOURCE_NAME);
         await page.waitForLoadState('networkidle');
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify SELECT changed to the new source default', async () => {
@@ -167,14 +163,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
       await test.step('Switch back to original source via dropdown', async () => {
         await searchPage.sourceDropdown.click();
-        await page
-          .getByRole('option', {
-            name: originalSourceName || '',
-            exact: true,
-          })
-          .click();
+        await searchPage.selectSource(DEFAULT_LOGS_SOURCE_NAME);
         await page.waitForLoadState('networkidle');
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify SELECT is search custom SELECT', async () => {
@@ -214,17 +205,13 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
         // Submit the search to ensure configuration is applied
         await searchPage.submitButton.click();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
 
         // Save the search
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch(
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'Info Logs Navigation Test',
         );
-
-        // Wait for save to complete and URL to change
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
 
         // Capture the saved search URL (without query params)
         savedSearchUrl = page.url().split('?')[0];
@@ -285,12 +272,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         await searchPage.setCustomSELECT(customSelect);
         await searchPage.performSearch('ServiceName:frontend');
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch(
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'Custom Select Navigation Test',
         );
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
 
         savedSearchUrl = page.url().split('?')[0];
       });
@@ -307,7 +291,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
       await test.step('Verify custom SELECT is preserved', async () => {
         // Wait for results to load
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
 
         // Verify SELECT content
         const selectEditor = searchPage.getSELECTEditor();
@@ -331,10 +315,9 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
       await test.step('Create and save a search', async () => {
         await searchPage.performSearch('SeverityText:info');
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch('Browser Navigation Test');
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Browser Navigation Test',
+        );
       });
 
       await test.step('Navigate to sessions page', async () => {
@@ -386,19 +369,16 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
         // Submit and save the search
         await searchPage.submitEmptySearch();
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch(
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'ORDER BY Multiple Source Switch Test',
         );
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
       });
 
       await test.step('Switch to second source', async () => {
         await searchPage.sourceDropdown.click();
         await searchPage.otherSources.first().click();
         await page.waitForLoadState('networkidle');
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify ORDER BY changed to second source default', async () => {
@@ -423,7 +403,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
           })
           .click();
         await page.waitForLoadState('networkidle');
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify ORDER BY restored to saved search custom value', async () => {
@@ -452,7 +432,12 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
       let savedSearchUrl: string;
       let appliedFilterValue: string;
       await test.step('Apply filters in the sidebar', async () => {
-        appliedFilterValue = 'accounting';
+        const [picked] = await searchPage.filters.pickVisibleFilterValues(
+          'SeverityText',
+          SEVERITIES,
+          1,
+        );
+        appliedFilterValue = picked;
 
         // Apply the filter
         await searchPage.filters.applyFilter(appliedFilterValue);
@@ -464,17 +449,14 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
         // Submit search to apply filters
         await searchPage.submitButton.click();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Create and save the search with filters', async () => {
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch(
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
           'Search with Filters Test',
         );
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
 
         // Capture the saved search URL
         savedSearchUrl = page.url().split('?')[0];
@@ -482,7 +464,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
       await test.step('Navigate to a fresh search page', async () => {
         await searchPage.goto();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify filters are cleared on new search page', async () => {
@@ -498,7 +480,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
       await test.step('Navigate back to the saved search', async () => {
         await page.goto(savedSearchUrl);
         await expect(page.getByTestId('search-page')).toBeVisible();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify filters are restored from saved search', async () => {
@@ -520,48 +502,59 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
       /**
        * Verifies that updating a saved search with additional filters
        * persists and restores both the original and new filters.
-       * Uses the same fixed filter values as "should save and restore filters"
-       * for consistency and reliability.
+       * Picks visible filter values from seed (SEVERITIES) so tests don't
+       * rely on a single value that may not appear in the UI.
        */
-      const firstFilter = 'accounting';
-      const secondFilter = 'info';
+      const [firstFilter] = await searchPage.filters.pickVisibleFilterValues(
+        'ServiceName',
+        SERVICES,
+        1,
+      );
+      const [secondFilter] = await searchPage.filters.pickVisibleFilterValues(
+        'SeverityText',
+        SEVERITIES,
+        1,
+      );
+      const firstFilterGroup = 'ServiceName';
+      const secondFilterGroup = 'SeverityText';
       let savedSearchUrl: string;
 
       await test.step('Create saved search with one filter', async () => {
-        await searchPage.filters.openFilterGroup('SeverityText');
+        await searchPage.filters.openFilterGroup(firstFilterGroup);
         await searchPage.filters.applyFilter(firstFilter);
         await searchPage.submitButton.click();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
 
         await searchPage.openSaveSearchModal();
-        await searchPage.savedSearchModal.saveSearch('Updatable Filter Search');
-
-        await expect(searchPage.savedSearchModal.container).toBeHidden();
-        await page.waitForURL(/\/search\/[a-f0-9]+/, { timeout: 5000 });
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Updatable Filter Search',
+        );
         savedSearchUrl = page.url().split('?')[0];
       });
 
       await test.step('Update saved search with second filter', async () => {
-        await searchPage.filters.openFilterGroup('SeverityText');
+        await searchPage.filters.openFilterGroup(secondFilterGroup);
         await searchPage.filters.applyFilter(secondFilter);
         await searchPage.submitButton.click();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
 
         await searchPage.openSaveSearchModal({ update: true });
-        await searchPage.savedSearchModal.submit();
-        await page.waitForLoadState('networkidle');
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          'Updatable Filter Search updated',
+        );
       });
 
       await test.step('Navigate away and back', async () => {
         await searchPage.goto();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
         await page.goto(savedSearchUrl);
         await expect(page.getByTestId('search-page')).toBeVisible();
-        await searchPage.table.waitForRowsToPopulate();
+        await searchPage.table.waitForRowsToPopulate(true);
       });
 
       await test.step('Verify both filters are restored', async () => {
-        await searchPage.filters.openFilterGroup('SeverityText');
+        await searchPage.filters.openFilterGroup(firstFilterGroup);
+        await searchPage.filters.openFilterGroup(secondFilterGroup);
         await expect(
           searchPage.filters.getFilterCheckboxInput(firstFilter),
         ).toBeChecked();

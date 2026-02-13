@@ -44,6 +44,7 @@ import {
   IconSitemap,
 } from '@tabler/icons-react';
 
+import { IS_CLICKHOUSE_BUILD } from '@/config';
 import {
   useAllFields,
   useColumns,
@@ -780,6 +781,7 @@ export const FilterGroup = ({
                 {showShowMoreButton && (
                   <div className="d-flex m-1">
                     <TextButton
+                      data-testid={`filter-show-more-${name}`}
                       label={
                         shouldShowMore ? (
                           <>
@@ -808,6 +810,7 @@ export const FilterGroup = ({
                   !loadMoreLoading && (
                     <div className="d-flex m-1">
                       <TextButton
+                        data-testid={`filter-load-more-${name}`}
                         display={hasLoadedMore ? 'none' : undefined}
                         label={
                           <>
@@ -1184,9 +1187,11 @@ const DBSearchPageFiltersComponent = ({
                   <Text size="xs">Event Deltas</Text>
                 </Tabs.Tab>
               )}
-              <Tabs.Tab value="pattern" size="xs" h="24px">
-                <Text size="xs">Event Patterns</Text>
-              </Tabs.Tab>
+              {!IS_CLICKHOUSE_BUILD && (
+                <Tabs.Tab value="pattern" size="xs" h="24px">
+                  <Text size="xs">Event Patterns</Text>
+                </Tabs.Tab>
+              )}
             </Tabs.List>
           </Tabs>
 
