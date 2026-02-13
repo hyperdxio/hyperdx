@@ -484,7 +484,7 @@ const Tile = forwardRef(
             <Box bg={hovered ? 'gray' : undefined} w={100} h={2}></Box>
           </Group>
           <div
-            className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default"
+            className="fs-7 text-muted flex-grow-1 overflow-auto cursor-default"
             onMouseDown={e => e.stopPropagation()}
           >
             {renderChartContent()}

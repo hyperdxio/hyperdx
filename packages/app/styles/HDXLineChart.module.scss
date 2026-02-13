@@ -30,7 +30,8 @@
   display: flex;
   flex-wrap: wrap;
   max-width: 40vw;
-  overflow: hidden;
+  max-height: 50vh;
+  overflow: auto;
   gap: 2px;
 }
 
