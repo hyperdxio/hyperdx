@@ -19,10 +19,7 @@
   :global([data-expanded='true']) :global(.mantine-Paper-root) {
     border-bottom-left-radius: var(--mantine-radius-default);
     min-height: 38px;
-
-    textarea {
-      border-bottom: 2px solid var(--color-bg-brand);
-    }
+    border-bottom: 2px solid var(--color-bg-brand) !important;
   }
 
   /* When AutocompleteInput (Lucene) is expanded, round the input wrapper bottom-left corner */
