@@ -26,7 +26,10 @@ export type SearchWhereInputProps = {
    * Size of the input
    */
   size?: 'xs' | 'sm';
-
+  /**
+   * Show WHERE label on SQL input (default true)
+   */
+  showLabel?: boolean;
   /**
    * Enable multiline for SQL input
    */
@@ -96,6 +99,7 @@ export default function SearchWhereInput({
   onLanguageChange,
   enableHotkey,
   size = 'sm',
+  showLabel = true,
   allowMultiline = true,
   sqlQueryHistoryType,
   luceneQueryHistoryType,
@@ -145,6 +149,7 @@ export default function SearchWhereInput({
             name={name}
             placeholder={sqlPlaceholder}
             onSubmit={onSubmit}
+            label={showLabel ? 'WHERE' : undefined}
             queryHistoryType={sqlQueryHistoryType}
             enableHotkey={enableHotkey}
             allowMultiline={allowMultiline}

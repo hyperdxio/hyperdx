@@ -1,10 +1,21 @@
 import React from 'react';
 import { useForm } from 'react-hook-form';
+import { MantineProvider } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import SearchWhereInput from '../SearchWhereInput';
+
+function renderWithMantine(ui: React.ReactElement) {
+  return render(
+    <MantineProvider>
+      <Notifications />
+      {ui}
+    </MantineProvider>,
+  );
+}
 
 // Mock table connection for tests
 const mockTableConnection = {
