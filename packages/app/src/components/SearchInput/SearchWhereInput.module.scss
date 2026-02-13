@@ -18,12 +18,22 @@
   /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
   :global([data-expanded='true']) :global(.mantine-Paper-root) {
     border-bottom-left-radius: var(--mantine-radius-default);
+    min-height: 38px;
+
+    textarea {
+      border-bottom: 2px solid var(--color-bg-brand);
+    }
   }
 
   /* When AutocompleteInput (Lucene) is expanded, round the input wrapper bottom-left corner */
   /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
   :global([data-expanded='true']) :global(.mantine-InputWrapper-root) {
     border-bottom-left-radius: var(--mantine-radius-default);
+    border-bottom: 2px solid var(--color-bg-brand);
+
+    textarea {
+      min-height: 38px;
+    }
   }
 
   /* target only the SQLInlineEditor Paper (not the AutocompleteInput) */

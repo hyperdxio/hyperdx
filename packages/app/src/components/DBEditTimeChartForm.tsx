@@ -77,6 +77,7 @@ import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
+import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
@@ -449,33 +450,14 @@ function ChartSeriesEditorComponent({
                       showHaving === showGroupBy ? 'span 3' : undefined,
                   }}
                 >
-                  {aggConditionLanguage === 'sql' ? (
-                    <SQLInlineEditorControlled
-                      tableConnection={tableConnection}
-                      control={control}
-                      name={`${namePrefix}aggCondition`}
-                      placeholder="SQL WHERE clause (ex. column = 'foo')"
-                      onLanguageChange={lang =>
-                        setValue(`${namePrefix}aggConditionLanguage`, lang)
-                      }
-                      additionalSuggestions={attributeSuggestions}
-                      language="sql"
-                      onSubmit={onSubmit}
-                    />
-                  ) : (
-                    <SearchInputV2
-                      tableConnection={tableConnection}
-                      control={control}
-                      name={`${namePrefix}aggCondition`}
-                      onLanguageChange={lang =>
-                        setValue(`${namePrefix}aggConditionLanguage`, lang)
-                      }
-                      language="lucene"
-                      placeholder="Search your events w/ Lucene ex. column:foo"
-                      onSubmit={onSubmit}
-                      additionalSuggestions={attributeSuggestions}
-                    />
-                  )}
+                  <SearchWhereInput
+                    tableConnection={tableConnection}
+                    control={control}
+                    name={`${namePrefix}aggCondition`}
+                    onSubmit={onSubmit}
+                    showLabel={false}
+                    additionalSuggestions={attributeSuggestions}
+                  />
                 </div>
               </>
             )}

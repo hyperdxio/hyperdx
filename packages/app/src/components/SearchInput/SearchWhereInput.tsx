@@ -26,10 +26,7 @@ export type SearchWhereInputProps = {
    * Size of the input
    */
   size?: 'xs' | 'sm';
-  /**
-   * Show WHERE label on SQL input
-   */
-  showLabel?: boolean;
+
   /**
    * Enable multiline for SQL input
    */
@@ -62,6 +59,10 @@ export type SearchWhereInputProps = {
    * Test ID for the input
    */
   'data-testid'?: string;
+  /**
+   * Additional autocomplete/suggestion options (e.g. attribute names)
+   */
+  additionalSuggestions?: string[];
 } & TableConnectionChoice &
   UseControllerProps<any>;
 
@@ -95,7 +96,6 @@ export default function SearchWhereInput({
   onLanguageChange,
   enableHotkey,
   size = 'sm',
-  showLabel = true,
   allowMultiline = true,
   sqlQueryHistoryType,
   luceneQueryHistoryType,
@@ -104,6 +104,7 @@ export default function SearchWhereInput({
   width = '100%',
   maxWidth = '100%',
   'data-testid': dataTestId,
+  additionalSuggestions,
   ...props
 }: SearchWhereInputProps) {
   // Read the language value from the corresponding language field
@@ -144,11 +145,11 @@ export default function SearchWhereInput({
             name={name}
             placeholder={sqlPlaceholder}
             onSubmit={onSubmit}
-            label={showLabel ? 'WHERE' : undefined}
             queryHistoryType={sqlQueryHistoryType}
             enableHotkey={enableHotkey}
             allowMultiline={allowMultiline}
             size={size}
+            additionalSuggestions={additionalSuggestions}
             {...props}
           />
         ) : (
@@ -162,6 +163,7 @@ export default function SearchWhereInput({
             enableHotkey={enableHotkey}
             size={size}
             data-testid={dataTestId}
+            additionalSuggestions={additionalSuggestions}
             {...props}
           />
         )}
