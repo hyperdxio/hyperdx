@@ -75,29 +75,33 @@ function filterObjectRecursively(obj: any, filter: string): any {
   return result;
 }
 
-function filterBlankValuesRecursively(obj: any): any {
-  if (typeof obj !== 'object' || obj === null) {
-    return obj;
+function filterBlankValuesRecursively(value: any): any {
+  if (value === null || value === '') {
+    return undefined;
   }
 
-  const result: Record<string, any> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    // Filter out null values and empty strings
-    if (value === null || value === '') {
-      continue;
-    }
-    if (typeof value === 'object') {
-      const v = filterBlankValuesRecursively(value);
-      // Skip empty objects
-      if (Object.keys(v).length > 0) {
-        result[key] = v;
+  if (Array.isArray(value)) {
+    const filtered = value
+      .map(filterBlankValuesRecursively)
+      .filter(v => v !== undefined);
+
+    return filtered.length > 0 ? filtered : undefined;
+  }
+
+  if (typeof value === 'object') {
+    const result: Record<string, any> = {};
+
+    for (const [key, v] of Object.entries(value)) {
+      const filtered = filterBlankValuesRecursively(v);
+      if (filtered !== undefined) {
+        result[key] = filtered;
       }
-    } else {
-      result[key] = value;
     }
+
+    return Object.keys(result).length > 0 ? result : undefined;
   }
 
-  return result;
+  return value;
 }
 
 const viewerOptionsAtom = atomWithStorage('hdx_json_viewer_options', {
