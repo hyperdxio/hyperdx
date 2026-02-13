@@ -75,10 +75,36 @@ function filterObjectRecursively(obj: any, filter: string): any {
   return result;
 }
 
+function filterBlankValuesRecursively(obj: any): any {
+  if (typeof obj !== 'object' || obj === null) {
+    return obj;
+  }
+
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    // Filter out null values and empty strings
+    if (value === null || value === '') {
+      continue;
+    }
+    if (typeof value === 'object') {
+      const v = filterBlankValuesRecursively(value);
+      // Skip empty objects
+      if (Object.keys(v).length > 0) {
+        result[key] = v;
+      }
+    } else {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
 const viewerOptionsAtom = atomWithStorage('hdx_json_viewer_options', {
   normallyExpanded: true,
   lineWrap: true,
   tabulate: true,
+  filterBlanks: false,
 });
 
 function HyperJsonMenu() {
@@ -138,6 +164,23 @@ function HyperJsonMenu() {
           >
             Tabulate
           </Menu.Item>
+          <Menu.Item
+            lh="1"
+            py={8}
+            rightSection={
+              jsonOptions.filterBlanks ? (
+                <IconCheck size={14} className="ps-2" />
+              ) : null
+            }
+            onClick={() =>
+              setJsonOptions({
+                ...jsonOptions,
+                filterBlanks: !jsonOptions.filterBlanks,
+              })
+            }
+          >
+            Hide blank values
+          </Menu.Item>
         </Menu.Dropdown>
       </Menu>
     </Group>
@@ -161,6 +204,7 @@ export function DBRowJsonViewer({
 
   const [filter, setFilter] = useState<string>('');
   const [debouncedFilter] = useDebouncedValue(filter, 100);
+  const jsonOptions = useAtomValue(viewerOptionsAtom);
 
   const rowData = useMemo(() => {
     if (!data) {
@@ -168,12 +212,17 @@ export function DBRowJsonViewer({
     }
 
     // remove internal aliases (keys that start with __hdx_)
-    const cleanedData = Object.fromEntries(
+    let cleanedData = Object.fromEntries(
       Object.entries(data).filter(entry => !entry[0].startsWith('__hdx_')),
     );
 
+    // Apply blank value filter if enabled
+    if (jsonOptions.filterBlanks) {
+      cleanedData = filterBlankValuesRecursively(cleanedData);
+    }
+
     return filterObjectRecursively(cleanedData, debouncedFilter);
-  }, [data, debouncedFilter]);
+  }, [data, debouncedFilter, jsonOptions.filterBlanks]);
 
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value, isInParsedJson, parsedJsonRootPath }) => {
@@ -415,8 +464,6 @@ export function DBRowJsonViewer({
       jsonColumns,
     ],
   );
-
-  const jsonOptions = useAtomValue(viewerOptionsAtom);
 
   return (
     <div className="flex-grow-1 overflow-auto">
