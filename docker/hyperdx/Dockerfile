@@ -7,7 +7,7 @@
 # - Mongo
 # - Otel Collector (otelcol)
 
-ARG NODE_VERSION=22.16.0
+ARG NODE_VERSION=22.22
 ARG CLICKHOUSE_VERSION=25.6
 ARG OTEL_COLLECTOR_VERSION=0.145.0
 ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.145.0
@@ -19,7 +19,7 @@ FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_OPAMPSUPERVIS
 FROM kukymbr/goose-docker@sha256:0cd025636df126e7f66472861ca4db3683bc649be46cd1f6ef1a316209058e23 AS goose
 
 # Build the Go migration tool with full TLS support for ClickHouse
-FROM golang:1.25-alpine AS migrate-builder
+FROM golang:1.26-alpine AS migrate-builder
 WORKDIR /build
 COPY packages/otel-collector/go.mod packages/otel-collector/go.sum ./
 RUN go mod download
@@ -54,9 +54,9 @@ COPY --from=app ./public ./packages/app/public
 COPY --from=app ./styles ./packages/app/styles
 COPY --from=app ./types ./packages/app/types
 
-ENV NEXT_TELEMETRY_DISABLED 1
-ENV NEXT_OUTPUT_STANDALONE true
-ENV NEXT_PUBLIC_IS_LOCAL_MODE false
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_OUTPUT_STANDALONE=true
+ENV NEXT_PUBLIC_IS_LOCAL_MODE=false
 ENV NX_DAEMON=false
 RUN npx nx run-many --target=build --projects=@hyperdx/common-utils,@hyperdx/api,@hyperdx/app
 RUN rm -rf node_modules && yarn workspaces focus @hyperdx/api --production
@@ -74,7 +74,7 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
 ARG CODE_VERSION
 
 ENV CODE_VERSION=$CODE_VERSION
-ENV NODE_ENV production
+ENV NODE_ENV=production
 
 # Install libs used for the start script
 RUN npm install -g concurrently@9.1.0
@@ -153,7 +153,7 @@ RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositori
   install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data && \
   rm -rf /var/cache/apk/*
 
-ENV NODE_ENV production
+ENV NODE_ENV=production
 
 # Set up App (copy from prod stage)
 COPY --from=prod /app /app
