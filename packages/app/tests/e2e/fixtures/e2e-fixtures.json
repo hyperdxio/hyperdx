@@ -1,0 +1,97 @@
+{
+  "connections": [
+    {
+      "id": "local",
+      "name": "local",
+      "host": "http://localhost:8123",
+      "username": "default",
+      "password": ""
+    }
+  ],
+  "sources": [
+    {
+      "id": "E2E Logs",
+      "kind": "log",
+      "name": "E2E Logs",
+      "connection": "local",
+      "from": { "databaseName": "default", "tableName": "e2e_otel_logs" },
+      "timestampValueExpression": "TimestampTime",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, SeverityText, Body",
+      "serviceNameExpression": "ServiceName",
+      "severityTextExpression": "SeverityText",
+      "eventAttributesExpression": "LogAttributes",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "Body",
+      "displayedTimestampValueExpression": "Timestamp",
+      "sessionSourceId": "E2E Sessions",
+      "traceSourceId": "E2E Traces",
+      "metricSourceId": "E2E Metrics"
+    },
+    {
+      "id": "E2E Traces",
+      "kind": "trace",
+      "name": "E2E Traces",
+      "connection": "local",
+      "from": { "databaseName": "default", "tableName": "e2e_otel_traces" },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName",
+      "serviceNameExpression": "ServiceName",
+      "eventAttributesExpression": "SpanAttributes",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "SpanName",
+      "durationExpression": "Duration",
+      "durationPrecision": 9,
+      "parentSpanIdExpression": "ParentSpanId",
+      "spanKindExpression": "SpanKind",
+      "spanNameExpression": "SpanName",
+      "logSourceId": "E2E Logs",
+      "statusCodeExpression": "StatusCode",
+      "statusMessageExpression": "StatusMessage",
+      "spanEventsValueExpression": "Events",
+      "metricSourceId": "E2E Metrics",
+      "sessionSourceId": "E2E Sessions"
+    },
+    {
+      "id": "E2E Metrics",
+      "kind": "metric",
+      "name": "E2E Metrics",
+      "connection": "local",
+      "from": { "databaseName": "default", "tableName": "" },
+      "timestampValueExpression": "TimeUnix",
+      "serviceNameExpression": "ServiceName",
+      "metricTables": {
+        "gauge": "e2e_otel_metrics_gauge",
+        "histogram": "e2e_otel_metrics_histogram",
+        "sum": "e2e_otel_metrics_sum",
+        "summary": "e2e_otel_metrics_summary",
+        "exponential histogram": "e2e_otel_metrics_exponential_histogram"
+      },
+      "resourceAttributesExpression": "ResourceAttributes",
+      "logSourceId": "E2E Logs"
+    },
+    {
+      "id": "E2E Sessions",
+      "kind": "session",
+      "name": "E2E Sessions",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "e2e_hyperdx_sessions"
+      },
+      "timestampValueExpression": "TimestampTime",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, Body",
+      "serviceNameExpression": "ServiceName",
+      "severityTextExpression": "SeverityText",
+      "eventAttributesExpression": "LogAttributes",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceSourceId": "E2E Traces",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "Body"
+    }
+  ]
+}

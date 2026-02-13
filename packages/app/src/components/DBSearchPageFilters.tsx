@@ -781,6 +781,7 @@ export const FilterGroup = ({
                 {showShowMoreButton && (
                   <div className="d-flex m-1">
                     <TextButton
+                      data-testid={`filter-show-more-${name}`}
                       label={
                         shouldShowMore ? (
                           <>
@@ -809,6 +810,7 @@ export const FilterGroup = ({
                   !loadMoreLoading && (
                     <div className="d-flex m-1">
                       <TextButton
+                        data-testid={`filter-load-more-${name}`}
                         display={hasLoadedMore ? 'none' : undefined}
                         label={
                           <>
