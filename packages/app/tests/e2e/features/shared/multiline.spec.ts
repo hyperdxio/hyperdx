@@ -21,10 +21,12 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     await page.keyboard.press('Shift+Enter');
     await page.keyboard.type('second line');
 
-    // Verify height increased
-    const multiLineBox = await editor.boundingBox();
-    const multiLineHeight = multiLineBox?.height || 0;
-    expect(multiLineHeight).toBeGreaterThan(singleLineHeight);
+    // Verify height increased (poll for autosize to run in CI)
+    await expect(async () => {
+      const multiLineBox = await editor.boundingBox();
+      const multiLineHeight = multiLineBox?.height || 0;
+      expect(multiLineHeight).toBeGreaterThan(singleLineHeight);
+    }).toPass({ timeout: 2000 });
   };
 
   const getEditor = (
@@ -75,6 +77,10 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         // Dashboard uses Controller + SQL/SearchInputV2 directly (no where-language-switch wrapper)
         await page.getByRole('textbox', { name: 'Query language' }).click();
         await page.getByRole('option', { name: 'SQL', exact: true }).click();
+        // Wait for dropdown to close so the WHERE input is not covered
+        await page
+          .getByRole('option', { name: 'SQL', exact: true })
+          .waitFor({ state: 'hidden', timeout: 5000 });
       }
 
       const editor = getEditor(page, 'SQL', formSelector, whereText);
@@ -97,6 +103,10 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
         // Dashboard has no where-language-switch wrapper; use Query language textbox directly
         await page.getByRole('textbox', { name: 'Query language' }).click();
         await page.getByRole('option', { name: 'Lucene', exact: true }).click();
+        // Wait for dropdown to close so the search input is not covered
+        await page
+          .getByRole('option', { name: 'Lucene', exact: true })
+          .waitFor({ state: 'hidden', timeout: 5000 });
       }
 
       const editor = getEditor(page, 'Lucene', formSelector, whereText);
