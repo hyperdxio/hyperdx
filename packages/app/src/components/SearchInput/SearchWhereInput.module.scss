@@ -41,6 +41,7 @@
 
     textarea {
       min-height: 34px;
+      border-radius: 0;
     }
   }
 }
@@ -53,7 +54,7 @@
   border: 1px solid var(--color-border);
   border-right: none;
   border-radius: var(--mantine-radius-default) 0 0 var(--mantine-radius-default);
-  background-color: var(--color-bg-muted);
+  background-color: var(--color-bg-field-highlighted);
 
   &.sizeXs {
     height: 30px;
