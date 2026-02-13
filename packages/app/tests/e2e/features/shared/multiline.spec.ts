@@ -42,7 +42,11 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
       );
       return whereContainer.locator('.cm-editor').first();
     }
-    return page.locator('[data-testid="search-input"]');
+    // Target the textarea so the click hits the typing area, not the Query language Select in the right section
+    return page
+      .locator('[data-testid="search-input"] textarea')
+      .or(page.locator('textarea[data-testid="search-input"]'))
+      .first();
   };
 
   // Test configurations
