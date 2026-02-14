@@ -7,8 +7,8 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Group, Select } from '@mantine/core';
 
+import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
 import { useGetKeyValues } from '@/hooks/useMetadata';
-import SearchInputV2 from '@/SearchInputV2';
 
 type KubernetesFiltersProps = {
   dateRange: [Date, Date];

@@ -4,6 +4,7 @@ import {
   MantineTheme,
   MantineThemeOverride,
   rem,
+  SegmentedControl,
   Select,
   Slider,
   Tabs,
@@ -267,16 +268,13 @@ export const makeTheme = ({
         return { root: baseVars };
       },
     }),
-    SegmentedControl: {
-      styles: {
+    SegmentedControl: SegmentedControl.extend({
+      styles: (_theme, props) => ({
         root: {
           background: 'var(--color-bg-field)',
         },
-        indicator: {
-          background: 'var(--color-bg-field-highlighted)',
-        },
-      },
-    },
+      }),
+    }),
     Tabs: Tabs.extend({
       vars: () => ({
         root: {

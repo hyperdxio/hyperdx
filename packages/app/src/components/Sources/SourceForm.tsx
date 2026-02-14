@@ -51,6 +51,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
@@ -79,7 +80,6 @@ import { DBTableSelectControlled } from '../DBTableSelect';
 import { ErrorCollapse } from '../Error/ErrorCollapse';
 import { InputControlled } from '../InputControlled';
 import SelectControlled from '../SelectControlled';
-import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
 const DEFAULT_DATABASE = 'default';
 

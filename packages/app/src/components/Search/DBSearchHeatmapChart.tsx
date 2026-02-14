@@ -19,11 +19,11 @@ import { Center } from '@mantine/core';
 import { Text } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { getDurationMsExpression } from '@/source';
 
 import DBDeltaChart from '../DBDeltaChart';
 import DBHeatmapChart from '../DBHeatmapChart';
-import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
 const Schema = z.object({
   value: z.string().trim().min(1),
