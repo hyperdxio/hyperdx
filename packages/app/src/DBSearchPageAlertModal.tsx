@@ -56,7 +56,7 @@ import { optionsToSelectData } from './utils';
 const SavedSearchAlertFormSchema = z
   .object({
     interval: AlertIntervalSchema,
-    threshold: z.number().int().min(1),
+    threshold: z.number(),
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
   })
