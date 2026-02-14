@@ -16,6 +16,7 @@ export enum DisplayType {
   Line = 'line',
   StackedBar = 'stacked_bar',
   Table = 'table',
+  Pie = 'pie',
   Number = 'number',
   Search = 'search',
   Heatmap = 'heatmap',
