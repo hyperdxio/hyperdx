@@ -1,5 +1,17 @@
 # @hyperdx/api
 
+## 2.17.0
+
+### Patch Changes
+
+- 27f478a6: feat: Add external GET /sources API
+- d759d046: support filters in dashboards external api
+- a8aa94b0: feat: add filters to saved searches
+- c3bc43ad: fix: Avoid using bodyExpression for trace sources
+- Updated dependencies [a8aa94b0]
+- Updated dependencies [c3bc43ad]
+  - @hyperdx/common-utils@0.12.3
+
 ## 2.16.0
 
 ### Patch Changes

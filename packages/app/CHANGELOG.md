@@ -1,5 +1,22 @@
 # @hyperdx/app
 
+## 2.17.0
+
+### Minor Changes
+
+- 5c895ff3: Allow overriding default connections
+
+### Patch Changes
+
+- 651bf99b: chore: deprecate Nextra and remove related code
+- 69f0b487: design: Make service map drill-down links more obvious
+- ce09b59b: feat: add static build generation
+- a8aa94b0: feat: add filters to saved searches
+- c3bc43ad: fix: Avoid using bodyExpression for trace sources
+- Updated dependencies [a8aa94b0]
+- Updated dependencies [c3bc43ad]
+  - @hyperdx/common-utils@0.12.3
+
 ## 2.16.0
 
 ### Minor Changes

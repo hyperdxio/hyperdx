@@ -1,5 +1,13 @@
 # @hyperdx/otel-collector
 
+## 2.17.0
+
+### Patch Changes
+
+- 629fb52e: feat: introduce HYPERDX_OTEL_EXPORTER_TABLES_TTL to support custom TTL configuration
+- baf18da4: feat: add TLS support for OTel collector migration script
+- baf18da4: chore: bump otel collector version to v0.136.0
+
 ## 2.16.0
 
 ## 2.15.1
