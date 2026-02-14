@@ -17,7 +17,7 @@
     "@hyperdx/lucene": "^3.1.1",
     "date-fns": "^2.28.0",
     "date-fns-tz": "^2.0.0",
-    "lodash": "^4.17.21",
+    "lodash": "^4.17.23",
     "node-sql-parser": "^5.3.5",
     "object-hash": "^3.0.0",
     "semver": "^7.5.2",
