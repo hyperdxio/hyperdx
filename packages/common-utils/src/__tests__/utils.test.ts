@@ -683,6 +683,60 @@ describe('utils', () => {
         ],
       });
     });
+
+    it('should preserve level property for quantile aggFn in select', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Quantile Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'P95 Latency',
+              source: 'source1',
+              select: [
+                {
+                  aggFn: 'quantile',
+                  level: 0.95,
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: 'Duration',
+                },
+              ],
+              where: '',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const sources: TSourceUnion[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: {
+            databaseName: 'db1',
+            tableName: 'logs_table',
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+      const selectList = template.tiles[0].config.select;
+      expect(Array.isArray(selectList)).toBe(true);
+      expect((selectList as any[])[0]).toMatchObject({
+        aggFn: 'quantile',
+        level: 0.95,
+      });
+    });
   });
 
   describe('isJsonExpression', () => {

@@ -77,9 +77,12 @@ export const AggregateFunctionWithCombinatorsSchema = z
 export const RootValueExpressionSchema = z
   .object({
     aggFn: z.union([
-      AggregateFunctionSchema,
-      AggregateFunctionWithCombinatorsSchema,
+      z.literal('quantile'),
+      z.literal('quantileMerge'),
+      z.literal('histogram'),
+      z.literal('histogramMerge'),
     ]),
+    level: z.number(),
     aggCondition: SearchConditionSchema,
     aggConditionLanguage: SearchConditionLanguageSchema,
     valueExpression: z.string(),
@@ -89,12 +92,9 @@ export const RootValueExpressionSchema = z
   .or(
     z.object({
       aggFn: z.union([
-        z.literal('quantile'),
-        z.literal('quantileMerge'),
-        z.literal('histogram'),
-        z.literal('histogramMerge'),
+        AggregateFunctionSchema,
+        AggregateFunctionWithCombinatorsSchema,
       ]),
-      level: z.number(),
       aggCondition: SearchConditionSchema,
       aggConditionLanguage: SearchConditionLanguageSchema,
       valueExpression: z.string(),
