@@ -52,6 +52,37 @@ function formatExternalSource(source: SourceDocument) {
  *         tableName:
  *           type: string
  *           description: ClickHouse table name
+ *     MetricSourceFrom:
+ *       type: object
+ *       required:
+ *         - databaseName
+ *       properties:
+ *         databaseName:
+ *           type: string
+ *           description: ClickHouse database name
+ *         tableName:
+ *           type: string
+ *           description: ClickHouse table name
+ *           nullable: true
+ *     MetricTables:
+ *       type: object
+ *       description: Mapping of metric data types to table names. At least one must be specified.
+ *       properties:
+ *         gauge:
+ *           type: string
+ *           description: Table containing gauge metrics data
+ *         histogram:
+ *           type: string
+ *           description: Table containing histogram metrics data
+ *         sum:
+ *           type: string
+ *           description: Table containing sum metrics data
+ *         summary:
+ *           type: string
+ *           description: Table containing summary metrics data. Note - not yet fully supported by HyperDX
+ *         exponential histogram:
+ *           type: string
+ *           description: Table containing exponential histogram metrics data. Note - not yet fully supported by HyperDX
  *     HighlightedAttributeExpression:
  *       type: object
  *       required:
@@ -344,39 +375,14 @@ function formatExternalSource(source: SourceDocument) {
  *         connection:
  *           type: string
  *         from:
- *           type: object
- *           required:
- *             - databaseName
- *           properties:
- *             databaseName:
- *               type: string
- *             tableName:
- *               type: string
- *               nullable: true
+ *           $ref: '#/components/schemas/MetricSourceFrom'
  *         querySettings:
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/QuerySetting'
  *           nullable: true
  *         metricTables:
- *           type: object
- *           description: Mapping of metric data types to table names. At least one must be specified.
- *           properties:
- *             gauge:
- *               type: string
- *               description: Table containing gauge metrics data
- *             histogram:
- *               type: string
- *               description: Table containing histogram metrics data
- *             sum:
- *               type: string
- *               description: Table containing sum metrics data
- *             summary:
- *               type: string
- *               description: Table containing summary metrics data. Note - not yet fully supported by HyperDX
- *             exponential histogram:
- *               type: string
- *               description: Table containing exponential histogram metrics data. Note - not yet fully supported by HyperDX
+ *           $ref: '#/components/schemas/MetricTables'
  *         timestampValueExpression:
  *           type: string
  *           description: DateTime column or expression that is part of your table's primary key.
