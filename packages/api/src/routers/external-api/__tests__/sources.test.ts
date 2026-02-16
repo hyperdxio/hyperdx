@@ -152,6 +152,19 @@ describe('External API v2 Sources', () => {
               },
             ],
           },
+          {
+            databaseName: DEFAULT_DATABASE,
+            tableName: 'traces_mv_15s',
+            dimensionColumns: 'ServiceName',
+            minGranularity: '15 second',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [
+              {
+                mvColumn: 'count',
+                aggFn: 'count',
+              },
+            ],
+          },
         ],
         querySettings: [
           {
@@ -200,7 +213,20 @@ describe('External API v2 Sources', () => {
             databaseName: DEFAULT_DATABASE,
             tableName: 'traces_mv',
             dimensionColumns: 'ServiceName',
-            minGranularity: '1 minute',
+            minGranularity: '1m',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [
+              {
+                mvColumn: 'count',
+                aggFn: 'count',
+              },
+            ],
+          },
+          {
+            databaseName: DEFAULT_DATABASE,
+            tableName: 'traces_mv_15s',
+            dimensionColumns: 'ServiceName',
+            minGranularity: '15s',
             timestampColumn: 'Timestamp',
             aggregatedColumns: [
               {

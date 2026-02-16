@@ -1,9 +1,46 @@
-import { SourceSchema } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceSchema,
+  type TSourceUnion,
+} from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 
 import { getSources } from '@/controllers/sources';
 import { SourceDocument } from '@/models/source';
 import logger from '@/utils/logger';
+
+const EXTERNAL_GRANULARITY_MAP: Record<string, string> = {
+  '1 second': '1s',
+  '15 second': '15s',
+  '30 second': '30s',
+  '1 minute': '1m',
+  '5 minute': '5m',
+  '15 minute': '15m',
+  '30 minute': '30m',
+  '1 hour': '1h',
+  '2 hour': '2h',
+  '6 hour': '6h',
+  '12 hour': '12h',
+  '1 day': '1d',
+  '2 day': '2d',
+  '7 day': '7d',
+  '30 day': '30d',
+};
+
+function mapSourceToExternalSource(source: TSourceUnion): TSourceUnion {
+  if (!('materializedViews' in source)) return source;
+  if (!Array.isArray(source.materializedViews)) return source;
+
+  return {
+    ...source,
+    materializedViews: source.materializedViews.map(view => {
+      return {
+        ...view,
+        minGranularity:
+          EXTERNAL_GRANULARITY_MAP[view.minGranularity] ?? view.minGranularity,
+      };
+    }),
+  };
+}
 
 function formatExternalSource(source: SourceDocument) {
   // Convert to JSON so that any ObjectIds are converted to strings
@@ -12,7 +49,7 @@ function formatExternalSource(source: SourceDocument) {
   // Parse using the SourceSchema to strip out any fields not defined in the schema
   const parseResult = SourceSchema.safeParse(JSON.parse(json));
   if (parseResult.success) {
-    return parseResult.data;
+    return mapSourceToExternalSource(parseResult.data);
   }
 
   // If parsing fails, log the error and return undefined
@@ -137,7 +174,7 @@ function formatExternalSource(source: SourceDocument) {
  *         minGranularity:
  *           type: string
  *           description: The granularity of the timestamp column
- *           enum: [1 second, 15 second, 30 second, 1 minute, 5 minute, 15 minute, 30 minute, 1 hour, 2 hour, 6 hour, 12 hour, 1 day, 2 day, 7 day, 30 day]
+ *           enum: [1s, 15s, 30s, 1m, 5m, 15m, 30m, 1h, 2h, 6h, 12h, 1d, 2d, 7d, 30d]
  *         minDate:
  *           type: string
  *           format: date-time
