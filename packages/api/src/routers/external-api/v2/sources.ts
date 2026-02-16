@@ -8,7 +8,7 @@ import { getSources } from '@/controllers/sources';
 import { SourceDocument } from '@/models/source';
 import logger from '@/utils/logger';
 
-function mapGranularityToExternalFormat(granularity: string): string {
+export function mapGranularityToExternalFormat(granularity: string): string {
   const matches = granularity.match(/^(\d+) (second|minute|hour|day)$/);
   if (matches == null) return granularity;
 
