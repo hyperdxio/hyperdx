@@ -516,7 +516,10 @@ export const RawLogTable = memo(
                     <PatternTrendChart
                       data={value.data}
                       dateRange={value.dateRange}
-                      color={logLevelColor(info.row.original.severityText)}
+                      color={logLevelColor(
+                        info.row.original.severityText ??
+                          info.row.original.statusCode,
+                      )}
                     />
                   </div>
                 );
