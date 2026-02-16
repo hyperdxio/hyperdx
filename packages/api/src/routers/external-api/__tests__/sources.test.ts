@@ -14,6 +14,7 @@ import {
 } from '../../../fixtures';
 import Connection, { IConnection } from '../../../models/connection';
 import { Source } from '../../../models/source';
+import { mapGranularityToExternalFormat } from '../v2/sources';
 
 describe('External API v2 Sources', () => {
   const server = getServer();
@@ -152,6 +153,19 @@ describe('External API v2 Sources', () => {
               },
             ],
           },
+          {
+            databaseName: DEFAULT_DATABASE,
+            tableName: 'traces_mv_15s',
+            dimensionColumns: 'ServiceName',
+            minGranularity: '15 second',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [
+              {
+                mvColumn: 'count',
+                aggFn: 'count',
+              },
+            ],
+          },
         ],
         querySettings: [
           {
@@ -200,7 +214,20 @@ describe('External API v2 Sources', () => {
             databaseName: DEFAULT_DATABASE,
             tableName: 'traces_mv',
             dimensionColumns: 'ServiceName',
-            minGranularity: '1 minute',
+            minGranularity: '1m',
+            timestampColumn: 'Timestamp',
+            aggregatedColumns: [
+              {
+                mvColumn: 'count',
+                aggFn: 'count',
+              },
+            ],
+          },
+          {
+            databaseName: DEFAULT_DATABASE,
+            tableName: 'traces_mv_15s',
+            dimensionColumns: 'ServiceName',
+            minGranularity: '15s',
             timestampColumn: 'Timestamp',
             aggregatedColumns: [
               {
@@ -489,5 +516,34 @@ describe('External API v2 Sources', () => {
       expect(response.body.data).toHaveLength(1);
       expect(response.body.data[0].id).toBe(validSource._id.toString());
     });
+  });
+});
+
+describe('External API v2 Sources Mapping', () => {
+  describe('mapGranularityToExternalFormat', () => {
+    it.each`
+      input         | expected
+      ${'1 second'} | ${'1s'}
+      ${'1 minute'} | ${'1m'}
+      ${'1 hour'}   | ${'1h'}
+      ${'1 day'}    | ${'1d'}
+    `(
+      'maps supported long-form granularity $input to $expected',
+      ({ input, expected }) => {
+        expect(mapGranularityToExternalFormat(input)).toBe(expected);
+      },
+    );
+
+    it.each`
+      input          | expected
+      ${'invalid'}   | ${'invalid'}
+      ${'1m'}        | ${'1m'}
+      ${'2 minutes'} | ${'2 minutes'}
+    `(
+      'passes through unsupported or already-short granularity $input',
+      ({ input, expected }) => {
+        expect(mapGranularityToExternalFormat(input)).toBe(expected);
+      },
+    );
   });
 });
