@@ -8,23 +8,24 @@ import { getSources } from '@/controllers/sources';
 import { SourceDocument } from '@/models/source';
 import logger from '@/utils/logger';
 
-const EXTERNAL_GRANULARITY_MAP: Record<string, string> = {
-  '1 second': '1s',
-  '15 second': '15s',
-  '30 second': '30s',
-  '1 minute': '1m',
-  '5 minute': '5m',
-  '15 minute': '15m',
-  '30 minute': '30m',
-  '1 hour': '1h',
-  '2 hour': '2h',
-  '6 hour': '6h',
-  '12 hour': '12h',
-  '1 day': '1d',
-  '2 day': '2d',
-  '7 day': '7d',
-  '30 day': '30d',
-};
+function mapGranularityToExternalFormat(granularity: string): string {
+  const matches = granularity.match(/^(\d+) (second|minute|hour|day)$/);
+  if (matches == null) return granularity;
+
+  const [, amount, unit] = matches;
+  switch (unit) {
+    case 'second':
+      return `${amount}s`;
+    case 'minute':
+      return `${amount}m`;
+    case 'hour':
+      return `${amount}h`;
+    case 'day':
+      return `${amount}d`;
+    default:
+      return granularity;
+  }
+}
 
 function mapSourceToExternalSource(source: TSourceUnion): TSourceUnion {
   if (!('materializedViews' in source)) return source;
@@ -35,8 +36,7 @@ function mapSourceToExternalSource(source: TSourceUnion): TSourceUnion {
     materializedViews: source.materializedViews.map(view => {
       return {
         ...view,
-        minGranularity:
-          EXTERNAL_GRANULARITY_MAP[view.minGranularity] ?? view.minGranularity,
+        minGranularity: mapGranularityToExternalFormat(view.minGranularity),
       };
     }),
   };
