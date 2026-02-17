@@ -114,8 +114,7 @@ const normalizeScheduleStartAt = ({
     scheduleStartAt instanceof Date
       ? scheduleStartAt
       : new Date(scheduleStartAt as string);
-  const scheduleStartAtMs = scheduleStartAtDate.getTime();
-  if (Number.isFinite(scheduleStartAtMs)) {
+  if (fns.isValid(scheduleStartAtDate)) {
     return scheduleStartAtDate;
   }
 
