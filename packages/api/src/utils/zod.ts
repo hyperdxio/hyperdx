@@ -207,10 +207,10 @@ const ALERT_INTERVAL_TO_MINUTES: Record<AlertInterval, number> = {
   '1d': 1440,
 };
 
-const scheduleStartAtSchema = z.preprocess(
-  value => (value === '' ? null : value),
-  z.string().datetime().nullable().optional(),
-);
+const scheduleStartAtSchema = z
+  .union([z.string().datetime(), z.literal(''), z.null()])
+  .optional()
+  .transform(value => (value === '' ? null : value));
 
 export const alertSchema = z
   .object({

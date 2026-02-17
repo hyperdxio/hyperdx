@@ -343,10 +343,10 @@ const validateAlertScheduleOffsetMinutes = (
   }
 };
 
-const scheduleStartAtSchema = z.preprocess(
-  value => (value === '' ? null : value),
-  z.string().datetime().nullable().optional(),
-);
+const scheduleStartAtSchema = z
+  .union([z.string().datetime(), z.literal(''), z.null()])
+  .optional()
+  .transform(value => (value === '' ? null : value));
 
 const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),

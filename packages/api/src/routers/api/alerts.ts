@@ -12,7 +12,7 @@ import {
   getAlertsEnhanced,
   updateAlert,
 } from '@/controllers/alerts';
-import AlertSchema, { IAlert } from '@/models/alert';
+import AlertSchema from '@/models/alert';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -99,7 +99,7 @@ router.post(
       return res.sendStatus(403);
     }
     try {
-      const alertInput = req.body as unknown as IAlert;
+      const alertInput = req.body as z.infer<typeof alertSchema>;
       return res.json({
         data: await createAlert(teamId, alertInput, userId),
       });
@@ -124,7 +124,7 @@ router.put(
         return res.sendStatus(403);
       }
       const { id } = req.params;
-      const alertInput = req.body;
+      const alertInput = req.body as z.infer<typeof alertSchema>;
       res.json({
         data: await updateAlert(id, teamId, alertInput),
       });
