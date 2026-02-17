@@ -1,9 +1,46 @@
-import { SourceSchema } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceSchema,
+  type TSourceUnion,
+} from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 
 import { getSources } from '@/controllers/sources';
 import { SourceDocument } from '@/models/source';
 import logger from '@/utils/logger';
+
+export function mapGranularityToExternalFormat(granularity: string): string {
+  const matches = granularity.match(/^(\d+) (second|minute|hour|day)$/);
+  if (matches == null) return granularity;
+
+  const [, amount, unit] = matches;
+  switch (unit) {
+    case 'second':
+      return `${amount}s`;
+    case 'minute':
+      return `${amount}m`;
+    case 'hour':
+      return `${amount}h`;
+    case 'day':
+      return `${amount}d`;
+    default:
+      return granularity;
+  }
+}
+
+function mapSourceToExternalSource(source: TSourceUnion): TSourceUnion {
+  if (!('materializedViews' in source)) return source;
+  if (!Array.isArray(source.materializedViews)) return source;
+
+  return {
+    ...source,
+    materializedViews: source.materializedViews.map(view => {
+      return {
+        ...view,
+        minGranularity: mapGranularityToExternalFormat(view.minGranularity),
+      };
+    }),
+  };
+}
 
 function formatExternalSource(source: SourceDocument) {
   // Convert to JSON so that any ObjectIds are converted to strings
@@ -12,7 +49,7 @@ function formatExternalSource(source: SourceDocument) {
   // Parse using the SourceSchema to strip out any fields not defined in the schema
   const parseResult = SourceSchema.safeParse(JSON.parse(json));
   if (parseResult.success) {
-    return parseResult.data;
+    return mapSourceToExternalSource(parseResult.data);
   }
 
   // If parsing fails, log the error and return undefined
@@ -52,6 +89,37 @@ function formatExternalSource(source: SourceDocument) {
  *         tableName:
  *           type: string
  *           description: ClickHouse table name
+ *     MetricSourceFrom:
+ *       type: object
+ *       required:
+ *         - databaseName
+ *       properties:
+ *         databaseName:
+ *           type: string
+ *           description: ClickHouse database name
+ *         tableName:
+ *           type: string
+ *           description: ClickHouse table name
+ *           nullable: true
+ *     MetricTables:
+ *       type: object
+ *       description: Mapping of metric data types to table names. At least one must be specified.
+ *       properties:
+ *         gauge:
+ *           type: string
+ *           description: Table containing gauge metrics data
+ *         histogram:
+ *           type: string
+ *           description: Table containing histogram metrics data
+ *         sum:
+ *           type: string
+ *           description: Table containing sum metrics data
+ *         summary:
+ *           type: string
+ *           description: Table containing summary metrics data. Note - not yet fully supported by HyperDX
+ *         exponential histogram:
+ *           type: string
+ *           description: Table containing exponential histogram metrics data. Note - not yet fully supported by HyperDX
  *     HighlightedAttributeExpression:
  *       type: object
  *       required:
@@ -106,7 +174,7 @@ function formatExternalSource(source: SourceDocument) {
  *         minGranularity:
  *           type: string
  *           description: The granularity of the timestamp column
- *           enum: [1 second, 15 second, 30 second, 1 minute, 5 minute, 15 minute, 30 minute, 1 hour, 2 hour, 6 hour, 12 hour, 1 day, 2 day, 7 day, 30 day]
+ *           enum: [1s, 15s, 30s, 1m, 5m, 15m, 30m, 1h, 2h, 6h, 12h, 1d, 2d, 7d, 30d]
  *         minDate:
  *           type: string
  *           format: date-time
@@ -344,39 +412,14 @@ function formatExternalSource(source: SourceDocument) {
  *         connection:
  *           type: string
  *         from:
- *           type: object
- *           required:
- *             - databaseName
- *           properties:
- *             databaseName:
- *               type: string
- *             tableName:
- *               type: string
- *               nullable: true
+ *           $ref: '#/components/schemas/MetricSourceFrom'
  *         querySettings:
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/QuerySetting'
  *           nullable: true
  *         metricTables:
- *           type: object
- *           description: Mapping of metric data types to table names. At least one must be specified.
- *           properties:
- *             gauge:
- *               type: string
- *               description: Table containing gauge metrics data
- *             histogram:
- *               type: string
- *               description: Table containing histogram metrics data
- *             sum:
- *               type: string
- *               description: Table containing sum metrics data
- *             summary:
- *               type: string
- *               description: Table containing summary metrics data. Note - not yet fully supported by HyperDX
- *             exponential histogram:
- *               type: string
- *               description: Table containing exponential histogram metrics data. Note - not yet fully supported by HyperDX
+ *           $ref: '#/components/schemas/MetricTables'
  *         timestampValueExpression:
  *           type: string
  *           description: DateTime column or expression that is part of your table's primary key.
