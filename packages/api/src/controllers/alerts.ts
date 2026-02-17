@@ -56,9 +56,7 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
   return {
     channel: alert.channel,
     interval: alert.interval,
-    ...(alert.scheduleOffsetMinutes != null && {
-      scheduleOffsetMinutes: alert.scheduleOffsetMinutes,
-    }),
+    scheduleOffsetMinutes: alert.scheduleOffsetMinutes
     ...(alert.scheduleStartAt == null ? {} : { scheduleStartAt: new Date(alert.scheduleStartAt) })
     source: alert.source,
     threshold: alert.threshold,
