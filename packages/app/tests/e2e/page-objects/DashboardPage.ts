@@ -94,7 +94,7 @@ export class DashboardPage {
    * Navigate to dashboards list
    */
   async goto() {
-    await this.page.goto('/dashboards');
+    await this.page.goto('/dashboards', { waitUntil: 'networkidle' });
   }
 
   /**
