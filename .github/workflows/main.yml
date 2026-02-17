@@ -305,7 +305,10 @@ jobs:
 
       - name: Comment PR with test results
         uses: mshick/add-pr-comment@v2
-        if: always() && github.event_name == 'pull_request'
+        # Skip for fork PRs: GITHUB_TOKEN cannot write to the base repo
+        if:
+          always() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.fork != true
         with:
           message: ${{ steps.test-results.outputs.result }}
           message-id: e2e-test-results
