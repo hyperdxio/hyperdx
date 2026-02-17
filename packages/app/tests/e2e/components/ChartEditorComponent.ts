@@ -83,6 +83,10 @@ export class ChartEditorComponent {
    */
   async runQuery() {
     await this.runQueryButton.click();
+    // need to wait for the recharts graph to render
+    await this.page
+      .locator('.recharts-responsive-container')
+      .waitFor({ state: 'visible', timeout: 10000 });
   }
 
   /**

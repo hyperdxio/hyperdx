@@ -1,5 +1,11 @@
 import { SearchPage } from '../page-objects/SearchPage';
 import { expect, test } from '../utils/base-test';
+import {
+  DEFAULT_LOGS_SOURCE_NAME,
+  DEFAULT_METRICS_SOURCE_NAME,
+  DEFAULT_SESSIONS_SOURCE_NAME,
+  DEFAULT_TRACES_SOURCE_NAME,
+} from '../utils/constants';
 
 const COMMON_FIELDS = [
   'Name',
@@ -59,18 +65,30 @@ const METRIC_FIELDS = [
 ];
 
 const editableSourcesData = [
-  { name: 'Demo Logs', fields: LOG_FIELDS, radioButtonName: 'Log' },
-  { name: 'Demo Traces', fields: TRACE_FIELDS, radioButtonName: 'Trace' },
+  {
+    name: DEFAULT_LOGS_SOURCE_NAME,
+    fields: LOG_FIELDS,
+    radioButtonName: 'Log',
+  },
+  {
+    name: DEFAULT_TRACES_SOURCE_NAME,
+    fields: TRACE_FIELDS,
+    radioButtonName: 'Trace',
+  },
 ];
 
 const allSourcesData = [
   ...editableSourcesData,
   {
-    name: 'Demo Metrics',
+    name: DEFAULT_METRICS_SOURCE_NAME,
     fields: METRIC_FIELDS,
     radioButtonName: 'OTEL Metrics',
   },
-  { name: 'Demo Sessions', fields: SESSION_FIELDS, radioButtonName: 'Session' },
+  {
+    name: DEFAULT_SESSIONS_SOURCE_NAME,
+    fields: SESSION_FIELDS,
+    radioButtonName: 'Session',
+  },
 ];
 
 test.describe('Sources Functionality', { tag: ['@sources'] }, () => {

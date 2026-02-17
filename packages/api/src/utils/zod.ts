@@ -1,5 +1,10 @@
-import { AggregateFunctionSchema } from '@hyperdx/common-utils/dist/types';
-import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
+import {
+  AggregateFunctionSchema,
+  DashboardFilterSchema,
+  MetricsDataType,
+  NumberFormatSchema,
+  SearchConditionLanguageSchema as whereLanguageSchema,
+} from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 import { z } from 'zod';
 
@@ -21,26 +26,7 @@ export type SourceTable = z.infer<typeof sourceTableSchema>;
 // Charts & Dashboards
 // ==============================
 
-const numberFormatSchema = z.object({
-  output: z.union([
-    z.literal('currency'),
-    z.literal('percent'),
-    z.literal('byte'),
-    z.literal('time'),
-    z.literal('number'),
-  ]),
-  mantissa: z.number().optional(),
-  thousandSeparated: z.boolean().optional(),
-  average: z.boolean().optional(),
-  decimalBytes: z.boolean().optional(),
-  factor: z.number().optional(),
-  currencySymbol: z.string().optional(),
-  unit: z.string().optional(),
-});
-
 const percentileLevelSchema = z.number().min(0).max(1).optional();
-
-const whereLanguageSchema = z.enum(['sql', 'lucene']).optional();
 
 const timeChartSeriesSchema = z.object({
   type: z.literal('time'),
@@ -52,7 +38,7 @@ const timeChartSeriesSchema = z.object({
   where: z.string(),
   whereLanguage: whereLanguageSchema,
   groupBy: z.array(z.string()).max(10),
-  numberFormat: numberFormatSchema.optional(),
+  numberFormat: NumberFormatSchema.optional(),
   metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
   metricName: z.string().optional(),
   displayType: z
@@ -73,7 +59,7 @@ const tableChartSeriesSchema = z.object({
   whereLanguage: whereLanguageSchema,
   groupBy: z.array(z.string()).max(10),
   sortOrder: z.union([z.literal('desc'), z.literal('asc')]).optional(),
-  numberFormat: numberFormatSchema.optional(),
+  numberFormat: NumberFormatSchema.optional(),
   metricDataType: z.nativeEnum(MetricsDataType).optional(),
   metricName: z.string().optional(),
 });
@@ -89,7 +75,7 @@ const numberChartSeriesSchema = z.object({
   alias: z.string().optional(),
   where: z.string(),
   whereLanguage: whereLanguageSchema,
-  numberFormat: numberFormatSchema.optional(),
+  numberFormat: NumberFormatSchema.optional(),
   metricDataType: z.nativeEnum(MetricsDataType).optional(),
   metricName: z.string().optional(),
 });
@@ -171,6 +157,23 @@ export type ExternalDashboardTileWithId = z.infer<
 >;
 
 export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
+
+export const externalDashboardFilterSchemaWithId = DashboardFilterSchema.omit({
+  source: true,
+})
+  .extend({ sourceId: objectIdSchema })
+  .strict();
+
+export type ExternalDashboardFilterWithId = z.infer<
+  typeof externalDashboardFilterSchemaWithId
+>;
+
+export const externalDashboardFilterSchema =
+  externalDashboardFilterSchemaWithId.omit({ id: true });
+
+export type ExternalDashboardFilter = z.infer<
+  typeof externalDashboardFilterSchema
+>;
 
 // ==============================
 // Alerts

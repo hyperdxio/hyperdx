@@ -71,6 +71,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       await test.step('Navigate between each page', async () => {
         for (const { testId, contentTestId } of navLinks) {
           const link = page.locator(`[data-testid="${testId}"]`);
+          await link.scrollIntoViewIfNeeded();
           await link.click();
 
           const content = page.locator(`[data-testid="${contentTestId}"]`);

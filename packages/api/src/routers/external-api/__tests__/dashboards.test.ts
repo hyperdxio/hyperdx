@@ -47,6 +47,7 @@ const createMockDashboardWithIds = (sourceId: string, overrides = {}) => ({
     },
   ],
   tags: TEST_TAGS,
+  filters: [],
   ...overrides,
 });
 
@@ -268,6 +269,7 @@ describe('External API v2 Dashboards', () => {
             },
           ],
           tags: ['format-test'],
+          filters: [],
         },
       });
 
@@ -312,6 +314,10 @@ describe('External API v2 Dashboards', () => {
       expect(response.body.data).toHaveLength(2);
       expect(response.body.data.map(d => d.name)).toContain('Test Dashboard 1');
       expect(response.body.data.map(d => d.name)).toContain('Test Dashboard 2');
+      response.body.data.forEach((d: { filters: unknown }) => {
+        expect(d).toHaveProperty('filters');
+        expect(Array.isArray(d.filters)).toBe(true);
+      });
     });
 
     it('should return empty array when no dashboards exist', async () => {
@@ -338,6 +344,8 @@ describe('External API v2 Dashboards', () => {
         tiles: expect.arrayContaining([]),
         tags: ['tag1', 'tag2'],
       });
+      expect(response.body.data).toHaveProperty('filters');
+      expect(Array.isArray(response.body.data.filters)).toBe(true);
     });
 
     it('should return 404 when dashboard does not exist', async () => {
@@ -362,6 +370,8 @@ describe('External API v2 Dashboards', () => {
         ]),
         tags: mockDashboard.tags,
       });
+      expect(response.body.data).toHaveProperty('filters');
+      expect(response.body.data.filters).toEqual([]);
 
       // Verify dashboard was created in database
       const dashboards = await Dashboard.find({}).lean();
@@ -593,6 +603,109 @@ describe('External API v2 Dashboards', () => {
         message: `Could not find the following source IDs: ${nonExistentSourceId}`,
       });
     });
+
+    it('should create a dashboard with filters', async () => {
+      const dashboardPayload = {
+        name: 'Dashboard with Filters',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Environment',
+            expression: 'environment',
+            sourceId: traceSource._id.toString(),
+          },
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service Filter',
+            expression: 'service_name',
+            sourceId: traceSource._id.toString(),
+            sourceMetricType: undefined,
+          },
+        ],
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send(dashboardPayload)
+        .expect(200);
+
+      expect(response.body.data.filters).toHaveLength(2);
+      response.body.data.filters.forEach(
+        (f: {
+          id: string;
+          name: string;
+          expression: string;
+          sourceId: string;
+          type: string;
+        }) => {
+          expect(f).toHaveProperty('id');
+          expect(typeof f.id).toBe('string');
+          expect(f.id.length).toBeGreaterThan(0);
+          expect(f).toMatchObject({
+            type: 'QUERY_EXPRESSION',
+            name: expect.any(String),
+            expression: expect.any(String),
+            sourceId: traceSource._id.toString(),
+          });
+        },
+      );
+      expect(response.body.data.filters[0].name).toBe('Environment');
+      expect(response.body.data.filters[0].expression).toBe('environment');
+      expect(response.body.data.filters[1].name).toBe('Service Filter');
+      expect(response.body.data.filters[1].expression).toBe('service_name');
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${response.body.data.id}`,
+      ).expect(200);
+      expect(getResponse.body.data.filters).toHaveLength(2);
+      expect(getResponse.body.data.filters).toEqual(response.body.data.filters);
+    });
+
+    it('should return 400 when filter source ID does not exist', async () => {
+      const nonExistentSourceId = new ObjectId().toString();
+      const dashboardPayload = {
+        name: 'Dashboard with Bad Filter Source',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Bad Source Filter',
+            expression: 'environment',
+            sourceId: nonExistentSourceId,
+          },
+        ],
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send(dashboardPayload)
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following source IDs: ${nonExistentSourceId}`,
+      });
+    });
+
+    it('should return 400 when create filter includes id', async () => {
+      const dashboardPayload = {
+        name: 'Dashboard with Invalid Filter ID',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            id: new ObjectId().toString(),
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Filter with ID',
+            expression: 'environment',
+            sourceId: traceSource._id.toString(),
+          },
+        ],
+      };
+
+      await authRequest('post', BASE_URL).send(dashboardPayload).expect(400);
+    });
   });
 
   describe('PUT /:id', () => {
@@ -617,6 +730,8 @@ describe('External API v2 Dashboards', () => {
           expect.objectContaining({ name: 'Test Chart' }),
         ]),
       });
+      expect(response.body.data).toHaveProperty('filters');
+      expect(Array.isArray(response.body.data.filters)).toBe(true);
 
       // Verify dashboard was updated in database
       const updatedDashboardInDb = await Dashboard.findById(
@@ -624,6 +739,195 @@ describe('External API v2 Dashboards', () => {
       ).lean();
       expect(updatedDashboardInDb?.name).toBe('Updated Dashboard Name');
       expect(updatedDashboardInDb?.tiles).toHaveLength(2);
+    });
+
+    it('should update dashboard filters when provided', async () => {
+      const dashboard = await createTestDashboard();
+      const filterId1 = new ObjectId().toString();
+      const filterId2 = new ObjectId().toString();
+      const updatedPayload = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {
+          name: 'Dashboard with Filters',
+          filters: [
+            {
+              id: filterId1,
+              type: 'QUERY_EXPRESSION' as const,
+              name: 'Updated Filter 1',
+              expression: 'environment',
+              sourceId: traceSource._id.toString(),
+            },
+            {
+              id: filterId2,
+              type: 'QUERY_EXPRESSION' as const,
+              name: 'Updated Filter 2',
+              expression: 'service_name',
+              sourceId: traceSource._id.toString(),
+            },
+          ],
+        },
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send(updatedPayload)
+        .expect(200);
+
+      expect(response.body.data.filters).toHaveLength(2);
+      expect(response.body.data.filters[0]).toMatchObject({
+        id: filterId1,
+        type: 'QUERY_EXPRESSION',
+        name: 'Updated Filter 1',
+        expression: 'environment',
+        sourceId: traceSource._id.toString(),
+      });
+      expect(response.body.data.filters[1]).toMatchObject({
+        id: filterId2,
+        type: 'QUERY_EXPRESSION',
+        name: 'Updated Filter 2',
+        expression: 'service_name',
+        sourceId: traceSource._id.toString(),
+      });
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+      expect(getResponse.body.data.filters).toEqual(response.body.data.filters);
+    });
+
+    it('should preserve existing dashboard filters when filters are not provided', async () => {
+      const existingFilterId1 = new ObjectId().toString();
+      const existingFilterId2 = new ObjectId().toString();
+      const existingFilters = [
+        {
+          id: existingFilterId1,
+          type: 'QUERY_EXPRESSION' as const,
+          name: 'Existing Filter 1',
+          expression: 'environment',
+          sourceId: traceSource._id.toString(),
+        },
+        {
+          id: existingFilterId2,
+          type: 'QUERY_EXPRESSION' as const,
+          name: 'Existing Filter 2',
+          expression: 'service_name',
+          sourceId: traceSource._id.toString(),
+        },
+      ];
+      const storedFilters = existingFilters.map(({ sourceId, ...filter }) => ({
+        ...filter,
+        source: sourceId,
+      }));
+      const dashboard = await createTestDashboard({
+        filters: storedFilters,
+      });
+      const updatedPayload = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {
+          name: 'Dashboard Name Updated Without Filters',
+        },
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send(omit(updatedPayload, 'filters'))
+        .expect(200);
+
+      expect(response.body.data.name).toBe(
+        'Dashboard Name Updated Without Filters',
+      );
+      expect(response.body.data.filters).toHaveLength(2);
+      expect(response.body.data.filters[0]).toMatchObject(existingFilters[0]);
+      expect(response.body.data.filters[1]).toMatchObject(existingFilters[1]);
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+      expect(getResponse.body.data.filters).toHaveLength(2);
+      expect(getResponse.body.data.filters[0]).toMatchObject(
+        existingFilters[0],
+      );
+      expect(getResponse.body.data.filters[1]).toMatchObject(
+        existingFilters[1],
+      );
+    });
+
+    it('should clear existing dashboard filters when provided an empty filters array', async () => {
+      const existingFilterId1 = new ObjectId().toString();
+      const existingFilterId2 = new ObjectId().toString();
+      const existingFilters = [
+        {
+          id: existingFilterId1,
+          type: 'QUERY_EXPRESSION' as const,
+          name: 'Existing Filter 1',
+          expression: 'environment',
+          sourceId: traceSource._id.toString(),
+        },
+        {
+          id: existingFilterId2,
+          type: 'QUERY_EXPRESSION' as const,
+          name: 'Existing Filter 2',
+          expression: 'service_name',
+          sourceId: traceSource._id.toString(),
+        },
+      ];
+      const storedFilters = existingFilters.map(({ sourceId, ...filter }) => ({
+        ...filter,
+        source: sourceId,
+      }));
+      const dashboard = await createTestDashboard({
+        filters: storedFilters,
+      });
+      const updatedPayload = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {
+          name: 'Dashboard Name Updated With Empty Filters',
+          filters: [],
+        },
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send(updatedPayload)
+        .expect(200);
+
+      expect(response.body.data.name).toBe(
+        'Dashboard Name Updated With Empty Filters',
+      );
+      expect(response.body.data.filters).toEqual([]);
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+      expect(getResponse.body.data.filters).toEqual([]);
+    });
+
+    it('should return 400 when filter source ID does not exist on update', async () => {
+      const dashboard = await createTestDashboard();
+      const nonExistentSourceId = new ObjectId().toString();
+      const updatedPayload = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {
+          name: 'Updated Name',
+          filters: [
+            {
+              id: new ObjectId().toString(),
+              type: 'QUERY_EXPRESSION' as const,
+              name: 'Bad Source Filter',
+              expression: 'environment',
+              sourceId: nonExistentSourceId,
+            },
+          ],
+        },
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send(updatedPayload)
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following source IDs: ${nonExistentSourceId}`,
+      });
     });
 
     it('should return 404 when dashboard does not exist', async () => {
