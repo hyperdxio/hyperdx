@@ -123,6 +123,7 @@ const SPECIAL_VALUES = {
 const ACCESSOR_MAP: Record<string, AccessorFn> = {
   duration: row =>
     row.duration >= 0 ? row.duration : SPECIAL_VALUES.not_available,
+  severityText: row => row.severityText ?? row.statusCode,
   default: (row, column) => row[column],
 };
 
@@ -516,7 +517,10 @@ export const RawLogTable = memo(
                     <PatternTrendChart
                       data={value.data}
                       dateRange={value.dateRange}
-                      color={logLevelColor(info.row.original.severityText)}
+                      color={logLevelColor(
+                        info.row.original.severityText ??
+                          info.row.original.statusCode,
+                      )}
                     />
                   </div>
                 );
