@@ -80,7 +80,7 @@ export default function PatternTable({
           __hdx_pattern_trend: 'Trend',
           countStr: 'Count',
           pattern: 'Pattern',
-          severityText: 'level',
+          severityText: 'Level',
         }}
         config={patternQueryConfig}
         showExpandButton={false}
