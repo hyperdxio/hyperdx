@@ -89,7 +89,7 @@ export default function SearchInputV2({
   }, [value, tableConnection, metadata]);
 
   useHotkeys(
-    '/',
+    ['/', 's'],
     () => {
       if (enableHotkey) {
         ref.current?.focus();

@@ -330,7 +330,7 @@ export default function SQLInlineEditor({
   }, [updateAutocompleteColumns]);
 
   useHotkeys(
-    '/',
+    ['/', 's'],
     () => {
       if (enableHotkey) {
         ref.current?.view?.focus();

@@ -34,6 +34,9 @@ export default function InputLanguageSwitch({
           minHeight: 28,
           fontWeight: 500,
         },
+        dropdown: {
+          minWidth: 96,
+        },
       }}
       aria-label="Query language"
     />

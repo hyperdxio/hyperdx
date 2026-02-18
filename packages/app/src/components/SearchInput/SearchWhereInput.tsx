@@ -1,6 +1,6 @@
 import { useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
-import { Box, Flex } from '@mantine/core';
+import { Box, Flex, Kbd } from '@mantine/core';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
 import SearchInputV2 from './SearchInputV2';
@@ -19,7 +19,7 @@ export type SearchWhereInputProps = {
    */
   onLanguageChange?: (lang: 'sql' | 'lucene') => void;
   /**
-   * Enable keyboard shortcut (/) to focus the input
+   * Enable keyboard shortcut (/ or s) to focus the input
    */
   enableHotkey?: boolean;
   /**
@@ -173,6 +173,15 @@ export default function SearchWhereInput({
             data-testid={dataTestId}
             additionalSuggestions={additionalSuggestions}
           />
+        )}
+        {enableHotkey && (
+          <Box
+            className={styles.shortcutHint}
+            title="Press / or s to focus search"
+            aria-hidden
+          >
+            <Kbd size="xs">/</Kbd>
+          </Box>
         )}
       </Box>
     </Box>

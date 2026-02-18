@@ -72,3 +72,28 @@
     height: 36px;
   }
 }
+
+.shortcutHint {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+
+  /* Perfect square Kbd: Mantine Kbd renders as <kbd> */
+  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
+  :global(kbd) {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    min-height: 22px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+}
