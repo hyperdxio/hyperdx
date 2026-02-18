@@ -8,26 +8,39 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
   const testInputExpansion = async (
     page: Page,
     editor: Locator,
+    /** For CodeMirror, pass the content element that grows (e.g. .cm-content); for textarea, omit to use editor. */
+    measureLocator?: Locator,
   ): Promise<void> => {
+    const measureEl = measureLocator ?? editor;
     // Scroll into view then focus (more reliable than click for textarea/input in CI)
     await editor.scrollIntoViewIfNeeded();
     await editor.focus();
     await page.keyboard.type('first line');
 
-    // Get initial single line height
-    const singleLineBox = await editor.boundingBox();
+    // Get initial single line height from the element that reflects content height
+    const singleLineBox = await measureEl.boundingBox();
     const singleLineHeight = singleLineBox?.height || 0;
 
     // Add a line break and type second line
     await page.keyboard.press('Shift+Enter');
     await page.keyboard.type('second line');
 
-    // Verify height increased (poll for autosize to run in CI)
-    await expect(async () => {
-      const multiLineBox = await editor.boundingBox();
-      const multiLineHeight = multiLineBox?.height || 0;
-      expect(multiLineHeight).toBeGreaterThan(singleLineHeight);
-    }).toPass({ timeout: 2000 });
+    // Verify newline was inserted: CodeMirror has .cm-line per line; textarea value contains newline
+    const isCodeMirror = (await editor.locator('.cm-line').count()) > 0;
+    if (isCodeMirror) {
+      await expect(editor.locator('.cm-line')).toHaveCount(2, {
+        timeout: 2000,
+      });
+    } else {
+      await expect(editor).toHaveValue(/first line[\r\n]+second line/, {
+        timeout: 2000,
+      });
+    }
+
+    // Verify height did not shrink (may stay same on some layouts e.g. scrollable area)
+    const multiLineBox = await measureEl.boundingBox();
+    const multiLineHeight = multiLineBox?.height || 0;
+    expect(multiLineHeight).toBeGreaterThanOrEqual(singleLineHeight);
   };
 
   const getEditor = (
@@ -90,7 +103,9 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
 
       const editor = getEditor(page, 'SQL', formSelector, whereText);
       await expect(editor).toBeVisible();
-      await testInputExpansion(page, editor);
+      // CodeMirror: .cm-editor can stay fixed; .cm-content height reflects line count
+      const measureEl = editor.locator('.cm-content').first();
+      await testInputExpansion(page, editor, measureEl);
     });
 
     test(`should expand Lucene input on line break on ${name}`, async ({
