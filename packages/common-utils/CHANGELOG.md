@@ -1,5 +1,12 @@
 # @hyperdx/common-utils
 
+## 0.12.3
+
+### Patch Changes
+
+- a8aa94b0: feat: add filters to saved searches
+- c3bc43ad: fix: Avoid using bodyExpression for trace sources
+
 ## 0.12.2
 
 ### Patch Changes
