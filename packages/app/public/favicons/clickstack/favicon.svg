@@ -12,17 +12,4 @@
       <path d="M26 26h208v208H26z" />
     </clipPath>
   </defs>
-  <style>
-    @media (prefers-color-scheme:light) {
-      :root {
-        filter: none
-      }
-    }
-
-    @media (prefers-color-scheme:dark) {
-      :root {
-        filter: none
-      }
-    }
-  </style>
 </svg>
