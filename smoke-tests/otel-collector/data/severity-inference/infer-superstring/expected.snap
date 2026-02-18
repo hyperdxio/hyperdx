@@ -1,0 +1,3 @@
+"warn",13,"WARNING: disk space running low"
+"fatal",21,"CRITICAL: database connection pool exhausted"
+"fatal",21,"EMERGENCY: system failure imminent"
