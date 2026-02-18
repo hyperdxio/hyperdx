@@ -410,6 +410,9 @@ export default function SessionsPage() {
             }
             whereLanguage={whereLanguage || undefined}
             where={where || undefined}
+            onLanguageChange={lang =>
+              setAppliedConfig(prev => ({ ...prev, whereLanguage: lang }))
+            }
           />
         )}
       <Box p="sm">

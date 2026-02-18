@@ -34,8 +34,7 @@ import {
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 
-import SearchInputV2 from './components/SearchInput/SearchInputV2';
-import { SQLInlineEditorControlled } from './components/SearchInput/SQLInlineEditor';
+import SearchWhereInput from './components/SearchInput/SearchWhereInput';
 import useFieldExpressionGenerator from './hooks/useFieldExpressionGenerator';
 import DOMPlayer from './DOMPlayer';
 import Playbar from './Playbar';
@@ -243,6 +242,7 @@ export default function SessionSubpanel({
   initialTs,
   where,
   whereLanguage = 'lucene',
+  onLanguageChange,
 }: {
   traceSource: TSource;
   sessionSource: TSource;
@@ -262,6 +262,7 @@ export default function SessionSubpanel({
   initialTs?: number;
   where?: SearchCondition;
   whereLanguage?: SearchConditionLanguage;
+  onLanguageChange?: (lang: 'sql' | 'lucene') => void;
 }) {
   const [rowId, setRowId] = useState<string | undefined>(undefined);
   const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
@@ -426,6 +427,7 @@ export default function SessionSubpanel({
   const { control, handleSubmit } = useForm({
     values: {
       where: searchedQuery,
+      whereLanguage,
     },
   });
   const handleWhereSubmit = useCallback(
@@ -478,29 +480,16 @@ export default function SessionSubpanel({
             style={{ zIndex: 100, width: '100%' }}
             onSubmit={handleSubmit(handleWhereSubmit)}
           >
-            {whereLanguage === 'sql' ? (
-              <SQLInlineEditorControlled
-                tableConnection={tcFromSource(traceSource)}
-                control={control}
-                name="where"
-                placeholder="SQL WHERE clause (ex. column = 'foo')"
-                language="sql"
-                size="xs"
-                enableHotkey
-                onSubmit={handleSubmit(handleWhereSubmit)}
-              />
-            ) : (
-              <SearchInputV2
-                tableConnection={tcFromSource(traceSource)}
-                control={control}
-                name="where"
-                language="lucene"
-                size="xs"
-                placeholder="Search your events w/ Lucene ex. column:foo"
-                enableHotkey
-                onSubmit={handleSubmit(handleWhereSubmit)}
-              />
-            )}
+            <SearchWhereInput
+              tableConnection={tcFromSource(traceSource)}
+              control={control}
+              name="where"
+              size="xs"
+              showLabel={false}
+              enableHotkey
+              onSubmit={handleSubmit(handleWhereSubmit)}
+              onLanguageChange={onLanguageChange}
+            />
           </form>
           <Group gap={6}>
             <SegmentedControl

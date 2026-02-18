@@ -76,7 +76,6 @@ import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
@@ -610,7 +609,6 @@ export default function EditTimeChartForm({
 
   const select = useWatch({ control, name: 'select' });
   const sourceId = useWatch({ control, name: 'source' });
-  const whereLanguage = useWatch({ control, name: 'whereLanguage' });
   const alert = useWatch({ control, name: 'alert' });
   const seriesReturnType = useWatch({ control, name: 'seriesReturnType' });
   const groupBy = useWatch({ control, name: 'groupBy' });
@@ -1250,27 +1248,16 @@ export default function EditTimeChartForm({
                 onSubmit={onSubmit}
                 label="SELECT"
               />
-              {whereLanguage === 'sql' ? (
-                <SQLInlineEditorControlled
-                  tableConnection={tableConnection}
-                  control={control}
-                  name={`where`}
-                  placeholder="SQL WHERE clause (ex. column = 'foo')"
-                  onLanguageChange={lang => setValue('whereLanguage', lang)}
-                  language="sql"
-                  onSubmit={onSubmit}
-                />
-              ) : (
-                <SearchInputV2
-                  tableConnection={tableConnection}
-                  control={control}
-                  name="where"
-                  onLanguageChange={lang => setValue('whereLanguage', lang)}
-                  language="lucene"
-                  placeholder="Search your events w/ Lucene ex. column:foo"
-                  onSubmit={onSubmit}
-                />
-              )}
+              <SearchWhereInput
+                tableConnection={tableConnection}
+                control={control}
+                name="where"
+                onSubmit={onSubmit}
+                onLanguageChange={(lang: 'sql' | 'lucene') =>
+                  setValue('whereLanguage', lang)
+                }
+                showLabel={false}
+              />
             </Flex>
           )}
         </>
