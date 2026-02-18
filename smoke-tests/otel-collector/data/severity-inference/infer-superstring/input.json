@@ -38,6 +38,36 @@
               "body": {
                 "stringValue": "EMERGENCY: system failure imminent"
               }
+            },
+            {
+              "timeUnixNano": "1901999580000000003",
+              "body": {
+                "stringValue": "ALERTING system engaged"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000004",
+              "body": {
+                "stringValue": "ERRORS detected in application"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000005",
+              "body": {
+                "stringValue": "NOTICED unusual activity in request handler"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000006",
+              "body": {
+                "stringValue": "DEBUGGING enabled for module"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000007",
+              "body": {
+                "stringValue": "TRACED request path through gateway"
+              }
             }
           ]
         }
