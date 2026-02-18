@@ -1,0 +1,53 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "severity-inference"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "no-infer-substring"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "body": {
+                "stringValue": "x-amz-id-2 : abc123/COuECrITmh"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000001",
+              "body": {
+                "stringValue": "txn_id=ab3cdErrF8x processing complete"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000002",
+              "body": {
+                "stringValue": "Forewarn systems check passed"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000003",
+              "body": {
+                "stringValue": "Request backtraced to origin"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
