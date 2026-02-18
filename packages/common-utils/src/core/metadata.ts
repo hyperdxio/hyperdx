@@ -660,6 +660,41 @@ export class Metadata {
     });
   }
 
+  async getSettings({ connectionId }: { connectionId?: string }) {
+    return this.cache.getOrFetch(
+      `${connectionId}.availableSettings`,
+      async () => {
+        try {
+          // we must use client here to avoid an infinite
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query: GET_SETTINGS_QUERY,
+              query_params: undefined,
+              clickhouse_settings: this.getClickHouseSettings(),
+            })
+            .then(res => res.json<{ name: string; value: string }>());
+
+          return new Map(json.data.map(row => [row.name, row.value]));
+        } catch (e) {
+          // Don't retry permissions errors, just silently return undefined
+          if (
+            e instanceof Error &&
+            e.message.includes('Not enough privileges')
+          ) {
+            console.warn(
+              'Not enough privileges to fetch settings, may result in unoptimized queries:',
+              e,
+            );
+            return undefined;
+          }
+
+          throw e;
+        }
+      },
+    );
+  }
+
   /**
    * Queries system.data_skipping_indices to retrieve skip index metadata for a table.
    * Results are cached using MetadataCache.
@@ -1194,6 +1229,8 @@ export function tcFromSource(source?: TSource): TableConnection {
     connectionId: source?.connection ?? '',
   };
 }
+
+export const GET_SETTINGS_QUERY = 'SELECT name, value FROM system.settings';
 
 const __LOCAL_CACHE__ = new MetadataCache();
 

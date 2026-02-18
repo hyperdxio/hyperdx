@@ -1,5 +1,11 @@
 import { createClient } from '@clickhouse/client';
-import type { BaseResultSet, DataFormat } from '@clickhouse/client-common';
+import type {
+  BaseResultSet,
+  ClickHouseSettings,
+  DataFormat,
+} from '@clickhouse/client-common';
+
+import { GET_SETTINGS_QUERY } from '@/core/metadata';
 
 import {
   BaseClickhouseClient,
@@ -34,9 +40,12 @@ export class ClickhouseClient extends BaseClickhouseClient {
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
     this.logDebugQuery(query, query_params);
 
-    const clickhouseSettings = this.processClickhouseSettings(
-      externalClickhouseSettings,
-    );
+    let clickhouseSettings: ClickHouseSettings | undefined;
+    if (query !== GET_SETTINGS_QUERY) {
+      clickhouseSettings = await this.processClickhouseSettings({
+        externalClickhouseSettings,
+      });
+    }
 
     // TODO: Custom error handling
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- client library type mismatch

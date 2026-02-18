@@ -5,6 +5,8 @@ import type {
 } from '@clickhouse/client-common';
 import { createClient } from '@clickhouse/client-web';
 
+import { GET_SETTINGS_QUERY } from '@/core/metadata';
+
 import {
   BaseClickhouseClient,
   ClickhouseClientOptions,
@@ -114,9 +116,13 @@ export class ClickhouseClient extends BaseClickhouseClient {
 
     this.logDebugQuery(query, query_params);
 
-    const clickhouseSettings = this.processClickhouseSettings(
-      externalClickhouseSettings,
-    );
+    let clickhouseSettings: ClickHouseSettings | undefined;
+    if (query !== GET_SETTINGS_QUERY) {
+      clickhouseSettings = await this.processClickhouseSettings({
+        connectionId,
+        externalClickhouseSettings,
+      });
+    }
 
     const httpHeaders: { [header: string]: string } = {
       ...(connectionId && connectionId !== 'local'
