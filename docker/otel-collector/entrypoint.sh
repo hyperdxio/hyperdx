@@ -39,6 +39,11 @@ if [ -z "$OPAMP_SERVER_URL" ]; then
     COLLECTOR_ARGS="$COLLECTOR_ARGS --config $CUSTOM_OTELCOL_CONFIG_FILE"
   fi
 
+  # Pass feature gates to the collector in standalone mode
+  if [ -n "$OTEL_AGENT_FEATURE_GATE_ARG" ]; then
+    COLLECTOR_ARGS="$COLLECTOR_ARGS $OTEL_AGENT_FEATURE_GATE_ARG"
+  fi
+
   # Execute collector directly
   exec /otelcontribcol $COLLECTOR_ARGS
 else
