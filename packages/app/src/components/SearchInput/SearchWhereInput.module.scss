@@ -48,7 +48,8 @@
 
     textarea {
       min-height: 34px;
-      border-radius: 0;
+      border-radius: 0 var(--mantine-radius-default)
+        var(--mantine-radius-default) 0;
     }
   }
 }
