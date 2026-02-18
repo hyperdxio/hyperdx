@@ -1,6 +1,11 @@
 #!/bin/sh
 set -e
 
+# Fall back to legacy schema when the ClickHouse JSON feature gate is enabled
+if echo "$OTEL_AGENT_FEATURE_GATE_ARG" | grep -q "clickhouse.json"; then
+  export HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA=true
+fi
+
 # Run ClickHouse schema migrations if not using legacy schema creation
 if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
   # Run Go-based migrate tool with TLS support
