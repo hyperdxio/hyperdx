@@ -384,6 +384,8 @@ export const SavedSearchSchema = z.object({
   where: z.string(),
   whereLanguage: SearchConditionLanguageSchema,
   source: z.string(),
+  /** When set, search runs across multiple sources. Use sources[0] as primary for backward compat. */
+  sources: z.array(z.string()).optional(),
   tags: z.array(z.string()),
   orderBy: z.string().optional(),
   filters: z.array(FilterSchema).optional(),

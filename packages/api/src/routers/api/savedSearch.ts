@@ -41,7 +41,13 @@ router.post(
 
       const savedSearch = await createSavedSearch(teamId.toString(), req.body);
 
-      return res.json(savedSearch);
+      return res.json({
+        ...savedSearch.toJSON(),
+        source: savedSearch.source.toString(),
+        sources: savedSearch.sources?.map((s: { toString: () => string }) =>
+          s.toString(),
+        ),
+      });
     } catch (e) {
       next(e);
     }
@@ -89,7 +95,13 @@ router.patch(
         return;
       }
 
-      return res.json(updatedSavedSearch);
+      return res.json({
+        ...updatedSavedSearch.toJSON(),
+        source: updatedSavedSearch.source.toString(),
+        sources: updatedSavedSearch.sources?.map(
+          (s: { toString: () => string }) => s.toString(),
+        ),
+      });
     } catch (e) {
       next(e);
     }

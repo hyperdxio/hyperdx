@@ -63,6 +63,8 @@ export type SavedSearchWithEnhancedAlerts = Omit<SavedSearch, 'alerts'> & {
 export type SearchConfig = {
   select?: string | null;
   source?: string | null;
+  /** When set, search runs across multiple sources. Falls back to [source] when only one source. */
+  sources?: string[] | null;
   where?: ChartConfig['where'] | null;
   whereLanguage?: ChartConfig['whereLanguage'] | null;
   filters?: Filter[] | null;

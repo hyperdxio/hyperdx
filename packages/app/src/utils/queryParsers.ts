@@ -28,3 +28,18 @@ export const parseAsSortingStateString = createParser<SortingState[number]>({
     return `${value.id} ${value.desc ? 'DESC' : 'ASC'}`;
   },
 });
+
+/** Comma-separated source IDs for multi-source search URL param (e.g. sources=id1,id2). */
+export const parseAsSources = createParser<string[]>({
+  parse: value => {
+    if (!value || typeof value !== 'string') return [];
+    return value
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+  },
+  serialize: value => {
+    if (!Array.isArray(value) || value.length === 0) return '';
+    return value.join(',');
+  },
+});

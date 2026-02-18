@@ -6,10 +6,11 @@ import { z } from 'zod';
 type ObjectId = mongoose.Types.ObjectId;
 
 export interface ISavedSearch
-  extends Omit<z.infer<typeof SavedSearchSchema>, 'source'> {
+  extends Omit<z.infer<typeof SavedSearchSchema>, 'source' | 'sources'> {
   _id: ObjectId;
   team: ObjectId;
   source: ObjectId;
+  sources?: ObjectId[];
 }
 
 export const SavedSearch = mongoose.model<ISavedSearch>(
@@ -32,6 +33,12 @@ export const SavedSearch = mongoose.model<ISavedSearch>(
         required: true,
         ref: 'Source',
       },
+      sources: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Source',
+        },
+      ],
       tags: [String],
       filters: [{ type: mongoose.Schema.Types.Mixed }],
     },

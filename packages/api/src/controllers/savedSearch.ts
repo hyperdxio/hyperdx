@@ -1,5 +1,6 @@
 import { SavedSearchSchema } from '@hyperdx/common-utils/dist/types';
 import { groupBy, pick } from 'lodash';
+import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { deleteSavedSearchAlerts } from '@/controllers/alerts';
@@ -20,6 +21,10 @@ export async function getSavedSearches(teamId: string) {
 
   return savedSearches.map(savedSearch => ({
     ...savedSearch.toJSON(),
+    source: savedSearch.source.toString(),
+    sources: savedSearch.sources?.map((s: mongoose.Types.ObjectId) =>
+      s.toString(),
+    ),
     alerts: alertsBySavedSearchId[savedSearch._id.toString()]?.map(alert => {
       return alert.toJSON();
     }),
@@ -34,7 +39,11 @@ export function createSavedSearch(
   teamId: string,
   savedSearch: SavedSearchWithoutId,
 ) {
-  return SavedSearch.create({ ...savedSearch, team: teamId });
+  const payload: Record<string, unknown> = { ...savedSearch, team: teamId };
+  if (Array.isArray(payload.sources) && payload.sources.length > 0) {
+    payload.source = payload.sources[0];
+  }
+  return SavedSearch.create(payload as any);
 }
 
 export function updateSavedSearch(
@@ -42,12 +51,13 @@ export function updateSavedSearch(
   savedSearchId: string,
   savedSearch: SavedSearchWithoutId,
 ) {
+  const payload: Record<string, unknown> = { ...savedSearch, team: teamId };
+  if (Array.isArray(payload.sources) && payload.sources.length > 0) {
+    payload.source = payload.sources[0];
+  }
   return SavedSearch.findOneAndUpdate(
     { _id: savedSearchId, team: teamId },
-    {
-      ...savedSearch,
-      team: teamId,
-    },
+    payload as any,
     { new: true },
   );
 }

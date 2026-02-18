@@ -20,7 +20,11 @@ import DBRowSidePanel, {
   RowSidePanelContextProps,
 } from './DBRowSidePanel';
 import { BreadcrumbEntry } from './DBRowSidePanelHeader';
-import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
+import {
+  DBRowTableVariant,
+  DBSqlRowTable,
+  ExternalTableData,
+} from './DBRowTable';
 
 interface Props {
   sourceId: string;
@@ -41,6 +45,8 @@ interface Props {
   onSortingChange?: (v: SortingState | null) => void;
   initialSortBy?: SortingState;
   variant?: DBRowTableVariant;
+  externalData?: ExternalTableData;
+  getSourceIdForRow?: (row: Record<string, unknown>) => string | undefined;
 }
 
 export default function DBSqlRowTableWithSideBar({
@@ -60,18 +66,21 @@ export default function DBSqlRowTableWithSideBar({
   onSortingChange,
   initialSortBy,
   variant,
+  externalData,
+  getSourceIdForRow,
 }: Props) {
-  const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere');
   const [rowSource, setRowSource] = useQueryState('rowSource');
   const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
   const { setContextRowId, setContextRowSource } = useNestedPanelState();
+  const effectiveSourceId = rowSource ?? sourceId;
+  const { data: sourceData } = useSource({ id: effectiveSourceId });
 
   const onOpenSidebar = useCallback(
     (rowWhere: RowWhereResult) => {
       setRowId(rowWhere.where);
       setAliasWith(rowWhere.aliasWith);
-      setRowSource(sourceId);
+      setRowSource(rowWhere.sourceId ?? sourceId);
       onSidebarOpen?.(rowWhere.where);
     },
     [setRowId, setAliasWith, setRowSource, sourceId, onSidebarOpen],
@@ -111,7 +120,7 @@ export default function DBSqlRowTableWithSideBar({
 
   return (
     <RowSidePanelContext.Provider value={context ?? {}}>
-      {sourceData && (rowSource === sourceId || !rowSource) && (
+      {sourceData && (rowSource === effectiveSourceId || !rowSource) && (
         <DBRowSidePanel
           source={sourceData}
           rowId={rowId ?? undefined}
@@ -138,6 +147,8 @@ export default function DBSqlRowTableWithSideBar({
         onExpandedRowsChange={onExpandedRowsChange}
         collapseAllRows={collapseAllRows}
         variant={variant}
+        externalData={externalData}
+        getSourceIdForRow={getSourceIdForRow}
       />
     </RowSidePanelContext.Provider>
   );

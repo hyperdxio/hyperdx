@@ -84,7 +84,10 @@ import OnboardingModal from '@/components/OnboardingModal';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
-import { SourceSelectControlled } from '@/components/SourceSelect';
+import {
+  SourceMultiSelectControlled,
+  SourceSelectControlled,
+} from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
@@ -126,9 +129,11 @@ import {
   LIVE_TAIL_DURATION_MS,
 } from './components/TimePicker/utils';
 import { useTableMetadata } from './hooks/useMetadata';
+import { useMultiSourceSearchResults } from './hooks/useMultiSourceSearch';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import {
   parseAsSortingStateString,
+  parseAsSources,
   parseAsStringWithNewLines,
 } from './utils/queryParsers';
 import api from './api';
@@ -148,29 +153,55 @@ const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
 const DEFAULT_REFRESH_FREQUENCY = 4000;
 
 const ALLOWED_SOURCE_KINDS = [SourceKind.Log, SourceKind.Trace];
-const SearchConfigSchema = z.object({
-  select: z.string(),
-  source: z.string(),
-  where: z.string(),
-  whereLanguage: z.enum(['sql', 'lucene']),
-  orderBy: z.string(),
-  filters: z.array(
-    z.union([
-      z.object({
-        type: z.literal('sql_ast'),
-        operator: z.enum(['=', '<', '>', '>=', '<=', '!=']),
-        left: z.string(),
-        right: z.string(),
-      }),
-      z.object({
-        type: z.enum(['sql', 'lucene']),
-        condition: z.string(),
-      }),
-    ]),
-  ),
-});
+const SearchConfigSchema = z
+  .object({
+    select: z.string(),
+    source: z.string().optional(),
+    sources: z.array(z.string()).min(1).optional(),
+    where: z.string(),
+    whereLanguage: z.enum(['sql', 'lucene']),
+    orderBy: z.string(),
+    filters: z.array(
+      z.union([
+        z.object({
+          type: z.literal('sql_ast'),
+          operator: z.enum(['=', '<', '>', '>=', '<=', '!=']),
+          left: z.string(),
+          right: z.string(),
+        }),
+        z.object({
+          type: z.enum(['sql', 'lucene']),
+          condition: z.string(),
+        }),
+      ]),
+    ),
+  })
+  .refine(
+    data =>
+      (data.sources != null && data.sources.length > 0) ||
+      (data.source != null && data.source !== ''),
+    { message: 'Select at least one source', path: ['sources'] },
+  );
 
 type SearchConfigFromSchema = z.infer<typeof SearchConfigSchema>;
+
+/** Effective source IDs from URL: prefer sources array, else single source. */
+export function getEffectiveSourceIds(searchedConfig: {
+  source?: string | null;
+  sources?: string[] | null;
+}): string[] {
+  if (
+    searchedConfig.sources != null &&
+    Array.isArray(searchedConfig.sources) &&
+    searchedConfig.sources.length > 0
+  ) {
+    return searchedConfig.sources;
+  }
+  if (searchedConfig.source) {
+    return [searchedConfig.source];
+  }
+  return [];
+}
 
 // Helper function to get the default source id
 export function getDefaultSourceId(
@@ -415,7 +446,8 @@ function SaveSearchModalComponent({
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-            source: searchedConfig.source ?? '',
+            source: searchedConfig.sources?.[0] ?? searchedConfig.source ?? '',
+            sources: searchedConfig.sources ?? undefined,
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
             tags: tags,
@@ -433,7 +465,8 @@ function SaveSearchModalComponent({
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-            source: searchedConfig.source ?? '',
+            source: searchedConfig.sources?.[0] ?? searchedConfig.source ?? '',
+            sources: searchedConfig.sources ?? undefined,
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
             tags: tags,
@@ -648,6 +681,52 @@ function useLiveUpdate({
   ]);
 }
 
+/** Build one chart config from a source object (no hooks). */
+function buildChartConfigForSource(
+  sourceObj: TSource,
+  {
+    select,
+    whereLanguage,
+    where,
+    filters,
+    orderBy,
+  }: Pick<
+    SearchConfig,
+    'select' | 'whereLanguage' | 'where' | 'filters' | 'orderBy'
+  >,
+  defaultSearchConfig?: Partial<SearchConfig>,
+  defaultOrderBy?: string,
+) {
+  return {
+    select:
+      select ||
+      defaultSearchConfig?.select ||
+      sourceObj.defaultTableSelectExpression ||
+      '',
+    from: sourceObj.from,
+    source: sourceObj.id,
+    ...(sourceObj.tableFilterExpression != null
+      ? {
+          filters: [
+            {
+              type: 'sql' as const,
+              condition: sourceObj.tableFilterExpression,
+            },
+            ...(filters ?? []),
+          ],
+        }
+      : {}),
+    ...(filters != null ? { filters } : {}),
+    where: where ?? '',
+    whereLanguage: whereLanguage ?? 'sql',
+    timestampValueExpression: sourceObj.timestampValueExpression,
+    implicitColumnExpression: sourceObj.implicitColumnExpression,
+    connection: sourceObj.connection,
+    displayType: DisplayType.Search,
+    orderBy: orderBy || defaultSearchConfig?.orderBy || defaultOrderBy,
+  };
+}
+
 /**
  * Takes in a input search config (user edited search config) and a default search config (saved search or source default config)
  * and returns a chart config.
@@ -664,34 +743,12 @@ function useSearchedConfigToChartConfig(
   return useMemo(() => {
     if (sourceObj != null) {
       return {
-        data: {
-          select:
-            select ||
-            defaultSearchConfig?.select ||
-            sourceObj.defaultTableSelectExpression ||
-            '',
-          from: sourceObj.from,
-          source: sourceObj.id,
-          ...(sourceObj.tableFilterExpression != null
-            ? {
-                filters: [
-                  {
-                    type: 'sql' as const,
-                    condition: sourceObj.tableFilterExpression,
-                  },
-                  ...(filters ?? []),
-                ],
-              }
-            : {}),
-          ...(filters != null ? { filters } : {}),
-          where: where ?? '',
-          whereLanguage: whereLanguage ?? 'sql',
-          timestampValueExpression: sourceObj.timestampValueExpression,
-          implicitColumnExpression: sourceObj.implicitColumnExpression,
-          connection: sourceObj.connection,
-          displayType: DisplayType.Search,
-          orderBy: orderBy || defaultSearchConfig?.orderBy || defaultOrderBy,
-        },
+        data: buildChartConfigForSource(
+          sourceObj,
+          { select, whereLanguage, where, filters, orderBy },
+          defaultSearchConfig,
+          defaultOrderBy,
+        ),
       };
     }
 
@@ -798,6 +855,7 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
+  sources: parseAsSources,
   where: parseAsStringWithNewLines,
   select: parseAsStringWithNewLines,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
@@ -825,8 +883,14 @@ function DBSearchPage() {
     'hdx-last-selected-source-id',
     '',
   );
+  const effectiveSourceIds = useMemo(
+    () => getEffectiveSourceIds(searchedConfig),
+    [searchedConfig],
+  );
+  const primarySourceId =
+    effectiveSourceIds[0] ?? searchedConfig.source ?? undefined;
   const { data: searchedSource } = useSource({
-    id: searchedConfig.source,
+    id: primarySourceId,
   });
 
   const [analysisMode, setAnalysisMode] = useQueryState(
@@ -867,6 +931,12 @@ function DBSearchPage() {
     [sources, lastSelectedSourceId],
   );
 
+  const defaultSources = useMemo(
+    () =>
+      effectiveSourceIds.length > 0 ? effectiveSourceIds : [defaultSourceId],
+    [effectiveSourceIds, defaultSourceId],
+  );
+
   const {
     control,
     setValue,
@@ -881,7 +951,8 @@ function DBSearchPage() {
       select: searchedConfig.select || '',
       where: searchedConfig.where || '',
       whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-      source: searchedConfig.source || defaultSourceId,
+      source: defaultSources[0] ?? defaultSourceId,
+      sources: defaultSources,
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
     },
@@ -893,6 +964,7 @@ function DBSearchPage() {
   });
 
   const inputSource = useWatch({ name: 'source', control });
+  const inputSources = useWatch({ name: 'sources', control }) ?? defaultSources;
 
   const defaultOrderBy = useDefaultOrderBy(inputSource);
 
@@ -940,23 +1012,35 @@ function DBSearchPage() {
   const prevSearched = usePrevious(searchedConfig);
   useEffect(() => {
     if (JSON.stringify(prevSearched) !== JSON.stringify(searchedConfig)) {
+      const ids = getEffectiveSourceIds(searchedConfig ?? {});
+      const sourcesVal =
+        ids.length > 0 ? ids : [defaultSourceId].filter(Boolean);
       reset({
         select: searchedConfig?.select ?? '',
         where: searchedConfig?.where ?? '',
         whereLanguage: searchedConfig?.whereLanguage ?? 'lucene',
-        source: searchedConfig?.source ?? undefined,
+        source: sourcesVal[0] ?? undefined,
+        sources: sourcesVal,
         filters: searchedConfig?.filters ?? [],
         orderBy: searchedConfig?.orderBy ?? '',
       });
     }
-  }, [searchedConfig, reset, prevSearched]);
+  }, [searchedConfig, reset, prevSearched, defaultSourceId]);
 
   // Populate searched query with saved search if the query params have
   // been wiped (ex. clicking on the same saved search again)
   useEffect(() => {
-    const { source, where, select, whereLanguage, filters } = searchedConfig;
+    const {
+      source,
+      sources: urlSources,
+      where,
+      select,
+      whereLanguage,
+      filters,
+    } = searchedConfig;
+    const hasNoSources = (!urlSources || urlSources.length === 0) && !source;
     const isSearchConfigEmpty =
-      !source && !where && !select && !whereLanguage && !filters?.length;
+      hasNoSources && !where && !select && !whereLanguage && !filters?.length;
 
     // Landed on saved search (if we just landed on a searchId route)
     if (
@@ -964,8 +1048,12 @@ function DBSearchPage() {
       savedSearch.id === savedSearchId && // Make sure we've loaded the correct saved search
       isSearchConfigEmpty // Only populate if URL doesn't have explicit config
     ) {
+      const savedSources = (savedSearch as { sources?: string[] }).sources ?? [
+        savedSearch.source,
+      ];
       setSearchedConfig({
-        source: savedSearch.source,
+        source: savedSources[0] ?? savedSearch.source,
+        sources: savedSources,
         where: savedSearch.where,
         select: savedSearch.select,
         whereLanguage: savedSearch.whereLanguage as 'sql' | 'lucene',
@@ -979,6 +1067,7 @@ function DBSearchPage() {
     if (savedSearchId == null && defaultSourceId && isSearchConfigEmpty) {
       setSearchedConfig({
         source: defaultSourceId,
+        sources: [defaultSourceId],
         where: '',
         select: '',
         whereLanguage: 'lucene',
@@ -1017,12 +1106,25 @@ function DBSearchPage() {
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(
-      ({ select, where, whereLanguage, source, filters, orderBy }) => {
+      ({
+        select,
+        where,
+        whereLanguage,
+        source,
+        sources: formSources,
+        filters,
+        orderBy,
+      }) => {
+        const ids: string[] =
+          formSources && formSources.length > 0
+            ? formSources.filter((x): x is string => x != null && x !== '')
+            : [source].filter((x): x is string => x != null && x !== '');
         setSearchedConfig({
           select,
           where,
           whereLanguage,
-          source,
+          source: ids[0] ?? source ?? '',
+          sources: ids,
           filters,
           orderBy,
         });
@@ -1056,39 +1158,66 @@ function DBSearchPage() {
   const watchedSource = useWatch({
     control,
     name: 'source',
-    // Watch will reset when changing saved search, so we need to default to the URL
     defaultValue: searchedConfig.source ?? undefined,
   });
+  const watchedSources = useWatch({ control, name: 'sources' });
   const prevSourceRef = useRef(watchedSource);
+  const prevSourcesRef = useRef<string[] | undefined>(watchedSources);
+
+  // Keep source in sync with sources[0] when user changes multi-select
+  useEffect(() => {
+    const ids = watchedSources ?? [];
+    if (ids.length > 0 && ids[0] !== watchedSource) {
+      setValue('source', ids[0]);
+    }
+  }, [watchedSources, watchedSource, setValue]);
 
   useEffect(() => {
-    // If the user changes the source dropdown, reset the select and orderby fields
-    // to match the new source selected
-    if (watchedSource !== prevSourceRef.current) {
+    const sourcesChanged =
+      JSON.stringify(prevSourcesRef.current ?? []) !==
+      JSON.stringify(watchedSources ?? []);
+    const sourceChanged = watchedSource !== prevSourceRef.current;
+    if (sourceChanged) {
       prevSourceRef.current = watchedSource;
-      const newInputSourceObj = inputSourceObjs?.find(
-        s => s.id === watchedSource,
-      );
-      if (newInputSourceObj != null) {
-        // Save the selected source ID to localStorage
-        setLastSelectedSourceId(newInputSourceObj.id);
+    }
+    if (sourcesChanged) {
+      prevSourcesRef.current = watchedSources;
+    }
+    if (!sourceChanged && !sourcesChanged) return;
 
-        // If the user isn't in a saved search (or the source is different from the saved search source), reset fields
-        if (savedSearchId == null || savedSearch?.source !== watchedSource) {
-          setValue('select', '');
-          setValue('orderBy', '');
-          // Clear all search filters only when switching to a different source
-          searchFilters.clearAllFilters();
-          // If the user is in a saved search, prefer the saved search's select/orderBy if available
-        } else {
-          setValue('select', savedSearch?.select ?? '');
-          setValue('orderBy', savedSearch?.orderBy ?? '');
-          // Don't clear filters - we're loading from saved search
-        }
+    const primaryId = (watchedSources ?? [])[0] ?? watchedSource;
+    const newInputSourceObj = inputSourceObjs?.find(s => s.id === primaryId);
+    if (newInputSourceObj != null) {
+      setLastSelectedSourceId(newInputSourceObj.id);
+    }
+
+    // When sources set changes (e.g. add/remove source), reset select/orderBy for multi-source
+    if (sourcesChanged && (watchedSources ?? []).length > 1) {
+      setValue('select', '');
+      setValue('orderBy', '');
+      searchFilters.clearAllFilters();
+      return;
+    }
+
+    if (sourceChanged && newInputSourceObj != null) {
+      if (
+        savedSearchId == null ||
+        (savedSearch?.source !== primaryId &&
+          !(savedSearch as { sources?: string[] })?.sources?.includes(
+            primaryId,
+          ))
+      ) {
+        setValue('select', '');
+        setValue('orderBy', '');
+        searchFilters.clearAllFilters();
+      } else {
+        setValue('select', savedSearch?.select ?? '');
+        setValue('orderBy', savedSearch?.orderBy ?? '');
       }
     }
   }, [
     watchedSource,
+    watchedSources,
     setValue,
     savedSearch,
     savedSearchId,
@@ -1173,7 +1302,8 @@ function DBSearchPage() {
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
-            source: searchedConfig.source ?? '',
+            source: searchedConfig.sources?.[0] ?? searchedConfig.source ?? '',
+            sources: searchedConfig.sources ?? undefined,
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
             tags: newTags,
@@ -1287,6 +1417,61 @@ function DBSearchPage() {
       dateRange: searchedTimeRange,
     };
   }, [chartConfig, searchedTimeRange]);
+
+  const sourceNamesById = useMemo(
+    () => new Map(sources?.map(s => [s.id, s.name]) ?? []),
+    [sources],
+  );
+  const sourcesById = useMemo(
+    () => new Map(sources?.map(s => [s.id, s]) ?? []),
+    [sources],
+  );
+  const multiSourceConfigsWithDateRange = useMemo(() => {
+    if (effectiveSourceIds.length <= 1) return [];
+    const sourceObjs = effectiveSourceIds
+      .map(id => sources?.find(s => s.id === id))
+      .filter((s): s is TSource => s != null);
+    if (sourceObjs.length === 0) return [];
+    return sourceObjs.map(so => {
+      const perSourceOrderBy = optimizeDefaultOrderBy(
+        so.timestampValueExpression ?? '',
+        so.displayedTimestampValueExpression,
+        undefined,
+      );
+      return {
+        ...buildChartConfigForSource(
+          so,
+          {
+            select: '',
+            where: searchedConfig.where ?? '',
+            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+            filters: searchedConfig.filters ?? [],
+            orderBy: '',
+          },
+          undefined,
+          perSourceOrderBy,
+        ),
+        dateRange: searchedTimeRange,
+      };
+    });
+  }, [
+    effectiveSourceIds,
+    sources,
+    searchedConfig.where,
+    searchedConfig.whereLanguage,
+    searchedConfig.filters,
+    searchedTimeRange,
+  ]);
+
+  const multiSourceResult = useMultiSourceSearchResults(
+    multiSourceConfigsWithDateRange,
+    sourceNamesById,
+    sourcesById,
+    effectiveSourceIds.length > 1 &&
+      isReady &&
+      !!queryReady &&
+      !isChartConfigLoading,
+  );
 
   const displayedColumns = useMemo(
     () =>
@@ -1596,16 +1781,15 @@ function DBSearchPage() {
       >
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
-          <Group gap="4px" wrap="nowrap" style={{ minWidth: 150 }}>
-            <SourceSelectControlled
+          <Group gap="4px" wrap="nowrap" style={{ minWidth: 200 }}>
+            <SourceMultiSelectControlled
               key={`${savedSearchId}`}
               size="xs"
               control={control}
-              name="source"
+              name="sources"
               onCreate={openNewSourceModal}
               allowedSourceKinds={ALLOWED_SOURCE_KINDS}
               data-testid="source-selector"
-              sourceSchemaPreview={sourceSchemaPreview}
             />
             <SourceEditMenu
               setModalOpen={setNewSourceModalOpened}
@@ -2074,13 +2258,16 @@ function DBSearchPage() {
                 ) : (
                   <Box flex="1" mih="0">
                     {chartConfig &&
-                      searchedConfig.source &&
+                      (searchedConfig.source ||
+                        effectiveSourceIds.length > 0) &&
                       dbSqlRowTableConfig &&
                       analysisMode === 'results' && (
                         <DBSqlRowTableWithSideBar
                           context={rowTableContext}
                           config={dbSqlRowTableConfig}
-                          sourceId={searchedConfig.source}
+                          sourceId={
+                            primarySourceId ?? searchedConfig.source ?? ''
+                          }
                           onSidebarOpen={onSidebarOpen}
                           onExpandedRowsChange={onExpandedRowsChange}
                           enabled={isReady}
@@ -2092,6 +2279,22 @@ function DBSearchPage() {
                           collapseAllRows={collapseAllRows}
                           onSortingChange={onSortingChange}
                           initialSortBy={initialSortBy}
+                          externalData={
+                            effectiveSourceIds.length > 1 &&
+                            multiSourceResult.data != null &&
+                            multiSourceResult.meta != null
+                              ? {
+                                  data: multiSourceResult.data,
+                                  meta: multiSourceResult.meta,
+                                }
+                              : undefined
+                          }
+                          getSourceIdForRow={
+                            effectiveSourceIds.length > 1
+                              ? (row: Record<string, unknown>) =>
+                                  row._sourceId as string | undefined
+                              : undefined
+                          }
                         />
                       )}
                   </Box>

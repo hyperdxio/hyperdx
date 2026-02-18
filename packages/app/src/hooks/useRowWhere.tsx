@@ -29,6 +29,8 @@ export type WithClause = {
 export type RowWhereResult = {
   where: string;
   aliasWith: WithClause[];
+  /** For multi-source search: which source this row came from. */
+  sourceId?: string;
 };
 
 type ColumnWithMeta = ColumnMetaType & {
@@ -47,16 +49,8 @@ export function processRowToWhereClause(
       const jsType = cm?.jsType;
       const valueExpr = cm?.valueExpr;
 
-      if (chType == null) {
-        throw new Error(
-          `Column type not found for ${column}, ${JSON.stringify(columnMap)}`,
-        );
-      }
-
-      if (valueExpr == null) {
-        throw new Error(
-          `valueExpr not found for ${column}, ${JSON.stringify(columnMap)}`,
-        );
+      if (chType == null || valueExpr == null) {
+        return null;
       }
 
       switch (jsType) {
@@ -128,6 +122,7 @@ export function processRowToWhereClause(
           ]);
       }
     })
+    .filter((x): x is string => x != null)
     .join(' AND ');
 
   return res;

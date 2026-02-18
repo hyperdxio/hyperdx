@@ -511,6 +511,18 @@ export const RawLogTable = memo(
             cell: info => {
               const value = info.getValue<any>(); // This can be any type realistically (numbers, strings, etc.)
 
+              // Multi-source: show placeholder for missing columns (e.g. trace col on log row)
+              if (value === undefined || value === null) {
+                return (
+                  <span
+                    className="text-muted"
+                    title="Not applicable for this source"
+                  >
+                    —
+                  </span>
+                );
+              }
+
               if (column === '__hdx_pattern_trend') {
                 return (
                   <div style={{ height: 50, width: '100%' }}>
@@ -1328,6 +1340,11 @@ export function selectColumnMapWithoutAdditionalKeys(
 
 export type DBRowTableVariant = 'default' | 'muted';
 
+export type ExternalTableData = {
+  data: Record<string, unknown>[];
+  meta: { name: string; type: string }[];
+};
+
 function DBSqlRowTableComponent({
   config,
   sourceId,
@@ -1347,6 +1364,8 @@ function DBSqlRowTableComponent({
   onSortingChange,
   initialSortBy,
   variant = 'default',
+  externalData,
+  getSourceIdForRow,
 }: {
   config: ChartConfigWithDateRange;
   sourceId?: string;
@@ -1370,6 +1389,10 @@ function DBSqlRowTableComponent({
   initialSortBy?: SortingState;
   onSortingChange?: (v: SortingState | null) => void;
   variant?: DBRowTableVariant;
+  /** When set, use this data instead of useOffsetPaginatedQuery (e.g. merged multi-source results). */
+  externalData?: ExternalTableData;
+  /** For multi-source: get source id from row (e.g. row._sourceId). */
+  getSourceIdForRow?: (row: Record<string, unknown>) => string | undefined;
 }) {
   const { data: me } = api.useMe();
 
@@ -1427,13 +1450,46 @@ function DBSqlRowTableComponent({
 
   const mergedConfig = useConfigWithPrimaryAndPartitionKey(mergedConfigObj);
 
-  const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
-    useOffsetPaginatedQuery(mergedConfig ?? config, {
-      enabled:
-        enabled && mergedConfig != null && getSelectLength(config.select) > 0,
-      isLive,
-      queryKeyPrefix,
-    });
+  const hasExternalData = externalData != null;
+  const queryResult = useOffsetPaginatedQuery(mergedConfig ?? config, {
+    enabled:
+      !hasExternalData &&
+      enabled &&
+      mergedConfig != null &&
+      getSelectLength(config.select) > 0,
+    isLive,
+    queryKeyPrefix,
+  });
+
+  const dateRangeStart = config.dateRange?.[0];
+  const dateRangeEnd = config.dateRange?.[1];
+  const data = useMemo(() => {
+    if (hasExternalData && externalData) {
+      return {
+        data: externalData.data,
+        meta: externalData.meta as ColumnMetaType[],
+        chSql: { sql: '', params: {} },
+        window: {
+          startTime: dateRangeStart ?? new Date(0),
+          endTime: dateRangeEnd ?? new Date(0),
+          windowIndex: 0,
+          direction: 'DESC' as const,
+        },
+      };
+    }
+    return queryResult.data;
+  }, [
+    hasExternalData,
+    externalData,
+    queryResult.data,
+    dateRangeStart,
+    dateRangeEnd,
+  ]);
+  const fetchNextPage = hasExternalData ? () => {} : queryResult.fetchNextPage;
+  const hasNextPage = hasExternalData ? false : queryResult.hasNextPage;
+  const isFetching = hasExternalData ? false : queryResult.isFetching;
+  const isError = hasExternalData ? false : queryResult.isError;
+  const error = hasExternalData ? null : queryResult.error;
 
   // The first N columns are the select columns from the user
   // We can't use names as CH may rewrite the names
@@ -1485,9 +1541,13 @@ function DBSqlRowTableComponent({
 
   const _onRowDetailsClick = useCallback(
     (row: Record<string, any>) => {
-      return onRowDetailsClick?.(getRowWhere(row));
+      const rowWhere = getRowWhere(row);
+      if (getSourceIdForRow) {
+        (rowWhere as RowWhereResult).sourceId = getSourceIdForRow(row);
+      }
+      return onRowDetailsClick?.(rowWhere);
     },
-    [onRowDetailsClick, getRowWhere],
+    [onRowDetailsClick, getRowWhere, getSourceIdForRow],
   );
 
   useEffect(() => {

@@ -1,8 +1,13 @@
 import { memo, useMemo } from 'react';
-import { UseControllerProps } from 'react-hook-form';
+import { useController, UseControllerProps } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { SelectProps, UnstyledButton } from '@mantine/core';
-import { ComboboxChevron } from '@mantine/core';
+import {
+  ComboboxChevron,
+  MultiSelect,
+  MultiSelectProps,
+  SelectProps,
+  UnstyledButton,
+} from '@mantine/core';
 import { IconStack } from '@tabler/icons-react';
 
 import SelectControlled from '@/components/SelectControlled';
@@ -105,3 +110,76 @@ function SourceSelectControlledComponent({
 }
 
 export const SourceSelectControlled = memo(SourceSelectControlledComponent);
+
+/** Multi-select for search page: allows selecting multiple sources (logs + traces). */
+function SourceMultiSelectControlledComponent({
+  size,
+  onCreate,
+  allowedSourceKinds,
+  ...props
+}: {
+  size?: string;
+  onCreate?: () => void;
+  allowedSourceKinds?: SourceKind[];
+} & UseControllerProps<any> &
+  Omit<MultiSelectProps, 'data'>) {
+  const {
+    field: { value: fieldValue, onChange: fieldOnChange, onBlur, name, ref },
+    fieldState,
+  } = useController(props);
+  const { data } = useSources();
+  const hasLocalDefaultSources = !!HDX_LOCAL_DEFAULT_SOURCES;
+
+  const dataOptions = useMemo(
+    () =>
+      [
+        ...(
+          data
+            ?.filter(
+              source =>
+                !allowedSourceKinds || allowedSourceKinds.includes(source.kind),
+            )
+            .map(d => ({ value: d.id, label: d.name })) ?? []
+        ).sort((a, b) => a.label.localeCompare(b.label)),
+        ...(onCreate && !hasLocalDefaultSources
+          ? [{ value: '_create_new_value', label: 'Create New Source' }]
+          : []),
+      ] as { value: string; label: string }[],
+    [data, allowedSourceKinds, onCreate, hasLocalDefaultSources],
+  );
+
+  const selectedValues = Array.isArray(fieldValue) ? fieldValue : [];
+  const handleChange = (v: string[]) => {
+    if (v.includes('_create_new_value') && onCreate) {
+      onCreate();
+      fieldOnChange(selectedValues);
+      return;
+    }
+    if (v.length === 0) return;
+    fieldOnChange(v);
+  };
+
+  return (
+    <MultiSelect
+      {...props}
+      ref={ref}
+      name={name}
+      data={dataOptions}
+      value={selectedValues}
+      onChange={handleChange}
+      onBlur={onBlur}
+      error={fieldState.error?.message}
+      placeholder="Data sources"
+      leftSection={<IconStack size={16} />}
+      size={size ?? 'xs'}
+      searchable
+      clearable
+      maxDropdownHeight={280}
+      comboboxProps={{ withinPortal: false }}
+    />
+  );
+}
+
+export const SourceMultiSelectControlled = memo(
+  SourceMultiSelectControlledComponent,
+);
