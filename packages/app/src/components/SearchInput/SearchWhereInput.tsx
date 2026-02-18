@@ -109,7 +109,6 @@ export default function SearchWhereInput({
   maxWidth = '100%',
   'data-testid': dataTestId,
   additionalSuggestions,
-  ...props
 }: SearchWhereInputProps) {
   // Read the language value from the corresponding language field
   const languageFieldName = `${name}Language` as any;
@@ -155,7 +154,6 @@ export default function SearchWhereInput({
             allowMultiline={allowMultiline}
             size={size}
             additionalSuggestions={additionalSuggestions}
-            {...props}
           />
         ) : (
           <SearchInputV2
@@ -169,7 +167,6 @@ export default function SearchWhereInput({
             size={size}
             data-testid={dataTestId}
             additionalSuggestions={additionalSuggestions}
-            {...props}
           />
         )}
       </Box>

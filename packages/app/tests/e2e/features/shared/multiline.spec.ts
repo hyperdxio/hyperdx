@@ -9,8 +9,9 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     page: Page,
     editor: Locator,
   ): Promise<void> => {
-    // Click and type first line
-    await editor.click();
+    // Scroll into view then focus (more reliable than click for textarea/input in CI)
+    await editor.scrollIntoViewIfNeeded();
+    await editor.focus();
     await page.keyboard.type('first line');
 
     // Get initial single line height
