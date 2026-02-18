@@ -980,6 +980,68 @@
           }
         ]
       },
+      "FilterInput": {
+        "type": "object",
+        "description": "Dashboard filter key that can be added to a dashboard",
+        "required": [
+          "type",
+          "name",
+          "expression",
+          "sourceId"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "QUERY_EXPRESSION"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name for the dashboard filter key"
+          },
+          "expression": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Key expression used when applying this dashboard filter key"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "Source ID this dashboard filter key applies to"
+          },
+          "sourceMetricType": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "gauge",
+              "histogram",
+              "summary",
+              "exponential histogram"
+            ],
+            "description": "Metric type when source is metrics"
+          }
+        }
+      },
+      "Filter": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FilterInput"
+          },
+          {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique dashboard filter key ID"
+              }
+            }
+          }
+        ]
+      },
       "Dashboard": {
         "type": "object",
         "description": "Dashboard with tiles and configuration",
@@ -1014,6 +1076,13 @@
               "production",
               "monitoring"
             ]
+          },
+          "filters": {
+            "type": "array",
+            "description": "Dashboard filter keys added to the dashboard and applied to all tiles",
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            }
           }
         }
       },
@@ -1045,6 +1114,13 @@
             "example": [
               "development"
             ]
+          },
+          "filters": {
+            "type": "array",
+            "description": "Dashboard filter keys to add to the dashboard and apply across all tiles",
+            "items": {
+              "$ref": "#/components/schemas/FilterInput"
+            }
           }
         }
       },
@@ -1078,6 +1154,13 @@
               "production",
               "updated"
             ]
+          },
+          "filters": {
+            "type": "array",
+            "description": "Dashboard filter keys on the dashboard, applied across all tiles",
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            }
           }
         }
       },
@@ -1138,6 +1221,49 @@
           "tableName": {
             "type": "string",
             "description": "ClickHouse table name"
+          }
+        }
+      },
+      "MetricSourceFrom": {
+        "type": "object",
+        "required": [
+          "databaseName"
+        ],
+        "properties": {
+          "databaseName": {
+            "type": "string",
+            "description": "ClickHouse database name"
+          },
+          "tableName": {
+            "type": "string",
+            "description": "ClickHouse table name",
+            "nullable": true
+          }
+        }
+      },
+      "MetricTables": {
+        "type": "object",
+        "description": "Mapping of metric data types to table names. At least one must be specified.",
+        "properties": {
+          "gauge": {
+            "type": "string",
+            "description": "Table containing gauge metrics data"
+          },
+          "histogram": {
+            "type": "string",
+            "description": "Table containing histogram metrics data"
+          },
+          "sum": {
+            "type": "string",
+            "description": "Table containing sum metrics data"
+          },
+          "summary": {
+            "type": "string",
+            "description": "Table containing summary metrics data. Note - not yet fully supported by HyperDX"
+          },
+          "exponential histogram": {
+            "type": "string",
+            "description": "Table containing exponential histogram metrics data. Note - not yet fully supported by HyperDX"
           }
         }
       },
@@ -1212,21 +1338,21 @@
             "type": "string",
             "description": "The granularity of the timestamp column",
             "enum": [
-              "1 second",
-              "15 second",
-              "30 second",
-              "1 minute",
-              "5 minute",
-              "15 minute",
-              "30 minute",
-              "1 hour",
-              "2 hour",
-              "6 hour",
-              "12 hour",
-              "1 day",
-              "2 day",
-              "7 day",
-              "30 day"
+              "1s",
+              "15s",
+              "30s",
+              "1m",
+              "5m",
+              "15m",
+              "30m",
+              "1h",
+              "2h",
+              "6h",
+              "12h",
+              "1d",
+              "2d",
+              "7d",
+              "30d"
             ]
           },
           "minDate": {
@@ -1553,19 +1679,7 @@
             "type": "string"
           },
           "from": {
-            "type": "object",
-            "required": [
-              "databaseName"
-            ],
-            "properties": {
-              "databaseName": {
-                "type": "string"
-              },
-              "tableName": {
-                "type": "string",
-                "nullable": true
-              }
-            }
+            "$ref": "#/components/schemas/MetricSourceFrom"
           },
           "querySettings": {
             "type": "array",
@@ -1575,30 +1689,7 @@
             "nullable": true
           },
           "metricTables": {
-            "type": "object",
-            "description": "Mapping of metric data types to table names. At least one must be specified.",
-            "properties": {
-              "gauge": {
-                "type": "string",
-                "description": "Table containing gauge metrics data"
-              },
-              "histogram": {
-                "type": "string",
-                "description": "Table containing histogram metrics data"
-              },
-              "sum": {
-                "type": "string",
-                "description": "Table containing sum metrics data"
-              },
-              "summary": {
-                "type": "string",
-                "description": "Table containing summary metrics data. Note - not yet fully supported by HyperDX"
-              },
-              "exponential histogram": {
-                "type": "string",
-                "description": "Table containing exponential histogram metrics data. Note - not yet fully supported by HyperDX"
-              }
-            }
+            "$ref": "#/components/schemas/MetricTables"
           },
           "timestampValueExpression": {
             "type": "string",
@@ -2355,6 +2446,15 @@
                           "tags": [
                             "infrastructure",
                             "monitoring"
+                          ],
+                          "filters": [
+                            {
+                              "id": "65f5e4a3b9e77c001a301001",
+                              "type": "QUERY_EXPRESSION",
+                              "name": "Environment",
+                              "expression": "environment",
+                              "sourceId": "65f5e4a3b9e77c001a111111"
+                            }
                           ]
                         },
                         {
@@ -2385,6 +2485,15 @@
                           "tags": [
                             "api",
                             "monitoring"
+                          ],
+                          "filters": [
+                            {
+                              "id": "65f5e4a3b9e77c001a301002",
+                              "type": "QUERY_EXPRESSION",
+                              "name": "Service",
+                              "expression": "service_name",
+                              "sourceId": "65f5e4a3b9e77c001a111112"
+                            }
                           ]
                         }
                       ]
@@ -2439,6 +2548,14 @@
                     "tags": [
                       "api",
                       "monitoring"
+                    ],
+                    "filters": [
+                      {
+                        "type": "QUERY_EXPRESSION",
+                        "name": "Environment",
+                        "expression": "environment",
+                        "sourceId": "65f5e4a3b9e77c001a111111"
+                      }
                     ]
                   }
                 },
@@ -2486,6 +2603,14 @@
                     "tags": [
                       "service-health",
                       "production"
+                    ],
+                    "filters": [
+                      {
+                        "type": "QUERY_EXPRESSION",
+                        "name": "Service",
+                        "expression": "service_name",
+                        "sourceId": "65f5e4a3b9e77c001a111111"
+                      }
                     ]
                   }
                 }
@@ -2530,6 +2655,15 @@
                         "tags": [
                           "api",
                           "monitoring"
+                        ],
+                        "filters": [
+                          {
+                            "id": "65f5e4a3b9e77c001a301004",
+                            "type": "QUERY_EXPRESSION",
+                            "name": "Environment",
+                            "expression": "environment",
+                            "sourceId": "65f5e4a3b9e77c001a111111"
+                          }
                         ]
                       }
                     }
@@ -2658,6 +2792,15 @@
                         "tags": [
                           "infrastructure",
                           "monitoring"
+                        ],
+                        "filters": [
+                          {
+                            "id": "65f5e4a3b9e77c001a301003",
+                            "type": "QUERY_EXPRESSION",
+                            "name": "Environment",
+                            "expression": "environment",
+                            "sourceId": "65f5e4a3b9e77c001a111111"
+                          }
                         ]
                       }
                     }
@@ -2763,6 +2906,15 @@
                     "tags": [
                       "production",
                       "updated"
+                    ],
+                    "filters": [
+                      {
+                        "id": "65f5e4a3b9e77c001a301005",
+                        "type": "QUERY_EXPRESSION",
+                        "name": "Environment",
+                        "expression": "environment",
+                        "sourceId": "65f5e4a3b9e77c001a111111"
+                      }
                     ]
                   }
                 }
@@ -2823,6 +2975,15 @@
                         "tags": [
                           "production",
                           "updated"
+                        ],
+                        "filters": [
+                          {
+                            "id": "65f5e4a3b9e77c001a301005",
+                            "type": "QUERY_EXPRESSION",
+                            "name": "Environment",
+                            "expression": "environment",
+                            "sourceId": "65f5e4a3b9e77c001a111111"
+                          }
                         ]
                       }
                     }

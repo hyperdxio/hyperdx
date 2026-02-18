@@ -1,5 +1,4 @@
 import { configureRuntimeEnv } from 'next-runtime-env/build/configure.js';
-import nextra from 'nextra';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -17,11 +16,6 @@ const { version } = packageJson;
 process.env.NEXT_PUBLIC_APP_VERSION = version;
 
 configureRuntimeEnv();
-
-const withNextra = nextra({
-  theme: 'nextra-theme-docs',
-  themeConfig: './src/nextra.config.tsx',
-});
 
 const basePath = process.env.NEXT_PUBLIC_HYPERDX_BASE_PATH;
 
@@ -60,27 +54,33 @@ const nextConfig = {
     }
     return config;
   },
-  ...withNextra({
-    async headers() {
-      return [
-        {
-          source: '/(.*)?', // Matches all pages
-          headers: [
-            {
-              key: 'X-Frame-Options',
-              value: 'DENY',
-            },
-          ],
-        },
-      ];
-    },
-    productionBrowserSourceMaps: false,
-    ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
-      ? {
-          output: 'standalone',
-        }
-      : {}),
-  }),
+  async headers() {
+    return [
+      {
+        source: '/(.*)?', // Matches all pages
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+        ],
+      },
+    ];
+  },
+  productionBrowserSourceMaps: false,
+  ...(process.env.NEXT_OUTPUT_STANDALONE === 'true'
+    ? {
+        output: 'standalone',
+      }
+    : {}),
+  ...(process.env.NEXT_PUBLIC_CLICKHOUSE_BUILD
+    ? {
+        assetPrefix: '/clickstack',
+        basePath: '/clickstack',
+        images: { unoptimized: true },
+        output: 'export',
+      }
+    : {}),
   logging: {
     incomingRequests: {
       // We also log this in the API server, so we don't want to log it twice.
