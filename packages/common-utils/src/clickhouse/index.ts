@@ -516,17 +516,20 @@ export abstract class BaseClickhouseClient {
       clickhouse_settings.max_execution_time = this.queryTimeout;
     }
 
-    clickhouse_settings.allow_experimental_analyzer = 1;
-    clickhouse_settings.date_time_output_format = 'iso';
-    clickhouse_settings.wait_end_of_query = 0;
-    clickhouse_settings.cancel_http_readonly_queries_on_client_close = 1;
+    const defaultSettings: ClickHouseSettings = {
+      allow_experimental_analyzer: 1,
+      date_time_output_format: 'iso',
+      wait_end_of_query: 0,
+      cancel_http_readonly_queries_on_client_close: 1,
+    };
+
     const metadata = getMetadata(this);
     const serverSettings = await metadata.getSettings({ connectionId });
 
     const applySettingIfAvailable = (name: string, value: string) => {
       if (!serverSettings || !serverSettings.has(name)) return;
       // eslint-disable-next-line security/detect-object-injection
-      clickhouse_settings[name] = value;
+      defaultSettings[name] = value;
     };
 
     // Enables lazy materialization up to the given LIMIT
@@ -548,7 +551,10 @@ export abstract class BaseClickhouseClient {
     // If value is 0, then skip indicies only used on AND queries
     applySettingIfAvailable('use_skip_indexes_for_disjunctions', '1');
 
-    return clickhouse_settings;
+    return {
+      ...defaultSettings,
+      ...clickhouse_settings,
+    };
   }
 
   async query<Format extends DataFormat>(

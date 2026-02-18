@@ -665,7 +665,6 @@ export class Metadata {
       `${connectionId}.availableSettings`,
       async () => {
         try {
-          // we must use client here to avoid an infinite
           const json = await this.clickhouseClient
             .query<'JSON'>({
               connectionId,
@@ -686,7 +685,7 @@ export class Metadata {
               'Not enough privileges to fetch settings, may result in unoptimized queries:',
               e,
             );
-            return undefined;
+            return new Map();
           }
 
           throw e;

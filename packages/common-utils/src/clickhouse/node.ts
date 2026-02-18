@@ -41,6 +41,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
     this.logDebugQuery(query, query_params);
 
     let clickhouseSettings: ClickHouseSettings | undefined;
+    // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
     if (query !== GET_SETTINGS_QUERY) {
       clickhouseSettings = await this.processClickhouseSettings({
         externalClickhouseSettings,
