@@ -4253,6 +4253,7 @@ __metadata:
     aws4: "npm:^1.13.2"
     chrono-node: "npm:^2.9.0"
     compression: "npm:^1.7.4"
+    concurrently: "npm:^9.1.2"
     connect-mongo: "npm:^4.6.0"
     cors: "npm:^2.8.5"
     cron: "npm:^4.3.1"
