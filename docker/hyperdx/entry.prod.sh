@@ -13,7 +13,7 @@ echo "Visit the HyperDX UI at $FRONTEND_URL"
 echo ""
 
 # Use concurrently to run both the API and App servers
-concurrently \
+./node_modules/.bin/concurrently \
   "--kill-others-on-fail" \
   "--names=API,APP,ALERT-TASK" \
   "PORT=${HYPERDX_API_PORT:-8000} HYPERDX_APP_PORT=${HYPERDX_APP_PORT:-8080} node -r ./node_modules/@hyperdx/node-opentelemetry/build/src/tracing ./packages/api/build/index.js" \

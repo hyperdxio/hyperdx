@@ -21,6 +21,7 @@
     "aws4": "^1.13.2",
     "chrono-node": "^2.9.0",
     "compression": "^1.7.4",
+    "concurrently": "^9.1.2",
     "connect-mongo": "^4.6.0",
     "cors": "^2.8.5",
     "cron": "^4.3.1",
