@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
-import { useRouter } from 'next/router';
 import { NextAdapter } from 'next-query-params';
 import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
@@ -27,7 +26,7 @@ import {
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
-import { useConfirmModal, useDismissConfirm } from '@/useConfirm';
+import { ConfirmProvider } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
 import { useUserPreferences } from '@/useUserPreferences';
 
@@ -90,11 +89,9 @@ function AppHeadContent() {
 function AppContent({
   Component,
   pageProps,
-  confirmModal,
 }: {
   Component: NextPageWithLayout;
   pageProps: AppProps['pageProps'];
-  confirmModal: React.ReactNode;
 }) {
   const { userPreferences } = useUserPreferences();
   const { themeName } = useAppTheme();
@@ -122,24 +119,14 @@ function AppContent({
       fontFamily={selectedMantineFont}
       colorScheme={userPreferences.colorMode === 'dark' ? 'dark' : 'light'}
     >
-      {getLayout(<Component {...pageProps} />)}
-      {confirmModal}
+      <ConfirmProvider>
+        {getLayout(<Component {...pageProps} />)}
+      </ConfirmProvider>
     </ThemeWrapper>
   );
 }
 
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
-  const confirmModal = useConfirmModal();
-  const dismissConfirm = useDismissConfirm();
-  const router = useRouter();
-
-  useEffect(() => {
-    router.events.on('routeChangeStart', dismissConfirm);
-    return () => {
-      router.events.off('routeChangeStart', dismissConfirm);
-    };
-  }, [router.events, dismissConfirm]);
-
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
     if (IS_LOCAL_MODE) {
@@ -198,11 +185,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         <HDXQueryParamProvider>
           <QueryParamProvider adapter={NextAdapter}>
             <QueryClientProvider client={queryClient}>
-              <AppContent
-                Component={Component}
-                pageProps={pageProps}
-                confirmModal={confirmModal}
-              />
+              <AppContent Component={Component} pageProps={pageProps} />
               <ReactQueryDevtools initialIsOpen={true} />
             </QueryClientProvider>
           </QueryParamProvider>
