@@ -20,15 +20,21 @@ jobs:
 
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
-      issues: read
+      issues: write
       id-token: write
+      actions: read
 
     steps:
-      # NOTE: No checkout step here. pull_request_target has access to secrets,
-      # so we must NOT check out and run PR code (security risk). The action
-      # fetches the diff via the GitHub API instead.
+      # Checkout the fork's branch so Claude can read the actual PR code.
+      # Using head.repo.full_name + head.ref works for both fork and non-fork PRs.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
 
       - name: Run Claude Code Review
         id: claude-review
@@ -36,6 +42,8 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           allowed_bots: cursor,cursor[bot]
+          github_token: ${{ secrets.GITHUB_TOKEN }} # Bypasses OIDC auth (required for pull_request_target)
+          allowed_non_write_users: '*' # Allows fork contributors to trigger reviews
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
