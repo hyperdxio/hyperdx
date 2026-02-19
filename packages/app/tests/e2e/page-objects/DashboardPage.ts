@@ -54,6 +54,9 @@ export class DashboardPage {
   private readonly aliasInput: Locator;
   private readonly aggFnSelect: Locator;
   private readonly markdownTextarea: Locator;
+  private readonly confirmModal: Locator;
+  private readonly confirmCancelButton: Locator;
+  private readonly confirmConfirmButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -88,6 +91,9 @@ export class DashboardPage {
     this.aliasInput = page.getByTestId('series-alias-input');
     this.aggFnSelect = page.getByTestId('agg-fn-select');
     this.markdownTextarea = page.locator('textarea[name="markdown"]');
+    this.confirmModal = page.getByTestId('confirm-modal');
+    this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
+    this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
   }
 
   /**
@@ -153,6 +159,18 @@ export class DashboardPage {
    */
   async addTile() {
     await this.addTileButton.click();
+  }
+
+  /**
+   * Create a new dashboard and open the tile editor (add tile), waiting for it to be ready.
+   * Use when testing the chart/tile editor modal in isolation.
+   */
+  async openNewTileEditor() {
+    await this.createDashboardButton.click();
+    await this.page.waitForURL('**/dashboards**');
+    await this.addTileButton.click();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.waitForDataToLoad();
   }
 
   /**
@@ -475,5 +493,17 @@ export class DashboardPage {
 
   get emptyFiltersList() {
     return this.emptyFiltersListModal;
+  }
+
+  get unsavedChangesConfirmModal() {
+    return this.confirmModal;
+  }
+
+  get unsavedChangesConfirmCancelButton() {
+    return this.confirmCancelButton;
+  }
+
+  get unsavedChangesConfirmDiscardButton() {
+    return this.confirmConfirmButton;
   }
 }

@@ -27,7 +27,7 @@ import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
-import { useConfirmModal } from '@/useConfirm';
+import { ConfirmProvider } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
 import { useUserPreferences } from '@/useUserPreferences';
 
@@ -90,11 +90,9 @@ function AppHeadContent() {
 function AppContent({
   Component,
   pageProps,
-  confirmModal,
 }: {
   Component: NextPageWithLayout;
   pageProps: AppProps['pageProps'];
-  confirmModal: React.ReactNode;
 }) {
   const { userPreferences } = useUserPreferences();
   const { themeName } = useAppTheme();
@@ -122,15 +120,14 @@ function AppContent({
       fontFamily={selectedMantineFont}
       colorScheme={userPreferences.colorMode === 'dark' ? 'dark' : 'light'}
     >
-      {getLayout(<Component {...pageProps} />)}
-      {confirmModal}
+      <ConfirmProvider>
+        {getLayout(<Component {...pageProps} />)}
+      </ConfirmProvider>
     </ThemeWrapper>
   );
 }
 
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
-  const confirmModal = useConfirmModal();
-
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
     if (IS_LOCAL_MODE) {
@@ -182,11 +179,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         <HDXQueryParamProvider>
           <QueryParamProvider adapter={NextAdapter}>
             <QueryClientProvider client={queryClient}>
-              <AppContent
-                Component={Component}
-                pageProps={pageProps}
-                confirmModal={confirmModal}
-              />
+              <AppContent Component={Component} pageProps={pageProps} />
               <ReactQueryDevtools initialIsOpen={true} />
             </QueryClientProvider>
           </QueryParamProvider>
