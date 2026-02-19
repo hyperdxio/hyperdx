@@ -13,12 +13,7 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/core/renderChartConfig';
-import type {
-  ChartConfig,
-  ChartConfigWithDateRange,
-  QuerySettings,
-  TSource,
-} from '@/types';
+import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 import { optimizeGetKeyValuesCalls } from './materializedViews';
 import { objectHash } from './utils';
@@ -664,13 +659,15 @@ export class Metadata {
     return this.cache.getOrFetch(
       `${connectionId}.availableSettings`,
       async () => {
+        const query = 'SELECT name, value FROM system.settings';
         try {
           const json = await this.clickhouseClient
             .query<'JSON'>({
               connectionId,
-              query: GET_SETTINGS_QUERY,
+              query,
               query_params: undefined,
               clickhouse_settings: this.getClickHouseSettings(),
+              shouldSkipApplySettings: true,
             })
             .then(res => res.json<{ name: string; value: string }>());
 
@@ -1228,8 +1225,6 @@ export function tcFromSource(source?: TSource): TableConnection {
     connectionId: source?.connection ?? '',
   };
 }
-
-export const GET_SETTINGS_QUERY = 'SELECT name, value FROM system.settings';
 
 const __LOCAL_CACHE__ = new MetadataCache();
 

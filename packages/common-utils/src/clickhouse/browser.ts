@@ -5,8 +5,6 @@ import type {
 } from '@clickhouse/client-common';
 import { createClient } from '@clickhouse/client-web';
 
-import { GET_SETTINGS_QUERY } from '@/core/metadata';
-
 import {
   BaseClickhouseClient,
   ClickhouseClientOptions,
@@ -107,6 +105,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
     clickhouse_settings: externalClickhouseSettings,
     connectionId,
     queryId,
+    shouldSkipApplySettings,
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
     // FIXME: we couldn't initialize the client in the constructor
     // since the window is not avalible
@@ -118,7 +117,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
 
     let clickhouseSettings: ClickHouseSettings | undefined;
     // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
-    if (query !== GET_SETTINGS_QUERY) {
+    if (shouldSkipApplySettings) {
       clickhouseSettings = await this.processClickhouseSettings({
         connectionId,
         externalClickhouseSettings,

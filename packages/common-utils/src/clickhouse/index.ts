@@ -422,6 +422,7 @@ export interface QueryInputs<Format extends DataFormat> {
   clickhouse_settings?: ClickHouseSettings;
   connectionId?: string;
   queryId?: string;
+  shouldSkipApplySettings?: boolean;
 }
 
 export type ClickhouseClientOptions = {

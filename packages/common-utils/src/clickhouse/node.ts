@@ -5,8 +5,6 @@ import type {
   DataFormat,
 } from '@clickhouse/client-common';
 
-import { GET_SETTINGS_QUERY } from '@/core/metadata';
-
 import {
   BaseClickhouseClient,
   ClickhouseClientOptions,
@@ -37,12 +35,13 @@ export class ClickhouseClient extends BaseClickhouseClient {
     abort_signal,
     clickhouse_settings: externalClickhouseSettings,
     queryId,
+    shouldSkipApplySettings,
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
     this.logDebugQuery(query, query_params);
 
     let clickhouseSettings: ClickHouseSettings | undefined;
     // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
-    if (query !== GET_SETTINGS_QUERY) {
+    if (shouldSkipApplySettings) {
       clickhouseSettings = await this.processClickhouseSettings({
         externalClickhouseSettings,
       });
