@@ -223,6 +223,8 @@ jobs:
     timeout-minutes: 5
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Notify ClickHouse/clickhouse-clickstack Downstream
