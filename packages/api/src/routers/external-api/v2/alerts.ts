@@ -177,7 +177,6 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           required:
  *             - threshold
  *             - interval
- *             - source
  *             - thresholdType
  *             - channel
  *
@@ -188,7 +187,6 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           required:
  *             - threshold
  *             - interval
- *             - source
  *             - thresholdType
  *             - channel
  *

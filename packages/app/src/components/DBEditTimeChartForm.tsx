@@ -575,6 +575,7 @@ export default function EditTimeChartForm({
   onSave,
   onTimeRangeSelect,
   onClose,
+  onDirtyChange,
   'data-testid': dataTestId,
   submitRef,
 }: {
@@ -588,6 +589,7 @@ export default function EditTimeChartForm({
   setDisplayedTimeInputValue?: (value: string) => void;
   onSave?: (chart: SavedChartConfig) => void;
   onClose?: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   'data-testid'?: string;
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
@@ -609,7 +611,7 @@ export default function EditTimeChartForm({
     register,
     setError,
     clearErrors,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<SavedChartConfigWithSeries>({
     defaultValues: configWithSeries,
     values: configWithSeries,
@@ -625,6 +627,10 @@ export default function EditTimeChartForm({
     control: control as Control<SavedChartConfigWithSeries>,
     name: 'series',
   });
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
 
@@ -979,6 +985,7 @@ export default function EditTimeChartForm({
             filtersLogicalOperator: 'OR' as const,
             groupBy: undefined,
             granularity: undefined,
+            having: undefined,
           }
         : null,
     [queriedConfig, tableSource, dateRange, queryReady],
@@ -1580,6 +1587,7 @@ export default function EditTimeChartForm({
                     ? queriedConfig.select
                     : tableSource?.defaultTableSelectExpression || '',
                 groupBy: undefined,
+                having: undefined,
                 granularity: undefined,
               }}
               enabled
