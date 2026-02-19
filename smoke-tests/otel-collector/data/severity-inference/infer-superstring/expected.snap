@@ -1,0 +1,8 @@
+"warn",13,"WARNING: disk space running low"
+"fatal",21,"CRITICAL: database connection pool exhausted"
+"fatal",21,"EMERGENCY: system failure imminent"
+"fatal",21,"ALERTING system engaged"
+"error",17,"ERRORS detected in application"
+"warn",13,"NOTICED unusual activity in request handler"
+"debug",5,"DEBUGGING enabled for module"
+"trace",1,"TRACED request path through gateway"
