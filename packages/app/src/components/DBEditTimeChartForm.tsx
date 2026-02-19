@@ -974,6 +974,7 @@ export default function EditTimeChartForm({
             filtersLogicalOperator: 'OR' as const,
             groupBy: undefined,
             granularity: undefined,
+            having: undefined,
           }
         : null,
     [queriedConfig, tableSource, dateRange, queryReady],
@@ -1533,6 +1534,7 @@ export default function EditTimeChartForm({
                     ? queriedConfig.select
                     : tableSource?.defaultTableSelectExpression || '',
                 groupBy: undefined,
+                having: undefined,
                 granularity: undefined,
               }}
               enabled
