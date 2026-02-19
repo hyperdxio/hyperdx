@@ -250,7 +250,6 @@
             "required": [
               "threshold",
               "interval",
-              "source",
               "thresholdType",
               "channel"
             ]
@@ -267,7 +266,6 @@
             "required": [
               "threshold",
               "interval",
-              "source",
               "thresholdType",
               "channel"
             ]
@@ -588,6 +586,7 @@
           "sourceId",
           "aggFn",
           "where",
+          "whereLanguage",
           "groupBy"
         ],
         "properties": {
@@ -672,6 +671,7 @@
           "sourceId",
           "aggFn",
           "where",
+          "whereLanguage",
           "groupBy"
         ],
         "properties": {
@@ -751,7 +751,8 @@
           "type",
           "sourceId",
           "aggFn",
-          "where"
+          "where",
+          "whereLanguage"
         ],
         "properties": {
           "type": {
@@ -813,7 +814,8 @@
           "type",
           "sourceId",
           "fields",
-          "where"
+          "where",
+          "whereLanguage"
         ],
         "properties": {
           "type": {

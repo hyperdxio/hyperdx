@@ -124,6 +124,7 @@ async function getMissingSources(
  *         - sourceId
  *         - aggFn
  *         - where
+ *         - whereLanguage
  *         - groupBy
  *       properties:
  *         type:
@@ -188,6 +189,7 @@ async function getMissingSources(
  *         - sourceId
  *         - aggFn
  *         - where
+ *         - whereLanguage
  *         - groupBy
  *       properties:
  *         type:
@@ -248,6 +250,7 @@ async function getMissingSources(
  *         - sourceId
  *         - aggFn
  *         - where
+ *         - whereLanguage
  *       properties:
  *         type:
  *           type: string
@@ -295,6 +298,7 @@ async function getMissingSources(
  *         - sourceId
  *         - fields
  *         - where
+ *         - whereLanguage
  *       properties:
  *         type:
  *           type: string
