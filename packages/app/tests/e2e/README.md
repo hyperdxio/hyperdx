@@ -74,10 +74,20 @@ yarn test:e2e tests/e2e/features/search/search.spec.ts
 yarn test:e2e tests/e2e/features/dashboard.spec.ts --local
 ```
 
+**Watch mode (re-run on file save):**
+
+Playwright UI has built-in watch. Run with UI, then enable it per test:
+
+```bash
+./scripts/test-e2e.sh --keep-running --ui
+```
+
+In the Playwright UI sidebar, click the **eye icon** next to a test (or file/describe) to turn on watch for it. When you save changes to that test file, that test will re-run automatically.
+
 **Available flags:**
 
 - `--local` - Run in local mode (frontend only), excludes `@full-stack` tests
-- `--ui` - Open Playwright UI for interactive debugging
+- `--ui` - Open Playwright UI for interactive debugging and watch mode
 - `--debug` - Run in debug mode with browser developer tools
 - `--headed` - Run tests in visible browser (default is headless)
 
