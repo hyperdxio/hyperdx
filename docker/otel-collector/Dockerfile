@@ -20,7 +20,8 @@ ARG USER_UID=10001
 ARG USER_GID=10001
 
 # Install certs, create user/group, and make the writable data dir
-RUN apk add --no-cache ca-certificates && \
+RUN apk update && apk upgrade --no-cache libssl3 libcrypto3 && \
+  apk add --no-cache ca-certificates && \
   addgroup -S -g ${USER_GID} otel && \
   adduser  -S -u ${USER_UID} -G otel otel && \
   install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data && \
