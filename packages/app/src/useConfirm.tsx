@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { atom, useAtomValue, useSetAtom } from 'jotai';
+import { atom, useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { Button, Group, Modal, Text } from '@mantine/core';
 
 type ConfirmOptions = {
@@ -43,6 +43,18 @@ export const useConfirm = () => {
     },
     [setConfirm],
   );
+};
+
+export const useDismissConfirm = () => {
+  const [confirm, setConfirm] = useAtom(confirmAtom);
+
+  return React.useCallback(() => {
+    if (confirm?.onClose) {
+      confirm.onClose();
+    } else {
+      setConfirm(null);
+    }
+  }, [confirm, setConfirm]);
 };
 
 export const useConfirmModal = () => {

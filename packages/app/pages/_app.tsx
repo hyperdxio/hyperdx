@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import { NextAdapter } from 'next-query-params';
 import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
@@ -26,7 +27,7 @@ import {
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
-import { useConfirmModal } from '@/useConfirm';
+import { useConfirmModal, useDismissConfirm } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
 import { useUserPreferences } from '@/useUserPreferences';
 
@@ -129,6 +130,15 @@ function AppContent({
 
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const confirmModal = useConfirmModal();
+  const dismissConfirm = useDismissConfirm();
+  const router = useRouter();
+
+  useEffect(() => {
+    router.events.on('routeChangeStart', dismissConfirm);
+    return () => {
+      router.events.off('routeChangeStart', dismissConfirm);
+    };
+  }, [router.events, dismissConfirm]);
 
   // port to react query ? (needs to wrap with QueryClientProvider)
   useEffect(() => {
