@@ -4,11 +4,11 @@ import {
   MetricsDataType,
   NumberFormatSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 import { z } from 'zod';
 
-import type { AlertInterval } from '@/models/alert';
 import { AlertSource, AlertThresholdType } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
@@ -196,17 +196,6 @@ export const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-const ALERT_INTERVAL_TO_MINUTES: Record<AlertInterval, number> = {
-  '1m': 1,
-  '5m': 5,
-  '15m': 15,
-  '30m': 30,
-  '1h': 60,
-  '6h': 360,
-  '12h': 720,
-  '1d': 1440,
-};
-
 const scheduleStartAtSchema = z
   .union([z.string().datetime(), z.literal(''), z.null()])
   .optional()
@@ -225,15 +214,4 @@ export const alertSchema = z
     message: z.string().min(1).max(4096).nullish(),
   })
   .and(zSavedSearchAlert.or(zTileAlert))
-  .superRefine((alert, ctx) => {
-    const intervalMinutes = ALERT_INTERVAL_TO_MINUTES[alert.interval];
-    const scheduleOffsetMinutes = alert.scheduleOffsetMinutes ?? 0;
-
-    if (scheduleOffsetMinutes >= intervalMinutes) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `scheduleOffsetMinutes must be less than the alert interval (${intervalMinutes} minute${intervalMinutes === 1 ? '' : 's'})`,
-        path: ['scheduleOffsetMinutes'],
-      });
-    }
-  });
+  .superRefine(validateAlertScheduleOffsetMinutes);

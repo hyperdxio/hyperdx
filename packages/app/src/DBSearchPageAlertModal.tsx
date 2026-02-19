@@ -12,6 +12,7 @@ import {
   AlertThresholdType,
   SearchCondition,
   SearchConditionLanguage,
+  validateAlertScheduleOffsetMinutes,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
 import { Alert as MantineAlert, TextInput } from '@mantine/core';
@@ -66,16 +67,7 @@ const SavedSearchAlertFormSchema = z
     channel: zAlertChannel,
   })
   .passthrough()
-  .superRefine((alert, ctx) => {
-    const intervalMinutes = intervalToMinutes(alert.interval);
-    if (alert.scheduleOffsetMinutes >= intervalMinutes) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Must be less than ${intervalMinutes} minute${intervalMinutes === 1 ? '' : 's'}`,
-        path: ['scheduleOffsetMinutes'],
-      });
-    }
-  });
+  .superRefine(validateAlertScheduleOffsetMinutes);
 
 const AlertForm = ({
   sourceId,

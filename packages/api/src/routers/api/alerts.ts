@@ -12,7 +12,6 @@ import {
   getAlertsEnhanced,
   updateAlert,
 } from '@/controllers/alerts';
-import AlertSchema from '@/models/alert';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();

@@ -8,6 +8,7 @@ import _ from 'lodash';
 import { z } from 'zod';
 import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  ALERT_INTERVAL_TO_MINUTES,
   AlertChannelType,
   AlertInterval,
   AlertThresholdType,
@@ -27,15 +28,7 @@ export function intervalToGranularity(interval: AlertInterval) {
 }
 
 export function intervalToMinutes(interval: AlertInterval): number {
-  if (interval === '1m') return 1;
-  if (interval === '5m') return 5;
-  if (interval === '15m') return 15;
-  if (interval === '30m') return 30;
-  if (interval === '1h') return 60;
-  if (interval === '6h') return 360;
-  if (interval === '12h') return 720;
-  if (interval === '1d') return 1440;
-  return 1440;
+  return ALERT_INTERVAL_TO_MINUTES[interval];
 }
 
 export function intervalToDateRange(interval: AlertInterval): [Date, Date] {

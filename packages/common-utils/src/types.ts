@@ -295,7 +295,7 @@ export const AlertIntervalSchema = z.union([
 
 export type AlertInterval = z.infer<typeof AlertIntervalSchema>;
 
-const ALERT_INTERVAL_TO_MINUTES: Record<AlertInterval, number> = {
+export const ALERT_INTERVAL_TO_MINUTES: Record<AlertInterval, number> = {
   '1m': 1,
   '5m': 5,
   '15m': 15,
@@ -327,7 +327,7 @@ export const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-const validateAlertScheduleOffsetMinutes = (
+export const validateAlertScheduleOffsetMinutes = (
   alert: { interval: AlertInterval; scheduleOffsetMinutes?: number },
   ctx: z.RefinementCtx,
 ) => {
