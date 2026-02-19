@@ -2,4 +2,4 @@
 "@hyperdx/otel-collector": patch
 ---
 
-chore: upgrade libssl3/libcrypto3 to address CVE-2025-15467
+chore: bump base alpine 3.23 to address CVE-2025-15467
