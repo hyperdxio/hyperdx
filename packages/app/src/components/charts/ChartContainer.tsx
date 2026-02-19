@@ -14,7 +14,7 @@ function ChartContainer({
   disableReactiveContainer,
 }: ChartContainerProps) {
   return (
-    <Stack h="100%" w="100%" style={{ flexGrow: 1, minHeight: 0 }}>
+    <Stack h="100%" w="100%" style={{ flexGrow: 1 }}>
       {(!!title || !!toolbarItems?.length) && (
         <Group justify="space-between" align="start" wrap="nowrap">
           <span
@@ -34,7 +34,7 @@ function ChartContainer({
         </Group>
       )}
       {disableReactiveContainer ? (
-        <div style={{ flex: 1, minHeight: 0 }}>{children}</div>
+        children
       ) : (
         <div
           // Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172
@@ -42,8 +42,6 @@ function ChartContainer({
             position: 'relative',
             width: '100%',
             height: '100%',
-            flex: 1,
-            minHeight: 0,
           }}
         >
           <div
