@@ -44,11 +44,16 @@ export const AppNavCloudBanner = () => {
     <div className="my-3 bg-muted rounded p-2 text-center">
       <span className="fs-8">Ready to deploy on ClickHouse Cloud?</span>
       <div className="mt-2 mb-2">
-        <Link href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started#deploy-with-clickhouse-cloud">
-          <Button variant="primary" size="xs" className="hover-color-white">
-            Get Started for Free
-          </Button>
-        </Link>
+        <Button
+          variant="primary"
+          size="xs"
+          component="a"
+          href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started#deploy-with-clickhouse-cloud"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Get Started for Free
+        </Button>
       </div>
     </div>
   );
@@ -86,7 +91,7 @@ export const AppNavUserMenu = ({
           })}
         >
           <Group gap="xs" wrap="nowrap" miw={0}>
-            <Avatar size="sm" radius="xl" color="green">
+            <Avatar size="sm" radius="xl" color="gray">
               {initials}
             </Avatar>
             {!isCollapsed && (
@@ -211,6 +216,8 @@ export const AppNavHelpMenu = ({
               data-testid="documentation-menu-item"
               href="https://clickhouse.com/docs/use-cases/observability/clickstack"
               component="a"
+              target="_blank"
+              rel="noopener noreferrer"
               leftSection={<IconBook size={16} />}
             >
               Documentation
@@ -221,6 +228,7 @@ export const AppNavHelpMenu = ({
               component="a"
               href="https://hyperdx.io/discord"
               target="_blank"
+              rel="noopener noreferrer"
             >
               Discord Community
             </Menu.Item>
@@ -292,8 +300,8 @@ export const AppNavLink = ({
       {!isCollapsed && isBeta && (
         <Badge
           size="xs"
-          radius="sm"
-          color="gray"
+          color="blue"
+          variant="light"
           className={styles.navItemBadge}
         >
           Beta

@@ -395,12 +395,15 @@ const Tile = forwardRef(
                 config={queriedConfig}
               />
             )}
-            {queriedConfig?.displayType === DisplayType.Markdown && (
+            {/* Markdown charts may not have queriedConfig, if source is not set */}
+            {(queriedConfig?.displayType === DisplayType.Markdown ||
+              (!queriedConfig &&
+                chart.config.displayType === DisplayType.Markdown)) && (
               <HDXMarkdownChart
                 key={`${keyPrefix}-${chart.id}`}
                 title={title}
                 toolbarItems={toolbar}
-                config={queriedConfig}
+                config={queriedConfig ?? chart.config}
               />
             )}
             {queriedConfig?.displayType === DisplayType.Search && (
@@ -460,7 +463,7 @@ const Tile = forwardRef(
             isHighlighted && 'dashboard-chart-highlighted'
           }`}
           id={`chart-${chart.id}`}
-          onMouseEnter={() => {
+          onMouseOver={() => {
             setHovered(true);
             setIsFocused(true);
           }}
@@ -848,7 +851,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               if (dashboard != null) {
                 if (
                   !(await confirm(
-                    `Duplicate ${chart.config.name}?`,
+                    <>
+                      Duplicate {'"'}
+                      <Text component="span" fw={700}>
+                        {chart.config.name}
+                      </Text>
+                      {'"'}?
+                    </>,
                     'Duplicate',
                   ))
                 ) {
@@ -861,6 +870,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                     {
                       ...chart,
                       id: makeId(),
+                      config: {
+                        ...chart.config,
+                        // Don't duplicate any alerts that may be set on the original tile
+                        alert: undefined,
+                      },
                     },
                   ],
                 });
@@ -869,7 +883,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             onDeleteClick={async () => {
               if (dashboard != null) {
                 if (
-                  !(await confirm(`Delete ${chart.config.name}?`, 'Delete'))
+                  !(await confirm(
+                    <>
+                      Delete{' '}
+                      <Text component="span" fw={700}>
+                        {chart.config.name}
+                      </Text>
+                      ?
+                    </>,
+                    'Delete',
+                    { variant: 'danger' },
+                  ))
                 ) {
                   return;
                 }

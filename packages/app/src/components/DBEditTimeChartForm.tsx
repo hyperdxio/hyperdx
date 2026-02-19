@@ -80,7 +80,11 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
-import { useFetchMetricResourceAttrs } from '@/hooks/useFetchMetricResourceAttrs';
+import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
+import {
+  parseAttributeKeysFromSuggestions,
+  useFetchMetricResourceAttrs,
+} from '@/hooks/useFetchMetricResourceAttrs';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import {
@@ -112,6 +116,7 @@ import {
   InputControlled,
   TextInputControlled,
 } from './InputControlled';
+import { MetricAttributeHelperPanel } from './MetricAttributeHelperPanel';
 import { MetricNameSelect } from './MetricNameSelect';
 import SaveToDashboardModal from './SaveToDashboardModal';
 import SourceSchemaPreview from './SourceSchemaPreview';
@@ -248,14 +253,53 @@ function ChartSeriesEditorComponent({
       : _tableName;
 
   const metricName = useWatch({ control, name: `${namePrefix}metricName` });
-  const { data: attributeKeys } = useFetchMetricResourceAttrs({
+  const aggCondition = useWatch({
+    control,
+    name: `${namePrefix}aggCondition`,
+  });
+  const groupBy = useWatch({ control, name: 'groupBy' });
+
+  const { data: attributeSuggestions, isLoading: isLoadingAttributes } =
+    useFetchMetricResourceAttrs({
+      databaseName,
+      metricType,
+      metricName,
+      tableSource,
+      isSql: aggConditionLanguage === 'sql',
+    });
+
+  const attributeKeys = useMemo(
+    () => parseAttributeKeysFromSuggestions(attributeSuggestions ?? []),
+    [attributeSuggestions],
+  );
+
+  const { data: metricMetadata } = useFetchMetricMetadata({
     databaseName,
-    tableName: tableName || '',
     metricType,
     metricName,
     tableSource,
-    isSql: aggConditionLanguage === 'sql',
   });
+
+  const handleAddToWhere = useCallback(
+    (clause: string) => {
+      const currentValue = aggCondition || '';
+
+      const newValue = currentValue ? `${currentValue} AND ${clause}` : clause;
+      setValue(`${namePrefix}aggCondition`, newValue);
+      onSubmit();
+    },
+    [aggCondition, namePrefix, setValue, onSubmit],
+  );
+
+  const handleAddToGroupBy = useCallback(
+    (clause: string) => {
+      const currentValue = groupBy || '';
+      const newValue = currentValue ? `${currentValue}, ${clause}` : clause;
+      setValue('groupBy', newValue);
+      onSubmit();
+    },
+    [groupBy, setValue, onSubmit],
+  );
 
   const showWhere = aggFn !== 'none';
 
@@ -284,6 +328,7 @@ function ChartSeriesEditorComponent({
                 placeholder="Series alias"
                 onChange={() => onSubmit()}
                 size="xs"
+                data-testid="series-alias-input"
               />
             </div>
             {(index ?? -1) > 0 && (
@@ -413,7 +458,7 @@ function ChartSeriesEditorComponent({
                       onLanguageChange={lang =>
                         setValue(`${namePrefix}aggConditionLanguage`, lang)
                       }
-                      additionalSuggestions={attributeKeys}
+                      additionalSuggestions={attributeSuggestions}
                       language="sql"
                       onSubmit={onSubmit}
                     />
@@ -428,7 +473,7 @@ function ChartSeriesEditorComponent({
                       language="lucene"
                       placeholder="Search your events w/ Lucene ex. column:foo"
                       onSubmit={onSubmit}
-                      additionalSuggestions={attributeKeys}
+                      additionalSuggestions={attributeSuggestions}
                     />
                   )}
                 </div>
@@ -479,6 +524,20 @@ function ChartSeriesEditorComponent({
           </div>
         )}
       </Flex>
+      {tableSource?.kind === SourceKind.Metric && metricName && (
+        <MetricAttributeHelperPanel
+          databaseName={databaseName}
+          metricType={metricType}
+          metricName={metricName}
+          tableSource={tableSource}
+          attributeKeys={attributeKeys}
+          isLoading={isLoadingAttributes}
+          language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
+          metricMetadata={metricMetadata}
+          onAddToWhere={handleAddToWhere}
+          onAddToGroupBy={handleAddToGroupBy}
+        />
+      )}
     </>
   );
 }
@@ -909,6 +968,7 @@ export default function EditTimeChartForm({
             filtersLogicalOperator: 'OR' as const,
             groupBy: undefined,
             granularity: undefined,
+            having: undefined,
           }
         : null,
     [queriedConfig, tableSource, dateRange, queryReady],
@@ -1468,6 +1528,7 @@ export default function EditTimeChartForm({
                     ? queriedConfig.select
                     : tableSource?.defaultTableSelectExpression || '',
                 groupBy: undefined,
+                having: undefined,
                 granularity: undefined,
               }}
               enabled

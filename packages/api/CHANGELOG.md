@@ -1,5 +1,58 @@
 # @hyperdx/api
 
+## 2.17.0
+
+### Patch Changes
+
+- 679b65d7: feat: added configuration to disable frontend otel exporter
+- 27f478a6: feat: Add external GET /sources API
+- d759d046: support filters in dashboards external api
+- a8aa94b0: feat: add filters to saved searches
+- c3bc43ad: fix: Avoid using bodyExpression for trace sources
+- 9ab68432: Minor fixes in the sources external API: 1. avoid inline schemas, 2. use short format timestamps for materializedView.minGranularity
+- Updated dependencies [a8aa94b0]
+- Updated dependencies [c3bc43ad]
+  - @hyperdx/common-utils@0.12.3
+
+## 2.16.0
+
+### Patch Changes
+
+- Updated dependencies [b6c34b13]
+  - @hyperdx/common-utils@0.12.2
+
+## 2.15.1
+
+### Patch Changes
+
+- 6cfa40a0: feat: Add support for querying nested/array columns with lucene
+- Updated dependencies [6cfa40a0]
+  - @hyperdx/common-utils@0.12.1
+
+## 2.15.0
+
+### Patch Changes
+
+- Updated dependencies [f44923ba]
+  - @hyperdx/common-utils@0.12.0
+
+## 2.14.0
+
+### Minor Changes
+
+- 4c287b16: fix: Fix external dashboard endpoints
+- 3aa8be0a: Concat zod errors into a single message field
+- d07e30d5: Associates a logged in HyperDX user to the ClickHouse query recorded in the query log.
+
+### Patch Changes
+
+- 4e7d04c7: API: Show error "Invalid JSON payload" if the JSON body has a syntax error
+- 941bc23e: fix: Fix inaccurate openapi docs for external alerts API
+- b8ab312a: chore: improve Team typing
+- Updated dependencies [6aa3ac6f]
+- Updated dependencies [b8ab312a]
+  - @hyperdx/common-utils@0.11.1
+
 ## 2.13.0
 
 ### Minor Changes

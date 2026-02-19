@@ -110,20 +110,38 @@ export const isJSDataTypeJSONStringifiable = (
   );
 };
 
-export const convertCHTypeToPrimitiveJSType = (dataType: string) => {
-  const jsType = convertCHDataTypeToJSType(dataType);
-
-  if (
-    jsType === JSDataType.Map ||
-    jsType === JSDataType.Array ||
-    jsType === JSDataType.Tuple
-  ) {
-    throw new Error('Map, Array or Tuple type is not a primitive type');
-  } else if (jsType === JSDataType.Date) {
-    return JSDataType.Number;
+export const extractInnerCHArrayJSType = (
+  dataType: string,
+): JSDataType | null => {
+  if (dataType.trim().startsWith('Array(') && dataType.trim().endsWith(')')) {
+    const innerType = dataType.trim().slice(6, -1);
+    return convertCHDataTypeToJSType(innerType);
   }
 
-  return jsType;
+  return null;
+};
+
+export const convertCHTypeToLuceneSearchType = (
+  dataType: string,
+): {
+  type: JSDataType | null;
+  isArray: boolean;
+} => {
+  let jsType = convertCHDataTypeToJSType(dataType);
+  const isArray = jsType === JSDataType.Array;
+
+  if (jsType === JSDataType.Map || jsType === JSDataType.Tuple) {
+    throw new Error('Map or Tuple types cannot be searched with Lucene.');
+  } else if (jsType === JSDataType.Date) {
+    jsType = JSDataType.Number;
+  } else if (
+    jsType === JSDataType.Array &&
+    extractInnerCHArrayJSType(dataType)
+  ) {
+    jsType = extractInnerCHArrayJSType(dataType);
+  }
+
+  return { type: jsType, isArray };
 };
 
 const hash = (input: string | number) => Math.abs(hashCode(`${input}`));

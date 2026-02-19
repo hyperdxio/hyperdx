@@ -103,7 +103,7 @@ export default function DBTableChart({
       }
       return acc;
     }, [] as string[]);
-  }, [config?.select]);
+  }, [config.select]);
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {

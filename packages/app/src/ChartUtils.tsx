@@ -44,7 +44,7 @@ import {
   TimeChartSeries,
 } from './types';
 import { NumberFormat } from './types';
-import { getColorProps, logLevelColor, logLevelColorOrder } from './utils';
+import { getColorProps, getLogLevelColorOrder, logLevelColor } from './utils';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
@@ -74,7 +74,7 @@ export const AGG_FNS = [
     isAttributable: false,
   },
   { value: 'any' as const, label: 'Any' },
-  { value: 'none' as const, label: 'None' },
+  { value: 'none' as const, label: 'Custom' },
 ];
 
 export const getMetricAggFns = (
@@ -713,6 +713,7 @@ export function formatResponseForTimeChart({
     });
   }
 
+  const logLevelColorOrder = getLogLevelColorOrder();
   const sortedLineData = Object.values(lineDataMap).sort((a, b) => {
     return (
       logLevelColorOrder.findIndex(color => color === a.color) -

@@ -22,7 +22,6 @@ import {
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import api from './api';
 import { useConnections } from './connection';
-import Icon from './Icon';
 import { useSources } from './source';
 import { useLocalStorage } from './utils';
 
@@ -36,6 +35,7 @@ interface OnboardingStep {
   onClick?: () => void;
 }
 
+const NOW = Date.now();
 const OnboardingChecklist = ({
   onAddDataClick,
 }: {
@@ -54,7 +54,7 @@ const OnboardingChecklist = ({
   // Check if team is new (less than 3 days old)
   const isNewTeam = useMemo(() => {
     if (!team?.createdAt) return false;
-    const threeDaysAgo = new Date(Date.now() - 1000 * 60 * 60 * 24 * 3);
+    const threeDaysAgo = new Date(NOW - 1000 * 60 * 60 * 24 * 3);
     return new Date(team.createdAt) > threeDaysAgo;
   }, [team]);
 

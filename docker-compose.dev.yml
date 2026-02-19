@@ -22,7 +22,8 @@ services:
   otel-collector:
     # image: otel/opentelemetry-collector-contrib:0.120.0
     build:
-      context: ./docker/otel-collector
+      context: .
+      dockerfile: docker/otel-collector/Dockerfile
       target: dev
     environment:
       CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
@@ -34,6 +35,7 @@ services:
       CUSTOM_OTELCOL_CONFIG_FILE: '/etc/otelcol-contrib/custom.config.yaml'
       # Uncomment to enable stdout logging for the OTel collector
       OTEL_SUPERVISOR_LOGS: 'true'
+      HYPERDX_OTEL_EXPORTER_TABLES_TTL: '24h'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
       - ./docker/otel-collector/supervisor_docker.yaml.tmpl:/etc/otel/supervisor.yaml.tmpl
@@ -54,12 +56,14 @@ services:
   otel-collector-json:
     # image: otel/opentelemetry-collector-contrib:0.120.0
     build:
-      context: ./docker/otel-collector
+      context: .
+      dockerfile: docker/otel-collector/Dockerfile
       target: dev
     environment:
       CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
       CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT: 'ch-server:9363'
       HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: 'otel_json'
+      HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA: 'true'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
       OPAMP_SERVER_URL: 'http://host.docker.internal:${HYPERDX_OPAMP_PORT}'
@@ -95,7 +99,6 @@ services:
     volumes:
       - ./docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
       - ./docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
-      - ./docker/clickhouse/local/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
       - .volumes/ch_data_dev:/var/lib/clickhouse
       - .volumes/ch_logs_dev:/var/log/clickhouse-server
     restart: on-failure

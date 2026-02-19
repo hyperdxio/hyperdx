@@ -5,11 +5,13 @@ import {
   MantineThemeOverride,
   rem,
   Select,
+  Slider,
+  Tabs,
   Text,
   Tooltip,
 } from '@mantine/core';
 
-import focusClasses from '../../styles/focus.module.scss';
+import focusClasses from '../../../../styles/focus.module.scss';
 
 export const makeTheme = ({
   fontFamily = '"IBM Plex Sans", monospace',
@@ -112,6 +114,16 @@ export const makeTheme = ({
       styles: {
         input: {
           border: '1px solid var(--color-border)',
+        },
+      },
+    }),
+    Slider: Slider.extend({
+      styles: {
+        bar: {
+          backgroundColor: 'var(--color-bg-brand)',
+        },
+        thumb: {
+          borderColor: 'var(--color-bg-brand)',
         },
       },
     }),
@@ -219,6 +231,9 @@ export const makeTheme = ({
       },
     }),
     Button: Button.extend({
+      defaultProps: {
+        variant: 'primary',
+      },
       vars: (_theme, props) => {
         const baseVars: Record<string, string> = {};
 
@@ -228,11 +243,12 @@ export const makeTheme = ({
           baseVars['--button-fz'] = rem(12);
         }
 
-        // Use Mantine's built-in CSS vars for hover support
+        // Use semantic CSS vars for primary button styling
         if (props.variant === 'primary') {
-          baseVars['--button-bg'] = 'var(--mantine-color-green-light)';
-          baseVars['--button-hover'] = 'var(--mantine-color-green-light-hover)';
-          baseVars['--button-color'] = 'var(--mantine-color-green-light-color)';
+          baseVars['--button-bg'] = 'var(--color-primary-button-bg)';
+          baseVars['--button-hover'] = 'var(--color-primary-button-bg-hover)';
+          baseVars['--button-color'] = 'var(--color-primary-button-text)';
+          baseVars['--button-color-hover'] = 'var(--color-primary-button-text)';
         }
 
         if (props.variant === 'secondary') {
@@ -261,6 +277,13 @@ export const makeTheme = ({
         },
       },
     },
+    Tabs: Tabs.extend({
+      vars: () => ({
+        root: {
+          '--tabs-color': 'var(--color-text-brand)',
+        },
+      }),
+    }),
     ActionIcon: ActionIcon.extend({
       defaultProps: {
         variant: 'subtle',
@@ -283,9 +306,9 @@ export const makeTheme = ({
         }
 
         if (props.variant === 'primary') {
-          baseVars['--ai-bg'] = 'var(--mantine-color-green-light)';
-          baseVars['--ai-hover'] = 'var(--mantine-color-green-light-hover)';
-          baseVars['--ai-color'] = 'var(--mantine-color-green-light-color)';
+          baseVars['--ai-bg'] = 'var(--color-primary-button-bg)';
+          baseVars['--ai-hover'] = 'var(--color-primary-button-bg-hover)';
+          baseVars['--ai-color'] = 'var(--color-primary-button-text)';
         }
 
         if (props.variant === 'secondary') {

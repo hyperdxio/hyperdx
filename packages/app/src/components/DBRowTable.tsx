@@ -123,6 +123,7 @@ const SPECIAL_VALUES = {
 const ACCESSOR_MAP: Record<string, AccessorFn> = {
   duration: row =>
     row.duration >= 0 ? row.duration : SPECIAL_VALUES.not_available,
+  severityText: row => row.severityText ?? row.statusCode,
   default: (row, column) => row[column],
 };
 
@@ -423,7 +424,19 @@ export const RawLogTable = memo(
     const FETCH_NEXT_PAGE_PX = 500;
 
     //we need a reference to the scrolling element for logic down below
-    const tableContainerRef = useRef<HTMLDivElement>(null);
+    const [tableContainerRef, setTableContainerRef] =
+      useState<HTMLDivElement | null>(null);
+    const tableContainerRefCallback = useCallback(
+      (node: HTMLDivElement): (() => void) => {
+        if (node) {
+          setTableContainerRef(node);
+        }
+        return () => {
+          setTableContainerRef(null);
+        };
+      },
+      [],
+    );
 
     // Get the alias map from the config so we resolve correct column ids
     const { data: aliasMap } = useAliasMapFromChartConfig(config);
@@ -431,10 +444,10 @@ export const RawLogTable = memo(
     // Reset scroll when live tail is enabled for the first time
     const prevIsLive = usePrevious(isLive);
     useEffect(() => {
-      if (isLive && prevIsLive === false && tableContainerRef.current != null) {
-        tableContainerRef.current.scrollTop = 0;
+      if (isLive && prevIsLive === false && tableContainerRef != null) {
+        tableContainerRef.scrollTop = 0;
       }
-    }, [isLive, prevIsLive]);
+    }, [isLive, prevIsLive, tableContainerRef]);
 
     const logLevelColumn = useMemo(() => {
       return inferLogLevelColumn(dedupedRows);
@@ -504,7 +517,10 @@ export const RawLogTable = memo(
                     <PatternTrendChart
                       data={value.data}
                       dateRange={value.dateRange}
-                      color={logLevelColor(info.row.original.severityText)}
+                      color={logLevelColor(
+                        info.row.original.severityText ??
+                          info.row.original.statusCode,
+                      )}
                     />
                   </div>
                 );
@@ -600,8 +616,8 @@ export const RawLogTable = memo(
 
     //a check on mount and after a fetch to see if the table is already scrolled to the bottom and immediately needs to fetch more data
     useEffect(() => {
-      fetchMoreOnBottomReached(tableContainerRef.current);
-    }, [fetchMoreOnBottomReached]);
+      fetchMoreOnBottomReached(tableContainerRef);
+    }, [fetchMoreOnBottomReached, tableContainerRef]);
 
     const reactTableProps = useMemo((): TableOptions<any> => {
       //TODO: fix any
@@ -664,7 +680,7 @@ export const RawLogTable = memo(
       count: _rows.length,
       // count: hasNextPage ? allRows.length + 1 : allRows.length,
       getScrollElement: useCallback(
-        () => tableContainerRef.current,
+        () => tableContainerRef,
         [tableContainerRef],
       ),
       estimateSize: useCallback(() => 23, []),
@@ -838,6 +854,7 @@ export const RawLogTable = memo(
             onNextMatch={tableSearch.handleNextMatch}
             isVisible={tableSearch.isSearchVisible}
             onVisibilityChange={tableSearch.setIsSearchVisible}
+            containerRef={tableContainerRef}
           />
           <div
             data-testid="search-results-table"
@@ -852,7 +869,7 @@ export const RawLogTable = memo(
                 onScroll?.(scrollTop);
               }
             }}
-            ref={tableContainerRef}
+            ref={tableContainerRefCallback}
             // Fixes flickering scroll bar: https://github.com/TanStack/virtual/issues/426#issuecomment-1403438040
             // style={{ overflowAnchor: 'none' }}
           >
@@ -1568,7 +1585,7 @@ function DBSqlRowTableComponent({
   return (
     <>
       {denoiseResults && (
-        <Box mb="xxs" px="sm" mt="-24px">
+        <Box mb="xxs" px="sm">
           <Text fw="bold" fz="xs" mb="xxs">
             Removed Noisy Event Patterns
           </Text>

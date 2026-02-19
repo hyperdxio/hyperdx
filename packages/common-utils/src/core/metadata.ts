@@ -6,6 +6,7 @@ import {
   ChSql,
   chSql,
   ColumnMeta,
+  concatChSql,
   convertCHDataTypeToJSType,
   filterColumnMetaByType,
   JSDataType,
@@ -718,6 +719,145 @@ export class Metadata {
   }
 
   /**
+   * Inspects the ClickHouse connection for OpenTelemetry telemetry tables.
+   * Returns one coherent set of tables from the same database.
+   *
+   * When multiple databases contain the same table schema, this function prioritizes
+   * returning a complete set from a single database rather than mixing tables from different databases.
+   */
+  async getOtelTables({ connectionId }: { connectionId: string }): Promise<{
+    database: string;
+    tables: {
+      logs?: string;
+      traces?: string;
+      sessions?: string;
+      metrics: {
+        gauge?: string;
+        sum?: string;
+        summary?: string;
+        histogram?: string;
+        expHistogram?: string;
+      };
+    };
+  } | null> {
+    return this.cache.getOrFetch(`${connectionId}.otelTables`, async () => {
+      const OTEL_TABLE_NAMES = [
+        'otel_logs',
+        'otel_traces',
+        'hyperdx_sessions',
+        'otel_metrics_gauge',
+        'otel_metrics_sum',
+        'otel_metrics_summary',
+        'otel_metrics_histogram',
+        'otel_metrics_exp_histogram',
+      ];
+
+      const tableNameParams = OTEL_TABLE_NAMES.map(
+        t => chSql`${{ String: t }}`,
+      );
+
+      const sql = chSql`
+          SELECT
+            database,
+            name
+          FROM system.tables
+          WHERE (database != 'system')
+            AND (name IN (${concatChSql(',', tableNameParams)}))
+          ORDER BY database, name
+        `;
+
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ database: string; name: string }>());
+
+        if (json.data.length === 0) {
+          return null;
+        }
+
+        // Group tables by database
+        const tablesByDatabase = new Map<string, Set<string>>();
+        for (const row of json.data) {
+          if (!tablesByDatabase.has(row.database)) {
+            tablesByDatabase.set(row.database, new Set());
+          }
+          tablesByDatabase.get(row.database)!.add(row.name);
+        }
+
+        // Find the database with the most complete set of tables
+        let bestDatabase = '';
+        let bestScore = 0;
+
+        for (const [database, tables] of tablesByDatabase.entries()) {
+          // Score based on number of essential tables present
+          let score = 0;
+          if (tables.has('otel_logs')) score += 10;
+          if (tables.has('otel_traces')) score += 10;
+          if (tables.has('hyperdx_sessions')) score += 5;
+          if (tables.has('otel_metrics_gauge')) score += 2;
+          if (tables.has('otel_metrics_sum')) score += 2;
+          if (tables.has('otel_metrics_histogram')) score += 2;
+          if (tables.has('otel_metrics_summary')) score += 1;
+          if (tables.has('otel_metrics_exp_histogram')) score += 1;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestDatabase = database;
+          }
+        }
+
+        if (!bestDatabase) {
+          return null;
+        }
+
+        const selectedTables = tablesByDatabase.get(bestDatabase)!;
+
+        return {
+          database: bestDatabase,
+          tables: {
+            logs: selectedTables.has('otel_logs') ? 'otel_logs' : undefined,
+            traces: selectedTables.has('otel_traces')
+              ? 'otel_traces'
+              : undefined,
+            sessions: selectedTables.has('hyperdx_sessions')
+              ? 'hyperdx_sessions'
+              : undefined,
+            metrics: {
+              gauge: selectedTables.has('otel_metrics_gauge')
+                ? 'otel_metrics_gauge'
+                : undefined,
+              sum: selectedTables.has('otel_metrics_sum')
+                ? 'otel_metrics_sum'
+                : undefined,
+              summary: selectedTables.has('otel_metrics_summary')
+                ? 'otel_metrics_summary'
+                : undefined,
+              histogram: selectedTables.has('otel_metrics_histogram')
+                ? 'otel_metrics_histogram'
+                : undefined,
+              expHistogram: selectedTables.has('otel_metrics_exp_histogram')
+                ? 'otel_metrics_exp_histogram'
+                : undefined,
+            },
+          },
+        };
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('Not enough privileges')) {
+          console.warn('Not enough privileges to fetch tables:', e);
+          return null;
+        }
+
+        throw e;
+      }
+    });
+  }
+
+  /**
    * Parses a ClickHouse index expression to check if it uses the tokens() function.
    * Returns the inner expression if tokens() is found.
    *
@@ -850,7 +990,7 @@ export class Metadata {
     source:
       | Omit<TSource, 'connection'> /* for overlap with ISource type */
       | undefined;
-  }): Promise<{ key: string; value: string[] }[]> {
+  }): Promise<{ key: string; value: string[] | number[] }[]> {
     const cacheKeyConfig = {
       ...pick(chartConfig, [
         'connection',
@@ -938,14 +1078,16 @@ export class Metadata {
               : undefined,
             abort_signal: signal,
           })
-          .then(res => res.json<any>());
+          .then(res => res.json<Record<string, string[] | number[]>>());
 
         // TODO: Fix type issues mentioned in HDX-1548. value is not actually a
         // string[], sometimes it's { [key: string]: string; }
         return Object.entries(json?.data?.[0]).map(([key, value]) => ({
           key: keys[parseInt(key.replace('param', ''))],
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see HDX-1548
-          value: (value as string[])?.filter(Boolean), // remove nulls
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          value: value?.filter(v => v != null && v !== '') as  // remove nulls and empty strings
+            | string[]
+            | number[],
         }));
       },
     );
@@ -965,7 +1107,7 @@ export class Metadata {
     limit?: number;
     disableRowLimit?: boolean;
     signal?: AbortSignal;
-  }): Promise<{ key: string; value: string[] }[]> {
+  }): Promise<{ key: string; value: string[] | number[] }[]> {
     const cacheKeyConfig = {
       ...pick(chartConfig, [
         'connection',

@@ -9,6 +9,8 @@ import {
 } from '@mantine/core';
 import { IconArrowDown, IconArrowUp, IconX } from '@tabler/icons-react';
 
+import { isElementClickable } from '@/utils';
+
 interface HighlightTextSettings {
   isCurrentMatch: boolean;
   textColor: string;
@@ -88,6 +90,10 @@ interface TableSearchInputProps {
    * Called when visibility changes
    */
   onVisibilityChange?: (visible: boolean) => void;
+  /**
+   * Reference to a container element to check if it's clickable (not obscured by modal/drawer)
+   */
+  containerRef?: HTMLElement | null;
 }
 
 /**
@@ -103,6 +109,7 @@ export const TableSearchInput = ({
   onNextMatch,
   isVisible: externalIsVisible,
   onVisibilityChange,
+  containerRef,
 }: TableSearchInputProps) => {
   const [internalIsVisible, setInternalIsVisible] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -133,11 +140,13 @@ export const TableSearchInput = ({
   }, [externalIsVisible, onVisibilityChange]);
 
   // Handle keyboard shortcuts (Cmd+F, Escape)
-  // Fixed: Move handler definition outside of effect to prevent recreation
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       // Detect Cmd+F (Mac) or Ctrl+F (Windows/Linux)
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        // if container exists, verify it's actually clickable
+        if (containerRef && !isElementClickable(containerRef)) return;
+
         e.preventDefault();
         handleShow();
       }
@@ -146,6 +155,7 @@ export const TableSearchInput = ({
         handleClose();
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [isVisible, handleClose, handleShow],
   );
 

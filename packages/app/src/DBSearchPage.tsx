@@ -103,10 +103,12 @@ import {
 import { useSearchPageFilterState } from '@/searchFilters';
 import SearchInputV2 from '@/SearchInputV2';
 import {
+  getEventBody,
   getFirstTimestampValueExpression,
   useSource,
   useSources,
 } from '@/source';
+import { useAppTheme } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
   parseTimeQuery,
@@ -280,10 +282,13 @@ function ResumeLiveTailButton({
 }: {
   handleResumeLiveTail: () => void;
 }) {
+  const { themeName } = useAppTheme();
+  const variant = themeName === 'clickstack' ? 'secondary' : 'primary';
+
   return (
     <Button
       size="compact-xs"
-      variant="primary"
+      variant={variant}
       onClick={handleResumeLiveTail}
       leftSection={<IconBolt size={14} />}
     >
@@ -412,6 +417,7 @@ function SaveSearchModalComponent({
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
+            filters: searchedConfig.filters ?? [],
             tags: tags,
           },
           {
@@ -429,6 +435,7 @@ function SaveSearchModalComponent({
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
+            filters: searchedConfig.filters ?? [],
             tags: tags,
           },
           {
@@ -481,6 +488,22 @@ function SaveSearchModalComponent({
                 ORDER BY
               </Text>
               <Text size="xs">{chartConfig.orderBy}</Text>
+              {searchedConfig.filters && searchedConfig.filters.length > 0 && (
+                <>
+                  <Text size="xs" mb="xs" mt="sm">
+                    FILTERS
+                  </Text>
+                  <Stack gap="xs">
+                    {searchedConfig.filters.map((filter, idx) => (
+                      <Text key={idx} size="xs" c="dimmed">
+                        {filter.type === 'sql_ast'
+                          ? `${filter.left} ${filter.operator} ${filter.right}`
+                          : filter.condition}
+                      </Text>
+                    ))}
+                  </Stack>
+                </>
+              )}
             </Card>
           ) : (
             <Text>Loading Chart Config...</Text>
@@ -760,19 +783,16 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
   const { data: source } = useSource({ id: sourceID });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
-  // If no source, return undefined so that the orderBy is not set incorrectly
-  if (!source) return undefined;
-
   // When source changes, make sure select and orderby fields are set to default
-  return useMemo(
-    () =>
-      optimizeDefaultOrderBy(
-        source?.timestampValueExpression ?? '',
-        source?.displayedTimestampValueExpression,
-        tableMetadata?.sorting_key,
-      ),
-    [source, tableMetadata],
-  );
+  return useMemo(() => {
+    // If no source, return undefined so that the orderBy is not set incorrectly
+    if (!source) return undefined;
+    return optimizeDefaultOrderBy(
+      source?.timestampValueExpression ?? '',
+      source?.displayedTimestampValueExpression,
+      tableMetadata?.sorting_key,
+    );
+  }, [source, tableMetadata]);
 }
 
 // This is outside as it needs to be a stable reference
@@ -893,6 +913,7 @@ function DBSearchPage() {
       where: _savedSearch?.where ?? '',
       whereLanguage: _savedSearch?.whereLanguage ?? 'lucene',
       source: _savedSearch?.source,
+      filters: _savedSearch?.filters ?? [],
       orderBy: _savedSearch?.orderBy || defaultOrderBy,
     };
   }, [searchedSource, inputSource, savedSearch, defaultOrderBy, savedSearchId]);
@@ -937,33 +958,34 @@ function DBSearchPage() {
     const isSearchConfigEmpty =
       !source && !where && !select && !whereLanguage && !filters?.length;
 
-    if (isSearchConfigEmpty) {
-      // Landed on saved search (if we just landed on a searchId route)
-      if (
-        savedSearch != null && // Make sure saved search data is loaded
-        savedSearch.id === savedSearchId // Make sure we've loaded the correct saved search
-      ) {
-        setSearchedConfig({
-          source: savedSearch.source,
-          where: savedSearch.where,
-          select: savedSearch.select,
-          whereLanguage: savedSearch.whereLanguage as 'sql' | 'lucene',
-          orderBy: savedSearch.orderBy ?? '',
-        });
-        return;
-      }
+    // Landed on saved search (if we just landed on a searchId route)
+    if (
+      savedSearch != null && // Make sure saved search data is loaded
+      savedSearch.id === savedSearchId && // Make sure we've loaded the correct saved search
+      isSearchConfigEmpty // Only populate if URL doesn't have explicit config
+    ) {
+      setSearchedConfig({
+        source: savedSearch.source,
+        where: savedSearch.where,
+        select: savedSearch.select,
+        whereLanguage: savedSearch.whereLanguage as 'sql' | 'lucene',
+        filters: savedSearch.filters ?? [],
+        orderBy: savedSearch.orderBy ?? '',
+      });
+      return;
+    }
 
-      // Landed on a new search - ensure we have a source selected
-      if (savedSearchId == null && defaultSourceId) {
-        setSearchedConfig({
-          source: defaultSourceId,
-          where: '',
-          select: '',
-          whereLanguage: 'lucene',
-          orderBy: '',
-        });
-        return;
-      }
+    // Landed on a new search - ensure we have a source selected
+    if (savedSearchId == null && defaultSourceId && isSearchConfigEmpty) {
+      setSearchedConfig({
+        source: defaultSourceId,
+        where: '',
+        select: '',
+        whereLanguage: 'lucene',
+        filters: [],
+        orderBy: '',
+      });
+      return;
     }
   }, [
     savedSearch,
@@ -1055,13 +1077,14 @@ function DBSearchPage() {
         if (savedSearchId == null || savedSearch?.source !== watchedSource) {
           setValue('select', '');
           setValue('orderBy', '');
+          // Clear all search filters only when switching to a different source
+          searchFilters.clearAllFilters();
           // If the user is in a saved search, prefer the saved search's select/orderBy if available
         } else {
           setValue('select', savedSearch?.select ?? '');
           setValue('orderBy', savedSearch?.orderBy ?? '');
+          // Don't clear filters - we're loading from saved search
         }
-        // Clear all search filters
-        searchFilters.clearAllFilters();
       }
     }
   }, [
@@ -1152,6 +1175,7 @@ function DBSearchPage() {
             whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
+            filters: searchedConfig.filters ?? [],
             tags: newTags,
           },
           {
@@ -1572,7 +1596,7 @@ function DBSearchPage() {
       >
         {/* <DevTool control={control} /> */}
         <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
-          <Group gap="4px" wrap="nowrap">
+          <Group gap="4px" wrap="nowrap" style={{ minWidth: 150 }}>
             <SourceSelectControlled
               key={`${savedSearchId}`}
               size="xs"
@@ -1785,8 +1809,8 @@ function DBSearchPage() {
           <Paper shadow="xs" p="xl" h="100%">
             <Center mih={100} h="100%">
               <Text size="sm">
-                Please start by selecting a database, table, and timestamp
-                column above to view data.
+                Please start by selecting a source and then click the play
+                button to query data.
               </Text>
             </Center>
           </Paper>
@@ -1814,7 +1838,7 @@ function DBSearchPage() {
               </ErrorBoundary>
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
-                  <Flex direction="column" w="100%" gap="0px">
+                  <Flex direction="column" w="100%" gap="0px" mih="0">
                     <Box className={searchPageStyles.searchStatsContainer}>
                       <Group justify="space-between" style={{ width: '100%' }}>
                         <SearchTotalCountChart
@@ -1831,7 +1855,10 @@ function DBSearchPage() {
                       </Group>
                     </Box>
                     {!hasQueryError && (
-                      <Box className={searchPageStyles.timeChartContainer}>
+                      <Box
+                        className={searchPageStyles.timeChartContainer}
+                        mih="0"
+                      >
                         <DBTimeChart
                           sourceId={searchedConfig.source ?? undefined}
                           showLegend={false}
@@ -1845,20 +1872,22 @@ function DBSearchPage() {
                         />
                       </Box>
                     )}
-                    <PatternTable
-                      source={searchedSource}
-                      config={{
-                        ...chartConfig,
-                        dateRange: searchedTimeRange,
-                      }}
-                      bodyValueExpression={
-                        searchedSource?.bodyExpression ??
-                        chartConfig.implicitColumnExpression ??
-                        ''
-                      }
-                      totalCountConfig={histogramTimeChartConfig}
-                      totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
-                    />
+                    <Box flex="1" mih="0">
+                      <PatternTable
+                        source={searchedSource}
+                        config={{
+                          ...chartConfig,
+                          dateRange: searchedTimeRange,
+                        }}
+                        bodyValueExpression={
+                          searchedSource
+                            ? (getEventBody(searchedSource) ?? '')
+                            : (chartConfig.implicitColumnExpression ?? '')
+                        }
+                        totalCountConfig={histogramTimeChartConfig}
+                        totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
+                      />
+                    </Box>
                   </Flex>
                 )}
               {analysisMode === 'delta' && searchedSource != null && (
@@ -1872,7 +1901,7 @@ function DBSearchPage() {
                   source={searchedSource}
                 />
               )}
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <Flex direction="column" mih="0">
                 {analysisMode === 'results' &&
                   chartConfig &&
                   histogramTimeChartConfig && (
@@ -1908,7 +1937,7 @@ function DBSearchPage() {
                       {!hasQueryError && (
                         <Box
                           className={searchPageStyles.timeChartContainer}
-                          style={{ flexShrink: 0 }}
+                          mih="0"
                         >
                           <DBTimeChart
                             sourceId={searchedConfig.source ?? undefined}
@@ -2043,7 +2072,7 @@ function DBSearchPage() {
                     </div>
                   </>
                 ) : (
-                  <>
+                  <Box flex="1" mih="0">
                     {chartConfig &&
                       searchedConfig.source &&
                       dbSqlRowTableConfig &&
@@ -2065,9 +2094,9 @@ function DBSearchPage() {
                           initialSortBy={initialSortBy}
                         />
                       )}
-                  </>
+                  </Box>
                 )}
-              </div>
+              </Flex>
             </div>
           </>
         )}

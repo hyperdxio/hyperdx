@@ -6,15 +6,10 @@
 }
 
 .toolbar {
-  padding: 4px 8px;
+  padding: 4px;
   border-radius: 4px;
-  background-color: #f0f0f0;
-  border: 1px solid #ccc;
-  color: #111;
-
-  .linkButton {
-    font-size: small;
-  }
+  background-color: var(--color-bg-header);
+  border: 1px solid var(--color-border);
 }
 
 .serviceNode {

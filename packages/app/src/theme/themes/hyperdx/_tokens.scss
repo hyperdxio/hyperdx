@@ -1,5 +1,14 @@
-/* Dark Mode (default) */
-[data-mantine-color-scheme='dark'] {
+/* HyperDX Theme Design Tokens */
+
+/* Default theme with green accent */
+
+/*
+ * These mixins define all design tokens for HyperDX theme.
+ * They are used both here (for .theme-hyperdx scoped selectors) and
+ * in _base-tokens.scss (for unscoped fallback selectors during SSR).
+ */
+
+@mixin dark-mode-tokens {
   /* Backgrounds */
   --color-bg-body: var(--mantine-color-dark-9);
   --color-bg-surface: var(--mantine-color-dark-5);
@@ -15,9 +24,16 @@
   --color-bg-field: var(--mantine-color-dark-6);
   --color-bg-field-highlighted: var(--mantine-color-dark-3);
   --color-bg-neutral: var(--mantine-color-dark-4);
+  --color-bg-brand: var(--mantine-color-green-4);
+  --color-bg-brand-hover: var(--mantine-color-green-3);
   --color-bg-success: var(--mantine-color-green-5);
   --color-bg-danger: var(--mantine-color-red-4);
   --color-bg-warning: var(--mantine-color-orange-5);
+
+  /* Primary Button - uses brand green colors */
+  --color-primary-button-bg: var(--mantine-color-green-light);
+  --color-primary-button-bg-hover: var(--mantine-color-green-light-hover);
+  --color-primary-button-text: var(--mantine-color-green-light-color);
 
   /* Borders & Dividers */
   --color-border: var(--mantine-color-dark-5);
@@ -31,10 +47,10 @@
   --color-text-secondary: var(--mantine-color-dark-2);
   --color-text-muted: var(--mantine-color-dark-2);
   --color-text-muted-hover: var(--mantine-color-dark-1);
-  --color-text-success: var(--mantine-color-green-4);
-  --color-text-success-hover: var(--mantine-color-green-3);
   --color-text-brand: var(--mantine-color-green-4);
   --color-text-brand-hover: var(--mantine-color-green-3);
+  --color-text-success: var(--mantine-color-green-4);
+  --color-text-success-hover: var(--mantine-color-green-3);
   --color-text-danger: var(--mantine-color-red-3);
   --color-text-sidenav-link: var(--mantine-color-dark-0);
   --color-text-sidenav-link-active: var(--color-text-primary);
@@ -94,8 +110,7 @@
   --mantine-color-body: var(--color-bg-body) !important;
 }
 
-/* Light Mode */
-[data-mantine-color-scheme='light'] {
+@mixin light-mode-tokens {
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body);
 
@@ -115,9 +130,16 @@
   --color-bg-field: #ececf5;
   --color-bg-field-highlighted: var(--mantine-color-white);
   --color-bg-neutral: var(--mantine-color-gray-5);
+  --color-bg-brand: var(--mantine-color-green-8);
+  --color-bg-brand-hover: var(--mantine-color-green-9);
   --color-bg-success: var(--mantine-color-green-8);
   --color-bg-danger: var(--mantine-color-red-8);
   --color-bg-warning: var(--mantine-color-orange-8);
+
+  /* Primary Button - uses brand green colors */
+  --color-primary-button-bg: var(--mantine-color-green-light);
+  --color-primary-button-bg-hover: var(--mantine-color-green-light-hover);
+  --color-primary-button-text: var(--mantine-color-green-light-color);
 
   /* Borders & Dividers - inverted */
   --color-border: var(--mantine-color-gray-1);
@@ -131,10 +153,10 @@
   --color-text-secondary: var(--mantine-color-gray-5);
   --color-text-muted: var(--mantine-color-dark-6);
   --color-text-muted-hover: var(--mantine-color-dark-9);
-  --color-text-success: var(--mantine-color-green-8);
-  --color-text-success-hover: var(--mantine-color-green-9);
   --color-text-brand: var(--mantine-color-green-8);
   --color-text-brand-hover: var(--mantine-color-green-9);
+  --color-text-success: var(--mantine-color-green-8);
+  --color-text-success-hover: var(--mantine-color-green-9);
   --color-text-danger: var(--mantine-color-red-8);
   --color-text-sidenav-link: var(--mantine-color-dark-6);
   --color-text-sidenav-link-active: var(--mantine-color-green-9);
@@ -187,4 +209,14 @@
   /* Chart Semantic Colors - Highlighted (for hover/selection states) */
   --color-chart-error-highlight: #ffa090;
   --color-chart-warning-highlight: #f5c94d;
+}
+
+/* Dark Mode - scoped to .theme-hyperdx */
+.theme-hyperdx[data-mantine-color-scheme='dark'] {
+  @include dark-mode-tokens;
+}
+
+/* Light Mode - scoped to .theme-hyperdx */
+.theme-hyperdx[data-mantine-color-scheme='light'] {
+  @include light-mode-tokens;
 }

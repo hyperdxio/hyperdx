@@ -7,23 +7,9 @@ import {
   Filter,
   NumberFormat as _NumberFormat,
   SavedSearchSchema,
-  WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 
 export type NumberFormat = _NumberFormat;
-
-export type Team = {
-  allowedAuthMethods: any[];
-  apiKey?: string;
-  name: string;
-  users: {
-    email: string;
-    hasPasswordAuth: boolean;
-    isCurrentUser: boolean;
-    name: string;
-  }[];
-  _id: string;
-};
 
 export type KeyValuePairs = {
   'bool.names': string[];
@@ -252,7 +238,7 @@ export enum KubePhase {
 }
 
 export type NextApiConfigResponseData = {
-  apiKey: string;
+  apiKey?: string;
   collectorUrl: string;
   serviceName: string;
 };

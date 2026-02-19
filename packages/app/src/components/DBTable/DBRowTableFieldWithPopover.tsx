@@ -15,7 +15,7 @@ export interface DBRowTableFieldWithPopoverProps {
   cellValue: unknown;
   wrapLinesEnabled: boolean;
   columnName?: string;
-  tableContainerRef?: React.RefObject<HTMLDivElement | null>;
+  tableContainerRef: HTMLDivElement | null;
   isChart?: boolean;
 }
 
@@ -148,7 +148,7 @@ export const DBRowTableFieldWithPopover = ({
         position="top-start"
         offset={5}
         opened={opened}
-        portalProps={{ target: tableContainerRef?.current ?? undefined }}
+        portalProps={{ target: tableContainerRef ?? undefined }}
         closeOnClickOutside={false}
         clickOutsideEvents={[]}
       >

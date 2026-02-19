@@ -35,15 +35,16 @@ import SearchInputV2 from '@/SearchInputV2';
 import {
   getDisplayedTimestampValueExpression,
   getDurationSecondsExpression,
+  getEventBody,
   getSpanEventBody,
 } from '@/source';
 import TimelineChart from '@/TimelineChart';
 import { useFormatTime } from '@/useFormatTime';
 import {
-  CHART_COLOR_ERROR,
-  CHART_COLOR_ERROR_HIGHLIGHT,
-  CHART_COLOR_WARNING,
-  CHART_COLOR_WARNING_HIGHLIGHT,
+  getChartColorError,
+  getChartColorErrorHighlight,
+  getChartColorWarning,
+  getChartColorWarningHighlight,
 } from '@/utils';
 import {
   getHighlightedAttributesFromData,
@@ -89,9 +90,11 @@ function barColor(condition: {
 }) {
   const { isError, isWarn, isHighlighted } = condition;
   if (isError)
-    return isHighlighted ? CHART_COLOR_ERROR_HIGHLIGHT : CHART_COLOR_ERROR;
+    return isHighlighted ? getChartColorErrorHighlight() : getChartColorError();
   if (isWarn)
-    return isHighlighted ? CHART_COLOR_WARNING_HIGHLIGHT : CHART_COLOR_WARNING;
+    return isHighlighted
+      ? getChartColorWarningHighlight()
+      : getChartColorWarning();
   return isHighlighted ? '#A9AFB7' : '#6A7077';
 }
 
@@ -99,9 +102,7 @@ function getTableBody(tableModel: TSource) {
   if (tableModel?.kind === SourceKind.Trace) {
     return getSpanEventBody(tableModel) ?? '';
   } else if (tableModel?.kind === SourceKind.Log) {
-    return (
-      (tableModel.bodyExpression || tableModel.implicitColumnExpression) ?? ''
-    );
+    return getEventBody(tableModel) ?? '';
   } else {
     return '';
   }
