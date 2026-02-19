@@ -22,12 +22,21 @@ export type Tile = {
   config: SavedChartConfig;
 };
 
+export type DashboardUser = {
+  email: string;
+  name?: string;
+};
+
 export type Dashboard = {
   id: string;
   name: string;
   tiles: Tile[];
   tags: string[];
   filters?: DashboardFilter[];
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: DashboardUser;
+  updatedBy?: DashboardUser;
 };
 
 export function useUpdateDashboard() {

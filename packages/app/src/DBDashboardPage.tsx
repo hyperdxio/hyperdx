@@ -9,7 +9,7 @@ import {
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { formatRelative } from 'date-fns';
+import { formatDistanceToNow, formatRelative } from 'date-fns';
 import produce from 'immer';
 import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -55,6 +55,7 @@ import {
   IconDotsVertical,
   IconDownload,
   IconFilterEdit,
+  IconInfoCircle,
   IconPencil,
   IconPlayerPlay,
   IconRefresh,
@@ -73,6 +74,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
+  type DashboardUser,
   type Tile,
   useCreateDashboard,
   useDeleteDashboard,
@@ -652,6 +654,57 @@ function DashboardName({
   );
 }
 
+function DashboardMetadataTooltip({
+  createdAt,
+  createdBy,
+  updatedAt,
+  updatedBy,
+}: {
+  createdAt?: string;
+  createdBy?: DashboardUser;
+  updatedAt?: string;
+  updatedBy?: DashboardUser;
+}) {
+  return (
+    <Flex direction="column" gap={4}>
+      {createdAt && (
+        <Text size="xs">
+          <Text component="span" c="dimmed">
+            Created:
+          </Text>{' '}
+          {new Date(createdAt).toLocaleString()}
+          {createdBy && (
+            <>
+              {' '}
+              by{' '}
+              <Text component="span" fw={500}>
+                {createdBy.name || createdBy.email}
+              </Text>
+            </>
+          )}
+        </Text>
+      )}
+      {updatedAt && (
+        <Text size="xs">
+          <Text component="span" c="dimmed">
+            Last updated:
+          </Text>{' '}
+          {new Date(updatedAt).toLocaleString()}
+          {updatedBy && (
+            <>
+              {' '}
+              by{' '}
+              <Text component="span" fw={500}>
+                {updatedBy.name || updatedBy.email}
+              </Text>
+            </>
+          )}
+        </Text>
+      )}
+    </Flex>
+  );
+}
+
 // Download an object to users computer as JSON using specified name
 function downloadObjectAsJson(object: object, fileName = 'output') {
   const dataStr =
@@ -1052,18 +1105,46 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </Paper>
       )}
       <Flex mt="xs" mb="md" justify="space-between" align="center">
-        <DashboardName
-          key={`${dashboardHash}`}
-          name={dashboard?.name ?? ''}
-          onSave={editedName => {
-            if (dashboard != null) {
-              setDashboard({
-                ...dashboard,
-                name: editedName,
-              });
-            }
-          }}
-        />
+        <Flex direction="column" gap={4}>
+          <DashboardName
+            key={`${dashboardHash}`}
+            name={dashboard?.name ?? ''}
+            onSave={editedName => {
+              if (dashboard != null) {
+                setDashboard({
+                  ...dashboard,
+                  name: editedName,
+                });
+              }
+            }}
+          />
+          {!isLocalDashboard && dashboard?.updatedAt && (
+            <Flex align="center" gap={4}>
+              <Text size="xs" c="dimmed">
+                Updated{' '}
+                {formatDistanceToNow(new Date(dashboard.updatedAt), {
+                  addSuffix: true,
+                })}
+              </Text>
+              <Tooltip
+                label={
+                  <DashboardMetadataTooltip
+                    createdAt={dashboard.createdAt}
+                    createdBy={dashboard.createdBy}
+                    updatedAt={dashboard.updatedAt}
+                    updatedBy={dashboard.updatedBy}
+                  />
+                }
+                multiline
+                maw={300}
+              >
+                <ActionIcon variant="transparent" size="xs" c="dimmed">
+                  <IconInfoCircle size={12} />
+                </ActionIcon>
+              </Tooltip>
+            </Flex>
+          )}
+        </Flex>
         <Group gap="xs">
           {!isLocalDashboard && dashboard?.id && (
             <Tags

@@ -84,7 +84,9 @@ async function syncDashboardAlerts(
 
 export async function getDashboards(teamId: ObjectId) {
   const [_dashboards, alerts] = await Promise.all([
-    Dashboard.find({ team: teamId }),
+    Dashboard.find({ team: teamId })
+      .populate('createdBy', 'email name')
+      .populate('updatedBy', 'email name'),
     getTeamDashboardAlertsByTile(teamId),
   ]);
 
@@ -124,6 +126,7 @@ export async function createDashboard(
   const newDashboard = await new Dashboard({
     ...dashboard,
     team: teamId,
+    ...(userId ? { createdBy: userId } : {}),
   }).save();
 
   await createOrUpdateDashboardAlerts(
@@ -166,6 +169,7 @@ export async function updateDashboard(
     {
       ...updates,
       tags: updates.tags && uniq(updates.tags),
+      ...(userId ? { updatedBy: userId } : {}),
     },
     { new: true },
   );
