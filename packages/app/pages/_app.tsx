@@ -26,18 +26,19 @@ import {
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
+import { NextApiConfigResponseData } from '@/types';
 import { useConfirmModal } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
 import { useUserPreferences } from '@/useUserPreferences';
 
 import '@mantine/core/styles.css';
-import '@mantine/notifications/styles.css';
 import '@mantine/dates/styles.css';
 import '@mantine/dropzone/styles.css';
-import '@styles/globals.css';
+import '@mantine/notifications/styles.css';
 import '@styles/app.scss';
-import 'uplot/dist/uPlot.min.css';
+import '@styles/globals.css';
 import '@xyflow/react/dist/style.css';
+import 'uplot/dist/uPlot.min.css';
 
 // Polyfill crypto.randomUUID for non-HTTPS environments
 if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
@@ -137,15 +138,8 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
     }
     fetch('/api/config')
       .then(res => res.json())
-      .then(_jsonData => {
+      .then((_jsonData?: NextApiConfigResponseData) => {
         if (_jsonData?.apiKey) {
-          let hostname;
-          try {
-            const url = new URL(_jsonData.apiServerUrl);
-            hostname = url.hostname;
-          } catch (err) {
-            // ignore
-          }
           HyperDX.init({
             apiKey: _jsonData.apiKey,
             consoleCapture: true,
@@ -156,7 +150,7 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
             url: _jsonData.collectorUrl,
           });
         } else {
-          console.warn('No API key found');
+          console.warn('No API key found to enable OTEL exporter');
         }
       })
       .catch(err => {
