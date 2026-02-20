@@ -44,7 +44,6 @@ import {
   Tabs,
   Text,
   Textarea,
-  TextInput,
 } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
@@ -1381,7 +1380,7 @@ export default function EditTimeChartForm({
               </Group>
               <Group gap="xs" mt="xs" align="start">
                 <Text size="sm" opacity={0.7} mt={6}>
-                  Start at (UTC ISO)
+                  Anchor start time
                 </Text>
                 <Controller
                   name="alert.scheduleStartAt"

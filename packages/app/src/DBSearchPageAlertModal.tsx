@@ -10,9 +10,9 @@ import {
   AlertIntervalSchema,
   AlertSource,
   AlertThresholdType,
+  scheduleStartAtSchema,
   SearchCondition,
   SearchConditionLanguage,
-  scheduleStartAtSchema,
   validateAlertScheduleOffsetMinutes,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
@@ -192,7 +192,7 @@ const AlertForm = ({
           </Group>
           <Group gap="xs" mt="xs" align="start">
             <Text size="sm" opacity={0.7} mt={6}>
-              Start at (UTC ISO)
+              Anchor start time
             </Text>
             <Controller
               control={control}
@@ -206,7 +206,9 @@ const AlertForm = ({
                   dropdownType="popover"
                   popoverProps={{ withinPortal: true, zIndex: 10050 }}
                   value={parseScheduleStartAtValue(field.value)}
-                  onChange={value => field.onChange(value?.toISOString() ?? null)}
+                  onChange={value =>
+                    field.onChange(value?.toISOString() ?? null)
+                  }
                   error={error?.message}
                 />
               )}
