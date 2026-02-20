@@ -30,13 +30,13 @@ export type TileConfig = {
   groupBy?: string;
   markdown?: string;
 };
-
+type SeriesType = 'time' | 'number' | 'table' | 'search' | 'markdown' | 'pie';
 /**
  * Series data structure for chart verification
  * Supports all chart types: time, number, table, search, markdown
  */
 export type SeriesData = {
-  type: 'time' | 'number' | 'table' | 'search' | 'markdown';
+  type: SeriesType;
   sourceId?: string;
   aggFn?: string;
   field?: string;
@@ -409,7 +409,7 @@ export class DashboardPage {
     return this.page.locator('.cm-content').filter({ hasText: text });
   }
 
-  getChartTypeTab(type: 'time' | 'table' | 'number' | 'search' | 'markdown') {
+  getChartTypeTab(type: SeriesType) {
     if (type === 'time') {
       return this.page.getByRole('tab', { name: /line/i });
     }
