@@ -93,6 +93,8 @@ const AlertSchema = new Schema<IAlert>(
     scheduleOffsetMinutes: {
       type: Number,
       min: 0,
+      // Maximum offset for daily windows (24h - 1 minute).
+      max: 1439,
       required: false,
     },
     scheduleStartAt: {

@@ -98,7 +98,7 @@ router.post(
       return res.sendStatus(403);
     }
     try {
-      const alertInput = req.body as z.infer<typeof alertSchema>;
+      const alertInput = alertSchema.parse(req.body);
       return res.json({
         data: await createAlert(teamId, alertInput, userId),
       });
@@ -123,7 +123,7 @@ router.put(
         return res.sendStatus(403);
       }
       const { id } = req.params;
-      const alertInput = req.body as z.infer<typeof alertSchema>;
+      const alertInput = alertSchema.parse(req.body);
       res.json({
         data: await updateAlert(id, teamId, alertInput),
       });

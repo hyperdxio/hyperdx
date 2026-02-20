@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import router from 'next/router';
-import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -29,7 +29,6 @@ import {
   Tabs,
   Text,
 } from '@mantine/core';
-import { DateTimePicker } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
 import {
   IconChartLine,
@@ -46,11 +45,11 @@ import {
   ALERT_INTERVAL_OPTIONS,
   ALERT_THRESHOLD_TYPE_OPTIONS,
   intervalToMinutes,
-  parseScheduleStartAtValue,
 } from '@/utils/alerts';
 
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
+import { AlertScheduleFields } from './components/AlertScheduleFields';
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
@@ -132,14 +131,7 @@ const AlertForm = ({
     intervalToMinutes(interval ?? '5m') - 1,
     0,
   );
-  const showScheduleOffsetInput = maxScheduleOffsetMinutes > 0;
   const intervalLabel = ALERT_INTERVAL_OPTIONS[interval ?? '5m'];
-
-  useEffect(() => {
-    if (!showScheduleOffsetInput && scheduleOffsetMinutes !== 0) {
-      setValue('scheduleOffsetMinutes', 0, { shouldValidate: true });
-    }
-  }, [scheduleOffsetMinutes, setValue, showScheduleOffsetInput]);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
@@ -184,52 +176,15 @@ const AlertForm = ({
               control={control}
             />
           </Group>
-          {showScheduleOffsetInput && (
-            <Group gap="xs" mt="xs">
-              <Text size="sm" opacity={0.7}>
-                Start offset (min)
-              </Text>
-              <NumberInput
-                min={0}
-                max={maxScheduleOffsetMinutes}
-                step={1}
-                size="xs"
-                w={100}
-                control={control}
-                name={`scheduleOffsetMinutes`}
-              />
-              <Text size="sm" opacity={0.7}>
-                from each {intervalLabel} window
-              </Text>
-            </Group>
-          )}
-          <Group gap="xs" mt="xs" align="start">
-            <Text size="sm" opacity={0.7} mt={6}>
-              Anchor start time
-            </Text>
-            <Controller
-              control={control}
-              name="scheduleStartAt"
-              render={({ field, fieldState: { error } }) => (
-                <DateTimePicker
-                  size="xs"
-                  w={260}
-                  placeholder="Pick date and time"
-                  clearable
-                  dropdownType="popover"
-                  popoverProps={{ withinPortal: true, zIndex: 10050 }}
-                  value={parseScheduleStartAtValue(field.value)}
-                  onChange={value =>
-                    field.onChange(value?.toISOString() ?? null)
-                  }
-                  error={error?.message}
-                />
-              )}
-            />
-            <Text size="xs" opacity={0.6} mt={6}>
-              Converted to UTC on save
-            </Text>
-          </Group>
+          <AlertScheduleFields
+            control={control}
+            setValue={setValue}
+            scheduleOffsetName="scheduleOffsetMinutes"
+            scheduleStartAtName="scheduleStartAt"
+            scheduleOffsetMinutes={scheduleOffsetMinutes}
+            maxScheduleOffsetMinutes={maxScheduleOffsetMinutes}
+            offsetWindowLabel={`from each ${intervalLabel} window`}
+          />
           <Text size="xxs" opacity={0.5} mb={4} mt="xs">
             grouped by
           </Text>

@@ -45,7 +45,6 @@ import {
   Text,
   Textarea,
 } from '@mantine/core';
-import { DateTimePicker } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
 import {
   IconArrowDown,
@@ -100,7 +99,6 @@ import {
   extendDateRangeToInterval,
   intervalToGranularity,
   intervalToMinutes,
-  parseScheduleStartAtValue,
   TILE_ALERT_INTERVAL_OPTIONS,
   TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
 } from '@/utils/alerts';
@@ -109,6 +107,7 @@ import HDXMarkdownChart from '../HDXMarkdownChart';
 
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { AggFnSelectControlled } from './AggFnSelect';
+import { AlertScheduleFields } from './AlertScheduleFields';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from './ChartDisplaySettingsDrawer';
@@ -660,7 +659,6 @@ export default function EditTimeChartForm({
   const maxAlertScheduleOffsetMinutes = alert?.interval
     ? Math.max(intervalToMinutes(alert.interval) - 1, 0)
     : 0;
-  const showAlertScheduleOffsetInput = maxAlertScheduleOffsetMinutes > 0;
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -686,23 +684,6 @@ export default function EditTimeChartForm({
       setValue('alert', undefined);
     }
   }, [displayType, setValue]);
-
-  useEffect(() => {
-    if (
-      alert == null ||
-      showAlertScheduleOffsetInput ||
-      alertScheduleOffsetMinutes === 0
-    ) {
-      return;
-    }
-
-    setValue('alert.scheduleOffsetMinutes', 0, { shouldValidate: true });
-  }, [
-    alert,
-    alertScheduleOffsetMinutes,
-    setValue,
-    showAlertScheduleOffsetInput,
-  ]);
 
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
   const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
@@ -1384,52 +1365,15 @@ export default function EditTimeChartForm({
                   </Text>
                 )}
               </Group>
-              {showAlertScheduleOffsetInput && (
-                <Group gap="xs" mt="xs">
-                  <Text size="sm" opacity={0.7}>
-                    Start offset (min)
-                  </Text>
-                  <NumberInput
-                    min={0}
-                    max={maxAlertScheduleOffsetMinutes}
-                    step={1}
-                    size="xs"
-                    w={100}
-                    control={control}
-                    name={`alert.scheduleOffsetMinutes`}
-                  />
-                  <Text size="sm" opacity={0.7}>
-                    from each alert window
-                  </Text>
-                </Group>
-              )}
-              <Group gap="xs" mt="xs" align="start">
-                <Text size="sm" opacity={0.7} mt={6}>
-                  Anchor start time
-                </Text>
-                <Controller
-                  name="alert.scheduleStartAt"
-                  control={control}
-                  render={({ field, fieldState: { error } }) => (
-                    <DateTimePicker
-                      size="xs"
-                      w={260}
-                      placeholder="Pick date and time"
-                      clearable
-                      dropdownType="popover"
-                      popoverProps={{ withinPortal: true, zIndex: 10050 }}
-                      value={parseScheduleStartAtValue(field.value)}
-                      onChange={value =>
-                        field.onChange(value?.toISOString() ?? null)
-                      }
-                      error={error?.message}
-                    />
-                  )}
-                />
-                <Text size="xs" opacity={0.6} mt={6}>
-                  Converted to UTC on save
-                </Text>
-              </Group>
+              <AlertScheduleFields
+                control={control}
+                setValue={setValue}
+                scheduleOffsetName="alert.scheduleOffsetMinutes"
+                scheduleStartAtName="alert.scheduleStartAt"
+                scheduleOffsetMinutes={alertScheduleOffsetMinutes}
+                maxScheduleOffsetMinutes={maxAlertScheduleOffsetMinutes}
+                offsetWindowLabel="from each alert window"
+              />
               <Text size="xxs" opacity={0.5} mb={4} mt="xs">
                 Send to
               </Text>
