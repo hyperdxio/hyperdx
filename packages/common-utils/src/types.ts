@@ -380,7 +380,7 @@ export const scheduleStartAtSchema = z
     },
   );
 
-const AlertBaseObjectSchema = z.object({
+export const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
   interval: AlertIntervalSchema,
   scheduleOffsetMinutes: z
@@ -405,17 +405,25 @@ const AlertBaseObjectSchema = z.object({
     .optional(),
 });
 
-export const AlertBaseSchema = AlertBaseObjectSchema.superRefine(
+// Keep AlertBaseSchema as a ZodObject for backwards compatibility with
+// external consumers that call object helpers like .extend()/.pick()/.omit().
+export const AlertBaseSchema = AlertBaseObjectSchema;
+
+export const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
 );
 
 export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number().positive(),
-}).superRefine(validateAlertScheduleOffsetMinutes);
+});
+
+export const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
+  validateAlertScheduleOffsetMinutes,
+);
 
 export const AlertSchema = z.union([
-  z.intersection(AlertBaseSchema, zSavedSearchAlert),
-  z.intersection(ChartAlertBaseSchema, zTileAlert),
+  z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
+  z.intersection(ChartAlertBaseValidatedSchema, zTileAlert),
 ]);
 
 export type Alert = z.infer<typeof AlertSchema>;
@@ -573,8 +581,8 @@ export const SavedChartConfigSchema = z
     name: z.string().optional(),
     source: z.string(),
     alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
+      AlertBaseValidatedSchema.optional(),
+      ChartAlertBaseValidatedSchema.optional(),
     ]),
   })
   .extend(

@@ -48,12 +48,9 @@ export type AlertInput = {
 };
 
 const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
-  // Preserve existing DB value when scheduleStartAt is omitted from updates.
-  // This depends on parsed payloads omitting absent optional keys.
-  const hasScheduleStartAt = Object.prototype.hasOwnProperty.call(
-    alert,
-    'scheduleStartAt',
-  );
+  // Preserve existing DB value when scheduleStartAt is omitted from updates
+  // (undefined), while still allowing explicit clears via null.
+  const hasScheduleStartAt = alert.scheduleStartAt !== undefined;
   // If scheduleStartAt is explicitly provided, offset-based alignment is ignored.
   // Force persisted offset to 0 so updates can't leave stale non-zero offsets.
   const normalizedScheduleOffsetMinutes =

@@ -16,7 +16,7 @@ import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  ChartAlertBaseSchema,
+  ChartAlertBaseValidatedSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
   DateRange,
@@ -549,7 +549,7 @@ const ChartSeriesEditor = ChartSeriesEditorComponent;
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
-    alert: ChartAlertBaseSchema.optional(),
+    alert: ChartAlertBaseValidatedSchema.optional(),
   })
   .passthrough();
 
