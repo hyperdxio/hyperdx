@@ -51,6 +51,7 @@ import {
   IconArrowUp,
   IconBell,
   IconChartLine,
+  IconChartPie,
   IconCirclePlus,
   IconCode,
   IconDotsVertical,
@@ -110,6 +111,7 @@ import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from './ChartDisplaySettingsDrawer';
 import DBNumberChart from './DBNumberChart';
+import { DBPieChart } from './DBPieChart';
 import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
 import {
   CheckBoxControlled,
@@ -656,6 +658,8 @@ export default function EditTimeChartForm({
         return 'markdown';
       case DisplayType.Table:
         return 'table';
+      case DisplayType.Pie:
+        return 'pie';
       case DisplayType.Number:
         return 'number';
       default:
@@ -669,7 +673,9 @@ export default function EditTimeChartForm({
     }
   }, [displayType, setValue]);
 
-  const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
+  const showGeneratedSql = ['table', 'time', 'number', 'pie'].includes(
+    activeTab,
+  ); // Whether to show the generated SQL preview
   const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
 
   const [
@@ -1029,6 +1035,12 @@ export default function EditTimeChartForm({
                 leftSection={<IconNumbers size={16} />}
               >
                 Number
+              </Tabs.Tab>
+              <Tabs.Tab
+                value={DisplayType.Pie}
+                leftSection={<IconChartPie size={16} />}
+              >
+                Pie
               </Tabs.Tab>
               <Tabs.Tab
                 value={DisplayType.Search}
@@ -1490,6 +1502,14 @@ export default function EditTimeChartForm({
                 thresholdType: alert.thresholdType,
               })
             }
+            showMVOptimizationIndicator={false}
+          />
+        </div>
+      )}
+      {queryReady && dbTimeChartConfig != null && activeTab === 'pie' && (
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBPieChart
+            config={dbTimeChartConfig}
             showMVOptimizationIndicator={false}
           />
         </div>
