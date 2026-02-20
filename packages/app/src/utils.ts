@@ -760,9 +760,9 @@ export const formatNumber = (
     return 'N/A';
   }
 
-  // Guard against non-numeric values at runtime (e.g., string column values)
-  // that slip past the TypeScript type system
-  if (typeof value !== 'number' || isNaN(value)) {
+  // Guard against NaN only - ClickHouse can return numbers as strings, which
+  // we should still format. Only truly non-numeric values (NaN) get passed through.
+  if (isNaN(value as number)) {
     return String(value);
   }
 
