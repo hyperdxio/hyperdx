@@ -240,7 +240,7 @@ export const DBPieChart = ({
                 legendType="none"
               >
                 {pieChartData.map(entry => (
-                  <Cell key={randomUUID()} fill={entry.color} stroke="none" />
+                  <Cell key={entry.label} fill={entry.color} stroke="none" />
                 ))}
               </Pie>
               <Tooltip />
