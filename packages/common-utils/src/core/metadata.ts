@@ -13,12 +13,7 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/core/renderChartConfig';
-import type {
-  ChartConfig,
-  ChartConfigWithDateRange,
-  QuerySettings,
-  TSource,
-} from '@/types';
+import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 import { optimizeGetKeyValuesCalls } from './materializedViews';
 import { objectHash } from './utils';
@@ -658,6 +653,42 @@ export class Metadata {
         throw e;
       }
     });
+  }
+
+  async getSettings({ connectionId }: { connectionId?: string }) {
+    return this.cache.getOrFetch(
+      `${connectionId}.availableSettings`,
+      async () => {
+        const query = 'SELECT name, value FROM system.settings';
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query,
+              query_params: undefined,
+              clickhouse_settings: this.getClickHouseSettings(),
+              shouldSkipApplySettings: true,
+            })
+            .then(res => res.json<{ name: string; value: string }>());
+
+          return new Map(json.data.map(row => [row.name, row.value]));
+        } catch (e) {
+          // Don't retry permissions errors, just silently return undefined
+          if (
+            e instanceof Error &&
+            e.message.includes('Not enough privileges')
+          ) {
+            console.warn(
+              'Not enough privileges to fetch settings, may result in unoptimized queries:',
+              e,
+            );
+            return new Map();
+          }
+
+          throw e;
+        }
+      },
+    );
   }
 
   /**

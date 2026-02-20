@@ -1,5 +1,9 @@
 import { createClient } from '@clickhouse/client';
-import type { BaseResultSet, DataFormat } from '@clickhouse/client-common';
+import type {
+  BaseResultSet,
+  ClickHouseSettings,
+  DataFormat,
+} from '@clickhouse/client-common';
 
 import {
   BaseClickhouseClient,
@@ -31,12 +35,17 @@ export class ClickhouseClient extends BaseClickhouseClient {
     abort_signal,
     clickhouse_settings: externalClickhouseSettings,
     queryId,
+    shouldSkipApplySettings,
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
     this.logDebugQuery(query, query_params);
 
-    const clickhouseSettings = this.processClickhouseSettings(
-      externalClickhouseSettings,
-    );
+    let clickhouseSettings: ClickHouseSettings | undefined;
+    // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
+    if (!shouldSkipApplySettings) {
+      clickhouseSettings = await this.processClickhouseSettings({
+        externalClickhouseSettings,
+      });
+    }
 
     // TODO: Custom error handling
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- client library type mismatch
