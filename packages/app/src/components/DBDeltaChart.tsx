@@ -266,6 +266,13 @@ function PropertyComparisonChart({
   );
 }
 
+// Layout constants for dynamic grid calculation.
+// CHART_WIDTH/CHART_HEIGHT must stay in sync with PropertyComparisonChart's style dimensions (line ~219).
+// CHART_GAP must match the `gap` prop on the Group component below.
+const CHART_WIDTH = 340;
+const CHART_HEIGHT = 120;
+const CHART_GAP = 16; // px; used both here and as explicit Group gap prop
+
 export default function DBDeltaChart({
   config,
   valueExpr,
@@ -490,22 +497,13 @@ export default function DBDeltaChart({
     height: containerHeight,
   } = useElementSize();
 
-  // CHART_WIDTH/CHART_HEIGHT must stay in sync with PropertyComparisonChart's style dimensions
-  const CHART_WIDTH = 340;
-  const CHART_HEIGHT = 120;
-  const CHART_GAP = 16; // Mantine's 'md' gap in pixels; must match Group gap prop
-  const PAGINATION_HEIGHT = 48; // Reserved space for the pagination control row
-
   const columns = Math.max(
     1,
     Math.floor((containerWidth + CHART_GAP) / (CHART_WIDTH + CHART_GAP)),
   );
   const rows = Math.max(
     1,
-    Math.floor(
-      (containerHeight - PAGINATION_HEIGHT + CHART_GAP) /
-        (CHART_HEIGHT + CHART_GAP),
-    ),
+    Math.floor((containerHeight + CHART_GAP) / (CHART_HEIGHT + CHART_GAP)),
   );
   const PAGE_SIZE = columns * rows;
 
@@ -560,7 +558,7 @@ export default function DBDeltaChart({
         flexDirection: 'column',
       }}
     >
-      <Group>
+      <Group gap={CHART_GAP}>
         {Array.from(sortedProperties)
           .slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE)
           .map(property => (
