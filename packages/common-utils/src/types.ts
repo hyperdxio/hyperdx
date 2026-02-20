@@ -409,7 +409,7 @@ export const AlertBaseObjectSchema = z.object({
 // external consumers that call object helpers like .extend()/.pick()/.omit().
 export const AlertBaseSchema = AlertBaseObjectSchema;
 
-export const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
+const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
 );
 
@@ -417,7 +417,7 @@ export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number().positive(),
 });
 
-export const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
+const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
   validateAlertScheduleOffsetMinutes,
 );
 
