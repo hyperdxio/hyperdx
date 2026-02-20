@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, screen, within } from '@testing-library/react';
 
-import { DBRowJsonViewer } from './DBRowJsonViewer';
+import { buildJSONExtractQuery, DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
 
 // Mock Next.js router
@@ -193,6 +193,59 @@ describe('DBRowJsonViewer', () => {
       expect(mockClipboard).toHaveBeenCalledWith(
         JSON.stringify({ field3: 'nested value' }, null, 2),
       );
+    });
+  });
+
+  describe('buildJSONExtractQuery', () => {
+    it('returns null when keyPath equals parsedJsonRootPath (no nested path)', () => {
+      expect(
+        buildJSONExtractQuery(['LogAttributes'], ['LogAttributes']),
+      ).toBeNull();
+    });
+
+    it('returns null when keyPath is shorter than parsedJsonRootPath', () => {
+      expect(buildJSONExtractQuery([], ['LogAttributes'])).toBeNull();
+    });
+
+    it('builds query for single-level path with default JSONExtractString', () => {
+      expect(
+        buildJSONExtractQuery(['LogAttributes', 'field1'], ['LogAttributes']),
+      ).toBe("JSONExtractString(LogAttributes, 'field1')");
+    });
+
+    it('builds query for nested path', () => {
+      expect(
+        buildJSONExtractQuery(
+          ['LogAttributes', 'nested', 'field3'],
+          ['LogAttributes'],
+        ),
+      ).toBe("JSONExtractString(LogAttributes, 'nested', 'field3')");
+    });
+
+    it('uses JSONExtractFloat when specified', () => {
+      expect(
+        buildJSONExtractQuery(
+          ['SpanAttributes', 'count'],
+          ['SpanAttributes'],
+          'JSONExtractFloat',
+        ),
+      ).toBe("JSONExtractFloat(SpanAttributes, 'count')");
+    });
+
+    it('uses JSONExtractBool when specified', () => {
+      expect(
+        buildJSONExtractQuery(
+          ['LogAttributes', 'enabled'],
+          ['LogAttributes'],
+          'JSONExtractBool',
+        ),
+      ).toBe("JSONExtractBool(LogAttributes, 'enabled')");
+    });
+
+    it('handles path segments that look like array indices', () => {
+      expect(
+        buildJSONExtractQuery(['LogAttributes', '0', 'id'], ['LogAttributes']),
+      ).toBe("JSONExtractString(LogAttributes, '0', 'id')");
     });
   });
 });
