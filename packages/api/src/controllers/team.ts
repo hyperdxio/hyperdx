@@ -132,7 +132,17 @@ export async function provisionAnonymousUser() {
   });
   await team.save();
 
+  // Handle orphaned user (exists but no team) vs new user
+  if (existingUser) {
+    existingUser.team = team._id;
+    await existingUser.save();
+    _anonymousUser = existingUser;
+    return existingUser;
+  }
+
   // Create user without password (passport-local-mongoose allows this)
+  // Note: This user persists in MongoDB even if anonymous mode is later disabled.
+  // To clean up, manually remove the user: db.users.deleteOne({ email: "anonymous@hyperdx.io" })
   const user = new User({
     email: ANONYMOUS_USER_EMAIL,
     name: 'Anonymous User',
