@@ -110,7 +110,7 @@ export function isUserAuthenticated(
   if (config.IS_ANONYMOUS_AUTH_ENABLED) {
     const anonymousUser = getAnonymousUser();
     if (anonymousUser) {
-      req.user = anonymousUser;
+      req.user = anonymousUser.toObject();
       setTraceAttributes({
         userId: anonymousUser._id.toString(),
         userEmail: anonymousUser.email,
