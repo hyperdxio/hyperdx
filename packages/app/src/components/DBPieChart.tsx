@@ -1,5 +1,4 @@
-import { useMemo } from 'react';
-import randomUUID from 'crypto-randomuuid';
+import { memo, useMemo } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
@@ -8,15 +7,44 @@ import { Box, Code, Flex, Text } from '@mantine/core';
 import {
   buildMVDateRangeIndicator,
   convertToPieChartConfig,
+  formatResponseForPieChart,
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-import { COLORS } from '@/utils';
+import type { NumberFormat } from '@/types';
+import { getColorProps } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
+import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
+
+const PieChartTooltip = memo(
+  ({
+    active,
+    payload,
+    numberFormat,
+  }: {
+    active?: boolean;
+    payload?: { name: string; value: number; payload: { color: string } }[];
+    numberFormat?: NumberFormat;
+  }) => {
+    if (!active || !payload?.length) return null;
+    const entry = payload[0];
+    return (
+      <ChartTooltipContainer>
+        <ChartTooltipItem
+          color={entry.payload.color}
+          name={entry.name}
+          value={entry.value}
+          numberFormat={numberFormat}
+          indicator="none"
+        />
+      </ChartTooltipContainer>
+    );
+  },
+);
 
 export const DBPieChart = ({
   config,
@@ -52,22 +80,6 @@ export const DBPieChart = ({
       enabled,
     },
   );
-
-  // Returns an array of aliases, so we can check if something is using an alias
-  const aliasMap = useMemo(() => {
-    // If the config.select is a string, we can't infer this.
-    // One day, we could potentially run this through chSqlToAliasMap but AST parsing
-    //  doesn't work for most DBTableChart queries.
-    if (typeof config.select === 'string') {
-      return [];
-    }
-    return config.select.reduce((acc, select) => {
-      if (select.alias) {
-        acc.push(select.alias);
-      }
-      return acc;
-    }, [] as string[]);
-  }, [config.select]);
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
@@ -110,74 +122,10 @@ export const DBPieChart = ({
     queriedConfig,
   ]);
 
-  // Extract group column names from groupBy config
-  const groupByKeys = useMemo(() => {
-    if (!queriedConfig.groupBy) return [];
-
-    if (typeof queriedConfig.groupBy === 'string') {
-      return queriedConfig.groupBy.split(',').map(v => v.trim());
-    }
-
-    return queriedConfig.groupBy.map(g =>
-      typeof g === 'string' ? g : g.valueExpression,
-    );
-  }, [queriedConfig.groupBy]);
-
   const pieChartData = useMemo(() => {
-    if (!data || data.data.length === 0) return [];
-
-    if (groupByKeys.length > 0 && data.data.length > 0) {
-      const groupColumnSet = new Set(groupByKeys);
-
-      return data.data.map((row, index) => {
-        const label =
-          groupByKeys.length === 1
-            ? String(row[groupByKeys[0]])
-            : groupByKeys.map(key => row[key]).join(' - ');
-
-        let totalValue = 0;
-        for (const key in row) {
-          if (!groupColumnSet.has(key)) {
-            const numValue = parseFloat(row[key]);
-            if (!isNaN(numValue)) {
-              totalValue += numValue;
-            }
-          }
-        }
-
-        return {
-          label,
-          value: totalValue,
-          color:
-            index >= COLORS.length
-              ? // Source - https://stackoverflow.com/a/5092872
-                '#000000'.replace(/0/g, () => {
-                  return (~~(Math.random() * 16)).toString(16);
-                })
-              : COLORS[index],
-        };
-      });
-    }
-
-    if (data.data.length === 1) {
-      const queryData = data.data[0];
-
-      return Object.keys(queryData).map((key, index) => ({
-        // If it's an alias, wrap in quotes to support a variety of formats (ex "Time (ms)", "Req/s", etc)
-        label: aliasMap.includes(key) ? `${key}` : key,
-        value: parseFloat(queryData[key]),
-        color:
-          index >= COLORS.length
-            ? // Source - https://stackoverflow.com/a/5092872
-              '#000000'.replace(/0/g, () => {
-                return (~~(Math.random() * 16)).toString(16);
-              })
-            : COLORS[index],
-      }));
-    }
-
-    return [];
-  }, [data, aliasMap, groupByKeys]);
+    if (!data) return [];
+    return formatResponseForPieChart(data, getColorProps);
+  }, [data]);
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
@@ -243,7 +191,9 @@ export const DBPieChart = ({
                   <Cell key={entry.label} fill={entry.color} stroke="none" />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip
+                content={<PieChartTooltip numberFormat={config.numberFormat} />}
+              />
             </PieChart>
           </ResponsiveContainer>
         </Flex>

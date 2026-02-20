@@ -91,8 +91,8 @@ const convertToExternalTileChartConfig = (
   };
 
   switch (config.displayType) {
-    case 'line':
-    case 'stacked_bar':
+    case DisplayType.Line:
+    case DisplayType.StackedBar:
       return {
         displayType: config.displayType,
         sourceId,
@@ -106,12 +106,12 @@ const convertToExternalTileChartConfig = (
         select: Array.isArray(config.select)
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
-        ...(config.displayType === 'line'
+        ...(config.displayType === DisplayType.Line
           ? { compareToPreviousPeriod: config.compareToPreviousPeriod }
           : {}),
         numberFormat: config.numberFormat,
       };
-    case 'number':
+    case DisplayType.Number:
       return {
         displayType: config.displayType,
         sourceId,
@@ -120,7 +120,17 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
       };
-    case 'table':
+    case DisplayType.Pie:
+      return {
+        displayType: config.displayType,
+        sourceId,
+        select: Array.isArray(config.select)
+          ? [convertToExternalSelectItem(config.select[0])]
+          : [DEFAULT_SELECT_ITEM],
+        groupBy: stringValueOrDefault(config.groupBy, undefined),
+        numberFormat: config.numberFormat,
+      };
+    case DisplayType.Table:
       return {
         ...pick(config, ['having', 'numberFormat']),
         displayType: config.displayType,
@@ -135,7 +145,7 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         orderBy: stringValueOrDefault(config.orderBy, undefined),
       };
-    case 'search':
+    case DisplayType.Search:
       return {
         displayType: config.displayType,
         sourceId,
@@ -143,17 +153,20 @@ const convertToExternalTileChartConfig = (
         where: config.where,
         whereLanguage: config.whereLanguage ?? 'lucene',
       };
-    case 'markdown':
+    case DisplayType.Markdown:
       return {
         displayType: config.displayType,
         markdown: stringValueOrDefault(config.markdown, ''),
       };
-    default:
+    case DisplayType.Heatmap:
+    case undefined:
       logger.error(
         { config },
-        'Error converting chart config to external chart - unrecognized display type',
+        'Error converting chart config to external chart - unsupported display type',
       );
       return undefined;
+    default:
+      config.displayType satisfies never;
   }
 };
 
@@ -257,6 +270,16 @@ export function convertToInternalTileConfig(
         name,
       };
       break;
+    case 'pie':
+      internalConfig = {
+        ...pick(externalConfig, ['groupBy', 'numberFormat']),
+        displayType: DisplayType.Pie,
+        select: [convertToInternalSelectItem(externalConfig.select[0])],
+        source: externalConfig.sourceId,
+        where: '',
+        name,
+      };
+      break;
     case 'search':
       internalConfig = {
         ...pick(externalConfig, ['select', 'where']),
@@ -276,6 +299,13 @@ export function convertToInternalTileConfig(
         name,
       };
       break;
+    default:
+      // Typecheck to ensure all display types are handled
+      externalConfig satisfies never;
+
+      // We should never hit this due to the typecheck above.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      internalConfig = {} as SavedChartConfig;
   }
 
   // Omit keys that are null/undefined, so that they're not saved as null in Mongo.
