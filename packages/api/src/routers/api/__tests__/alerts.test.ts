@@ -199,6 +199,26 @@ describe('alerts router', () => {
       .expect(400);
   });
 
+  it('rejects scheduleOffsetMinutes when scheduleStartAt is provided', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+        }),
+        scheduleOffsetMinutes: 2,
+        scheduleStartAt: new Date().toISOString(),
+      })
+      .expect(400);
+  });
+
   it('preserves createdBy field during updates', async () => {
     const { agent, user } = await getLoggedInAgent(server);
     const dashboard = await agent

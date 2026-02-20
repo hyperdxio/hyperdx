@@ -48,6 +48,8 @@ export type AlertInput = {
 };
 
 const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
+  // Preserve existing DB value when scheduleStartAt is omitted from updates.
+  // This depends on parsed payloads omitting absent optional keys.
   const hasScheduleStartAt = Object.prototype.hasOwnProperty.call(
     alert,
     'scheduleStartAt',

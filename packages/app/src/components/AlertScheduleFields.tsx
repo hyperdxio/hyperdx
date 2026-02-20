@@ -41,14 +41,20 @@ export function AlertScheduleFields<T extends FieldValues>({
   const hasScheduleStartAtAnchor = scheduleStartAtValue != null;
 
   useEffect(() => {
-    if (showScheduleOffsetInput || scheduleOffsetMinutes === 0) {
+    const normalizedOffset = scheduleOffsetMinutes ?? 0;
+    if (!showScheduleOffsetInput && normalizedOffset !== 0) {
+      setValue(scheduleOffsetName, 0 as PathValue<T, FieldPath<T>>, {
+        shouldValidate: true,
+      });
       return;
     }
-
-    setValue(scheduleOffsetName, 0 as PathValue<T, FieldPath<T>>, {
-      shouldValidate: true,
-    });
+    if (hasScheduleStartAtAnchor && normalizedOffset > 0) {
+      setValue(scheduleOffsetName, 0 as PathValue<T, FieldPath<T>>, {
+        shouldValidate: true,
+      });
+    }
   }, [
+    hasScheduleStartAtAnchor,
     scheduleOffsetMinutes,
     scheduleOffsetName,
     setValue,

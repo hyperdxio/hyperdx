@@ -328,11 +328,24 @@ export const zTileAlert = z.object({
 });
 
 export const validateAlertScheduleOffsetMinutes = (
-  alert: { interval: AlertInterval; scheduleOffsetMinutes?: number },
+  alert: {
+    interval: AlertInterval;
+    scheduleOffsetMinutes?: number;
+    scheduleStartAt?: string | Date | null;
+  },
   ctx: z.RefinementCtx,
 ) => {
   const scheduleOffsetMinutes = alert.scheduleOffsetMinutes ?? 0;
   const intervalMinutes = ALERT_INTERVAL_TO_MINUTES[alert.interval];
+
+  if (alert.scheduleStartAt != null && scheduleOffsetMinutes > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'scheduleOffsetMinutes must be 0 when scheduleStartAt is provided',
+      path: ['scheduleOffsetMinutes'],
+    });
+  }
 
   if (scheduleOffsetMinutes >= intervalMinutes) {
     ctx.addIssue({
