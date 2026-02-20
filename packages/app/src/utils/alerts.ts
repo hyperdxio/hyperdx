@@ -164,6 +164,8 @@ export function normalizeNoOpAlertScheduleFields<
   }
 
   const normalizedAlert = { ...alert };
+  // We inspect key presence (not value equality) so pre-migration alerts that
+  // never had schedule fields don't get no-op keys written back on save.
   const previousHadOffset =
     previousAlert != null &&
     Object.prototype.hasOwnProperty.call(

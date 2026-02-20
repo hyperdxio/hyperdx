@@ -6,6 +6,7 @@ import {
   FieldValues,
   PathValue,
   UseFormSetValue,
+  useWatch,
 } from 'react-hook-form';
 import { NumberInput } from 'react-hook-form-mantine';
 import { Group, Text } from '@mantine/core';
@@ -33,6 +34,11 @@ export function AlertScheduleFields<T extends FieldValues>({
   offsetWindowLabel,
 }: AlertScheduleFieldsProps<T>) {
   const showScheduleOffsetInput = maxScheduleOffsetMinutes > 0;
+  const scheduleStartAtValue = useWatch({
+    control,
+    name: scheduleStartAtName,
+  }) as string | null | undefined;
+  const hasScheduleStartAtAnchor = scheduleStartAtValue != null;
 
   useEffect(() => {
     if (showScheduleOffsetInput || scheduleOffsetMinutes === 0) {
@@ -52,23 +58,31 @@ export function AlertScheduleFields<T extends FieldValues>({
   return (
     <>
       {showScheduleOffsetInput && (
-        <Group gap="xs" mt="xs">
-          <Text size="sm" opacity={0.7}>
-            Start offset (min)
-          </Text>
-          <NumberInput
-            min={0}
-            max={maxScheduleOffsetMinutes}
-            step={1}
-            size="xs"
-            w={100}
-            control={control}
-            name={scheduleOffsetName}
-          />
-          <Text size="sm" opacity={0.7}>
-            {offsetWindowLabel}
-          </Text>
-        </Group>
+        <>
+          <Group gap="xs" mt="xs">
+            <Text size="sm" opacity={0.7}>
+              Start offset (min)
+            </Text>
+            <NumberInput
+              min={0}
+              max={maxScheduleOffsetMinutes}
+              step={1}
+              size="xs"
+              w={100}
+              control={control}
+              name={scheduleOffsetName}
+              disabled={hasScheduleStartAtAnchor}
+            />
+            <Text size="sm" opacity={0.7}>
+              {offsetWindowLabel}
+            </Text>
+          </Group>
+          {hasScheduleStartAtAnchor && (
+            <Text size="xs" opacity={0.6} mt={4}>
+              Start offset is ignored while an anchor start time is set.
+            </Text>
+          )}
+        </>
       )}
       <Group gap="xs" mt="xs" align="start">
         <Text size="sm" opacity={0.7} mt={6}>
