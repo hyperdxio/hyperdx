@@ -113,14 +113,18 @@ export default class Server {
           'Anonymous auth mode detected, provisioning anonymous user...',
         );
         const user = await provisionAnonymousUser();
-        await setupTeamDefaults(user.team.toString());
+        const teamId = user.team?.toString();
+        if (!teamId) {
+          throw new Error('Anonymous user has no team assigned');
+        }
+        await setupTeamDefaults(teamId);
         logger.info('Anonymous user provisioned successfully');
       } catch (error) {
         logger.error(
           { err: serializeError(error) },
-          'Failed to provision anonymous user',
+          'Failed to provision anonymous user, shutting down',
         );
-        // Don't throw - allow server to start even if provisioning fails
+        process.exit(1);
       }
     }
   }
