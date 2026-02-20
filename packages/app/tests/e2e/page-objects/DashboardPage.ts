@@ -2,6 +2,7 @@
  * DashboardPage - Page object for dashboard pages
  * Encapsulates interactions with dashboard creation, editing, and tile management
  */
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
@@ -9,11 +10,33 @@ import { TimePickerComponent } from '../components/TimePickerComponent';
 import { getSqlEditor } from '../utils/locators';
 
 /**
+ * Config format tile config, as accepted by the external dashboard API.
+ * Used with verifyTileFormFromConfig
+ */
+export type TileConfig = {
+  displayType: Exclude<DisplayType, 'heatmap'>;
+  sourceId?: string;
+  select?:
+    | {
+        aggFn?: string;
+        where?: string;
+        whereLanguage?: 'sql' | 'lucene';
+        alias?: string;
+        valueExpression?: string;
+      }[]
+    | string;
+  where?: string;
+  whereLanguage?: 'sql' | 'lucene';
+  groupBy?: string;
+  markdown?: string;
+};
+type SeriesType = 'time' | 'number' | 'table' | 'search' | 'markdown' | 'pie';
+/**
  * Series data structure for chart verification
  * Supports all chart types: time, number, table, search, markdown
  */
 export type SeriesData = {
-  type: 'time' | 'number' | 'table' | 'search' | 'markdown';
+  type: SeriesType;
   sourceId?: string;
   aggFn?: string;
   field?: string;
@@ -386,11 +409,64 @@ export class DashboardPage {
     return this.page.locator('.cm-content').filter({ hasText: text });
   }
 
-  getChartTypeTab(type: 'time' | 'table' | 'number' | 'search' | 'markdown') {
+  getChartTypeTab(type: SeriesType) {
     if (type === 'time') {
       return this.page.getByRole('tab', { name: /line/i });
     }
     return this.page.getByRole('tab', { name: new RegExp(type, 'i') });
+  }
+
+  /**
+   * Convert a config-format tile config to SeriesData for form verification.
+   */
+  private configToSeriesData(config: TileConfig): SeriesData[] {
+    if (config.displayType === 'markdown') {
+      return [{ type: 'markdown', content: config.markdown }];
+    }
+
+    if (config.displayType === 'search') {
+      return [
+        {
+          type: 'search',
+          sourceId: config.sourceId,
+          where: config.where,
+          whereLanguage: config.whereLanguage ?? 'lucene',
+        },
+      ];
+    }
+
+    const type: SeriesData['type'] =
+      config.displayType === 'line' || config.displayType === 'stacked_bar'
+        ? 'time'
+        : config.displayType;
+
+    const groupBy = config.groupBy ? [config.groupBy] : undefined;
+    const selectItems = Array.isArray(config.select) ? config.select : [];
+
+    return selectItems.map(item => ({
+      type,
+      sourceId: config.sourceId,
+      aggFn: item.aggFn,
+      where: item.where,
+      whereLanguage: item.whereLanguage ?? 'lucene',
+      alias: item.alias,
+      field: item.valueExpression,
+      groupBy,
+    }));
+  }
+
+  /**
+   * Verify tile edit form using the config-format tile config directly,
+   * avoiding the need for a separate SeriesData verification array.
+   */
+  async verifyTileFormFromConfig(
+    config: TileConfig,
+    expectedSourceName?: string,
+  ) {
+    await this.verifyTileForm(
+      this.configToSeriesData(config),
+      expectedSourceName,
+    );
   }
 
   /**
