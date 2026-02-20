@@ -1,9 +1,17 @@
 import LZString from 'lz-string';
 
+// Prefix that marks a value as lz-string compressed.
+// '~' is an RFC 3986 unreserved character so it is never encoded by browsers
+// or mangled by URL-sharing platforms (Teams, Slack, etc.), and it cannot
+// appear in lz-string's own base64url output alphabet (A-Za-z0-9+-=), so
+// presence of this prefix unambiguously identifies the new compressed format.
+const LZ_PREFIX = '~';
+
 /**
  * Compresses and URL-encodes a JSON-serializable value for use as a URL parameter.
- * Output contains only URL-safe characters (alphanumeric + a small set),
- * and is typically 60-70% shorter than JSON.stringify for complex objects.
+ * Output contains only URL-safe characters and is significantly shorter than
+ * JSON.stringify for large objects (100+ characters), but may be slightly longer
+ * for small payloads due to lz-string's encoding overhead.
  */
 export function compressUrlParam(value: unknown): string {
   return LZString.compressToEncodedURIComponent(JSON.stringify(value));
@@ -38,9 +46,11 @@ export function decompressUrlParam<T>(value: string): T | null {
 
 /**
  * Compresses a plain string URL parameter.
+ * Output is prefixed with LZ_PREFIX so the decompressor can detect the format
+ * without guessing, eliminating false-positive decompression of old plain-text URLs.
  */
 export function compressStringParam(value: string): string {
-  return LZString.compressToEncodedURIComponent(value);
+  return LZ_PREFIX + LZString.compressToEncodedURIComponent(value);
 }
 
 /**
@@ -49,8 +59,12 @@ export function compressStringParam(value: string): string {
  * Also handles the legacy %0A → newline encoding used by parseAsStringWithNewLines.
  */
 export function decompressStringParam(value: string): string {
-  const decompressed = LZString.decompressFromEncodedURIComponent(value);
-  if (decompressed != null) return decompressed;
+  if (value.startsWith(LZ_PREFIX)) {
+    const decompressed = LZString.decompressFromEncodedURIComponent(
+      value.slice(LZ_PREFIX.length),
+    );
+    if (decompressed != null) return decompressed;
+  }
   // Old URL fallback: apply the same newline handling as the legacy parser
   return value.replace(/%0A/g, '\n');
 }

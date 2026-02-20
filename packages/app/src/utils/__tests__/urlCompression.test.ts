@@ -118,9 +118,9 @@ describe('compressStringParam', () => {
     expect(result).toBeTruthy();
   });
 
-  it('produces URL-safe output (no spaces, quotes, parens)', () => {
+  it('produces URL-safe output (no spaces, quotes, parens, brackets)', () => {
     const result = compressStringParam(SAMPLE_WHERE);
-    expect(result).not.toMatch(/[\s"'()]/);
+    expect(result).not.toMatch(/[\s"'()[\]{}]/);
   });
 
   it('produces URL-safe output for SQL with parentheses (Teams-unsafe chars)', () => {
@@ -175,6 +175,13 @@ describe('decompressStringParam', () => {
       // "status=200" decoded from a pre-compression URL; "=" is valid base64url
       // but should not be treated as LZ-compressed data
       expect(decompressStringParam('status=200')).toBe('status=200');
+    });
+
+    it('does not corrupt a value whose characters are all base64url-safe (e.g. A1B2C3)', () => {
+      // Without the LZ_PREFIX guard, LZString.decompressFromEncodedURIComponent('A1B2C3')
+      // returns non-null garbage (e.g. "°") instead of null, causing silent corruption.
+      // The prefix-based format detection eliminates this false-positive entirely.
+      expect(decompressStringParam('A1B2C3')).toBe('A1B2C3');
     });
   });
 });

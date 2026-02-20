@@ -1,5 +1,4 @@
-import LZString from 'lz-string';
-
+import { decompressStringParam } from '../../../../src/utils/urlCompression';
 import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
 
@@ -199,9 +198,7 @@ test.describe('Search', { tag: '@search' }, () => {
         const url = searchPage.page.url();
         expect(url, 'URL should contain select parameter').toContain('select=');
         const selectParam = new URL(url).searchParams.get('select') ?? '';
-        const decompressedSelect =
-          LZString.decompressFromEncodedURIComponent(selectParam) ??
-          selectParam;
+        const decompressedSelect = decompressStringParam(selectParam);
         expect(
           decompressedSelect,
           'URL select param should contain alias "message"',
