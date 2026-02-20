@@ -153,6 +153,47 @@ describe('alerts router', () => {
     expect(alertAfterNullScheduleStartAt?.scheduleStartAt).toBeNull();
   });
 
+  it('resets scheduleOffsetMinutes to 0 when scheduleStartAt is set without offset', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const createdAlert = await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+        }),
+        scheduleOffsetMinutes: 2,
+      })
+      .expect(200);
+
+    expect(createdAlert.body.data.scheduleOffsetMinutes).toBe(2);
+
+    const scheduleStartAt = '2024-01-01T00:00:00.000Z';
+
+    await agent
+      .put(`/alerts/${createdAlert.body.data._id}`)
+      .send({
+        channel: createdAlert.body.data.channel,
+        interval: createdAlert.body.data.interval,
+        threshold: createdAlert.body.data.threshold,
+        thresholdType: createdAlert.body.data.thresholdType,
+        source: createdAlert.body.data.source,
+        dashboardId: dashboard.body.id,
+        tileId: dashboard.body.tiles[0].id,
+        scheduleStartAt,
+      })
+      .expect(200);
+
+    const updatedAlert = await Alert.findById(createdAlert.body.data._id);
+    expect(updatedAlert?.scheduleOffsetMinutes).toBe(0);
+    expect(updatedAlert?.scheduleStartAt?.toISOString()).toBe(scheduleStartAt);
+  });
+
   it('rejects scheduleStartAt values more than 1 year in the future', async () => {
     const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent

@@ -54,12 +54,18 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     alert,
     'scheduleStartAt',
   );
+  // If scheduleStartAt is explicitly provided, offset-based alignment is ignored.
+  // Force persisted offset to 0 so updates can't leave stale non-zero offsets.
+  const normalizedScheduleOffsetMinutes =
+    hasScheduleStartAt && alert.scheduleStartAt != null
+      ? 0
+      : alert.scheduleOffsetMinutes;
 
   return {
     channel: alert.channel,
     interval: alert.interval,
-    ...(alert.scheduleOffsetMinutes != null && {
-      scheduleOffsetMinutes: alert.scheduleOffsetMinutes,
+    ...(normalizedScheduleOffsetMinutes != null && {
+      scheduleOffsetMinutes: normalizedScheduleOffsetMinutes,
     }),
     ...(hasScheduleStartAt && {
       scheduleStartAt:
