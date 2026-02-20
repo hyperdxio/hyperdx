@@ -28,6 +28,7 @@ import {
   Tabs,
   Text,
 } from '@mantine/core';
+import { DateTimePicker } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
 import {
   IconChartLine,
@@ -68,6 +69,17 @@ const SavedSearchAlertFormSchema = z
   })
   .passthrough()
   .superRefine(validateAlertScheduleOffsetMinutes);
+
+const parseScheduleStartAtValue = (
+  value: string | null | undefined,
+): Date | null => {
+  if (value == null) {
+    return null;
+  }
+
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
 
 const AlertForm = ({
   sourceId,
@@ -198,22 +210,20 @@ const AlertForm = ({
               control={control}
               name="scheduleStartAt"
               render={({ field, fieldState: { error } }) => (
-                <TextInput
+                <DateTimePicker
                   size="xs"
                   w={260}
-                  placeholder="2026-02-08T10:00:00Z"
-                  value={field.value ?? ''}
-                  onChange={e =>
-                    field.onChange(
-                      e.currentTarget.value === ''
-                        ? null
-                        : e.currentTarget.value,
-                    )
-                  }
+                  placeholder="Pick date and time"
+                  clearable
+                  value={parseScheduleStartAtValue(field.value)}
+                  onChange={value => field.onChange(value?.toISOString() ?? null)}
                   error={error?.message}
                 />
               )}
             />
+            <Text size="xs" opacity={0.6} mt={6}>
+              Stored in UTC
+            </Text>
           </Group>
           <Text size="xxs" opacity={0.5} mb={4} mt="xs">
             grouped by
