@@ -250,7 +250,6 @@
             "required": [
               "threshold",
               "interval",
-              "source",
               "thresholdType",
               "channel"
             ]
@@ -267,7 +266,6 @@
             "required": [
               "threshold",
               "interval",
-              "source",
               "thresholdType",
               "channel"
             ]
