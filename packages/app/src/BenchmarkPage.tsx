@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import {
-  parseAsInteger,
-  parseAsJson,
-  parseAsString,
-  useQueryState,
-} from 'nuqs';
+import { parseAsInteger, parseAsString, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { DataFormat } from '@hyperdx/common-utils/dist/clickhouse';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
@@ -22,6 +17,7 @@ import {
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { useClickhouseClient } from '@/clickhouse';
+import { parseAsCompressedJson } from '@/utils/queryParsers';
 
 import { ConnectionSelectControlled } from './components/ConnectionSelect';
 import DBTableChart from './components/DBTableChart';
@@ -149,11 +145,11 @@ function useIndexes(
 function BenchmarkPage() {
   const [queries, setQueries] = useQueryState<string[]>(
     'queries',
-    parseAsJson(),
+    parseAsCompressedJson(),
   );
   const [connections, setConnections] = useQueryState<string[]>(
     'connections',
-    parseAsJson(),
+    parseAsCompressedJson(),
   );
   const [iterations, setIterations] = useQueryState<number>(
     'iterations',

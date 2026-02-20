@@ -32,6 +32,8 @@ import {
 import { SegmentedControl } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import { compressStringParam, compressUrlParam } from '@/utils/urlCompression';
+
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
 import { getMetricNameSql } from './otelSemanticConventions';
@@ -991,9 +993,12 @@ export function buildEventsSearchUrl({
 
   const params: Record<string, string> = {
     source: source?.id ?? '',
-    where: where,
+    where: compressStringParam(where),
     whereLanguage: whereLanguage,
-    filters: JSON.stringify([...(config.filters ?? []), ...additionalFilters]),
+    filters: compressUrlParam([
+      ...(config.filters ?? []),
+      ...additionalFilters,
+    ]),
     isLive: 'false',
     from: from.toString(),
     to: to.toString(),
@@ -1003,7 +1008,7 @@ export function buildEventsSearchUrl({
   if (isMetricChart) {
     params.where = '';
     params.whereLanguage = 'lucene';
-    params.filters = JSON.stringify([]);
+    params.filters = compressUrlParam([]);
     params.source = source?.logSourceId ?? '';
   }
 

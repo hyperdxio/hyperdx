@@ -4381,6 +4381,7 @@ __metadata:
     ky: "npm:^0.30.0"
     ky-universal: "npm:^0.10.1"
     lodash: "npm:^4.17.21"
+    lz-string: "npm:^1.5.0"
     ms: "npm:^2.1.3"
     msw: "npm:^2.3.0"
     msw-storybook-addon: "npm:^2.0.2"

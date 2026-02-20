@@ -1,3 +1,4 @@
+import { decompressStringParam } from '../../../../src/utils/urlCompression';
 import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
 
@@ -196,7 +197,12 @@ test.describe('Search', { tag: '@search' }, () => {
         // Check URL parameters
         const url = searchPage.page.url();
         expect(url, 'URL should contain select parameter').toContain('select=');
-        expect(url, 'URL should contain alias "message"').toContain('message');
+        const selectParam = new URL(url).searchParams.get('select') ?? '';
+        const decompressedSelect = decompressStringParam(selectParam);
+        expect(
+          decompressedSelect,
+          'URL select param should contain alias "message"',
+        ).toContain('message');
 
         // Verify SELECT editor content using page object
         const selectEditor = searchPage.getSELECTEditor();

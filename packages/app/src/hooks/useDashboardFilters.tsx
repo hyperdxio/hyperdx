@@ -1,13 +1,14 @@
 import { useCallback, useMemo } from 'react';
-import { parseAsJson, useQueryState } from 'nuqs';
+import { useQueryState } from 'nuqs';
 import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
 
 import { FilterState, filtersToQuery, parseQuery } from '@/searchFilters';
+import { parseAsCompressedJson } from '@/utils/queryParsers';
 
 const useDashboardFilters = (filters: DashboardFilter[]) => {
   const [filterQueries, setFilterQueries] = useQueryState(
     'filters',
-    parseAsJson<Filter[]>(),
+    parseAsCompressedJson<Filter[]>(),
   );
 
   const setFilterValue = useCallback(

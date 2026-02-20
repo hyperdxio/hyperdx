@@ -66,6 +66,7 @@
     "ky": "^0.30.0",
     "ky-universal": "^0.10.1",
     "lodash": "^4.17.21",
+    "lz-string": "^1.5.0",
     "ms": "^2.1.3",
     "next": "^16.1.5",
     "next-query-params": "^4.3.1",
