@@ -4,7 +4,7 @@ import { serializeError } from 'serialize-error';
 
 import app from '@/api-app';
 import * as config from '@/config';
-import { LOCAL_APP_TEAM } from '@/controllers/team';
+import { LOCAL_APP_TEAM, provisionAnonymousUser } from '@/controllers/team';
 import { connectDB, mongooseConnection } from '@/models';
 import opampApp from '@/opamp/app';
 import { setupTeamDefaults } from '@/setupDefaults';
@@ -103,6 +103,24 @@ export default class Server {
           'Failed to setup team defaults for local app mode',
         );
         // Don't throw - allow server to start even if defaults setup fails
+      }
+    }
+
+    // Initialize anonymous user for anonymous auth mode
+    if (config.IS_ANONYMOUS_AUTH_ENABLED) {
+      try {
+        logger.info(
+          'Anonymous auth mode detected, provisioning anonymous user...',
+        );
+        const user = await provisionAnonymousUser();
+        await setupTeamDefaults(user.team.toString());
+        logger.info('Anonymous user provisioned successfully');
+      } catch (error) {
+        logger.error(
+          { err: serializeError(error) },
+          'Failed to provision anonymous user',
+        );
+        // Don't throw - allow server to start even if provisioning fails
       }
     }
   }

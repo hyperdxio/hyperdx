@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
+import { getAnonymousUser } from '@/controllers/team';
 import { findUserByAccessKey } from '@/controllers/user';
 import type { UserDocument } from '@/models/user';
 import logger from '@/utils/logger';
@@ -104,6 +105,21 @@ export function isUserAuthenticated(
       team: '_local_team_',
     };
     return next();
+  }
+
+  if (config.IS_ANONYMOUS_AUTH_ENABLED) {
+    const anonymousUser = getAnonymousUser();
+    if (anonymousUser) {
+      req.user = anonymousUser;
+      setTraceAttributes({
+        userId: anonymousUser._id.toString(),
+        userEmail: anonymousUser.email,
+      });
+      return next();
+    }
+    // User not provisioned yet (server still starting)
+    logger.warn('Anonymous user not yet provisioned');
+    return res.sendStatus(503);
   }
 
   if (req.isAuthenticated()) {

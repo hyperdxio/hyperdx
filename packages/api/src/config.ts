@@ -38,6 +38,10 @@ export const RUN_SCHEDULED_TASKS_EXTERNALLY =
 export const IS_LOCAL_APP_MODE =
   env.IS_LOCAL_APP_MODE === 'DANGEROUSLY_is_local_app_mode💀';
 
+// Anonymous authentication mode - skips login but uses real MongoDB user/team
+export const IS_ANONYMOUS_AUTH_ENABLED =
+  env.HDX_AUTH_ANONYMOUS_ENABLED === 'true';
+
 // Only used to bootstrap empty instances
 export const DEFAULT_CONNECTIONS = env.DEFAULT_CONNECTIONS;
 export const DEFAULT_SOURCES = env.DEFAULT_SOURCES;

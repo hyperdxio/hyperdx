@@ -7,6 +7,8 @@ import type { ObjectId } from '@/models';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import Team from '@/models/team';
+import User from '@/models/user';
+import type { UserDocument } from '@/models/user';
 
 const LOCAL_APP_TEAM_ID = '_local_team_';
 export const LOCAL_APP_TEAM = {
@@ -108,4 +110,40 @@ export async function getTags(teamId: ObjectId) {
       ...savedSearchTags.map(t => t._id),
     ]),
   ];
+}
+
+// Anonymous authentication mode
+let _anonymousUser: UserDocument | null = null;
+
+export const ANONYMOUS_USER_EMAIL = 'anonymous@hyperdx.io';
+
+export async function provisionAnonymousUser() {
+  // Find existing anonymous user
+  const existingUser = await User.findOne({ email: ANONYMOUS_USER_EMAIL });
+  if (existingUser?.team) {
+    _anonymousUser = existingUser;
+    return existingUser;
+  }
+
+  // Create team for anonymous user
+  const team = new Team({
+    name: 'Anonymous Team',
+    collectorAuthenticationEnforced: false,
+  });
+  await team.save();
+
+  // Create user without password (passport-local-mongoose allows this)
+  const user = new User({
+    email: ANONYMOUS_USER_EMAIL,
+    name: 'Anonymous User',
+    team: team._id,
+  });
+  await user.save();
+
+  _anonymousUser = user;
+  return user;
+}
+
+export function getAnonymousUser() {
+  return _anonymousUser;
 }

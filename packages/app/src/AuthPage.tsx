@@ -16,6 +16,7 @@ import { IconAt, IconLock } from '@tabler/icons-react';
 
 import api from './api';
 import * as config from './config';
+import { IS_ANONYMOUS_MODE } from './config';
 import LandingHeader from './LandingHeader';
 import { CheckOrX, PasswordCheck } from './PasswordCheck';
 
@@ -32,7 +33,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   const isLoggedIn = Boolean(!teamIsLoading && team);
 
   useEffect(() => {
-    if (isLoggedIn) {
+    if (isLoggedIn || IS_ANONYMOUS_MODE) {
       router.push('/search');
     }
   }, [isLoggedIn, router]);
