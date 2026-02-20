@@ -146,3 +146,39 @@ export function parseScheduleStartAtValue(
   const parsedDate = new Date(value);
   return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
 }
+
+type AlertScheduleFields = {
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: string | null;
+};
+
+export function normalizeNoOpAlertScheduleFields<
+  T extends AlertScheduleFields | undefined,
+>(alert: T, previousAlert?: AlertScheduleFields | null): T {
+  if (alert == null || previousAlert == null) {
+    return alert;
+  }
+
+  const normalizedAlert = { ...alert };
+  const previousHadOffset = Object.prototype.hasOwnProperty.call(
+    previousAlert,
+    'scheduleOffsetMinutes',
+  );
+  const previousHadStartAt = Object.prototype.hasOwnProperty.call(
+    previousAlert,
+    'scheduleStartAt',
+  );
+
+  if (
+    (normalizedAlert.scheduleOffsetMinutes ?? 0) === 0 &&
+    !previousHadOffset
+  ) {
+    delete normalizedAlert.scheduleOffsetMinutes;
+  }
+
+  if (normalizedAlert.scheduleStartAt == null && !previousHadStartAt) {
+    delete normalizedAlert.scheduleStartAt;
+  }
+
+  return normalizedAlert as T;
+}

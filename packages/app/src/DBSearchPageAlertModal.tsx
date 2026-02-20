@@ -45,6 +45,7 @@ import {
   ALERT_INTERVAL_OPTIONS,
   ALERT_THRESHOLD_TYPE_OPTIONS,
   intervalToMinutes,
+  normalizeNoOpAlertScheduleFields,
 } from '@/utils/alerts';
 
 import { AlertPreviewChart } from './components/AlertPreviewChart';
@@ -67,35 +68,6 @@ const SavedSearchAlertFormSchema = z
   })
   .passthrough()
   .superRefine(validateAlertScheduleOffsetMinutes);
-
-const hasOwn = (obj: object, key: PropertyKey) =>
-  Object.prototype.hasOwnProperty.call(obj, key);
-
-const normalizeNoOpAlertScheduleFields = (
-  alert: Alert,
-  previousAlert?: AlertWithCreatedBy | null,
-): Alert => {
-  if (previousAlert == null) {
-    return alert;
-  }
-
-  const normalizedAlert = { ...alert };
-  const previousHadOffset = hasOwn(previousAlert, 'scheduleOffsetMinutes');
-  const previousHadStartAt = hasOwn(previousAlert, 'scheduleStartAt');
-
-  if (
-    (normalizedAlert.scheduleOffsetMinutes ?? 0) === 0 &&
-    !previousHadOffset
-  ) {
-    delete normalizedAlert.scheduleOffsetMinutes;
-  }
-
-  if (normalizedAlert.scheduleStartAt == null && !previousHadStartAt) {
-    delete normalizedAlert.scheduleStartAt;
-  }
-
-  return normalizedAlert;
-};
 
 const AlertForm = ({
   sourceId,

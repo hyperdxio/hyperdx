@@ -99,6 +99,7 @@ import {
   extendDateRangeToInterval,
   intervalToGranularity,
   intervalToMinutes,
+  normalizeNoOpAlertScheduleFields,
   TILE_ALERT_INTERVAL_OPTIONS,
   TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
 } from '@/utils/alerts';
@@ -140,43 +141,6 @@ const getSeriesFieldPath = (
   fieldName: string,
 ): FieldPath<SavedChartConfigWithSeries> => {
   return `${namePrefix}${fieldName}` as FieldPath<SavedChartConfigWithSeries>;
-};
-
-const hasOwn = <T extends object>(obj: T, key: PropertyKey) =>
-  Object.prototype.hasOwnProperty.call(obj, key);
-
-const normalizeNoOpAlertScheduleFields = <
-  C extends Pick<SavedChartConfigWithSeries, 'alert'>,
->(
-  config: C,
-  previousAlert: SavedChartConfig['alert'] | undefined,
-): C => {
-  const alert = config.alert;
-  if (alert == null) {
-    return config;
-  }
-
-  const normalizedAlert = { ...alert };
-  const previousHadOffset =
-    previousAlert != null && hasOwn(previousAlert, 'scheduleOffsetMinutes');
-  const previousHadStartAt =
-    previousAlert != null && hasOwn(previousAlert, 'scheduleStartAt');
-
-  if (
-    (normalizedAlert.scheduleOffsetMinutes ?? 0) === 0 &&
-    !previousHadOffset
-  ) {
-    delete normalizedAlert.scheduleOffsetMinutes;
-  }
-
-  if (normalizedAlert.scheduleStartAt == null && !previousHadStartAt) {
-    delete normalizedAlert.scheduleStartAt;
-  }
-
-  return {
-    ...config,
-    alert: normalizedAlert,
-  };
 };
 
 export function normalizeChartConfig<
@@ -810,10 +774,13 @@ export default function EditTimeChartForm({
         select:
           form.displayType === DisplayType.Search ? form.select : form.series,
       };
-      const normalizedConfig = normalizeNoOpAlertScheduleFields(
-        config,
-        chartConfig.alert,
-      );
+      const normalizedConfig = {
+        ...config,
+        alert: normalizeNoOpAlertScheduleFields(
+          config.alert,
+          chartConfig.alert,
+        ),
+      };
 
       setChartConfig?.(normalizedConfig);
       if (tableSource != null) {
@@ -891,10 +858,14 @@ export default function EditTimeChartForm({
           v.select = v.series;
         }
 
-        const normalizedWithSchedule = normalizeNoOpAlertScheduleFields(
-          omit(v, ['series']),
-          chartConfig.alert,
-        );
+        const withoutSeries = omit(v, ['series']);
+        const normalizedWithSchedule = {
+          ...withoutSeries,
+          alert: normalizeNoOpAlertScheduleFields(
+            withoutSeries.alert,
+            chartConfig.alert,
+          ),
+        };
         const normalizedChartConfig = normalizeChartConfig(
           // Avoid saving the series field. Series should be persisted in the select field.
           normalizedWithSchedule,

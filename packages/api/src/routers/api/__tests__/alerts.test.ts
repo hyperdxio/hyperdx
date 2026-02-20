@@ -98,6 +98,61 @@ describe('alerts router', () => {
     expect(allAlerts.body.data[0].threshold).toBe(10);
   });
 
+  it('preserves scheduleStartAt when omitted in updates and clears when null', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const scheduleStartAt = '2024-01-01T00:00:00.000Z';
+    const createdAlert = await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+        }),
+        scheduleStartAt,
+      })
+      .expect(200);
+
+    const updatePayload = {
+      channel: createdAlert.body.data.channel,
+      interval: createdAlert.body.data.interval,
+      threshold: 10,
+      thresholdType: createdAlert.body.data.thresholdType,
+      source: createdAlert.body.data.source,
+      dashboardId: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+    };
+
+    await agent
+      .put(`/alerts/${createdAlert.body.data._id}`)
+      .send(updatePayload)
+      .expect(200);
+
+    const alertAfterOmittedScheduleStartAt = await Alert.findById(
+      createdAlert.body.data._id,
+    );
+    expect(
+      alertAfterOmittedScheduleStartAt?.scheduleStartAt?.toISOString(),
+    ).toBe(scheduleStartAt);
+
+    await agent
+      .put(`/alerts/${createdAlert.body.data._id}`)
+      .send({
+        ...updatePayload,
+        scheduleStartAt: null,
+      })
+      .expect(200);
+
+    const alertAfterNullScheduleStartAt = await Alert.findById(
+      createdAlert.body.data._id,
+    );
+    expect(alertAfterNullScheduleStartAt?.scheduleStartAt).toBeNull();
+  });
+
   it('preserves createdBy field during updates', async () => {
     const { agent, user } = await getLoggedInAgent(server);
     const dashboard = await agent
