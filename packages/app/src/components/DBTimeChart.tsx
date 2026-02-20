@@ -159,7 +159,7 @@ function ActiveTimeTooltip({
               <>
                 <Divider />
                 <Text c="gray.5" size="xs">
-                  Filter by severity:
+                  Filter by group:
                 </Text>
                 {validPayloads.map((payload, idx) => {
                   const seriesUrl = buildSearchUrl(
