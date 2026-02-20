@@ -66,6 +66,12 @@ router.get('/installation', async (req, res, next) => {
 
 router.post(
   '/login/password',
+  (req, res, next) => {
+    if (config.IS_ANONYMOUS_AUTH_ENABLED) {
+      return res.status(403).json({ error: 'authDisabled' });
+    }
+    next();
+  },
   passport.authenticate('local', {
     failWithError: true,
     failureMessage: true,
@@ -76,6 +82,12 @@ router.post(
 
 router.post(
   '/register/password',
+  (req, res, next) => {
+    if (config.IS_ANONYMOUS_AUTH_ENABLED) {
+      return res.status(403).json({ error: 'authDisabled' });
+    }
+    next();
+  },
   validateRequest({ body: registrationSchema }),
   async (req, res, next) => {
     try {
