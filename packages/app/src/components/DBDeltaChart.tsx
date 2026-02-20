@@ -484,16 +484,27 @@ export default function DBDeltaChart({
 
   const [activePage, setPage] = useState(1);
 
-  const { ref: containerRef, width: containerWidth } = useElementSize();
+  const { ref: containerRef, width: containerWidth, height: containerHeight } =
+    useElementSize();
 
+  // CHART_WIDTH/CHART_HEIGHT must stay in sync with PropertyComparisonChart's style dimensions
   const CHART_WIDTH = 340;
-  const CHART_GAP = 16; // Mantine's md gap in pixels
-  const NUM_ROWS = 3;
+  const CHART_HEIGHT = 120;
+  const CHART_GAP = 16; // Mantine's 'md' gap in pixels; must match Group gap prop
+  const PAGINATION_HEIGHT = 48; // Reserved space for the pagination control row
+
   const columns = Math.max(
     1,
     Math.floor((containerWidth + CHART_GAP) / (CHART_WIDTH + CHART_GAP)),
   );
-  const PAGE_SIZE = columns * NUM_ROWS;
+  const rows = Math.max(
+    1,
+    Math.floor(
+      (containerHeight - PAGINATION_HEIGHT + CHART_GAP) /
+        (CHART_HEIGHT + CHART_GAP),
+    ),
+  );
+  const PAGE_SIZE = columns * rows;
 
   useEffect(() => {
     setPage(1);
