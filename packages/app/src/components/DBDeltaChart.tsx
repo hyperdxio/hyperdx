@@ -484,8 +484,11 @@ export default function DBDeltaChart({
 
   const [activePage, setPage] = useState(1);
 
-  const { ref: containerRef, width: containerWidth, height: containerHeight } =
-    useElementSize();
+  const {
+    ref: containerRef,
+    width: containerWidth,
+    height: containerHeight,
+  } = useElementSize();
 
   // CHART_WIDTH/CHART_HEIGHT must stay in sync with PropertyComparisonChart's style dimensions
   const CHART_WIDTH = 340;
