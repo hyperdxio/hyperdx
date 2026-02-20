@@ -416,7 +416,7 @@ router.post(
       return res.sendStatus(403);
     }
     try {
-      const alertInput = req.body;
+      const alertInput = alertSchema.parse(req.body);
       const createdAlert = await createAlert(teamId, alertInput, userId);
 
       return res.json({
@@ -508,7 +508,7 @@ router.put(
       }
       const { id } = req.params;
 
-      const alertInput = req.body;
+      const alertInput = alertSchema.parse(req.body);
       const alert = await updateAlert(id, teamId, alertInput);
 
       if (alert == null) {

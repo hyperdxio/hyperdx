@@ -5,7 +5,7 @@ import {
   makeTile,
   randomMongoId,
 } from '@/fixtures';
-import Alert from '@/models/alert';
+import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];
 
@@ -192,6 +192,46 @@ describe('alerts router', () => {
     const updatedAlert = await Alert.findById(createdAlert.body.data._id);
     expect(updatedAlert?.scheduleOffsetMinutes).toBe(0);
     expect(updatedAlert?.scheduleStartAt?.toISOString()).toBe(scheduleStartAt);
+  });
+
+  it('resets stale scheduleOffsetMinutes when scheduleStartAt is cleared without offset', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const staleAlert = await Alert.create({
+      team: team._id,
+      channel: {
+        type: 'webhook',
+        webhookId: 'test-webhook-id',
+      },
+      interval: '15m',
+      threshold: 8,
+      thresholdType: AlertThresholdType.ABOVE,
+      source: AlertSource.TILE,
+      dashboard: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+      scheduleOffsetMinutes: 2,
+      scheduleStartAt: new Date('2024-01-01T00:00:00.000Z'),
+    });
+
+    await agent
+      .put(`/alerts/${staleAlert._id.toString()}`)
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          interval: '15m',
+        }),
+        scheduleStartAt: null,
+      })
+      .expect(200);
+
+    const updatedAlert = await Alert.findById(staleAlert._id);
+    expect(updatedAlert?.scheduleOffsetMinutes).toBe(0);
+    expect(updatedAlert?.scheduleStartAt).toBeNull();
   });
 
   it('rejects scheduleStartAt values more than 1 year in the future', async () => {
