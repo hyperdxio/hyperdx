@@ -157,7 +157,9 @@ export const useSpotlightActions = () => {
         description: `Ready to use ${brandName} Cloud? Get started for free.`,
         keywords: ['account', 'profile'],
         onClick: () => {
-          router.push('https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started#deploy-with-clickhouse-cloud');
+          router.push(
+            'https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started#deploy-with-clickhouse-cloud',
+          );
         },
       },
     );
