@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
   Bar,
@@ -23,6 +23,7 @@ import {
   Pagination,
   Text,
 } from '@mantine/core';
+import { useElementSize } from '@mantine/hooks';
 
 import { isAggregateFunction } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -483,7 +484,20 @@ export default function DBDeltaChart({
 
   const [activePage, setPage] = useState(1);
 
-  const PAGE_SIZE = 12;
+  const { ref: containerRef, width: containerWidth } = useElementSize();
+
+  const CHART_WIDTH = 340;
+  const CHART_GAP = 16; // Mantine's md gap in pixels
+  const NUM_ROWS = 3;
+  const columns = Math.max(
+    1,
+    Math.floor((containerWidth + CHART_GAP) / (CHART_WIDTH + CHART_GAP)),
+  );
+  const PAGE_SIZE = columns * NUM_ROWS;
+
+  useEffect(() => {
+    setPage(1);
+  }, [PAGE_SIZE]);
 
   if (error) {
     return (
@@ -520,16 +534,18 @@ export default function DBDeltaChart({
     );
   }
 
+  const totalPages = Math.ceil(sortedProperties.length / PAGE_SIZE);
+
   return (
-    <Box style={{ overflow: 'auto', height: '100%' }}>
-      <Flex justify="flex-end" mx="md" mb="md">
-        <Pagination
-          size="xs"
-          value={activePage}
-          onChange={setPage}
-          total={Math.ceil(sortedProperties.length / PAGE_SIZE)}
-        />
-      </Flex>
+    <Box
+      ref={containerRef}
+      style={{
+        overflow: 'auto',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
       <Group>
         {Array.from(sortedProperties)
           .slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE)
@@ -546,6 +562,16 @@ export default function DBDeltaChart({
             />
           ))}
       </Group>
+      {totalPages > 1 && (
+        <Flex justify="flex-end" mx="md" mt="md">
+          <Pagination
+            size="xs"
+            value={activePage}
+            onChange={setPage}
+            total={totalPages}
+          />
+        </Flex>
+      )}
     </Box>
   );
 }
