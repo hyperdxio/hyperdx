@@ -1402,7 +1402,7 @@ export default function EditTimeChartForm({
                   )}
                 />
                 <Text size="xs" opacity={0.6} mt={6}>
-                  Stored in UTC
+                  Converted to UTC on save
                 </Text>
               </Group>
               <Text size="xxs" opacity={0.5} mb={4} mt="xs">

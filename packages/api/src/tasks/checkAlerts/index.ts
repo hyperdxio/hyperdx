@@ -104,18 +104,14 @@ const normalizeScheduleStartAt = ({
   scheduleStartAt,
 }: {
   alertId: string;
-  scheduleStartAt: unknown;
+  scheduleStartAt: IAlert['scheduleStartAt'];
 }) => {
   if (scheduleStartAt == null) {
     return undefined;
   }
 
-  const scheduleStartAtDate =
-    scheduleStartAt instanceof Date
-      ? scheduleStartAt
-      : new Date(scheduleStartAt as string);
-  if (fns.isValid(scheduleStartAtDate)) {
-    return scheduleStartAtDate;
+  if (fns.isValid(scheduleStartAt)) {
+    return scheduleStartAt;
   }
 
   logger.warn(
