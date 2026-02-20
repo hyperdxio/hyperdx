@@ -239,3 +239,9 @@ export function useThemeName(): ThemeName {
   const { themeName } = useAppTheme();
   return themeName;
 }
+
+/** Hook to get the current theme's display name for UI copy (e.g. "HyperDX" or "ClickStack"). */
+export function useBrandDisplayName(): string {
+  const { theme } = useAppTheme();
+  return theme.displayName;
+}
