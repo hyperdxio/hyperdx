@@ -31,6 +31,7 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useChartAssistant } from '@/hooks/ai';
 import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
 
@@ -52,6 +53,7 @@ function AIAssistant({
   submitRef: React.RefObject<(() => void) | undefined>;
   aiAssistantEnabled: boolean;
 }) {
+  const brandName = useBrandDisplayName();
   const [opened, setOpened] = useState(false);
   const [alertDismissed, setAlertDismissed] = useLocalStorage(
     'ai-assistant-alert-dismissed',
@@ -131,8 +133,8 @@ function AIAssistant({
         >
           <Text size="xs" pt="2px">
             New AI Assistant available, enable with configuring the{' '}
-            <code>ANTHROPIC_API_KEY</code> environment variable on the HyperDX
-            server.
+            <code>ANTHROPIC_API_KEY</code> environment variable on the{' '}
+            {brandName} server.
           </Text>
         </Alert>
         <Divider mt="sm" />
@@ -202,6 +204,7 @@ function AIAssistant({
 }
 
 function DBChartExplorerPage() {
+  const brandName = useBrandDisplayName();
   const {
     searchedTimeRange,
     displayedTimeInputValue,
@@ -229,7 +232,7 @@ function DBChartExplorerPage() {
   return (
     <Box data-testid="chart-explorer-page" p="sm">
       <Head>
-        <title>Chart Explorer - HyperDX</title>
+        <title>Chart Explorer - {brandName}</title>
       </Head>
       <AIAssistant
         setConfig={setChartConfig}

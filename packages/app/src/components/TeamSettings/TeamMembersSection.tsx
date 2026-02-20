@@ -18,8 +18,10 @@ import { notifications } from '@mantine/notifications';
 import { IconLock, IconUserPlus } from '@tabler/icons-react';
 
 import api from '@/api';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 export default function TeamMembersSection() {
+  const brandName = useBrandDisplayName();
   const hasAdminAccess = true;
 
   const { data: team } = api.useTeam();
@@ -85,8 +87,7 @@ export default function TeamMembersSection() {
                 .catch(() => {
                   notifications.show({
                     color: 'red',
-                    message:
-                      'Something went wrong. Please contact HyperDX team.',
+                    message: `Something went wrong. Please contact ${brandName} team.`,
 
                     autoClose: 5000,
                   });
@@ -94,7 +95,7 @@ export default function TeamMembersSection() {
             } else {
               notifications.show({
                 color: 'red',
-                message: 'Something went wrong. Please contact HyperDX team.',
+                message: `Something went wrong. Please contact ${brandName} team.`,
                 autoClose: 5000,
               });
             }
@@ -143,8 +144,7 @@ export default function TeamMembersSection() {
                 .catch(() => {
                   notifications.show({
                     color: 'red',
-                    message:
-                      'Something went wrong. Please contact HyperDX team.',
+                    message: `Something went wrong. Please contact ${brandName} team.`,
 
                     autoClose: 5000,
                   });
@@ -152,7 +152,7 @@ export default function TeamMembersSection() {
             } else {
               notifications.show({
                 color: 'red',
-                message: 'Something went wrong. Please contact HyperDX team.',
+                message: `Something went wrong. Please contact ${brandName} team.`,
                 autoClose: 5000,
               });
             }
@@ -187,15 +187,14 @@ export default function TeamMembersSection() {
                 .catch(() => {
                   notifications.show({
                     color: 'red',
-                    message:
-                      'Something went wrong. Please contact HyperDX team.',
+                    message: `Something went wrong. Please contact ${brandName} team.`,
                     autoClose: 5000,
                   });
                 });
             } else {
               notifications.show({
                 color: 'red',
-                message: 'Something went wrong. Please contact HyperDX team.',
+                message: `Something went wrong. Please contact ${brandName} team.`,
                 autoClose: 5000,
               });
             }

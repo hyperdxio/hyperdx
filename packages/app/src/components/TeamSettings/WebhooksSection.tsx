@@ -10,6 +10,7 @@ import { notifications } from '@mantine/notifications';
 import { IconPencil, IconX } from '@tabler/icons-react';
 
 import api from '../../api';
+import { useBrandDisplayName } from '../../theme/ThemeProvider';
 import { useConfirm } from '../../useConfirm';
 import {
   getWebhookServiceConfig,
@@ -28,6 +29,7 @@ function DeleteWebhookButton({
   webhookName: string;
   onSuccess: VoidFunction;
 }) {
+  const brandName = useBrandDisplayName();
   const confirm = useConfirm();
   const deleteWebhook = api.useDeleteWebhook();
 
@@ -51,7 +53,8 @@ function DeleteWebhookButton({
         const message =
           (e instanceof HTTPError
             ? (await e.response.json())?.message
-            : null) || 'Something went wrong. Please contact HyperDX team.';
+            : null) ||
+          `Something went wrong. Please contact ${brandName} team.`;
         notifications.show({
           message,
           color: 'red',

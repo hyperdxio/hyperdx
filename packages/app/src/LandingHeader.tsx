@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Anchor, Burger, Button, Container, Group } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
-import { useWordmark } from './theme/ThemeProvider';
+import { useBrandDisplayName, useWordmark } from './theme/ThemeProvider';
 import api from './api';
 
 export default function LandingHeader({
@@ -12,6 +12,7 @@ export default function LandingHeader({
   activeKey: string;
   fixed?: boolean;
 }) {
+  const brandName = useBrandDisplayName();
   const wordmark = useWordmark();
   const { data: me } = api.useMe();
   const isLoggedIn = Boolean(me);
@@ -49,16 +50,16 @@ export default function LandingHeader({
             <Group gap="lg" visibleFrom="lg">
               <Anchor
                 href="https://hyperdx.io"
-                c={activeKey === 'cloud' ? 'green' : 'gray'}
+                c={activeKey === 'cloud' ? 'var(--color-text-primary)' : 'gray'}
                 underline="never"
                 style={{ fontWeight: activeKey === 'cloud' ? 600 : 400 }}
                 size="sm"
               >
-                HyperDX Cloud
+                {brandName} Cloud
               </Anchor>
               <Anchor
                 href="https://clickhouse.com/docs/use-cases/observability/clickstack"
-                c={activeKey === 'docs' ? 'green' : 'gray'}
+                c={activeKey === 'docs' ? 'var(--color-text-primary)' : 'gray'}
                 underline="never"
                 style={{ fontWeight: activeKey === 'docs' ? 600 : 400 }}
                 size="sm"
@@ -68,7 +69,11 @@ export default function LandingHeader({
               {!isLoggedIn && installation?.isTeamExisting === true && (
                 <Anchor
                   href="/login"
-                  c={activeKey === '/login' ? 'green' : 'gray'}
+                  c={
+                    activeKey === '/login'
+                      ? 'var(--color-text-primary)'
+                      : 'gray'
+                  }
                   underline="never"
                   style={{ fontWeight: activeKey === '/login' ? 600 : 400 }}
                   size="sm"
@@ -103,7 +108,7 @@ export default function LandingHeader({
                 underline="never"
                 style={{ fontWeight: activeKey === 'cloud' ? 600 : 400 }}
               >
-                HyperDX Cloud
+                {brandName} Cloud
               </Anchor>
               <Anchor
                 href="https://clickhouse.com/docs/use-cases/observability/clickstack"
