@@ -98,6 +98,8 @@ router.post(
       return res.sendStatus(403);
     }
     try {
+      // Re-parse at runtime so nested refinements are enforced server-side and
+      // unknown fields are dropped consistently for internal API callers.
       const alertInput = alertSchema.parse(req.body);
       return res.json({
         data: await createAlert(teamId, alertInput, userId),
@@ -123,6 +125,8 @@ router.put(
         return res.sendStatus(403);
       }
       const { id } = req.params;
+      // Re-parse at runtime so nested refinements are enforced server-side and
+      // unknown fields are dropped consistently for internal API callers.
       const alertInput = alertSchema.parse(req.body);
       res.json({
         data: await updateAlert(id, teamId, alertInput),

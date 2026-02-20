@@ -176,6 +176,29 @@ describe('alerts router', () => {
       .expect(400);
   });
 
+  it('rejects scheduleStartAt values older than 10 years in the past', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const tooOldScheduleStartAt = new Date(
+      Date.now() - 11 * 365 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+        }),
+        scheduleStartAt: tooOldScheduleStartAt,
+      })
+      .expect(400);
+  });
+
   it('preserves createdBy field during updates', async () => {
     const { agent, user } = await getLoggedInAgent(server);
     const dashboard = await agent

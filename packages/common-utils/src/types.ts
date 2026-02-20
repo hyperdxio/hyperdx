@@ -344,6 +344,7 @@ export const validateAlertScheduleOffsetMinutes = (
 };
 
 const MAX_SCHEDULE_START_AT_FUTURE_MS = 1000 * 60 * 60 * 24 * 365;
+const MAX_SCHEDULE_START_AT_PAST_MS = 1000 * 60 * 60 * 24 * 365 * 10;
 const MAX_SCHEDULE_OFFSET_MINUTES = 1439;
 
 export const scheduleStartAtSchema = z
@@ -355,6 +356,14 @@ export const scheduleStartAtSchema = z
       new Date(value).getTime() <= Date.now() + MAX_SCHEDULE_START_AT_FUTURE_MS,
     {
       message: 'scheduleStartAt must be within 1 year from now',
+    },
+  )
+  .refine(
+    value =>
+      value == null ||
+      new Date(value).getTime() >= Date.now() - MAX_SCHEDULE_START_AT_PAST_MS,
+    {
+      message: 'scheduleStartAt must be within 10 years in the past',
     },
   );
 

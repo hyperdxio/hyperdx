@@ -166,6 +166,8 @@ export function normalizeNoOpAlertScheduleFields<
   const normalizedAlert = { ...alert };
   // We inspect key presence (not value equality) so pre-migration alerts that
   // never had schedule fields don't get no-op keys written back on save.
+  // This relies on Zod's default object parsing behavior (omitted optional
+  // keys are absent). If schemas switch to passthrough-style parsing, revisit.
   const previousHadOffset =
     previousAlert != null &&
     Object.prototype.hasOwnProperty.call(
