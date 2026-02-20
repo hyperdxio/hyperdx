@@ -68,6 +68,35 @@ const SavedSearchAlertFormSchema = z
   .passthrough()
   .superRefine(validateAlertScheduleOffsetMinutes);
 
+const hasOwn = (obj: object, key: PropertyKey) =>
+  Object.prototype.hasOwnProperty.call(obj, key);
+
+const normalizeNoOpAlertScheduleFields = (
+  alert: Alert,
+  previousAlert?: AlertWithCreatedBy | null,
+): Alert => {
+  if (previousAlert == null) {
+    return alert;
+  }
+
+  const normalizedAlert = { ...alert };
+  const previousHadOffset = hasOwn(previousAlert, 'scheduleOffsetMinutes');
+  const previousHadStartAt = hasOwn(previousAlert, 'scheduleStartAt');
+
+  if (
+    (normalizedAlert.scheduleOffsetMinutes ?? 0) === 0 &&
+    !previousHadOffset
+  ) {
+    delete normalizedAlert.scheduleOffsetMinutes;
+  }
+
+  if (normalizedAlert.scheduleStartAt == null && !previousHadStartAt) {
+    delete normalizedAlert.scheduleStartAt;
+  }
+
+  return normalizedAlert;
+};
+
 const AlertForm = ({
   sourceId,
   where,
@@ -134,7 +163,11 @@ const AlertForm = ({
   const intervalLabel = ALERT_INTERVAL_OPTIONS[interval ?? '5m'];
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
+    <form
+      onSubmit={handleSubmit(data =>
+        onSubmit(normalizeNoOpAlertScheduleFields(data, defaultValues)),
+      )}
+    >
       <Stack gap="xs">
         <Paper px="md" py="sm" radius="xs">
           <Text size="xxs" opacity={0.5}>

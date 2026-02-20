@@ -142,6 +142,43 @@ const getSeriesFieldPath = (
   return `${namePrefix}${fieldName}` as FieldPath<SavedChartConfigWithSeries>;
 };
 
+const hasOwn = <T extends object>(obj: T, key: PropertyKey) =>
+  Object.prototype.hasOwnProperty.call(obj, key);
+
+const normalizeNoOpAlertScheduleFields = <
+  C extends Pick<SavedChartConfigWithSeries, 'alert'>,
+>(
+  config: C,
+  previousAlert: SavedChartConfig['alert'] | undefined,
+): C => {
+  const alert = config.alert;
+  if (alert == null) {
+    return config;
+  }
+
+  const normalizedAlert = { ...alert };
+  const previousHadOffset =
+    previousAlert != null && hasOwn(previousAlert, 'scheduleOffsetMinutes');
+  const previousHadStartAt =
+    previousAlert != null && hasOwn(previousAlert, 'scheduleStartAt');
+
+  if (
+    (normalizedAlert.scheduleOffsetMinutes ?? 0) === 0 &&
+    !previousHadOffset
+  ) {
+    delete normalizedAlert.scheduleOffsetMinutes;
+  }
+
+  if (normalizedAlert.scheduleStartAt == null && !previousHadStartAt) {
+    delete normalizedAlert.scheduleStartAt;
+  }
+
+  return {
+    ...config,
+    alert: normalizedAlert,
+  };
+};
+
 export function normalizeChartConfig<
   C extends Pick<
     SavedChartConfig,
@@ -773,12 +810,17 @@ export default function EditTimeChartForm({
         select:
           form.displayType === DisplayType.Search ? form.select : form.series,
       };
+      const normalizedConfig = normalizeNoOpAlertScheduleFields(
+        config,
+        chartConfig.alert,
+      );
 
-      setChartConfig?.(config);
+      setChartConfig?.(normalizedConfig);
       if (tableSource != null) {
-        const isSelectEmpty = !config.select || config.select.length === 0; // select is string or array
+        const isSelectEmpty =
+          !normalizedConfig.select || normalizedConfig.select.length === 0; // select is string or array
         const newConfig = {
-          ...config,
+          ...normalizedConfig,
           from: tableSource.from,
           timestampValueExpression: tableSource.timestampValueExpression,
           dateRange,
@@ -787,7 +829,7 @@ export default function EditTimeChartForm({
           metricTables: tableSource.metricTables,
           select: isSelectEmpty
             ? tableSource.defaultTableSelectExpression || ''
-            : config.select,
+            : normalizedConfig.select,
         };
         setQueriedConfigAndSource(
           // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
@@ -800,6 +842,7 @@ export default function EditTimeChartForm({
       }
     })();
   }, [
+    chartConfig.alert,
     handleSubmit,
     setChartConfig,
     setQueriedConfigAndSource,
@@ -848,16 +891,20 @@ export default function EditTimeChartForm({
           v.select = v.series;
         }
 
+        const normalizedWithSchedule = normalizeNoOpAlertScheduleFields(
+          omit(v, ['series']),
+          chartConfig.alert,
+        );
         const normalizedChartConfig = normalizeChartConfig(
           // Avoid saving the series field. Series should be persisted in the select field.
-          omit(v, ['series']),
+          normalizedWithSchedule,
           tableSource,
         );
 
         onSave?.(normalizedChartConfig);
       }
     },
-    [onSave, displayType, tableSource, setError],
+    [onSave, displayType, tableSource, setError, chartConfig.alert],
   );
 
   // Track previous values for detecting changes
