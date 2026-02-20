@@ -30,7 +30,7 @@ export const IS_LOCAL_MODE = //true;
   // @ts-ignore
   (process.env.NEXT_PUBLIC_IS_LOCAL_MODE ?? 'false') === 'true';
 export const IS_ANONYMOUS_MODE =
-  env('NEXT_PUBLIC_HDX_AUTH_ANONYMOUS_ENABLED') === 'true';
+  (process.env.NEXT_PUBLIC_HDX_AUTH_ANONYMOUS_ENABLED ?? 'false') === 'true';
 export const IS_CLICKHOUSE_BUILD =
   process.env.NEXT_PUBLIC_CLICKHOUSE_BUILD === 'true';
 
