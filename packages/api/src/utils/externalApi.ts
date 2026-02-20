@@ -482,7 +482,11 @@ function hasUpdatedAt(
 function transformScheduleStartAt(
   scheduleStartAt: unknown,
 ): ExternalAlert['scheduleStartAt'] {
-  if (scheduleStartAt == null) {
+  if (scheduleStartAt === null) {
+    return null;
+  }
+
+  if (scheduleStartAt === undefined) {
     return undefined;
   }
 

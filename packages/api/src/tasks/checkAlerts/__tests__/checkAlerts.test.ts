@@ -1105,6 +1105,116 @@ describe('checkAlerts', () => {
       );
     };
 
+    it('should skip processing before scheduleStartAt', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          scheduleStartAt: '2023-11-16T22:15:00.000Z',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const querySpy = jest.spyOn(clickhouseClient, 'queryChartConfig');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:12:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect(querySpy).not.toHaveBeenCalled();
+      expect(
+        await AlertHistory.countDocuments({ alert: details.alert.id }),
+      ).toBe(0);
+    });
+
+    it('should skip processing until the first anchored window fully elapses', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          scheduleStartAt: '2023-11-16T22:13:30.000Z',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const querySpy = jest.spyOn(clickhouseClient, 'queryChartConfig');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:13:45.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect(querySpy).not.toHaveBeenCalled();
+      expect(
+        await AlertHistory.countDocuments({ alert: details.alert.id }),
+      ).toBe(0);
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:18:31.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect(querySpy).toHaveBeenCalledTimes(1);
+      expect(
+        await AlertHistory.countDocuments({ alert: details.alert.id }),
+      ).toBe(1);
+    });
+
     it('SAVED_SEARCH alert - slack webhook', async () => {
       const {
         team,

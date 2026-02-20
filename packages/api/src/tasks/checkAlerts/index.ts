@@ -552,6 +552,18 @@ export const processAlert = async (
       windowSizeInMins,
       scheduleStartAt,
     );
+    if (dateRange[0].getTime() >= dateRange[1].getTime()) {
+      logger.info(
+        {
+          alertId: alert.id,
+          dateRange,
+          nowInMinsRoundDown,
+          scheduleStartAt,
+        },
+        'Skipped alert check because the anchored window has not fully elapsed yet',
+      );
+      return;
+    }
 
     const chartConfig = getChartConfigFromAlert(
       details,
