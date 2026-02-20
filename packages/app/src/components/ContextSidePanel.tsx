@@ -11,10 +11,10 @@ import {
 import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
+import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
-import SearchInputV2 from '@/SearchInputV2';
 import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
 

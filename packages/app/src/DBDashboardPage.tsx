@@ -14,7 +14,7 @@ import produce from 'immer';
 import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
-import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -69,7 +69,6 @@ import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
@@ -81,6 +80,7 @@ import {
 import ChartContainer from './components/charts/ChartContainer';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
+import SearchWhereInput from './components/SearchInput/SearchWhereInput';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
@@ -93,7 +93,6 @@ import DashboardFiltersModal from './DashboardFiltersModal';
 import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
-import SearchInputV2 from './SearchInputV2';
 import {
   getFirstTimestampValueExpression,
   useSource,
@@ -1160,37 +1159,18 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           onSubmit();
         }}
       >
-        <Controller
+        <SearchWhereInput
+          tableConnections={tableConnections}
           control={control}
-          name="whereLanguage"
-          render={({ field }) =>
-            field.value === 'sql' ? (
-              <SQLInlineEditorControlled
-                tableConnections={tableConnections}
-                control={control}
-                name="where"
-                placeholder="SQL WHERE clause (ex. column = 'foo')"
-                onLanguageChange={lang => setValue('whereLanguage', lang)}
-                language="sql"
-                onSubmit={onSubmit}
-                label="GLOBAL WHERE"
-                enableHotkey
-                allowMultiline={true}
-              />
-            ) : (
-              <SearchInputV2
-                tableConnections={tableConnections}
-                control={control}
-                name="where"
-                onLanguageChange={lang => setValue('whereLanguage', lang)}
-                language="lucene"
-                placeholder="Search your events w/ Lucene ex. column:foo"
-                enableHotkey
-                data-testid="search-input"
-                onSubmit={onSubmit}
-              />
-            )
+          name="where"
+          onSubmit={onSubmit}
+          onLanguageChange={(lang: 'sql' | 'lucene') =>
+            setValue('whereLanguage', lang)
           }
+          label="GLOBAL WHERE"
+          enableHotkey
+          allowMultiline
+          data-testid="search-input"
         />
         <TimePicker
           inputValue={displayedTimeInputValue}

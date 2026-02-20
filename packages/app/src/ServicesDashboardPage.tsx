@@ -52,17 +52,15 @@ import DBListBarChart from '@/components/DBListBarChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import OnboardingModal from '@/components/OnboardingModal';
+import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SelectControlled from '@/components/SelectControlled';
 import ServiceDashboardDbQuerySidePanel from '@/components/ServiceDashboardDbQuerySidePanel';
 import ServiceDashboardEndpointSidePanel from '@/components/ServiceDashboardEndpointSidePanel';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
-import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { withAppNav } from '@/layout';
-import SearchInputV2 from '@/SearchInputV2';
 import {
   getExpressions,
   useServiceDashboardExpressions,
@@ -1543,43 +1541,12 @@ function ServicesDashboardPage() {
               name="service"
               dateRange={searchedTimeRange}
             />
-            <WhereLanguageControlled
-              name="whereLanguage"
+            <SearchWhereInput
+              tableConnection={tcFromSource(source)}
               control={control}
-              sqlInput={
-                <SQLInlineEditorControlled
-                  tableConnection={tcFromSource(source)}
-                  onSubmit={onSubmit}
-                  control={control}
-                  name="where"
-                  placeholder="SQL WHERE clause (ex. column = 'foo')"
-                  onLanguageChange={lang =>
-                    setValue('whereLanguage', lang, {
-                      shouldDirty: true,
-                    })
-                  }
-                  language="sql"
-                  label="WHERE"
-                  enableHotkey
-                  allowMultiline={true}
-                />
-              }
-              luceneInput={
-                <SearchInputV2
-                  tableConnection={tcFromSource(source)}
-                  control={control}
-                  name="where"
-                  onLanguageChange={lang =>
-                    setValue('whereLanguage', lang, {
-                      shouldDirty: true,
-                    })
-                  }
-                  language="lucene"
-                  placeholder="Search your events w/ Lucene ex. column:foo"
-                  enableHotkey
-                  onSubmit={onSubmit}
-                />
-              }
+              name="where"
+              onSubmit={onSubmit}
+              enableHotkey
             />
             <TimePicker
               inputValue={displayedTimeInputValue}

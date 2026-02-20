@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import cx from 'classnames';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -34,6 +35,8 @@ import { useMultipleAllFields } from '@/hooks/useMetadata';
 import { useQueryHistory } from '@/utils';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
+
+import styles from './SQLInlineEditor.module.scss';
 
 const AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS = [
   // used with WHERE
@@ -144,7 +147,7 @@ const createStyleTheme = () =>
       whiteSpace: 'nowrap',
       wordWrap: 'break-word',
       maxWidth: '100%',
-      backgroundColor: 'var(--color-bg-field) !important',
+      backgroundColor: 'var(--color-bg-surface) !important',
       border: '1px solid var(--color-border) !important',
       borderRadius: '8px',
       boxShadow:
@@ -162,7 +165,7 @@ const createStyleTheme = () =>
       color: 'var(--color-text)',
     },
     '& .cm-tooltip-autocomplete > ul > li[aria-selected]': {
-      backgroundColor: 'var(--color-bg-field-highlighted) !important',
+      backgroundColor: 'var(--color-bg-highlighted) !important',
       color: 'var(--color-text-muted) !important',
     },
     '& .cm-tooltip-autocomplete .cm-completionLabel': {
@@ -327,7 +330,7 @@ export default function SQLInlineEditor({
   }, [updateAutocompleteColumns]);
 
   useHotkeys(
-    '/',
+    ['/', 's'],
     () => {
       if (enableHotkey) {
         ref.current?.view?.focus();
@@ -368,6 +371,7 @@ export default function SQLInlineEditor({
     () => [
       ...tooltipExt,
       createStyleTheme(),
+      // Enable line wrapping when multiline is allowed (regardless of focus)
       ...(allowMultiline ? [EditorView.lineWrapping] : []),
       // eslint-disable-next-line react-hooks/refs
       compartmentRef.current.of(
@@ -419,68 +423,84 @@ export default function SQLInlineEditor({
     }
   }, []);
 
+  // Only apply expanded styling when multiline is enabled and focused
+  const isExpanded = allowMultiline && isFocused;
+  const baseHeight = size === 'xs' ? 30 : 36;
+
   return (
-    <Paper
-      flex="auto"
-      shadow="none"
-      style={{
-        backgroundColor: 'var(--color-bg-field)',
-        border: `1px solid ${error ? 'var(--color-bg-danger)' : 'var(--color-border)'}`,
-        display: 'flex',
-        alignItems: 'center',
-        minHeight: size === 'xs' ? 30 : 36,
-      }}
-      ps="4px"
+    <div
+      className={styles.wrapper}
+      style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
+      data-expanded={isExpanded ? 'true' : undefined}
     >
-      {label != null && (
-        <Text
-          mx="4px"
-          size="xs"
-          fw="bold"
-          style={{
-            whiteSpace: 'nowrap',
-          }}
-          component="div"
-        >
-          <Tooltip label={tooltipText} disabled={!tooltipText}>
-            <Flex align="center" gap={2}>
-              {label}
-              {tooltipText && <IconInfoCircle size={20} />}
-            </Flex>
-          </Tooltip>
-        </Text>
-      )}
-      <div
-        style={{ minWidth: 10, width: '100%' }}
-        className={allowMultiline ? 'cm-editor-multiline' : ''}
+      {/* When expanded, Paper is absolute; this keeps the wrapper width stable */}
+      {isExpanded && <div className={styles.placeholder} aria-hidden="true" />}
+      <Paper
+        shadow="none"
+        className={cx(
+          styles.paper,
+          error ? styles.error : undefined,
+          isExpanded ? styles.expanded : undefined,
+          allowMultiline && !isExpanded ? styles.collapseFade : undefined,
+        )}
+        ps="4px"
       >
-        <CodeMirror
-          indentWithTab={false}
-          ref={ref}
-          value={value}
-          onChange={onChange}
-          theme={colorScheme === 'dark' ? 'dark' : 'light'}
-          onFocus={useCallback(() => {
-            setIsFocused(true);
-          }, [setIsFocused])}
-          onBlur={useCallback(() => {
-            setIsFocused(false);
-          }, [setIsFocused])}
-          extensions={cmExtensions}
-          onCreateEditor={updateAutocompleteColumns}
-          basicSetup={cmBasicSetup}
-          placeholder={placeholder}
-          onClick={onClickCodeMirror}
-        />
-      </div>
-      {onLanguageChange != null && language != null && (
-        <InputLanguageSwitch
-          showHotkey={enableHotkey && isFocused}
-          language={language}
-          onLanguageChange={onLanguageChange}
-        />
-      )}
-    </Paper>
+        {label != null && (
+          <Text
+            mx="4px"
+            size="xs"
+            fw="bold"
+            className={cx(
+              styles.label,
+              size === 'xs' ? styles.sizeXs : undefined,
+            )}
+            component="div"
+          >
+            <Tooltip label={tooltipText} disabled={!tooltipText}>
+              <Flex align="center" gap={2}>
+                {label}
+                {tooltipText && <IconInfoCircle size={20} />}
+              </Flex>
+            </Tooltip>
+          </Text>
+        )}
+        <div
+          className={cx(
+            styles.cmWrapper,
+            size === 'xs' ? styles.sizeXs : undefined,
+            !isExpanded ? styles.collapsed : undefined,
+            isExpanded ? 'cm-editor-multiline' : undefined,
+          )}
+        >
+          <CodeMirror
+            indentWithTab={false}
+            ref={ref}
+            value={value}
+            onChange={onChange}
+            theme={colorScheme === 'dark' ? 'dark' : 'light'}
+            onFocus={useCallback(() => {
+              setIsFocused(true);
+            }, [setIsFocused])}
+            onBlur={useCallback(() => {
+              setIsFocused(false);
+            }, [setIsFocused])}
+            extensions={cmExtensions}
+            onCreateEditor={updateAutocompleteColumns}
+            basicSetup={cmBasicSetup}
+            placeholder={placeholder}
+            onClick={onClickCodeMirror}
+          />
+        </div>
+        {onLanguageChange != null && language != null && (
+          <div className={styles.languageSwitchWrapper}>
+            <InputLanguageSwitch
+              language={language}
+              onLanguageChange={onLanguageChange}
+            />
+          </div>
+        )}
+      </Paper>
+    </div>
   );
 }
 

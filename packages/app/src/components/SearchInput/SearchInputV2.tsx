@@ -9,13 +9,15 @@ import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 import { Group } from '@mantine/core';
 import { IconBook } from '@tabler/icons-react';
 
-import AutocompleteInput from '@/AutocompleteInput';
-
 import {
   ILanguageFormatter,
   useAutoCompleteOptions,
-} from './hooks/useAutoCompleteOptions';
-import { useMetadataWithSettings } from './hooks/useMetadata';
+} from '@/hooks/useAutoCompleteOptions';
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
+
+import AutocompleteInput from './AutocompleteInput';
+
+import styles from './SearchInputV2.module.scss';
 
 export class LuceneLanguageFormatter implements ILanguageFormatter {
   formatFieldValue(f: Field): string {
@@ -87,7 +89,7 @@ export default function SearchInputV2({
   }, [value, tableConnection, metadata]);
 
   useHotkeys(
-    '/',
+    ['/', 's'],
     () => {
       if (enableHotkey) {
         ref.current?.focus();
@@ -107,15 +109,14 @@ export default function SearchInputV2({
       size={size}
       zIndex={zIndex}
       language={language}
-      showHotkey={enableHotkey}
       onLanguageChange={onLanguageChange}
       onSubmit={onSubmit}
       queryHistoryType={queryHistoryType}
       data-testid={dataTestId}
       aboveSuggestions={
         <>
-          <div className="text-muted fs-8 fw-bold me-1">Searching for:</div>
-          <div className="text-muted fs-8">
+          <div className={styles.searchingHeader}>Searching for:</div>
+          <div className={styles.searchingDescription}>
             {parsedEnglishQuery === ''
               ? 'Matching all events, enter a query to search.'
               : parsedEnglishQuery}
@@ -124,11 +125,11 @@ export default function SearchInputV2({
       }
       belowSuggestions={
         <>
-          <div className="me-2 mb-2 text-light">Examples:</div>
-          <div className="mb-2 me-2">
-            <span className="me-1">Full Text:</span>
+          <div className={styles.examplesLabel}>Examples:</div>
+          <div className={styles.exampleRow}>
+            <span className={styles.exampleLabel}>Full Text:</span>
             <code
-              className="text-muted bg-highlighted p-1 rounded border border-dark"
+              className={styles.exampleCode}
               role="button"
               onClick={() => {
                 const newValue =
@@ -140,10 +141,10 @@ export default function SearchInputV2({
             </code>
           </div>
 
-          <div className="mb-2 me-2">
-            <span className="me-1">Substring:</span>
+          <div className={styles.exampleRow}>
+            <span className={styles.exampleLabel}>Substring:</span>
             <code
-              className="text-muted bg-highlighted p-1 rounded border border-dark"
+              className={styles.exampleCode}
               role="button"
               onClick={() => {
                 const newValue =
@@ -155,10 +156,10 @@ export default function SearchInputV2({
             </code>
           </div>
 
-          <div className="mb-2 me-2">
-            <span className="me-1">Exact:</span>
+          <div className={styles.exampleRow}>
+            <span className={styles.exampleLabel}>Exact:</span>
             <code
-              className="text-muted bg-highlighted p-1 rounded border border-dark"
+              className={styles.exampleCode}
               role="button"
               onClick={() => {
                 const newValue =
@@ -170,10 +171,10 @@ export default function SearchInputV2({
             </code>
           </div>
 
-          <div className="mb-2 me-2">
-            <span className="me-1">Not:</span>
+          <div className={styles.exampleRow}>
+            <span className={styles.exampleLabel}>Not:</span>
             <code
-              className="text-muted bg-highlighted p-1 rounded border border-dark"
+              className={styles.exampleCode}
               role="button"
               onClick={() => {
                 const newValue =
@@ -185,10 +186,10 @@ export default function SearchInputV2({
             </code>
           </div>
 
-          <div className="mb-2 me-2">
-            <span className="me-1">Existence:</span>
+          <div className={styles.exampleRow}>
+            <span className={styles.exampleLabel}>Existence:</span>
             <code
-              className="text-muted bg-highlighted p-1 rounded border border-dark"
+              className={styles.exampleCode}
               role="button"
               onClick={() => {
                 const newValue =
@@ -200,10 +201,10 @@ export default function SearchInputV2({
             </code>
           </div>
 
-          <div className="mb-2 me-2">
-            <span className="me-1">Boolean:</span>
+          <div className={styles.exampleRow}>
+            <span className={styles.exampleLabel}>Boolean:</span>
             <code
-              className="text-muted bg-highlighted p-1 rounded border border-dark"
+              className={styles.exampleCode}
               role="button"
               onClick={() => {
                 const newValue =
@@ -216,7 +217,7 @@ export default function SearchInputV2({
           </div>
 
           <a
-            className="text-muted mb-2"
+            className={styles.docsLink}
             target="_blank"
             href="https://clickhouse.com/docs/use-cases/observability/clickstack/search"
             rel="noreferrer"

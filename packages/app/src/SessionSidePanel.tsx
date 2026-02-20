@@ -24,6 +24,7 @@ export default function SessionSidePanel({
   dateRange,
   where,
   whereLanguage,
+  onLanguageChange,
   onClose,
   onPropertyAddClick,
   generateSearchUrl,
@@ -37,6 +38,7 @@ export default function SessionSidePanel({
   dateRange: DateRange['dateRange'];
   where?: SearchCondition;
   whereLanguage?: SearchConditionLanguage;
+  onLanguageChange?: (lang: 'sql' | 'lucene') => void;
   onClose: () => void;
   onPropertyAddClick?: (name: string, value: string) => void;
   generateSearchUrl: (query?: string, timeRange?: [Date, Date]) => string;
@@ -149,6 +151,7 @@ export default function SessionSidePanel({
               setDrawerOpen={setSubDrawerOpen}
               where={where}
               whereLanguage={whereLanguage}
+              onLanguageChange={onLanguageChange}
             />
           ) : null}
         </div>
