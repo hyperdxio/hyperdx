@@ -74,6 +74,8 @@ export const AggregateFunctionWithCombinatorsSchema = z
   .string()
   .regex(/^(\w+)If(State|Merge)$/);
 
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
 export const RootValueExpressionSchema = z
   .object({
     aggFn: z.union([
@@ -154,6 +156,8 @@ export const ChSqlSchema = z.object({
   params: z.record(z.string(), z.any()),
 });
 
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
 export const SelectSQLStatementSchema = z.object({
   select: SelectListSchema,
   from: z.object({
@@ -408,6 +412,8 @@ export const NumberFormatSchema = z.object({
 
 export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
 export const _ChartConfigSchema = z.object({
   displayType: z.nativeEnum(DisplayType).optional(),
   numberFormat: NumberFormatSchema.optional(),
@@ -493,6 +499,8 @@ export type ChartConfigWithOptDateRange = Omit<
   timestampValueExpression?: string;
 } & Partial<DateRange>;
 
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
 export const SavedChartConfigSchema = z
   .object({
     name: z.string().optional(),
