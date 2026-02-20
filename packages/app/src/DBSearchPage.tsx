@@ -16,7 +16,6 @@ import router from 'next/router';
 import {
   parseAsBoolean,
   parseAsInteger,
-  parseAsJson,
   parseAsString,
   parseAsStringEnum,
   useQueryState,
@@ -128,9 +127,11 @@ import {
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import {
+  parseAsCompressedJson,
+  parseAsCompressedString,
   parseAsSortingStateString,
-  parseAsStringWithNewLines,
 } from './utils/queryParsers';
+import { compressStringParam, compressUrlParam } from './utils/urlCompression';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
@@ -798,11 +799,11 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
-  where: parseAsStringWithNewLines,
-  select: parseAsStringWithNewLines,
+  where: parseAsCompressedString,
+  select: parseAsCompressedString,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
-  filters: parseAsJson<Filter[]>(),
-  orderBy: parseAsStringWithNewLines,
+  filters: parseAsCompressedJson<Filter[]>(),
+  orderBy: parseAsCompressedString,
 };
 
 function DBSearchPage() {
@@ -1328,12 +1329,21 @@ function DBSearchPage() {
       // When generating a search based on a different source,
       // filters and select for the current source are not preserved.
       if (source && source.id !== searchedSource?.id) {
-        qParams.append('where', where || '');
+        qParams.append('where', compressStringParam(where || ''));
         qParams.append('source', source.id);
       } else {
-        qParams.append('select', searchedConfig.select || '');
-        qParams.append('where', where || searchedConfig.where || '');
-        qParams.append('filters', JSON.stringify(searchedConfig.filters ?? []));
+        qParams.append(
+          'select',
+          compressStringParam(searchedConfig.select || ''),
+        );
+        qParams.append(
+          'where',
+          compressStringParam(where || searchedConfig.where || ''),
+        );
+        qParams.append(
+          'filters',
+          compressUrlParam(searchedConfig.filters ?? []),
+        );
         qParams.append('source', searchedSource?.id || '');
       }
 

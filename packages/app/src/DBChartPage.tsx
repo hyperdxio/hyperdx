@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
-import { parseAsJson, useQueryState } from 'nuqs';
+import { useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -33,6 +33,7 @@ import { withAppNav } from '@/layout';
 import { useSources } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
+import { parseAsCompressedJson } from '@/utils/queryParsers';
 
 // Autocomplete can focus on column/map keys
 
@@ -220,7 +221,7 @@ function DBChartExplorerPage() {
 
   const [chartConfig, setChartConfig] = useQueryState(
     'config',
-    parseAsJson<SavedChartConfig>().withDefault({
+    parseAsCompressedJson<SavedChartConfig>().withDefault({
       ...DEFAULT_CHART_CONFIG,
       source: sources?.[0]?.id ?? '',
     }),

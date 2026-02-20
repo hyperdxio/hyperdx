@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { parseAsJson, useQueryState } from 'nuqs';
+import { useQueryState } from 'nuqs';
 import {
   DashboardFilter,
   SavedChartConfig,
@@ -8,6 +8,7 @@ import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hashCode } from '@/utils';
+import { parseAsCompressedJson } from '@/utils/queryParsers';
 
 import { hdxServer } from './api';
 import { IS_LOCAL_MODE } from './config';
@@ -96,7 +97,7 @@ export function useDashboard({
 
   const [localDashboard, setLocalDashboard] = useQueryState(
     'dashboard',
-    parseAsJson<Dashboard>(),
+    parseAsCompressedJson<Dashboard>(),
   );
 
   const updateDashboard = useUpdateDashboard();

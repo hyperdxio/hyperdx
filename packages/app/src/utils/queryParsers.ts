@@ -1,12 +1,24 @@
 import { createParser } from 'nuqs';
 import { SortingState } from '@tanstack/react-table';
 
-// Note: this can be deleted once we upgrade to nuqs v2.2.3
-// https://github.com/47ng/nuqs/pull/783
-export const parseAsStringWithNewLines = createParser<string>({
-  parse: value => value.replace(/%0A/g, '\n'),
-  serialize: value => value.replace(/\n/g, '%0A'),
+import {
+  compressStringParam,
+  compressUrlParam,
+  decompressStringParam,
+  decompressUrlParam,
+} from './urlCompression';
+
+export const parseAsCompressedString = createParser<string>({
+  parse: (value: string) => decompressStringParam(value),
+  serialize: (value: string) => compressStringParam(value),
 });
+
+export function parseAsCompressedJson<T>() {
+  return createParser<T>({
+    parse: (value: string) => decompressUrlParam<T>(value),
+    serialize: (value: T) => compressUrlParam(value),
+  });
+}
 
 export const parseAsSortingStateString = createParser<SortingState[number]>({
   parse: value => {
