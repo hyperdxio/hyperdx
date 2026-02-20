@@ -215,6 +215,8 @@ const AlertForm = ({
                   w={260}
                   placeholder="Pick date and time"
                   clearable
+                  dropdownType="popover"
+                  popoverProps={{ withinPortal: true, zIndex: 10050 }}
                   value={parseScheduleStartAtValue(field.value)}
                   onChange={value => field.onChange(value?.toISOString() ?? null)}
                   error={error?.message}

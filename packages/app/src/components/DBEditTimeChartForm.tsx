@@ -46,6 +46,7 @@ import {
   Textarea,
   TextInput,
 } from '@mantine/core';
+import { DateTimePicker } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
 import {
   IconArrowDown,
@@ -133,6 +134,17 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
   queriedConfig?.timestampValueExpression;
 
 const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
+
+const parseScheduleStartAtValue = (
+  value: string | null | undefined,
+): Date | null => {
+  if (value == null) {
+    return null;
+  }
+
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
 
 // Helper function to safely construct field paths for series
 const getSeriesFieldPath = (
@@ -1385,22 +1397,24 @@ export default function EditTimeChartForm({
                   name="alert.scheduleStartAt"
                   control={control}
                   render={({ field, fieldState: { error } }) => (
-                    <TextInput
+                    <DateTimePicker
                       size="xs"
                       w={260}
-                      placeholder="2026-02-08T10:00:00Z"
-                      value={field.value ?? ''}
-                      onChange={e =>
-                        field.onChange(
-                          e.currentTarget.value === ''
-                            ? null
-                            : e.currentTarget.value,
-                        )
+                      placeholder="Pick date and time"
+                      clearable
+                      dropdownType="popover"
+                      popoverProps={{ withinPortal: true, zIndex: 10050 }}
+                      value={parseScheduleStartAtValue(field.value)}
+                      onChange={value =>
+                        field.onChange(value?.toISOString() ?? null)
                       }
                       error={error?.message}
                     />
                   )}
                 />
+                <Text size="xs" opacity={0.6} mt={6}>
+                  Stored in UTC
+                </Text>
               </Group>
               <Text size="xxs" opacity={0.5} mb={4} mt="xs">
                 Send to
