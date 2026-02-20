@@ -344,6 +344,7 @@ export const validateAlertScheduleOffsetMinutes = (
 };
 
 const MAX_SCHEDULE_START_AT_FUTURE_MS = 1000 * 60 * 60 * 24 * 365;
+const MAX_SCHEDULE_OFFSET_MINUTES = 1439;
 
 export const scheduleStartAtSchema = z
   .union([z.string().datetime(), z.null()])
@@ -360,7 +361,12 @@ export const scheduleStartAtSchema = z
 const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
   interval: AlertIntervalSchema,
-  scheduleOffsetMinutes: z.number().int().min(0).optional(),
+  scheduleOffsetMinutes: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_SCHEDULE_OFFSET_MINUTES)
+    .optional(),
   scheduleStartAt: scheduleStartAtSchema,
   threshold: z.number().int().min(1),
   thresholdType: z.nativeEnum(AlertThresholdType),

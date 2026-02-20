@@ -160,14 +160,15 @@ export function normalizeNoOpAlertScheduleFields<
   }
 
   const normalizedAlert = { ...alert };
-  const previousHadOffset = Object.prototype.hasOwnProperty.call(
-    previousAlert,
-    'scheduleOffsetMinutes',
-  );
-  const previousHadStartAt = Object.prototype.hasOwnProperty.call(
-    previousAlert,
-    'scheduleStartAt',
-  );
+  const previousHadOffset =
+    previousAlert != null &&
+    Object.prototype.hasOwnProperty.call(
+      previousAlert,
+      'scheduleOffsetMinutes',
+    );
+  const previousHadStartAt =
+    previousAlert != null &&
+    Object.prototype.hasOwnProperty.call(previousAlert, 'scheduleStartAt');
 
   if (
     (normalizedAlert.scheduleOffsetMinutes ?? 0) === 0 &&
