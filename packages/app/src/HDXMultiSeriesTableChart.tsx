@@ -18,6 +18,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { CsvExportButton } from './components/CsvExportButton';
 import TableHeader from './components/DBTable/TableHeader';
 import { useCsvExport } from './hooks/useCsvExport';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { NumberFormat } from './types';
 import { formatNumber } from './utils';
@@ -51,6 +52,7 @@ export const Table = ({
   onSortingChange: (sorting: SortingState) => void;
   variant?: TableVariant;
 }) => {
+  const brandName = useBrandDisplayName();
   const MIN_COLUMN_WIDTH_PX = 100;
   //we need a reference to the scrolling element for logic down below
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -254,7 +256,7 @@ export const Table = ({
                             </UnstyledButton>
                             <CsvExportButton
                               data={csvData}
-                              filename="HyperDX_table_results"
+                              filename={`${brandName}_table_results`}
                               className="fs-8 ms-2"
                               title="Download table as CSV"
                             >

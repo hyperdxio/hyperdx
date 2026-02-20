@@ -27,6 +27,7 @@ import ReactCodeMirror, {
 } from '@uiw/react-codemirror';
 
 import api from '@/api';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { isValidUrl } from '@/utils';
 
 const DEFAULT_GENERIC_WEBHOOK_BODY = [
@@ -65,6 +66,7 @@ export function WebhookForm({
   onClose: VoidFunction;
   onSuccess: (webhookId?: string) => void;
 }) {
+  const brandName = useBrandDisplayName();
   const saveWebhook = api.useSaveWebhook();
   const updateWebhook = api.useUpdateWebhook();
   const testWebhook = api.useTestWebhook();
@@ -233,7 +235,7 @@ export function WebhookForm({
       onClose();
     } catch (e) {
       console.error(e);
-      let message = 'Something went wrong. Please contact HyperDX team.';
+      let message = `Something went wrong. Please contact ${brandName} team.`;
 
       if (e instanceof HTTPError) {
         try {
