@@ -108,7 +108,7 @@ import {
   useSource,
   useSources,
 } from '@/source';
-import { useAppTheme } from '@/theme/ThemeProvider';
+import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
   parseTimeQuery,
@@ -806,6 +806,7 @@ const queryStateMap = {
 };
 
 function DBSearchPage() {
+  const brandName = useBrandDisplayName();
   // Next router is laggy behind window.location, which causes race
   // conditions with useQueryStates, so we'll parse it directly
   const paths = window.location.pathname.split('/');
@@ -1577,7 +1578,7 @@ function DBSearchPage() {
     >
       <Head>
         <title>
-          {savedSearch ? `${savedSearch.name} Search` : 'Search'} - HyperDX
+          {savedSearch ? `${savedSearch.name} Search` : 'Search'} - {brandName}
         </title>
       </Head>
       {!IS_LOCAL_MODE && isAlertModalOpen && (

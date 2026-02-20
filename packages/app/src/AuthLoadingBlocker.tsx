@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 
 export default function AuthLoadingBlocker() {
+  const brandName = useBrandDisplayName();
   const { data: meData } = api.useMe();
 
   // increase number of periods rendered as a loading animation, 1 period per second
@@ -23,7 +25,7 @@ export default function AuthLoadingBlocker() {
             zIndex: 2147483647,
           }}
         >
-          Loading HyperDX
+          Loading {brandName}
           <span style={{ width: 0 }}>{'.'.repeat(periods)}</span>
         </div>
       )}
