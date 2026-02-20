@@ -604,6 +604,7 @@ export default function EditTimeChartForm({
         alert: {
           ...chartConfig.alert,
           scheduleOffsetMinutes: chartConfig.alert.scheduleOffsetMinutes ?? 0,
+          scheduleStartAt: chartConfig.alert.scheduleStartAt ?? null,
         },
       }),
       series: Array.isArray(chartConfig.select) ? chartConfig.select : [],
@@ -651,10 +652,15 @@ export default function EditTimeChartForm({
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
   const markdown = useWatch({ control, name: 'markdown' });
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
+  const alertScheduleOffsetMinutes = useWatch({
+    control,
+    name: 'alert.scheduleOffsetMinutes',
+  });
   const granularity = useWatch({ control, name: 'granularity' });
   const maxAlertScheduleOffsetMinutes = alert?.interval
     ? Math.max(intervalToMinutes(alert.interval) - 1, 0)
     : 0;
+  const showAlertScheduleOffsetInput = maxAlertScheduleOffsetMinutes > 0;
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -680,6 +686,23 @@ export default function EditTimeChartForm({
       setValue('alert', undefined);
     }
   }, [displayType, setValue]);
+
+  useEffect(() => {
+    if (
+      alert == null ||
+      showAlertScheduleOffsetInput ||
+      alertScheduleOffsetMinutes === 0
+    ) {
+      return;
+    }
+
+    setValue('alert.scheduleOffsetMinutes', 0, { shouldValidate: true });
+  }, [
+    alert,
+    alertScheduleOffsetMinutes,
+    setValue,
+    showAlertScheduleOffsetInput,
+  ]);
 
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
   const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
@@ -1361,23 +1384,25 @@ export default function EditTimeChartForm({
                   </Text>
                 )}
               </Group>
-              <Group gap="xs" mt="xs">
-                <Text size="sm" opacity={0.7}>
-                  Start offset (min)
-                </Text>
-                <NumberInput
-                  min={0}
-                  max={maxAlertScheduleOffsetMinutes}
-                  step={1}
-                  size="xs"
-                  w={100}
-                  control={control}
-                  name={`alert.scheduleOffsetMinutes`}
-                />
-                <Text size="sm" opacity={0.7}>
-                  from each alert window
-                </Text>
-              </Group>
+              {showAlertScheduleOffsetInput && (
+                <Group gap="xs" mt="xs">
+                  <Text size="sm" opacity={0.7}>
+                    Start offset (min)
+                  </Text>
+                  <NumberInput
+                    min={0}
+                    max={maxAlertScheduleOffsetMinutes}
+                    step={1}
+                    size="xs"
+                    w={100}
+                    control={control}
+                    name={`alert.scheduleOffsetMinutes`}
+                  />
+                  <Text size="sm" opacity={0.7}>
+                    from each alert window
+                  </Text>
+                </Group>
+              )}
               <Group gap="xs" mt="xs" align="start">
                 <Text size="sm" opacity={0.7} mt={6}>
                   Anchor start time

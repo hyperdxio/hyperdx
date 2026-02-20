@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import router from 'next/router';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
@@ -96,7 +96,7 @@ const AlertForm = ({
 }) => {
   const { data: source } = useSource({ id: sourceId });
 
-  const { control, handleSubmit } = useForm<Alert>({
+  const { control, handleSubmit, setValue } = useForm<Alert>({
     defaultValues: defaultValues
       ? {
           ...defaultValues,
@@ -122,13 +122,24 @@ const AlertForm = ({
   const thresholdType = useWatch({ control, name: 'thresholdType' });
   const channelType = useWatch({ control, name: 'channel.type' });
   const interval = useWatch({ control, name: 'interval' });
+  const scheduleOffsetMinutes = useWatch({
+    control,
+    name: 'scheduleOffsetMinutes',
+  });
   const groupByValue = useWatch({ control, name: 'groupBy' });
   const threshold = useWatch({ control, name: 'threshold' });
   const maxScheduleOffsetMinutes = Math.max(
     intervalToMinutes(interval ?? '5m') - 1,
     0,
   );
+  const showScheduleOffsetInput = maxScheduleOffsetMinutes > 0;
   const intervalLabel = ALERT_INTERVAL_OPTIONS[interval ?? '5m'];
+
+  useEffect(() => {
+    if (!showScheduleOffsetInput && scheduleOffsetMinutes !== 0) {
+      setValue('scheduleOffsetMinutes', 0, { shouldValidate: true });
+    }
+  }, [scheduleOffsetMinutes, setValue, showScheduleOffsetInput]);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
@@ -173,23 +184,25 @@ const AlertForm = ({
               control={control}
             />
           </Group>
-          <Group gap="xs" mt="xs">
-            <Text size="sm" opacity={0.7}>
-              Start offset (min)
-            </Text>
-            <NumberInput
-              min={0}
-              max={maxScheduleOffsetMinutes}
-              step={1}
-              size="xs"
-              w={100}
-              control={control}
-              name={`scheduleOffsetMinutes`}
-            />
-            <Text size="sm" opacity={0.7}>
-              from each {intervalLabel} window
-            </Text>
-          </Group>
+          {showScheduleOffsetInput && (
+            <Group gap="xs" mt="xs">
+              <Text size="sm" opacity={0.7}>
+                Start offset (min)
+              </Text>
+              <NumberInput
+                min={0}
+                max={maxScheduleOffsetMinutes}
+                step={1}
+                size="xs"
+                w={100}
+                control={control}
+                name={`scheduleOffsetMinutes`}
+              />
+              <Text size="sm" opacity={0.7}>
+                from each {intervalLabel} window
+              </Text>
+            </Group>
+          )}
           <Group gap="xs" mt="xs" align="start">
             <Text size="sm" opacity={0.7} mt={6}>
               Anchor start time

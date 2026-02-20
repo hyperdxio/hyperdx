@@ -118,6 +118,7 @@ export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
   thresholdType: AlertThresholdType.ABOVE,
   interval: '5m',
   scheduleOffsetMinutes: 0,
+  scheduleStartAt: null,
   channel: {
     type: 'webhook',
     webhookId: '',
