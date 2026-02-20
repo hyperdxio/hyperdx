@@ -231,6 +231,9 @@ export const makeTheme = ({
       },
     }),
     Button: Button.extend({
+      defaultProps: {
+        variant: 'primary',
+      },
       vars: (_theme, props) => {
         const baseVars: Record<string, string> = {};
 
@@ -240,11 +243,12 @@ export const makeTheme = ({
           baseVars['--button-fz'] = rem(12);
         }
 
-        // Use Mantine's built-in CSS vars for hover support
+        // Use semantic CSS vars for primary button styling
         if (props.variant === 'primary') {
-          baseVars['--button-bg'] = 'var(--mantine-color-green-light)';
-          baseVars['--button-hover'] = 'var(--mantine-color-green-light-hover)';
-          baseVars['--button-color'] = 'var(--mantine-color-green-light-color)';
+          baseVars['--button-bg'] = 'var(--color-primary-button-bg)';
+          baseVars['--button-hover'] = 'var(--color-primary-button-bg-hover)';
+          baseVars['--button-color'] = 'var(--color-primary-button-text)';
+          baseVars['--button-color-hover'] = 'var(--color-primary-button-text)';
         }
 
         if (props.variant === 'secondary') {
@@ -302,9 +306,9 @@ export const makeTheme = ({
         }
 
         if (props.variant === 'primary') {
-          baseVars['--ai-bg'] = 'var(--mantine-color-green-light)';
-          baseVars['--ai-hover'] = 'var(--mantine-color-green-light-hover)';
-          baseVars['--ai-color'] = 'var(--mantine-color-green-light-color)';
+          baseVars['--ai-bg'] = 'var(--color-primary-button-bg)';
+          baseVars['--ai-hover'] = 'var(--color-primary-button-bg-hover)';
+          baseVars['--ai-color'] = 'var(--color-primary-button-text)';
         }
 
         if (props.variant === 'secondary') {

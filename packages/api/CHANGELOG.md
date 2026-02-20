@@ -1,5 +1,26 @@
 # @hyperdx/api
 
+## 2.17.0
+
+### Patch Changes
+
+- 679b65d7: feat: added configuration to disable frontend otel exporter
+- 27f478a6: feat: Add external GET /sources API
+- d759d046: support filters in dashboards external api
+- a8aa94b0: feat: add filters to saved searches
+- c3bc43ad: fix: Avoid using bodyExpression for trace sources
+- 9ab68432: Minor fixes in the sources external API: 1. avoid inline schemas, 2. use short format timestamps for materializedView.minGranularity
+- Updated dependencies [a8aa94b0]
+- Updated dependencies [c3bc43ad]
+  - @hyperdx/common-utils@0.12.3
+
+## 2.16.0
+
+### Patch Changes
+
+- Updated dependencies [b6c34b13]
+  - @hyperdx/common-utils@0.12.2
+
 ## 2.15.1
 
 ### Patch Changes

@@ -1,16 +1,17 @@
 /**
- * External API E2E Tests for Dashboard Creation
+ * External API E2E Tests for Dashboard Creation (Config Format)
  *
  * Tests the external API endpoint for creating dashboards via REST API
- * instead of through the UI. This validates the external API integration
- * that partners and automation tools would use.
+ * using the "config" format instead of the deprecated "series" format.
+ * See dashboard-external-api.spec.ts for the equivalent tests using the
+ * legacy "series" format.
  */
-import { DashboardPage, SeriesData } from '../page-objects/DashboardPage';
+import { DashboardPage, TileConfig } from '../page-objects/DashboardPage';
 import { getApiUrl, getSources, getUserAccessKey } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 
 test.describe(
-  'Dashboard External API',
+  'Dashboard External API (Config Format)',
   { tag: ['@full-stack', '@api'] },
   () => {
     const API_URL = getApiUrl();
@@ -53,29 +54,25 @@ test.describe(
             y: 0,
             w: 12,
             h: 4,
-            series: [
-              {
-                type: 'time',
-                sourceId: sourceId,
-                aggFn: 'count',
-                where: "SeverityText = 'error'",
-                whereLanguage: 'sql',
-                groupBy: [],
-                displayType: 'line',
-                alias: 'Error Count',
-              },
-              {
-                type: 'time',
-                sourceId: sourceId,
-                aggFn: 'max',
-                field: 'length(ServiceName)',
-                where: "SeverityText = 'error'",
-                whereLanguage: 'sql',
-                groupBy: [],
-                displayType: 'line',
-                alias: 'Max Service Name Length',
-              },
-            ] satisfies SeriesData[],
+            config: {
+              displayType: 'line',
+              sourceId: sourceId,
+              select: [
+                {
+                  aggFn: 'count',
+                  where: "SeverityText = 'error'",
+                  whereLanguage: 'sql',
+                  alias: 'Error Count',
+                },
+                {
+                  aggFn: 'max',
+                  valueExpression: 'length(ServiceName)',
+                  where: "SeverityText = 'error'",
+                  whereLanguage: 'sql',
+                  alias: 'Max Service Name Length',
+                },
+              ],
+            },
           },
           {
             name: 'Number Chart',
@@ -83,17 +80,19 @@ test.describe(
             y: 0,
             w: 12,
             h: 4,
-            series: [
-              {
-                type: 'number',
-                sourceId: sourceId,
-                aggFn: 'max',
-                field: 'length(ServiceName)',
-                where: 'ServiceName:*',
-                whereLanguage: 'lucene',
-                alias: 'Max Service Name Length',
-              },
-            ] satisfies SeriesData[],
+            config: {
+              displayType: 'number',
+              sourceId: sourceId,
+              select: [
+                {
+                  aggFn: 'max',
+                  valueExpression: 'length(ServiceName)',
+                  where: 'ServiceName:*',
+                  whereLanguage: 'lucene',
+                  alias: 'Max Service Name Length',
+                },
+              ],
+            },
           },
           {
             name: 'Table Chart',
@@ -101,17 +100,18 @@ test.describe(
             y: 4,
             w: 12,
             h: 4,
-            series: [
-              {
-                type: 'table',
-                sourceId: sourceId,
-                aggFn: 'count',
-                where: 'SeverityText:*',
-                groupBy: ['ServiceName'],
-                sortOrder: 'desc',
-                alias: 'Non-Debug Events by Service',
-              },
-            ] satisfies SeriesData[],
+            config: {
+              displayType: 'table',
+              sourceId: sourceId,
+              select: [
+                {
+                  aggFn: 'count',
+                  where: 'SeverityText:*',
+                  alias: 'Non-Debug Events by Service',
+                },
+              ],
+              groupBy: 'ServiceName',
+            },
           },
           {
             name: 'Search Chart',
@@ -119,15 +119,13 @@ test.describe(
             y: 4,
             w: 12,
             h: 4,
-            series: [
-              {
-                type: 'search',
-                sourceId: sourceId,
-                fields: ['ServiceName', 'Body', 'SeverityText'],
-                where: 'SeverityText:"info"',
-                whereLanguage: 'lucene',
-              },
-            ] satisfies SeriesData[],
+            config: {
+              displayType: 'search',
+              sourceId: sourceId,
+              select: 'ServiceName, Body, SeverityText',
+              where: 'SeverityText:"info"',
+              whereLanguage: 'lucene',
+            },
           },
           {
             name: 'Markdown Widget',
@@ -135,13 +133,11 @@ test.describe(
             y: 8,
             w: 12,
             h: 4,
-            series: [
-              {
-                type: 'markdown',
-                content:
-                  '# Dashboard Info\n\nThis dashboard was created via the external API.',
-              },
-            ] satisfies SeriesData[],
+            config: {
+              displayType: 'markdown',
+              markdown:
+                '# Dashboard Info\n\nThis dashboard was created via the external API.',
+            },
           },
         ],
         tags: ['e2e-test'],
@@ -179,11 +175,8 @@ test.describe(
       });
 
       await test.step('Verify each tile configuration', async () => {
-        const tilesData = dashboardPayload.tiles;
-
-        for (let i = 0; i < tilesData.length; i++) {
-          const tileData = tilesData[i];
-          const series = tileData.series;
+        for (let i = 0; i < dashboardPayload.tiles.length; i++) {
+          const tileData = dashboardPayload.tiles[i];
 
           // Hover over tile to reveal edit button
           await tiles.nth(i).hover();
@@ -203,7 +196,11 @@ test.describe(
           await expect(chartNameInput).toHaveValue(tileData.name);
 
           // Verify tile edit form
-          await dashboardPage.verifyTileForm(series, sourceName);
+          await dashboardPage.verifyTileFormFromConfig(
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            tileData.config as TileConfig,
+            sourceName,
+          );
 
           // Close the modal by pressing Escape
           await page.keyboard.press('Escape');
@@ -235,15 +232,16 @@ test.describe(
             y: 0,
             w: 6,
             h: 3,
-            series: [
-              {
-                type: 'time',
-                sourceId: sourceId,
-                aggFn: 'count',
-                where: '',
-                groupBy: [],
-              },
-            ],
+            config: {
+              displayType: 'line',
+              sourceId: sourceId,
+              select: [
+                {
+                  aggFn: 'count',
+                  where: '',
+                },
+              ],
+            },
           },
         ],
         tags: ['update-test'],
@@ -276,16 +274,18 @@ test.describe(
             y: 0,
             w: 12,
             h: 4,
-            series: [
-              {
-                type: 'time',
-                sourceId: sourceId,
-                aggFn: 'sum',
-                field: 'Duration',
-                where: '',
-                groupBy: ['ServiceName'],
-              },
-            ],
+            config: {
+              displayType: 'line',
+              sourceId: sourceId,
+              select: [
+                {
+                  aggFn: 'sum',
+                  valueExpression: 'Duration',
+                  where: '',
+                },
+              ],
+              groupBy: 'ServiceName',
+            },
           },
         ],
         tags: ['update-test'],

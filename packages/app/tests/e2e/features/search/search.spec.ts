@@ -73,9 +73,9 @@ test.describe('Search', { tag: '@search' }, () => {
     test('Search with Different Query Types - Lucene', async () => {
       await test.step('Test multiple search query types', async () => {
         const queries = [
-          'cart',
-          'ServiceName:"accounting"',
-          '*info*',
+          'Order',
+          'ServiceName:"CartService"',
+          '*Order*',
           'SeverityText:"info"',
         ];
 
@@ -152,7 +152,7 @@ test.describe('Search', { tag: '@search' }, () => {
       await test.step('Perform search with selected time range', async () => {
         // Clear and submit using page object methods
         await searchPage.clearSearch();
-        await searchPage.performSearch('test');
+        await searchPage.performSearch('Order');
       });
 
       await test.step('Verify search results', async () => {

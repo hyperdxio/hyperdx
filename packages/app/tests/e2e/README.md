@@ -15,34 +15,29 @@ feature-specific test suites.
 ### Default: Full-Stack Mode
 
 By default, `make e2e` runs tests in **full-stack mode** with MongoDB + API +
-demo ClickHouse for maximum consistency and real backend features:
+local Docker ClickHouse for maximum consistency and real backend features:
 
 ```bash
-# Run all tests (full-stack with MongoDB + API + demo ClickHouse)
+# Run all tests (full-stack with MongoDB + API + local Docker ClickHouse)
 make e2e
 
-# Run specific tests (full-stack)
-make e2e tags="@kubernetes"
-make e2e tags="@smoke"
-
-# Run tests with UI
-make e2e ui=true
+# For UI, specific tests, or other options, use the script from repo root:
+./scripts/test-e2e.sh --ui                 # Run with Playwright UI
+./scripts/test-e2e.sh --grep "@kubernetes"  # Run specific tests
+./scripts/test-e2e.sh --grep "@smoke"
+./scripts/test-e2e.sh --ui --last-failed   # Re-run only failed tests with UI
 ```
 
 ### Optional: Local Mode (Frontend Only)
 
-For faster iteration during development, use `local=true` to skip MongoDB and
-run frontend-only tests:
+For faster iteration during development, use the script with `--local` to skip
+MongoDB and run frontend-only tests:
 
 ```bash
-# Run all tests in local mode (no MongoDB, frontend only)
-make e2e local=true
-
-# Run tests with UI
-make e2e local=true ui=true
-
-# Run specific tests in local mode
-make e2e local=true tags="@search"
+# From repo root - run local tests (no MongoDB, frontend only)
+./scripts/test-e2e.sh --local
+./scripts/test-e2e.sh --local --ui
+./scripts/test-e2e.sh --local --grep "@search"
 
 # From packages/app - run local tests (frontend only)
 cd packages/app
@@ -79,10 +74,20 @@ yarn test:e2e tests/e2e/features/search/search.spec.ts
 yarn test:e2e tests/e2e/features/dashboard.spec.ts --local
 ```
 
+**Watch mode (re-run on file save):**
+
+Playwright UI has built-in watch. Run with UI, then enable it per test:
+
+```bash
+./scripts/test-e2e.sh --keep-running --ui
+```
+
+In the Playwright UI sidebar, click the **eye icon** next to a test (or file/describe) to turn on watch for it. When you save changes to that test file, that test will re-run automatically.
+
 **Available flags:**
 
 - `--local` - Run in local mode (frontend only), excludes `@full-stack` tests
-- `--ui` - Open Playwright UI for interactive debugging
+- `--ui` - Open Playwright UI for interactive debugging and watch mode
 - `--debug` - Run in debug mode with browser developer tools
 - `--headed` - Run tests in visible browser (default is headless)
 
@@ -98,7 +103,7 @@ ClickHouse data.
 - MongoDB (port 29998) - authentication, teams, users, persistence
 - API Server (port 29000) - full backend logic
 - App Server (port 28081) - frontend
-- **Demo ClickHouse** (remote) - pre-populated logs/traces/metrics/K8s data
+- **Local Docker ClickHouse** (localhost:8123) - seeded E2E test data (logs/traces/metrics/K8s). Seeded timestamps span a past+future window (~1h past, ~2h future from seed time) so relative ranges like "last 5 minutes" keep finding data. If you run tests more than ~2 hours after the last seed, re-run the global setup (or full test run) to re-seed.
 
 **Benefits:**
 
@@ -111,30 +116,34 @@ ClickHouse data.
 ```bash
 # Default: full-stack mode
 make e2e
-make e2e tags="@kubernetes"
+./scripts/test-e2e.sh --grep "@kubernetes"   # from repo root, for specific tags
 ```
 
-#### Local Mode (for testing frontend-only mode)
+#### Local Mode (for testing frontend-only features)
 
-**Frontend-only mode** - skips MongoDB/API, connects directly to demo ClickHouse
-from browser.
+**Frontend + ClickHouse mode** - skips MongoDB/API, uses local Docker ClickHouse
+with seeded test data.
 
 **Use for:**
 
 - Quick frontend iteration during development
 - Testing UI components that don't need auth
 - Faster test execution when backend features aren't needed
+- Consistent test data (same as full-stack mode)
 
 **Limitations:**
 
 - No authentication (no login/signup)
-- No persistence (can't save searches/dashboards)
-- No API calls (queries go directly to demo ClickHouse)
+- No persistence (can't save searches/dashboards via API)
+- No API calls (queries go directly to local ClickHouse)
+
+**Note:** Uses the same Docker ClickHouse and seeded data as full-stack mode,
+ensuring consistency between local and full-stack tests.
 
 ```bash
-# Opt-in to local mode for speed
-make e2e local=true
-make e2e local=true tags="@search"
+# Opt-in to local mode for speed (from repo root)
+./scripts/test-e2e.sh --local
+./scripts/test-e2e.sh --local --grep "@search"
 ```
 
 ## Writing Tests
@@ -150,7 +159,7 @@ test.describe('My Feature', () => {
     // User is already authenticated (via global setup in full-stack mode)
     await page.goto('/search');
 
-    // Query demo ClickHouse data
+    // Query local Docker ClickHouse seeded data
     await page.fill('[data-testid="search-input"]', 'ServiceName:"frontend"');
     await page.click('[data-testid="search-submit-button"]');
 
@@ -167,8 +176,8 @@ test.describe('My Feature', () => {
 ```
 
 **Note:** Tests that need to run in full stack mode should be tagged with
-`@full-stack` so that when `make e2e local=true` is run, they are skipped
-appropriately.
+`@full-stack` so that when running with `./scripts/test-e2e.sh --local`, they
+are skipped appropriately.
 
 ## Test Organization
 
@@ -367,13 +376,13 @@ multiple servers:
 **Sources don't appear in UI:**
 
 - Check API logs for `setupTeamDefaults` errors
-- Verify `DEFAULT_SOURCES` in `.env.e2e` points to demo ClickHouse
+- Verify `DEFAULT_SOURCES` in `.env.e2e` points to local Docker ClickHouse (localhost:8123)
 - Ensure you registered a new user (DEFAULT_SOURCES only applies to new teams)
 
 **Tests can't find demo data:**
 
-- Verify sources use `otel_v2` database (demo ClickHouse)
-- Check Network tab - should query `sql-clickhouse.clickhouse.com`
+- Verify sources use `default` database with `e2e_` prefixed tables
+- Check Network tab - should query `localhost:8123`
 - Verify a source is selected in UI dropdown
 
 ### Flaky Tests
@@ -391,7 +400,7 @@ For intermittent failures:
 Tests run in **full-stack mode** on CI (GitHub Actions) with:
 
 - MongoDB service container for authentication and persistence
-- Demo ClickHouse for telemetry data
+- Local Docker ClickHouse for telemetry data (same as local mode)
 - 60-second test timeout (same as local)
 - Multiple retry attempts (2 retries on CI vs 1 locally)
 - Artifact collection for failed tests

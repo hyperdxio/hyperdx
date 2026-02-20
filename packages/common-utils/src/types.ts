@@ -75,12 +75,17 @@ export const AggregateFunctionWithCombinatorsSchema = z
   .string()
   .regex(/^(\w+)If(State|Merge)$/);
 
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
 export const RootValueExpressionSchema = z
   .object({
     aggFn: z.union([
-      AggregateFunctionSchema,
-      AggregateFunctionWithCombinatorsSchema,
+      z.literal('quantile'),
+      z.literal('quantileMerge'),
+      z.literal('histogram'),
+      z.literal('histogramMerge'),
     ]),
+    level: z.number(),
     aggCondition: SearchConditionSchema,
     aggConditionLanguage: SearchConditionLanguageSchema,
     valueExpression: z.string(),
@@ -90,12 +95,9 @@ export const RootValueExpressionSchema = z
   .or(
     z.object({
       aggFn: z.union([
-        z.literal('quantile'),
-        z.literal('quantileMerge'),
-        z.literal('histogram'),
-        z.literal('histogramMerge'),
+        AggregateFunctionSchema,
+        AggregateFunctionWithCombinatorsSchema,
       ]),
-      level: z.number(),
       aggCondition: SearchConditionSchema,
       aggConditionLanguage: SearchConditionLanguageSchema,
       valueExpression: z.string(),
@@ -155,6 +157,8 @@ export const ChSqlSchema = z.object({
   params: z.record(z.string(), z.any()),
 });
 
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
 export const SelectSQLStatementSchema = z.object({
   select: SelectListSchema,
   from: z.object({
@@ -354,38 +358,8 @@ export type AlertHistory = {
 };
 
 // --------------------------
-// SAVED SEARCH
+// FILTERS
 // --------------------------
-export const SavedSearchSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  select: z.string(),
-  where: z.string(),
-  whereLanguage: SearchConditionLanguageSchema,
-  source: z.string(),
-  tags: z.array(z.string()),
-  orderBy: z.string().optional(),
-  alerts: z.array(AlertSchema).optional(),
-});
-
-export type SavedSearch = z.infer<typeof SavedSearchSchema>;
-
-// --------------------------
-// DASHBOARDS
-// --------------------------
-export const NumberFormatSchema = z.object({
-  output: z.enum(['currency', 'percent', 'byte', 'time', 'number']),
-  mantissa: z.number().optional(),
-  thousandSeparated: z.boolean().optional(),
-  average: z.boolean().optional(),
-  decimalBytes: z.boolean().optional(),
-  factor: z.number().optional(),
-  currencySymbol: z.string().optional(),
-  unit: z.string().optional(),
-});
-
-export type NumberFormat = z.infer<typeof NumberFormatSchema>;
-
 export const SqlAstFilterSchema = z.object({
   type: z.literal('sql_ast'),
   operator: z.enum(['=', '<', '>', '!=', '<=', '>=']),
@@ -405,6 +379,42 @@ export const FilterSchema = z.union([
 
 export type Filter = z.infer<typeof FilterSchema>;
 
+// --------------------------
+// SAVED SEARCH
+// --------------------------
+export const SavedSearchSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  select: z.string(),
+  where: z.string(),
+  whereLanguage: SearchConditionLanguageSchema,
+  source: z.string(),
+  tags: z.array(z.string()),
+  orderBy: z.string().optional(),
+  filters: z.array(FilterSchema).optional(),
+  alerts: z.array(AlertSchema).optional(),
+});
+
+export type SavedSearch = z.infer<typeof SavedSearchSchema>;
+
+// --------------------------
+// DASHBOARDS
+// --------------------------
+export const NumberFormatSchema = z.object({
+  output: z.enum(['currency', 'percent', 'byte', 'time', 'number']),
+  mantissa: z.number().int().optional(),
+  thousandSeparated: z.boolean().optional(),
+  average: z.boolean().optional(),
+  decimalBytes: z.boolean().optional(),
+  factor: z.number().optional(),
+  currencySymbol: z.string().optional(),
+  unit: z.string().optional(),
+});
+
+export type NumberFormat = z.infer<typeof NumberFormatSchema>;
+
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
 export const _ChartConfigSchema = z.object({
   displayType: z.nativeEnum(DisplayType).optional(),
   numberFormat: NumberFormatSchema.optional(),
@@ -490,6 +500,8 @@ export type ChartConfigWithOptDateRange = Omit<
   timestampValueExpression?: string;
 } & Partial<DateRange>;
 
+// When making changes here, consider if they need to be made to the external API
+// schema as well (packages/api/src/utils/zod.ts).
 export const SavedChartConfigSchema = z
   .object({
     name: z.string().optional(),
@@ -743,6 +755,7 @@ const TraceSourceAugmentation = {
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
+  displayedTimestampValueExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   highlightedRowAttributeExpressions:

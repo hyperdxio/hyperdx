@@ -36,6 +36,7 @@ function DeleteWebhookButton({
       await confirm(
         `Are you sure you want to delete ${webhookName} webhook?`,
         'Delete',
+        { variant: 'danger' },
       )
     ) {
       try {

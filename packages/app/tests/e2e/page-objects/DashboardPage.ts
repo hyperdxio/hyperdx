@@ -2,11 +2,34 @@
  * DashboardPage - Page object for dashboard pages
  * Encapsulates interactions with dashboard creation, editing, and tile management
  */
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 import { getSqlEditor } from '../utils/locators';
+
+/**
+ * Config format tile config, as accepted by the external dashboard API.
+ * Used with verifyTileFormFromConfig
+ */
+export type TileConfig = {
+  displayType: Exclude<DisplayType, 'heatmap'>;
+  sourceId?: string;
+  select?:
+    | {
+        aggFn?: string;
+        where?: string;
+        whereLanguage?: 'sql' | 'lucene';
+        alias?: string;
+        valueExpression?: string;
+      }[]
+    | string;
+  where?: string;
+  whereLanguage?: 'sql' | 'lucene';
+  groupBy?: string;
+  markdown?: string;
+};
 
 /**
  * Series data structure for chart verification
@@ -54,6 +77,9 @@ export class DashboardPage {
   private readonly aliasInput: Locator;
   private readonly aggFnSelect: Locator;
   private readonly markdownTextarea: Locator;
+  private readonly confirmModal: Locator;
+  private readonly confirmCancelButton: Locator;
+  private readonly confirmConfirmButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -88,13 +114,16 @@ export class DashboardPage {
     this.aliasInput = page.getByTestId('series-alias-input');
     this.aggFnSelect = page.getByTestId('agg-fn-select');
     this.markdownTextarea = page.locator('textarea[name="markdown"]');
+    this.confirmModal = page.getByTestId('confirm-modal');
+    this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
+    this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
   }
 
   /**
    * Navigate to dashboards list
    */
   async goto() {
-    await this.page.goto('/dashboards');
+    await this.page.goto('/dashboards', { waitUntil: 'networkidle' });
   }
 
   /**
@@ -153,6 +182,18 @@ export class DashboardPage {
    */
   async addTile() {
     await this.addTileButton.click();
+  }
+
+  /**
+   * Create a new dashboard and open the tile editor (add tile), waiting for it to be ready.
+   * Use when testing the chart/tile editor modal in isolation.
+   */
+  async openNewTileEditor() {
+    await this.createDashboardButton.click();
+    await this.page.waitForURL('**/dashboards**');
+    await this.addTileButton.click();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.waitForDataToLoad();
   }
 
   /**
@@ -376,6 +417,59 @@ export class DashboardPage {
   }
 
   /**
+   * Convert a config-format tile config to SeriesData for form verification.
+   */
+  private configToSeriesData(config: TileConfig): SeriesData[] {
+    if (config.displayType === 'markdown') {
+      return [{ type: 'markdown', content: config.markdown }];
+    }
+
+    if (config.displayType === 'search') {
+      return [
+        {
+          type: 'search',
+          sourceId: config.sourceId,
+          where: config.where,
+          whereLanguage: config.whereLanguage ?? 'lucene',
+        },
+      ];
+    }
+
+    const type: SeriesData['type'] =
+      config.displayType === 'line' || config.displayType === 'stacked_bar'
+        ? 'time'
+        : config.displayType;
+
+    const groupBy = config.groupBy ? [config.groupBy] : undefined;
+    const selectItems = Array.isArray(config.select) ? config.select : [];
+
+    return selectItems.map(item => ({
+      type,
+      sourceId: config.sourceId,
+      aggFn: item.aggFn,
+      where: item.where,
+      whereLanguage: item.whereLanguage ?? 'lucene',
+      alias: item.alias,
+      field: item.valueExpression,
+      groupBy,
+    }));
+  }
+
+  /**
+   * Verify tile edit form using the config-format tile config directly,
+   * avoiding the need for a separate SeriesData verification array.
+   */
+  async verifyTileFormFromConfig(
+    config: TileConfig,
+    expectedSourceName?: string,
+  ) {
+    await this.verifyTileForm(
+      this.configToSeriesData(config),
+      expectedSourceName,
+    );
+  }
+
+  /**
    * Verify tile edit form matches the given series data
    * @param series - Array of series data from the API request
    * @param expectedSourceName - Optional expected source name for verification
@@ -475,5 +569,17 @@ export class DashboardPage {
 
   get emptyFiltersList() {
     return this.emptyFiltersListModal;
+  }
+
+  get unsavedChangesConfirmModal() {
+    return this.confirmModal;
+  }
+
+  get unsavedChangesConfirmCancelButton() {
+    return this.confirmCancelButton;
+  }
+
+  get unsavedChangesConfirmDiscardButton() {
+    return this.confirmConfirmButton;
   }
 }
