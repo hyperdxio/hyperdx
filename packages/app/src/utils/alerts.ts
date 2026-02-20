@@ -152,6 +152,10 @@ type AlertScheduleFields = {
   scheduleStartAt?: string | null;
 };
 
+/**
+ * Keep alert documents backward-compatible by avoiding no-op writes for
+ * scheduling fields on pre-migration alerts that never had these keys.
+ */
 export function normalizeNoOpAlertScheduleFields<
   T extends AlertScheduleFields | undefined,
 >(alert: T, previousAlert?: AlertScheduleFields | null): T {

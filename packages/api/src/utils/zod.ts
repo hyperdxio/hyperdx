@@ -3,8 +3,8 @@ import {
   DashboardFilterSchema,
   MetricsDataType,
   NumberFormatSchema,
-  SearchConditionLanguageSchema as whereLanguageSchema,
   scheduleStartAtSchema,
+  SearchConditionLanguageSchema as whereLanguageSchema,
   validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
@@ -201,7 +201,7 @@ export const alertSchema = z
   .object({
     channel: zChannel,
     interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
-    scheduleOffsetMinutes: z.number().int().min(0).optional(),
+    scheduleOffsetMinutes: z.number().int().min(0).max(1439).optional(),
     scheduleStartAt: scheduleStartAtSchema,
     threshold: z.number().min(0),
     thresholdType: z.nativeEnum(AlertThresholdType),

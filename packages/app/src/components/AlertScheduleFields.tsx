@@ -94,7 +94,7 @@ export function AlertScheduleFields<T extends FieldValues>({
           )}
         />
         <Text size="xs" opacity={0.6} mt={6}>
-          Converted to UTC on save
+          Displayed in local time, stored as UTC
         </Text>
       </Group>
     </>
