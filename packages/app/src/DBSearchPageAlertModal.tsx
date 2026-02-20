@@ -12,6 +12,7 @@ import {
   AlertThresholdType,
   SearchCondition,
   SearchConditionLanguage,
+  scheduleStartAtSchema,
   validateAlertScheduleOffsetMinutes,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
@@ -45,6 +46,7 @@ import {
   ALERT_INTERVAL_OPTIONS,
   ALERT_THRESHOLD_TYPE_OPTIONS,
   intervalToMinutes,
+  parseScheduleStartAtValue,
 } from '@/utils/alerts';
 
 import { AlertPreviewChart } from './components/AlertPreviewChart';
@@ -60,26 +62,12 @@ const SavedSearchAlertFormSchema = z
     interval: AlertIntervalSchema,
     threshold: z.number().int().min(1),
     scheduleOffsetMinutes: z.number().int().min(0).default(0),
-    scheduleStartAt: z.preprocess(
-      value => (value === '' ? null : value),
-      z.string().datetime().nullable().optional(),
-    ),
+    scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
   })
   .passthrough()
   .superRefine(validateAlertScheduleOffsetMinutes);
-
-const parseScheduleStartAtValue = (
-  value: string | null | undefined,
-): Date | null => {
-  if (value == null) {
-    return null;
-  }
-
-  const parsedDate = new Date(value);
-  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
-};
 
 const AlertForm = ({
   sourceId,

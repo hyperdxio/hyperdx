@@ -4,6 +4,7 @@ import {
   MetricsDataType,
   NumberFormatSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  scheduleStartAtSchema,
   validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
@@ -195,11 +196,6 @@ export const zTileAlert = z.object({
   tileId: z.string().min(1),
   dashboardId: z.string().min(1),
 });
-
-const scheduleStartAtSchema = z
-  .union([z.string().datetime(), z.literal(''), z.null()])
-  .optional()
-  .transform(value => (value === '' ? null : value));
 
 export const alertSchema = z
   .object({

@@ -101,6 +101,7 @@ import {
   extendDateRangeToInterval,
   intervalToGranularity,
   intervalToMinutes,
+  parseScheduleStartAtValue,
   TILE_ALERT_INTERVAL_OPTIONS,
   TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
 } from '@/utils/alerts';
@@ -134,17 +135,6 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
   queriedConfig?.timestampValueExpression;
 
 const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
-
-const parseScheduleStartAtValue = (
-  value: string | null | undefined,
-): Date | null => {
-  if (value == null) {
-    return null;
-  }
-
-  const parsedDate = new Date(value);
-  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
-};
 
 // Helper function to safely construct field paths for series
 const getSeriesFieldPath = (
@@ -393,7 +383,7 @@ function ChartSeriesEditorComponent({
           <AggFnSelectControlled
             aggFnName={`${namePrefix}aggFn`}
             quantileLevelName={`${namePrefix}level`}
-            defaultValue={AGG_FNS[0].value}
+            defaultValue={AGG_FNS[0]?.value ?? 'avg'}
             control={control}
           />
         </div>
@@ -611,6 +601,12 @@ export default function EditTimeChartForm({
   const configWithSeries: SavedChartConfigWithSeries = useMemo(
     () => ({
       ...chartConfig,
+      ...(chartConfig.alert != null && {
+        alert: {
+          ...chartConfig.alert,
+          scheduleOffsetMinutes: chartConfig.alert.scheduleOffsetMinutes ?? 0,
+        },
+      }),
       series: Array.isArray(chartConfig.select) ? chartConfig.select : [],
     }),
     [chartConfig],
@@ -685,12 +681,6 @@ export default function EditTimeChartForm({
       setValue('alert', undefined);
     }
   }, [displayType, setValue]);
-
-  useEffect(() => {
-    if (alert && alert.scheduleOffsetMinutes == null) {
-      setValue('alert.scheduleOffsetMinutes', 0);
-    }
-  }, [alert, setValue]);
 
   const showGeneratedSql = ['table', 'time', 'number'].includes(activeTab); // Whether to show the generated SQL preview
   const showSampleEvents = tableSource?.kind !== SourceKind.Metric;

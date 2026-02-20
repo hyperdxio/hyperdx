@@ -134,3 +134,14 @@ export function isAlertSilenceExpired(silenced?: {
 }): boolean {
   return silenced ? new Date() > new Date(silenced.until) : false;
 }
+
+export function parseScheduleStartAtValue(
+  value: string | null | undefined,
+): Date | null {
+  if (value == null) {
+    return null;
+  }
+
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+}

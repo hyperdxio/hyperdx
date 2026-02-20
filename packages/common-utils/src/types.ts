@@ -343,7 +343,7 @@ export const validateAlertScheduleOffsetMinutes = (
   }
 };
 
-const scheduleStartAtSchema = z
+export const scheduleStartAtSchema = z
   .union([z.string().datetime(), z.literal(''), z.null()])
   .optional()
   .transform(value => (value === '' ? null : value));
