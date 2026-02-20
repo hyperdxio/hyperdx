@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(yarn tsc:*)",
-      "Bash(git stash pop:*)",
-      "Bash(yarn ci:unit:*)"
-    ]
-  }
-}
