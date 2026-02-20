@@ -84,6 +84,7 @@ import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsStringWithNewLines } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
@@ -666,6 +667,7 @@ function downloadObjectAsJson(object: object, fileName = 'output') {
 }
 
 function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
+  const brandName = useBrandDisplayName();
   const confirm = useConfirm();
 
   const router = useRouter();
@@ -1001,7 +1003,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   return (
     <Box p="sm" data-testid="dashboard-page">
       <Head>
-        <title>Dashboard – HyperDX</title>
+        <title>Dashboard – {brandName}</title>
       </Head>
       <OnboardingModal />
       <EditTileModal

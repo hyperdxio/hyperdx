@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Anchor, Burger, Button, Container, Group } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
-import { useWordmark } from './theme/ThemeProvider';
+import { useBrandDisplayName, useWordmark } from './theme/ThemeProvider';
 import api from './api';
 
 export default function LandingHeader({
@@ -12,6 +12,7 @@ export default function LandingHeader({
   activeKey: string;
   fixed?: boolean;
 }) {
+  const brandName = useBrandDisplayName();
   const wordmark = useWordmark();
   const { data: me } = api.useMe();
   const isLoggedIn = Boolean(me);
@@ -54,7 +55,7 @@ export default function LandingHeader({
                 style={{ fontWeight: activeKey === 'cloud' ? 600 : 400 }}
                 size="sm"
               >
-                HyperDX Cloud
+                {brandName} Cloud
               </Anchor>
               <Anchor
                 href="https://clickhouse.com/docs/use-cases/observability/clickstack"
@@ -103,7 +104,7 @@ export default function LandingHeader({
                 underline="never"
                 style={{ fontWeight: activeKey === 'cloud' ? 600 : 400 }}
               >
-                HyperDX Cloud
+                {brandName} Cloud
               </Anchor>
               <Anchor
                 href="https://clickhouse.com/docs/use-cases/observability/clickstack"

@@ -39,6 +39,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCreateSavedSearch } from '@/savedSearch';
 import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
@@ -266,6 +267,7 @@ export const DBSearchPageAlertModal = ({
   onClose: () => void;
   open: boolean;
 }) => {
+  const brandName = useBrandDisplayName();
   const queryClient = useQueryClient();
   const createAlert = api.useCreateAlert();
   const updateAlert = api.useUpdateAlert();
@@ -350,7 +352,7 @@ export const DBSearchPageAlertModal = ({
     } catch (error) {
       notifications.show({
         color: 'red',
-        message: 'Something went wrong. Please contact HyperDX team.',
+        message: `Something went wrong. Please contact ${brandName} team.`,
         autoClose: 5000,
       });
     }
@@ -369,7 +371,7 @@ export const DBSearchPageAlertModal = ({
     } catch (error) {
       notifications.show({
         color: 'red',
-        message: 'Something went wrong. Please contact HyperDX team.',
+        message: `Something went wrong. Please contact ${brandName} team.`,
         autoClose: 5000,
       });
     }
