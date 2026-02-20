@@ -343,10 +343,19 @@ export const validateAlertScheduleOffsetMinutes = (
   }
 };
 
+const MAX_SCHEDULE_START_AT_FUTURE_MS = 1000 * 60 * 60 * 24 * 365;
+
 export const scheduleStartAtSchema = z
-  .union([z.string().datetime(), z.literal(''), z.null()])
+  .union([z.string().datetime(), z.null()])
   .optional()
-  .transform(value => (value === '' ? null : value));
+  .refine(
+    value =>
+      value == null ||
+      new Date(value).getTime() <= Date.now() + MAX_SCHEDULE_START_AT_FUTURE_MS,
+    {
+      message: 'scheduleStartAt must be within 1 year from now',
+    },
+  );
 
 const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),

@@ -153,6 +153,29 @@ describe('alerts router', () => {
     expect(alertAfterNullScheduleStartAt?.scheduleStartAt).toBeNull();
   });
 
+  it('rejects scheduleStartAt values more than 1 year in the future', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const farFutureScheduleStartAt = new Date(
+      Date.now() + 366 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+        }),
+        scheduleStartAt: farFutureScheduleStartAt,
+      })
+      .expect(400);
+  });
+
   it('preserves createdBy field during updates', async () => {
     const { agent, user } = await getLoggedInAgent(server);
     const dashboard = await agent

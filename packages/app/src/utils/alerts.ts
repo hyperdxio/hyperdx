@@ -155,7 +155,7 @@ type AlertScheduleFields = {
 export function normalizeNoOpAlertScheduleFields<
   T extends AlertScheduleFields | undefined,
 >(alert: T, previousAlert?: AlertScheduleFields | null): T {
-  if (alert == null || previousAlert == null) {
+  if (alert == null) {
     return alert;
   }
 
