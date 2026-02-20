@@ -35,7 +35,7 @@ type JSONExtractFn =
   | 'JSONExtractFloat'
   | 'JSONExtractBool';
 
-function buildJSONExtractQuery(
+export function buildJSONExtractQuery(
   keyPath: string[],
   parsedJsonRootPath: string[],
   jsonExtractFn: JSONExtractFn = 'JSONExtractString',
