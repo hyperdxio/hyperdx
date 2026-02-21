@@ -300,6 +300,17 @@ export const AlertIntervalSchema = z.union([
 
 export type AlertInterval = z.infer<typeof AlertIntervalSchema>;
 
+export const ALERT_INTERVAL_TO_MINUTES: Record<AlertInterval, number> = {
+  '1m': 1,
+  '5m': 5,
+  '15m': 15,
+  '30m': 30,
+  '1h': 60,
+  '6h': 360,
+  '12h': 720,
+  '1d': 1440,
+};
+
 export const zAlertChannelType = z.literal('webhook');
 
 export type AlertChannelType = z.infer<typeof zAlertChannelType>;
@@ -321,9 +332,69 @@ export const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-export const AlertBaseSchema = z.object({
+export const validateAlertScheduleOffsetMinutes = (
+  alert: {
+    interval: AlertInterval;
+    scheduleOffsetMinutes?: number;
+    scheduleStartAt?: string | Date | null;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  const scheduleOffsetMinutes = alert.scheduleOffsetMinutes ?? 0;
+  const intervalMinutes = ALERT_INTERVAL_TO_MINUTES[alert.interval];
+
+  if (alert.scheduleStartAt != null && scheduleOffsetMinutes > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'scheduleOffsetMinutes must be 0 when scheduleStartAt is provided',
+      path: ['scheduleOffsetMinutes'],
+    });
+  }
+
+  if (scheduleOffsetMinutes >= intervalMinutes) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `scheduleOffsetMinutes must be less than ${intervalMinutes} minute${intervalMinutes === 1 ? '' : 's'}`,
+      path: ['scheduleOffsetMinutes'],
+    });
+  }
+};
+
+const MAX_SCHEDULE_START_AT_FUTURE_MS = 1000 * 60 * 60 * 24 * 365;
+const MAX_SCHEDULE_START_AT_PAST_MS = 1000 * 60 * 60 * 24 * 365 * 10;
+const MAX_SCHEDULE_OFFSET_MINUTES = 1439;
+
+export const scheduleStartAtSchema = z
+  .union([z.string().datetime(), z.null()])
+  .optional()
+  .refine(
+    value =>
+      value == null ||
+      new Date(value).getTime() <= Date.now() + MAX_SCHEDULE_START_AT_FUTURE_MS,
+    {
+      message: 'scheduleStartAt must be within 1 year from now',
+    },
+  )
+  .refine(
+    value =>
+      value == null ||
+      new Date(value).getTime() >= Date.now() - MAX_SCHEDULE_START_AT_PAST_MS,
+    {
+      message: 'scheduleStartAt must be within 10 years in the past',
+    },
+  );
+
+export const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
   interval: AlertIntervalSchema,
+  scheduleOffsetMinutes: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_SCHEDULE_OFFSET_MINUTES)
+    .optional(),
+  scheduleStartAt: scheduleStartAtSchema,
   threshold: z.number().int().min(1),
   thresholdType: z.nativeEnum(AlertThresholdType),
   channel: zAlertChannel,
@@ -339,13 +410,25 @@ export const AlertBaseSchema = z.object({
     .optional(),
 });
 
-export const ChartAlertBaseSchema = AlertBaseSchema.extend({
+// Keep AlertBaseSchema as a ZodObject for backwards compatibility with
+// external consumers that call object helpers like .extend()/.pick()/.omit().
+export const AlertBaseSchema = AlertBaseObjectSchema;
+
+const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
+  validateAlertScheduleOffsetMinutes,
+);
+
+export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number().positive(),
 });
 
+const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
+  validateAlertScheduleOffsetMinutes,
+);
+
 export const AlertSchema = z.union([
-  z.intersection(AlertBaseSchema, zSavedSearchAlert),
-  z.intersection(ChartAlertBaseSchema, zTileAlert),
+  z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
+  z.intersection(ChartAlertBaseValidatedSchema, zTileAlert),
 ]);
 
 export type Alert = z.infer<typeof AlertSchema>;
@@ -507,8 +590,8 @@ export const SavedChartConfigSchema = z
     name: z.string().optional(),
     source: z.string(),
     alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
+      AlertBaseValidatedSchema.optional(),
+      ChartAlertBaseValidatedSchema.optional(),
     ]),
   })
   .extend(

@@ -22,6 +22,8 @@ export type AlertInput = {
   source?: AlertSource;
   channel: AlertChannel;
   interval: AlertInterval;
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: string | null;
   thresholdType: AlertThresholdType;
   threshold: number;
 
@@ -46,9 +48,30 @@ export type AlertInput = {
 };
 
 const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
+  // Preserve existing DB value when scheduleStartAt is omitted from updates
+  // (undefined), while still allowing explicit clears via null.
+  const hasScheduleStartAt = alert.scheduleStartAt !== undefined;
+  // If scheduleStartAt is explicitly provided, offset-based alignment is ignored.
+  // Force persisted offset to 0 so updates can't leave stale non-zero offsets.
+  // If scheduleStartAt is explicitly cleared and offset is omitted, also reset
+  // to 0 to avoid preserving stale values from older documents.
+  const normalizedScheduleOffsetMinutes =
+    hasScheduleStartAt && alert.scheduleStartAt != null
+      ? 0
+      : hasScheduleStartAt && alert.scheduleOffsetMinutes == null
+        ? 0
+        : alert.scheduleOffsetMinutes;
+
   return {
     channel: alert.channel,
     interval: alert.interval,
+    ...(normalizedScheduleOffsetMinutes != null && {
+      scheduleOffsetMinutes: normalizedScheduleOffsetMinutes,
+    }),
+    ...(hasScheduleStartAt && {
+      scheduleStartAt:
+        alert.scheduleStartAt == null ? null : new Date(alert.scheduleStartAt),
+    }),
     source: alert.source,
     threshold: alert.threshold,
     thresholdType: alert.thresholdType,

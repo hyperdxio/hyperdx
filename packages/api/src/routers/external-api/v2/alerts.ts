@@ -105,6 +105,18 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *         interval:
  *           $ref: '#/components/schemas/AlertInterval'
  *           example: "1h"
+ *         scheduleOffsetMinutes:
+ *           type: integer
+ *           minimum: 0
+ *           description: Offset from the interval boundary in minutes. For example, 2 with a 5m interval evaluates windows at :02, :07, :12, etc. (UTC).
+ *           nullable: true
+ *           example: 2
+ *         scheduleStartAt:
+ *           type: string
+ *           format: date-time
+ *           description: Absolute UTC start time anchor. Alert windows start from this timestamp and repeat every interval.
+ *           nullable: true
+ *           example: "2026-02-08T10:00:00.000Z"
  *         source:
  *           $ref: '#/components/schemas/AlertSource'
  *           example: "tile"
@@ -404,7 +416,7 @@ router.post(
       return res.sendStatus(403);
     }
     try {
-      const alertInput = req.body;
+      const alertInput = alertSchema.parse(req.body);
       const createdAlert = await createAlert(teamId, alertInput, userId);
 
       return res.json({
@@ -496,7 +508,7 @@ router.put(
       }
       const { id } = req.params;
 
-      const alertInput = req.body;
+      const alertInput = alertSchema.parse(req.body);
       const alert = await updateAlert(id, teamId, alertInput);
 
       if (alert == null) {

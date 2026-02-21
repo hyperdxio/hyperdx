@@ -27,6 +27,7 @@ import {
   SelectList,
   SourceKind,
   TSource,
+  validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -99,6 +100,8 @@ import {
   DEFAULT_TILE_ALERT,
   extendDateRangeToInterval,
   intervalToGranularity,
+  intervalToMinutes,
+  normalizeNoOpAlertScheduleFields,
   TILE_ALERT_INTERVAL_OPTIONS,
   TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
 } from '@/utils/alerts';
@@ -107,6 +110,7 @@ import HDXMarkdownChart from '../HDXMarkdownChart';
 
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { AggFnSelectControlled } from './AggFnSelect';
+import { AlertScheduleFields } from './AlertScheduleFields';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from './ChartDisplaySettingsDrawer';
@@ -381,7 +385,7 @@ function ChartSeriesEditorComponent({
           <AggFnSelectControlled
             aggFnName={`${namePrefix}aggFn`}
             quantileLevelName={`${namePrefix}level`}
-            defaultValue={AGG_FNS[0].value}
+            defaultValue={AGG_FNS[0]?.value ?? 'avg'}
             control={control}
           />
         </div>
@@ -548,7 +552,9 @@ const ChartSeriesEditor = ChartSeriesEditorComponent;
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
-    alert: ChartAlertBaseSchema.optional(),
+    alert: ChartAlertBaseSchema.superRefine(
+      validateAlertScheduleOffsetMinutes,
+    ).optional(),
   })
   .passthrough();
 
@@ -599,6 +605,13 @@ export default function EditTimeChartForm({
   const configWithSeries: SavedChartConfigWithSeries = useMemo(
     () => ({
       ...chartConfig,
+      ...(chartConfig.alert != null && {
+        alert: {
+          ...chartConfig.alert,
+          scheduleOffsetMinutes: chartConfig.alert.scheduleOffsetMinutes ?? 0,
+          scheduleStartAt: chartConfig.alert.scheduleStartAt ?? null,
+        },
+      }),
       series: Array.isArray(chartConfig.select) ? chartConfig.select : [],
     }),
     [chartConfig],
@@ -644,7 +657,14 @@ export default function EditTimeChartForm({
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
   const markdown = useWatch({ control, name: 'markdown' });
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
+  const alertScheduleOffsetMinutes = useWatch({
+    control,
+    name: 'alert.scheduleOffsetMinutes',
+  });
   const granularity = useWatch({ control, name: 'granularity' });
+  const maxAlertScheduleOffsetMinutes = alert?.interval
+    ? Math.max(intervalToMinutes(alert.interval) - 1, 0)
+    : 0;
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -763,12 +783,20 @@ export default function EditTimeChartForm({
         select:
           form.displayType === DisplayType.Search ? form.select : form.series,
       };
+      const normalizedConfig = {
+        ...config,
+        alert: normalizeNoOpAlertScheduleFields(
+          config.alert,
+          chartConfig.alert,
+        ),
+      };
 
-      setChartConfig?.(config);
+      setChartConfig?.(normalizedConfig);
       if (tableSource != null) {
-        const isSelectEmpty = !config.select || config.select.length === 0; // select is string or array
+        const isSelectEmpty =
+          !normalizedConfig.select || normalizedConfig.select.length === 0; // select is string or array
         const newConfig = {
-          ...config,
+          ...normalizedConfig,
           from: tableSource.from,
           timestampValueExpression: tableSource.timestampValueExpression,
           dateRange,
@@ -777,7 +805,7 @@ export default function EditTimeChartForm({
           metricTables: tableSource.metricTables,
           select: isSelectEmpty
             ? tableSource.defaultTableSelectExpression || ''
-            : config.select,
+            : normalizedConfig.select,
         };
         setQueriedConfigAndSource(
           // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
@@ -790,6 +818,7 @@ export default function EditTimeChartForm({
       }
     })();
   }, [
+    chartConfig.alert,
     handleSubmit,
     setChartConfig,
     setQueriedConfigAndSource,
@@ -838,16 +867,24 @@ export default function EditTimeChartForm({
           v.select = v.series;
         }
 
+        const withoutSeries = omit(v, ['series']);
+        const normalizedWithSchedule = {
+          ...withoutSeries,
+          alert: normalizeNoOpAlertScheduleFields(
+            withoutSeries.alert,
+            chartConfig.alert,
+          ),
+        };
         const normalizedChartConfig = normalizeChartConfig(
           // Avoid saving the series field. Series should be persisted in the select field.
-          omit(v, ['series']),
+          normalizedWithSchedule,
           tableSource,
         );
 
         onSave?.(normalizedChartConfig);
       }
     },
-    [onSave, displayType, tableSource, setError],
+    [onSave, displayType, tableSource, setError, chartConfig.alert],
   );
 
   // Track previous values for detecting changes
@@ -1361,6 +1398,15 @@ export default function EditTimeChartForm({
                   </Text>
                 )}
               </Group>
+              <AlertScheduleFields
+                control={control}
+                setValue={setValue}
+                scheduleOffsetName="alert.scheduleOffsetMinutes"
+                scheduleStartAtName="alert.scheduleStartAt"
+                scheduleOffsetMinutes={alertScheduleOffsetMinutes}
+                maxScheduleOffsetMinutes={maxAlertScheduleOffsetMinutes}
+                offsetWindowLabel="from each alert window"
+              />
               <Text size="xxs" opacity={0.5} mb={4} mt="xs">
                 Send to
               </Text>

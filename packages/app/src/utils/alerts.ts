@@ -8,6 +8,7 @@ import _ from 'lodash';
 import { z } from 'zod';
 import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  ALERT_INTERVAL_TO_MINUTES,
   AlertChannelType,
   AlertInterval,
   AlertThresholdType,
@@ -24,6 +25,10 @@ export function intervalToGranularity(interval: AlertInterval) {
   if (interval === '12h') return Granularity.TwelveHour;
   if (interval === '1d') return Granularity.OneDay;
   return Granularity.OneDay;
+}
+
+export function intervalToMinutes(interval: AlertInterval): number {
+  return ALERT_INTERVAL_TO_MINUTES[interval];
 }
 
 export function intervalToDateRange(interval: AlertInterval): [Date, Date] {
@@ -112,6 +117,8 @@ export const DEFAULT_TILE_ALERT: z.infer<typeof ChartAlertBaseSchema> = {
   threshold: 1,
   thresholdType: AlertThresholdType.ABOVE,
   interval: '5m',
+  scheduleOffsetMinutes: 0,
+  scheduleStartAt: null,
   channel: {
     type: 'webhook',
     webhookId: '',
@@ -127,4 +134,53 @@ export function isAlertSilenceExpired(silenced?: {
   until: string | Date;
 }): boolean {
   return silenced ? new Date() > new Date(silenced.until) : false;
+}
+
+export function parseScheduleStartAtValue(
+  value: string | null | undefined,
+): Date | null {
+  if (value == null) {
+    return null;
+  }
+
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+}
+
+type AlertScheduleFields = {
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: string | null;
+};
+
+/**
+ * Keep alert documents backward-compatible by avoiding no-op writes for
+ * scheduling fields on pre-migration alerts that never had these keys.
+ */
+export function normalizeNoOpAlertScheduleFields<
+  T extends AlertScheduleFields | undefined,
+>(alert: T, previousAlert?: AlertScheduleFields | null): T {
+  if (alert == null) {
+    return alert;
+  }
+
+  const normalizedAlert = { ...alert };
+  // Treat undefined as "field absent" so we don't depend on object key
+  // preservation/stripping behavior from any parsing layer.
+  const previousHadOffset =
+    previousAlert != null && previousAlert.scheduleOffsetMinutes !== undefined;
+  const previousHadStartAt =
+    previousAlert != null && previousAlert.scheduleStartAt !== undefined;
+
+  if (
+    (normalizedAlert.scheduleOffsetMinutes ?? 0) === 0 &&
+    !previousHadOffset
+  ) {
+    delete normalizedAlert.scheduleOffsetMinutes;
+  }
+
+  if (normalizedAlert.scheduleStartAt == null && !previousHadStartAt) {
+    delete normalizedAlert.scheduleStartAt;
+  }
+
+  return normalizedAlert as T;
 }

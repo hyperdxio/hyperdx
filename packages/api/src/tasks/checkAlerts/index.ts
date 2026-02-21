@@ -64,6 +64,90 @@ export const doesExceedThreshold = (
   return false;
 };
 
+const normalizeScheduleOffsetMinutes = ({
+  alertId,
+  scheduleOffsetMinutes,
+  windowSizeInMins,
+}: {
+  alertId: string;
+  scheduleOffsetMinutes: number | undefined;
+  windowSizeInMins: number;
+}) => {
+  if (scheduleOffsetMinutes == null) {
+    return 0;
+  }
+
+  if (!Number.isFinite(scheduleOffsetMinutes)) {
+    return 0;
+  }
+
+  const normalized = Math.max(0, Math.floor(scheduleOffsetMinutes));
+  if (normalized < windowSizeInMins) {
+    return normalized;
+  }
+
+  const scheduleOffsetInMins = normalized % windowSizeInMins;
+  logger.warn(
+    {
+      alertId,
+      scheduleOffsetMinutes,
+      normalizedScheduleOffsetMinutes: scheduleOffsetInMins,
+      windowSizeInMins,
+    },
+    'scheduleOffsetMinutes is greater than or equal to the interval and was normalized',
+  );
+  return scheduleOffsetInMins;
+};
+
+const normalizeScheduleStartAt = ({
+  alertId,
+  scheduleStartAt,
+}: {
+  alertId: string;
+  scheduleStartAt: IAlert['scheduleStartAt'];
+}) => {
+  if (scheduleStartAt == null) {
+    return undefined;
+  }
+
+  if (fns.isValid(scheduleStartAt)) {
+    return scheduleStartAt;
+  }
+
+  logger.warn(
+    {
+      alertId,
+      scheduleStartAt,
+    },
+    'Invalid scheduleStartAt value detected, ignoring start time schedule',
+  );
+  return undefined;
+};
+
+export const getScheduledWindowStart = (
+  now: Date,
+  windowSizeInMins: number,
+  scheduleOffsetMinutes = 0,
+  scheduleStartAt?: Date,
+) => {
+  if (scheduleStartAt != null) {
+    const windowSizeMs = windowSizeInMins * 60 * 1000;
+    const elapsedMs = Math.max(0, now.getTime() - scheduleStartAt.getTime());
+    const windowCountSinceStart = Math.floor(elapsedMs / windowSizeMs);
+    return new Date(
+      scheduleStartAt.getTime() + windowCountSinceStart * windowSizeMs,
+    );
+  }
+
+  if (scheduleOffsetMinutes <= 0) {
+    return roundDownToXMinutes(windowSizeInMins)(now);
+  }
+
+  const shiftedNow = fns.subMinutes(now, scheduleOffsetMinutes);
+  const roundedShiftedNow = roundDownToXMinutes(windowSizeInMins)(shiftedNow);
+  return fns.addMinutes(roundedShiftedNow, scheduleOffsetMinutes);
+};
+
 const fireChannelEvent = async ({
   alert,
   alertProvider,
@@ -126,6 +210,12 @@ const fireChannelEvent = async ({
       dashboardId: dashboard?.id,
       groupBy: alert.groupBy,
       interval: alert.interval,
+      ...(alert.scheduleOffsetMinutes != null && {
+        scheduleOffsetMinutes: alert.scheduleOffsetMinutes,
+      }),
+      ...(alert.scheduleStartAt != null && {
+        scheduleStartAt: alert.scheduleStartAt.toISOString(),
+      }),
       message: alert.message,
       name: alert.name,
       savedSearchId: savedSearch?.id,
@@ -227,6 +317,7 @@ const getAlertEvaluationDateRange = (
   hasGroupBy: boolean,
   nowInMinsRoundDown: Date,
   windowSizeInMins: number,
+  scheduleStartAt?: Date,
 ) => {
   // Calculate date range for the query
   // Find the latest createdAt among all histories for this alert
@@ -248,10 +339,16 @@ const getAlertEvaluationDateRange = (
     previousCreatedAt = previous?.createdAt;
   }
 
+  const rawStartTime = previousCreatedAt
+    ? previousCreatedAt.getTime()
+    : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins).getTime();
+  const clampedStartTime =
+    scheduleStartAt == null
+      ? rawStartTime
+      : Math.max(rawStartTime, scheduleStartAt.getTime());
+
   return calcAlertDateRange(
-    previousCreatedAt
-      ? previousCreatedAt.getTime()
-      : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins).getTime(),
+    clampedStartTime,
     nowInMinsRoundDown.getTime(),
     windowSizeInMins,
   );
@@ -388,7 +485,43 @@ export const processAlert = async (
   const { alert, source, previousMap } = details;
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
-    const nowInMinsRoundDown = roundDownToXMinutes(windowSizeInMins)(now);
+    const scheduleStartAt = normalizeScheduleStartAt({
+      alertId: alert.id,
+      scheduleStartAt: alert.scheduleStartAt,
+    });
+    if (scheduleStartAt != null && now < scheduleStartAt) {
+      logger.info(
+        {
+          alertId: alert.id,
+          now,
+          scheduleStartAt,
+        },
+        'Skipped alert check because scheduleStartAt is in the future',
+      );
+      return;
+    }
+
+    const scheduleOffsetMinutes = normalizeScheduleOffsetMinutes({
+      alertId: alert.id,
+      scheduleOffsetMinutes: alert.scheduleOffsetMinutes,
+      windowSizeInMins,
+    });
+    if (scheduleStartAt != null && scheduleOffsetMinutes > 0) {
+      logger.info(
+        {
+          alertId: alert.id,
+          scheduleStartAt,
+          scheduleOffsetMinutes,
+        },
+        'scheduleStartAt is set; scheduleOffsetMinutes is ignored for window alignment',
+      );
+    }
+    const nowInMinsRoundDown = getScheduledWindowStart(
+      now,
+      windowSizeInMins,
+      scheduleOffsetMinutes,
+      scheduleStartAt,
+    );
     const hasGroupBy = alert.groupBy && alert.groupBy.length > 0;
 
     // Check if we should skip this alert check based on last evaluation time
@@ -400,6 +533,8 @@ export const processAlert = async (
           now,
           alertId: alert.id,
           hasGroupBy,
+          scheduleOffsetMinutes,
+          scheduleStartAt,
         },
         `Skipped to check alert since the time diff is still less than 1 window size`,
       );
@@ -411,7 +546,20 @@ export const processAlert = async (
       !!hasGroupBy,
       nowInMinsRoundDown,
       windowSizeInMins,
+      scheduleStartAt,
     );
+    if (dateRange[0].getTime() >= dateRange[1].getTime()) {
+      logger.info(
+        {
+          alertId: alert.id,
+          dateRange,
+          nowInMinsRoundDown,
+          scheduleStartAt,
+        },
+        'Skipped alert check because the anchored window has not fully elapsed yet',
+      );
+      return;
+    }
 
     const chartConfig = getChartConfigFromAlert(
       details,

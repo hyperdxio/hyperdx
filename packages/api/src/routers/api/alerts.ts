@@ -67,6 +67,8 @@ router.get('/', async (req, res, next) => {
           ..._.pick(alert, [
             '_id',
             'interval',
+            'scheduleOffsetMinutes',
+            'scheduleStartAt',
             'threshold',
             'thresholdType',
             'state',
@@ -96,7 +98,9 @@ router.post(
       return res.sendStatus(403);
     }
     try {
-      const alertInput = req.body;
+      // Re-parse at runtime so nested refinements are enforced server-side and
+      // unknown fields are dropped consistently for internal API callers.
+      const alertInput = alertSchema.parse(req.body);
       return res.json({
         data: await createAlert(teamId, alertInput, userId),
       });
@@ -121,7 +125,9 @@ router.put(
         return res.sendStatus(403);
       }
       const { id } = req.params;
-      const alertInput = req.body;
+      // Re-parse at runtime so nested refinements are enforced server-side and
+      // unknown fields are dropped consistently for internal API callers.
+      const alertInput = alertSchema.parse(req.body);
       res.json({
         data: await updateAlert(id, teamId, alertInput),
       });

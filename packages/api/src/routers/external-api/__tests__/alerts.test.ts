@@ -253,6 +253,53 @@ describe('External API Alerts', () => {
       consoleErrorSpy.mockRestore();
     });
 
+    it('should reject scheduleOffsetMinutes when scheduleStartAt is provided', async () => {
+      const dashboard = await createTestDashboard();
+
+      const response = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: new ObjectId().toString(),
+          },
+          scheduleOffsetMinutes: 2,
+          scheduleStartAt: new Date().toISOString(),
+        })
+        .expect(400);
+
+      expect(response.body).toHaveProperty('message');
+    });
+
+    it('should reject scheduleStartAt values more than 1 year in the future', async () => {
+      const dashboard = await createTestDashboard();
+
+      const response = await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: new ObjectId().toString(),
+          },
+          scheduleStartAt: new Date(
+            Date.now() + 366 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+        })
+        .expect(400);
+
+      expect(response.body).toHaveProperty('message');
+    });
+
     it('should create multiple alerts for different tiles', async () => {
       // Create a dashboard with multiple tiles
       const dashboard = await createTestDashboard({ numTiles: 3 });
@@ -422,6 +469,31 @@ describe('External API Alerts', () => {
       expect(retrievedAlert.threshold).toBe(500);
       expect(retrievedAlert.interval).toBe('1h');
       expect(retrievedAlert.message).toBe('Updated message');
+    });
+
+    it('should reject scheduleOffsetMinutes when scheduleStartAt is provided', async () => {
+      const { alert } = await createTestAlert({
+        interval: '1h',
+      });
+
+      const originalAlert = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+        .send({
+          threshold: originalAlert.body.data.threshold,
+          interval: originalAlert.body.data.interval,
+          thresholdType: originalAlert.body.data.thresholdType,
+          source: originalAlert.body.data.source,
+          dashboardId: originalAlert.body.data.dashboardId,
+          tileId: originalAlert.body.data.tileId,
+          channel: originalAlert.body.data.channel,
+          scheduleOffsetMinutes: 2,
+          scheduleStartAt: new Date().toISOString(),
+        })
+        .expect(400);
     });
   });
 

@@ -403,6 +403,8 @@ export type ExternalAlert = {
   message?: string | null;
   threshold: number;
   interval: AlertInterval;
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: string | null;
   thresholdType: AlertThresholdType;
   source?: string;
   state: AlertState;
@@ -437,6 +439,24 @@ function hasUpdatedAt(
   return 'updatedAt' in alert && alert.updatedAt instanceof Date;
 }
 
+function transformScheduleStartAt(
+  scheduleStartAt: unknown,
+): ExternalAlert['scheduleStartAt'] {
+  if (scheduleStartAt === null) {
+    return null;
+  }
+
+  if (scheduleStartAt === undefined) {
+    return undefined;
+  }
+
+  if (scheduleStartAt instanceof Date) {
+    return scheduleStartAt.toISOString();
+  }
+
+  return typeof scheduleStartAt === 'string' ? scheduleStartAt : undefined;
+}
+
 function transformSilencedToExternalSilenced(
   silenced: AlertDocumentObject['silenced'],
 ): ExternalAlert['silenced'] {
@@ -464,6 +484,10 @@ export function translateAlertDocumentToExternalAlert(
     message: alertObj.message,
     threshold: alertObj.threshold,
     interval: alertObj.interval,
+    ...(alertObj.scheduleOffsetMinutes != null && {
+      scheduleOffsetMinutes: alertObj.scheduleOffsetMinutes,
+    }),
+    scheduleStartAt: transformScheduleStartAt(alertObj.scheduleStartAt),
     thresholdType: alertObj.thresholdType,
     source: alertObj.source,
     state: alertObj.state,

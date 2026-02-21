@@ -1,0 +1,122 @@
+import { useEffect } from 'react';
+import {
+  Control,
+  Controller,
+  FieldPath,
+  FieldValues,
+  PathValue,
+  UseFormSetValue,
+  useWatch,
+} from 'react-hook-form';
+import { NumberInput } from 'react-hook-form-mantine';
+import { Group, Text } from '@mantine/core';
+import { DateTimePicker } from '@mantine/dates';
+
+import { parseScheduleStartAtValue } from '@/utils/alerts';
+
+type AlertScheduleFieldsProps<T extends FieldValues> = {
+  control: Control<T>;
+  setValue: UseFormSetValue<T>;
+  scheduleOffsetName: FieldPath<T>;
+  scheduleStartAtName: FieldPath<T>;
+  scheduleOffsetMinutes: number | null | undefined;
+  maxScheduleOffsetMinutes: number;
+  offsetWindowLabel: string;
+};
+
+export function AlertScheduleFields<T extends FieldValues>({
+  control,
+  setValue,
+  scheduleOffsetName,
+  scheduleStartAtName,
+  scheduleOffsetMinutes,
+  maxScheduleOffsetMinutes,
+  offsetWindowLabel,
+}: AlertScheduleFieldsProps<T>) {
+  const showScheduleOffsetInput = maxScheduleOffsetMinutes > 0;
+  const scheduleStartAtValue = useWatch({
+    control,
+    name: scheduleStartAtName,
+  }) as string | null | undefined;
+  const hasScheduleStartAtAnchor = scheduleStartAtValue != null;
+
+  useEffect(() => {
+    const normalizedOffset = scheduleOffsetMinutes ?? 0;
+    if (!showScheduleOffsetInput && normalizedOffset !== 0) {
+      setValue(scheduleOffsetName, 0 as PathValue<T, FieldPath<T>>, {
+        shouldValidate: true,
+      });
+      return;
+    }
+    if (hasScheduleStartAtAnchor && normalizedOffset > 0) {
+      setValue(scheduleOffsetName, 0 as PathValue<T, FieldPath<T>>, {
+        shouldValidate: true,
+      });
+    }
+  }, [
+    hasScheduleStartAtAnchor,
+    scheduleOffsetMinutes,
+    scheduleOffsetName,
+    setValue,
+    showScheduleOffsetInput,
+  ]);
+
+  return (
+    <>
+      {showScheduleOffsetInput && (
+        <>
+          <Group gap="xs" mt="xs">
+            <Text size="sm" opacity={0.7}>
+              Start offset (min)
+            </Text>
+            <NumberInput
+              min={0}
+              max={maxScheduleOffsetMinutes}
+              step={1}
+              size="xs"
+              w={100}
+              control={control}
+              name={scheduleOffsetName}
+              disabled={hasScheduleStartAtAnchor}
+            />
+            <Text size="sm" opacity={0.7}>
+              {offsetWindowLabel}
+            </Text>
+          </Group>
+          {hasScheduleStartAtAnchor && (
+            <Text size="xs" opacity={0.6} mt={4}>
+              Start offset is ignored while an anchor start time is set.
+            </Text>
+          )}
+        </>
+      )}
+      <Group gap="xs" mt="xs" align="start">
+        <Text size="sm" opacity={0.7} mt={6}>
+          Anchor start time
+        </Text>
+        <Controller
+          control={control}
+          name={scheduleStartAtName}
+          render={({ field, fieldState: { error } }) => (
+            <DateTimePicker
+              size="xs"
+              w={260}
+              placeholder="Pick date and time"
+              clearable
+              dropdownType="popover"
+              popoverProps={{ withinPortal: true, zIndex: 10050 }}
+              value={parseScheduleStartAtValue(
+                field.value as string | null | undefined,
+              )}
+              onChange={value => field.onChange(value?.toISOString() ?? null)}
+              error={error?.message}
+            />
+          )}
+        />
+        <Text size="xs" opacity={0.6} mt={6}>
+          Displayed in local time, stored as UTC
+        </Text>
+      </Group>
+    </>
+  );
+}
