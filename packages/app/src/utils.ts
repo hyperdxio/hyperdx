@@ -760,6 +760,12 @@ export const formatNumber = (
     return 'N/A';
   }
 
+  // Guard against NaN only - ClickHouse can return numbers as strings, which
+  // we should still format. Only truly non-numeric values (NaN) get passed through.
+  if (isNaN(value as number)) {
+    return String(value);
+  }
+
   if (!options) {
     return value.toString();
   }
