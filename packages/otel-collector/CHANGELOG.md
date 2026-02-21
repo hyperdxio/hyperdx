@@ -1,5 +1,15 @@
 # @hyperdx/otel-collector
 
+## 2.18.0
+
+### Minor Changes
+
+- 4c42fdc3: fix: improve log level extraction with word boundaries in regex
+
+### Patch Changes
+
+- 36da6ff4: chore: bump base alpine 3.23 to address CVE-2025-15467
+
 ## 2.17.0
 
 ### Patch Changes

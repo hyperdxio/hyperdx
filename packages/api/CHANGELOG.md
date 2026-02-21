@@ -1,5 +1,19 @@
 # @hyperdx/api
 
+## 2.18.0
+
+### Minor Changes
+
+- b676f268: feat: Add config property to external dashboard APIs. Deprecate series.
+
+### Patch Changes
+
+- 18e96904: fix: update required fields in our spec
+- Updated dependencies [051276fc]
+- Updated dependencies [4f1da032]
+- Updated dependencies [b676f268]
+  - @hyperdx/common-utils@0.13.0
+
 ## 2.17.0
 
 ### Patch Changes
