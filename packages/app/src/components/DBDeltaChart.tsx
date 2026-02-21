@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
   Bar,
@@ -23,6 +23,7 @@ import {
   Pagination,
   Text,
 } from '@mantine/core';
+import { useElementSize } from '@mantine/hooks';
 
 import { isAggregateFunction } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -265,6 +266,16 @@ function PropertyComparisonChart({
   );
 }
 
+// Layout constants for dynamic grid calculation.
+// CHART_WIDTH/CHART_HEIGHT must stay in sync with PropertyComparisonChart's style dimensions (line ~219).
+// CHART_GAP must match the `gap` prop on the Group component below.
+const CHART_WIDTH = 340;
+const CHART_HEIGHT = 120;
+const CHART_GAP = 16; // px; used both here and as explicit Group gap prop
+// Space reserved for the pagination row: Pagination control (~32px) + mt="md" margin (16px).
+// Always reserved (even when pagination is hidden) so rows calculation stays stable.
+const PAGINATION_HEIGHT = 48;
+
 export default function DBDeltaChart({
   config,
   valueExpr,
@@ -483,7 +494,28 @@ export default function DBDeltaChart({
 
   const [activePage, setPage] = useState(1);
 
-  const PAGE_SIZE = 12;
+  const {
+    ref: containerRef,
+    width: containerWidth,
+    height: containerHeight,
+  } = useElementSize();
+
+  const columns = Math.max(
+    1,
+    Math.floor((containerWidth + CHART_GAP) / (CHART_WIDTH + CHART_GAP)),
+  );
+  const rows = Math.max(
+    1,
+    Math.floor(
+      (containerHeight - PAGINATION_HEIGHT + CHART_GAP) /
+        (CHART_HEIGHT + CHART_GAP),
+    ),
+  );
+  const PAGE_SIZE = columns * rows;
+
+  useEffect(() => {
+    setPage(1);
+  }, [PAGE_SIZE]);
 
   if (error) {
     return (
@@ -520,17 +552,19 @@ export default function DBDeltaChart({
     );
   }
 
+  const totalPages = Math.ceil(sortedProperties.length / PAGE_SIZE);
+
   return (
-    <Box style={{ overflow: 'auto', height: '100%' }}>
-      <Flex justify="flex-end" mx="md" mb="md">
-        <Pagination
-          size="xs"
-          value={activePage}
-          onChange={setPage}
-          total={Math.ceil(sortedProperties.length / PAGE_SIZE)}
-        />
-      </Flex>
-      <Group>
+    <Box
+      ref={containerRef}
+      style={{
+        overflow: 'hidden',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <Group gap={CHART_GAP}>
         {Array.from(sortedProperties)
           .slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE)
           .map(property => (
@@ -546,6 +580,19 @@ export default function DBDeltaChart({
             />
           ))}
       </Group>
+      <Flex
+        justify="flex-end"
+        mx="md"
+        mt="md"
+        style={{ visibility: totalPages > 1 ? 'visible' : 'hidden' }}
+      >
+        <Pagination
+          size="xs"
+          value={activePage}
+          onChange={setPage}
+          total={totalPages}
+        />
+      </Flex>
     </Box>
   );
 }
