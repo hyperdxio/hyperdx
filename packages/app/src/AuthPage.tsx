@@ -34,7 +34,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
   const isLoggedIn = Boolean(!teamIsLoading && team);
 
   useEffect(() => {
-    if (isLoggedIn) {
+    if (isLoggedIn || config.IS_ANONYMOUS_MODE) {
       router.push('/search');
     }
   }, [isLoggedIn, router]);

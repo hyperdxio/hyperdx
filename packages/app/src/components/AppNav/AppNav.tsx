@@ -41,7 +41,11 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
-import { IS_K8S_DASHBOARD_ENABLED, IS_LOCAL_MODE } from '@/config';
+import {
+  IS_ANONYMOUS_MODE,
+  IS_K8S_DASHBOARD_ENABLED,
+  IS_LOCAL_MODE,
+} from '@/config';
 import {
   useCreateDashboard,
   useDashboards,
@@ -74,6 +78,9 @@ const APP_VERSION =
 
 const UNTAGGED_SEARCHES_GROUP_NAME = 'Saved Searches';
 const UNTAGGED_DASHBOARDS_GROUP_NAME = 'Saved Dashboards';
+
+// Anonymous mode behaves like local mode for UI purposes
+const IS_AUTH_HIDDEN = IS_LOCAL_MODE || IS_ANONYMOUS_MODE;
 
 // Navigation link configuration
 type NavLinkConfig = {
@@ -117,7 +124,7 @@ const NAV_LINKS: NavLinkConfig[] = [
 function NewDashboardButton() {
   const createDashboard = useCreateDashboard();
 
-  if (IS_LOCAL_MODE) {
+  if (IS_AUTH_HIDDEN) {
     return (
       <Button
         component={Link}
@@ -722,7 +729,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               href="/search"
               isExpanded={isSearchExpanded}
               onToggle={
-                !IS_LOCAL_MODE
+                !IS_AUTH_HIDDEN
                   ? () => setIsSearchExpanded(!isSearchExpanded)
                   : undefined
               }
@@ -734,7 +741,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   {isLogViewsLoading ? (
                     <Loader variant="dots" mx="md" my="xs" size="sm" />
                   ) : (
-                    !IS_LOCAL_MODE && (
+                    !IS_AUTH_HIDDEN && (
                       <>
                         <SearchInput
                           placeholder="Saved Searches"
@@ -775,7 +782,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               </Collapse>
             )}
             {/* Simple nav links from config */}
-            {NAV_LINKS.filter(link => !link.cloudOnly || !IS_LOCAL_MODE).map(
+            {NAV_LINKS.filter(link => !link.cloudOnly || !IS_AUTH_HIDDEN).map(
               link => (
                 <AppNavLink
                   key={link.id}
@@ -804,7 +811,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   {isDashboardsLoading ? (
                     <Loader variant="dots" mx="md" my="xs" size="sm" />
                   ) : (
-                    !IS_LOCAL_MODE && (
+                    !IS_AUTH_HIDDEN && (
                       <>
                         <SearchInput
                           placeholder="Saved Dashboards"
@@ -893,7 +900,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             )}
 
             {/* Team Settings (Cloud only) */}
-            {!IS_LOCAL_MODE && (
+            {!IS_AUTH_HIDDEN && (
               <AppNavLink
                 label="Team Settings"
                 href="/team"
@@ -922,7 +929,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             userName={meData?.name}
             teamName={meData?.team?.name}
             onClickUserPreferences={openUserPreferences}
-            logoutUrl={IS_LOCAL_MODE ? null : `/api/logout`}
+            logoutUrl={IS_AUTH_HIDDEN ? null : `/api/logout`}
           />
           {meData && meData.usageStatsEnabled && (
             <img
