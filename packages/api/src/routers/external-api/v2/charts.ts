@@ -226,6 +226,27 @@ const buildChartConfigFromRequest = async (
     groupBy,
   } = params.externalSeries;
 
+  const isMetricSource = source.kind === SourceKind.Metric;
+
+  // For metric sources, if metricName is not provided but field is,
+  // use field as the metric name (matching the natural API usage pattern
+  // where users pass the metric name as the field they want to query)
+  const resolvedMetricName = isMetricSource
+    ? (metricName ?? field)
+    : metricName;
+
+  // For metric sources, valueExpression should be 'Value' (the ClickHouse column)
+  // unless the user explicitly provides both metricName and field
+  const resolvedValueExpression = isMetricSource
+    ? metricName && field
+      ? field.includes('.')
+        ? `'${field}'`
+        : field
+      : 'Value'
+    : field?.includes('.')
+      ? `'${field}'`
+      : (field ?? '');
+
   const hasGroupBy = groupBy?.length > 0;
 
   if (aggFn == null) {
@@ -237,23 +258,21 @@ const buildChartConfigFromRequest = async (
     connection: connection._id.toString(),
     from: {
       databaseName: source.from.databaseName,
-      tableName: source.kind !== SourceKind.Metric ? source.from.tableName : '',
+      tableName: !isMetricSource ? source.from.tableName : '',
     },
-    ...(source.kind === SourceKind.Metric && {
+    ...(isMetricSource && {
       metricTables: source.metricTables,
     }),
     select: [
       {
         aggFn,
         level,
-        valueExpression: field?.includes('.')
-          ? `'${field}'`
-          : (field ?? (source.kind === SourceKind.Metric ? 'Value' : '')),
+        valueExpression: resolvedValueExpression,
         aggCondition: where?.trim() ?? '',
         aggConditionLanguage: whereLanguage ?? 'lucene',
         alias: `series_${params.seriesIndex}`,
-        ...(source.kind === SourceKind.Metric && {
-          metricName,
+        ...(isMetricSource && {
+          metricName: resolvedMetricName,
           metricType: metricDataType,
         }),
       },

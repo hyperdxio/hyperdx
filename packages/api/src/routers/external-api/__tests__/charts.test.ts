@@ -815,6 +815,119 @@ describe('External API v2 Charts', () => {
       expect(isNaN(Number(resultRow['series_2.data']))).toBe(false);
     });
 
+    it('should use field as metricName when metricName is not provided', async () => {
+      // Bypass createSeriesRequestPayload to avoid auto-filling metricName
+      const payload = {
+        startTime: DEFAULT_START_TIME,
+        endTime: DEFAULT_END_TIME,
+        series: [
+          {
+            sourceId: metricSource.id.toString(),
+            dataSource: 'metrics',
+            aggFn: 'avg',
+            metricDataType: MetricsDataType.Gauge,
+            field: 'test.metric.gauge', // field used as metric name, no metricName
+            where: '',
+            groupBy: [],
+          },
+        ],
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send(payload)
+        .expect(200);
+
+      expect(response.body.data).toBeInstanceOf(Array);
+      expect(response.body.data.length).toBe(1);
+      expect(response.body.data[0]).toHaveProperty('ts_bucket');
+      expect('series_0.data' in response.body.data[0]).toBe(true);
+      expect(Number(response.body.data[0]['series_0.data'])).toBe(25);
+    });
+
+    it('should use field as metricName for sum metrics when metricName is not provided', async () => {
+      const payload = {
+        startTime: DEFAULT_START_TIME,
+        endTime: DEFAULT_END_TIME,
+        series: [
+          {
+            sourceId: metricSource.id.toString(),
+            dataSource: 'metrics',
+            aggFn: 'sum',
+            metricDataType: MetricsDataType.Sum,
+            field: 'test.metric.sum', // field used as metric name, no metricName
+            where: '',
+            groupBy: [],
+          },
+        ],
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send(payload)
+        .expect(200);
+
+      expect(response.body.data).toBeInstanceOf(Array);
+      expect(response.body.data.length).toBe(1);
+      expect('series_0.data' in response.body.data[0]).toBe(true);
+      expect(isNaN(Number(response.body.data[0]['series_0.data']))).toBe(false);
+    });
+
+    it('should use field as metricName for histogram metrics when metricName is not provided', async () => {
+      const payload = {
+        startTime: DEFAULT_START_TIME,
+        endTime: DEFAULT_END_TIME,
+        series: [
+          {
+            sourceId: metricSource.id.toString(),
+            dataSource: 'metrics',
+            aggFn: 'quantile',
+            level: 0.95,
+            metricDataType: MetricsDataType.Histogram,
+            field: 'test.metric.histogram', // field used as metric name, no metricName
+            where: '',
+            groupBy: [],
+          },
+        ],
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send(payload)
+        .expect(200);
+
+      expect(response.body.data).toBeInstanceOf(Array);
+      expect(response.body.data.length).toBe(1);
+      expect('series_0.data' in response.body.data[0]).toBe(true);
+      expect(isNaN(Number(response.body.data[0]['series_0.data']))).toBe(false);
+    });
+
+    it('should use metricName over field when both are provided', async () => {
+      const payload = {
+        startTime: DEFAULT_START_TIME,
+        endTime: DEFAULT_END_TIME,
+        series: [
+          {
+            sourceId: metricSource.id.toString(),
+            dataSource: 'metrics',
+            aggFn: 'avg',
+            metricDataType: MetricsDataType.Gauge,
+            metricName: 'test.metric.gauge',
+            field: 'Value',
+            where: '',
+            groupBy: [],
+          },
+        ],
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send(payload)
+        .expect(200);
+
+      expect(response.body.data).toBeInstanceOf(Array);
+      expect(response.body.data.length).toBe(1);
+      expect(response.body.data[0]).toHaveProperty('ts_bucket');
+      expect('series_0.data' in response.body.data[0]).toBe(true);
+      expect(Number(response.body.data[0]['series_0.data'])).toBe(25);
+    });
+
     it('should process series from different sources', async () => {
       const payload = {
         startTime: DEFAULT_START_TIME,
