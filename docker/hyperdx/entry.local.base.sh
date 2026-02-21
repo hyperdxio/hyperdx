@@ -66,8 +66,8 @@ echo "ClickHouse is ready!"
 # Start Otel Collector with entrypoint script for template rendering and log rotation
 /otel-entrypoint.sh /usr/local/bin/opampsupervisor > /var/log/otel-collector.log 2>&1 &
 
-# Start HyperDX app
-concurrently \
+# Start HyperDX app (run as otel user via su-exec)
+su-exec otel ./node_modules/.bin/concurrently \
   "--kill-others-on-fail" \
   "--names=API,APP,ALERT-TASK" \
   "PORT=${HYPERDX_API_PORT:-8000} HYPERDX_APP_PORT=${HYPERDX_APP_PORT:-8080} node -r ./node_modules/@hyperdx/node-opentelemetry/build/src/tracing ./packages/api/build/index.js" \
