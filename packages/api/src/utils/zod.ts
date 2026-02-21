@@ -389,7 +389,7 @@ export const alertSchema = z
   .object({
     channel: zChannel,
     interval: z.enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d']),
-    threshold: z.number().min(0),
+    threshold: z.number(),
     thresholdType: z.nativeEnum(AlertThresholdType),
     source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
     name: z.string().min(1).max(512).nullish(),

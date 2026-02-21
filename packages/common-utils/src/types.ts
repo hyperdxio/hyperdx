@@ -324,7 +324,7 @@ export const zTileAlert = z.object({
 export const AlertBaseSchema = z.object({
   id: z.string().optional(),
   interval: AlertIntervalSchema,
-  threshold: z.number().int().min(1),
+  threshold: z.number(),
   thresholdType: z.nativeEnum(AlertThresholdType),
   channel: zAlertChannel,
   state: z.nativeEnum(AlertState).optional(),
@@ -340,7 +340,7 @@ export const AlertBaseSchema = z.object({
 });
 
 export const ChartAlertBaseSchema = AlertBaseSchema.extend({
-  threshold: z.number().positive(),
+  threshold: z.number(),
 });
 
 export const AlertSchema = z.union([
