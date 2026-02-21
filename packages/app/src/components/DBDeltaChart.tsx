@@ -272,6 +272,9 @@ function PropertyComparisonChart({
 const CHART_WIDTH = 340;
 const CHART_HEIGHT = 120;
 const CHART_GAP = 16; // px; used both here and as explicit Group gap prop
+// Space reserved for the pagination row: Pagination control (~32px) + mt="md" margin (16px).
+// Always reserved (even when pagination is hidden) so rows calculation stays stable.
+const PAGINATION_HEIGHT = 48;
 
 export default function DBDeltaChart({
   config,
@@ -503,7 +506,10 @@ export default function DBDeltaChart({
   );
   const rows = Math.max(
     1,
-    Math.floor((containerHeight + CHART_GAP) / (CHART_HEIGHT + CHART_GAP)),
+    Math.floor(
+      (containerHeight - PAGINATION_HEIGHT + CHART_GAP) /
+        (CHART_HEIGHT + CHART_GAP),
+    ),
   );
   const PAGE_SIZE = columns * rows;
 
@@ -552,7 +558,7 @@ export default function DBDeltaChart({
     <Box
       ref={containerRef}
       style={{
-        overflow: 'auto',
+        overflow: 'hidden',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
@@ -574,16 +580,19 @@ export default function DBDeltaChart({
             />
           ))}
       </Group>
-      {totalPages > 1 && (
-        <Flex justify="flex-end" mx="md" mt="md">
-          <Pagination
-            size="xs"
-            value={activePage}
-            onChange={setPage}
-            total={totalPages}
-          />
-        </Flex>
-      )}
+      <Flex
+        justify="flex-end"
+        mx="md"
+        mt="md"
+        style={{ visibility: totalPages > 1 ? 'visible' : 'hidden' }}
+      >
+        <Pagination
+          size="xs"
+          value={activePage}
+          onChange={setPage}
+          total={totalPages}
+        />
+      </Flex>
     </Box>
   );
 }
