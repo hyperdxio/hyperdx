@@ -238,12 +238,14 @@ const buildChartConfigFromRequest = async (
   // For metric sources, valueExpression should be 'Value' (the ClickHouse column)
   // unless the user explicitly provides both metricName and field
   const resolvedValueExpression = isMetricSource
-    ? (metricName && field
-        ? (field.includes('.') ? `'${field}'` : field)
-        : 'Value')
-    : (field?.includes('.')
+    ? metricName && field
+      ? field.includes('.')
         ? `'${field}'`
-        : (field ?? ''));
+        : field
+      : 'Value'
+    : field?.includes('.')
+      ? `'${field}'`
+      : (field ?? '');
 
   const hasGroupBy = groupBy?.length > 0;
 

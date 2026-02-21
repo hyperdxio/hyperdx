@@ -899,6 +899,35 @@ describe('External API v2 Charts', () => {
       expect(isNaN(Number(response.body.data[0]['series_0.data']))).toBe(false);
     });
 
+    it('should use metricName over field when both are provided', async () => {
+      const payload = {
+        startTime: DEFAULT_START_TIME,
+        endTime: DEFAULT_END_TIME,
+        series: [
+          {
+            sourceId: metricSource.id.toString(),
+            dataSource: 'metrics',
+            aggFn: 'avg',
+            metricDataType: MetricsDataType.Gauge,
+            metricName: 'test.metric.gauge',
+            field: 'Value',
+            where: '',
+            groupBy: [],
+          },
+        ],
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send(payload)
+        .expect(200);
+
+      expect(response.body.data).toBeInstanceOf(Array);
+      expect(response.body.data.length).toBe(1);
+      expect(response.body.data[0]).toHaveProperty('ts_bucket');
+      expect('series_0.data' in response.body.data[0]).toBe(true);
+      expect(Number(response.body.data[0]['series_0.data'])).toBe(25);
+    });
+
     it('should process series from different sources', async () => {
       const payload = {
         startTime: DEFAULT_START_TIME,
