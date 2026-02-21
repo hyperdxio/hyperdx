@@ -13,6 +13,12 @@
   border-right: 1px solid var(--color-border);
   overflow: hidden;
   z-index: 3; // higher z-index to be above other elements
+  transition: min-width 0.2s ease;
+
+  &[data-collapsed='true'] {
+    min-width: 44px;
+    width: 44px !important;
+  }
 
   :global {
     .mantine-TextInput-wrapper {

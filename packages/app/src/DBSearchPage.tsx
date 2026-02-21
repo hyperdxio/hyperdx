@@ -114,7 +114,12 @@ import {
   parseTimeQuery,
   useNewTimeQuery,
 } from '@/timeQuery';
-import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
+import {
+  QUERY_LOCAL_STORAGE,
+  useLocalStorage,
+  usePrevious,
+  useWindowSize,
+} from '@/utils';
 
 import { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -861,6 +866,16 @@ function DBSearchPage() {
     },
     [setIsLive, _setDenoiseResults],
   );
+
+  // Filters collapse state
+  const { width } = useWindowSize();
+  const isSmallScreen = (width ?? 1000) < 900;
+
+  // Default to collapsed on mobile, but allow user to override
+  const [isFiltersPreferCollapsed, setIsFiltersPreferCollapsed] =
+    useLocalStorage<boolean>('isSearchFiltersCollapsed', isSmallScreen);
+
+  const isFiltersCollapsed = isFiltersPreferCollapsed;
 
   // Get default source
   const defaultSourceId = useMemo(
@@ -1834,6 +1849,10 @@ function DBSearchPage() {
                   chartConfig={filtersChartConfig}
                   sourceId={inputSourceObj?.id}
                   showDelta={!!searchedSource?.durationExpression}
+                  isCollapsed={isFiltersCollapsed}
+                  onToggleCollapse={() =>
+                    setIsFiltersPreferCollapsed(!isFiltersPreferCollapsed)
+                  }
                   {...searchFilters}
                 />
               </ErrorBoundary>
