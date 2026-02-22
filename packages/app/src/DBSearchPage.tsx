@@ -944,7 +944,7 @@ function DBSearchPage() {
       reset({
         select: searchedConfig?.select ?? '',
         where: searchedConfig?.where ?? '',
-        whereLanguage: searchedConfig?.whereLanguage ?? 'lucene',
+        
         source: searchedConfig?.source ?? undefined,
         filters: searchedConfig?.filters ?? [],
         orderBy: searchedConfig?.orderBy ?? '',
@@ -1549,9 +1549,9 @@ function DBSearchPage() {
       setValue('whereLanguage', lang, {
         shouldDirty: true,
       });
-      setSearchedConfig({ whereLanguage: lang });
+      
     },
-    [setValue,setSearchedConfig],
+    [setValue],
   );
 
   const onModelFormExpandClose = useCallback(() => {
