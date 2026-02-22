@@ -881,7 +881,7 @@ function DBSearchPage() {
     values: {
       select: searchedConfig.select || '',
       where: searchedConfig.where || '',
-      whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+      whereLanguage: searchedConfig.whereLanguage ?? (localStorage.getItem('hdx-search-language-preference') as 'sql' | 'lucene') ?? 'lucene',
       source: searchedConfig.source || defaultSourceId,
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
@@ -982,7 +982,7 @@ function DBSearchPage() {
         source: defaultSourceId,
         where: '',
         select: '',
-        whereLanguage: 'lucene',
+        whereLanguage: (localStorage.getItem('hdx-search-language-preference') as 'sql' | 'lucene') || 'lucene',
         filters: [],
         orderBy: '',
       });
@@ -996,7 +996,7 @@ function DBSearchPage() {
     defaultSourceId,
     sources,
   ]);
-
+  console.log('localStorage value:', localStorage.getItem('hdx-search-language-preference'));
   const [_queryErrors, setQueryErrors] = useState<{
     [key: string]: Error | ClickHouseQueryError;
   }>({});
@@ -1545,11 +1545,14 @@ function DBSearchPage() {
   );
 
   const onLanguageChange = useCallback(
-    (lang: 'sql' | 'lucene') =>
+    (lang: 'sql' | 'lucene') => {
+      localStorage.setItem('hdx-search-language-preference',lang);
       setValue('whereLanguage', lang, {
         shouldDirty: true,
-      }),
-    [setValue],
+      });
+      setSearchedConfig({ whereLanguage: lang });
+    },
+    [setValue,setSearchedConfig],
   );
 
   const onModelFormExpandClose = useCallback(() => {
