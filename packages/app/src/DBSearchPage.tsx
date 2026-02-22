@@ -996,7 +996,6 @@ function DBSearchPage() {
     defaultSourceId,
     sources,
   ]);
-  console.log('localStorage value:', localStorage.getItem('hdx-search-language-preference'));
   const [_queryErrors, setQueryErrors] = useState<{
     [key: string]: Error | ClickHouseQueryError;
   }>({});
