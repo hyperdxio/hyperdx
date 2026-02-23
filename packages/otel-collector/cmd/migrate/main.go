@@ -144,9 +144,13 @@ func parseEndpoint(endpoint string) (protocol string, host string, port string, 
 	}
 
 	switch u.Scheme {
-	case "tcp":
+	case "tcp", "clickhouse":
 		protocol = "native"
 		port = getOrDefault(u.Port(), "9000")
+	case "tcps", "tls":
+		protocol = "native"
+		port = getOrDefault(u.Port(), "9440")
+		secure = true
 	case "http":
 		protocol = "http"
 		port = getOrDefault(u.Port(), "8123")
@@ -155,7 +159,12 @@ func parseEndpoint(endpoint string) (protocol string, host string, port string, 
 		port = getOrDefault(u.Port(), "8443")
 		secure = true
 	default:
-		return "", "", "", false, fmt.Errorf("unsupported protocol: %s", u.Scheme)
+		return "", "", "", false, fmt.Errorf("unsupported protocol scheme: %s (supported: tcp, clickhouse, tcps, tls, http, https)", u.Scheme)
+	}
+
+	// Allow ?secure=true query parameter to override TLS setting
+	if strings.EqualFold(u.Query().Get("secure"), "true") {
+		secure = true
 	}
 
 	return protocol, host, port, secure, nil

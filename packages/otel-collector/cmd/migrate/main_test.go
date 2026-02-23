@@ -191,6 +191,56 @@ func TestParseEndpoint(t *testing.T) {
 			protocol: "http", host: "clickhouse.example.com", port: "8443", secure: true,
 		},
 		{
+			name:     "clickhouse scheme with port",
+			input:    "clickhouse://ch.example.com:9000",
+			protocol: "native", host: "ch.example.com", port: "9000", secure: false,
+		},
+		{
+			name:     "clickhouse scheme default port",
+			input:    "clickhouse://ch.example.com",
+			protocol: "native", host: "ch.example.com", port: "9000", secure: false,
+		},
+		{
+			name:     "tcps scheme with port",
+			input:    "tcps://ch.example.com:9440",
+			protocol: "native", host: "ch.example.com", port: "9440", secure: true,
+		},
+		{
+			name:     "tcps scheme default port",
+			input:    "tcps://ch.example.com",
+			protocol: "native", host: "ch.example.com", port: "9440", secure: true,
+		},
+		{
+			name:     "tcps scheme custom port",
+			input:    "tcps://ch.example.com:19440",
+			protocol: "native", host: "ch.example.com", port: "19440", secure: true,
+		},
+		{
+			name:     "tls scheme with port",
+			input:    "tls://ch.example.com:9440",
+			protocol: "native", host: "ch.example.com", port: "9440", secure: true,
+		},
+		{
+			name:     "tls scheme default port",
+			input:    "tls://ch.example.com",
+			protocol: "native", host: "ch.example.com", port: "9440", secure: true,
+		},
+		{
+			name:     "tcp with secure query param",
+			input:    "tcp://hostname:9440?secure=true",
+			protocol: "native", host: "hostname", port: "9440", secure: true,
+		},
+		{
+			name:     "http with secure query param",
+			input:    "http://hostname:8443?secure=true",
+			protocol: "http", host: "hostname", port: "8443", secure: true,
+		},
+		{
+			name:     "secure query param false is no-op",
+			input:    "tcp://hostname:9000?secure=false",
+			protocol: "native", host: "hostname", port: "9000", secure: false,
+		},
+		{
 			name:     "no scheme defaults to tcp",
 			input:    "clickhouse:9000",
 			protocol: "native", host: "clickhouse", port: "9000", secure: false,
