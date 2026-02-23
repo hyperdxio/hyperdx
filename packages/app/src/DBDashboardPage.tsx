@@ -79,11 +79,13 @@ import {
 } from '@/dashboard';
 
 import ChartContainer from './components/charts/ChartContainer';
+import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsStringWithNewLines } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
@@ -395,6 +397,14 @@ const Tile = forwardRef(
                 config={queriedConfig}
               />
             )}
+            {queriedConfig?.displayType === DisplayType.Pie && (
+              <DBPieChart
+                key={`${keyPrefix}-${chart.id}`}
+                title={title}
+                toolbarPrefix={toolbar}
+                config={queriedConfig}
+              />
+            )}
             {/* Markdown charts may not have queriedConfig, if source is not set */}
             {(queriedConfig?.displayType === DisplayType.Markdown ||
               (!queriedConfig &&
@@ -666,6 +676,7 @@ function downloadObjectAsJson(object: object, fileName = 'output') {
 }
 
 function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
+  const brandName = useBrandDisplayName();
   const confirm = useConfirm();
 
   const router = useRouter();
@@ -1001,7 +1012,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   return (
     <Box p="sm" data-testid="dashboard-page">
       <Head>
-        <title>Dashboard – HyperDX</title>
+        <title>Dashboard – {brandName}</title>
       </Head>
       <OnboardingModal />
       <EditTileModal

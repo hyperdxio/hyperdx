@@ -32,6 +32,7 @@ import {
 
 import { PageHeader } from './components/PageHeader';
 import SelectControlled from './components/SelectControlled';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import { useCreateDashboard, useUpdateDashboard } from './dashboard';
 import { withAppNav } from './layout';
 import { useSources } from './source';
@@ -406,12 +407,13 @@ function Mapping({ input }: { input: Input }) {
 }
 
 function DBDashboardImportPage() {
+  const brandName = useBrandDisplayName();
   const [input, setInput] = useState<Input | null>(null);
 
   return (
     <div>
       <Head>
-        <title>Create a Dashboard - HyperDX</title>
+        <title>Create a Dashboard - {brandName}</title>
       </Head>
       <PageHeader>
         <div>Create Dashboard &gt; Import Dashboard</div>

@@ -20,6 +20,7 @@ import {
   useSources,
   useUpdateSource,
 } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import { TableSourceForm } from './Sources/SourceForm';
 import { SourcesList } from './Sources/SourcesList';
@@ -210,6 +211,7 @@ function OnboardingModalComponent({
 }: {
   requireSource?: boolean;
 }) {
+  const brandName = useBrandDisplayName();
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
 
@@ -652,7 +654,7 @@ function OnboardingModalComponent({
 
       notifications.show({
         title: 'Success',
-        message: 'Connected to HyperDX demo server.',
+        message: `Connected to ${brandName} demo server.`,
       });
       setStep('closed');
     } catch (err) {
@@ -660,11 +662,11 @@ function OnboardingModalComponent({
       notifications.show({
         color: 'red',
         title: 'Error',
-        message:
-          'Could not connect to the HyperDX demo server, please try again later.',
+        message: `Could not connect to the ${brandName} demo server, please try again later.`,
       });
     }
   }, [
+    brandName,
     createSourceMutation,
     createConnectionMutation,
     updateSourceMutation,
@@ -677,7 +679,7 @@ function OnboardingModalComponent({
       data-testid="onboarding-modal"
       opened={step != null && step !== 'closed'}
       onClose={() => {}}
-      title="Welcome to HyperDX"
+      title={`Welcome to ${brandName}`}
       size="xl"
       withCloseButton={false}
     >
