@@ -566,7 +566,7 @@ export default function DBDeltaChart({
           gap: CHART_GAP,
         }}
       >
-        {Array.from(sortedProperties)
+        {sortedProperties
           .slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE)
           .map(property => (
             <PropertyComparisonChart

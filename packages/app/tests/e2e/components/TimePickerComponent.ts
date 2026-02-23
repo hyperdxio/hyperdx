@@ -118,6 +118,7 @@ export class TimePickerComponent {
 
   /**
    * Select a time interval option by label (e.g., "Last 1 hour", "Last 6 hours", "Live Tail")
+   * Precondition: the time picker popover must already be open (call open() first).
    */
   async selectTimeInterval(label: string) {
     // Scope button search within the popover to avoid matching buttons elsewhere on the page
