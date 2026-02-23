@@ -69,6 +69,7 @@ import {
   AGG_FNS,
   buildTableRowSearchUrl,
   convertToNumberChartConfig,
+  convertToPieChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
   getPreviousDateRange,
@@ -942,6 +943,8 @@ export default function EditTimeChartForm({
         return convertToNumberChartConfig(config);
       } else if (activeTab === 'table') {
         return convertToTableChartConfig(config);
+      } else if (activeTab === 'pie') {
+        return convertToPieChartConfig(config);
       }
 
       return config;
@@ -1212,24 +1215,25 @@ export default function EditTimeChartForm({
               <Divider mt="md" mb="sm" />
               <Flex mt={4} align="center" justify="space-between">
                 <Group gap="xs">
-                  {displayType !== DisplayType.Number && (
-                    <Button
-                      variant="subtle"
-                      size="sm"
-                      color="gray"
-                      onClick={() => {
-                        append({
-                          aggFn: 'count',
-                          aggCondition: '',
-                          aggConditionLanguage: 'lucene',
-                          valueExpression: '',
-                        });
-                      }}
-                    >
-                      <IconCirclePlus size={14} className="me-2" />
-                      Add Series
-                    </Button>
-                  )}
+                  {displayType !== DisplayType.Number &&
+                    displayType !== DisplayType.Pie && (
+                      <Button
+                        variant="subtle"
+                        size="sm"
+                        color="gray"
+                        onClick={() => {
+                          append({
+                            aggFn: 'count',
+                            aggCondition: '',
+                            aggConditionLanguage: 'lucene',
+                            valueExpression: '',
+                          });
+                        }}
+                      >
+                        <IconCirclePlus size={14} className="me-2" />
+                        Add Series
+                      </Button>
+                    )}
                   {fields.length == 2 && displayType !== DisplayType.Number && (
                     <Switch
                       label="As Ratio"
