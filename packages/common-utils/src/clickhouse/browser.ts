@@ -112,6 +112,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
     clickhouse_settings: externalClickhouseSettings,
     connectionId,
     queryId,
+    shouldSkipApplySettings,
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
     // FIXME: we couldn't initialize the client in the constructor
     // since the window is not avalible
@@ -121,9 +122,14 @@ export class ClickhouseClient extends BaseClickhouseClient {
 
     this.logDebugQuery(query, query_params);
 
-    const clickhouseSettings = this.processClickhouseSettings(
-      externalClickhouseSettings,
-    );
+    let clickhouseSettings: ClickHouseSettings | undefined;
+    // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
+    if (!shouldSkipApplySettings) {
+      clickhouseSettings = await this.processClickhouseSettings({
+        connectionId,
+        externalClickhouseSettings,
+      });
+    }
 
     const httpHeaders: { [header: string]: string } = {
       ...(connectionId && connectionId !== 'local'
