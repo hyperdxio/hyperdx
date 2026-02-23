@@ -55,15 +55,19 @@ export function compressStringParam(value: string): string {
 
 /**
  * Decompresses a plain string URL parameter produced by compressStringParam.
- * Falls back to the raw value for backwards compatibility with existing links.
- * Also handles the legacy %0A → newline encoding used by parseAsStringWithNewLines.
+ * Returns null for ~-prefixed values that fail decompression (corrupt/truncated),
+ * which nuqs treats as "use default". Falls back to the raw value for old-format
+ * URLs (no prefix) for backwards compatibility. Also handles the legacy
+ * %0A → newline encoding used by parseAsStringWithNewLines.
  */
-export function decompressStringParam(value: string): string {
+export function decompressStringParam(value: string): string | null {
   if (value.startsWith(LZ_PREFIX)) {
     const decompressed = LZString.decompressFromEncodedURIComponent(
       value.slice(LZ_PREFIX.length),
     );
-    if (decompressed != null) return decompressed;
+    // Return null on decompression failure so nuqs falls back to its default,
+    // rather than surfacing the raw ~-prefixed garbage string in the UI.
+    return decompressed ?? null;
   }
   // Old URL fallback: apply the same newline handling as the legacy parser
   return value.replace(/%0A/g, '\n');

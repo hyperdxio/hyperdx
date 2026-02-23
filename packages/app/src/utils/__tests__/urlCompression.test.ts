@@ -184,6 +184,21 @@ describe('decompressStringParam', () => {
       expect(decompressStringParam('A1B2C3')).toBe('A1B2C3');
     });
   });
+
+  describe('invalid / corrupt values', () => {
+    it('returns empty string (not raw ~-prefixed garbage) for a corrupt new-format value', () => {
+      // LZString.decompressFromEncodedURIComponent returns "" for most invalid inputs
+      // (it only returns null when the input itself is empty). Returning "" is a safe
+      // fallback — the UI shows an empty clause rather than the raw '~...' marker string.
+      expect(decompressStringParam('~brokendata')).toBe('');
+    });
+
+    it('returns null when the ~ marker is present but the LZ payload is missing', () => {
+      // decompressFromEncodedURIComponent("") returns null, so decompressStringParam("~")
+      // propagates null — nuqs treats this as "use default".
+      expect(decompressStringParam('~')).toBeNull();
+    });
+  });
 });
 
 describe('parseAsCompressedString (nuqs parser)', () => {
