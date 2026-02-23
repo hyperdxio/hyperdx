@@ -267,6 +267,20 @@ describe('migrateUserPreferences', () => {
       expect(localStorageMock.setItem).not.toHaveBeenCalled();
     });
 
+    it('should accept colorMode "system" as valid', () => {
+      const dataWithSystem: UserPreferences = {
+        isUTC: false,
+        timeFormat: '12h',
+        colorMode: 'system',
+        font: 'IBM Plex Mono',
+      };
+
+      const result = migrateUserPreferences(JSON.stringify(dataWithSystem));
+
+      expect(result).toEqual(dataWithSystem);
+      expect(localStorageMock.setItem).not.toHaveBeenCalled();
+    });
+
     it('should handle data with both theme and colorMode (edge case)', () => {
       // If somehow both exist, prefer colorMode (already migrated)
       const mixedData = JSON.stringify({

@@ -3,11 +3,13 @@ import produce from 'immer';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 
+export type ColorModePreference = 'light' | 'dark' | 'system';
+
 export type UserPreferences = {
   isUTC: boolean;
   timeFormat: '12h' | '24h';
-  /** Color mode preference (light/dark). Separate from brand theme (hyperdx/clickstack). */
-  colorMode: 'light' | 'dark';
+  /** Color mode preference (light/dark/system). Separate from brand theme (hyperdx/clickstack). */
+  colorMode: ColorModePreference;
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;
 };
@@ -21,7 +23,7 @@ const STORAGE_KEY = 'hdx-user-preferences';
 const DEFAULT_PREFERENCES: UserPreferences = {
   isUTC: false,
   timeFormat: '12h',
-  colorMode: 'dark',
+  colorMode: 'system',
   font: 'IBM Plex Mono',
 };
 
@@ -40,11 +42,11 @@ function isUserPreferences(obj: unknown): obj is UserPreferences {
     return false;
   }
 
+  const mode = (obj as { colorMode: unknown }).colorMode;
   return (
     'colorMode' in obj &&
-    typeof (obj as { colorMode: unknown }).colorMode === 'string' &&
-    ((obj as { colorMode: string }).colorMode === 'light' ||
-      (obj as { colorMode: string }).colorMode === 'dark')
+    typeof mode === 'string' &&
+    (mode === 'light' || mode === 'dark' || mode === 'system')
   );
 }
 
@@ -101,11 +103,9 @@ export function migrateUserPreferences(
     if (isLegacyUserPreferences(parsed)) {
       // Use destructuring to exclude `theme` property for better type safety
       const { theme, ...rest } = parsed;
-      // Ensure theme is valid before using it
+      // Ensure theme is valid before using it (legacy only had light/dark)
       const validTheme: 'light' | 'dark' =
-        theme === 'light' || theme === 'dark'
-          ? theme
-          : DEFAULT_PREFERENCES.colorMode;
+        theme === 'light' || theme === 'dark' ? theme : 'dark';
       const migrated: UserPreferences = {
         ...DEFAULT_PREFERENCES,
         ...rest,
@@ -216,3 +216,46 @@ export const useUserPreferences = () => {
 
   return { userPreferences, setUserPreference };
 };
+
+/**
+ * Inline script that runs before React to set data-mantine-color-scheme from
+ * user preference (light/dark/system). Prevents flash when preference is "system".
+ */
+export function SystemColorSchemeScript() {
+  const scriptContent = `(function(){var k='${STORAGE_KEY}';try{var r=localStorage.getItem(k);var p=r?JSON.parse(r):null;var m=p&&p.colorMode;var s='dark';if(m==='light'||m==='dark')s=m;else if(typeof window.matchMedia!=='undefined'&&window.matchMedia('(prefers-color-scheme: dark)').matches)s='dark';else s='light';document.documentElement.setAttribute('data-mantine-color-scheme',s);}catch(e){}})();`;
+  return (
+    <script
+      dangerouslySetInnerHTML={{ __html: scriptContent }}
+      suppressHydrationWarning
+    />
+  );
+}
+
+/**
+ * Resolves color mode preference to an actual scheme for Mantine.
+ * When preference is 'system', follows prefers-color-scheme and reacts to changes.
+ */
+export function useResolvedColorScheme(): 'light' | 'dark' {
+  const { userPreferences } = useUserPreferences();
+  const { colorMode } = userPreferences;
+
+  const [systemScheme, setSystemScheme] = React.useState<'light' | 'dark'>(
+    () => {
+      if (typeof window === 'undefined') return 'dark';
+      return window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+    },
+  );
+
+  React.useEffect(() => {
+    if (colorMode !== 'system') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => setSystemScheme(mq.matches ? 'dark' : 'light');
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [colorMode]);
+
+  if (colorMode === 'light' || colorMode === 'dark') return colorMode;
+  return systemScheme;
+}

@@ -7,7 +7,6 @@ import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
 import { QueryParamProvider } from 'use-query-params';
 import HyperDX from '@hyperdx/browser';
-import { ColorSchemeScript } from '@mantine/core';
 import {
   MutationCache,
   QueryCache,
@@ -29,7 +28,11 @@ import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
 import { ConfirmProvider } from '@/useConfirm';
 import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
-import { useUserPreferences } from '@/useUserPreferences';
+import {
+  SystemColorSchemeScript,
+  useResolvedColorScheme,
+  useUserPreferences,
+} from '@/useUserPreferences';
 
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -68,7 +71,6 @@ type AppPropsWithLayout = AppProps & {
 // Component that renders Head content requiring user preferences
 // Must be rendered inside AppThemeProvider to avoid hydration mismatch
 function AppHeadContent() {
-  const { userPreferences } = useUserPreferences();
   const { theme } = useAppTheme();
 
   return (
@@ -76,11 +78,7 @@ function AppHeadContent() {
       <title>{theme.displayName}</title>
       <meta name="viewport" content="width=device-width, initial-scale=0.75" />
       <meta name="google" content="notranslate" />
-      <ColorSchemeScript
-        forceColorScheme={
-          userPreferences.colorMode === 'dark' ? 'dark' : 'light'
-        }
-      />
+      <SystemColorSchemeScript />
     </Head>
   );
 }
@@ -95,6 +93,7 @@ function AppContent({
   pageProps: AppProps['pageProps'];
 }) {
   const { userPreferences } = useUserPreferences();
+  const resolvedColorScheme = useResolvedColorScheme();
   const { themeName } = useAppTheme();
 
   // ClickStack theme always uses Inter font - user preference is ignored
@@ -118,7 +117,7 @@ function AppContent({
   return (
     <ThemeWrapper
       fontFamily={selectedMantineFont}
-      colorScheme={userPreferences.colorMode === 'dark' ? 'dark' : 'light'}
+      colorScheme={resolvedColorScheme}
     >
       <ConfirmProvider>
         {getLayout(<Component {...pageProps} />)}
