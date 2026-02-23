@@ -19,7 +19,6 @@ import {
   Code,
   Container,
   Flex,
-  Group,
   Pagination,
   Text,
 } from '@mantine/core';
@@ -216,7 +215,7 @@ function PropertyComparisonChart({
   );
 
   return (
-    <div style={{ width: 340, height: 120 }}>
+    <div style={{ width: '100%', height: 120 }}>
       <Text size="xs" ta="center" title={name}>
         {truncateMiddle(name, 32)}
       </Text>
@@ -267,13 +266,15 @@ function PropertyComparisonChart({
 }
 
 // Layout constants for dynamic grid calculation.
-// CHART_WIDTH/CHART_HEIGHT must stay in sync with PropertyComparisonChart's style dimensions (line ~219).
-// CHART_GAP must match the `gap` prop on the Group component below.
-const CHART_WIDTH = 340;
-const CHART_HEIGHT = 120;
-const CHART_GAP = 16; // px; used both here and as explicit Group gap prop
-// Space reserved for the pagination row: Pagination control (~32px) + mt="md" margin (16px).
-// Always reserved (even when pagination is hidden) so rows calculation stays stable.
+// CHART_WIDTH is the minimum chart width used to determine how many columns fit; actual rendered
+// width expands to fill the container (charts use width: '100%' inside a CSS grid).
+// CHART_HEIGHT must match PropertyComparisonChart's outer div height.
+// CHART_GAP is used both in the column/row formula and as the CSS grid gap.
+const CHART_WIDTH = 340; // minimum column width threshold (px)
+const CHART_HEIGHT = 120; // must match PropertyComparisonChart outer div height (px)
+const CHART_GAP = 16; // px; used in grid gap and layout math
+// Space reserved for the pagination row: Pagination control (~32px) + top padding (16px).
+// Always reserved (even when pagination is hidden via visibility:hidden) so rows count is stable.
 const PAGINATION_HEIGHT = 48;
 
 export default function DBDeltaChart({
@@ -564,7 +565,13 @@ export default function DBDeltaChart({
         flexDirection: 'column',
       }}
     >
-      <Group gap={CHART_GAP}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${columns}, 1fr)`,
+          gap: CHART_GAP,
+        }}
+      >
         {Array.from(sortedProperties)
           .slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE)
           .map(property => (
@@ -579,12 +586,15 @@ export default function DBDeltaChart({
               key={property}
             />
           ))}
-      </Group>
+      </div>
       <Flex
         justify="flex-end"
         mx="md"
-        mt="md"
-        style={{ visibility: totalPages > 1 ? 'visible' : 'hidden' }}
+        style={{
+          marginTop: 'auto',
+          paddingTop: CHART_GAP,
+          visibility: totalPages > 1 ? 'visible' : 'hidden',
+        }}
       >
         <Pagination
           size="xs"
