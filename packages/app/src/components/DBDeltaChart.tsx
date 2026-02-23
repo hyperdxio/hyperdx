@@ -558,6 +558,7 @@ export default function DBDeltaChart({
   return (
     <Box
       ref={containerRef}
+      p="md"
       style={{
         overflow: 'hidden',
         height: '100%',
@@ -589,7 +590,6 @@ export default function DBDeltaChart({
       </div>
       <Flex
         justify="flex-end"
-        mx="md"
         style={{
           marginTop: 'auto',
           paddingTop: CHART_GAP,
