@@ -1,5 +1,23 @@
 # @hyperdx/common-utils
 
+## 0.13.0
+
+### Minor Changes
+
+- 051276fc: feat: pie chart now available for chart visualization
+- b676f268: feat: Add config property to external dashboard APIs. Deprecate series.
+
+### Patch Changes
+
+- 4f1da032: fix: clickstack build fixed when running same-site origin by omitting credentials from Authorization header for local mode fetch
+
+## 0.12.3
+
+### Patch Changes
+
+- a8aa94b0: feat: add filters to saved searches
+- c3bc43ad: fix: Avoid using bodyExpression for trace sources
+
 ## 0.12.2
 
 ### Patch Changes

@@ -9,7 +9,6 @@ import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
 import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import {
-  translateDashboardDocumentToExternalDashboard,
   translateExternalChartToTileConfig,
   translateExternalFilterToFilter,
 } from '@/utils/externalApi';
@@ -18,12 +17,18 @@ import {
   externalDashboardFilterSchema,
   externalDashboardFilterSchemaWithId,
   ExternalDashboardFilterWithId,
-  externalDashboardTileSchema,
-  externalDashboardTileSchemaWithId,
+  externalDashboardTileListSchema,
   ExternalDashboardTileWithId,
   objectIdSchema,
   tagsSchema,
 } from '@/utils/zod';
+
+import {
+  convertToExternalDashboard,
+  convertToInternalTileConfig,
+  isConfigTile,
+  isSeriesTile,
+} from './utils/dashboards';
 
 /** Returns an array of source IDs that are referenced in the tiles/filters but do not exist in the team's sources */
 async function getMissingSources(
@@ -32,13 +37,21 @@ async function getMissingSources(
   filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
 ): Promise<string[]> {
   const sourceIds = new Set<string>();
+
   for (const tile of tiles) {
-    for (const series of tile.series) {
-      if ('sourceId' in series) {
-        sourceIds.add(series.sourceId);
+    if (isSeriesTile(tile)) {
+      for (const series of tile.series) {
+        if ('sourceId' in series) {
+          sourceIds.add(series.sourceId);
+        }
+      }
+    } else if (isConfigTile(tile)) {
+      if ('sourceId' in tile.config) {
+        sourceIds.add(tile.config.sourceId);
       }
     }
   }
+
   if (filters?.length) {
     for (const filter of filters) {
       if ('sourceId' in filter) {
@@ -78,6 +91,10 @@ async function getMissingSources(
  *       type: string
  *       enum: [stacked_bar, line]
  *       description: Visual representation type for the time series.
+ *     QuantileLevel:
+ *       type: number
+ *       enum: [0.5, 0.90, 0.95, 0.99]
+ *       description: Percentile level; only valid when aggFn is "quantile".
  *     SortOrder:
  *       type: string
  *       enum: [desc, asc]
@@ -124,6 +141,7 @@ async function getMissingSources(
  *         - sourceId
  *         - aggFn
  *         - where
+ *         - whereLanguage
  *         - groupBy
  *       properties:
  *         type:
@@ -188,6 +206,7 @@ async function getMissingSources(
  *         - sourceId
  *         - aggFn
  *         - where
+ *         - whereLanguage
  *         - groupBy
  *       properties:
  *         type:
@@ -248,6 +267,7 @@ async function getMissingSources(
  *         - sourceId
  *         - aggFn
  *         - where
+ *         - whereLanguage
  *       properties:
  *         type:
  *           type: string
@@ -295,6 +315,7 @@ async function getMissingSources(
  *         - sourceId
  *         - fields
  *         - where
+ *         - whereLanguage
  *       properties:
  *         type:
  *           type: string
@@ -350,16 +371,297 @@ async function getMissingSources(
  *           search: '#/components/schemas/SearchChartSeries'
  *           markdown: '#/components/schemas/MarkdownChartSeries'
  *
- *     TileInput:
+ *     SelectItem:
  *       type: object
- *       description: Dashboard tile/chart configuration for creation
+ *       required:
+ *         - aggFn
+ *       description: >
+ *         A single aggregated value to compute. The valueExpression must be
+ *         omitted when aggFn is "count", and required for all other functions.
+ *         The level field may only be used with aggFn "quantile".
+ *       properties:
+ *         aggFn:
+ *           $ref: '#/components/schemas/AggregationFunction'
+ *           description: >
+ *             Aggregation function to apply. "count" does not require a valueExpression; "quantile" requires a level field indicating the desired percentile (e.g., 0.95).
+ *           example: "count"
+ *         valueExpression:
+ *           type: string
+ *           maxLength: 10000
+ *           description: >
+ *             Expression for the column or value to aggregate. Must be omitted when
+ *             aggFn is "count"; required for all other aggFn values.
+ *           example: "Duration"
+ *         alias:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Display alias for this select item in chart legends.
+ *           example: "Request Duration"
+ *         level:
+ *           $ref: '#/components/schemas/QuantileLevel'
+ *         where:
+ *           type: string
+ *           maxLength: 10000
+ *           description: SQL or Lucene filter condition applied before aggregation.
+ *           default: ""
+ *           example: "service:api"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *         metricName:
+ *           type: string
+ *           description: Name of the metric to aggregate; only applicable when the source is a metrics source.
+ *         metricType:
+ *           $ref: '#/components/schemas/MetricDataType'
+ *           description: Metric type; only applicable when the source is a metrics source.
+ *         periodAggFn:
+ *           type: string
+ *           enum: [delta]
+ *           description: Optional period aggregation function for Gauge metrics (e.g., compute the delta over the period).
+ *
+ *     LineChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: Configuration for a line time-series chart.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [line]
+ *           example: "line"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 20
+ *           description: >
+ *             One or more aggregated values to plot. When asRatio is true,
+ *             exactly two select items are required.
+ *           items:
+ *             $ref: '#/components/schemas/SelectItem'
+ *         groupBy:
+ *           type: string
+ *           description: Field expression to group results by (creates separate lines per group value).
+ *           example: "host"
+ *           maxLength: 10000
+ *         asRatio:
+ *           type: boolean
+ *           description: Plot select[0] / select[1] as a ratio. Requires exactly two select items.
+ *           default: false
+ *         alignDateRangeToGranularity:
+ *           type: boolean
+ *           description: Expand date range boundaries to the query granularity interval.
+ *           default: true
+ *         fillNulls:
+ *           type: boolean
+ *           description: Fill missing time buckets with zero instead of leaving gaps.
+ *           default: true
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *         compareToPreviousPeriod:
+ *           type: boolean
+ *           description: Overlay the equivalent previous time period for comparison.
+ *           default: false
+ *
+ *     BarChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: Configuration for a stacked-bar time-series chart.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [stacked_bar]
+ *           example: "stacked_bar"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 20
+ *           description: >
+ *             One or more aggregated values to plot. When asRatio is true,
+ *             exactly two select items are required.
+ *           items:
+ *             $ref: '#/components/schemas/SelectItem'
+ *         groupBy:
+ *           type: string
+ *           description: Field expression to group results by (creates separate bars segments per group value).
+ *           example: "service"
+ *           maxLength: 10000
+ *         asRatio:
+ *           type: boolean
+ *           description: Plot select[0] / select[1] as a ratio. Requires exactly two select items.
+ *           default: false
+ *         alignDateRangeToGranularity:
+ *           type: boolean
+ *           description: Align the date range boundaries to the query granularity interval.
+ *           default: true
+ *         fillNulls:
+ *           type: boolean
+ *           description: Fill missing time buckets with zero instead of leaving gaps.
+ *           default: true
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *
+ *     TableChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: Configuration for a table aggregation chart.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [table]
+ *           example: "table"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 20
+ *           description: >
+ *             One or more aggregated values to display as table columns.
+ *             When asRatio is true, exactly two select items are required.
+ *           items:
+ *             $ref: '#/components/schemas/SelectItem'
+ *         groupBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Field expression to group results by (one row per group value).
+ *           example: "service"
+ *         having:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Post-aggregation SQL HAVING condition.
+ *           example: "count > 100"
+ *         orderBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: SQL ORDER BY expression for sorting table rows.
+ *           example: "count DESC"
+ *         asRatio:
+ *           type: boolean
+ *           description: Display select[0] / select[1] as a ratio. Requires exactly two select items.
+ *           example: false
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *
+ *     NumberChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: Configuration for a single big-number chart.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [number]
+ *           example: "number"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 1
+ *           description: Exactly one aggregated value to display as a single number.
+ *           items:
+ *             $ref: '#/components/schemas/SelectItem'
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *
+ *     SearchChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *         - whereLanguage
+ *       description: Configuration for a raw-event search / log viewer tile.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [search]
+ *           example: "search"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Comma-separated list of expressions to display.
+ *           example: "timestamp, level, message"
+ *         where:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Filter condition for the search (syntax depends on whereLanguage).
+ *           default: ""
+ *           example: "level:error"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *
+ *     MarkdownChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *       description: Configuration for a freeform Markdown text tile.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [markdown]
+ *           example: "markdown"
+ *         markdown:
+ *           type: string
+ *           maxLength: 50000
+ *           description: Markdown content to render inside the tile.
+ *           example: "# Dashboard Title\n\nThis is a markdown widget."
+ *
+ *     TileConfig:
+ *       description: >
+ *         Tile chart configuration. The displayType field determines which
+ *         variant is used.
+ *       oneOf:
+ *         - $ref: '#/components/schemas/LineChartConfig'
+ *         - $ref: '#/components/schemas/BarChartConfig'
+ *         - $ref: '#/components/schemas/TableChartConfig'
+ *         - $ref: '#/components/schemas/NumberChartConfig'
+ *         - $ref: '#/components/schemas/SearchChartConfig'
+ *         - $ref: '#/components/schemas/MarkdownChartConfig'
+ *       discriminator:
+ *         propertyName: displayType
+ *         mapping:
+ *           line: '#/components/schemas/LineChartConfig'
+ *           stacked_bar: '#/components/schemas/BarChartConfig'
+ *           table: '#/components/schemas/TableChartConfig'
+ *           number: '#/components/schemas/NumberChartConfig'
+ *           search: '#/components/schemas/SearchChartConfig'
+ *           markdown: '#/components/schemas/MarkdownChartConfig'
+ *
+ *     TileBase:
+ *       type: object
+ *       description: Common fields shared by tile input and output
  *       required:
  *         - name
  *         - x
  *         - y
  *         - w
  *         - h
- *         - series
  *       properties:
  *         name:
  *           type: string
@@ -387,20 +689,14 @@ async function getMissingSources(
  *           minimum: 1
  *           description: Height in grid units
  *           example: 3
- *         asRatio:
- *           type: boolean
- *           description: Display two series as a ratio (series[0] / series[1])
- *           example: false
- *         series:
- *           type: array
- *           minItems: 1
- *           description: Data series to display in this tile (all must be the same type)
- *           items:
- *             $ref: '#/components/schemas/DashboardChartSeries'
+ *         config:
+ *           $ref: '#/components/schemas/TileConfig'
+ *           description: Chart configuration for the tile. The displayType field determines which variant is used. Replaces the deprecated "series" and "asRatio" fields.
  *
- *     Tile:
+ *     TileOutput:
+ *       description: Response format for dashboard tiles
  *       allOf:
- *         - $ref: '#/components/schemas/TileInput'
+ *         - $ref: '#/components/schemas/TileBase'
  *         - type: object
  *           required:
  *             - id
@@ -409,6 +705,35 @@ async function getMissingSources(
  *               type: string
  *               maxLength: 36
  *               example: "65f5e4a3b9e77c001a901234"
+ *
+ *     TileInput:
+ *       description: >
+ *         Input / request format when creating or updating tiles. The id field is
+ *         optional: on create it is ignored (the server always assigns a new ID);
+ *         on update, a matching id is used to identify the existing tile to
+ *         preserve — tiles whose id does not match an existing tile are assigned
+ *         a new generated ID.
+ *       allOf:
+ *         - $ref: '#/components/schemas/TileBase'
+ *         - type: object
+ *           properties:
+ *             id:
+ *               type: string
+ *               maxLength: 36
+ *               description: Optional tile ID. Omit to generate a new ID.
+ *               example: "65f5e4a3b9e77c001a901234"
+ *             asRatio:
+ *               type: boolean
+ *               description: Display two series as a ratio (series[0] / series[1]). Only applicable when providing "series". Deprecated in favor of "config.asRatio".
+ *               example: false
+ *               deprecated: true
+ *             series:
+ *               type: array
+ *               minItems: 1
+ *               description: Data series to display in this tile (all must be the same type). Deprecated; use "config" instead.
+ *               deprecated: true
+ *               items:
+ *                 $ref: '#/components/schemas/DashboardChartSeries'
  *
  *     FilterInput:
  *       type: object
@@ -466,7 +791,7 @@ async function getMissingSources(
  *           type: array
  *           description: List of tiles/charts in the dashboard
  *           items:
- *             $ref: '#/components/schemas/Tile'
+ *             $ref: '#/components/schemas/TileOutput'
  *         tags:
  *           type: array
  *           description: Tags for organizing and filtering dashboards
@@ -521,8 +846,8 @@ async function getMissingSources(
  *         tiles:
  *           type: array
  *           items:
- *             $ref: '#/components/schemas/Tile'
- *           description: Tiles must include their IDs for updates. To add a new tile, generate a unique ID (max 36 chars).
+ *             $ref: '#/components/schemas/TileInput'
+ *           description: Full list of tiles for the dashboard. Existing tiles are matched by ID; tiles with an ID that does not match an existing tile will be assigned a new generated ID.
  *         tags:
  *           type: array
  *           items:
@@ -586,14 +911,13 @@ const router = express.Router();
  *                           y: 0
  *                           w: 6
  *                           h: 3
- *                           asRatio: false
- *                           series:
- *                             - type: "time"
- *                               sourceId: "65f5e4a3b9e77c001a111111"
- *                               aggFn: "avg"
- *                               field: "cpu.usage"
- *                               where: "host:server-01"
- *                               groupBy: []
+ *                           config:
+ *                             displayType: "line"
+ *                             sourceId: "65f5e4a3b9e77c001a111111"
+ *                             select:
+ *                               - aggFn: "avg"
+ *                                 valueExpression: "cpu.usage"
+ *                                 where: "host:server-01"
  *                       tags: ["infrastructure", "monitoring"]
  *                       filters:
  *                         - id: "65f5e4a3b9e77c001a301001"
@@ -610,13 +934,14 @@ const router = express.Router();
  *                           y: 0
  *                           w: 6
  *                           h: 3
- *                           series:
- *                             - type: "table"
- *                               sourceId: "65f5e4a3b9e77c001a111112"
- *                               aggFn: "count"
- *                               where: "level:error"
- *                               groupBy: ["service"]
- *                               sortOrder: "desc"
+ *                           config:
+ *                             displayType: "table"
+ *                             sourceId: "65f5e4a3b9e77c001a111112"
+ *                             select:
+ *                               - aggFn: "count"
+ *                                 where: "level:error"
+ *                             groupBy: "service"
+ *                             orderBy: "count DESC"
  *                       tags: ["api", "monitoring"]
  *                       filters:
  *                         - id: "65f5e4a3b9e77c001a301002"
@@ -640,9 +965,7 @@ router.get('/', async (req, res, next) => {
     ).sort({ name: -1 });
 
     res.json({
-      data: dashboards.map(d =>
-        translateDashboardDocumentToExternalDashboard(d),
-      ),
+      data: dashboards.map(d => convertToExternalDashboard(d)),
     });
   } catch (e) {
     next(e);
@@ -686,28 +1009,26 @@ router.get('/', async (req, res, next) => {
  *                         y: 0
  *                         w: 6
  *                         h: 3
- *                         asRatio: false
- *                         series:
- *                           - type: "time"
- *                             sourceId: "65f5e4a3b9e77c001a111111"
- *                             aggFn: "avg"
- *                             field: "cpu.usage"
- *                             where: "host:server-01"
- *                             groupBy: []
+ *                         config:
+ *                           displayType: "line"
+ *                           sourceId: "65f5e4a3b9e77c001a111111"
+ *                           select:
+ *                             - aggFn: "avg"
+ *                               valueExpression: "cpu.usage"
+ *                               where: "host:server-01"
  *                       - id: "65f5e4a3b9e77c001a901235"
  *                         name: "Memory Usage"
  *                         x: 6
  *                         y: 0
  *                         w: 6
  *                         h: 3
- *                         asRatio: false
- *                         series:
- *                           - type: "time"
- *                             sourceId: "65f5e4a3b9e77c001a111111"
- *                             aggFn: "avg"
- *                             field: "memory.usage"
- *                             where: "host:server-01"
- *                             groupBy: []
+ *                         config:
+ *                           displayType: "line"
+ *                           sourceId: "65f5e4a3b9e77c001a111111"
+ *                           select:
+ *                             - aggFn: "avg"
+ *                               valueExpression: "memory.usage"
+ *                               where: "host:server-01"
  *                     tags: ["infrastructure", "monitoring"]
  *                     filters:
  *                       - id: "65f5e4a3b9e77c001a301003"
@@ -756,7 +1077,7 @@ router.get(
       }
 
       res.json({
-        data: translateDashboardDocumentToExternalDashboard(dashboard),
+        data: convertToExternalDashboard(dashboard),
       });
     } catch (e) {
       next(e);
@@ -780,7 +1101,7 @@ router.get(
  *             $ref: '#/components/schemas/CreateDashboardRequest'
  *           examples:
  *             simpleTimeSeriesDashboard:
- *               summary: Dashboard with time series chart
+ *               summary: Dashboard with a line chart
  *               value:
  *                 name: "API Monitoring Dashboard"
  *                 tiles:
@@ -789,12 +1110,12 @@ router.get(
  *                     y: 0
  *                     w: 6
  *                     h: 3
- *                     series:
- *                       - type: "time"
- *                         sourceId: "65f5e4a3b9e77c001a111111"
- *                         aggFn: "count"
- *                         where: "service:api"
- *                         groupBy: []
+ *                     config:
+ *                       displayType: "line"
+ *                       sourceId: "65f5e4a3b9e77c001a111111"
+ *                       select:
+ *                         - aggFn: "count"
+ *                           where: "service:api"
  *                 tags: ["api", "monitoring"]
  *                 filters:
  *                   - type: "QUERY_EXPRESSION"
@@ -811,24 +1132,25 @@ router.get(
  *                     y: 0
  *                     w: 6
  *                     h: 3
- *                     series:
- *                       - type: "time"
- *                         sourceId: "65f5e4a3b9e77c001a111111"
- *                         aggFn: "count"
- *                         where: "service:backend"
- *                         groupBy: []
+ *                     config:
+ *                       displayType: "line"
+ *                       sourceId: "65f5e4a3b9e77c001a111111"
+ *                       select:
+ *                         - aggFn: "count"
+ *                           where: "service:backend"
  *                   - name: "Error Distribution"
  *                     x: 6
  *                     y: 0
  *                     w: 6
  *                     h: 3
- *                     series:
- *                       - type: "table"
- *                         sourceId: "65f5e4a3b9e77c001a111111"
- *                         aggFn: "count"
- *                         where: "level:error"
- *                         groupBy: ["errorType"]
- *                         sortOrder: "desc"
+ *                     config:
+ *                       displayType: "table"
+ *                       sourceId: "65f5e4a3b9e77c001a111111"
+ *                       select:
+ *                         - aggFn: "count"
+ *                           where: "level:error"
+ *                       groupBy: "errorType"
+ *                       orderBy: "count DESC"
  *                 tags: ["service-health", "production"]
  *                 filters:
  *                   - type: "QUERY_EXPRESSION"
@@ -856,12 +1178,12 @@ router.get(
  *                         y: 0
  *                         w: 6
  *                         h: 3
- *                         series:
- *                           - type: "time"
- *                             sourceId: "65f5e4a3b9e77c001a111111"
- *                             aggFn: "count"
- *                             where: "service:api"
- *                             groupBy: []
+ *                         config:
+ *                           displayType: "line"
+ *                           sourceId: "65f5e4a3b9e77c001a111111"
+ *                           select:
+ *                             - aggFn: "count"
+ *                               where: "service:api"
  *                     tags: ["api", "monitoring"]
  *                     filters:
  *                       - id: "65f5e4a3b9e77c001a301004"
@@ -899,7 +1221,7 @@ router.post(
   validateRequest({
     body: z.object({
       name: z.string().max(1024),
-      tiles: z.array(externalDashboardTileSchema),
+      tiles: externalDashboardTileListSchema,
       tags: tagsSchema,
       filters: z.array(externalDashboardFilterSchema).optional(),
     }),
@@ -922,11 +1244,18 @@ router.post(
         });
       }
 
-      const charts = tiles.map(tile => {
-        const chartId = new ObjectId().toString();
+      const internalTiles = tiles.map(tile => {
+        const tileId = new ObjectId().toString();
+        if (isConfigTile(tile)) {
+          return convertToInternalTileConfig({
+            ...tile,
+            id: tileId,
+          });
+        }
+
         return translateExternalChartToTileConfig({
           ...tile,
-          id: chartId,
+          id: tileId,
         });
       });
 
@@ -939,14 +1268,14 @@ router.post(
 
       const newDashboard = await new Dashboard({
         name,
-        tiles: charts,
+        tiles: internalTiles,
         tags: tags && uniq(tags),
         filters: filtersWithIds,
         team: teamId,
       }).save();
 
       res.json({
-        data: translateDashboardDocumentToExternalDashboard(newDashboard),
+        data: convertToExternalDashboard(newDashboard),
       });
     } catch (e) {
       next(e);
@@ -983,28 +1312,29 @@ router.post(
  *                 name: "Updated Dashboard Name"
  *                 tiles:
  *                   - id: "65f5e4a3b9e77c001a901234"
- *                     name: "Updated Time Series Chart"
+ *                     name: "Updated Line Chart"
  *                     x: 0
  *                     y: 0
  *                     w: 6
  *                     h: 3
- *                     series:
- *                       - type: "time"
- *                         sourceId: "65f5e4a3b9e77c001a111111"
- *                         aggFn: "count"
- *                         where: "level:error"
- *                         groupBy: []
+ *                     config:
+ *                       displayType: "line"
+ *                       sourceId: "65f5e4a3b9e77c001a111111"
+ *                       select:
+ *                         - aggFn: "count"
+ *                           where: "level:error"
  *                   - id: "new-tile-123"
  *                     name: "New Number Chart"
  *                     x: 6
  *                     y: 0
  *                     w: 6
  *                     h: 3
- *                     series:
- *                       - type: "number"
- *                         sourceId: "65f5e4a3b9e77c001a111111"
- *                         aggFn: "count"
- *                         where: "level:info"
+ *                     config:
+ *                       displayType: "number"
+ *                       sourceId: "65f5e4a3b9e77c001a111111"
+ *                       select:
+ *                         - aggFn: "count"
+ *                           where: "level:info"
  *                 tags: ["production", "updated"]
  *                 filters:
  *                   - id: "65f5e4a3b9e77c001a301005"
@@ -1028,28 +1358,29 @@ router.post(
  *                     name: "Updated Dashboard Name"
  *                     tiles:
  *                       - id: "65f5e4a3b9e77c001a901234"
- *                         name: "Updated Time Series Chart"
+ *                         name: "Updated Line Chart"
  *                         x: 0
  *                         y: 0
  *                         w: 6
  *                         h: 3
- *                         series:
- *                           - type: "time"
- *                             sourceId: "65f5e4a3b9e77c001a111111"
- *                             aggFn: "count"
- *                             where: "level:error"
- *                             groupBy: []
+ *                         config:
+ *                           displayType: "line"
+ *                           sourceId: "65f5e4a3b9e77c001a111111"
+ *                           select:
+ *                             - aggFn: "count"
+ *                               where: "level:error"
  *                       - id: "new-tile-123"
  *                         name: "New Number Chart"
  *                         x: 6
  *                         y: 0
  *                         w: 6
  *                         h: 3
- *                         series:
- *                           - type: "number"
- *                             sourceId: "65f5e4a3b9e77c001a111111"
- *                             aggFn: "count"
- *                             where: "level:info"
+ *                         config:
+ *                           displayType: "number"
+ *                           sourceId: "65f5e4a3b9e77c001a111111"
+ *                           select:
+ *                             - aggFn: "count"
+ *                               where: "level:info"
  *                     tags: ["production", "updated"]
  *                     filters:
  *                       - id: "65f5e4a3b9e77c001a301005"
@@ -1098,7 +1429,7 @@ router.put(
     }),
     body: z.object({
       name: z.string().max(1024),
-      tiles: z.array(externalDashboardTileSchemaWithId),
+      tiles: externalDashboardTileListSchema,
       tags: tagsSchema,
       filters: z.array(externalDashboardFilterSchemaWithId).optional(),
     }),
@@ -1125,16 +1456,44 @@ router.put(
         });
       }
 
-      // Convert external tiles to internal charts format
-      const charts = tiles.map(translateExternalChartToTileConfig);
+      const existingDashboard = await Dashboard.findOne(
+        { _id: dashboardId, team: teamId },
+        { tiles: 1, filters: 1 },
+      ).lean();
+      const existingTileIds = new Set(
+        (existingDashboard?.tiles ?? []).map((t: { id: string }) => t.id),
+      );
+      const existingFilterIds = new Set(
+        (existingDashboard?.filters ?? []).map((f: { id: string }) => f.id),
+      );
+
+      // Convert external tiles to internal charts format.
+      // Generate a new id for any tile whose id doesn't match an existing tile.
+      const internalTiles = tiles.map(tile => {
+        const tileId = existingTileIds.has(tile.id)
+          ? tile.id
+          : new ObjectId().toString();
+        if (isConfigTile(tile)) {
+          return convertToInternalTileConfig({ ...tile, id: tileId });
+        }
+
+        return translateExternalChartToTileConfig({ ...tile, id: tileId });
+      });
 
       const setPayload: Record<string, unknown> = {
         name,
-        tiles: charts,
+        tiles: internalTiles,
         tags: tags && uniq(tags),
       };
       if (filters !== undefined) {
-        setPayload.filters = filters.map(translateExternalFilterToFilter);
+        setPayload.filters = filters.map(
+          (filter: ExternalDashboardFilterWithId) => {
+            const filterId = existingFilterIds.has(filter.id)
+              ? filter.id
+              : new ObjectId().toString();
+            return translateExternalFilterToFilter({ ...filter, id: filterId });
+          },
+        );
       }
 
       const updatedDashboard = await Dashboard.findOneAndUpdate(
@@ -1148,7 +1507,7 @@ router.put(
       }
 
       res.json({
-        data: translateDashboardDocumentToExternalDashboard(updatedDashboard),
+        data: convertToExternalDashboard(updatedDashboard),
       });
     } catch (e) {
       next(e);

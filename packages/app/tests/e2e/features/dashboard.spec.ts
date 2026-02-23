@@ -257,6 +257,41 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     },
   );
 
+  test('should warn when closing tile editor with unsaved changes', async () => {
+    await dashboardPage.openNewTileEditor();
+    await dashboardPage.chartEditor.setChartName('My Unsaved Chart');
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+
+    await dashboardPage.unsavedChangesConfirmCancelButton.click();
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeHidden();
+    await expect(dashboardPage.chartEditor.nameInput).toHaveValue(
+      'My Unsaved Chart',
+    );
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+    await dashboardPage.unsavedChangesConfirmDiscardButton.click();
+    await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
+      timeout: 5000,
+    });
+  });
+
+  test('should close tile editor without confirm when there are no unsaved changes', async () => {
+    await dashboardPage.openNewTileEditor();
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
+      timeout: 5000,
+    });
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeHidden();
+  });
+
   test(
     'should create and populate filters',
     { tag: '@full-stack' },

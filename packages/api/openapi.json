@@ -250,7 +250,6 @@
             "required": [
               "threshold",
               "interval",
-              "source",
               "thresholdType",
               "channel"
             ]
@@ -267,7 +266,6 @@
             "required": [
               "threshold",
               "interval",
-              "source",
               "thresholdType",
               "channel"
             ]
@@ -529,6 +527,16 @@
         ],
         "description": "Visual representation type for the time series."
       },
+      "QuantileLevel": {
+        "type": "number",
+        "enum": [
+          0.5,
+          0.9,
+          0.95,
+          0.99
+        ],
+        "description": "Percentile level; only valid when aggFn is \"quantile\"."
+      },
       "SortOrder": {
         "type": "string",
         "enum": [
@@ -588,6 +596,7 @@
           "sourceId",
           "aggFn",
           "where",
+          "whereLanguage",
           "groupBy"
         ],
         "properties": {
@@ -672,6 +681,7 @@
           "sourceId",
           "aggFn",
           "where",
+          "whereLanguage",
           "groupBy"
         ],
         "properties": {
@@ -751,7 +761,8 @@
           "type",
           "sourceId",
           "aggFn",
-          "where"
+          "where",
+          "whereLanguage"
         ],
         "properties": {
           "type": {
@@ -813,7 +824,8 @@
           "type",
           "sourceId",
           "fields",
-          "where"
+          "where",
+          "whereLanguage"
         ],
         "properties": {
           "type": {
@@ -902,16 +914,375 @@
           }
         }
       },
-      "TileInput": {
+      "SelectItem": {
         "type": "object",
-        "description": "Dashboard tile/chart configuration for creation",
+        "required": [
+          "aggFn"
+        ],
+        "description": "A single aggregated value to compute. The valueExpression must be omitted when aggFn is \"count\", and required for all other functions. The level field may only be used with aggFn \"quantile\".\n",
+        "properties": {
+          "aggFn": {
+            "$ref": "#/components/schemas/AggregationFunction",
+            "description": "Aggregation function to apply. \"count\" does not require a valueExpression; \"quantile\" requires a level field indicating the desired percentile (e.g., 0.95).\n",
+            "example": "count"
+          },
+          "valueExpression": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Expression for the column or value to aggregate. Must be omitted when aggFn is \"count\"; required for all other aggFn values.\n",
+            "example": "Duration"
+          },
+          "alias": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Display alias for this select item in chart legends.",
+            "example": "Request Duration"
+          },
+          "level": {
+            "$ref": "#/components/schemas/QuantileLevel"
+          },
+          "where": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "SQL or Lucene filter condition applied before aggregation.",
+            "default": "",
+            "example": "service:api"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage"
+          },
+          "metricName": {
+            "type": "string",
+            "description": "Name of the metric to aggregate; only applicable when the source is a metrics source."
+          },
+          "metricType": {
+            "$ref": "#/components/schemas/MetricDataType",
+            "description": "Metric type; only applicable when the source is a metrics source."
+          },
+          "periodAggFn": {
+            "type": "string",
+            "enum": [
+              "delta"
+            ],
+            "description": "Optional period aggregation function for Gauge metrics (e.g., compute the delta over the period)."
+          }
+        }
+      },
+      "LineChartConfig": {
+        "type": "object",
+        "required": [
+          "displayType",
+          "sourceId",
+          "select"
+        ],
+        "description": "Configuration for a line time-series chart.",
+        "properties": {
+          "displayType": {
+            "type": "string",
+            "enum": [
+              "line"
+            ],
+            "example": "line"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query.",
+            "example": "65f5e4a3b9e77c001a111111"
+          },
+          "select": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "One or more aggregated values to plot. When asRatio is true, exactly two select items are required.\n",
+            "items": {
+              "$ref": "#/components/schemas/SelectItem"
+            }
+          },
+          "groupBy": {
+            "type": "string",
+            "description": "Field expression to group results by (creates separate lines per group value).",
+            "example": "host",
+            "maxLength": 10000
+          },
+          "asRatio": {
+            "type": "boolean",
+            "description": "Plot select[0] / select[1] as a ratio. Requires exactly two select items.",
+            "default": false
+          },
+          "alignDateRangeToGranularity": {
+            "type": "boolean",
+            "description": "Expand date range boundaries to the query granularity interval.",
+            "default": true
+          },
+          "fillNulls": {
+            "type": "boolean",
+            "description": "Fill missing time buckets with zero instead of leaving gaps.",
+            "default": true
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat"
+          },
+          "compareToPreviousPeriod": {
+            "type": "boolean",
+            "description": "Overlay the equivalent previous time period for comparison.",
+            "default": false
+          }
+        }
+      },
+      "BarChartConfig": {
+        "type": "object",
+        "required": [
+          "displayType",
+          "sourceId",
+          "select"
+        ],
+        "description": "Configuration for a stacked-bar time-series chart.",
+        "properties": {
+          "displayType": {
+            "type": "string",
+            "enum": [
+              "stacked_bar"
+            ],
+            "example": "stacked_bar"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query.",
+            "example": "65f5e4a3b9e77c001a111111"
+          },
+          "select": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "One or more aggregated values to plot. When asRatio is true, exactly two select items are required.\n",
+            "items": {
+              "$ref": "#/components/schemas/SelectItem"
+            }
+          },
+          "groupBy": {
+            "type": "string",
+            "description": "Field expression to group results by (creates separate bars segments per group value).",
+            "example": "service",
+            "maxLength": 10000
+          },
+          "asRatio": {
+            "type": "boolean",
+            "description": "Plot select[0] / select[1] as a ratio. Requires exactly two select items.",
+            "default": false
+          },
+          "alignDateRangeToGranularity": {
+            "type": "boolean",
+            "description": "Align the date range boundaries to the query granularity interval.",
+            "default": true
+          },
+          "fillNulls": {
+            "type": "boolean",
+            "description": "Fill missing time buckets with zero instead of leaving gaps.",
+            "default": true
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat"
+          }
+        }
+      },
+      "TableChartConfig": {
+        "type": "object",
+        "required": [
+          "displayType",
+          "sourceId",
+          "select"
+        ],
+        "description": "Configuration for a table aggregation chart.",
+        "properties": {
+          "displayType": {
+            "type": "string",
+            "enum": [
+              "table"
+            ],
+            "example": "table"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query.",
+            "example": "65f5e4a3b9e77c001a111111"
+          },
+          "select": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "One or more aggregated values to display as table columns. When asRatio is true, exactly two select items are required.\n",
+            "items": {
+              "$ref": "#/components/schemas/SelectItem"
+            }
+          },
+          "groupBy": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Field expression to group results by (one row per group value).",
+            "example": "service"
+          },
+          "having": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Post-aggregation SQL HAVING condition.",
+            "example": "count > 100"
+          },
+          "orderBy": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "SQL ORDER BY expression for sorting table rows.",
+            "example": "count DESC"
+          },
+          "asRatio": {
+            "type": "boolean",
+            "description": "Display select[0] / select[1] as a ratio. Requires exactly two select items.",
+            "example": false
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat"
+          }
+        }
+      },
+      "NumberChartConfig": {
+        "type": "object",
+        "required": [
+          "displayType",
+          "sourceId",
+          "select"
+        ],
+        "description": "Configuration for a single big-number chart.",
+        "properties": {
+          "displayType": {
+            "type": "string",
+            "enum": [
+              "number"
+            ],
+            "example": "number"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query.",
+            "example": "65f5e4a3b9e77c001a111111"
+          },
+          "select": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "description": "Exactly one aggregated value to display as a single number.",
+            "items": {
+              "$ref": "#/components/schemas/SelectItem"
+            }
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat"
+          }
+        }
+      },
+      "SearchChartConfig": {
+        "type": "object",
+        "required": [
+          "displayType",
+          "sourceId",
+          "select",
+          "whereLanguage"
+        ],
+        "description": "Configuration for a raw-event search / log viewer tile.",
+        "properties": {
+          "displayType": {
+            "type": "string",
+            "enum": [
+              "search"
+            ],
+            "example": "search"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query.",
+            "example": "65f5e4a3b9e77c001a111111"
+          },
+          "select": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Comma-separated list of expressions to display.",
+            "example": "timestamp, level, message"
+          },
+          "where": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Filter condition for the search (syntax depends on whereLanguage).",
+            "default": "",
+            "example": "level:error"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage"
+          }
+        }
+      },
+      "MarkdownChartConfig": {
+        "type": "object",
+        "required": [
+          "displayType"
+        ],
+        "description": "Configuration for a freeform Markdown text tile.",
+        "properties": {
+          "displayType": {
+            "type": "string",
+            "enum": [
+              "markdown"
+            ],
+            "example": "markdown"
+          },
+          "markdown": {
+            "type": "string",
+            "maxLength": 50000,
+            "description": "Markdown content to render inside the tile.",
+            "example": "# Dashboard Title\n\nThis is a markdown widget."
+          }
+        }
+      },
+      "TileConfig": {
+        "description": "Tile chart configuration. The displayType field determines which variant is used.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/LineChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/BarChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/TableChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/NumberChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/SearchChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/MarkdownChartConfig"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "displayType",
+          "mapping": {
+            "line": "#/components/schemas/LineChartConfig",
+            "stacked_bar": "#/components/schemas/BarChartConfig",
+            "table": "#/components/schemas/TableChartConfig",
+            "number": "#/components/schemas/NumberChartConfig",
+            "search": "#/components/schemas/SearchChartConfig",
+            "markdown": "#/components/schemas/MarkdownChartConfig"
+          }
+        }
+      },
+      "TileBase": {
+        "type": "object",
+        "description": "Common fields shared by tile input and output",
         "required": [
           "name",
           "x",
           "y",
           "w",
-          "h",
-          "series"
+          "h"
         ],
         "properties": {
           "name": {
@@ -945,25 +1316,17 @@
             "description": "Height in grid units",
             "example": 3
           },
-          "asRatio": {
-            "type": "boolean",
-            "description": "Display two series as a ratio (series[0] / series[1])",
-            "example": false
-          },
-          "series": {
-            "type": "array",
-            "minItems": 1,
-            "description": "Data series to display in this tile (all must be the same type)",
-            "items": {
-              "$ref": "#/components/schemas/DashboardChartSeries"
-            }
+          "config": {
+            "$ref": "#/components/schemas/TileConfig",
+            "description": "Chart configuration for the tile. The displayType field determines which variant is used. Replaces the deprecated \"series\" and \"asRatio\" fields."
           }
         }
       },
-      "Tile": {
+      "TileOutput": {
+        "description": "Response format for dashboard tiles",
         "allOf": [
           {
-            "$ref": "#/components/schemas/TileInput"
+            "$ref": "#/components/schemas/TileBase"
           },
           {
             "type": "object",
@@ -975,6 +1338,40 @@
                 "type": "string",
                 "maxLength": 36,
                 "example": "65f5e4a3b9e77c001a901234"
+              }
+            }
+          }
+        ]
+      },
+      "TileInput": {
+        "description": "Input / request format when creating or updating tiles. The id field is optional: on create it is ignored (the server always assigns a new ID); on update, a matching id is used to identify the existing tile to preserve — tiles whose id does not match an existing tile are assigned a new generated ID.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TileBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "maxLength": 36,
+                "description": "Optional tile ID. Omit to generate a new ID.",
+                "example": "65f5e4a3b9e77c001a901234"
+              },
+              "asRatio": {
+                "type": "boolean",
+                "description": "Display two series as a ratio (series[0] / series[1]). Only applicable when providing \"series\". Deprecated in favor of \"config.asRatio\".",
+                "example": false,
+                "deprecated": true
+              },
+              "series": {
+                "type": "array",
+                "minItems": 1,
+                "description": "Data series to display in this tile (all must be the same type). Deprecated; use \"config\" instead.",
+                "deprecated": true,
+                "items": {
+                  "$ref": "#/components/schemas/DashboardChartSeries"
+                }
               }
             }
           }
@@ -1061,7 +1458,7 @@
             "type": "array",
             "description": "List of tiles/charts in the dashboard",
             "items": {
-              "$ref": "#/components/schemas/Tile"
+              "$ref": "#/components/schemas/TileOutput"
             }
           },
           "tags": {
@@ -1139,9 +1536,9 @@
           "tiles": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Tile"
+              "$ref": "#/components/schemas/TileInput"
             },
-            "description": "Tiles must include their IDs for updates. To add a new tile, generate a unique ID (max 36 chars)."
+            "description": "Full list of tiles for the dashboard. Existing tiles are matched by ID; tiles with an ID that does not match an existing tile will be assigned a new generated ID."
           },
           "tags": {
             "type": "array",
@@ -2430,17 +2827,17 @@
                               "y": 0,
                               "w": 6,
                               "h": 3,
-                              "asRatio": false,
-                              "series": [
-                                {
-                                  "type": "time",
-                                  "sourceId": "65f5e4a3b9e77c001a111111",
-                                  "aggFn": "avg",
-                                  "field": "cpu.usage",
-                                  "where": "host:server-01",
-                                  "groupBy": []
-                                }
-                              ]
+                              "config": {
+                                "displayType": "line",
+                                "sourceId": "65f5e4a3b9e77c001a111111",
+                                "select": [
+                                  {
+                                    "aggFn": "avg",
+                                    "valueExpression": "cpu.usage",
+                                    "where": "host:server-01"
+                                  }
+                                ]
+                              }
                             }
                           ],
                           "tags": [
@@ -2468,18 +2865,18 @@
                               "y": 0,
                               "w": 6,
                               "h": 3,
-                              "series": [
-                                {
-                                  "type": "table",
-                                  "sourceId": "65f5e4a3b9e77c001a111112",
-                                  "aggFn": "count",
-                                  "where": "level:error",
-                                  "groupBy": [
-                                    "service"
-                                  ],
-                                  "sortOrder": "desc"
-                                }
-                              ]
+                              "config": {
+                                "displayType": "table",
+                                "sourceId": "65f5e4a3b9e77c001a111112",
+                                "select": [
+                                  {
+                                    "aggFn": "count",
+                                    "where": "level:error"
+                                  }
+                                ],
+                                "groupBy": "service",
+                                "orderBy": "count DESC"
+                              }
                             }
                           ],
                           "tags": [
@@ -2524,7 +2921,7 @@
               },
               "examples": {
                 "simpleTimeSeriesDashboard": {
-                  "summary": "Dashboard with time series chart",
+                  "summary": "Dashboard with a line chart",
                   "value": {
                     "name": "API Monitoring Dashboard",
                     "tiles": [
@@ -2534,15 +2931,16 @@
                         "y": 0,
                         "w": 6,
                         "h": 3,
-                        "series": [
-                          {
-                            "type": "time",
-                            "sourceId": "65f5e4a3b9e77c001a111111",
-                            "aggFn": "count",
-                            "where": "service:api",
-                            "groupBy": []
-                          }
-                        ]
+                        "config": {
+                          "displayType": "line",
+                          "sourceId": "65f5e4a3b9e77c001a111111",
+                          "select": [
+                            {
+                              "aggFn": "count",
+                              "where": "service:api"
+                            }
+                          ]
+                        }
                       }
                     ],
                     "tags": [
@@ -2570,15 +2968,16 @@
                         "y": 0,
                         "w": 6,
                         "h": 3,
-                        "series": [
-                          {
-                            "type": "time",
-                            "sourceId": "65f5e4a3b9e77c001a111111",
-                            "aggFn": "count",
-                            "where": "service:backend",
-                            "groupBy": []
-                          }
-                        ]
+                        "config": {
+                          "displayType": "line",
+                          "sourceId": "65f5e4a3b9e77c001a111111",
+                          "select": [
+                            {
+                              "aggFn": "count",
+                              "where": "service:backend"
+                            }
+                          ]
+                        }
                       },
                       {
                         "name": "Error Distribution",
@@ -2586,18 +2985,18 @@
                         "y": 0,
                         "w": 6,
                         "h": 3,
-                        "series": [
-                          {
-                            "type": "table",
-                            "sourceId": "65f5e4a3b9e77c001a111111",
-                            "aggFn": "count",
-                            "where": "level:error",
-                            "groupBy": [
-                              "errorType"
-                            ],
-                            "sortOrder": "desc"
-                          }
-                        ]
+                        "config": {
+                          "displayType": "table",
+                          "sourceId": "65f5e4a3b9e77c001a111111",
+                          "select": [
+                            {
+                              "aggFn": "count",
+                              "where": "level:error"
+                            }
+                          ],
+                          "groupBy": "errorType",
+                          "orderBy": "count DESC"
+                        }
                       }
                     ],
                     "tags": [
@@ -2641,15 +3040,16 @@
                             "y": 0,
                             "w": 6,
                             "h": 3,
-                            "series": [
-                              {
-                                "type": "time",
-                                "sourceId": "65f5e4a3b9e77c001a111111",
-                                "aggFn": "count",
-                                "where": "service:api",
-                                "groupBy": []
-                              }
-                            ]
+                            "config": {
+                              "displayType": "line",
+                              "sourceId": "65f5e4a3b9e77c001a111111",
+                              "select": [
+                                {
+                                  "aggFn": "count",
+                                  "where": "service:api"
+                                }
+                              ]
+                            }
                           }
                         ],
                         "tags": [
@@ -2757,17 +3157,17 @@
                             "y": 0,
                             "w": 6,
                             "h": 3,
-                            "asRatio": false,
-                            "series": [
-                              {
-                                "type": "time",
-                                "sourceId": "65f5e4a3b9e77c001a111111",
-                                "aggFn": "avg",
-                                "field": "cpu.usage",
-                                "where": "host:server-01",
-                                "groupBy": []
-                              }
-                            ]
+                            "config": {
+                              "displayType": "line",
+                              "sourceId": "65f5e4a3b9e77c001a111111",
+                              "select": [
+                                {
+                                  "aggFn": "avg",
+                                  "valueExpression": "cpu.usage",
+                                  "where": "host:server-01"
+                                }
+                              ]
+                            }
                           },
                           {
                             "id": "65f5e4a3b9e77c001a901235",
@@ -2776,17 +3176,17 @@
                             "y": 0,
                             "w": 6,
                             "h": 3,
-                            "asRatio": false,
-                            "series": [
-                              {
-                                "type": "time",
-                                "sourceId": "65f5e4a3b9e77c001a111111",
-                                "aggFn": "avg",
-                                "field": "memory.usage",
-                                "where": "host:server-01",
-                                "groupBy": []
-                              }
-                            ]
+                            "config": {
+                              "displayType": "line",
+                              "sourceId": "65f5e4a3b9e77c001a111111",
+                              "select": [
+                                {
+                                  "aggFn": "avg",
+                                  "valueExpression": "memory.usage",
+                                  "where": "host:server-01"
+                                }
+                              ]
+                            }
                           }
                         ],
                         "tags": [
@@ -2871,20 +3271,21 @@
                     "tiles": [
                       {
                         "id": "65f5e4a3b9e77c001a901234",
-                        "name": "Updated Time Series Chart",
+                        "name": "Updated Line Chart",
                         "x": 0,
                         "y": 0,
                         "w": 6,
                         "h": 3,
-                        "series": [
-                          {
-                            "type": "time",
-                            "sourceId": "65f5e4a3b9e77c001a111111",
-                            "aggFn": "count",
-                            "where": "level:error",
-                            "groupBy": []
-                          }
-                        ]
+                        "config": {
+                          "displayType": "line",
+                          "sourceId": "65f5e4a3b9e77c001a111111",
+                          "select": [
+                            {
+                              "aggFn": "count",
+                              "where": "level:error"
+                            }
+                          ]
+                        }
                       },
                       {
                         "id": "new-tile-123",
@@ -2893,14 +3294,16 @@
                         "y": 0,
                         "w": 6,
                         "h": 3,
-                        "series": [
-                          {
-                            "type": "number",
-                            "sourceId": "65f5e4a3b9e77c001a111111",
-                            "aggFn": "count",
-                            "where": "level:info"
-                          }
-                        ]
+                        "config": {
+                          "displayType": "number",
+                          "sourceId": "65f5e4a3b9e77c001a111111",
+                          "select": [
+                            {
+                              "aggFn": "count",
+                              "where": "level:info"
+                            }
+                          ]
+                        }
                       }
                     ],
                     "tags": [
@@ -2940,20 +3343,21 @@
                         "tiles": [
                           {
                             "id": "65f5e4a3b9e77c001a901234",
-                            "name": "Updated Time Series Chart",
+                            "name": "Updated Line Chart",
                             "x": 0,
                             "y": 0,
                             "w": 6,
                             "h": 3,
-                            "series": [
-                              {
-                                "type": "time",
-                                "sourceId": "65f5e4a3b9e77c001a111111",
-                                "aggFn": "count",
-                                "where": "level:error",
-                                "groupBy": []
-                              }
-                            ]
+                            "config": {
+                              "displayType": "line",
+                              "sourceId": "65f5e4a3b9e77c001a111111",
+                              "select": [
+                                {
+                                  "aggFn": "count",
+                                  "where": "level:error"
+                                }
+                              ]
+                            }
                           },
                           {
                             "id": "new-tile-123",
@@ -2962,14 +3366,16 @@
                             "y": 0,
                             "w": 6,
                             "h": 3,
-                            "series": [
-                              {
-                                "type": "number",
-                                "sourceId": "65f5e4a3b9e77c001a111111",
-                                "aggFn": "count",
-                                "where": "level:info"
-                              }
-                            ]
+                            "config": {
+                              "displayType": "number",
+                              "sourceId": "65f5e4a3b9e77c001a111111",
+                              "select": [
+                                {
+                                  "aggFn": "count",
+                                  "where": "level:info"
+                                }
+                              ]
+                            }
                           }
                         ],
                         "tags": [

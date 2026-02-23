@@ -1,5 +1,46 @@
 # @hyperdx/app
 
+## 2.18.0
+
+### Minor Changes
+
+- 051276fc: feat: pie chart now available for chart visualization
+- e984e20e: feat: Theme-based branding in UI copy. Replace hardcoded "HyperDX" with the current theme display name so ClickStack deployments show "ClickStack" (e.g. "Welcome to ClickStack", page titles, error messages, help text). Adds `useBrandDisplayName()` hook in ThemeProvider.
+
+### Patch Changes
+
+- ec54757e: feat: Add confirm dialog when closing tile editor w/ changes
+- 185d4e40: fix: Add option to display all events in search histogram bars
+- fa2424da: fix: correct generated favicons for HyperDX and ClickStack
+- 5988850a: fix: Prevent sampled events error when HAVING clause is specified
+- 4f1da032: fix: clickstack build fixed when running same-site origin by omitting credentials from Authorization header for local mode fetch
+- 38286f67: fix: searching json number property error
+- Updated dependencies [051276fc]
+- Updated dependencies [4f1da032]
+- Updated dependencies [b676f268]
+  - @hyperdx/common-utils@0.13.0
+
+## 2.17.0
+
+### Minor Changes
+
+- 3171a517: feat: Add option to filter out properties with blank values in column view
+- 5c895ff3: Allow overriding default connections
+
+### Patch Changes
+
+- 679b65d7: feat: added configuration to disable frontend otel exporter
+- 30f4dfdc: chore: update ClickStack favicons to be distinct across all ClickHouse apps/sites
+- 651bf99b: chore: deprecate Nextra and remove related code
+- 69f0b487: design: Make service map drill-down links more obvious
+- ce09b59b: feat: add static build generation
+- a8aa94b0: feat: add filters to saved searches
+- c3bc43ad: fix: Avoid using bodyExpression for trace sources
+- 161cdcc8: fix: error trace event pattern should have red color
+- Updated dependencies [a8aa94b0]
+- Updated dependencies [c3bc43ad]
+  - @hyperdx/common-utils@0.12.3
+
 ## 2.16.0
 
 ### Minor Changes

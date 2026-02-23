@@ -6,7 +6,7 @@ import {
   SavedChartConfig,
   SelectList,
 } from '@hyperdx/common-utils/dist/types';
-import { omit, pick } from 'lodash';
+import { omit } from 'lodash';
 import { FlattenMaps, LeanDocument } from 'mongoose';
 
 import {
@@ -17,11 +17,10 @@ import {
   AlertThresholdType,
 } from '@/models/alert';
 import type { DashboardDocument } from '@/models/dashboard';
+import { SeriesTile } from '@/routers/external-api/v2/utils/dashboards';
 import {
   ChartSeries,
-  ExternalDashboardFilter,
   ExternalDashboardFilterWithId,
-  ExternalDashboardTileWithId,
   MarkdownChartSeries,
   NumberChartSeries,
   SearchChartSeries,
@@ -204,20 +203,8 @@ const convertChartConfigToExternalChartSeries = (
   }
 };
 
-function translateTileToExternalChart(
-  tile: DashboardDocument['tiles'][number],
-): ExternalDashboardTileWithId {
-  const { name, seriesReturnType } = tile.config;
-  return {
-    ...pick(tile, ['id', 'x', 'y', 'w', 'h']),
-    asRatio: seriesReturnType === 'ratio',
-    name: name ?? '',
-    series: convertChartConfigToExternalChartSeries(tile.config),
-  };
-}
-
 export function translateExternalChartToTileConfig(
-  chart: ExternalDashboardTileWithId,
+  chart: SeriesTile,
 ): DashboardDocument['tiles'][number] {
   const { id, name, x, y, w, h, series, asRatio } = chart;
 
@@ -391,21 +378,6 @@ export function translateExternalChartToTileConfig(
   };
 }
 
-export type ExternalDashboard = {
-  id: string;
-  name: string;
-  tiles: ExternalDashboardTileWithId[];
-  tags?: string[];
-  filters?: ExternalDashboardFilterWithId[];
-};
-
-export type ExternalDashboardRequest = {
-  name: string;
-  tiles: ExternalDashboardTileWithId[];
-  tags?: string[];
-  filters?: ExternalDashboardFilter[];
-};
-
 export function translateFilterToExternalFilter(
   filter: DashboardFilter,
 ): ExternalDashboardFilterWithId {
@@ -421,18 +393,6 @@ export function translateExternalFilterToFilter(
   return {
     ...omit(filter, 'sourceId'),
     source: filter.sourceId,
-  };
-}
-
-export function translateDashboardDocumentToExternalDashboard(
-  dashboard: DashboardDocument,
-): ExternalDashboard {
-  return {
-    id: dashboard._id.toString(),
-    name: dashboard.name,
-    tiles: dashboard.tiles.map(translateTileToExternalChart),
-    tags: dashboard.tags || [],
-    filters: dashboard.filters?.map(translateFilterToExternalFilter) || [],
   };
 }
 

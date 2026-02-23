@@ -66,6 +66,7 @@ import {
   useSources,
   useUpdateSource,
 } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   inferMaterializedViewConfig,
   MV_AGGREGATE_FUNCTIONS,
@@ -498,6 +499,7 @@ function MaterializedViewFormSection({
   onRemove,
   setValue,
 }: { mvIndex: number; onRemove: () => void } & TableModelProps) {
+  const brandName = useBrandDisplayName();
   const connection = useWatch({ control, name: `connection` });
   const sourceDatabaseName = useWatch({
     control,
@@ -589,7 +591,7 @@ function MaterializedViewFormSection({
           <Text size="xs" fw={500} mb={4}>
             Minimum Date
             <Tooltip
-              label="(Optional) The earliest date and time (in the local timezone) for which the materialized view contains data. If not provided, then HyperDX will assume that the materialized view contains data for all dates for which the source table contains data."
+              label={`(Optional) The earliest date and time (in the local timezone) for which the materialized view contains data. If not provided, then ${brandName} will assume that the materialized view contains data for all dates for which the source table contains data.`}
               color="dark"
               c="white"
               multiline
@@ -883,6 +885,7 @@ function AggregatedColumnRow({
 
 export function LogTableModelForm(props: TableModelProps) {
   const { control } = props;
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -1035,13 +1038,13 @@ export function LogTableModelForm(props: TableModelProps) {
         <Divider />
         <FormRow
           label={'Correlated Metric Source'}
-          helpText="HyperDX Source for metrics associated with logs. Optional"
+          helpText={`${brandName} Source for metrics associated with logs. Optional`}
         >
           <SourceSelectControlled control={control} name="metricSourceId" />
         </FormRow>
         <FormRow
           label={'Correlated Trace Source'}
-          helpText="HyperDX Source for traces associated with logs. Optional"
+          helpText={`${brandName} Source for traces associated with logs. Optional`}
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
         </FormRow>
@@ -1136,6 +1139,7 @@ export function LogTableModelForm(props: TableModelProps) {
 
 export function TraceTableModelForm(props: TableModelProps) {
   const { control } = props;
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -1279,19 +1283,19 @@ export function TraceTableModelForm(props: TableModelProps) {
       <Divider />
       <FormRow
         label={'Correlated Log Source'}
-        helpText="HyperDX Source for logs associated with traces. Optional"
+        helpText={`${brandName} Source for logs associated with traces. Optional`}
       >
         <SourceSelectControlled control={control} name="logSourceId" />
       </FormRow>
       <FormRow
         label={'Correlated Session Source'}
-        helpText="HyperDX Source for sessions associated with traces. Optional"
+        helpText={`${brandName} Source for sessions associated with traces. Optional`}
       >
         <SourceSelectControlled control={control} name="sessionSourceId" />
       </FormRow>
       <FormRow
         label={'Correlated Metric Source'}
-        helpText="HyperDX Source for metrics associated with traces. Optional"
+        helpText={`${brandName} Source for metrics associated with traces. Optional`}
       >
         <SourceSelectControlled control={control} name="metricSourceId" />
       </FormRow>
@@ -1420,6 +1424,7 @@ export function TraceTableModelForm(props: TableModelProps) {
 }
 
 export function SessionTableModelForm({ control }: TableModelProps) {
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -1464,7 +1469,7 @@ export function SessionTableModelForm({ control }: TableModelProps) {
       <Stack gap="sm">
         <FormRow
           label={'Correlated Trace Source'}
-          helpText="HyperDX Source for traces associated with sessions. Required"
+          helpText={`${brandName} Source for traces associated with sessions. Required`}
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
         </FormRow>
@@ -1494,6 +1499,7 @@ interface TableModelProps {
 }
 
 export function MetricTableModelForm({ control, setValue }: TableModelProps) {
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -1562,7 +1568,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
             helpText={
               metricType === MetricsDataType.ExponentialHistogram ||
               metricType === MetricsDataType.Summary
-                ? `Table containing ${metricType.toLowerCase()} metrics data. Note: not yet fully supported by HyperDX`
+                ? `Table containing ${metricType.toLowerCase()} metrics data. Note: not yet fully supported by ${brandName}`
                 : `Table containing ${metricType.toLowerCase()} metrics data`
             }
           >
@@ -1576,7 +1582,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
         ))}
         <FormRow
           label={'Correlated Log Source'}
-          helpText="HyperDX Source for logs associated with metrics. Optional"
+          helpText={`${brandName} Source for logs associated with metrics. Optional`}
         >
           <SourceSelectControlled control={control} name="logSourceId" />
         </FormRow>
