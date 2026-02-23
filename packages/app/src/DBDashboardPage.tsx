@@ -63,6 +63,7 @@ import {
   IconTags,
   IconTrash,
   IconUpload,
+  IconX,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -901,6 +902,25 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     rawFilterQueries,
     onSubmit,
   ]);
+  const handleRemoveSavedQuery = useCallback(() => {
+    if (!dashboard || isLocalDashboard) return;
+
+    setDashboard(
+      produce(dashboard, draft => {
+        draft.savedQuery = null;
+        draft.savedQueryLanguage = null;
+        draft.savedFilterValues = null;
+      }),
+      () => {
+        notifications.show({
+          color: 'green',
+          title: 'Default query and filters removed',
+          message: 'Dashboard will no longer auto-apply saved defaults',
+          autoClose: 3000,
+        });
+      },
+    );
+  }, [dashboard, isLocalDashboard, setDashboard]);
 
   const [editedTile, setEditedTile] = useState<undefined | Tile>();
 
@@ -1095,6 +1115,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [isSaving, setIsSaving] = useState(false);
 
   const hasTiles = dashboard && dashboard.tiles.length > 0;
+  const hasSavedQueryAndFilterDefaults = Boolean(
+    dashboard?.savedQuery || dashboard?.savedFilterValues?.length,
+  );
 
   return (
     <Box p="sm" data-testid="dashboard-page">
@@ -1184,7 +1207,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
             <Menu width={250}>
               <Menu.Target>
-                <ActionIcon variant="secondary" size="input-xs">
+                <ActionIcon
+                  variant="secondary"
+                  size="input-xs"
+                  data-testid="dashboard-menu-button"
+                >
                   <IconDotsVertical size={14} />
                 </ActionIcon>
               </Menu.Target>
@@ -1228,6 +1255,27 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 >
                   {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
                 </Menu.Item>
+                <Menu.Divider />
+                <Menu.Item
+                  data-testid="save-default-query-filters-menu-item"
+                  leftSection={<IconDeviceFloppy size={16} />}
+                  onClick={handleSaveQuery}
+                >
+                  {hasSavedQueryAndFilterDefaults
+                    ? 'Update Default Query & Filters'
+                    : 'Save Query & Filters as Default'}
+                </Menu.Item>
+                {hasSavedQueryAndFilterDefaults && (
+                  <Menu.Item
+                    data-testid="remove-default-query-filters-menu-item"
+                    leftSection={<IconX size={16} />}
+                    color="red"
+                    onClick={handleRemoveSavedQuery}
+                  >
+                    Remove Default Query & Filters
+                  </Menu.Item>
+                )}
+                <Menu.Divider />
                 <Menu.Item
                   leftSection={<IconTrash size={16} />}
                   color="red"
@@ -1290,24 +1338,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             )
           }
         />
-        {!isLocalDashboard && (
-          <Tooltip
-            withArrow
-            label="Save Query and Filter Values with Dashboard"
-            fz="xs"
-            color="gray"
-          >
-            <Button
-              data-testid="save-query-button"
-              variant="default"
-              px="xs"
-              onClick={handleSaveQuery}
-              title="Save current filter query and filter values with dashboard"
-            >
-              <IconDeviceFloppy size={18} />
-            </Button>
-          </Tooltip>
-        )}
         <TimePicker
           inputValue={displayedTimeInputValue}
           setInputValue={setDisplayedTimeInputValue}

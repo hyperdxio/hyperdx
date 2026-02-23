@@ -419,9 +419,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
 
       await test.step('Click save query button', async () => {
-        const saveButton = dashboardPage.page.getByTestId('save-query-button');
-        await expect(saveButton).toBeVisible();
-        await saveButton.click();
+        await dashboardPage.saveQueryAndFiltersAsDefault();
 
         // Wait for success notification
         const notification = dashboardPage.page.locator(
@@ -438,9 +436,11 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await test.step('Return to dashboard and verify query restored', async () => {
         await dashboardPage.page.goto(dashboardUrl);
 
-        // Wait for dashboard to load
-        const chartContainers = dashboardPage.getChartContainers();
-        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
+        // Wait for dashboard controls to load
+        await expect(
+          dashboardPage.page.getByTestId('dashboard-page'),
+        ).toBeVisible({ timeout: 10000 });
+        await expect(dashboardPage.searchInput).toBeVisible({ timeout: 10000 });
 
         // Verify saved query is restored in search input
         const searchInput = dashboardPage.searchInput;
@@ -478,8 +478,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         const searchInput = dashboardPage.searchInput;
         await searchInput.fill(savedQuery);
 
-        const saveButton = dashboardPage.page.getByTestId('save-query-button');
-        await saveButton.click();
+        await dashboardPage.saveQueryAndFiltersAsDefault();
 
         // Wait for save confirmation
         await dashboardPage.page.waitForTimeout(1000);
@@ -495,9 +494,11 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           `/dashboards/${dashboardId}?where=${encodeURIComponent(urlQuery)}`,
         );
 
-        // Wait for dashboard to load
-        const chartContainers = dashboardPage.getChartContainers();
-        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
+        // Wait for dashboard controls to load
+        await expect(
+          dashboardPage.page.getByTestId('dashboard-page'),
+        ).toBeVisible({ timeout: 10000 });
+        await expect(dashboardPage.searchInput).toBeVisible({ timeout: 10000 });
 
         // Verify URL query takes precedence over saved query
         const searchInput = dashboardPage.searchInput;
@@ -541,8 +542,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         await expect(searchInput).toBeVisible();
         await searchInput.fill(testQuery);
 
-        const saveButton = dashboardPage.page.getByTestId('save-query-button');
-        await saveButton.click();
+        await dashboardPage.saveQueryAndFiltersAsDefault();
 
         // Wait for success notification
         const notification = dashboardPage.page.locator(
@@ -563,8 +563,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         const searchInput = dashboardPage.searchInput;
         await searchInput.clear();
 
-        const saveButton = dashboardPage.page.getByTestId('save-query-button');
-        await saveButton.click();
+        await dashboardPage.saveQueryAndFiltersAsDefault();
 
         // Wait for success notification
         const notification = dashboardPage.page.locator(
