@@ -14,14 +14,7 @@ import {
   ChartConfigWithOptDateRange,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Box,
-  Code,
-  Container,
-  Flex,
-  Pagination,
-  Text,
-} from '@mantine/core';
+import { Box, Code, Container, Flex, Pagination, Text } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 
 import { isAggregateFunction } from '@/ChartUtils';
