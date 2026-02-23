@@ -511,6 +511,10 @@ export default function DBDeltaChart({
     setPage(1);
   }, [PAGE_SIZE]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [xMin, xMax, yMin, yMax]);
+
   if (error) {
     return (
       <Container style={{ overflow: 'auto' }}>
