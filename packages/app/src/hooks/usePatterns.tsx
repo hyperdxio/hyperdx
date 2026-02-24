@@ -107,6 +107,7 @@ async function mineEventPatterns(logs: string[], pyodide: any) {
 export const PATTERN_COLUMN_ALIAS = '__hdx_pattern_field';
 export const TIMESTAMP_COLUMN_ALIAS = '__hdx_timestamp';
 export const SEVERITY_TEXT_COLUMN_ALIAS = '__hdx_severity_text';
+export const STATUS_CODE_COLUMN_ALIAS = '__hdx_status_code';
 
 export type SampleLog = {
   [PATTERN_COLUMN_ALIAS]: string;
@@ -126,70 +127,39 @@ function usePatterns({
   samples,
   bodyValueExpression,
   severityTextExpression,
+  statusCodeExpression,
   enabled = true,
 }: {
   config: ChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
   severityTextExpression?: string;
+  statusCodeExpression?: string;
   enabled?: boolean;
 }) {
-  // Create a sampling config with CTE for smart sampling
-  const samplingConfig = useMemo(() => {
-    // Build config with CTE for count check
-    const configWithCTE: ChartConfigWithDateRange = {
-      ...config,
-      // Add CTE to get table statistics for sampling
-      with: [
-        {
-          name: 'tableStats',
-          chartConfig: {
-            ...config,
-            select: 'count() as total',
-            groupBy: undefined,
-            orderBy: undefined,
-            limit: undefined,
-          },
-        },
-      ],
-      // Select the required columns
-      select: [
-        `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
-        `${getFirstTimestampValueExpression(config.timestampValueExpression)} as ${TIMESTAMP_COLUMN_ALIAS}`,
-        ...(severityTextExpression
-          ? [`${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`]
-          : []),
-      ].join(','),
-      // Add sampling condition as a filter
-      filters: [
-        ...(config.filters || []),
-        {
-          type: 'sql',
-          condition: `if(
-            (SELECT total FROM tableStats) <= ${samples},
-            1,
-            cityHash64(${getFirstTimestampValueExpression(config.timestampValueExpression)}, rand()) % greatest(
-              CAST((SELECT total FROM tableStats) / ${samples} AS UInt32),
-              1
-            ) = 0
-          )`,
-        },
-      ],
-      // Remove random ordering
-      orderBy: undefined,
-      limit: { limit: samples },
-    };
+  const configWithPrimaryAndPartitionKey = useConfigWithPrimaryAndPartitionKey({
+    ...config,
+    // TODO: User-configurable pattern columns and non-pattern/group by columns
+    select: [
+      `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
+      `${getFirstTimestampValueExpression(config.timestampValueExpression)} as ${TIMESTAMP_COLUMN_ALIAS}`,
+      ...(severityTextExpression
+        ? [`${severityTextExpression} as ${SEVERITY_TEXT_COLUMN_ALIAS}`]
+        : []),
+      ...(statusCodeExpression
+        ? [`${statusCodeExpression} as ${STATUS_CODE_COLUMN_ALIAS}`]
+        : []),
+    ].join(','),
+    // TODO: Proper sampling
+    orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+    limit: { limit: samples },
+  });
 
-    return configWithCTE;
-  }, [config, samples, bodyValueExpression, severityTextExpression]);
-
-  const configWithPrimaryAndPartitionKey =
-    useConfigWithPrimaryAndPartitionKey(samplingConfig);
-
-  const { data: sampleRows, isLoading: isLoadingSampleRows } =
-    useQueriedChartConfig(configWithPrimaryAndPartitionKey ?? samplingConfig, {
-      enabled: configWithPrimaryAndPartitionKey != null && enabled,
-    });
+  const { data: sampleRows, isLoading: isSampleLoading } =
+    useQueriedChartConfig(
+      configWithPrimaryAndPartitionKey ?? config, // `config` satisfying type, never used due to `enabled` check
+      { enabled: configWithPrimaryAndPartitionKey != null && enabled },
+    );
 
   const { data: pyodide, isLoading: isLoadingPyodide } = usePyodide({
     enabled,
@@ -236,7 +206,7 @@ function usePatterns({
 
   return {
     ...query,
-    isLoading: query.isLoading || isLoadingPyodide || isLoadingSampleRows,
+    isLoading: query.isLoading || isSampleLoading || isLoadingPyodide,
     patternQueryConfig: configWithPrimaryAndPartitionKey,
   };
 }
@@ -246,6 +216,7 @@ export function useGroupedPatterns({
   samples,
   bodyValueExpression,
   severityTextExpression,
+  statusCodeExpression,
   totalCount,
   enabled = true,
 }: {
@@ -253,6 +224,7 @@ export function useGroupedPatterns({
   samples: number;
   bodyValueExpression: string;
   severityTextExpression?: string;
+  statusCodeExpression?: string;
   totalCount?: number;
   enabled?: boolean;
 }) {
@@ -265,15 +237,9 @@ export function useGroupedPatterns({
     samples,
     bodyValueExpression,
     severityTextExpression,
+    statusCodeExpression,
     enabled,
   });
-  const columnMap = useMemo(() => {
-    return selectColumnMapWithoutAdditionalKeys(
-      results?.meta,
-      results?.additionalKeysLength,
-    );
-  }, [results]);
-  const columns = useMemo(() => Array.from(columnMap.keys()), [columnMap]);
 
   const sampledRowCount = results?.data.length;
   const sampleMultiplier = useMemo(() => {
@@ -319,12 +285,15 @@ export function useGroupedPatterns({
 
       // return at least 1
       const count = Math.max(Math.round(rows.length * sampleMultiplier), 1);
+      const lastRow = rows.at(-1);
+
       fullPatternGroups[patternId] = {
         id: patternId,
-        pattern: rows[rows.length - 1].__hdx_pattern, // last pattern is usually the most up to date templated pattern
+        pattern: lastRow?.__hdx_pattern, // last pattern is usually the most up to date templated pattern
         count,
         countStr: `~${count}`,
-        severityText: rows[rows.length - 1].__hdx_severity_text, // last severitytext is usually representative of the entire pattern set
+        severityText: lastRow?.[SEVERITY_TEXT_COLUMN_ALIAS], // last severitytext is usually representative of the entire pattern set
+        statusCode: lastRow?.[STATUS_CODE_COLUMN_ALIAS],
         samples: rows,
         __hdx_pattern_trend: {
           data: Object.entries(bucketCounts).map(([bucket, count]) => ({

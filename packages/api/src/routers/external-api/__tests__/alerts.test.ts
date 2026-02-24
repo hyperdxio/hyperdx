@@ -154,9 +154,9 @@ describe('External API Alerts', () => {
             type: 'webhook',
             webhookId: expect.any(String),
           },
-          team: expect.any(String),
+          teamId: expect.any(String),
           tileId: expect.any(String),
-          dashboard: expect.any(String),
+          dashboardId: expect.any(String),
           state: expect.any(String),
           createdAt: expect.any(String),
           updatedAt: expect.any(String),
@@ -242,10 +242,10 @@ describe('External API Alerts', () => {
         message: 'This should fail validation',
       };
 
-      // API returns 500 for validation errors
+      // API returns 400 for validation errors
       const response = await authRequest('post', ALERTS_BASE_URL)
         .send(invalidInput)
-        .expect(500);
+        .expect(400);
 
       expect(response.body).toHaveProperty('message');
 
@@ -395,7 +395,7 @@ describe('External API Alerts', () => {
         interval: '1h',
         thresholdType: AlertThresholdType.ABOVE,
         source: AlertSource.TILE,
-        dashboardId: originalAlert.body.data.dashboard,
+        dashboardId: originalAlert.body.data.dashboardId,
         tileId: originalAlert.body.data.tileId,
         channel: originalAlert.body.data.channel,
 

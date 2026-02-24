@@ -43,6 +43,7 @@ export default function AggFnSelect({
       defaultValue={defaultValue}
       onChange={_onChange}
       data={AGG_FNS}
+      data-testid="agg-fn-select"
     />
   );
 }

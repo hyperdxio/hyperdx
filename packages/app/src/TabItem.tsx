@@ -28,7 +28,7 @@ export default function TabItem({
           className="h-100 w-100"
           style={{
             background: active
-              ? 'var(--color-bg-success)'
+              ? 'var(--color-text-brand)'
               : 'var(--color-border)',
           }}
         ></div>

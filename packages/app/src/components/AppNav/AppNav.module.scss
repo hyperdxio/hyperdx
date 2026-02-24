@@ -3,6 +3,7 @@ $spacing-sm: 8px;
 $spacing-md: 12px;
 $spacing-lg: 16px;
 $nav-item-height: 34px;
+$nav-item-height-collapsed: 28px;
 $header-height: 58px;
 $help-button-size: 28px;
 $search-input-height: 28px;
@@ -38,6 +39,11 @@ $transition-slow: 0.2s ease;
 
 /* Layout */
 
+.navGhost {
+  transition: width 0.2s ease;
+  will-change: width;
+}
+
 .nav {
   height: 100vh;
   max-height: 100vh;
@@ -46,10 +52,30 @@ $transition-slow: 0.2s ease;
   justify-content: space-between;
   border-right: 1px solid var(--color-border);
   background: var(--color-bg-sidenav);
-  letter-spacing: 0.05em;
+  overflow: hidden;
+  transition: width 0.2s ease;
+  flex-shrink: 0;
 
   &Fixed {
     position: fixed;
+  }
+
+  &Collapsed {
+    .navLinks {
+      padding-inline: 0;
+      align-items: center;
+    }
+
+    .navItem {
+      padding-inline: $spacing-sm;
+      justify-content: center;
+      height: $nav-item-height-collapsed;
+      margin-block: $spacing-xs;
+    }
+
+    .navItemIcon {
+      margin-right: 0;
+    }
   }
 }
 
@@ -64,14 +90,31 @@ $transition-slow: 0.2s ease;
   &Expanded {
     height: $header-height;
   }
+
+  &Collapsed {
+    flex-flow: column nowrap;
+    justify-content: flex-start;
+    align-items: center;
+    padding-inline: 0;
+    padding-block: $spacing-md;
+    min-height: $header-height;
+    gap: $spacing-sm;
+    width: 100%;
+  }
 }
 
 .logoLink {
   text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
 }
 
 .logoIconWrapper {
-  margin-left: -0.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .collapseButton {
@@ -79,7 +122,10 @@ $transition-slow: 0.2s ease;
   margin-left: -$spacing-xs;
 
   &Collapsed {
-    margin-top: $spacing-lg;
+    transform: rotate(180deg);
+    margin-top: 0;
+    margin-right: 0;
+    margin-left: 0;
   }
 }
 
@@ -109,7 +155,7 @@ $transition-slow: 0.2s ease;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-inline: $spacing-sm;
+  padding-inline: $spacing-lg;
   margin-top: $spacing-sm;
 }
 
@@ -125,7 +171,7 @@ $transition-slow: 0.2s ease;
 
   user-select: none;
   gap: 10px;
-  padding-inline: $spacing-sm;
+  padding-inline: $spacing-lg;
   height: $nav-item-height;
   border-radius: $radius-sm;
 
@@ -142,6 +188,10 @@ $transition-slow: 0.2s ease;
   &Active {
     color: var(--color-text-sidenav-link-active);
     background: var(--color-bg-sidenav-link-active);
+
+    &:hover {
+      background: var(--color-bg-sidenav-link-active);
+    }
   }
 }
 
@@ -151,7 +201,7 @@ $transition-slow: 0.2s ease;
 }
 
 .navItemIcon {
-  margin-right: $spacing-sm;
+  margin-right: $spacing-md;
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
@@ -213,7 +263,6 @@ $transition-slow: 0.2s ease;
 
   &:hover {
     color: var(--color-text-sidenav-link-active);
-    background: var(--color-bg-sidenav-link-active);
   }
 
   &:focus-visible {

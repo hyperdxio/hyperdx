@@ -10,19 +10,14 @@ import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 import express from 'express';
 import _ from 'lodash';
 import { z } from 'zod';
-import { validateRequest } from 'zod-express-middleware';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { getTeam } from '@/controllers/team';
 import { IConnection } from '@/models/connection';
 import { ISource } from '@/models/source';
-import { translateExternalSeriesToInternalSeries } from '@/utils/externalApi';
-import {
-  externalQueryChartSeriesSchema,
-  objectIdSchema,
-  timeChartSeriesSchema,
-} from '@/utils/zod';
+import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
+import { externalQueryChartSeriesSchema } from '@/utils/zod';
 
 /**
  * @openapi
@@ -216,42 +211,69 @@ const buildChartConfigFromRequest = async (
   chartConfig: ChartConfigWithOptDateRange;
   groupByFields: string[] | undefined;
 }> => {
-  const internalSeries = translateExternalSeriesToInternalSeries({
-    type: 'time', // Assume type 'time' for this endpoint
-    ...params.externalSeries,
-  }) as z.infer<typeof timeChartSeriesSchema>;
-
-  const hasGroupBy = internalSeries.groupBy?.length > 0;
-  const groupByFields = internalSeries.groupBy;
-
   const translatedGranularity = translateGranularityToInterval(
     params.granularity,
   );
+
+  const {
+    aggFn,
+    level,
+    field = undefined,
+    where = undefined,
+    whereLanguage,
+    metricDataType,
+    metricName,
+    groupBy,
+  } = params.externalSeries;
+
+  const isMetricSource = source.kind === SourceKind.Metric;
+
+  // For metric sources, if metricName is not provided but field is,
+  // use field as the metric name (matching the natural API usage pattern
+  // where users pass the metric name as the field they want to query)
+  const resolvedMetricName = isMetricSource
+    ? (metricName ?? field)
+    : metricName;
+
+  // For metric sources, valueExpression should be 'Value' (the ClickHouse column)
+  // unless the user explicitly provides both metricName and field
+  const resolvedValueExpression = isMetricSource
+    ? metricName && field
+      ? field.includes('.')
+        ? `'${field}'`
+        : field
+      : 'Value'
+    : field?.includes('.')
+      ? `'${field}'`
+      : (field ?? '');
+
+  const hasGroupBy = groupBy?.length > 0;
+
+  if (aggFn == null) {
+    throw new Error('aggFn must be set for time chart');
+  }
 
   const chartConfig: ChartConfigWithOptDateRange = {
     displayType: DisplayType.Line,
     connection: connection._id.toString(),
     from: {
       databaseName: source.from.databaseName,
-      tableName: source.kind !== SourceKind.Metric ? source.from.tableName : '',
+      tableName: !isMetricSource ? source.from.tableName : '',
     },
-    ...(source.kind === SourceKind.Metric && {
+    ...(isMetricSource && {
       metricTables: source.metricTables,
     }),
     select: [
       {
-        aggFn: internalSeries.aggFn,
-        level: internalSeries.level,
-        valueExpression: internalSeries.field?.includes('.')
-          ? `'${internalSeries.field}'`
-          : (internalSeries.field ??
-            (source.kind === SourceKind.Metric ? 'Value' : '')),
-        aggCondition: internalSeries.where?.trim() ?? '',
-        aggConditionLanguage: internalSeries.whereLanguage ?? 'lucene',
+        aggFn,
+        level,
+        valueExpression: resolvedValueExpression,
+        aggCondition: where?.trim() ?? '',
+        aggConditionLanguage: whereLanguage ?? 'lucene',
         alias: `series_${params.seriesIndex}`,
-        ...(source.kind === SourceKind.Metric && {
-          metricName: internalSeries.metricName,
-          metricType: internalSeries.metricDataType,
+        ...(isMetricSource && {
+          metricName: resolvedMetricName,
+          metricType: metricDataType,
         }),
       },
     ],
@@ -264,13 +286,13 @@ const buildChartConfigFromRequest = async (
     granularity: translatedGranularity ?? 'auto',
     seriesReturnType: params.seriesReturnType,
     ...(hasGroupBy && {
-      groupBy: (groupByFields as string[]).map(field => ({
+      groupBy: groupBy.map(field => ({
         valueExpression: field,
       })),
     }),
   };
 
-  return { chartConfig, groupByFields };
+  return { chartConfig, groupByFields: groupBy ?? [] };
 };
 
 /**
@@ -513,7 +535,7 @@ router.post(
       seriesReturnType: z.enum(['ratio', 'column']).optional(),
     }),
   }),
-  async (req, res, next) => {
+  async (req, res) => {
     const span = opentelemetry.trace.getActiveSpan();
     try {
       const teamId = req.user?.team;

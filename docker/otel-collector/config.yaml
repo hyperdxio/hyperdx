@@ -19,7 +19,7 @@ processors:
           # Infer: extract the first log level keyword from the first 256 characters of the body
           - set(log.cache["substr"], log.body.string) where Len(log.body.string) < 256
           - set(log.cache["substr"], Substring(log.body.string, 0, 256)) where Len(log.body.string) >= 256
-          - set(log.cache, ExtractPatterns(log.cache["substr"], "(?i)(?P<0>(alert|crit|emerg|fatal|error|err|warn|notice|debug|dbug|trace))"))
+          - set(log.cache, ExtractPatterns(log.cache["substr"], "(?i)(?P<0>\\b(alert|crit|emerg|fatal|error|err|warn|notice|debug|dbug|trace))"))
           # Infer: detect FATAL
           - set(log.severity_number, SEVERITY_NUMBER_FATAL) where IsMatch(log.cache["0"], "(?i)(alert|crit|emerg|fatal)")
           - set(log.severity_text, "fatal") where log.severity_number == SEVERITY_NUMBER_FATAL

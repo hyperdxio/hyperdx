@@ -20,6 +20,7 @@ import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/util
 import {
   AlertState,
   DashboardFilter,
+  SourceKind,
   TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -78,11 +79,13 @@ import {
 } from '@/dashboard';
 
 import ChartContainer from './components/charts/ChartContainer';
+import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsStringWithNewLines } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
@@ -182,10 +185,14 @@ const Tile = forwardRef(
 
     useEffect(() => {
       if (source != null) {
+        const isMetricSource = source.kind === SourceKind.Metric;
+
         // TODO: will need to update this when we allow for multiple metrics per chart
         const firstSelect = chart.config.select[0];
         const metricType =
-          typeof firstSelect !== 'string' ? firstSelect?.metricType : undefined;
+          isMetricSource && typeof firstSelect !== 'string'
+            ? firstSelect?.metricType
+            : undefined;
         const tableName = getMetricTableName(source, metricType);
         if (source.connection) {
           setQueriedConfig({
@@ -200,7 +207,7 @@ const Tile = forwardRef(
             },
             implicitColumnExpression: source.implicitColumnExpression,
             filters,
-            metricTables: source.metricTables,
+            metricTables: isMetricSource ? source.metricTables : undefined,
           });
         }
       }
@@ -390,12 +397,23 @@ const Tile = forwardRef(
                 config={queriedConfig}
               />
             )}
-            {queriedConfig?.displayType === DisplayType.Markdown && (
+            {queriedConfig?.displayType === DisplayType.Pie && (
+              <DBPieChart
+                key={`${keyPrefix}-${chart.id}`}
+                title={title}
+                toolbarPrefix={toolbar}
+                config={queriedConfig}
+              />
+            )}
+            {/* Markdown charts may not have queriedConfig, if source is not set */}
+            {(queriedConfig?.displayType === DisplayType.Markdown ||
+              (!queriedConfig &&
+                chart.config.displayType === DisplayType.Markdown)) && (
               <HDXMarkdownChart
                 key={`${keyPrefix}-${chart.id}`}
                 title={title}
                 toolbarItems={toolbar}
-                config={queriedConfig}
+                config={queriedConfig ?? chart.config}
               />
             )}
             {queriedConfig?.displayType === DisplayType.Search && (
@@ -455,7 +473,7 @@ const Tile = forwardRef(
             isHighlighted && 'dashboard-chart-highlighted'
           }`}
           id={`chart-${chart.id}`}
-          onMouseEnter={() => {
+          onMouseOver={() => {
             setHovered(true);
             setIsFocused(true);
           }}
@@ -513,10 +531,33 @@ const EditTileModal = ({
 }) => {
   const contextZIndex = useZIndex();
   const modalZIndex = contextZIndex + 10;
+  const confirm = useConfirm();
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  useEffect(() => {
+    if (chart != null) {
+      setHasUnsavedChanges(false);
+    }
+  }, [chart]);
+
+  const handleClose = useCallback(() => {
+    if (isSaving) return;
+    if (hasUnsavedChanges) {
+      confirm(
+        'You have unsaved changes. Discard them and close the editor?',
+        'Discard',
+      ).then(ok => {
+        if (ok) onClose();
+      });
+    } else {
+      onClose();
+    }
+  }, [confirm, isSaving, hasUnsavedChanges, onClose]);
+
   return (
     <Modal
       opened={chart != null}
-      onClose={onClose}
+      onClose={handleClose}
       withCloseButton={false}
       centered
       size="90%"
@@ -536,7 +577,8 @@ const EditTileModal = ({
                 config: config,
               });
             }}
-            onClose={onClose}
+            onClose={handleClose}
+            onDirtyChange={setHasUnsavedChanges}
           />
         </ZIndexContext.Provider>
       )}
@@ -634,6 +676,7 @@ function downloadObjectAsJson(object: object, fileName = 'output') {
 }
 
 function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
+  const brandName = useBrandDisplayName();
   const confirm = useConfirm();
 
   const router = useRouter();
@@ -843,7 +886,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               if (dashboard != null) {
                 if (
                   !(await confirm(
-                    `Duplicate ${chart.config.name}?`,
+                    <>
+                      Duplicate {'"'}
+                      <Text component="span" fw={700}>
+                        {chart.config.name}
+                      </Text>
+                      {'"'}?
+                    </>,
                     'Duplicate',
                   ))
                 ) {
@@ -856,6 +905,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                     {
                       ...chart,
                       id: makeId(),
+                      config: {
+                        ...chart.config,
+                        // Don't duplicate any alerts that may be set on the original tile
+                        alert: undefined,
+                      },
                     },
                   ],
                 });
@@ -864,7 +918,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             onDeleteClick={async () => {
               if (dashboard != null) {
                 if (
-                  !(await confirm(`Delete ${chart.config.name}?`, 'Delete'))
+                  !(await confirm(
+                    <>
+                      Delete{' '}
+                      <Text component="span" fw={700}>
+                        {chart.config.name}
+                      </Text>
+                      ?
+                    </>,
+                    'Delete',
+                    { variant: 'danger' },
+                  ))
                 ) {
                   return;
                 }
@@ -948,16 +1012,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   return (
     <Box p="sm" data-testid="dashboard-page">
       <Head>
-        <title>Dashboard – HyperDX</title>
+        <title>Dashboard – {brandName}</title>
       </Head>
       <OnboardingModal />
       <EditTileModal
         dashboardId={dashboardId}
         chart={editedTile}
         onClose={() => {
-          if (!isSaving) {
-            setEditedTile(undefined);
-          }
+          if (!isSaving) setEditedTile(undefined);
         }}
         dateRange={searchedTimeRange}
         isSaving={isSaving}

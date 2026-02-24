@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Fuse from 'fuse.js';
 import { Popover, Textarea, UnstyledButton } from '@mantine/core';
 
@@ -46,9 +46,19 @@ export default function AutocompleteInput({
 }) {
   const suggestionsLimit = 10;
 
-  const [isSearchInputFocused, setIsSearchInputFocused] = useState(false);
+  const [isSearchInputFocused, _setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
-  const [showSearchHistory, setShowSearchHistory] = useState(false);
+  const setIsSearchInputFocused = useCallback(
+    (state: boolean) => {
+      _setIsSearchInputFocused(state);
+      setIsInputDropdownOpen(state);
+    },
+    [_setIsSearchInputFocused],
+  );
+  const [rightSectionWidth, setRightSectionWidth] = useState<number | 'auto'>(
+    'auto',
+  );
+  const [inputWidth, setInputWidth] = useState<number>(720);
 
   const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] =
     useState(-1);
@@ -67,25 +77,11 @@ export default function AutocompleteInput({
     });
   }, [queryHistory, queryHistoryType]);
 
-  useEffect(() => {
-    if (isSearchInputFocused) {
-      setIsInputDropdownOpen(true);
-    }
-  }, [isSearchInputFocused]);
-
-  useEffect(() => {
-    // only show search history when: 1.no input, 2.has search type, 3.has history list
-    if (
-      value != null &&
-      value.length === 0 &&
-      queryHistoryList.length > 0 &&
-      queryHistoryType
-    ) {
-      setShowSearchHistory(true);
-    } else {
-      setShowSearchHistory(false);
-    }
-  }, [value, queryHistoryType, queryHistoryList]);
+  const showSearchHistory =
+    value != null &&
+    value.length === 0 &&
+    queryHistoryList.length > 0 &&
+    queryHistoryType;
 
   const fuse = useMemo(
     () =>
@@ -128,6 +124,14 @@ export default function AutocompleteInput({
     inputRef.current?.focus();
   };
   const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (ref.current) {
+      setRightSectionWidth(ref.current.clientWidth);
+    }
+    if (inputRef.current) {
+      setInputWidth(inputRef.current.clientWidth);
+    }
+  }, [language, onLanguageChange, inputRef]);
 
   return (
     <Popover
@@ -141,10 +145,7 @@ export default function AutocompleteInput({
       closeOnEscape
       styles={{
         dropdown: {
-          maxWidth:
-            (inputRef.current?.clientWidth || 0) > 300
-              ? inputRef.current?.clientWidth
-              : 720,
+          maxWidth: inputWidth > 300 ? inputWidth : 720,
           width: '100%',
           zIndex,
         },
@@ -242,7 +243,7 @@ export default function AutocompleteInput({
               }
             }
           }}
-          rightSectionWidth={ref.current?.clientWidth ?? 'auto'}
+          rightSectionWidth={rightSectionWidth}
           rightSection={
             language != null && onLanguageChange != null ? (
               <div ref={ref}>

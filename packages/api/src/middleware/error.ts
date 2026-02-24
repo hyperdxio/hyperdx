@@ -15,7 +15,9 @@ export const appErrorHandler = (
 
   const userFacingErrorMessage = isOperationalError(err)
     ? err.name || err.message
-    : 'Something went wrong :(';
+    : err instanceof SyntaxError && err.message.includes('JSON')
+      ? 'Invalid JSON payload'
+      : 'Something went wrong :(';
 
   void recordException(err, {
     mechanism: {

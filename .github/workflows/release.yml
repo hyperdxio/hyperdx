@@ -165,12 +165,12 @@ jobs:
         env:
           TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
         with:
-          github-token: ${{ secrets.HYPERDX_INTERNAL_TOKEN }}
+          github-token: ${{ secrets.CH_BOT_PAT }}
           script: |
             const { TAG } = process.env;
             const result = await github.rest.actions.createWorkflowDispatch({
-              owner: 'hyperdxio',
-              repo: 'helm-charts',
+              owner: 'ClickHouse',
+              repo: 'ClickStack-helm-charts',
               workflow_id: '${{ secrets.DOWNSTREAM_HC_WORKFLOW_ID }}',
               ref: 'main',
               inputs: {
@@ -214,5 +214,34 @@ jobs:
               ref: 'main',
               inputs: {
                 tag: TAG
+              }
+            });
+
+  notify_clickhouse_clickstack:
+    needs: [check_changesets, release, check_release_app_pushed]
+    if: needs.check_release_app_pushed.outputs.app_was_pushed == 'true'
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load Environment Variables from .env
+        uses: xom9ikk/dotenv@v2
+      - name: Notify ClickHouse/clickhouse-clickstack Downstream
+        uses: actions/github-script@v7
+        continue-on-error: true
+        env:
+          TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
+        with:
+          github-token: ${{ secrets.CH_BOT_PAT }}
+          script: |
+            const { TAG } = process.env;
+            const result = await github.rest.actions.createWorkflowDispatch({
+              owner: 'ClickHouse',
+              repo: 'clickhouse-clickstack',
+              workflow_id: 'sync-hyperdx.yml',
+              ref: 'main',
+              inputs: {
+                tag: TAG,
               }
             });

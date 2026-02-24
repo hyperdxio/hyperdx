@@ -18,6 +18,8 @@ import Server from '@/server';
 import logger from '@/utils/logger';
 import { MetricModel } from '@/utils/logParser';
 
+import { ExternalDashboardTile } from './utils/zod';
+
 const MOCK_USER = {
   email: 'fake@deploysentinel.com',
   password: 'TacoCat!2#4X',
@@ -594,7 +596,10 @@ export const makeChartConfig = (opts?: {
 });
 
 // TODO: DEPRECATED
-export const makeExternalChart = (opts?: { id?: string }) => ({
+export const makeExternalChart = (opts?: {
+  id?: string;
+  sourceId?: string;
+}) => ({
   name: 'Test Chart',
   x: 1,
   y: 1,
@@ -603,11 +608,32 @@ export const makeExternalChart = (opts?: { id?: string }) => ({
   series: [
     {
       type: 'time',
-      dataSource: 'events',
+      sourceId: opts?.sourceId ?? '68dd82484f54641b08667897',
       aggFn: 'count',
       where: '',
+      groupBy: [],
     },
   ],
+});
+
+export const makeExternalTile = (opts?: {
+  sourceId?: string;
+}): ExternalDashboardTile => ({
+  name: 'Test Chart',
+  x: 1,
+  y: 1,
+  w: 1,
+  h: 1,
+  config: {
+    displayType: 'line',
+    sourceId: opts?.sourceId ?? '68dd82484f54641b08667897',
+    select: [
+      {
+        aggFn: 'count',
+        where: '',
+      },
+    ],
+  },
 });
 
 export const makeAlertInput = ({

@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import express from 'express';
 import pick from 'lodash/pick';
 import { z } from 'zod';
-import { validateRequest } from 'zod-express-middleware';
+import { processRequest, validateRequest } from 'zod-express-middleware';
 
 import * as config from '@/config';
 import {
@@ -39,9 +39,7 @@ router.get('/', async (req, res, next) => {
       '_id',
       'allowedAuthMethods',
       'apiKey',
-      'archive',
       'name',
-      'slackAlert',
       'createdAt',
     ]);
     if (team == null) {
@@ -91,7 +89,7 @@ router.patch(
 
 router.patch(
   '/clickhouse-settings',
-  validateRequest({
+  processRequest({
     body: TeamClickHouseSettingsSchema,
   }),
   async (req, res, next) => {

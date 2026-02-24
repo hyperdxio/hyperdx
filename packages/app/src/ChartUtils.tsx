@@ -44,7 +44,7 @@ import {
   TimeChartSeries,
 } from './types';
 import { NumberFormat } from './types';
-import { getColorProps, logLevelColor, logLevelColorOrder } from './utils';
+import { getColorProps, getLogLevelColorOrder, logLevelColor } from './utils';
 
 export const SORT_ORDER = [
   { value: 'asc' as const, label: 'Ascending' },
@@ -74,7 +74,7 @@ export const AGG_FNS = [
     isAttributable: false,
   },
   { value: 'any' as const, label: 'Any' },
-  { value: 'none' as const, label: 'None' },
+  { value: 'none' as const, label: 'Custom' },
 ];
 
 export const getMetricAggFns = (
@@ -503,6 +503,40 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
+export function formatResponseForPieChart(
+  data: ResponseJSON<Record<string, unknown>>,
+  getColor: (index: number, label: string) => string,
+): Array<{ label: string; value: number; color: string }> {
+  if (!data.meta || data.data.length === 0) return [];
+
+  const valueColumns = inferValueColumns(data.meta, new Set());
+  const groupByColumns = inferGroupColumns(data.meta);
+  if (!valueColumns?.length) return [];
+  const valueColumn = valueColumns[0].name;
+
+  return (
+    data.data
+      .map(row => {
+        const label = groupByColumns?.length
+          ? groupByColumns.map(({ name }) => row[name]).join(' - ')
+          : valueColumn;
+        const rawValue = row[valueColumn];
+        const value =
+          typeof rawValue === 'number'
+            ? rawValue
+            : Number.parseFloat(`${rawValue}`);
+        return { label, value };
+      })
+      .filter(entry => !isNaN(entry.value) && isFinite(entry.value))
+      // Sort in descending order so the largest slice is always first and gets the first color in the palette
+      .sort((a, b) => b.value - a.value)
+      .map((entry, index) => ({
+        ...entry,
+        color: getColor(index, entry.label),
+      }))
+  );
+}
+
 export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
   const [start, end] = currentRange;
   const offsetSeconds = differenceInSeconds(end, start);
@@ -713,6 +747,7 @@ export function formatResponseForTimeChart({
     });
   }
 
+  const logLevelColorOrder = getLogLevelColorOrder();
   const sortedLineData = Object.values(lineDataMap).sort((a, b) => {
     return (
       logLevelColorOrder.findIndex(color => color === a.color) -
@@ -1111,6 +1146,12 @@ export function convertToNumberChartConfig(
   config: ChartConfigWithDateRange,
 ): ChartConfigWithOptTimestamp {
   return omit(config, ['granularity', 'groupBy']);
+}
+
+export function convertToPieChartConfig(
+  config: ChartConfigWithOptTimestamp,
+): ChartConfigWithOptTimestamp {
+  return omit(config, ['granularity']);
 }
 
 export function convertToTableChartConfig(

@@ -1,78 +1,107 @@
 import * as React from 'react';
-import { atom, useAtomValue, useSetAtom } from 'jotai';
+import { useRouter } from 'next/router';
 import { Button, Group, Modal, Text } from '@mantine/core';
 
-type ConfirmAtom = {
-  message: string;
+type ConfirmOptions = {
+  variant?: 'primary' | 'danger';
+};
+
+type ConfirmState = {
+  message: React.ReactNode;
   confirmLabel?: string;
+  confirmVariant?: 'primary' | 'danger';
   onConfirm: () => void;
-  onClose?: () => void;
+  onClose: () => void;
 } | null;
 
-const confirmAtom = atom<ConfirmAtom>(null);
+type ConfirmFn = (
+  message: React.ReactNode,
+  confirmLabel?: string,
+  options?: ConfirmOptions,
+) => Promise<boolean>;
 
-export const useConfirm = () => {
-  const setConfirm = useSetAtom(confirmAtom);
+const ConfirmContext = React.createContext<ConfirmFn | null>(null);
 
-  return React.useCallback(
-    async (message: string, confirmLabel?: string): Promise<boolean> => {
-      return new Promise(resolve => {
-        setConfirm({
+export function ConfirmProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = React.useState<ConfirmState>(null);
+  const router = useRouter();
+
+  // Keep a ref so the route-change handler always sees the latest state
+  // without needing to be re-registered on every render.
+  const stateRef = React.useRef(state);
+  React.useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  React.useEffect(() => {
+    const dismiss = () => {
+      stateRef.current?.onClose();
+    };
+    router.events.on('routeChangeStart', dismiss);
+    return () => router.events.off('routeChangeStart', dismiss);
+  }, [router.events]);
+
+  const confirm = React.useCallback<ConfirmFn>(
+    (message, confirmLabel, options) => {
+      return new Promise<boolean>(resolve => {
+        setState({
           message,
           confirmLabel,
+          confirmVariant: options?.variant ?? 'primary',
           onConfirm: () => {
             resolve(true);
-            setConfirm(null);
+            setState(null);
           },
           onClose: () => {
             resolve(false);
-            setConfirm(null);
+            setState(null);
           },
         });
       });
     },
-    [setConfirm],
+    [],
   );
-};
-
-export const useConfirmModal = () => {
-  const confirm = useAtomValue(confirmAtom);
-  const setConfirm = useSetAtom(confirmAtom);
-
-  const handleClose = React.useCallback(() => {
-    confirm?.onClose?.();
-    setConfirm(null);
-  }, [confirm, setConfirm]);
 
   return (
-    <Modal
-      data-testid="confirm-modal"
-      opened={!!confirm}
-      onClose={handleClose}
-      centered
-      withCloseButton={false}
-    >
-      <Text size="sm" opacity={0.7}>
-        {confirm?.message}
-      </Text>
-      <Group justify="flex-end" mt="md" gap="xs">
-        <Button
-          data-testid="confirm-cancel-button"
-          size="xs"
-          variant="secondary"
-          onClick={handleClose}
-        >
-          Cancel
-        </Button>
-        <Button
-          data-testid="confirm-confirm-button"
-          size="xs"
-          variant="danger"
-          onClick={confirm?.onConfirm}
-        >
-          {confirm?.confirmLabel || 'Confirm'}
-        </Button>
-      </Group>
-    </Modal>
+    <ConfirmContext.Provider value={confirm}>
+      {children}
+      <Modal
+        data-testid="confirm-modal"
+        opened={!!state}
+        onClose={state?.onClose ?? (() => {})}
+        centered
+        withCloseButton={false}
+      >
+        <Text size="sm" opacity={0.7}>
+          {state?.message}
+        </Text>
+        <Group justify="flex-end" mt="md" gap="xs">
+          <Button
+            data-testid="confirm-cancel-button"
+            size="xs"
+            variant="secondary"
+            onClick={state?.onClose}
+          >
+            Cancel
+          </Button>
+          <Button
+            data-testid="confirm-confirm-button"
+            size="xs"
+            variant={state?.confirmVariant ?? 'primary'}
+            onClick={state?.onConfirm}
+          >
+            {state?.confirmLabel || 'Confirm'}
+          </Button>
+        </Group>
+      </Modal>
+    </ConfirmContext.Provider>
   );
+}
+
+export const useConfirm = () => {
+  const confirm = React.useContext(ConfirmContext);
+  if (confirm == null) {
+    throw new Error('useConfirm must be used within a ConfirmProvider');
+  }
+  return confirm;
 };

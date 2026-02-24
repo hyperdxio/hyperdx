@@ -24,8 +24,12 @@ export class TableComponent {
   /**
    * Wait for at least one row to populate
    */
-  async waitForRowsToPopulate(timeout: number = 5000) {
-    await this.firstRow.waitFor({ state: 'visible', timeout });
+  async waitForRowsToPopulate(allowEmpty: boolean = false) {
+    if (allowEmpty) {
+      await this.tableContainer.waitFor({ state: 'visible', timeout: 5000 });
+    } else {
+      await this.firstRow.waitFor({ state: 'visible', timeout: 5000 });
+    }
   }
 
   /**

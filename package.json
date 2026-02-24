@@ -39,6 +39,8 @@
     "app:dev:local": "concurrently -k -n 'APP,COMMON-UTILS' -c 'blue.bold,magenta' 'nx run @hyperdx/app:dev:local' 'nx run @hyperdx/common-utils:dev'",
     "app:lint": "nx run @hyperdx/app:ci:lint",
     "app:storybook": "nx run @hyperdx/app:storybook",
+    "build:clickhouse": "nx run @hyperdx/common-utils:build && nx run @hyperdx/app:build:clickhouse",
+    "run:clickhouse": "nx run @hyperdx/app:run:clickhouse",
     "dev": "yarn build:common-utils && dotenvx run --convention=nextjs -- docker compose -f docker-compose.dev.yml up -d && yarn app:dev && docker compose -f docker-compose.dev.yml down",
     "dev:local": "IS_LOCAL_APP_MODE='DANGEROUSLY_is_local_app_mode💀' yarn dev",
     "dev:down": "docker compose -f docker-compose.dev.yml down",
@@ -66,6 +68,13 @@
     "@types/react": "19.0.7",
     "@types/react-dom": "19.0.3",
     "@types/express": "4.17.21",
-    "@types/express-serve-static-core": "4.17.43"
+    "@types/express-serve-static-core": "4.17.43",
+    "express": "^4.20.0",
+    "send": "^0.19.0",
+    "serve-static": "^1.16.0",
+    "cookie": "^0.7.0",
+    "brace-expansion": "^2.0.2",
+    "diff": "^5.2.2",
+    "on-headers": "^1.1.0"
   }
 }

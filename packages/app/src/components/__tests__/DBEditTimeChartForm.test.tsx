@@ -18,6 +18,13 @@ jest.mock('@/hooks/useFetchMetricResourceAttrs', () => ({
   useFetchMetricResourceAttrs: jest.fn().mockReturnValue({
     data: [],
   }),
+  parseAttributeKeysFromSuggestions: jest.fn().mockReturnValue([]),
+}));
+
+jest.mock('@/hooks/useFetchMetricMetadata', () => ({
+  useFetchMetricMetadata: jest.fn().mockReturnValue({
+    data: null,
+  }),
 }));
 
 jest.mock('@/hooks/useMetadata', () => ({

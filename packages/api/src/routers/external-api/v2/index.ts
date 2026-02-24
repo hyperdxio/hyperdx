@@ -4,7 +4,7 @@ import { validateUserAccessKey } from '@/middleware/auth';
 import alertsRouter from '@/routers/external-api/v2/alerts';
 import chartsRouter from '@/routers/external-api/v2/charts';
 import dashboardRouter from '@/routers/external-api/v2/dashboards';
-import { Api400Error, Api403Error } from '@/utils/errors';
+import sourcesRouter from '@/routers/external-api/v2/sources';
 import rateLimiter from '@/utils/rateLimiter';
 
 const router = express.Router();
@@ -37,6 +37,13 @@ router.use(
   defaultRateLimiter,
   validateUserAccessKey,
   dashboardRouter,
+);
+
+router.use(
+  '/sources',
+  defaultRateLimiter,
+  validateUserAccessKey,
+  sourcesRouter,
 );
 
 export default router;

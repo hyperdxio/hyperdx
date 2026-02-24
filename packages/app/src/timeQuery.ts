@@ -242,11 +242,13 @@ export function useTimeQuery({
       liveTailTimeRange == null &&
       tempLiveTailTimeRange == null &&
       !isInputTimeQueryLive(inputTimeQuery) &&
+      // eslint-disable-next-line react-hooks/refs
       inputTimeQueryDerivedTimeQueryRef.current != null
     ) {
       // Use the input time query, allows users to specify relative time ranges
       // via url ex. /logs?tq=Last+30+minutes
       // return inputTimeQueryDerivedTimeQuery as [Date, Date];
+      // eslint-disable-next-line react-hooks/refs
       return inputTimeQueryDerivedTimeQueryRef.current;
     } else if (
       isReady &&
@@ -339,6 +341,7 @@ export function useTimeQuery({
     ],
   );
 
+  // eslint-disable-next-line react-hooks/refs
   return {
     isReady, // Don't search until we know what we want to do
     isLive,

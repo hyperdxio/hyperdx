@@ -8,9 +8,10 @@ import {
   convertToNumberChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
+  formatResponseForPieChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
-import { CHART_COLOR_ERROR, COLORS } from '@/utils';
+import { COLORS, getChartColorError } from '@/utils';
 
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
@@ -316,7 +317,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: CHART_COLOR_ERROR,
+          color: getChartColorError(),
           dataKey: 'error',
           currentPeriodKey: 'error',
           previousPeriodKey: 'error (previous)',
@@ -736,6 +737,155 @@ describe('ChartUtils', () => {
       const convertedConfig = convertToTableChartConfig(config);
 
       expect(convertedConfig.limit).toEqual({ limit: 200 });
+    });
+  });
+
+  describe('formatResponseForPieChart', () => {
+    const getColor = (index: number, label: string) =>
+      `color-${index}-${label}`;
+
+    it('returns empty array when data.data is empty', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [],
+          meta: [{ name: 'count()', type: 'UInt64' }],
+        },
+        getColor,
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('returns empty array when there are no numeric value columns', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [{ ServiceName: 'checkout' }],
+          meta: [{ name: 'ServiceName', type: 'LowCardinality(String)' }],
+        },
+        getColor,
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('uses the value column name as label when there are no group-by columns', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [{ 'count()': 10 }],
+          meta: [{ name: 'count()', type: 'UInt64' }],
+        },
+        getColor,
+      );
+      expect(result).toEqual([
+        { label: 'count()', value: 10, color: 'color-0-count()' },
+      ]);
+    });
+
+    it('joins group-by column values with " - " as the label', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [
+            { 'count()': 10, ServiceName: 'checkout', env: 'prod' },
+            { 'count()': 5, ServiceName: 'shipping', env: 'prod' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+            { name: 'env', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+      );
+      expect(result).toEqual([
+        {
+          label: 'checkout - prod',
+          value: 10,
+          color: 'color-0-checkout - prod',
+        },
+        {
+          label: 'shipping - prod',
+          value: 5,
+          color: 'color-1-shipping - prod',
+        },
+      ]);
+    });
+
+    it('parses string numeric values', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [{ 'count()': '42' }],
+          meta: [{ name: 'count()', type: 'UInt64' }],
+        },
+        getColor,
+      );
+      expect(result).toEqual([
+        { label: 'count()', value: 42, color: 'color-0-count()' },
+      ]);
+    });
+
+    it('filters out NaN values', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [{ 'count()': 'not-a-number' }, { 'count()': 5 }],
+          meta: [{ name: 'count()', type: 'UInt64' }],
+        },
+        getColor,
+      );
+      expect(result).toEqual([
+        { label: 'count()', value: 5, color: 'color-0-count()' },
+      ]);
+    });
+
+    it('sorts entries in descending order by value', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [
+            { 'count()': 3, ServiceName: 'c' },
+            { 'count()': 10, ServiceName: 'a' },
+            { 'count()': 1, ServiceName: 'b' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+      );
+      expect(result.map(e => e.value)).toEqual([10, 3, 1]);
+    });
+
+    it('assigns colors by sorted index', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [
+            { 'count()': 1, ServiceName: 'b' },
+            { 'count()': 10, ServiceName: 'a' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+      );
+      // 'a' (value 10) sorts first and gets index 0; 'b' (value 1) gets index 1
+      expect(result[0]).toMatchObject({ label: 'a', color: 'color-0-a' });
+      expect(result[1]).toMatchObject({ label: 'b', color: 'color-1-b' });
+    });
+
+    it('uses only the first numeric column as the value column', () => {
+      const result = formatResponseForPieChart(
+        {
+          data: [{ count: 5, duration: 999, ServiceName: 'svc' }],
+          meta: [
+            { name: 'count', type: 'UInt64' },
+            { name: 'duration', type: 'Float64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+      );
+      expect(result).toEqual([
+        { label: 'svc', value: 5, color: 'color-0-svc' },
+      ]);
     });
   });
 });

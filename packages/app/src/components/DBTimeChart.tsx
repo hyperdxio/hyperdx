@@ -10,6 +10,7 @@ import {
 import {
   Button,
   Code,
+  Divider,
   Group,
   Modal,
   Popover,
@@ -143,58 +144,54 @@ function ActiveTimeTooltip({
           onClick={e => e.stopPropagation()}
           onMouseDown={e => e.stopPropagation()}
         >
-          {validPayloads.length <= 1 ? (
-            // Fallback scenario if limited data is available
+          <Stack gap="xs" style={{ maxHeight: '220px', overflowY: 'auto' }}>
             <Link
               data-testid="chart-view-events-link"
-              href={
-                buildSearchUrl(
-                  validPayloads?.[0]?.dataKey,
-                  validPayloads?.[0]?.value,
-                ) ?? '/search'
-              }
+              href={buildSearchUrl() ?? '/search'}
               onClick={onDismiss}
             >
               <Group gap="xs">
                 <IconSearch size={16} />
-                View Events
+                View All Events
               </Group>
             </Link>
-          ) : (
-            <Stack gap="xs" style={{ maxHeight: '170px', overflowY: 'auto' }}>
-              <Text c="gray.5" size="xs">
-                View Events for:
-              </Text>
-              {validPayloads.map((payload, idx) => {
-                const seriesUrl = buildSearchUrl(
-                  payload.dataKey,
-                  payload.value,
-                );
-                return (
-                  <Tooltip
-                    key={idx}
-                    label={payload.name}
-                    withArrow
-                    color="gray"
-                    position="right"
-                  >
-                    <Link
-                      data-testid={`chart-view-events-link-${payload.dataKey}`}
-                      href={seriesUrl ?? '/search'}
-                      onClick={onDismiss}
+            {validPayloads.length > 1 && (
+              <>
+                <Divider />
+                <Text c="gray.5" size="xs">
+                  Filter by group:
+                </Text>
+                {validPayloads.map((payload, idx) => {
+                  const seriesUrl = buildSearchUrl(
+                    payload.dataKey,
+                    payload.value,
+                  );
+                  return (
+                    <Tooltip
+                      key={idx}
+                      label={payload.name}
+                      withArrow
+                      color="gray"
+                      position="right"
                     >
-                      <Group gap="xs">
-                        <IconSearch size={12} />
-                        <Text size="xs" truncate flex="1">
-                          {payload.name}
-                        </Text>
-                      </Group>
-                    </Link>
-                  </Tooltip>
-                );
-              })}
-            </Stack>
-          )}
+                      <Link
+                        data-testid={`chart-view-events-link-${payload.dataKey}`}
+                        href={seriesUrl ?? '/search'}
+                        onClick={onDismiss}
+                      >
+                        <Group gap="xs">
+                          <IconSearch size={12} />
+                          <Text size="xs" truncate flex="1">
+                            {payload.name}
+                          </Text>
+                        </Group>
+                      </Link>
+                    </Tooltip>
+                  );
+                })}
+              </>
+            )}
+          </Stack>
         </Popover.Dropdown>
       </Popover>
     </>

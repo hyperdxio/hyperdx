@@ -20,11 +20,13 @@ import {
   isTimestampExpressionInFirstOrderBy,
   joinQuerySettings,
   optimizeTimestampValueExpression,
+  parseTokenizerFromTextIndex,
   parseToNumber,
   parseToStartOfFunction,
   replaceJsonExpressions,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
+  TextIndexTokenizer,
 } from '../core/utils';
 
 describe('utils', () => {
@@ -679,6 +681,60 @@ describe('utils', () => {
             h: 6,
           },
         ],
+      });
+    });
+
+    it('should preserve level property for quantile aggFn in select', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Quantile Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'P95 Latency',
+              source: 'source1',
+              select: [
+                {
+                  aggFn: 'quantile',
+                  level: 0.95,
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: 'Duration',
+                },
+              ],
+              where: '',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const sources: TSourceUnion[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: {
+            databaseName: 'db1',
+            tableName: 'logs_table',
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+      const selectList = template.tiles[0].config.select;
+      expect(Array.isArray(selectList)).toBe(true);
+      expect((selectList as any[])[0]).toMatchObject({
+        aggFn: 'quantile',
+        level: 0.95,
       });
     });
   });
@@ -1555,6 +1611,119 @@ describe('utils', () => {
       expect(
         joinQuerySettings([{ setting: 'setting_name', value: 'Infinity' }]),
       ).toEqual("setting_name = 'Infinity'");
+    });
+  });
+  describe('parseTokenizerFromTextIndex', () => {
+    it.each([
+      {
+        type: 'text',
+        expected: undefined,
+      },
+      {
+        type: 'text()',
+        expected: undefined,
+      },
+      {
+        type: ' text ( tokenizer= array ) ',
+        expected: { type: 'array' },
+      },
+      {
+        type: 'text(tokenizer=splitByNonAlpha)',
+        expected: { type: 'splitByNonAlpha' },
+      },
+      {
+        type: 'text( tokenizer = splitByNonAlpha )',
+        expected: { type: 'splitByNonAlpha' },
+      },
+      {
+        type: 'text(tokenizer = splitByString())',
+        expected: { type: 'splitByString', separators: [' '] },
+      },
+      {
+        type: `text(tokenizer = splitByString([', ', '; ', '\\n', '" ', '\\\\', '\\t', '(', ')']))`,
+        expected: {
+          type: 'splitByString',
+          separators: [', ', '; ', '\n', '" ', '\\', '\t', '(', ')'],
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams(2, 5, 10))',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 2,
+          maxLength: 5,
+          minCutoffLength: 10,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams(2, 5))',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 2,
+          maxLength: 5,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams(2))',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 2,
+          maxLength: 10,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=sparseGrams)',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 3,
+          maxLength: 10,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer= sparseGrams ())',
+        expected: {
+          type: 'sparseGrams',
+          minLength: 3,
+          maxLength: 10,
+          minCutoffLength: undefined,
+        },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=unknown)',
+        expected: undefined,
+      },
+      {
+        type: '',
+        expected: undefined,
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=array)',
+        expected: { type: 'array' },
+      },
+      {
+        type: 'text(preprocessor=lower(s), tokenizer=ngrams)',
+        expected: { type: 'ngrams', n: 3 },
+      },
+      {
+        type: 'text(tokenizer=ngrams())',
+        expected: { type: 'ngrams', n: 3 },
+      },
+      {
+        type: 'text(tokenizer=ngrams(20))',
+        expected: { type: 'ngrams', n: 20 },
+      },
+    ])('should correctly parse tokenizer from: $type', ({ type, expected }) => {
+      const result = parseTokenizerFromTextIndex({
+        type: 'text',
+        typeFull: type,
+        name: 'text_idx',
+        expression: 'Body',
+        granularity: 1000,
+      });
+      expect(result).toEqual(expected);
     });
   });
 });

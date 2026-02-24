@@ -12,3 +12,13 @@ a {
 * {
   box-sizing: border-box;
 }
+
+.app-layout {
+  height: 100vh;
+}
+
+.app-layout-with-banner {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}

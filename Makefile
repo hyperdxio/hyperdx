@@ -67,13 +67,10 @@ ci-unit:
 
 .PHONY: e2e
 e2e:
-	@# Run full-stack by default (MongoDB + API + demo ClickHouse)
-	@# Use 'make e2e local=true' to skip MongoDB and run local mode only
-	@# Use 'make e2e ui=true' to run tests with UI
-	if [ "$(local)" = "true" ]; then set -- "$$@" --local; fi; \
-	if [ -n "$(tags)" ]; then set -- "$$@" --tags "$(tags)"; fi; \
-	if [ "$(ui)" = "true" ]; then set -- "$$@" --ui; fi; \
-	./scripts/test-e2e.sh "$$@"
+	# Run full-stack by default (MongoDB + API + local Docker ClickHouse)
+	# For more control (--ui, --last-failed, --headed, etc), call the script directly:
+	#   ./scripts/test-e2e.sh --ui --last-failed
+	./scripts/test-e2e.sh
 
 
 
@@ -93,7 +90,7 @@ version:
 
 .PHONY: build-otel-collector
 build-otel-collector:
-	docker build ./docker/otel-collector \
+	docker build . -f docker/otel-collector/Dockerfile \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--target prod
@@ -136,7 +133,7 @@ build-app:
 
 .PHONY: build-otel-collector-nightly
 build-otel-collector-nightly:
-	docker build ./docker/otel-collector \
+	docker build . -f docker/otel-collector/Dockerfile \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target prod
@@ -186,7 +183,7 @@ release-otel-collector:
 		echo "Tag ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} already exists. Skipping push."; \
 	else \
 		echo "Tag ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} does not exist. Building and pushing..."; \
-		docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
+		docker buildx build --platform ${BUILD_PLATFORMS} . -f docker/otel-collector/Dockerfile \
 			-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 			-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION} \
 			-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_LATEST_TAG} \
@@ -278,7 +275,7 @@ release-app:
 .PHONY: release-otel-collector-nightly
 release-otel-collector-nightly:
 	@echo "Building and pushing nightly tag ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}..."; \
-	docker buildx build --platform ${BUILD_PLATFORMS} ./docker/otel-collector \
+	docker buildx build --platform ${BUILD_PLATFORMS} . -f docker/otel-collector/Dockerfile \
 		-t ${OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		-t ${NEXT_OTEL_COLLECTOR_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target prod \
