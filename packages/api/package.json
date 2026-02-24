@@ -88,7 +88,7 @@
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --runInBand --ci --forceExit --coverage",
-    "dev:int": "DOTENV_CONFIG_PATH=.env.test jest --watchAll --runInBand --detectOpenHandles",
+    "dev:int": "DOTENV_CONFIG_PATH=.env.test node --inspect-brk ../../node_modules/.bin/jest --runInBand --ci --forceExit --coverage",
     "dev:migrate-db-create": "ts-node node_modules/.bin/migrate-mongo create -f migrate-mongo-config.ts",
     "dev:migrate-db": "ts-node node_modules/.bin/migrate-mongo up -f migrate-mongo-config.ts",
     "dev:migrate-ch-create": "migrate create -ext sql -dir ./migrations/ch -seq",

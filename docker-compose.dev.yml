@@ -85,7 +85,7 @@ services:
       ch-server:
         condition: service_healthy
   ch-server:
-    image: clickhouse/clickhouse-server:25.7-alpine
+    image: clickhouse/clickhouse-server:26.1-alpine
     ports:
       - 8123:8123 # http api
       - 9000:9000 # native
