@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
   Bar,
@@ -14,15 +14,8 @@ import {
   ChartConfigWithOptDateRange,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Box,
-  Code,
-  Container,
-  Flex,
-  Group,
-  Pagination,
-  Text,
-} from '@mantine/core';
+import { Box, Code, Container, Flex, Pagination, Text } from '@mantine/core';
+import { useElementSize } from '@mantine/hooks';
 
 import { isAggregateFunction } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -215,7 +208,7 @@ function PropertyComparisonChart({
   );
 
   return (
-    <div style={{ width: 340, height: 120 }}>
+    <div style={{ width: '100%', height: 120 }}>
       <Text size="xs" ta="center" title={name}>
         {truncateMiddle(name, 32)}
       </Text>
@@ -264,6 +257,18 @@ function PropertyComparisonChart({
     </div>
   );
 }
+
+// Layout constants for dynamic grid calculation.
+// CHART_WIDTH is the minimum chart width used to determine how many columns fit; actual rendered
+// width expands to fill the container (charts use width: '100%' inside a CSS grid).
+// CHART_HEIGHT must match PropertyComparisonChart's outer div height.
+// CHART_GAP is used both in the column/row formula and as the CSS grid gap.
+const CHART_WIDTH = 340; // minimum column width threshold (px)
+const CHART_HEIGHT = 120; // must match PropertyComparisonChart outer div height (px)
+const CHART_GAP = 16; // px; used in grid gap and layout math
+// Space reserved for the pagination row: Pagination control (~32px) + top padding (16px).
+// Always reserved (even when pagination is hidden via visibility:hidden) so rows count is stable.
+const PAGINATION_HEIGHT = 48;
 
 export default function DBDeltaChart({
   config,
@@ -483,7 +488,28 @@ export default function DBDeltaChart({
 
   const [activePage, setPage] = useState(1);
 
-  const PAGE_SIZE = 12;
+  const {
+    ref: containerRef,
+    width: containerWidth,
+    height: containerHeight,
+  } = useElementSize();
+
+  const columns = Math.max(
+    1,
+    Math.floor((containerWidth + CHART_GAP) / (CHART_WIDTH + CHART_GAP)),
+  );
+  const rows = Math.max(
+    1,
+    Math.floor(
+      (containerHeight - PAGINATION_HEIGHT + CHART_GAP) /
+        (CHART_HEIGHT + CHART_GAP),
+    ),
+  );
+  const PAGE_SIZE = columns * rows;
+
+  useEffect(() => {
+    setPage(1);
+  }, [PAGE_SIZE, xMin, xMax, yMin, yMax]);
 
   if (error) {
     return (
@@ -520,18 +546,27 @@ export default function DBDeltaChart({
     );
   }
 
+  const totalPages = Math.ceil(sortedProperties.length / PAGE_SIZE);
+
   return (
-    <Box style={{ overflow: 'auto', height: '100%' }}>
-      <Flex justify="flex-end" mx="md" mb="md">
-        <Pagination
-          size="xs"
-          value={activePage}
-          onChange={setPage}
-          total={Math.ceil(sortedProperties.length / PAGE_SIZE)}
-        />
-      </Flex>
-      <Group>
-        {Array.from(sortedProperties)
+    <Box
+      ref={containerRef}
+      p="md"
+      style={{
+        overflow: 'hidden',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${columns}, 1fr)`,
+          gap: CHART_GAP,
+        }}
+      >
+        {sortedProperties
           .slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE)
           .map(property => (
             <PropertyComparisonChart
@@ -545,7 +580,22 @@ export default function DBDeltaChart({
               key={property}
             />
           ))}
-      </Group>
+      </div>
+      <Flex
+        justify="flex-end"
+        style={{
+          marginTop: 'auto',
+          paddingTop: CHART_GAP,
+          visibility: totalPages > 1 ? 'visible' : 'hidden',
+        }}
+      >
+        <Pagination
+          size="xs"
+          value={activePage}
+          onChange={setPage}
+          total={totalPages}
+        />
+      </Flex>
     </Box>
   );
 }
