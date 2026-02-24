@@ -509,11 +509,7 @@ export default function DBDeltaChart({
 
   useEffect(() => {
     setPage(1);
-  }, [PAGE_SIZE]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [xMin, xMax, yMin, yMax]);
+  }, [PAGE_SIZE, xMin, xMax, yMin, yMax]);
 
   if (error) {
     return (
