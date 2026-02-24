@@ -1,5 +1,19 @@
 # @hyperdx/app
 
+## 2.19.0
+
+### Minor Changes
+
+- 8326fc6e: feat: use optimization settings if available for use in CH
+
+### Patch Changes
+
+- e55b81bc: fix: Support light-mode in tagging dropdown menu
+- 575779d2: Support JSON type in Surrounding Context
+- b5bb69e3: fix: Improve Pie Chart implemententation
+- Updated dependencies [8326fc6e]
+  - @hyperdx/common-utils@0.14.0
+
 ## 2.18.0
 
 ### Minor Changes

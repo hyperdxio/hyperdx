@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.14.0
+
+### Minor Changes
+
+- 8326fc6e: feat: use optimization settings if available for use in CH
+
 ## 0.13.0
 
 ### Minor Changes
