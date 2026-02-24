@@ -5,6 +5,7 @@
   flex-direction: column;
   padding: var(--mantine-spacing-xs);
   font-size: 12px;
+  font-family: var(--font-ibm-plex-mono);
 }
 
 .withTabulate {
@@ -35,7 +36,7 @@
   overflow: hidden;
 
   &:hover {
-    background-color: var(--color-bg-muted);
+    background-color: var(--color-bg-highlighted);
 
     .lineMenu {
       display: flex;

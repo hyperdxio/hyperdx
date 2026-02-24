@@ -6,18 +6,14 @@ import {
   ChSql,
   chSql,
   ColumnMeta,
+  concatChSql,
   convertCHDataTypeToJSType,
   filterColumnMetaByType,
   JSDataType,
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/core/renderChartConfig';
-import type {
-  ChartConfig,
-  ChartConfigWithDateRange,
-  QuerySettings,
-  TSource,
-} from '@/types';
+import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
 
 import { optimizeGetKeyValuesCalls } from './materializedViews';
 import { objectHash } from './utils';
@@ -103,6 +99,7 @@ export type TableMetadata = {
 export type SkipIndexMetadata = {
   name: string;
   type: string; // 'bloom_filter', 'tokenbf_v1', 'minmax', etc.
+  typeFull: string; // e.g., 'text(tokenizer='splitByNonAlpha')'
   expression: string; // e.g., "tokens(lower(Body))"
   granularity: number;
 };
@@ -616,6 +613,84 @@ export class Metadata {
     return tableMetadata;
   }
 
+  /** Reads the value of the setting with the given name from system.settings. */
+  async getSetting({
+    settingName,
+    connectionId,
+  }: {
+    settingName: string;
+    connectionId: string;
+  }) {
+    return this.cache.getOrFetch(`${connectionId}.${settingName}`, async () => {
+      const sql = chSql`
+          SELECT name, value
+          FROM system.settings
+          WHERE name = ${{ String: settingName }}
+        `;
+
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ name: string; value: string }>());
+
+        if (json.data.length > 0) {
+          return json.data[0].value;
+        }
+
+        return undefined;
+      } catch (e) {
+        // Don't retry permissions errors, just silently return undefined
+        if (e instanceof Error && e.message.includes('Not enough privileges')) {
+          console.warn('Not enough privileges to fetch settings:', e);
+          return undefined;
+        }
+
+        throw e;
+      }
+    });
+  }
+
+  async getSettings({ connectionId }: { connectionId?: string }) {
+    return this.cache.getOrFetch(
+      `${connectionId}.availableSettings`,
+      async () => {
+        const query = 'SELECT name, value FROM system.settings';
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query,
+              query_params: undefined,
+              clickhouse_settings: this.getClickHouseSettings(),
+              shouldSkipApplySettings: true,
+            })
+            .then(res => res.json<{ name: string; value: string }>());
+
+          return new Map(json.data.map(row => [row.name, row.value]));
+        } catch (e) {
+          // Don't retry permissions errors, just silently return undefined
+          if (
+            e instanceof Error &&
+            e.message.includes('Not enough privileges')
+          ) {
+            console.warn(
+              'Not enough privileges to fetch settings, may result in unoptimized queries:',
+              e,
+            );
+            return new Map();
+          }
+
+          throw e;
+        }
+      },
+    );
+  }
+
   /**
    * Queries system.data_skipping_indices to retrieve skip index metadata for a table.
    * Results are cached using MetadataCache.
@@ -639,6 +714,7 @@ export class Metadata {
           SELECT
             name,
             type,
+            type_full as typeFull,
             expr as expression,
             granularity
           FROM system.data_skipping_indices
@@ -671,6 +747,145 @@ export class Metadata {
         }
       },
     );
+  }
+
+  /**
+   * Inspects the ClickHouse connection for OpenTelemetry telemetry tables.
+   * Returns one coherent set of tables from the same database.
+   *
+   * When multiple databases contain the same table schema, this function prioritizes
+   * returning a complete set from a single database rather than mixing tables from different databases.
+   */
+  async getOtelTables({ connectionId }: { connectionId: string }): Promise<{
+    database: string;
+    tables: {
+      logs?: string;
+      traces?: string;
+      sessions?: string;
+      metrics: {
+        gauge?: string;
+        sum?: string;
+        summary?: string;
+        histogram?: string;
+        expHistogram?: string;
+      };
+    };
+  } | null> {
+    return this.cache.getOrFetch(`${connectionId}.otelTables`, async () => {
+      const OTEL_TABLE_NAMES = [
+        'otel_logs',
+        'otel_traces',
+        'hyperdx_sessions',
+        'otel_metrics_gauge',
+        'otel_metrics_sum',
+        'otel_metrics_summary',
+        'otel_metrics_histogram',
+        'otel_metrics_exp_histogram',
+      ];
+
+      const tableNameParams = OTEL_TABLE_NAMES.map(
+        t => chSql`${{ String: t }}`,
+      );
+
+      const sql = chSql`
+          SELECT
+            database,
+            name
+          FROM system.tables
+          WHERE (database != 'system')
+            AND (name IN (${concatChSql(',', tableNameParams)}))
+          ORDER BY database, name
+        `;
+
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ database: string; name: string }>());
+
+        if (json.data.length === 0) {
+          return null;
+        }
+
+        // Group tables by database
+        const tablesByDatabase = new Map<string, Set<string>>();
+        for (const row of json.data) {
+          if (!tablesByDatabase.has(row.database)) {
+            tablesByDatabase.set(row.database, new Set());
+          }
+          tablesByDatabase.get(row.database)!.add(row.name);
+        }
+
+        // Find the database with the most complete set of tables
+        let bestDatabase = '';
+        let bestScore = 0;
+
+        for (const [database, tables] of tablesByDatabase.entries()) {
+          // Score based on number of essential tables present
+          let score = 0;
+          if (tables.has('otel_logs')) score += 10;
+          if (tables.has('otel_traces')) score += 10;
+          if (tables.has('hyperdx_sessions')) score += 5;
+          if (tables.has('otel_metrics_gauge')) score += 2;
+          if (tables.has('otel_metrics_sum')) score += 2;
+          if (tables.has('otel_metrics_histogram')) score += 2;
+          if (tables.has('otel_metrics_summary')) score += 1;
+          if (tables.has('otel_metrics_exp_histogram')) score += 1;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestDatabase = database;
+          }
+        }
+
+        if (!bestDatabase) {
+          return null;
+        }
+
+        const selectedTables = tablesByDatabase.get(bestDatabase)!;
+
+        return {
+          database: bestDatabase,
+          tables: {
+            logs: selectedTables.has('otel_logs') ? 'otel_logs' : undefined,
+            traces: selectedTables.has('otel_traces')
+              ? 'otel_traces'
+              : undefined,
+            sessions: selectedTables.has('hyperdx_sessions')
+              ? 'hyperdx_sessions'
+              : undefined,
+            metrics: {
+              gauge: selectedTables.has('otel_metrics_gauge')
+                ? 'otel_metrics_gauge'
+                : undefined,
+              sum: selectedTables.has('otel_metrics_sum')
+                ? 'otel_metrics_sum'
+                : undefined,
+              summary: selectedTables.has('otel_metrics_summary')
+                ? 'otel_metrics_summary'
+                : undefined,
+              histogram: selectedTables.has('otel_metrics_histogram')
+                ? 'otel_metrics_histogram'
+                : undefined,
+              expHistogram: selectedTables.has('otel_metrics_exp_histogram')
+                ? 'otel_metrics_exp_histogram'
+                : undefined,
+            },
+          },
+        };
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('Not enough privileges')) {
+          console.warn('Not enough privileges to fetch tables:', e);
+          return null;
+        }
+
+        throw e;
+      }
+    });
   }
 
   /**
@@ -806,7 +1021,7 @@ export class Metadata {
     source:
       | Omit<TSource, 'connection'> /* for overlap with ISource type */
       | undefined;
-  }): Promise<{ key: string; value: string[] }[]> {
+  }): Promise<{ key: string; value: string[] | number[] }[]> {
     const cacheKeyConfig = {
       ...pick(chartConfig, [
         'connection',
@@ -894,14 +1109,16 @@ export class Metadata {
               : undefined,
             abort_signal: signal,
           })
-          .then(res => res.json<any>());
+          .then(res => res.json<Record<string, string[] | number[]>>());
 
         // TODO: Fix type issues mentioned in HDX-1548. value is not actually a
         // string[], sometimes it's { [key: string]: string; }
         return Object.entries(json?.data?.[0]).map(([key, value]) => ({
           key: keys[parseInt(key.replace('param', ''))],
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- intentional, see HDX-1548
-          value: (value as string[])?.filter(Boolean), // remove nulls
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          value: value?.filter(v => v != null && v !== '') as  // remove nulls and empty strings
+            | string[]
+            | number[],
         }));
       },
     );
@@ -921,7 +1138,7 @@ export class Metadata {
     limit?: number;
     disableRowLimit?: boolean;
     signal?: AbortSignal;
-  }): Promise<{ key: string; value: string[] }[]> {
+  }): Promise<{ key: string; value: string[] | number[] }[]> {
     const cacheKeyConfig = {
       ...pick(chartConfig, [
         'connection',

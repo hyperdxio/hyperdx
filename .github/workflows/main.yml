@@ -70,6 +70,28 @@ jobs:
         run: make ci-build
       - name: Run integration tests
         run: make ci-int
+  otel-unit-test:
+    timeout-minutes: 8
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v46
+        with:
+          files: |
+            packages/otel-collector/**
+      - name: Setup Go
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/otel-collector/go.mod
+          cache-dependency-path: packages/otel-collector/go.sum
+      - name: Run unit tests
+        if: steps.changed-files.outputs.any_changed == 'true'
+        working-directory: ./packages/otel-collector
+        run: go test ./...
   otel-smoke-test:
     timeout-minutes: 8
     runs-on: ubuntu-24.04
@@ -102,17 +124,6 @@ jobs:
     name: E2E Tests - Shard ${{ matrix.shard }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    services:
-      mongodb:
-        image: mongo:5.0.32-focal
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping: 1});
-          db.getSiblingDB(\"test\").test.insertOne({_id: \"hc\"});
-          db.getSiblingDB(\"test\").test.deleteOne({_id: \"hc\"})'"
-          --health-interval 10s --health-timeout 5s --health-retries 10
-          --health-start-period 10s
-        ports:
-          - 27017:27017
     permissions:
       contents: read
       pull-requests: write
@@ -141,15 +152,43 @@ jobs:
       - name: Install Playwright browsers
         run: cd packages/app && npx playwright install --with-deps chromium
 
+      - name: Start E2E Docker Compose
+        run: |
+          docker compose -p e2e -f packages/app/tests/e2e/docker-compose.yml up -d
+          echo "Waiting for MongoDB..."
+          for i in $(seq 1 30); do
+            if docker compose -p e2e -f packages/app/tests/e2e/docker-compose.yml exec -T db mongosh --port 29998 --quiet --eval "db.adminCommand({ping:1})" >/dev/null 2>&1; then
+              echo "MongoDB is ready"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "MongoDB failed to become ready after 30 seconds"
+              exit 1
+            fi
+            echo "Waiting for MongoDB... ($i/30)"
+            sleep 1
+          done
+          echo "Waiting for ClickHouse..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8123/ping >/dev/null 2>&1; then
+              echo "ClickHouse is ready"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "ClickHouse failed to become ready after 60 seconds"
+              exit 1
+            fi
+            echo "Waiting for ClickHouse... ($i/60)"
+            sleep 1
+          done
+
       - name: Run Playwright tests (full-stack mode)
-        # MongoDB service health check ensures it's ready before this step runs
-        # Note: Tests use ClickHouse demo instance (otel_demo with empty password)
-        # This is intentionally public - it's ClickHouse's read-only demo instance
+        # E2E uses local docker-compose (MongoDB on 29998, ClickHouse on 8123)
         env:
           E2E_FULLSTACK: 'true'
           E2E_UNIQUE_USER: 'true'
           E2E_API_HEALTH_CHECK_MAX_RETRIES: '60'
-          MONGO_URI: mongodb://localhost:27017/hyperdx-e2e
+          MONGO_URI: mongodb://localhost:29998/hyperdx-e2e
         run: |
           cd packages/app
           yarn test:e2e --shard=${{ matrix.shard }}/4
@@ -169,6 +208,12 @@ jobs:
           name: test-results-${{ matrix.shard }}
           path: packages/app/test-results/
           retention-days: 30
+
+      - name: Stop E2E containers
+        if: always()
+        run:
+          docker compose -p e2e -f packages/app/tests/e2e/docker-compose.yml
+          down -v
 
   e2e-report:
     name: End-to-End Tests
@@ -260,35 +305,73 @@ jobs:
 
       - name: Comment PR with test results
         uses: mshick/add-pr-comment@v2
-        if: always() && github.event_name == 'pull_request'
+        # Skip for fork PRs: GITHUB_TOKEN cannot write to the base repo
+        if:
+          always() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.fork != true
         with:
           message: ${{ steps.test-results.outputs.result }}
           message-id: e2e-test-results
 
       - name: Check test results
-        uses: actions/github-script@v7
+        id: check-results
+        run: |
+          total_failed=0
+          for dir in all-test-results/*/; do
+            if [ -f "${dir}results.json" ]; then
+              unexpected=$(jq -r '.stats.unexpected // 0' "${dir}results.json")
+              total_failed=$((total_failed + unexpected))
+            fi
+          done
+          if [ "$total_failed" -gt 0 ]; then
+            echo "::error::$total_failed E2E test(s) failed"
+            exit 1
+          fi
+          # Fail when any shard failed even if we couldn't read failure count from artifacts
+          if [ "${{ needs.e2e-tests.result }}" = "failure" ]; then
+            echo "::error::One or more E2E test shards failed"
+            exit 1
+          fi
+
+  clickhouse-static-build:
+    name: ClickHouse Bundle Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
+          node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
 
-            let totalFailed = 0;
+      - name: Install dependencies
+        run: yarn install
 
-            try {
-              const resultsDir = 'all-test-results';
-              const shards = fs.readdirSync(resultsDir);
+      - name: Build App
+        run: yarn build:clickhouse
 
-              for (const shard of shards) {
-                const resultsPath = path.join(resultsDir, shard, 'results.json');
-                if (fs.existsSync(resultsPath)) {
-                  const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
-                  totalFailed += results.stats.unexpected || 0;
-                }
-              }
-
-              if (totalFailed > 0) {
-                core.setFailed(`${totalFailed} test(s) failed`);
-              }
-            } catch (error) {
-              core.setFailed(`Failed to read test results: ${error.message}`);
-            }
+      - name: Verify output directory exists and has size
+        run: |
+          if [ ! -d "packages/app/out" ]; then
+            echo "::error::Output directory 'packages/app/out' does not exist"
+            exit 1
+          fi
+          echo "✓ Output directory exists"
+          # Calculate size in bytes and convert to MB
+          size_kb=$(du -sk packages/app/out | cut -f1)
+          size_mb=$((size_kb / 1024))
+          echo "Output directory size: ${size_mb} MB (${size_kb} KB)"
+          if [ "$size_mb" -lt 10 ]; then
+            echo "::error::Output directory is only ${size_mb} MB, expected at least 10 MB"
+            exit 1
+          fi
+          echo "✓ Output directory size check passed (${size_mb} MB)"

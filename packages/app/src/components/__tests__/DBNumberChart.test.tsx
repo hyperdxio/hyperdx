@@ -101,6 +101,7 @@ describe('DBNumberChart', () => {
       const [numberFormat, setNumberFormat] = React.useState<
         NumberFormat | undefined
       >(undefined);
+      // eslint-disable-next-line react-hooks/globals
       setNumberFormatFn = setNumberFormat;
       return <DBNumberChart config={{ ...baseTestConfig, numberFormat }} />;
     };

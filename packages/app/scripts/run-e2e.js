@@ -13,6 +13,7 @@
  */
 
 import { spawn } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -50,11 +51,22 @@ if (useLocal) {
 // Add any additional playwright arguments
 playwrightCmd.push(...playwrightArgs);
 
-// Set environment variables
+// Set environment variables (Playwright and its webServer children inherit these)
 const env = {
   ...process.env,
   ...(!useLocal && { E2E_FULLSTACK: 'true' }),
 };
+
+// Full-stack: inject DEFAULT_CONNECTIONS/DEFAULT_SOURCES from fixture so the API gets them
+if (!useLocal) {
+  const fixturePath = path.join(
+    __dirname,
+    '../tests/e2e/fixtures/e2e-fixtures.json',
+  );
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+  env.DEFAULT_CONNECTIONS = JSON.stringify(fixture.connections ?? []);
+  env.DEFAULT_SOURCES = JSON.stringify(fixture.sources ?? []);
+}
 
 // Run playwright
 // eslint-disable-next-line no-console

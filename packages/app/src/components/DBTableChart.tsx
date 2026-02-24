@@ -103,7 +103,7 @@ export default function DBTableChart({
       }
       return acc;
     }, [] as string[]);
-  }, [config?.select]);
+  }, [config.select]);
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {
@@ -182,7 +182,7 @@ export default function DBTableChart({
           Loading Chart Data...
         </div>
       ) : isError && error ? (
-        <div className="h-100 w-100 align-items-center justify-content-center text-muted">
+        <div className="h-100 w-100 align-items-center justify-content-center text-muted overflow-scroll">
           <Text ta="center" size="sm" mt="sm">
             Error loading chart, please check your query or try again later.
           </Text>

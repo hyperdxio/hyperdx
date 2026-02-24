@@ -115,7 +115,6 @@ function DBServiceMapPage() {
           <div style={{ minWidth: '200px' }}>
             <Slider
               label={null}
-              color="green"
               min={0}
               max={SAMPLING_FACTORS.length - 1}
               value={SAMPLING_FACTORS.findIndex(

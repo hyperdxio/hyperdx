@@ -1,6 +1,8 @@
+import { useCallback } from 'react';
 import SqlString from 'sqlstring';
 import { TSource } from '@hyperdx/common-utils/dist/types';
-import { UnstyledButton } from '@mantine/core';
+import { Button, Group, Stack, UnstyledButton } from '@mantine/core';
+import { IconSearch } from '@tabler/icons-react';
 
 import { formatApproximateNumber, navigateToTraceSearch } from './utils';
 
@@ -21,53 +23,63 @@ export default function ServiceMapTooltip({
   serviceName: string;
   isSingleTrace?: boolean;
 }) {
+  const requestText = `${isSingleTrace ? totalRequests : formatApproximateNumber(totalRequests)} request${
+    totalRequests !== 1 ? 's' : ''
+  }`;
+  const errorsText = `${errorPercentage.toFixed(2)}% errors`;
+
+  const handleRequestsClick = useCallback(() => {
+    navigateToTraceSearch({
+      dateRange,
+      source,
+      where: SqlString.format("? = ? AND ? IN ('Server', 'Consumer')", [
+        SqlString.raw(source.serviceNameExpression ?? 'ServiceName'),
+        serviceName,
+        SqlString.raw(source.spanKindExpression ?? 'SpanKind'),
+      ]),
+    });
+  }, [dateRange, source, serviceName]);
+
+  const handleErrorsClick = useCallback(() => {
+    navigateToTraceSearch({
+      dateRange,
+      source,
+      where: SqlString.format(
+        "? = ? AND ? IN ('Server', 'Consumer') AND ? = 'Error'",
+        [
+          SqlString.raw(source.serviceNameExpression ?? 'ServiceName'),
+          serviceName,
+          SqlString.raw(source.spanKindExpression ?? 'SpanKind'),
+          SqlString.raw(source.statusCodeExpression ?? 'StatusCode'),
+        ],
+      ),
+    });
+  }, [dateRange, source, serviceName]);
+
   return (
-    <div className={styles.toolbar}>
-      <UnstyledButton
-        onClick={() =>
-          navigateToTraceSearch({
-            dateRange,
-            source,
-            where: SqlString.format("? = ? AND ? IN ('Server', 'Consumer')", [
-              SqlString.raw(source.serviceNameExpression ?? 'ServiceName'),
-              serviceName,
-              SqlString.raw(source.spanKindExpression ?? 'SpanKind'),
-            ]),
-          })
-        }
-        className={styles.linkButton}
+    <Stack className={styles.toolbar} gap={0}>
+      <Button
+        onClick={handleRequestsClick}
+        variant="subtle"
+        size="xs"
+        color="var(--color-text)"
+        rightSection={<IconSearch size={16} />}
       >
-        {isSingleTrace ? totalRequests : formatApproximateNumber(totalRequests)}{' '}
-        request
-        {totalRequests !== 1 ? 's' : ''}
-      </UnstyledButton>
+        {requestText}
+      </Button>
       {errorPercentage > 0 ? (
         <>
-          {', '}
-          <UnstyledButton
-            onClick={() =>
-              navigateToTraceSearch({
-                dateRange,
-                source,
-                where: SqlString.format(
-                  "? = ? AND ? IN ('Server', 'Consumer') AND ? = 'Error'",
-                  [
-                    SqlString.raw(
-                      source.serviceNameExpression ?? 'ServiceName',
-                    ),
-                    serviceName,
-                    SqlString.raw(source.spanKindExpression ?? 'SpanKind'),
-                    SqlString.raw(source.statusCodeExpression ?? 'StatusCode'),
-                  ],
-                ),
-              })
-            }
-            className={styles.linkButton}
+          <Button
+            onClick={handleErrorsClick}
+            variant="subtle"
+            size="xs"
+            color="var(--color-text-danger)"
+            rightSection={<IconSearch size={16} />}
           >
-            {errorPercentage.toFixed(2)}% error
-          </UnstyledButton>
+            {errorsText}
+          </Button>
         </>
       ) : null}
-    </div>
+    </Stack>
   );
 }

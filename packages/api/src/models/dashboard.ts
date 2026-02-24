@@ -9,6 +9,8 @@ export interface IDashboard extends z.infer<typeof DashboardSchema> {
   team: ObjectId;
 }
 
+export type DashboardDocument = mongoose.HydratedDocument<IDashboard>;
+
 export default mongoose.model<IDashboard>(
   'Dashboard',
   new Schema<IDashboard>(

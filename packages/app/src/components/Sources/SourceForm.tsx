@@ -41,6 +41,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
+import { useDebouncedCallback, useDidUpdate } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconCheck,
@@ -49,7 +50,6 @@ import {
   IconSettings,
   IconTrash,
 } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
@@ -66,6 +66,7 @@ import {
   useSources,
   useUpdateSource,
 } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   inferMaterializedViewConfig,
   MV_AGGREGATE_FUNCTIONS,
@@ -202,40 +203,71 @@ function HighlightedAttributeRow({
   connectionId,
   removeHighlightedAttribute,
 }: HighlightedAttributeRowProps) {
-  const expression = useWatch({
+  const expressionInput = useWatch({
     control,
     name: `${name}.${index}.sqlExpression`,
   });
 
-  const alias = useWatch({
+  const aliasInput = useWatch({
     control,
     name: `${name}.${index}.alias`,
   });
+
+  const [explainParams, setExplainParams] = useState<{
+    expression: typeof expressionInput;
+    alias: typeof aliasInput;
+  }>();
+
+  const setExplainParamsDebounced = useDebouncedCallback(
+    (params: typeof explainParams) => {
+      setExplainParams(params);
+    },
+    1_000,
+  );
+
+  useDidUpdate(() => {
+    setExplainParamsDebounced({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
+  }, [expressionInput, aliasInput]);
 
   const {
     data: explainData,
     error: explainError,
     isLoading: explainLoading,
-    refetch: explainExpression,
   } = useExplainQuery(
     {
       from: { databaseName, tableName },
       connection: connectionId,
-      select: [{ alias, valueExpression: expression }],
+      select: [
+        {
+          alias: explainParams?.alias,
+          valueExpression: explainParams?.expression ?? '',
+        },
+      ],
       where: '',
     },
 
-    { enabled: false },
+    {
+      enabled: !!explainParams?.expression,
+    },
   );
 
   const runExpression = () => {
-    if (expression) {
-      explainExpression();
-    }
+    setExplainParams({
+      expression: expressionInput,
+      alias: aliasInput,
+    });
   };
 
   const isExpressionValid = !!explainData?.length;
   const isExpressionInvalid = explainError instanceof ClickHouseQueryError;
+
+  const shouldShowResult =
+    explainParams?.expression === expressionInput &&
+    explainParams?.alias === aliasInput &&
+    (isExpressionValid || isExpressionInvalid);
 
   return (
     <React.Fragment key={id}>
@@ -272,7 +304,7 @@ function HighlightedAttributeRow({
               variant="subtle"
               color="gray"
               loading={explainLoading}
-              disabled={!expression || explainLoading}
+              disabled={!expressionInput || explainLoading}
               onClick={runExpression}
             >
               <IconCheck size={16} />
@@ -289,7 +321,7 @@ function HighlightedAttributeRow({
         </Flex>
       </Grid.Col>
 
-      {(isExpressionValid || isExpressionInvalid) && (
+      {shouldShowResult && (
         <Grid.Col span={5} pe={0} pt={0}>
           {isExpressionValid && (
             <Text c="green" size="xs">
@@ -467,6 +499,7 @@ function MaterializedViewFormSection({
   onRemove,
   setValue,
 }: { mvIndex: number; onRemove: () => void } & TableModelProps) {
+  const brandName = useBrandDisplayName();
   const connection = useWatch({ control, name: `connection` });
   const sourceDatabaseName = useWatch({
     control,
@@ -558,7 +591,7 @@ function MaterializedViewFormSection({
           <Text size="xs" fw={500} mb={4}>
             Minimum Date
             <Tooltip
-              label="(Optional) The earliest date and time (in the local timezone) for which the materialized view contains data. If not provided, then HyperDX will assume that the materialized view contains data for all dates for which the source table contains data."
+              label={`(Optional) The earliest date and time (in the local timezone) for which the materialized view contains data. If not provided, then ${brandName} will assume that the materialized view contains data for all dates for which the source table contains data.`}
               color="dark"
               c="white"
               multiline
@@ -852,6 +885,7 @@ function AggregatedColumnRow({
 
 export function LogTableModelForm(props: TableModelProps) {
   const { control } = props;
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -1004,13 +1038,13 @@ export function LogTableModelForm(props: TableModelProps) {
         <Divider />
         <FormRow
           label={'Correlated Metric Source'}
-          helpText="HyperDX Source for metrics associated with logs. Optional"
+          helpText={`${brandName} Source for metrics associated with logs. Optional`}
         >
           <SourceSelectControlled control={control} name="metricSourceId" />
         </FormRow>
         <FormRow
           label={'Correlated Trace Source'}
-          helpText="HyperDX Source for traces associated with logs. Optional"
+          helpText={`${brandName} Source for traces associated with logs. Optional`}
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
         </FormRow>
@@ -1105,6 +1139,7 @@ export function LogTableModelForm(props: TableModelProps) {
 
 export function TraceTableModelForm(props: TableModelProps) {
   const { control } = props;
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -1248,19 +1283,19 @@ export function TraceTableModelForm(props: TableModelProps) {
       <Divider />
       <FormRow
         label={'Correlated Log Source'}
-        helpText="HyperDX Source for logs associated with traces. Optional"
+        helpText={`${brandName} Source for logs associated with traces. Optional`}
       >
         <SourceSelectControlled control={control} name="logSourceId" />
       </FormRow>
       <FormRow
         label={'Correlated Session Source'}
-        helpText="HyperDX Source for sessions associated with traces. Optional"
+        helpText={`${brandName} Source for sessions associated with traces. Optional`}
       >
         <SourceSelectControlled control={control} name="sessionSourceId" />
       </FormRow>
       <FormRow
         label={'Correlated Metric Source'}
-        helpText="HyperDX Source for metrics associated with traces. Optional"
+        helpText={`${brandName} Source for metrics associated with traces. Optional`}
       >
         <SourceSelectControlled control={control} name="metricSourceId" />
       </FormRow>
@@ -1389,6 +1424,7 @@ export function TraceTableModelForm(props: TableModelProps) {
 }
 
 export function SessionTableModelForm({ control }: TableModelProps) {
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -1433,9 +1469,24 @@ export function SessionTableModelForm({ control }: TableModelProps) {
       <Stack gap="sm">
         <FormRow
           label={'Correlated Trace Source'}
-          helpText="HyperDX Source for traces associated with sessions. Required"
+          helpText={`${brandName} Source for traces associated with sessions. Required`}
         >
           <SourceSelectControlled control={control} name="traceSourceId" />
+        </FormRow>
+        <FormRow
+          label={'Timestamp Column'}
+          helpText="DateTime column or expression that is part of your table's primary key."
+        >
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name="timestampValueExpression"
+            disableKeywordAutocomplete
+          />
         </FormRow>
       </Stack>
     </>
@@ -1448,6 +1499,7 @@ interface TableModelProps {
 }
 
 export function MetricTableModelForm({ control, setValue }: TableModelProps) {
+  const brandName = useBrandDisplayName();
   const databaseName = useWatch({
     control,
     name: 'from.databaseName',
@@ -1516,7 +1568,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
             helpText={
               metricType === MetricsDataType.ExponentialHistogram ||
               metricType === MetricsDataType.Summary
-                ? `Table containing ${metricType.toLowerCase()} metrics data. Note: not yet fully supported by HyperDX`
+                ? `Table containing ${metricType.toLowerCase()} metrics data. Note: not yet fully supported by ${brandName}`
                 : `Table containing ${metricType.toLowerCase()} metrics data`
             }
           >
@@ -1530,7 +1582,7 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
         ))}
         <FormRow
           label={'Correlated Log Source'}
-          helpText="HyperDX Source for logs associated with metrics. Optional"
+          helpText={`${brandName} Source for logs associated with metrics. Optional`}
         >
           <SourceSelectControlled control={control} name="logSourceId" />
         </FormRow>
@@ -1565,7 +1617,7 @@ export function TableSourceForm({
   onSave,
   onCreate,
   isNew = false,
-  defaultName,
+  defaultName = '',
   onCancel,
 }: {
   sourceId?: string;
@@ -1802,13 +1854,30 @@ export function TableSourceForm({
 
   const sourceFormSchema = sourceSchemaWithout({ id: true });
   const handleError = useCallback(
-    (error: z.ZodError<TSourceUnion>) => {
-      const errors = error.errors;
+    ({ errors }: z.ZodError<TSourceUnion>, eventName: 'create' | 'save') => {
+      const notificationMsgs: string[] = [];
+
+      // eslint-disable-next-line no-console
+      console.debug(
+        // HDX-3148
+        `[${eventName}] SourceForm validation error`,
+        JSON.stringify(errors),
+      );
+
       for (const err of errors) {
         const errorPath: string = err.path.join('.');
         // TODO: HDX-1768 get rid of this type assertion if possible
         setError(errorPath as any, { ...err });
+
+        const message =
+          // HDX-3148
+          err.message === 'Required'
+            ? `${errorPath}: ${err.message}`
+            : err.message;
+
+        notificationMsgs.push(message);
       }
+
       notifications.show({
         color: 'red',
         message: (
@@ -1816,9 +1885,9 @@ export function TableSourceForm({
             <Text size="sm">
               <b>Failed to create source</b>
             </Text>
-            {errors.map((err, i) => (
+            {notificationMsgs.map((message, i) => (
               <Text key={i} size="sm">
-                ✖ {err.message}
+                ✖ {message}
               </Text>
             ))}
           </Stack>
@@ -1833,7 +1902,7 @@ export function TableSourceForm({
     handleSubmit(async data => {
       const parseResult = sourceFormSchema.safeParse(data);
       if (parseResult.error) {
-        handleError(parseResult.error);
+        handleError(parseResult.error, 'create');
         return;
       }
 
@@ -1901,7 +1970,7 @@ export function TableSourceForm({
     handleSubmit(data => {
       const parseResult = sourceFormSchema.safeParse(data);
       if (parseResult.error) {
-        handleError(parseResult.error);
+        handleError(parseResult.error, 'save');
         return;
       }
       updateSource.mutate(

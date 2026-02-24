@@ -9,7 +9,16 @@ export type SelectControlledProps = SelectProps &
   };
 
 export default function SelectControlled(props: SelectControlledProps) {
-  const { field, fieldState } = useController(props);
+  const {
+    field: {
+      value: fieldValue,
+      onChange: fieldOnChange,
+      onBlur: fieldOnBlur,
+      name: fieldName,
+      ref: fieldRef,
+    },
+    fieldState,
+  } = useController(props);
   const { onCreate, allowDeselect = true, ...restProps } = props;
 
   // This is needed as mantine does not clear the select
@@ -17,9 +26,9 @@ export default function SelectControlled(props: SelectControlledProps) {
   // if it was previously in the data (ex. data was deleted)
   const selected = props.data?.find(d =>
     typeof d === 'string'
-      ? d === field.value
+      ? d === fieldValue
       : 'value' in d
-        ? d.value === field.value
+        ? d.value === fieldValue
         : true,
   );
 
@@ -28,21 +37,21 @@ export default function SelectControlled(props: SelectControlledProps) {
       if (value === '_create_new_value' && onCreate != null) {
         onCreate();
       } else if (value !== null || allowDeselect) {
-        field.onChange(value);
+        fieldOnChange(value);
       }
     },
-    [field, onCreate, allowDeselect],
+    [fieldOnChange, onCreate, allowDeselect],
   );
 
   return (
     <Select
       {...restProps}
       error={fieldState.error?.message}
-      value={selected == null ? null : field.value}
+      value={selected == null ? null : fieldValue}
       onChange={onChange}
-      onBlur={field.onBlur}
-      name={field.name}
-      ref={field.ref}
+      onBlur={fieldOnBlur}
+      name={fieldName}
+      ref={fieldRef}
     />
   );
 }

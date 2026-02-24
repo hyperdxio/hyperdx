@@ -18,6 +18,8 @@ import fs from 'fs';
 import path from 'path';
 import { chromium, FullConfig } from '@playwright/test';
 
+import { seedClickHouse } from './seed-clickhouse';
+
 // Configuration constants
 const API_HEALTH_CHECK_MAX_RETRIES = parseInt(
   process.env.E2E_API_HEALTH_CHECK_MAX_RETRIES || '30',
@@ -72,10 +74,13 @@ function clearDatabase() {
 async function globalSetup(_config: FullConfig) {
   console.log('Setting up full-stack E2E environment');
   console.log('  MongoDB: local (auth, teams, persistence)');
-  console.log('  ClickHouse: demo instance (telemetry data)');
+  console.log('  ClickHouse: local instance (telemetry data)');
 
   // Set timezone
   process.env.TZ = 'America/New_York';
+
+  // Seed ClickHouse with test data
+  await seedClickHouse();
 
   // Clean up any existing auth state to ensure fresh setup
   if (fs.existsSync(AUTH_FILE)) {
@@ -261,7 +266,7 @@ async function globalSetup(_config: FullConfig) {
 
     console.log('Full-stack E2E setup complete');
     console.log(
-      '  Using demo ClickHouse data for logs, traces, metrics, and K8s',
+      '  Using local ClickHouse with seeded test data for logs, traces, metrics, and K8s',
     );
   } catch (error) {
     console.error('Setup failed:', error);

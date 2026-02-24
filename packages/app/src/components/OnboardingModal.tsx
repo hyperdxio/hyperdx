@@ -1,24 +1,29 @@
 import { memo, useCallback, useEffect, useState } from 'react';
 import {
   MetricsDataType,
+  MetricTable,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Button, Divider, Modal, Text } from '@mantine/core';
+import { Button, Divider, Flex, Loader, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconArrowLeft } from '@tabler/icons-react';
 
 import { ConnectionForm } from '@/components/ConnectionForm';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_CLICKHOUSE_BUILD, IS_LOCAL_MODE } from '@/config';
 import { useConnections, useCreateConnection } from '@/connection';
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import {
+  inferTableSourceConfig,
   useCreateSource,
   useDeleteSource,
   useSources,
   useUpdateSource,
 } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import { TableSourceForm } from './Sources/SourceForm';
+import { SourcesList } from './Sources/SourcesList';
 
 async function addOtelDemoSources({
   connectionId,
@@ -206,6 +211,7 @@ function OnboardingModalComponent({
 }: {
   requireSource?: boolean;
 }) {
+  const brandName = useBrandDisplayName();
   const { data: sources } = useSources();
   const { data: connections } = useConnections();
 
@@ -213,27 +219,307 @@ function OnboardingModalComponent({
     connections?.length === 0
       ? 'connection'
       : sources?.length === 0 && requireSource
-        ? 'source'
+        ? 'auto-detect'
         : undefined;
 
-  const [_step, setStep] = useState<'connection' | 'source' | undefined>(
-    undefined,
-  );
+  const [_step, setStep] = useState<
+    'connection' | 'auto-detect' | 'source' | 'closed' | undefined
+  >(undefined);
 
-  const step = _step ?? startStep;
+  const step = _step;
 
   useEffect(() => {
-    if (step === 'source' && sources != null && sources.length > 0) {
-      setStep(undefined);
+    if (startStep != null && step == null) {
+      setStep(startStep);
     }
-  }, [step, sources]);
+  }, [startStep, step]);
 
   const createSourceMutation = useCreateSource();
   const createConnectionMutation = useCreateConnection();
   const updateSourceMutation = useUpdateSource();
   const deleteSourceMutation = useDeleteSource();
+  const metadata = useMetadataWithSettings();
+
+  const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+  // We should only try to auto-detect once
+  const [hasAutodetected, setHasAutodetected] = useState(false);
+  const [autoDetectedSources, setAutoDetectedSources] = useState<TSource[]>([]);
+
+  const handleAutoDetectSources = useCallback(
+    async (connectionId: string) => {
+      try {
+        setIsAutoDetecting(true);
+        setHasAutodetected(true);
+
+        // Try to detect OTEL tables
+        const otelTables = await metadata.getOtelTables({ connectionId });
+
+        if (!otelTables) {
+          // No tables detected, go to manual source setup
+          setStep('source');
+          return;
+        }
+
+        const createdSources: TSource[] = [];
+
+        // Create Log Source if available
+        if (otelTables.tables.logs) {
+          const inferredConfig = await inferTableSourceConfig({
+            databaseName: otelTables.database,
+            tableName: otelTables.tables.logs,
+            connectionId,
+            metadata,
+          });
+
+          if (inferredConfig.timestampValueExpression != null) {
+            const logSource = await createSourceMutation.mutateAsync({
+              source: {
+                kind: SourceKind.Log,
+                name: 'Logs',
+                connection: connectionId,
+                from: {
+                  databaseName: otelTables.database,
+                  tableName: otelTables.tables.logs,
+                },
+                ...inferredConfig,
+                timestampValueExpression:
+                  inferredConfig.timestampValueExpression,
+              },
+            });
+            createdSources.push(logSource);
+          } else {
+            console.error(
+              'Log source was found but missing required fields',
+              inferredConfig,
+            );
+          }
+        }
+
+        // Create Trace Source if available
+        if (otelTables.tables.traces) {
+          const inferredConfig = await inferTableSourceConfig({
+            databaseName: otelTables.database,
+            tableName: otelTables.tables.traces,
+            connectionId,
+            metadata,
+          });
+
+          if (inferredConfig.timestampValueExpression != null) {
+            const traceSource = await createSourceMutation.mutateAsync({
+              source: {
+                kind: SourceKind.Trace,
+                name: 'Traces',
+                connection: connectionId,
+                from: {
+                  databaseName: otelTables.database,
+                  tableName: otelTables.tables.traces,
+                },
+                ...inferredConfig,
+                // Help typescript understand it's not null
+                timestampValueExpression:
+                  inferredConfig.timestampValueExpression,
+              },
+            });
+            createdSources.push(traceSource);
+          } else {
+            console.error(
+              'Trace source was found but missing required fields',
+              inferredConfig,
+            );
+          }
+        }
+
+        // Create Metrics Source if any metrics tables are available
+        const hasMetrics = Object.values(otelTables.tables.metrics).some(
+          t => t != null,
+        );
+        if (hasMetrics) {
+          const metricTables: MetricTable = {
+            [MetricsDataType.Gauge]: '',
+            [MetricsDataType.Histogram]: '',
+            [MetricsDataType.Sum]: '',
+            [MetricsDataType.Summary]: '',
+            [MetricsDataType.ExponentialHistogram]: '',
+          };
+          if (otelTables.tables.metrics.gauge) {
+            metricTables[MetricsDataType.Gauge] =
+              otelTables.tables.metrics.gauge;
+          }
+          if (otelTables.tables.metrics.histogram) {
+            metricTables[MetricsDataType.Histogram] =
+              otelTables.tables.metrics.histogram;
+          }
+          if (otelTables.tables.metrics.sum) {
+            metricTables[MetricsDataType.Sum] = otelTables.tables.metrics.sum;
+          }
+          if (otelTables.tables.metrics.summary) {
+            metricTables[MetricsDataType.Summary] =
+              otelTables.tables.metrics.summary;
+          }
+          if (otelTables.tables.metrics.expHistogram) {
+            metricTables[MetricsDataType.ExponentialHistogram] =
+              otelTables.tables.metrics.expHistogram;
+          }
+
+          const metricsSource = await createSourceMutation.mutateAsync({
+            source: {
+              kind: SourceKind.Metric,
+              name: 'Metrics',
+              connection: connectionId,
+              from: {
+                databaseName: otelTables.database,
+                tableName: '',
+              },
+              timestampValueExpression: 'TimeUnix',
+              serviceNameExpression: 'ServiceName',
+              metricTables,
+              resourceAttributesExpression: 'ResourceAttributes',
+            },
+          });
+          createdSources.push(metricsSource);
+        }
+
+        // Create Session Source if available
+        if (otelTables.tables.sessions) {
+          const inferredConfig = await inferTableSourceConfig({
+            databaseName: otelTables.database,
+            tableName: otelTables.tables.sessions,
+            connectionId,
+            metadata,
+          });
+          const traceSource = createdSources.find(
+            s => s.kind === SourceKind.Trace,
+          );
+
+          if (
+            inferredConfig.timestampValueExpression != null &&
+            traceSource != null
+          ) {
+            const sessionSource = await createSourceMutation.mutateAsync({
+              source: {
+                kind: SourceKind.Session,
+                name: 'Sessions',
+                connection: connectionId,
+                from: {
+                  databaseName: otelTables.database,
+                  tableName: otelTables.tables.sessions,
+                },
+                ...inferredConfig,
+                timestampValueExpression:
+                  inferredConfig.timestampValueExpression,
+                traceSourceId: traceSource.id, // this is required for session source creation
+              },
+            });
+            createdSources.push(sessionSource);
+          } else {
+            console.error(
+              'Session source was found but missing required fields',
+              inferredConfig,
+            );
+          }
+        }
+
+        if (createdSources.length === 0) {
+          console.error('No sources created due to missing required fields');
+          // No sources created, go to manual source setup
+          setStep('source');
+          return;
+        }
+
+        // Update sources to link them together
+        const logSource = createdSources.find(s => s.kind === SourceKind.Log);
+        const traceSource = createdSources.find(
+          s => s.kind === SourceKind.Trace,
+        );
+        const metricsSource = createdSources.find(
+          s => s.kind === SourceKind.Metric,
+        );
+        const sessionSource = createdSources.find(
+          s => s.kind === SourceKind.Session,
+        );
+
+        const updatePromises = [];
+
+        if (logSource) {
+          updatePromises.push(
+            updateSourceMutation.mutateAsync({
+              source: {
+                ...logSource,
+                ...(traceSource ? { traceSourceId: traceSource.id } : {}),
+                ...(metricsSource ? { metricSourceId: metricsSource.id } : {}),
+                ...(sessionSource ? { sessionSourceId: sessionSource.id } : {}),
+              },
+            }),
+          );
+        }
+
+        if (traceSource) {
+          updatePromises.push(
+            updateSourceMutation.mutateAsync({
+              source: {
+                ...traceSource,
+                ...(logSource ? { logSourceId: logSource.id } : {}),
+                ...(metricsSource ? { metricSourceId: metricsSource.id } : {}),
+                ...(sessionSource ? { sessionSourceId: sessionSource.id } : {}),
+              },
+            }),
+          );
+        }
+
+        await Promise.all(updatePromises);
+
+        setAutoDetectedSources(createdSources);
+        notifications.show({
+          title: 'Success',
+          message: `Automatically detected and created ${createdSources.length} source${createdSources.length > 1 ? 's' : ''}.`,
+        });
+        setStep('closed');
+      } catch (err) {
+        console.error('Error auto-detecting sources:', err);
+        notifications.show({
+          color: 'red',
+          title: 'Error',
+          message:
+            'Failed to auto-detect telemetry sources. Please set up manually.',
+        });
+        // Fall back to manual source setup
+        setStep('source');
+      } finally {
+        setIsAutoDetecting(false);
+      }
+    },
+    [
+      metadata,
+      createSourceMutation,
+      updateSourceMutation,
+      setStep,
+      setAutoDetectedSources,
+    ],
+  );
+
+  // Trigger auto-detection when entering the auto-detect step
+  useEffect(() => {
+    if (
+      step === 'auto-detect' && // we should be trying to auto detect
+      sources?.length === 0 && // no sources yet
+      connections && // we need connections
+      connections.length > 0 &&
+      isAutoDetecting === false && // make sure we aren't currently auto detecting
+      hasAutodetected === false // only call it once
+    ) {
+      handleAutoDetectSources(connections[0].id);
+    }
+  }, [
+    step,
+    connections,
+    handleAutoDetectSources,
+    isAutoDetecting,
+    sources,
+    hasAutodetected,
+  ]);
 
   const handleDemoServerClick = useCallback(async () => {
+    if (IS_CLICKHOUSE_BUILD) return;
     try {
       if (sources) {
         for (const source of sources) {
@@ -368,19 +654,19 @@ function OnboardingModalComponent({
 
       notifications.show({
         title: 'Success',
-        message: 'Connected to HyperDX demo server.',
+        message: `Connected to ${brandName} demo server.`,
       });
-      setStep(undefined);
+      setStep('closed');
     } catch (err) {
       console.error(err);
       notifications.show({
         color: 'red',
         title: 'Error',
-        message:
-          'Could not connect to the HyperDX demo server, please try again later.',
+        message: `Could not connect to the ${brandName} demo server, please try again later.`,
       });
     }
   }, [
+    brandName,
     createSourceMutation,
     createConnectionMutation,
     updateSourceMutation,
@@ -391,9 +677,9 @@ function OnboardingModalComponent({
   return (
     <Modal
       data-testid="onboarding-modal"
-      opened={step != null}
+      opened={step != null && step !== 'closed'}
       onClose={() => {}}
-      title="Welcome to HyperDX"
+      title={`Welcome to ${brandName}`}
       size="xl"
       withCloseButton={false}
     >
@@ -412,7 +698,11 @@ function OnboardingModalComponent({
                 password: '',
               }}
               onSave={() => {
-                setStep('source');
+                if (hasAutodetected) {
+                  setStep('source');
+                } else {
+                  setStep('auto-detect');
+                }
               }}
               isNew={true}
             />
@@ -421,7 +711,12 @@ function OnboardingModalComponent({
               connection={connections[0]}
               isNew={false}
               onSave={() => {
-                setStep('source');
+                // If we've already auto-detected, just go to manual source setup
+                if (hasAutodetected) {
+                  setStep('source');
+                } else {
+                  setStep('auto-detect');
+                }
               }}
               showCancelButton={false}
               showDeleteButton={false}
@@ -432,15 +727,99 @@ function OnboardingModalComponent({
               You can always add and edit connections later.
             </Text>
           )}
-          <Divider label="OR" my="md" />
-          <Button
-            data-testid="demo-server-button"
-            variant="secondary"
-            w="100%"
-            onClick={handleDemoServerClick}
-          >
-            Connect to Demo Server
-          </Button>
+          {!IS_CLICKHOUSE_BUILD && (
+            <>
+              <Divider label="OR" my="md" />
+              <Button
+                data-testid="demo-server-button"
+                variant="secondary"
+                w="100%"
+                onClick={handleDemoServerClick}
+              >
+                Connect to Demo Server
+              </Button>
+            </>
+          )}
+        </>
+      )}
+      {step === 'auto-detect' && (
+        <>
+          {isAutoDetecting ? (
+            <>
+              <Flex justify="center" align="center" direction="column" py="xl">
+                <Loader size="md" mb="md" />
+                <Text size="sm" c="dimmed" mb="md">
+                  Detecting available tables...
+                </Text>
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  onClick={() => {
+                    setIsAutoDetecting(false);
+                    setStep('source');
+                  }}
+                >
+                  Skip and setup manually
+                </Button>
+              </Flex>
+            </>
+          ) : autoDetectedSources.length > 0 ? (
+            <>
+              <Button
+                variant="subtle"
+                onClick={() => setStep('connection')}
+                p="xs"
+                mb="md"
+              >
+                <IconArrowLeft size={14} className="me-2" /> Back
+              </Button>
+              <Text size="sm" mb="md">
+                We automatically detected and created{' '}
+                {autoDetectedSources.length} source
+                {autoDetectedSources.length > 1 ? 's' : ''} from your
+                connection. You can review, edit, or continue.
+              </Text>
+              <SourcesList
+                withCard={false}
+                variant="default"
+                showEmptyState={false}
+              />
+              <Flex justify="space-between" mt="md">
+                <Button
+                  variant="subtle"
+                  onClick={() => {
+                    setStep('source');
+                  }}
+                >
+                  Add more sources
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setStep('closed');
+                  }}
+                >
+                  Continue
+                </Button>
+              </Flex>
+            </>
+          ) : (
+            <Flex justify="center" align="center" direction="column" py="xl">
+              {/* We don't expect users to hit this - but this allows them to get unstuck if they do */}
+              <Text size="sm" c="dimmed" mb="md">
+                No OTel tables detected automatically, please setup sources
+                manually.
+              </Text>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setStep('source');
+                }}
+              >
+                Continue
+              </Button>
+            </Flex>
+          )}
         </>
       )}
       {step === 'source' && (
@@ -460,7 +839,7 @@ function OnboardingModalComponent({
             isNew
             defaultName="Logs"
             onCreate={() => {
-              setStep(undefined);
+              setStep('closed');
             }}
           />
           <Text size="xs" mt="lg">

@@ -30,7 +30,7 @@ function DisplaySwitcher<T extends string>({
             size="xs"
             me={2}
             className={cx({
-              'text-success': value === optionValue,
+              'text-brand': value === optionValue,
               'text-muted-hover': value !== optionValue,
             })}
             disabled={disabled}

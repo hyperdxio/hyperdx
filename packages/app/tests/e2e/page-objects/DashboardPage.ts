@@ -2,11 +2,57 @@
  * DashboardPage - Page object for dashboard pages
  * Encapsulates interactions with dashboard creation, editing, and tile management
  */
-import { Locator, Page } from '@playwright/test';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 import { getSqlEditor } from '../utils/locators';
+
+/**
+ * Config format tile config, as accepted by the external dashboard API.
+ * Used with verifyTileFormFromConfig
+ */
+export type TileConfig = {
+  displayType: Exclude<DisplayType, 'heatmap'>;
+  sourceId?: string;
+  select?:
+    | {
+        aggFn?: string;
+        where?: string;
+        whereLanguage?: 'sql' | 'lucene';
+        alias?: string;
+        valueExpression?: string;
+      }[]
+    | string;
+  where?: string;
+  whereLanguage?: 'sql' | 'lucene';
+  groupBy?: string;
+  markdown?: string;
+};
+type SeriesType = 'time' | 'number' | 'table' | 'search' | 'markdown' | 'pie';
+/**
+ * Series data structure for chart verification
+ * Supports all chart types: time, number, table, search, markdown
+ */
+export type SeriesData = {
+  type: SeriesType;
+  sourceId?: string;
+  aggFn?: string;
+  field?: string;
+  where?: string;
+  whereLanguage?: 'sql' | 'lucene';
+  groupBy?: string[];
+  alias?: string;
+  displayType?: 'line' | 'stacked_bar';
+  sortOrder?: 'desc' | 'asc';
+  fields?: string[]; // For search type
+  content?: string; // For markdown type
+  numberFormat?: Record<string, unknown>;
+  metricDataType?: string;
+  metricName?: string;
+  level?: number;
+};
 
 export class DashboardPage {
   readonly page: Page;
@@ -27,6 +73,13 @@ export class DashboardPage {
   private readonly addFiltersButton: Locator;
   private readonly closeFiltersModalButton: Locator;
   private readonly filtersSourceSelector: Locator;
+  private readonly tileSourceSelector: Locator;
+  private readonly aliasInput: Locator;
+  private readonly aggFnSelect: Locator;
+  private readonly markdownTextarea: Locator;
+  private readonly confirmModal: Locator;
+  private readonly confirmCancelButton: Locator;
+  private readonly confirmConfirmButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -55,13 +108,22 @@ export class DashboardPage {
     this.addFiltersButton = page.getByTestId('add-filter-button');
     this.closeFiltersModalButton = page.getByTestId('close-filters-button');
     this.filtersSourceSelector = page.getByTestId('source-selector');
+
+    // Tile editor selectors
+    this.tileSourceSelector = page.getByTestId('source-selector');
+    this.aliasInput = page.getByTestId('series-alias-input');
+    this.aggFnSelect = page.getByTestId('agg-fn-select');
+    this.markdownTextarea = page.locator('textarea[name="markdown"]');
+    this.confirmModal = page.getByTestId('confirm-modal');
+    this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
+    this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
   }
 
   /**
    * Navigate to dashboards list
    */
   async goto() {
-    await this.page.goto('/dashboards');
+    await this.page.goto('/dashboards', { waitUntil: 'networkidle' });
   }
 
   /**
@@ -120,6 +182,18 @@ export class DashboardPage {
    */
   async addTile() {
     await this.addTileButton.click();
+  }
+
+  /**
+   * Create a new dashboard and open the tile editor (add tile), waiting for it to be ready.
+   * Use when testing the chart/tile editor modal in isolation.
+   */
+  async openNewTileEditor() {
+    await this.createDashboardButton.click();
+    await this.page.waitForURL('**/dashboards**');
+    await this.addTileButton.click();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.waitForDataToLoad();
   }
 
   /**
@@ -328,6 +402,141 @@ export class DashboardPage {
     await optionLocator.click();
   }
 
+  /**
+   * Get CodeMirror editor by filtering for specific text content
+   */
+  getCodeMirrorEditor(text: string) {
+    return this.page.locator('.cm-content').filter({ hasText: text });
+  }
+
+  getChartTypeTab(type: SeriesType) {
+    if (type === 'time') {
+      return this.page.getByRole('tab', { name: /line/i });
+    }
+    return this.page.getByRole('tab', { name: new RegExp(type, 'i') });
+  }
+
+  /**
+   * Convert a config-format tile config to SeriesData for form verification.
+   */
+  private configToSeriesData(config: TileConfig): SeriesData[] {
+    if (config.displayType === 'markdown') {
+      return [{ type: 'markdown', content: config.markdown }];
+    }
+
+    if (config.displayType === 'search') {
+      return [
+        {
+          type: 'search',
+          sourceId: config.sourceId,
+          where: config.where,
+          whereLanguage: config.whereLanguage ?? 'lucene',
+        },
+      ];
+    }
+
+    const type: SeriesData['type'] =
+      config.displayType === 'line' || config.displayType === 'stacked_bar'
+        ? 'time'
+        : config.displayType;
+
+    const groupBy = config.groupBy ? [config.groupBy] : undefined;
+    const selectItems = Array.isArray(config.select) ? config.select : [];
+
+    return selectItems.map(item => ({
+      type,
+      sourceId: config.sourceId,
+      aggFn: item.aggFn,
+      where: item.where,
+      whereLanguage: item.whereLanguage ?? 'lucene',
+      alias: item.alias,
+      field: item.valueExpression,
+      groupBy,
+    }));
+  }
+
+  /**
+   * Verify tile edit form using the config-format tile config directly,
+   * avoiding the need for a separate SeriesData verification array.
+   */
+  async verifyTileFormFromConfig(
+    config: TileConfig,
+    expectedSourceName?: string,
+  ) {
+    await this.verifyTileForm(
+      this.configToSeriesData(config),
+      expectedSourceName,
+    );
+  }
+
+  /**
+   * Verify tile edit form matches the given series data
+   * @param series - Array of series data from the API request
+   * @param expectedSourceName - Optional expected source name for verification
+   */
+  async verifyTileForm(series: SeriesData[], expectedSourceName?: string) {
+    for (let i = 0; i < series.length; i++) {
+      const seriesData = series[i];
+
+      // Verify markdown content for markdown tiles
+      if (seriesData.content) {
+        const content = await this.markdownTextarea.first().inputValue();
+        expect(content).toContain(seriesData.content);
+      }
+
+      const chartTypeTab = this.getChartTypeTab(seriesData.type);
+      await expect(chartTypeTab).toHaveAttribute('aria-selected', 'true');
+
+      // Verify source selector for charts with sources
+      if (seriesData.sourceId && expectedSourceName) {
+        await expect(this.tileSourceSelector).toBeVisible();
+        await expect(this.tileSourceSelector).toHaveValue(expectedSourceName);
+      }
+
+      // Verify alias
+      if (seriesData.alias) {
+        await expect(this.aliasInput.nth(i)).toBeVisible();
+        await expect(this.aliasInput.nth(i)).toHaveValue(seriesData.alias);
+      }
+
+      // Verify aggregation function
+      if (seriesData.aggFn) {
+        await expect(this.aggFnSelect.nth(i)).toBeVisible();
+        await expect(this.aggFnSelect.nth(i)).toHaveValue(
+          new RegExp(seriesData.aggFn, 'i'),
+        );
+      }
+
+      // Verify field expression
+      if (seriesData.field) {
+        const fieldEditor = this.getCodeMirrorEditor(seriesData.field);
+        const fieldValue = await fieldEditor.first().textContent();
+        expect(fieldValue).toContain(seriesData.field);
+      }
+
+      // Verify where clause (handles both Lucene textarea and SQL CodeMirror)
+      if (seriesData.where) {
+        if (seriesData.whereLanguage === 'sql') {
+          const whereEditor = this.getCodeMirrorEditor(seriesData.where);
+          const whereValue = await whereEditor.first().textContent();
+          expect(whereValue).toContain(seriesData.where);
+        } else {
+          const whereTextarea = this.page.locator('textarea').filter({
+            hasText: seriesData.where,
+          });
+          await expect(whereTextarea).toBeVisible();
+        }
+      }
+
+      // Verify group by
+      if (seriesData.groupBy && seriesData.groupBy.length > 0) {
+        const groupByEditor = this.getCodeMirrorEditor(seriesData.groupBy[0]);
+        const groupByValue = await groupByEditor.first().textContent();
+        expect(groupByValue).toContain(seriesData.groupBy[0]);
+      }
+    }
+  }
+
   // Getters for assertions
 
   get createButton() {
@@ -360,5 +569,17 @@ export class DashboardPage {
 
   get emptyFiltersList() {
     return this.emptyFiltersListModal;
+  }
+
+  get unsavedChangesConfirmModal() {
+    return this.confirmModal;
+  }
+
+  get unsavedChangesConfirmCancelButton() {
+    return this.confirmCancelButton;
+  }
+
+  get unsavedChangesConfirmDiscardButton() {
+    return this.confirmConfirmButton;
   }
 }

@@ -1,159 +1,47 @@
+import fs from 'fs';
+import path from 'path';
 import { expect, test as base } from '@playwright/test';
 
-const USE_FULLSTACK = process.env.E2E_FULLSTACK === 'true';
+// Single source of truth: e2e-fixtures.json (connections/sources). API gets them via run-api-with-fixtures.js.
+const E2E_FIXTURES_PATH = path.join(__dirname, '../fixtures/e2e-fixtures.json');
+function loadE2EFixtures(): { connections: unknown[]; sources: unknown[] } {
+  try {
+    const raw = fs.readFileSync(E2E_FIXTURES_PATH, 'utf8');
+    const fixture = JSON.parse(raw);
+    return {
+      connections: Array.isArray(fixture.connections)
+        ? fixture.connections
+        : [],
+      sources: Array.isArray(fixture.sources) ? fixture.sources : [],
+    };
+  } catch {
+    return { connections: [], sources: [] };
+  }
+}
+const e2eFixtures = loadE2EFixtures();
 
 // Extend the base test to automatically handle Tanstack devtools
 export const test = base.extend({
-  page: async ({ page }, use) => {
+  page: async ({ page }, fn) => {
     // Note: page.addInitScript runs in the browser context, which cannot access Node.js
-    // environment variables directly. We pass USE_FULLSTACK as a parameter so the browser
-    // script can determine whether to set up demo connections (local mode) or rely on
-    // API-provided connections (full-stack mode).
-    await page.addInitScript(isFullstack => {
-      window.localStorage.setItem('TanstackQueryDevtools.open', 'false');
-
-      // Only set up demo connections for local mode
-      if (!isFullstack) {
+    // environment variables directly. We pass USE_FULLSTACK and connection/sources from
+    // e2e-fixtures.json so local mode uses the same data as full-stack.
+    await page.addInitScript(
+      (arg: unknown[]) => {
+        const [connections, sources] = arg;
+        window.localStorage.setItem('TanstackQueryDevtools.open', 'false');
         window.sessionStorage.setItem(
           'connections',
-          '[{"name":"Demo","host":"https://sql-clickhouse.clickhouse.com","username":"otel_demo","password":"","id":"local"}]',
+          JSON.stringify(connections),
         );
         window.localStorage.setItem(
           'hdx-local-source',
-          JSON.stringify([
-            {
-              kind: 'log',
-              name: 'Demo Logs',
-              connection: 'local',
-              from: { databaseName: 'otel_v2', tableName: 'otel_logs' },
-              timestampValueExpression: 'TimestampTime',
-              defaultTableSelectExpression:
-                'Timestamp, ServiceName, SeverityText, Body',
-              serviceNameExpression: 'ServiceName',
-              severityTextExpression: 'SeverityText',
-              eventAttributesExpression: 'LogAttributes',
-              resourceAttributesExpression: 'ResourceAttributes',
-              traceIdExpression: 'TraceId',
-              spanIdExpression: 'SpanId',
-              implicitColumnExpression: 'Body',
-              displayedTimestampValueExpression: 'Timestamp',
-              id: 'l956912644',
-              sessionSourceId: 'l1155456738',
-              traceSourceId: 'l1073165478',
-              metricSourceId: 'l-517210123',
-            },
-            {
-              kind: 'trace',
-              name: 'Demo Traces',
-              connection: 'local',
-              from: { databaseName: 'otel_v2', tableName: 'otel_traces' },
-              timestampValueExpression: 'Timestamp',
-              defaultTableSelectExpression:
-                'Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName',
-              serviceNameExpression: 'ServiceName',
-              eventAttributesExpression: 'SpanAttributes',
-              resourceAttributesExpression: 'ResourceAttributes',
-              traceIdExpression: 'TraceId',
-              spanIdExpression: 'SpanId',
-              implicitColumnExpression: 'SpanName',
-              durationExpression: 'Duration',
-              durationPrecision: 9,
-              parentSpanIdExpression: 'ParentSpanId',
-              spanKindExpression: 'SpanKind',
-              spanNameExpression: 'SpanName',
-              logSourceId: 'l956912644',
-              statusCodeExpression: 'StatusCode',
-              statusMessageExpression: 'StatusMessage',
-              spanEventsValueExpression: 'Events',
-              id: 'l1073165478',
-              metricSourceId: 'l-517210123',
-              sessionSourceId: 'l1155456738',
-            },
-            {
-              kind: 'metric',
-              name: 'Demo Metrics',
-              connection: 'local',
-              from: { databaseName: 'otel_v2', tableName: '' },
-              timestampValueExpression: 'TimeUnix',
-              serviceNameExpression: 'ServiceName',
-              metricTables: {
-                gauge: 'otel_metrics_gauge',
-                histogram: 'otel_metrics_histogram',
-                sum: 'otel_metrics_sum',
-                summary: 'otel_metrics_summary',
-                'exponential histogram': 'otel_metrics_exponential_histogram',
-              },
-              resourceAttributesExpression: 'ResourceAttributes',
-              logSourceId: 'l956912644',
-              id: 'l-517210123',
-            },
-            {
-              kind: 'session',
-              name: 'Demo Sessions',
-              connection: 'local',
-              from: { databaseName: 'otel_v2', tableName: 'hyperdx_sessions' },
-              timestampValueExpression: 'TimestampTime',
-              defaultTableSelectExpression: 'Timestamp, ServiceName, Body',
-              serviceNameExpression: 'ServiceName',
-              severityTextExpression: 'SeverityText',
-              eventAttributesExpression: 'LogAttributes',
-              resourceAttributesExpression: 'ResourceAttributes',
-              traceSourceId: 'l1073165478',
-              traceIdExpression: 'TraceId',
-              spanIdExpression: 'SpanId',
-              implicitColumnExpression: 'Body',
-              id: 'l1155456738',
-            },
-            {
-              kind: 'trace',
-              name: 'ClickPy Traces',
-              connection: 'local',
-              from: { databaseName: 'otel_clickpy', tableName: 'otel_traces' },
-              timestampValueExpression: 'Timestamp',
-              defaultTableSelectExpression:
-                'Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName',
-              serviceNameExpression: 'ServiceName',
-              eventAttributesExpression: 'SpanAttributes',
-              resourceAttributesExpression: 'ResourceAttributes',
-              traceIdExpression: 'TraceId',
-              spanIdExpression: 'SpanId',
-              implicitColumnExpression: 'SpanName',
-              durationExpression: 'Duration',
-              durationPrecision: 9,
-              parentSpanIdExpression: 'ParentSpanId',
-              spanKindExpression: 'SpanKind',
-              spanNameExpression: 'SpanName',
-              statusCodeExpression: 'StatusCode',
-              statusMessageExpression: 'StatusMessage',
-              spanEventsValueExpression: 'Events',
-              id: 'l-1156687249',
-              sessionSourceId: 'l-1709901146',
-            },
-            {
-              kind: 'session',
-              name: 'ClickPy Sessions',
-              connection: 'local',
-              from: {
-                databaseName: 'otel_clickpy',
-                tableName: 'hyperdx_sessions',
-              },
-              timestampValueExpression: 'TimestampTime',
-              defaultTableSelectExpression: 'Timestamp, ServiceName, Body',
-              serviceNameExpression: 'ServiceName',
-              severityTextExpression: 'SeverityText',
-              eventAttributesExpression: 'LogAttributes',
-              resourceAttributesExpression: 'ResourceAttributes',
-              traceSourceId: 'l-1156687249',
-              traceIdExpression: 'TraceId',
-              spanIdExpression: 'SpanId',
-              implicitColumnExpression: 'Body',
-              id: 'l-1709901146',
-            },
-          ]),
+          JSON.stringify(sources),
         );
-      }
-    }, USE_FULLSTACK);
-    await use(page);
+      },
+      [e2eFixtures.connections, e2eFixtures.sources],
+    );
+    await fn(page);
   },
 });
 

@@ -1,0 +1,21 @@
+# This configuration enables bearer token authentication for the OTLP receiver
+# Only included when OTLP_AUTH_TOKEN environment variable is set
+
+extensions:
+  bearertokenauth/hyperdx:
+    scheme: ""
+    tokens:
+      - ${env:OTLP_AUTH_TOKEN}
+
+receivers:
+  otlp/hyperdx:
+    protocols:
+      grpc:
+        auth:
+          authenticator: bearertokenauth/hyperdx
+      http:
+        auth:
+          authenticator: bearertokenauth/hyperdx
+
+service:
+  extensions: [health_check, bearertokenauth/hyperdx]

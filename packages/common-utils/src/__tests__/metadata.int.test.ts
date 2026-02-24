@@ -197,8 +197,9 @@ describe('Metadata Integration Tests', () => {
         expect(resultLimited[0].key).toBe('SeverityText');
         expect(resultLimited[0].value).toHaveLength(2);
         expect(
-          resultLimited[0].value.every(v =>
-            ['info', 'error', 'warning'].includes(v),
+          resultLimited[0].value.every(
+            v =>
+              typeof v === 'string' && ['info', 'error', 'warning'].includes(v),
           ),
         ).toBeTruthy();
       });
@@ -520,6 +521,37 @@ describe('Metadata Integration Tests', () => {
       expect(statusCodeResult?.value).toEqual(
         expect.arrayContaining(['200', '404', '500']),
       );
+    });
+  });
+
+  describe('getSetting', () => {
+    let metadata: Metadata;
+    beforeEach(async () => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    it('should get setting that exists and is enabled', async () => {
+      const settingValue = await metadata.getSetting({
+        settingName: 'format_csv_allow_single_quotes',
+        connectionId: 'test_connection',
+      });
+      expect(settingValue).toBe('0');
+    });
+
+    it('should get setting that exists and is disabled', async () => {
+      const settingValue = await metadata.getSetting({
+        settingName: 'format_csv_allow_double_quotes',
+        connectionId: 'test_connection',
+      });
+      expect(settingValue).toBe('1');
+    });
+
+    it('should return undefined for setting that does not exist', async () => {
+      const settingValue = await metadata.getSetting({
+        settingName: 'enable_quantum_tunnelling',
+        connectionId: 'test_connection',
+      });
+      expect(settingValue).toBeUndefined();
     });
   });
 });

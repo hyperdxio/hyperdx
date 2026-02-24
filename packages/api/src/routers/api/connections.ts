@@ -36,6 +36,7 @@ router.post(
         ...req.body,
         password: req.body.password ?? '',
         team: teamId,
+        hyperdxSettingPrefix: req.body.hyperdxSettingPrefix ?? undefined,
       });
 
       res.status(200).send({ id: connection._id.toString() });
@@ -64,20 +65,32 @@ router.put(
         return;
       }
 
+      // Build the base connection update
+      const shouldUnsetPrefix =
+        req.body.hyperdxSettingPrefix === null ||
+        req.body.hyperdxSettingPrefix === '';
+
+      const { hyperdxSettingPrefix, ...restBody } = req.body;
+
       const newConnection = {
-        ...req.body,
+        ...restBody,
         team: teamId,
         ...(req.body.password
           ? { password: req.body.password }
           : {
               password: connection.password,
             }),
+        // Only include hyperdxSettingPrefix if it's a valid string
+        ...(!shouldUnsetPrefix && hyperdxSettingPrefix
+          ? { hyperdxSettingPrefix }
+          : {}),
       };
 
       const updatedConnection = await updateConnection(
         teamId.toString(),
         req.params.id,
         newConnection,
+        shouldUnsetPrefix ? ['hyperdxSettingPrefix'] : [],
       );
 
       if (!updatedConnection) {
