@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { IconAt, IconLock } from '@tabler/icons-react';
 
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import * as config from './config';
 import LandingHeader from './LandingHeader';
@@ -26,6 +27,7 @@ type FormData = {
 };
 
 export default function AuthPage({ action }: { action: 'register' | 'login' }) {
+  const brandName = useBrandDisplayName();
   const { data: team, isLoading: teamIsLoading } = api.useTeam();
   const router = useRouter();
 
@@ -55,7 +57,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
 
   const verificationSent = msg === 'verify';
 
-  const title = `HyperDX - ${isRegister ? 'Sign up' : 'Login'}`;
+  const title = `${brandName} - ${isRegister ? 'Sign up' : 'Login'}`;
 
   useEffect(() => {
     // If an OSS user accidentally lands on /register after already creating a team
@@ -138,7 +140,7 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
               : isRegister
                 ? 'Register for '
                 : 'Login to '}
-            <span className="text-brand fw-bold">HyperDX</span>
+            <span className="text-brand fw-bold">{brandName}</span>
           </div>
           {action === 'login' && (
             <div className="text-center mb-2 ">Welcome back!</div>

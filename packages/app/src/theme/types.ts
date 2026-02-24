@@ -8,8 +8,9 @@ import { MantineThemeOverride } from '@mantine/core';
  *
  * This codebase has TWO separate theming concepts:
  *
- * 1. COLOR MODE (light/dark)
+ * 1. COLOR MODE (light/dark/system)
  *    - User-selectable preference stored in `useUserPreferences().colorMode`
+ *    - 'system' follows OS prefers-color-scheme; default is 'system'
  *    - Affects visual appearance: backgrounds, text colors, etc.
  *    - Managed by Mantine's color scheme system
  *    - Persisted to localStorage via `hdx-user-preferences`

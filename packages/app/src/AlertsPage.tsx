@@ -36,6 +36,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { PageHeader } from '@/components/PageHeader';
 
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import { isAlertSilenceExpired } from './utils/alerts';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
@@ -470,6 +471,7 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
 }
 
 export default function AlertsPage() {
+  const brandName = useBrandDisplayName();
   const { data, isError, isLoading } = api.useAlerts();
 
   const alerts = React.useMemo(() => data?.data || [], [data?.data]);
@@ -477,7 +479,7 @@ export default function AlertsPage() {
   return (
     <div data-testid="alerts-page" className="AlertsPage">
       <Head>
-        <title>Alerts - HyperDX</title>
+        <title>Alerts - {brandName}</title>
       </Head>
       <PageHeader>Alerts</PageHeader>
       <div className="my-4">

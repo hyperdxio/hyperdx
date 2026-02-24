@@ -2,13 +2,16 @@ import { useRouter } from 'next/router';
 import { NextSeo } from 'next-seo';
 import { Button, Paper, Text, TextInput } from '@mantine/core';
 
+import { useBrandDisplayName } from './theme/ThemeProvider';
+
 export default function JoinTeam() {
   const router = useRouter();
+  const brandName = useBrandDisplayName();
   const { err, token } = router.query;
 
   return (
     <div className="AuthPage">
-      <NextSeo title="Join Team - HyperDX" />
+      <NextSeo title={`Join Team - ${brandName}`} />
       <div className="d-flex align-items-center justify-content-center vh-100 p-2">
         <div>
           <div className="text-center mb-4">

@@ -38,6 +38,7 @@ import { IS_LOCAL_MODE } from '@/config';
 import { PageHeader } from './components/PageHeader';
 import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
 import WebhooksSection from './components/TeamSettings/WebhooksSection';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { useConnections } from './connection';
 import { DEFAULT_QUERY_TIMEOUT, DEFAULT_SEARCH_ROW_LIMIT } from './defaults';
@@ -453,6 +454,7 @@ function ClickhouseSettingForm({
 }
 
 function TeamQueryConfigSection() {
+  const brandName = useBrandDisplayName();
   const displayValueWithUnit =
     (unit: string) => (value: any, defaultValue?: any) =>
       value === undefined || value === defaultValue
@@ -508,7 +510,7 @@ function TeamQueryConfigSection() {
           <ClickhouseSettingForm
             settingKey="parallelizeWhenPossible"
             label="Parallelize Queries When Possible"
-            tooltip="HyperDX sends windowed queries to ClickHouse in series. This setting parallelizes those queries when it makes sense to. This may cause increased peak load on ClickHouse"
+            tooltip={`${brandName} sends windowed queries to ClickHouse in series. This setting parallelizes those queries when it makes sense to. This may cause increased peak load on ClickHouse`}
             type="boolean"
             displayValue={value => (value ? 'Enabled' : 'Disabled')}
           />
@@ -649,6 +651,7 @@ function ApiKeysSection() {
 }
 
 export default function TeamPage() {
+  const brandName = useBrandDisplayName();
   const { data: team, isLoading } = api.useTeam();
   const hasAllowedAuthMethods =
     team?.allowedAuthMethods != null && team?.allowedAuthMethods.length > 0;
@@ -656,7 +659,7 @@ export default function TeamPage() {
   return (
     <div className="TeamPage">
       <Head>
-        <title>My Team - HyperDX</title>
+        <title>My Team - {brandName}</title>
       </Head>
       <PageHeader>
         <div>{team?.name || 'My team'}</div>

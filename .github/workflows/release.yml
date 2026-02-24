@@ -165,12 +165,12 @@ jobs:
         env:
           TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
         with:
-          github-token: ${{ secrets.HYPERDX_INTERNAL_TOKEN }}
+          github-token: ${{ secrets.CH_BOT_PAT }}
           script: |
             const { TAG } = process.env;
             const result = await github.rest.actions.createWorkflowDispatch({
-              owner: 'hyperdxio',
-              repo: 'helm-charts',
+              owner: 'ClickHouse',
+              repo: 'ClickStack-helm-charts',
               workflow_id: '${{ secrets.DOWNSTREAM_HC_WORKFLOW_ID }}',
               ref: 'main',
               inputs: {

@@ -41,6 +41,7 @@ import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
 import WhereLanguageControlled from './components/WhereLanguageControlled';
+import { useBrandDisplayName } from './theme/ThemeProvider';
 import { withAppNav } from './layout';
 import SearchInputV2 from './SearchInputV2';
 import { Session, useSessions } from './sessions';
@@ -115,6 +116,7 @@ function SessionCardList({
   isSessionLoading?: boolean;
   onClick: (session: Session) => void;
 }) {
+  const brandName = useBrandDisplayName();
   const parentRef = useRef<HTMLDivElement>(null);
 
   // The virtualizer
@@ -141,7 +143,7 @@ function SessionCardList({
             search syntax issues.
           </div>
           <div className="text-muted mt-3">
-            Add new data sources by setting up a HyperDX integration.
+            Add new data sources by setting up a {brandName} integration.
           </div>
           <Button
             component="a"
@@ -150,7 +152,7 @@ function SessionCardList({
             target="_blank"
             href="/docs/install/browser"
           >
-            Install HyperDX Browser Integration
+            Install {brandName} Browser Integration
           </Button>
         </div>
       )}
@@ -230,6 +232,7 @@ const appliedConfigMap = {
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
 export default function SessionsPage() {
+  const brandName = useBrandDisplayName();
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
 
   const { control, setValue, handleSubmit } = useForm({
@@ -385,7 +388,7 @@ export default function SessionsPage() {
   return (
     <div className="SessionsPage" data-testid="sessions-page">
       <Head>
-        <title>Client Sessions - HyperDX</title>
+        <title>Client Sessions - {brandName}</title>
       </Head>
       {selectedSession != null &&
         traceTrace != null &&
@@ -530,6 +533,7 @@ export default function SessionsPage() {
 SessionsPage.getLayout = withAppNav;
 
 function SessionSetupInstructions() {
+  const brandName = useBrandDisplayName();
   return (
     <>
       <Card w={500} mx="auto" mt="xl" p="xl" withBorder>
@@ -543,7 +547,7 @@ function SessionSetupInstructions() {
             </Title>
             <Text size="sm" c="dimmed" ta="center">
               Follow these steps to start recording and viewing session replays
-              with the HyperDX Otel Collector.
+              with the {brandName} Otel Collector.
             </Text>
           </Stack>
           <Divider />
@@ -585,7 +589,7 @@ function SessionSetupInstructions() {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    HyperDX Browser Integration
+                    {brandName} Browser Integration
                   </Anchor>{' '}
                   to start recording sessions.
                 </>

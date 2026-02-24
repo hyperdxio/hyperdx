@@ -8,6 +8,8 @@ import {
   convertCHDataTypeToJSType,
   JSDataType,
 } from '@/clickhouse';
+import { ClickhouseClient } from '@/clickhouse/node';
+import { Metadata, MetadataCache } from '@/core/metadata';
 
 describe('convertCHDataTypeToJSType - unit - type', () => {
   it('Date type', () => {
@@ -352,5 +354,255 @@ describe('computeResultSetRatio', () => {
     expect(() => computeResultSetRatio(mockResultSet)).toThrow(
       /Unable to compute ratio/,
     );
+  });
+});
+
+describe('processClickhouseSettings - optimization settings', () => {
+  let client: ClickhouseClient;
+  let mockQueryMethod: jest.Mock;
+  let metadataCache: MetadataCache;
+
+  const createClient = () => {
+    const newClient = new ClickhouseClient({
+      host: 'http://localhost:8123',
+      username: 'default',
+      password: '',
+    });
+
+    // Mock the underlying ClickHouse client's query method
+    const newMockQueryMethod = jest.fn();
+    (newClient as any).client = {
+      query: newMockQueryMethod,
+    };
+
+    // Create a fresh metadata cache for each test
+    const newCache = new MetadataCache();
+
+    // Mock getMetadata to return a metadata instance with our fresh cache
+    jest
+      // eslint-disable-next-line
+      .spyOn(require('@/core/metadata'), 'getMetadata')
+      .mockImplementation(() => {
+        return new Metadata(newClient, newCache);
+      });
+
+    return {
+      client: newClient,
+      mockQueryMethod: newMockQueryMethod,
+      cache: newCache,
+    };
+  };
+
+  beforeEach(() => {
+    const setup = createClient();
+    client = setup.client;
+    mockQueryMethod = setup.mockQueryMethod;
+    metadataCache = setup.cache;
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  const setupMockQuery = (
+    settingsData?: Array<{ name: string; value: string }>,
+  ) => {
+    mockQueryMethod.mockImplementation(
+      async ({ query, clickhouse_settings }: any) => {
+        // Return mocked settings for getSettings query
+        if (query === 'SELECT name, value FROM system.settings') {
+          return {
+            json: async () => ({
+              data: settingsData || [],
+            }),
+          };
+        }
+        // Return the settings so we can inspect them
+        return {
+          json: async () => ({ data: [], clickhouse_settings }),
+        };
+      },
+    );
+  };
+
+  it('should apply default settings without server settings', async () => {
+    setupMockQuery([]);
+
+    await client.query({
+      query: 'SELECT 1',
+      format: 'JSON',
+    });
+
+    // Find the actual query call (not the settings query)
+    const actualQueryCall = mockQueryMethod.mock.calls.find(
+      (call: any) => call[0].query === 'SELECT 1',
+    );
+
+    expect(actualQueryCall).toBeDefined();
+    expect(actualQueryCall[0].clickhouse_settings).toEqual({
+      allow_experimental_analyzer: 1,
+      date_time_output_format: 'iso',
+      wait_end_of_query: 0,
+      output_format_json_quote_64bit_integers: 1,
+      cancel_http_readonly_queries_on_client_close: 1,
+    });
+  });
+
+  it('should apply all optimization settings when available on server', async () => {
+    setupMockQuery([
+      { name: 'query_plan_optimize_lazy_materialization', value: '1' },
+      {
+        name: 'query_plan_max_limit_for_lazy_materialization',
+        value: '100000',
+      },
+      { name: 'use_skip_indexes_for_top_k', value: '1' },
+      { name: 'query_plan_max_limit_for_top_k_optimization', value: '100000' },
+      // { name: 'use_top_k_dynamic_filtering', value: '1' },
+      { name: 'use_skip_indexes_on_data_read', value: '1' },
+      { name: 'use_skip_indexes_for_disjunctions', value: '1' },
+    ]);
+
+    await client.query({
+      query: 'SELECT 1',
+      format: 'JSON',
+    });
+
+    const actualQueryCall = mockQueryMethod.mock.calls.find(
+      (call: any) => call[0].query === 'SELECT 1',
+    );
+
+    expect(actualQueryCall).toBeDefined();
+    expect(actualQueryCall[0].clickhouse_settings).toEqual({
+      allow_experimental_analyzer: 1,
+      date_time_output_format: 'iso',
+      wait_end_of_query: 0,
+      output_format_json_quote_64bit_integers: 1,
+      cancel_http_readonly_queries_on_client_close: 1,
+      query_plan_optimize_lazy_materialization: '1',
+      query_plan_max_limit_for_lazy_materialization: '100000',
+      use_skip_indexes_for_top_k: '1',
+      query_plan_max_limit_for_top_k_optimization: '100000',
+      // use_top_k_dynamic_filtering: '1',
+      use_skip_indexes_on_data_read: '1',
+      use_skip_indexes_for_disjunctions: '1',
+    });
+  });
+
+  it('should only apply available optimization settings', async () => {
+    setupMockQuery([
+      { name: 'use_skip_indexes_for_top_k', value: '1' },
+      { name: 'use_skip_indexes_on_data_read', value: '1' },
+    ]);
+
+    await client.query({
+      query: 'SELECT 1',
+      format: 'JSON',
+    });
+
+    const actualQueryCall = mockQueryMethod.mock.calls.find(
+      (call: any) => call[0].query === 'SELECT 1',
+    );
+
+    expect(actualQueryCall).toBeDefined();
+    const settings = actualQueryCall[0].clickhouse_settings;
+    expect(settings).toEqual({
+      allow_experimental_analyzer: 1,
+      date_time_output_format: 'iso',
+      wait_end_of_query: 0,
+      output_format_json_quote_64bit_integers: 1,
+      cancel_http_readonly_queries_on_client_close: 1,
+      use_skip_indexes_for_top_k: '1',
+      use_skip_indexes_on_data_read: '1',
+    });
+    expect(settings.query_plan_optimize_lazy_materialization).toBeUndefined();
+    // expect(settings.use_top_k_dynamic_filtering).toBeUndefined();
+  });
+
+  it('should merge external clickhouse settings with optimization settings', async () => {
+    setupMockQuery([{ name: 'use_skip_indexes_for_top_k', value: '1' }]);
+
+    await client.query({
+      query: 'SELECT 1',
+      format: 'JSON',
+      clickhouse_settings: {
+        max_rows_to_read: '1000000',
+      },
+    });
+
+    const actualQueryCall = mockQueryMethod.mock.calls.find(
+      (call: any) => call[0].query === 'SELECT 1',
+    );
+
+    expect(actualQueryCall).toBeDefined();
+    expect(actualQueryCall[0].clickhouse_settings).toEqual({
+      allow_experimental_analyzer: 1,
+      date_time_output_format: 'iso',
+      wait_end_of_query: 0,
+      output_format_json_quote_64bit_integers: 1,
+      cancel_http_readonly_queries_on_client_close: 1,
+      use_skip_indexes_for_top_k: '1',
+      max_rows_to_read: '1000000',
+    });
+  });
+
+  it('should not apply settings when shouldSkipApplySettings is true', async () => {
+    setupMockQuery([{ name: 'use_skip_indexes_for_top_k', value: '1' }]);
+
+    await client.query({
+      query: 'SELECT name, value FROM system.settings',
+      format: 'JSON',
+      shouldSkipApplySettings: true,
+    });
+
+    const settingsQueryCall = mockQueryMethod.mock.calls.find(
+      (call: any) =>
+        call[0].query === 'SELECT name, value FROM system.settings',
+    );
+
+    expect(settingsQueryCall).toBeDefined();
+    expect(settingsQueryCall[0].clickhouse_settings).toBeUndefined();
+  });
+
+  it('should handle metadata getSettings returning undefined (permissions error)', async () => {
+    mockQueryMethod.mockImplementation(async ({ query }: any) => {
+      if (query === 'SELECT name, value FROM system.settings') {
+        throw new Error('Not enough privileges');
+      }
+      return { json: async () => ({ data: [] }) };
+    });
+
+    // Should not throw, but silently continue without optimization settings
+    await client.query({
+      query: 'SELECT 1',
+      format: 'JSON',
+    });
+
+    const actualQueryCall = mockQueryMethod.mock.calls.find(
+      (call: any) => call[0].query === 'SELECT 1',
+    );
+
+    expect(actualQueryCall).toBeDefined();
+    expect(actualQueryCall[0].clickhouse_settings).toEqual({
+      allow_experimental_analyzer: 1,
+      date_time_output_format: 'iso',
+      wait_end_of_query: 0,
+      output_format_json_quote_64bit_integers: 1,
+      cancel_http_readonly_queries_on_client_close: 1,
+    });
+  });
+
+  it('should cache settings result across multiple queries', async () => {
+    setupMockQuery([{ name: 'use_skip_indexes_for_top_k', value: '1' }]);
+
+    // Run two queries
+    await client.query({ query: 'SELECT 1', format: 'JSON' });
+    await client.query({ query: 'SELECT 2', format: 'JSON' });
+
+    // Should only fetch settings once
+    const settingsCalls = mockQueryMethod.mock.calls.filter(
+      (call: any) =>
+        call[0].query === 'SELECT name, value FROM system.settings',
+    );
+    expect(settingsCalls.length).toEqual(1);
   });
 });

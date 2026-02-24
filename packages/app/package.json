@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.17.0",
+  "version": "2.19.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -31,7 +31,7 @@
     "@dagrejs/dagre": "^1.1.5",
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/browser": "^0.21.1",
-    "@hyperdx/common-utils": "^0.12.3",
+    "@hyperdx/common-utils": "^0.14.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
     "@lezer/highlight": "^1.2.0",
     "@mantine/core": "^7.17.8",
@@ -65,7 +65,7 @@
     "jotai": "^2.5.1",
     "ky": "^0.30.0",
     "ky-universal": "^0.10.1",
-    "lodash": "^4.17.21",
+    "lodash": "^4.17.23",
     "ms": "^2.1.3",
     "next": "^16.1.5",
     "next-query-params": "^4.3.1",

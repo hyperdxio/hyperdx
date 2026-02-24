@@ -1,5 +1,39 @@
 # @hyperdx/app
 
+## 2.19.0
+
+### Minor Changes
+
+- 8326fc6e: feat: use optimization settings if available for use in CH
+
+### Patch Changes
+
+- e55b81bc: fix: Support light-mode in tagging dropdown menu
+- 575779d2: Support JSON type in Surrounding Context
+- b5bb69e3: fix: Improve Pie Chart implemententation
+- Updated dependencies [8326fc6e]
+  - @hyperdx/common-utils@0.14.0
+
+## 2.18.0
+
+### Minor Changes
+
+- 051276fc: feat: pie chart now available for chart visualization
+- e984e20e: feat: Theme-based branding in UI copy. Replace hardcoded "HyperDX" with the current theme display name so ClickStack deployments show "ClickStack" (e.g. "Welcome to ClickStack", page titles, error messages, help text). Adds `useBrandDisplayName()` hook in ThemeProvider.
+
+### Patch Changes
+
+- ec54757e: feat: Add confirm dialog when closing tile editor w/ changes
+- 185d4e40: fix: Add option to display all events in search histogram bars
+- fa2424da: fix: correct generated favicons for HyperDX and ClickStack
+- 5988850a: fix: Prevent sampled events error when HAVING clause is specified
+- 4f1da032: fix: clickstack build fixed when running same-site origin by omitting credentials from Authorization header for local mode fetch
+- 38286f67: fix: searching json number property error
+- Updated dependencies [051276fc]
+- Updated dependencies [4f1da032]
+- Updated dependencies [b676f268]
+  - @hyperdx/common-utils@0.13.0
+
 ## 2.17.0
 
 ### Minor Changes

@@ -30,9 +30,15 @@ import {
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
 
-function buildJSONExtractStringQuery(
+type JSONExtractFn =
+  | 'JSONExtractString'
+  | 'JSONExtractFloat'
+  | 'JSONExtractBool';
+
+export function buildJSONExtractQuery(
   keyPath: string[],
   parsedJsonRootPath: string[],
+  jsonExtractFn: JSONExtractFn = 'JSONExtractString',
 ): string | null {
   const nestedPath = keyPath.slice(parsedJsonRootPath.length);
   if (nestedPath.length === 0) {
@@ -41,7 +47,7 @@ function buildJSONExtractStringQuery(
 
   const baseColumn = parsedJsonRootPath[parsedJsonRootPath.length - 1];
   const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
-  return `JSONExtractString(${baseColumn}, ${jsonPathArgs})`;
+  return `${jsonExtractFn}(${baseColumn}, ${jsonPathArgs})`;
 }
 
 import { RowSidePanelContext } from './DBRowSidePanel';
@@ -258,7 +264,7 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
-              const jsonQuery = buildJSONExtractStringQuery(
+              const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
               );
@@ -301,10 +307,20 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
-              const jsonQuery = buildJSONExtractStringQuery(
+              let jsonExtractFn: JSONExtractFn = 'JSONExtractString';
+
+              if (typeof value === 'number') {
+                jsonExtractFn = 'JSONExtractFloat';
+              } else if (typeof value === 'boolean') {
+                jsonExtractFn = 'JSONExtractBool';
+              }
+
+              const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
+                jsonExtractFn,
               );
+
               if (jsonQuery) {
                 searchFieldPath = jsonQuery;
               }
@@ -342,7 +358,7 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
-              const jsonQuery = buildJSONExtractStringQuery(
+              const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
               );
@@ -368,10 +384,7 @@ export function DBRowJsonViewer({
 
         // Handle parsed JSON from string columns using JSONExtractString
         if (isInParsedJson && parsedJsonRootPath) {
-          const jsonQuery = buildJSONExtractStringQuery(
-            keyPath,
-            parsedJsonRootPath,
-          );
+          const jsonQuery = buildJSONExtractQuery(keyPath, parsedJsonRootPath);
           if (jsonQuery) {
             columnFieldPath = jsonQuery;
           }

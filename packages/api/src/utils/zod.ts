@@ -234,6 +234,14 @@ const externalDashboardNumberChartConfigSchema = z.object({
   numberFormat: NumberFormatSchema.optional(),
 });
 
+const externalDashboardPieChartConfigSchema = z.object({
+  displayType: z.literal('pie'),
+  sourceId: objectIdSchema,
+  select: z.array(externalDashboardSelectItemSchema).length(1),
+  groupBy: z.string().max(10000).optional(),
+  numberFormat: NumberFormatSchema.optional(),
+});
+
 const externalDashboardSearchChartConfigSchema = z.object({
   displayType: z.literal('search'),
   sourceId: objectIdSchema,
@@ -253,6 +261,7 @@ export const externalDashboardTileConfigSchema = z
     externalDashboardBarChartConfigSchema,
     externalDashboardTableChartConfigSchema,
     externalDashboardNumberChartConfigSchema,
+    externalDashboardPieChartConfigSchema,
     externalDashboardMarkdownChartConfigSchema,
     externalDashboardSearchChartConfigSchema,
   ])
