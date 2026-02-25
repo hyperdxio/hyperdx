@@ -32,7 +32,7 @@ services:
       - ./docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
     restart: on-failure
     ports:
-      - 8123:8123 # http api
+      - 18123:8123 # http api
     #   - 9000:9000 # native
     networks:
       - internal
@@ -40,7 +40,7 @@ services:
     image: mongo:5.0.32-focal
     command: --port 29999
     ports:
-      - 29999:29999
+      - 39999:29999
     networks:
       - internal
 networks:
