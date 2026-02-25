@@ -106,6 +106,7 @@ import {
 
 import HDXMarkdownChart from '../HDXMarkdownChart';
 
+import { ErrorBoundary } from './Error/ErrorBoundary';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { AggFnSelectControlled } from './AggFnSelect';
 import ChartDisplaySettingsDrawer, {
@@ -1015,456 +1016,463 @@ export default function EditTimeChartForm({
 
   return (
     <div ref={setParentRef} data-testid={dataTestId}>
-      <Controller
-        control={control}
-        name="displayType"
-        render={({ field: { onChange, value } }) => (
-          <Tabs value={value} onChange={onChange} radius={'xs'} mb="md">
-            <Tabs.List>
-              <Tabs.Tab
-                value={DisplayType.Line}
-                leftSection={<IconChartLine size={16} />}
-              >
-                Line/Bar
-              </Tabs.Tab>
-              <Tabs.Tab
-                value={DisplayType.Table}
-                leftSection={<IconTable size={16} />}
-              >
-                Table
-              </Tabs.Tab>
-              <Tabs.Tab
-                value={DisplayType.Number}
-                leftSection={<IconNumbers size={16} />}
-              >
-                Number
-              </Tabs.Tab>
-              <Tabs.Tab
-                value={DisplayType.Pie}
-                leftSection={<IconChartPie size={16} />}
-              >
-                Pie
-              </Tabs.Tab>
-              <Tabs.Tab
-                value={DisplayType.Search}
-                leftSection={<IconList size={16} />}
-              >
-                Search
-              </Tabs.Tab>
-              <Tabs.Tab
-                value={DisplayType.Markdown}
-                leftSection={<IconMarkdown size={16} />}
-              >
-                Markdown
-              </Tabs.Tab>
-            </Tabs.List>
-          </Tabs>
-        )}
-      />
-      <Flex align="center" gap="sm" mb="sm">
-        <Text size="sm" className="text-nowrap">
-          Chart Name
-        </Text>
-        <InputControlled
-          name="name"
+      <ErrorBoundary>
+        <Controller
           control={control}
-          w="100%"
-          type="text"
-          placeholder="My Chart Name"
-          data-testid="chart-name-input"
+          name="displayType"
+          render={({ field: { onChange, value } }) => (
+            <Tabs value={value} onChange={onChange} radius={'xs'} mb="md">
+              <Tabs.List>
+                <Tabs.Tab
+                  value={DisplayType.Line}
+                  leftSection={<IconChartLine size={16} />}
+                >
+                  Line/Bar
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Table}
+                  leftSection={<IconTable size={16} />}
+                >
+                  Table
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Number}
+                  leftSection={<IconNumbers size={16} />}
+                >
+                  Number
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Pie}
+                  leftSection={<IconChartPie size={16} />}
+                >
+                  Pie
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Search}
+                  leftSection={<IconList size={16} />}
+                >
+                  Search
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Markdown}
+                  leftSection={<IconMarkdown size={16} />}
+                >
+                  Markdown
+                </Tabs.Tab>
+              </Tabs.List>
+            </Tabs>
+          )}
         />
-      </Flex>
-      <Divider my="md" />
-      {activeTab === 'markdown' ? (
-        <div>
-          <Textarea
-            {...register('markdown')}
-            label="Markdown content"
-            placeholder="Markdown"
-            mb="md"
-            styles={{
-              input: {
-                minHeight: 200,
-              },
-            }}
+        <Flex align="center" gap="sm" mb="sm">
+          <Text size="sm" className="text-nowrap">
+            Chart Name
+          </Text>
+          <InputControlled
+            name="name"
+            control={control}
+            w="100%"
+            type="text"
+            placeholder="My Chart Name"
+            data-testid="chart-name-input"
           />
-          <Box p="md" mb="md">
-            <HDXMarkdownChart
-              config={{
-                markdown: markdown || 'Preview',
+        </Flex>
+        <Divider my="md" />
+        {activeTab === 'markdown' ? (
+          <div>
+            <Textarea
+              {...register('markdown')}
+              label="Markdown content"
+              placeholder="Markdown"
+              mb="md"
+              styles={{
+                input: {
+                  minHeight: 200,
+                },
               }}
             />
-          </Box>
-        </div>
-      ) : (
-        <>
-          <Flex mb="md" align="center" gap="sm" justify="space-between">
-            <Group>
-              <Text pe="md" size="sm">
-                Data Source
-              </Text>
-              <SourceSelectControlled
-                size="xs"
-                control={control}
-                name="source"
-                data-testid="source-selector"
-                sourceSchemaPreview={
-                  <SourceSchemaPreview source={tableSource} variant="text" />
-                }
+            <Box p="md" mb="md">
+              <HDXMarkdownChart
+                config={{
+                  markdown: markdown || 'Preview',
+                }}
               />
-            </Group>
-            {tableSource && activeTab !== 'search' && (
-              <MVOptimizationIndicator
-                source={tableSource}
-                config={chartConfigForExplanations}
-              />
-            )}
-          </Flex>
-
-          {displayType !== DisplayType.Search && Array.isArray(select) ? (
-            <>
-              {fields.map((field, index) => (
-                <ChartSeriesEditor
+            </Box>
+          </div>
+        ) : (
+          <>
+            <Flex mb="md" align="center" gap="sm" justify="space-between">
+              <Group>
+                <Text pe="md" size="sm">
+                  Data Source
+                </Text>
+                <SourceSelectControlled
+                  size="xs"
                   control={control}
-                  databaseName={databaseName ?? ''}
-                  dateRange={dateRange}
-                  index={index}
-                  key={field.id}
-                  parentRef={parentRef}
-                  namePrefix={`series.${index}.`}
-                  onRemoveSeries={removeSeries}
-                  length={fields.length}
-                  onSwapSeries={swapSeries}
-                  onSubmit={onSubmit}
-                  setValue={setValue}
-                  connectionId={tableSource?.connection}
-                  showGroupBy={
-                    fields.length === 1 && displayType !== DisplayType.Number
+                  name="source"
+                  data-testid="source-selector"
+                  sourceSchemaPreview={
+                    <SourceSchemaPreview source={tableSource} variant="text" />
                   }
-                  showHaving={
-                    fields.length === 1 && displayType === DisplayType.Table
-                  }
-                  tableName={tableName ?? ''}
-                  tableSource={tableSource}
-                  errors={
-                    errors.series && Array.isArray(errors.series)
-                      ? errors.series[index]
-                      : undefined
-                  }
-                  clearErrors={clearErrors}
                 />
-              ))}
-              {fields.length > 1 && displayType !== DisplayType.Number && (
-                <>
-                  <Divider mt="md" mb="sm" />
-                  <div
-                    className="gap-2 align-items-center"
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'auto minmax(0, 1fr)',
-                    }}
-                  >
-                    <div>
-                      <Text
-                        me="sm"
-                        size="sm"
-                        style={{
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Group By
-                      </Text>
-                    </div>
-                    <div>
-                      <SQLInlineEditorControlled
-                        tableConnection={tableConnection}
-                        control={control}
-                        name={`groupBy`}
-                        placeholder="SQL Columns"
-                        onSubmit={onSubmit}
-                        disableKeywordAutocomplete
-                      />
-                    </div>
-                    {displayType === DisplayType.Table && (
-                      <>
-                        <div>
-                          <Text
-                            me="sm"
-                            size="sm"
-                            style={{
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            Having
-                          </Text>
-                        </div>
-                        <div>
-                          <SQLInlineEditorControlled
-                            tableConnection={tableConnection}
-                            control={control}
-                            name="having"
-                            placeholder="SQL HAVING clause (ex. count() > 100)"
-                            onSubmit={onSubmit}
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </>
-              )}
-              <Divider mt="md" mb="sm" />
-              <Flex mt={4} align="center" justify="space-between">
-                <Group gap="xs">
-                  {displayType !== DisplayType.Number &&
-                    displayType !== DisplayType.Pie && (
-                      <Button
-                        variant="subtle"
-                        size="sm"
-                        color="gray"
-                        onClick={() => {
-                          append({
-                            aggFn: 'count',
-                            aggCondition: '',
-                            aggConditionLanguage: 'lucene',
-                            valueExpression: '',
-                          });
-                        }}
-                      >
-                        <IconCirclePlus size={14} className="me-2" />
-                        Add Series
-                      </Button>
-                    )}
-                  {fields.length == 2 && displayType !== DisplayType.Number && (
-                    <Switch
-                      label="As Ratio"
-                      size="sm"
-                      color="gray"
-                      variant="subtle"
-                      onClick={() => {
-                        setValue(
-                          'seriesReturnType',
-                          seriesReturnType === 'ratio' ? 'column' : 'ratio',
-                        );
-                        onSubmit();
-                      }}
-                      checked={seriesReturnType === 'ratio'}
-                    />
-                  )}
-                  {displayType === DisplayType.Line &&
-                    dashboardId &&
-                    !IS_LOCAL_MODE && (
-                      <Button
-                        variant="subtle"
-                        size="sm"
-                        color={alert ? 'red' : 'gray'}
-                        onClick={() =>
-                          setValue(
-                            'alert',
-                            alert ? undefined : DEFAULT_TILE_ALERT,
-                          )
-                        }
-                      >
-                        <IconBell size={14} className="me-2" />
-                        {!alert ? 'Add Alert' : 'Remove Alert'}
-                      </Button>
-                    )}
-                </Group>
-                <Button
-                  onClick={openDisplaySettings}
-                  size="compact-sm"
-                  variant="secondary"
-                >
-                  Display Settings
-                </Button>
-              </Flex>
-            </>
-          ) : (
-            <Flex gap="xs" direction="column">
-              <SQLInlineEditorControlled
-                tableConnection={tableConnection}
-                control={control}
-                name="select"
-                placeholder={
-                  tableSource?.defaultTableSelectExpression || 'SELECT Columns'
-                }
-                defaultValue={tableSource?.defaultTableSelectExpression}
-                onSubmit={onSubmit}
-                label="SELECT"
-              />
-              {whereLanguage === 'sql' ? (
-                <SQLInlineEditorControlled
-                  tableConnection={tableConnection}
-                  control={control}
-                  name={`where`}
-                  placeholder="SQL WHERE clause (ex. column = 'foo')"
-                  onLanguageChange={lang => setValue('whereLanguage', lang)}
-                  language="sql"
-                  onSubmit={onSubmit}
-                />
-              ) : (
-                <SearchInputV2
-                  tableConnection={tableConnection}
-                  control={control}
-                  name="where"
-                  onLanguageChange={lang => setValue('whereLanguage', lang)}
-                  language="lucene"
-                  placeholder="Search your events w/ Lucene ex. column:foo"
-                  onSubmit={onSubmit}
+              </Group>
+              {tableSource && activeTab !== 'search' && (
+                <MVOptimizationIndicator
+                  source={tableSource}
+                  config={chartConfigForExplanations}
                 />
               )}
             </Flex>
-          )}
-        </>
-      )}
-      {alert && (
-        <Paper my="sm">
-          <Stack gap="xs">
-            <Paper px="md" py="sm" radius="xs">
-              <Group gap="xs" justify="space-between">
-                <Group gap="xs">
-                  <Text size="sm" opacity={0.7}>
-                    Alert when the value
-                  </Text>
-                  <NativeSelect
-                    data={optionsToSelectData(
-                      TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
-                    )}
-                    size="xs"
-                    name={`alert.thresholdType`}
+
+            {displayType !== DisplayType.Search && Array.isArray(select) ? (
+              <>
+                {fields.map((field, index) => (
+                  <ChartSeriesEditor
                     control={control}
+                    databaseName={databaseName ?? ''}
+                    dateRange={dateRange}
+                    index={index}
+                    key={field.id}
+                    parentRef={parentRef}
+                    namePrefix={`series.${index}.`}
+                    onRemoveSeries={removeSeries}
+                    length={fields.length}
+                    onSwapSeries={swapSeries}
+                    onSubmit={onSubmit}
+                    setValue={setValue}
+                    connectionId={tableSource?.connection}
+                    showGroupBy={
+                      fields.length === 1 && displayType !== DisplayType.Number
+                    }
+                    showHaving={
+                      fields.length === 1 && displayType === DisplayType.Table
+                    }
+                    tableName={tableName ?? ''}
+                    tableSource={tableSource}
+                    errors={
+                      errors.series && Array.isArray(errors.series)
+                        ? errors.series[index]
+                        : undefined
+                    }
+                    clearErrors={clearErrors}
                   />
-                  <NumberInput
-                    min={MINIMUM_THRESHOLD_VALUE}
-                    size="xs"
-                    w={80}
-                    control={control}
-                    name={`alert.threshold`}
-                  />
-                  over
-                  <NativeSelect
-                    data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
-                    size="xs"
-                    name={`alert.interval`}
-                    control={control}
-                  />
-                  <Text size="sm" opacity={0.7}>
-                    window via
-                  </Text>
-                  <NativeSelect
-                    data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-                    size="xs"
-                    name={`alert.channel.type`}
-                    control={control}
-                  />
-                </Group>
-                {(alert as any)?.createdBy && (
-                  <Text size="xs" opacity={0.6}>
-                    Created by{' '}
-                    {(alert as any).createdBy?.name ||
-                      (alert as any).createdBy?.email}
-                  </Text>
+                ))}
+                {fields.length > 1 && displayType !== DisplayType.Number && (
+                  <>
+                    <Divider mt="md" mb="sm" />
+                    <div
+                      className="gap-2 align-items-center"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'auto minmax(0, 1fr)',
+                      }}
+                    >
+                      <div>
+                        <Text
+                          me="sm"
+                          size="sm"
+                          style={{
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Group By
+                        </Text>
+                      </div>
+                      <div>
+                        <SQLInlineEditorControlled
+                          tableConnection={tableConnection}
+                          control={control}
+                          name={`groupBy`}
+                          placeholder="SQL Columns"
+                          onSubmit={onSubmit}
+                          disableKeywordAutocomplete
+                        />
+                      </div>
+                      {displayType === DisplayType.Table && (
+                        <>
+                          <div>
+                            <Text
+                              me="sm"
+                              size="sm"
+                              style={{
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              Having
+                            </Text>
+                          </div>
+                          <div>
+                            <SQLInlineEditorControlled
+                              tableConnection={tableConnection}
+                              control={control}
+                              name="having"
+                              placeholder="SQL HAVING clause (ex. count() > 100)"
+                              onSubmit={onSubmit}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
                 )}
-              </Group>
-              <Text size="xxs" opacity={0.5} mb={4} mt="xs">
-                Send to
-              </Text>
-              <AlertChannelForm
+                <Divider mt="md" mb="sm" />
+                <Flex mt={4} align="center" justify="space-between">
+                  <Group gap="xs">
+                    {displayType !== DisplayType.Number &&
+                      displayType !== DisplayType.Pie && (
+                        <Button
+                          variant="subtle"
+                          size="sm"
+                          color="gray"
+                          onClick={() => {
+                            append({
+                              aggFn: 'count',
+                              aggCondition: '',
+                              aggConditionLanguage: 'lucene',
+                              valueExpression: '',
+                            });
+                          }}
+                        >
+                          <IconCirclePlus size={14} className="me-2" />
+                          Add Series
+                        </Button>
+                      )}
+                    {fields.length == 2 &&
+                      displayType !== DisplayType.Number && (
+                        <Switch
+                          label="As Ratio"
+                          size="sm"
+                          color="gray"
+                          variant="subtle"
+                          onClick={() => {
+                            setValue(
+                              'seriesReturnType',
+                              seriesReturnType === 'ratio' ? 'column' : 'ratio',
+                            );
+                            onSubmit();
+                          }}
+                          checked={seriesReturnType === 'ratio'}
+                        />
+                      )}
+                    {displayType === DisplayType.Line &&
+                      dashboardId &&
+                      !IS_LOCAL_MODE && (
+                        <Button
+                          variant="subtle"
+                          size="sm"
+                          color={alert ? 'red' : 'gray'}
+                          onClick={() =>
+                            setValue(
+                              'alert',
+                              alert ? undefined : DEFAULT_TILE_ALERT,
+                            )
+                          }
+                        >
+                          <IconBell size={14} className="me-2" />
+                          {!alert ? 'Add Alert' : 'Remove Alert'}
+                        </Button>
+                      )}
+                  </Group>
+                  <Button
+                    onClick={openDisplaySettings}
+                    size="compact-sm"
+                    variant="secondary"
+                  >
+                    Display Settings
+                  </Button>
+                </Flex>
+              </>
+            ) : (
+              <Flex gap="xs" direction="column">
+                <SQLInlineEditorControlled
+                  tableConnection={tableConnection}
+                  control={control}
+                  name="select"
+                  placeholder={
+                    tableSource?.defaultTableSelectExpression ||
+                    'SELECT Columns'
+                  }
+                  defaultValue={tableSource?.defaultTableSelectExpression}
+                  onSubmit={onSubmit}
+                  label="SELECT"
+                />
+                {whereLanguage === 'sql' ? (
+                  <SQLInlineEditorControlled
+                    tableConnection={tableConnection}
+                    control={control}
+                    name={`where`}
+                    placeholder="SQL WHERE clause (ex. column = 'foo')"
+                    onLanguageChange={lang => setValue('whereLanguage', lang)}
+                    language="sql"
+                    onSubmit={onSubmit}
+                  />
+                ) : (
+                  <SearchInputV2
+                    tableConnection={tableConnection}
+                    control={control}
+                    name="where"
+                    onLanguageChange={lang => setValue('whereLanguage', lang)}
+                    language="lucene"
+                    placeholder="Search your events w/ Lucene ex. column:foo"
+                    onSubmit={onSubmit}
+                  />
+                )}
+              </Flex>
+            )}
+          </>
+        )}
+        {alert && (
+          <Paper my="sm">
+            <Stack gap="xs">
+              <Paper px="md" py="sm" radius="xs">
+                <Group gap="xs" justify="space-between">
+                  <Group gap="xs">
+                    <Text size="sm" opacity={0.7}>
+                      Alert when the value
+                    </Text>
+                    <NativeSelect
+                      data={optionsToSelectData(
+                        TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
+                      )}
+                      size="xs"
+                      name={`alert.thresholdType`}
+                      control={control}
+                    />
+                    <NumberInput
+                      min={MINIMUM_THRESHOLD_VALUE}
+                      size="xs"
+                      w={80}
+                      control={control}
+                      name={`alert.threshold`}
+                    />
+                    over
+                    <NativeSelect
+                      data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
+                      size="xs"
+                      name={`alert.interval`}
+                      control={control}
+                    />
+                    <Text size="sm" opacity={0.7}>
+                      window via
+                    </Text>
+                    <NativeSelect
+                      data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                      size="xs"
+                      name={`alert.channel.type`}
+                      control={control}
+                    />
+                  </Group>
+                  {(alert as any)?.createdBy && (
+                    <Text size="xs" opacity={0.6}>
+                      Created by{' '}
+                      {(alert as any).createdBy?.name ||
+                        (alert as any).createdBy?.email}
+                    </Text>
+                  )}
+                </Group>
+                <Text size="xxs" opacity={0.5} mb={4} mt="xs">
+                  Send to
+                </Text>
+                <AlertChannelForm
+                  control={control}
+                  type={alertChannelType}
+                  namePrefix="alert."
+                />
+              </Paper>
+            </Stack>
+          </Paper>
+        )}
+        <Flex justify="space-between" mt="sm">
+          <Flex gap="sm">
+            {onSave != null && (
+              <Button
+                data-testid="chart-save-button"
+                loading={isSaving}
+                variant="primary"
+                onClick={handleSubmit(handleSave)}
+              >
+                Save
+              </Button>
+            )}
+            {onClose != null && (
+              <Button
+                variant="subtle"
+                color="dark"
+                onClick={onClose}
+                disabled={isSaving}
+              >
+                Cancel
+              </Button>
+            )}
+          </Flex>
+          <Flex gap="sm" mb="sm" align="center" justify="end">
+            {activeTab === 'table' && (
+              <div style={{ width: 400 }}>
+                <SQLInlineEditorControlled
+                  parentRef={parentRef}
+                  tableConnection={tableConnection}
+                  // The default order by is the current group by value
+                  placeholder={typeof groupBy === 'string' ? groupBy : ''}
+                  control={control}
+                  name={`orderBy`}
+                  disableKeywordAutocomplete
+                  onSubmit={onSubmit}
+                  label="ORDER BY"
+                />
+              </div>
+            )}
+            {activeTab !== 'markdown' &&
+              setDisplayedTimeInputValue != null &&
+              displayedTimeInputValue != null &&
+              onTimeRangeSearch != null && (
+                <TimePicker
+                  inputValue={displayedTimeInputValue}
+                  setInputValue={setDisplayedTimeInputValue}
+                  onSearch={range => {
+                    onTimeRangeSearch(range);
+                  }}
+                  onSubmit={range => {
+                    onTimeRangeSearch(range);
+                  }}
+                />
+              )}
+            {activeTab === 'time' && (
+              <GranularityPickerControlled
                 control={control}
-                type={alertChannelType}
-                namePrefix="alert."
-              />
-            </Paper>
-          </Stack>
-        </Paper>
-      )}
-      <Flex justify="space-between" mt="sm">
-        <Flex gap="sm">
-          {onSave != null && (
-            <Button
-              data-testid="chart-save-button"
-              loading={isSaving}
-              variant="primary"
-              onClick={handleSubmit(handleSave)}
-            >
-              Save
-            </Button>
-          )}
-          {onClose != null && (
-            <Button
-              variant="subtle"
-              color="dark"
-              onClick={onClose}
-              disabled={isSaving}
-            >
-              Cancel
-            </Button>
-          )}
-        </Flex>
-        <Flex gap="sm" mb="sm" align="center" justify="end">
-          {activeTab === 'table' && (
-            <div style={{ width: 400 }}>
-              <SQLInlineEditorControlled
-                parentRef={parentRef}
-                tableConnection={tableConnection}
-                // The default order by is the current group by value
-                placeholder={typeof groupBy === 'string' ? groupBy : ''}
-                control={control}
-                name={`orderBy`}
-                disableKeywordAutocomplete
-                onSubmit={onSubmit}
-                label="ORDER BY"
-              />
-            </div>
-          )}
-          {activeTab !== 'markdown' &&
-            setDisplayedTimeInputValue != null &&
-            displayedTimeInputValue != null &&
-            onTimeRangeSearch != null && (
-              <TimePicker
-                inputValue={displayedTimeInputValue}
-                setInputValue={setDisplayedTimeInputValue}
-                onSearch={range => {
-                  onTimeRangeSearch(range);
-                }}
-                onSubmit={range => {
-                  onTimeRangeSearch(range);
-                }}
+                name="granularity"
               />
             )}
-          {activeTab === 'time' && (
-            <GranularityPickerControlled control={control} name="granularity" />
-          )}
-          {activeTab !== 'markdown' && (
-            <Button
-              data-testid="chart-run-query-button"
-              variant="primary"
-              type="submit"
-              onClick={onSubmit}
-              leftSection={<IconPlayerPlay size={16} />}
-              style={{ flexShrink: 0 }}
-            >
-              Run
-            </Button>
-          )}
-          {!IS_LOCAL_MODE && !dashboardId && (
-            <Menu width={250}>
-              <Menu.Target>
-                <ActionIcon variant="secondary" size="input-sm">
-                  <IconDotsVertical size={16} />
-                </ActionIcon>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Item
-                  leftSection={<IconLayoutGrid size={16} />}
-                  onClick={() => setSaveToDashboardModalOpen(true)}
-                >
-                  Save to Dashboard
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          )}
+            {activeTab !== 'markdown' && (
+              <Button
+                data-testid="chart-run-query-button"
+                variant="primary"
+                type="submit"
+                onClick={onSubmit}
+                leftSection={<IconPlayerPlay size={16} />}
+                style={{ flexShrink: 0 }}
+              >
+                Run
+              </Button>
+            )}
+            {!IS_LOCAL_MODE && !dashboardId && (
+              <Menu width={250}>
+                <Menu.Target>
+                  <ActionIcon variant="secondary" size="input-sm">
+                    <IconDotsVertical size={16} />
+                  </ActionIcon>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    leftSection={<IconLayoutGrid size={16} />}
+                    onClick={() => setSaveToDashboardModalOpen(true)}
+                  >
+                    Save to Dashboard
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            )}
+          </Flex>
         </Flex>
-      </Flex>
+      </ErrorBoundary>
       {!queryReady && activeTab !== 'markdown' ? (
         <Paper shadow="xs" p="xl">
           <Center mih={400}>
