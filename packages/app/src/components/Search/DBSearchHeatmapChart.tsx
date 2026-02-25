@@ -13,8 +13,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Flex } from '@mantine/core';
-import { ActionIcon } from '@mantine/core';
-import { Paper } from '@mantine/core';
+import { Button } from '@mantine/core';
 import { Center } from '@mantine/core';
 import { Text } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
@@ -57,7 +56,7 @@ export function DBSearchHeatmapChart({
       style={{ overflow: 'hidden' }}
       ref={setContainer}
     >
-      <Box mx="lg" mt="xs" mb={0}>
+      <Box px="sm" pt="xs" mb={0}>
         <DBSearchHeatmapForm
           connection={tcFromSource(source)}
           defaultValues={{
@@ -122,14 +121,12 @@ export function DBSearchHeatmapChart({
           yMax={fields.yMax}
         />
       ) : (
-        <Paper shadow="xs" p="xl" h="100%">
-          <Center mih={100} h="100%">
-            <Text size="sm">
-              Please highlight an outlier range in the heatmap to view the delta
-              chart.
-            </Text>
-          </Center>
-        </Paper>
+        <Center mih={100} h="100%">
+          <Text size="sm">
+            Please highlight an outlier range in the heatmap to view the delta
+            chart.
+          </Text>
+        </Center>
       )}
     </Flex>
   );
@@ -189,15 +186,15 @@ function DBSearchHeatmapForm({
             rules={{ required: true }}
           />
         </div>
-        <ActionIcon
-          w="40px"
-          variant="primary"
+
+        <Button
+          variant="secondary"
           type="submit"
-          h="auto"
-          title="Run"
+          size="xs"
+          leftSection={<IconPlayerPlay size={16} />}
         >
-          <IconPlayerPlay />
-        </ActionIcon>
+          Run
+        </Button>
       </Flex>
     </form>
   );
