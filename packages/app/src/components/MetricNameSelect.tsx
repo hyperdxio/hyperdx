@@ -11,6 +11,7 @@ import { useGetKeyValues } from '@/hooks/useMetadata';
 import { capitalizeFirstLetter } from '@/utils';
 
 const MAX_METRIC_NAME_OPTIONS = 3000;
+const SEPARATOR = ':::::::';
 
 const chartConfigByMetricType = ({
   dateRange,
@@ -104,6 +105,43 @@ function useMetricNames(
   };
 }
 
+export function getMetricOptions(
+  gaugeMetrics: string[] | undefined,
+  histogramMetrics: string[] | undefined,
+  sumMetrics: string[] | undefined,
+  metricName: string | null | undefined,
+  metricType: MetricsDataType,
+) {
+  const metricsFromQuery = [
+    ...(gaugeMetrics?.map(metric => ({
+      value: `${metric}${SEPARATOR}gauge`,
+      label: `${metric} (Gauge)`,
+    })) ?? []),
+    ...(histogramMetrics?.map(metric => ({
+      value: `${metric}${SEPARATOR}histogram`,
+      label: `${metric} (Histogram)`,
+    })) ?? []),
+    ...(sumMetrics?.map(metric => ({
+      value: `${metric}${SEPARATOR}sum`,
+      label: `${metric} (Sum)`,
+    })) ?? []),
+  ];
+  // if saved metric does not exist in the available options, assume it exists
+  // and add it to options
+  if (
+    metricName &&
+    !metricsFromQuery.find(
+      metric => metric.value === `${metricName}${SEPARATOR}${metricType}`,
+    )
+  ) {
+    metricsFromQuery.push({
+      value: `${metricName}${SEPARATOR}${metricType}`,
+      label: `${metricName} (${capitalizeFirstLetter(metricType)})`,
+    });
+  }
+  return metricsFromQuery;
+}
+
 export function MetricNameSelect({
   dateRange,
   metricType,
@@ -129,40 +167,17 @@ export function MetricNameSelect({
   onFocus?: () => void;
   'data-testid'?: string;
 }) {
-  const SEPARATOR = ':::::::';
-
   const { gaugeMetrics, histogramMetrics, sumMetrics } =
     useMetricNames(metricSource);
 
   const options = useMemo(() => {
-    const metricsFromQuery = [
-      ...(gaugeMetrics?.map(metric => ({
-        value: `${metric}${SEPARATOR}gauge`,
-        label: `${metric} (Gauge)`,
-      })) ?? []),
-      ...(histogramMetrics?.map(metric => ({
-        value: `${metric}${SEPARATOR}histogram`,
-        label: `${metric} (Histogram)`,
-      })) ?? []),
-      ...(sumMetrics?.map(metric => ({
-        value: `${metric}${SEPARATOR}sum`,
-        label: `${metric} (Sum)`,
-      })) ?? []),
-    ];
-    // if saved metric does not exist in the available options, assume it exists
-    // and add it to options
-    if (
-      metricName &&
-      !metricsFromQuery.find(
-        metric => metric.value !== `${metricName}${SEPARATOR}${metricType}`,
-      )
-    ) {
-      metricsFromQuery.push({
-        value: `${metricName}${SEPARATOR}${metricType}`,
-        label: `${metricName} (${capitalizeFirstLetter(metricType)})`,
-      });
-    }
-    return metricsFromQuery;
+    return getMetricOptions(
+      gaugeMetrics,
+      histogramMetrics,
+      sumMetrics,
+      metricName,
+      metricType,
+    );
   }, [gaugeMetrics, histogramMetrics, sumMetrics, metricName, metricType]);
 
   const currentValue =

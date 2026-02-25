@@ -1873,7 +1873,7 @@ function DBSearchPage() {
                         />
                       </Box>
                     )}
-                    <Box flex="1" mih="0">
+                    <Box flex="1" mih="0" px="sm">
                       <PatternTable
                         source={searchedSource}
                         config={{
@@ -1902,10 +1902,9 @@ function DBSearchPage() {
                   source={searchedSource}
                 />
               )}
-              <Flex direction="column" mih="0">
-                {analysisMode === 'results' &&
-                  chartConfig &&
-                  histogramTimeChartConfig && (
+              {analysisMode === 'results' && (
+                <Flex direction="column" mih="0">
+                  {chartConfig && histogramTimeChartConfig && (
                     <>
                       <Box className={searchPageStyles.searchStatsContainer}>
                         <Group
@@ -1919,7 +1918,6 @@ function DBSearchPage() {
                           />
                           <Group gap="sm" align="center">
                             {shouldShowLiveModeHint &&
-                              analysisMode === 'results' &&
                               denoiseResults != true && (
                                 <ResumeLiveTailButton
                                   handleResumeLiveTail={handleResumeLiveTail}
@@ -1956,109 +1954,95 @@ function DBSearchPage() {
                       )}
                     </>
                   )}
-                {hasQueryError && queryError ? (
-                  <>
-                    <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
-                      {whereSuggestions && whereSuggestions.length > 0 && (
-                        <Box mb="xl">
-                          <Text size="lg">
-                            <b>Query Helper</b>
+                  {hasQueryError && queryError ? (
+                    <>
+                      <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
+                        {whereSuggestions && whereSuggestions.length > 0 && (
+                          <Box mb="xl">
+                            <Text size="lg">
+                              <b>Query Helper</b>
+                            </Text>
+                            <Grid>
+                              {whereSuggestions!.map(s => (
+                                <>
+                                  <Grid.Col span={10}>
+                                    <Text>{s.userMessage('where')}</Text>
+                                  </Grid.Col>
+                                  <Grid.Col span={2}>
+                                    <Button
+                                      onClick={() =>
+                                        setValue('where', s.corrected())
+                                      }
+                                    >
+                                      Accept
+                                    </Button>
+                                  </Grid.Col>
+                                </>
+                              ))}
+                            </Grid>
+                          </Box>
+                        )}
+                        <Box mt="sm">
+                          <Text my="sm" size="sm">
+                            Error encountered for query with inputs:
                           </Text>
-                          <Grid>
-                            {whereSuggestions!.map(s => (
-                              <>
-                                <Grid.Col span={10}>
-                                  <Text>{s.userMessage('where')}</Text>
-                                </Grid.Col>
-                                <Grid.Col span={2}>
-                                  <Button
-                                    onClick={() =>
-                                      setValue('where', s.corrected())
-                                    }
-                                  >
-                                    Accept
-                                  </Button>
-                                </Grid.Col>
-                              </>
-                            ))}
-                          </Grid>
-                        </Box>
-                      )}
-                      <Box mt="sm">
-                        <Text my="sm" size="sm">
-                          Error encountered for query with inputs:
-                        </Text>
-                        <Paper
-                          flex="auto"
-                          p={'sm'}
-                          shadow="none"
-                          radius="sm"
-                          style={{ overflow: 'hidden' }}
-                        >
-                          <Grid>
-                            <Grid.Col span={2}>
-                              <Text>SELECT</Text>
-                            </Grid.Col>
-                            <Grid.Col span={10}>
-                              <SQLPreview
-                                data={`${chartConfig.select as string}`}
-                                formatData={false}
-                              />
-                            </Grid.Col>
-                            <Grid.Col span={2}>
-                              <Text>ORDER BY</Text>
-                            </Grid.Col>
-                            <Grid.Col span={10}>
-                              <SQLPreview
-                                data={`${chartConfig.orderBy}`}
-                                formatData={false}
-                              />
-                            </Grid.Col>
-                            <Grid.Col span={2}>
-                              <Text>
-                                {chartConfig.whereLanguage === 'lucene'
-                                  ? 'Searched For'
-                                  : 'WHERE'}
-                              </Text>
-                            </Grid.Col>
-                            <Grid.Col span={10}>
-                              {chartConfig.whereLanguage === 'lucene' ? (
-                                <CodeMirror
-                                  indentWithTab={false}
-                                  value={chartConfig.where}
-                                  theme="dark"
-                                  basicSetup={{
-                                    lineNumbers: false,
-                                    foldGutter: false,
-                                    highlightActiveLine: false,
-                                    highlightActiveLineGutter: false,
-                                  }}
-                                  editable={false}
+                          <Paper
+                            flex="auto"
+                            p={'sm'}
+                            shadow="none"
+                            radius="sm"
+                            style={{ overflow: 'hidden' }}
+                          >
+                            <Grid>
+                              <Grid.Col span={2}>
+                                <Text>SELECT</Text>
+                              </Grid.Col>
+                              <Grid.Col span={10}>
+                                <SQLPreview
+                                  data={`${chartConfig.select as string}`}
+                                  formatData={false}
                                 />
-                              ) : (
-                                <SQLPreview data={`${chartConfig.where}`} />
-                              )}
-                            </Grid.Col>
-                          </Grid>
-                        </Paper>
-                      </Box>
-                      <Box mt="lg">
-                        <Text my="sm" size="sm">
-                          Error Message:
-                        </Text>
-                        <Code
-                          block
-                          style={{
-                            whiteSpace: 'pre-wrap',
-                          }}
-                        >
-                          {queryError.message}
-                        </Code>
-                      </Box>
-                      {queryError instanceof ClickHouseQueryError && (
+                              </Grid.Col>
+                              <Grid.Col span={2}>
+                                <Text>ORDER BY</Text>
+                              </Grid.Col>
+                              <Grid.Col span={10}>
+                                <SQLPreview
+                                  data={`${chartConfig.orderBy}`}
+                                  formatData={false}
+                                />
+                              </Grid.Col>
+                              <Grid.Col span={2}>
+                                <Text>
+                                  {chartConfig.whereLanguage === 'lucene'
+                                    ? 'Searched For'
+                                    : 'WHERE'}
+                                </Text>
+                              </Grid.Col>
+                              <Grid.Col span={10}>
+                                {chartConfig.whereLanguage === 'lucene' ? (
+                                  <CodeMirror
+                                    indentWithTab={false}
+                                    value={chartConfig.where}
+                                    theme="dark"
+                                    basicSetup={{
+                                      lineNumbers: false,
+                                      foldGutter: false,
+                                      highlightActiveLine: false,
+                                      highlightActiveLineGutter: false,
+                                    }}
+                                    editable={false}
+                                  />
+                                ) : (
+                                  <SQLPreview data={`${chartConfig.where}`} />
+                                )}
+                              </Grid.Col>
+                            </Grid>
+                          </Paper>
+                        </Box>
                         <Box mt="lg">
                           <Text my="sm" size="sm">
-                            Original Query:
+                            Error Message:
                           </Text>
                           <Code
                             block
@@ -2066,38 +2050,52 @@ function DBSearchPage() {
                               whiteSpace: 'pre-wrap',
                             }}
                           >
-                            <SQLPreview data={queryError.query} formatData />
+                            {queryError.message}
                           </Code>
                         </Box>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <Box flex="1" mih="0">
-                    {chartConfig &&
-                      searchedConfig.source &&
-                      dbSqlRowTableConfig &&
-                      analysisMode === 'results' && (
-                        <DBSqlRowTableWithSideBar
-                          context={rowTableContext}
-                          config={dbSqlRowTableConfig}
-                          sourceId={searchedConfig.source}
-                          onSidebarOpen={onSidebarOpen}
-                          onExpandedRowsChange={onExpandedRowsChange}
-                          enabled={isReady}
-                          isLive={isLive ?? true}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
-                          onScroll={onTableScroll}
-                          onError={handleTableError}
-                          denoiseResults={denoiseResults}
-                          collapseAllRows={collapseAllRows}
-                          onSortingChange={onSortingChange}
-                          initialSortBy={initialSortBy}
-                        />
-                      )}
-                  </Box>
-                )}
-              </Flex>
+                        {queryError instanceof ClickHouseQueryError && (
+                          <Box mt="lg">
+                            <Text my="sm" size="sm">
+                              Original Query:
+                            </Text>
+                            <Code
+                              block
+                              style={{
+                                whiteSpace: 'pre-wrap',
+                              }}
+                            >
+                              <SQLPreview data={queryError.query} formatData />
+                            </Code>
+                          </Box>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <Box flex="1" mih="0" px="sm">
+                      {chartConfig &&
+                        searchedConfig.source &&
+                        dbSqlRowTableConfig && (
+                          <DBSqlRowTableWithSideBar
+                            context={rowTableContext}
+                            config={dbSqlRowTableConfig}
+                            sourceId={searchedConfig.source}
+                            onSidebarOpen={onSidebarOpen}
+                            onExpandedRowsChange={onExpandedRowsChange}
+                            enabled={isReady}
+                            isLive={isLive ?? true}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            onScroll={onTableScroll}
+                            onError={handleTableError}
+                            denoiseResults={denoiseResults}
+                            collapseAllRows={collapseAllRows}
+                            onSortingChange={onSortingChange}
+                            initialSortBy={initialSortBy}
+                          />
+                        )}
+                    </Box>
+                  )}
+                </Flex>
+              )}
             </div>
           </>
         )}
