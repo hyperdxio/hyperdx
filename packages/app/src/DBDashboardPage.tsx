@@ -829,23 +829,43 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setWhereLanguage,
   ]);
 
-  // Load and execute saved query once when dashboard first loads (if no URL params)
+  // Initialize query/filter state once when dashboard changes.
   useEffect(() => {
     if (!dashboard?.id || !router.isReady) return;
+    if (!isLocalDashboard && isFetchingDashboard) return;
     if (initializedDashboard.current === dashboard.id) return;
+    const isSwitchingDashboards =
+      initializedDashboard.current != null &&
+      initializedDashboard.current !== dashboard.id;
 
-    // Only restore if URL doesn't have explicit params
-    if (!('where' in router.query) && dashboard.savedQuery) {
-      setValue('where', dashboard.savedQuery);
-      setWhere(dashboard.savedQuery);
-      if (dashboard.savedQueryLanguage) {
-        setValue('whereLanguage', dashboard.savedQueryLanguage);
-        setWhereLanguage(dashboard.savedQueryLanguage);
+    const hasWhereInUrl = 'where' in router.query;
+    const hasFiltersInUrl = 'filters' in router.query;
+
+    // Query defaults: URL query overrides saved defaults. If switching to a
+    // dashboard without defaults, clear query. On first load/reload, keep current state.
+    if (!hasWhereInUrl) {
+      if (dashboard.savedQuery) {
+        setValue('where', dashboard.savedQuery);
+        setWhere(dashboard.savedQuery);
+        const savedLanguage = dashboard.savedQueryLanguage ?? 'lucene';
+        setValue('whereLanguage', savedLanguage);
+        setWhereLanguage(savedLanguage);
+      } else if (isSwitchingDashboards) {
+        setValue('where', '');
+        setWhere('');
+        setValue('whereLanguage', 'lucene');
+        setWhereLanguage('lucene');
       }
     }
 
-    if (!('filters' in router.query) && dashboard.savedFilterValues) {
-      setFilterQueries(dashboard.savedFilterValues);
+    // Filter defaults: URL filters override saved defaults. If switching to a
+    // dashboard without defaults, clear selected filters.
+    if (!hasFiltersInUrl) {
+      if (dashboard.savedFilterValues) {
+        setFilterQueries(dashboard.savedFilterValues);
+      } else if (isSwitchingDashboards) {
+        setFilterQueries(null);
+      }
     }
 
     initializedDashboard.current = dashboard.id;
@@ -854,6 +874,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     dashboard?.savedQuery,
     dashboard?.savedQueryLanguage,
     dashboard?.savedFilterValues,
+    isLocalDashboard,
+    isFetchingDashboard,
     router.isReady,
     router.query,
     setValue,
