@@ -77,6 +77,11 @@
     "diff": "^5.2.2",
     "on-headers": "^1.1.0",
     "fast-xml-parser": "^4.4.0",
-    "systeminformation": "^5.24.0"
+    "systeminformation": "^5.31.0",
+    "lodash": "^4.17.23",
+    "nanoid": "^3.3.8",
+    "validator": "^13.15.22",
+    "@babel/runtime": "^7.26.10",
+    "ajv": "^6.14.0"
   }
 }
