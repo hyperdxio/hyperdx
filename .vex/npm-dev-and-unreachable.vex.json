@@ -1,0 +1,94 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/hyperdxio/hyperdx/blob/main/.vex/npm-dev-and-unreachable.vex.json",
+  "author": "HyperDX Team",
+  "role": "Supplier",
+  "timestamp": "2026-02-25T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": { "name": "CVE-2025-14505" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "elliptic is a transitive dependency of crypto build tooling only. ECDSA signing via elliptic is not used at application runtime. No patch is available upstream. The vulnerable code path (malformed public key parsing) is not reachable from any production code."
+    },
+    {
+      "vulnerability": { "name": "GHSA-gcfc-fp5p-5248" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "tar is a build-only dependency pulled in transitively by cacache and node-gyp during npm/yarn install. It is not present in the production Docker image, which is built from the compiled output. The tar vulnerable code path is never executed at application runtime."
+    },
+    {
+      "vulnerability": { "name": "GHSA-r7qp-cfhv-p84w" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "tar is a build-only dependency pulled in transitively by cacache and node-gyp during npm/yarn install. It is not present in the production Docker image. The tar vulnerable code path is never executed at application runtime."
+    },
+    {
+      "vulnerability": { "name": "GHSA-3787-6prb-h5wc" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "tar is a build-only dependency pulled in transitively by cacache and node-gyp during npm/yarn install. It is not present in the production Docker image. The tar vulnerable code path is never executed at application runtime."
+    },
+    {
+      "vulnerability": { "name": "GHSA-952p-6rrq-rcjv" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "minimatch is used exclusively in build and test tooling (glob patterns for file matching by Jest, ESLint, and similar tools). All glob patterns are developer-defined strings in configuration files, not user-supplied input. A ReDoS attack requires adversary-controlled regex input, which is not possible in this usage context."
+    },
+    {
+      "vulnerability": { "name": "GHSA-f8q6-p94x-37v3" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "minimatch is used exclusively in build and test tooling (glob patterns for file matching by Jest, ESLint, and similar tools). All glob patterns are developer-defined strings in configuration files, not user-supplied input. A ReDoS attack requires adversary-controlled regex input, which is not possible in this usage context."
+    },
+    {
+      "vulnerability": { "name": "GHSA-hj48-42vr-x3v9" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "minimatch is used exclusively in build and test tooling (glob patterns for file matching by Jest, ESLint, and similar tools). All glob patterns are developer-defined strings in configuration files, not user-supplied input. A ReDoS attack requires adversary-controlled regex input, which is not possible in this usage context."
+    },
+    {
+      "vulnerability": { "name": "GHSA-c2qf-rxjj-qqgw" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "minimatch is used exclusively in build and test tooling (glob patterns for file matching by Jest, ESLint, and similar tools). All glob patterns are developer-defined strings in configuration files, not user-supplied input. A ReDoS attack requires adversary-controlled regex input, which is not possible in this usage context."
+    },
+    {
+      "vulnerability": { "name": "GHSA-pwxv-5w8g-86cp" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "playwright is a dev/test-only dependency used exclusively for end-to-end testing. It is not installed in the production Docker image and is never executed in the production environment. SSL certificate validation skip only affects test browser sessions, not production traffic."
+    },
+    {
+      "vulnerability": { "name": "GHSA-hpx4-r86g-5jrg" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "storybook is a dev-only dependency used for UI component development. It is not installed in the production Docker image, not deployed to any production environment, and its environment variable handling does not affect the production application."
+    },
+    {
+      "vulnerability": { "name": "GHSA-4vvj-4cpr-p986" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "webpack's buildHttp feature (SSRF vulnerability) is not enabled in this project's webpack configuration. The HyperDX build uses standard module bundling without remote URL loading. Even if webpack is present in the storybook dev build toolchain, the buildHttp feature is not configured."
+    },
+    {
+      "vulnerability": { "name": "CVE-2023-46234" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "bn.js is used internally by elliptic for cryptographic operations (ECDH/ECDSA key operations). All inputs to bn.js in this context are developer-controlled cryptographic parameters, not user-supplied data. The infinite loop vulnerability requires adversary-controlled large integer inputs that are not possible in this deployment."
+    }
+  ]
+}
