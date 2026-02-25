@@ -82,8 +82,12 @@
     "nanoid": "^3.3.8",
     "validator": "^13.15.22",
     "@babel/runtime": "^7.26.10",
+    "@babel/helpers": "^7.26.10",
+    "cross-spawn": "^7.0.6",
+    "next-query-params": "4.3.0",
     "webpack": "^5.105.0",
     "semver": "^7.7.3",
-    "tmp": "^0.2.4"
+    "tmp": "^0.2.4",
+    "msw/path-to-regexp": "^6.3.0"
   }
 }

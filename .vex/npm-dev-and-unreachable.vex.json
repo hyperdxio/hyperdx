@@ -4,7 +4,7 @@
   "author": "HyperDX Team",
   "role": "Supplier",
   "timestamp": "2026-02-25T00:00:00Z",
-  "version": 1,
+  "version": 2,
   "statements": [
     {
       "vulnerability": { "name": "CVE-2025-14505" },
@@ -89,6 +89,34 @@
       "status": "not_affected",
       "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
       "impact_statement": "bn.js is used internally by elliptic for cryptographic operations (ECDH/ECDSA key operations). All inputs to bn.js in this context are developer-controlled cryptographic parameters, not user-supplied data. The infinite loop vulnerability requires adversary-controlled large integer inputs that are not possible in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2026-2739" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "bn.js is used internally by elliptic for cryptographic operations. All inputs to bn.js are developer-controlled cryptographic parameters, not user-supplied data. The vulnerability requires adversary-controlled large integer inputs that are not possible in this deployment."
+    },
+    {
+      "vulnerability": { "name": "GHSA-3ppc-4f35-3m26" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "minimatch (CVE-2026-26996) is used exclusively in build and test tooling (glob patterns for file matching by Jest, ESLint, and similar tools). All glob patterns are developer-defined strings in configuration files, not user-supplied input. A ReDoS attack requires adversary-controlled regex input, which is not possible in this usage context."
+    },
+    {
+      "vulnerability": { "name": "GHSA-9wv6-86v2-598j" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "path-to-regexp has two consumers: (1) express@4.22.1 uses path-to-regexp@0.1.12 which is already patched (vulnerability fixed in >=0.1.10); (2) msw@2.3.0 uses path-to-regexp@6.2.2 (vulnerable <6.3.0) but msw is a test-only mock service worker — all route patterns are developer-defined in test code, never user-supplied input, and msw is not deployed to production."
+    },
+    {
+      "vulnerability": { "name": "GHSA-5j98-mcp5-4vw2" },
+      "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "glob's CLI command injection vulnerability (CVE-2024-21538 variant) requires invoking glob as a CLI tool with the -c/--cmd flag. glob is used exclusively as a JavaScript module for file-pattern matching in build tools (Jest, ESLint, cacache, node-gyp). The CLI entry point is never invoked in this project. Additionally, glob@10.5.0 (patched) and glob@7.x/9.x (not in vulnerable range >=10.2.0,<10.5.0) are the only versions installed."
     }
   ]
 }
