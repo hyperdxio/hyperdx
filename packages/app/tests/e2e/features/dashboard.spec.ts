@@ -390,4 +390,203 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
     },
   );
+
+  test(
+    'should save and restore query and filter values',
+    { tag: '@full-stack' },
+    async () => {
+      const testQuery = 'level:error';
+      let dashboardUrl: string;
+
+      await test.step('Create dashboard with chart', async () => {
+        await dashboardPage.createNewDashboard();
+
+        // Add a tile so dashboard is saveable
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart('Test Chart');
+
+        const chartContainers = dashboardPage.getChartContainers();
+        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
+
+        // Save dashboard URL for later
+        dashboardUrl = dashboardPage.page.url();
+      });
+
+      await test.step('Enter query in search bar', async () => {
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toBeVisible();
+        await searchInput.fill(testQuery);
+      });
+
+      await test.step('Click save query button', async () => {
+        await dashboardPage.saveQueryAndFiltersAsDefault();
+
+        // Wait for success notification
+        const notification = dashboardPage.page.locator(
+          'text=/Filter query and dropdown values/i',
+        );
+        await expect(notification).toBeVisible({ timeout: 5000 });
+      });
+
+      await test.step('Navigate away from dashboard', async () => {
+        await dashboardPage.page.goto('/search');
+        await expect(dashboardPage.page).toHaveURL(/.*\/search/);
+      });
+
+      await test.step('Return to dashboard and verify query restored', async () => {
+        await dashboardPage.page.goto(dashboardUrl);
+
+        // Wait for dashboard controls to load
+        await expect(
+          dashboardPage.page.getByTestId('dashboard-page'),
+        ).toBeVisible({ timeout: 10000 });
+        await expect(dashboardPage.searchInput).toBeVisible({ timeout: 10000 });
+
+        // Verify saved query is restored in search input
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toHaveValue(testQuery);
+      });
+
+      await test.step('Clear URL params and verify query persists', async () => {
+        // Extract dashboard ID and navigate without query params
+        const dashboardId = dashboardUrl.split('/').pop()?.split('?')[0];
+        await dashboardPage.page.goto(`/dashboards/${dashboardId}`);
+
+        // Verify saved query still loads
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toHaveValue(testQuery);
+      });
+    },
+  );
+
+  test(
+    'should handle URL query params overriding saved query',
+    { tag: '@full-stack' },
+    async () => {
+      const savedQuery = 'level:error';
+      const urlQuery = 'status:active';
+      let dashboardId: string;
+
+      await test.step('Create dashboard and save query', async () => {
+        await dashboardPage.createNewDashboard();
+
+        // Add a tile
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart('Test Chart');
+
+        // Enter and save query
+        const searchInput = dashboardPage.searchInput;
+        await searchInput.fill(savedQuery);
+
+        await dashboardPage.saveQueryAndFiltersAsDefault();
+
+        // Wait for save confirmation
+        await dashboardPage.page.waitForTimeout(1000);
+
+        // Extract dashboard ID
+        const url = dashboardPage.page.url();
+        dashboardId = url.split('/').pop()?.split('?')[0] || '';
+      });
+
+      await test.step('Navigate with URL query param', async () => {
+        // Navigate to dashboard with URL query param
+        await dashboardPage.page.goto(
+          `/dashboards/${dashboardId}?where=${encodeURIComponent(urlQuery)}`,
+        );
+
+        // Wait for dashboard controls to load
+        await expect(
+          dashboardPage.page.getByTestId('dashboard-page'),
+        ).toBeVisible({ timeout: 10000 });
+        await expect(dashboardPage.searchInput).toBeVisible({ timeout: 10000 });
+
+        // Verify URL query takes precedence over saved query
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toHaveValue(urlQuery);
+        await expect(searchInput).not.toHaveValue(savedQuery);
+      });
+
+      await test.step('Navigate without URL params to verify saved query', async () => {
+        await dashboardPage.page.goto(`/dashboards/${dashboardId}`);
+
+        // Verify saved query is restored when no URL params
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toHaveValue(savedQuery);
+      });
+    },
+  );
+
+  test(
+    'should clear saved query when WHERE input is cleared and saved',
+    { tag: '@full-stack' },
+    async () => {
+      const testQuery = 'level:warn';
+      let dashboardUrl: string;
+
+      await test.step('Create dashboard with chart', async () => {
+        await dashboardPage.createNewDashboard();
+
+        // Add a tile so dashboard is saveable
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart('Test Chart');
+
+        const chartContainers = dashboardPage.getChartContainers();
+        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
+
+        // Save dashboard URL for later
+        dashboardUrl = dashboardPage.page.url();
+      });
+
+      await test.step('Enter and save query', async () => {
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toBeVisible();
+        await searchInput.fill(testQuery);
+
+        await dashboardPage.saveQueryAndFiltersAsDefault();
+
+        // Wait for success notification
+        const notification = dashboardPage.page.locator(
+          'text=/Filter query and dropdown values/i',
+        );
+        await expect(notification).toBeVisible({ timeout: 5000 });
+      });
+
+      await test.step('Navigate away and verify query persists', async () => {
+        await dashboardPage.page.goto('/search');
+        await dashboardPage.page.goto(dashboardUrl);
+
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toHaveValue(testQuery);
+      });
+
+      await test.step('Clear the query and save', async () => {
+        const searchInput = dashboardPage.searchInput;
+        await searchInput.clear();
+
+        await dashboardPage.saveQueryAndFiltersAsDefault();
+
+        // Wait for success notification
+        const notification = dashboardPage.page.locator(
+          'text=/Filter query and dropdown values/i',
+        );
+        await expect(notification).toBeVisible({ timeout: 5000 });
+      });
+
+      await test.step('Navigate away and verify query is cleared', async () => {
+        await dashboardPage.page.goto('/search');
+
+        // Extract dashboard ID and navigate back
+        const dashboardId = dashboardUrl.split('/').pop()?.split('?')[0];
+        await dashboardPage.page.goto(`/dashboards/${dashboardId}`);
+
+        // Wait for dashboard to load
+        const chartContainers = dashboardPage.getChartContainers();
+        await expect(chartContainers).toHaveCount(1, { timeout: 10000 });
+
+        // Verify search input is empty (saved query was removed)
+        const searchInput = dashboardPage.searchInput;
+        await expect(searchInput).toHaveValue('');
+      });
+    },
+  );
 });

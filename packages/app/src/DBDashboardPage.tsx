@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import dynamic from 'next/dynamic';
@@ -11,7 +12,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { formatRelative } from 'date-fns';
 import produce from 'immer';
-import { parseAsString, useQueryState } from 'nuqs';
+import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { Controller, useForm, useWatch } from 'react-hook-form';
@@ -52,6 +53,7 @@ import {
   IconArrowsMaximize,
   IconBell,
   IconCopy,
+  IconDeviceFloppy,
   IconDotsVertical,
   IconDownload,
   IconFilterEdit,
@@ -61,6 +63,7 @@ import {
   IconTags,
   IconTrash,
   IconUpload,
+  IconX,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -733,11 +736,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'whereLanguage',
     parseAsString.withDefault('lucene'),
   );
+  // Get raw filter queries from URL (not processed by hook)
+  const [rawFilterQueries] = useQueryState('filters', parseAsJson<Filter[]>());
+
+  // Track if we've initialized query for this dashboard
+  const initializedDashboard = useRef<string>(undefined);
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
-  const { filterValues, setFilterValue, filterQueries } =
+  const { filterValues, setFilterValue, filterQueries, setFilterQueries } =
     useDashboardFilters(filters);
 
   const handleSaveFilter = (filter: DashboardFilter) => {
@@ -767,7 +775,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [isLive, setIsLive] = useState(false);
 
-  const { control, setValue, handleSubmit } = useForm<{
+  const { control, setValue, getValues, handleSubmit } = useForm<{
     granularity: SQLInterval | 'auto';
     where: SearchCondition;
     whereLanguage: SearchConditionLanguage;
@@ -807,13 +815,134 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     isLive,
   });
 
-  const onSubmit = () => {
+  const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(data => {
       setWhere(data.where as SearchCondition);
       setWhereLanguage((data.whereLanguage as SearchConditionLanguage) ?? null);
     })();
-  };
+  }, [
+    displayedTimeInputValue,
+    handleSubmit,
+    onSearch,
+    setWhere,
+    setWhereLanguage,
+  ]);
+
+  // Initialize query/filter state once when dashboard changes.
+  useEffect(() => {
+    if (!dashboard?.id || !router.isReady) return;
+    if (!isLocalDashboard && isFetchingDashboard) return;
+    if (initializedDashboard.current === dashboard.id) return;
+    const isSwitchingDashboards =
+      initializedDashboard.current != null &&
+      initializedDashboard.current !== dashboard.id;
+
+    const hasWhereInUrl = 'where' in router.query;
+    const hasFiltersInUrl = 'filters' in router.query;
+
+    // Query defaults: URL query overrides saved defaults. If switching to a
+    // dashboard without defaults, clear query. On first load/reload, keep current state.
+    if (!hasWhereInUrl) {
+      if (dashboard.savedQuery) {
+        setValue('where', dashboard.savedQuery);
+        setWhere(dashboard.savedQuery);
+        const savedLanguage = dashboard.savedQueryLanguage ?? 'lucene';
+        setValue('whereLanguage', savedLanguage);
+        setWhereLanguage(savedLanguage);
+      } else if (isSwitchingDashboards) {
+        setValue('where', '');
+        setWhere('');
+        setValue('whereLanguage', 'lucene');
+        setWhereLanguage('lucene');
+      }
+    }
+
+    // Filter defaults: URL filters override saved defaults. If switching to a
+    // dashboard without defaults, clear selected filters.
+    if (!hasFiltersInUrl) {
+      if (dashboard.savedFilterValues) {
+        setFilterQueries(dashboard.savedFilterValues);
+      } else if (isSwitchingDashboards) {
+        setFilterQueries(null);
+      }
+    }
+
+    initializedDashboard.current = dashboard.id;
+  }, [
+    dashboard?.id,
+    dashboard?.savedQuery,
+    dashboard?.savedQueryLanguage,
+    dashboard?.savedFilterValues,
+    isLocalDashboard,
+    isFetchingDashboard,
+    router.isReady,
+    router.query,
+    setValue,
+    setWhere,
+    setWhereLanguage,
+    setFilterQueries,
+  ]);
+
+  const handleSaveQuery = useCallback(() => {
+    if (!dashboard || isLocalDashboard) return;
+
+    // Execute the query first (updates URL)
+    onSubmit();
+
+    // Then save to database (reads from form values which were just submitted to URL)
+    const formValues = getValues();
+    const currentWhere = formValues.where || null;
+    const currentWhereLanguage = currentWhere
+      ? formValues.whereLanguage || 'lucene'
+      : null;
+    const currentFilterValues = rawFilterQueries?.length
+      ? rawFilterQueries
+      : null;
+
+    setDashboard(
+      produce(dashboard, draft => {
+        draft.savedQuery = currentWhere;
+        draft.savedQueryLanguage = currentWhereLanguage;
+        draft.savedFilterValues = currentFilterValues;
+      }),
+      () => {
+        notifications.show({
+          color: 'green',
+          title: 'Query saved and executed',
+          message:
+            'Filter query and dropdown values have been saved with the dashboard',
+          autoClose: 3000,
+        });
+      },
+    );
+  }, [
+    dashboard,
+    isLocalDashboard,
+    setDashboard,
+    getValues,
+    rawFilterQueries,
+    onSubmit,
+  ]);
+  const handleRemoveSavedQuery = useCallback(() => {
+    if (!dashboard || isLocalDashboard) return;
+
+    setDashboard(
+      produce(dashboard, draft => {
+        draft.savedQuery = null;
+        draft.savedQueryLanguage = null;
+        draft.savedFilterValues = null;
+      }),
+      () => {
+        notifications.show({
+          color: 'green',
+          title: 'Default query and filters removed',
+          message: 'Dashboard will no longer auto-apply saved defaults',
+          autoClose: 3000,
+        });
+      },
+    );
+  }, [dashboard, isLocalDashboard, setDashboard]);
 
   const [editedTile, setEditedTile] = useState<undefined | Tile>();
 
@@ -1008,6 +1137,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [isSaving, setIsSaving] = useState(false);
 
   const hasTiles = dashboard && dashboard.tiles.length > 0;
+  const hasSavedQueryAndFilterDefaults = Boolean(
+    dashboard?.savedQuery || dashboard?.savedFilterValues?.length,
+  );
 
   return (
     <Box p="sm" data-testid="dashboard-page">
@@ -1097,7 +1229,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
             <Menu width={250}>
               <Menu.Target>
-                <ActionIcon variant="secondary" size="input-xs">
+                <ActionIcon
+                  variant="secondary"
+                  size="input-xs"
+                  data-testid="dashboard-menu-button"
+                >
                   <IconDotsVertical size={14} />
                 </ActionIcon>
               </Menu.Target>
@@ -1141,6 +1277,27 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 >
                   {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
                 </Menu.Item>
+                <Menu.Divider />
+                <Menu.Item
+                  data-testid="save-default-query-filters-menu-item"
+                  leftSection={<IconDeviceFloppy size={16} />}
+                  onClick={handleSaveQuery}
+                >
+                  {hasSavedQueryAndFilterDefaults
+                    ? 'Update Default Query & Filters'
+                    : 'Save Query & Filters as Default'}
+                </Menu.Item>
+                {hasSavedQueryAndFilterDefaults && (
+                  <Menu.Item
+                    data-testid="remove-default-query-filters-menu-item"
+                    leftSection={<IconX size={16} />}
+                    color="red"
+                    onClick={handleRemoveSavedQuery}
+                  >
+                    Remove Default Query & Filters
+                  </Menu.Item>
+                )}
+                <Menu.Divider />
                 <Menu.Item
                   leftSection={<IconTrash size={16} />}
                   color="red"
