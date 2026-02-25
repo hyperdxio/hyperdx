@@ -264,6 +264,16 @@ describe('formatNumber', () => {
       expect(formatNumber(1234567, format)).toBe('1m');
     });
   });
+
+  describe('NaN handling', () => {
+    it('returns string representation for NaN without options', () => {
+      expect(formatNumber(NaN)).toBe('NaN');
+    });
+
+    it('returns string representation for NaN with options', () => {
+      expect(formatNumber(NaN, { output: 'number', mantissa: 2 })).toBe('NaN');
+    });
+  });
 });
 
 describe('useLocalStorage', () => {
