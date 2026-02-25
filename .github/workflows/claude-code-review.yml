@@ -41,6 +41,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_sticky_comment: true
           allowed_bots: cursor,cursor[bot]
           github_token: ${{ secrets.GITHUB_TOKEN }} # Bypasses OIDC auth (required for pull_request_target)
           allowed_non_write_users: '*' # Allows fork contributors to trigger reviews
@@ -69,8 +70,7 @@ jobs:
 
             Note: If the team wants a more thorough review, they can comment on the PR requesting one.
 
-            Use `gh pr comment --edit-last --create-if-none` with your Bash tool to leave your review as a comment on the PR.
-            This will create a new comment if none exists, or edit the last comment if one exists.
+            Return your review as your final response — the action will post it as a sticky comment on the PR.
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.claude.com/en/docs/claude-code/sdk#command-line for available options

@@ -443,6 +443,7 @@ describe('processClickhouseSettings - optimization settings', () => {
       allow_experimental_analyzer: 1,
       date_time_output_format: 'iso',
       wait_end_of_query: 0,
+      output_format_json_quote_64bit_integers: 1,
       cancel_http_readonly_queries_on_client_close: 1,
     });
   });
@@ -475,6 +476,7 @@ describe('processClickhouseSettings - optimization settings', () => {
       allow_experimental_analyzer: 1,
       date_time_output_format: 'iso',
       wait_end_of_query: 0,
+      output_format_json_quote_64bit_integers: 1,
       cancel_http_readonly_queries_on_client_close: 1,
       query_plan_optimize_lazy_materialization: '1',
       query_plan_max_limit_for_lazy_materialization: '100000',
@@ -507,6 +509,7 @@ describe('processClickhouseSettings - optimization settings', () => {
       allow_experimental_analyzer: 1,
       date_time_output_format: 'iso',
       wait_end_of_query: 0,
+      output_format_json_quote_64bit_integers: 1,
       cancel_http_readonly_queries_on_client_close: 1,
       use_skip_indexes_for_top_k: '1',
       use_skip_indexes_on_data_read: '1',
@@ -535,6 +538,7 @@ describe('processClickhouseSettings - optimization settings', () => {
       allow_experimental_analyzer: 1,
       date_time_output_format: 'iso',
       wait_end_of_query: 0,
+      output_format_json_quote_64bit_integers: 1,
       cancel_http_readonly_queries_on_client_close: 1,
       use_skip_indexes_for_top_k: '1',
       max_rows_to_read: '1000000',
@@ -582,6 +586,7 @@ describe('processClickhouseSettings - optimization settings', () => {
       allow_experimental_analyzer: 1,
       date_time_output_format: 'iso',
       wait_end_of_query: 0,
+      output_format_json_quote_64bit_integers: 1,
       cancel_http_readonly_queries_on_client_close: 1,
     });
   });
