@@ -585,6 +585,37 @@ async function getMissingSources(
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *
+ *     PieChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: Configuration for a pie chart tile. Each slice represents one group value.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [pie]
+ *           example: "pie"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 1
+ *           description: Exactly one aggregated value used to size each pie slice.
+ *           items:
+ *             $ref: '#/components/schemas/SelectItem'
+ *         groupBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Field expression to group results by (one slice per group value).
+ *           example: "service"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *
  *     SearchChartConfig:
  *       type: object
  *       required:
@@ -641,6 +672,7 @@ async function getMissingSources(
  *         - $ref: '#/components/schemas/BarChartConfig'
  *         - $ref: '#/components/schemas/TableChartConfig'
  *         - $ref: '#/components/schemas/NumberChartConfig'
+ *         - $ref: '#/components/schemas/PieChartConfig'
  *         - $ref: '#/components/schemas/SearchChartConfig'
  *         - $ref: '#/components/schemas/MarkdownChartConfig'
  *       discriminator:
@@ -650,6 +682,7 @@ async function getMissingSources(
  *           stacked_bar: '#/components/schemas/BarChartConfig'
  *           table: '#/components/schemas/TableChartConfig'
  *           number: '#/components/schemas/NumberChartConfig'
+ *           pie: '#/components/schemas/PieChartConfig'
  *           search: '#/components/schemas/SearchChartConfig'
  *           markdown: '#/components/schemas/MarkdownChartConfig'
  *

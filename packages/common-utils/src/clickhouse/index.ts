@@ -11,7 +11,7 @@ import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client
 import * as SQLParser from 'node-sql-parser';
 import objectHash from 'object-hash';
 
-import { Metadata } from '@/core/metadata';
+import { getMetadata, Metadata } from '@/core/metadata';
 import {
   renderChartConfig,
   setChartSelectsAlias,
@@ -422,6 +422,7 @@ export interface QueryInputs<Format extends DataFormat> {
   clickhouse_settings?: ClickHouseSettings;
   connectionId?: string;
   queryId?: string;
+  shouldSkipApplySettings?: boolean;
 }
 
 export type ClickhouseClientOptions = {
@@ -496,11 +497,15 @@ export abstract class BaseClickhouseClient {
     console.debug('--------------------------------------------------------');
   }
 
-  protected processClickhouseSettings(
-    external_clickhouse_settings?: ClickHouseSettings,
-  ): ClickHouseSettings {
+  protected async processClickhouseSettings({
+    connectionId,
+    externalClickhouseSettings,
+  }: {
+    connectionId?: string;
+    externalClickhouseSettings?: ClickHouseSettings;
+  }): Promise<ClickHouseSettings> {
     const clickhouse_settings = structuredClone(
-      external_clickhouse_settings || {},
+      externalClickhouseSettings || {},
     );
     if (clickhouse_settings?.max_rows_to_read && this.maxRowReadOnly) {
       delete clickhouse_settings['max_rows_to_read'];
@@ -512,11 +517,45 @@ export abstract class BaseClickhouseClient {
       clickhouse_settings.max_execution_time = this.queryTimeout;
     }
 
-    return {
+    const defaultSettings: ClickHouseSettings = {
       allow_experimental_analyzer: 1,
       date_time_output_format: 'iso',
       wait_end_of_query: 0,
       cancel_http_readonly_queries_on_client_close: 1,
+      output_format_json_quote_64bit_integers: 1, // In 25.8, the default value for this was changed from 1 to 0. Due to JavaScript's poor precision for big integers, we should enable this https://github.com/ClickHouse/ClickHouse/pull/74079
+    };
+
+    const metadata = getMetadata(this);
+    const serverSettings = await metadata.getSettings({ connectionId });
+
+    const applySettingIfAvailable = (name: string, value: string) => {
+      if (!serverSettings || !serverSettings.has(name)) return;
+      // eslint-disable-next-line security/detect-object-injection
+      defaultSettings[name] = value;
+    };
+
+    // Enables lazy materialization up to the given LIMIT
+    applySettingIfAvailable('query_plan_optimize_lazy_materialization', '1');
+    applySettingIfAvailable(
+      'query_plan_max_limit_for_lazy_materialization',
+      '100000',
+    );
+    // Enables skip indexes to be used for top k style queries up to the given LIMIT
+    applySettingIfAvailable('use_skip_indexes_for_top_k', '1');
+    applySettingIfAvailable(
+      'query_plan_max_limit_for_top_k_optimization',
+      '100000',
+    );
+    // TODO: HDX-3499 look into when we can and can't use this setting. For example, event deltas ORDER BY rand(), which is not compatible with this setting
+    // applySettingIfAvailable('use_top_k_dynamic_filtering', '1');
+    // Enables skip indexes to be used on data read
+    applySettingIfAvailable('use_skip_indexes_on_data_read', '1');
+    // Evaluate WHERE filters with mixed AND and OR conditions using skip indexes.
+    // If value is 0, then skip indicies only used on AND queries
+    applySettingIfAvailable('use_skip_indexes_for_disjunctions', '1');
+
+    return {
+      ...defaultSettings,
       ...clickhouse_settings,
     };
   }

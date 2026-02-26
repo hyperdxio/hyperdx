@@ -1,5 +1,18 @@
 # @hyperdx/api
 
+## 2.19.0
+
+### Minor Changes
+
+- 8326fc6e: feat: use optimization settings if available for use in CH
+
+### Patch Changes
+
+- cbe319c0: fix: use field as metricName in external metrics API when metricName is not provided
+- b5bb69e3: fix: Improve Pie Chart implemententation
+- Updated dependencies [8326fc6e]
+  - @hyperdx/common-utils@0.14.0
+
 ## 2.18.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @hyperdx/otel-collector
 
+## 2.19.0
+
+### Patch Changes
+
+- 2c306b69: fix: support tcp with TLS (tcps/tls schemes) and ?secure=true query param in otelcol migrator
+
 ## 2.18.0
 
 ### Minor Changes
