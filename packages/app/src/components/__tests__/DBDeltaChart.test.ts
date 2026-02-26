@@ -210,9 +210,9 @@ describe('isIdField', () => {
   });
 
   it('does not match keys with sub-keys after array index (Array(Map) paths)', () => {
-    expect(
-      isIdField('Events.Attributes[0].spanId', traceColumnMeta),
-    ).toBe(false);
+    expect(isIdField('Events.Attributes[0].spanId', traceColumnMeta)).toBe(
+      false,
+    );
   });
 
   it('returns false for unknown columns', () => {
@@ -1012,9 +1012,9 @@ describe('computeYValue', () => {
   });
 
   it('handles scientific notation divisor', () => {
-    expect(
-      computeYValue('Duration / 1e6', { Duration: 5000000 }),
-    ).toBeCloseTo(5);
+    expect(computeYValue('Duration / 1e6', { Duration: 5000000 })).toBeCloseTo(
+      5,
+    );
   });
 
   it('returns null when column is missing', () => {

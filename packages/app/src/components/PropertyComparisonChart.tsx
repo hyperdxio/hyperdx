@@ -1,3 +1,5 @@
+import { Flex, Text } from '@mantine/core';
+import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { withErrorBoundary } from 'react-error-boundary';
@@ -11,8 +13,6 @@ import {
   YAxis,
 } from 'recharts';
 import type { TooltipProps } from 'recharts';
-import { Flex, Text } from '@mantine/core';
-import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
 import {
   getChartColorError,
