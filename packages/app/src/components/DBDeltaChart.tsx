@@ -599,7 +599,7 @@ export default function DBDeltaChart({
   return (
     <Box
       ref={containerRef}
-      p="md"
+      p="sm"
       style={{
         overflowX: 'hidden',
         overflowY: 'auto',

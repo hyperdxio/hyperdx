@@ -264,6 +264,23 @@ describe('formatNumber', () => {
       expect(formatNumber(1234567, format)).toBe('1m');
     });
   });
+
+  describe('NaN handling', () => {
+    it('returns "N/A" for NaN without options', () => {
+      expect(formatNumber(NaN)).toBe('N/A');
+      expect(formatNumber(NaN, { output: 'number', mantissa: 2 })).toBe('N/A');
+    });
+
+    it('returns a string unchanged if a number cannot be parsed from it', () => {
+      // @ts-expect-error not passing a number
+      expect(formatNumber('not a number')).toBe('not a number');
+
+      expect(
+        // @ts-expect-error not passing a number
+        formatNumber('not a number', { output: 'number', mantissa: 2 }),
+      ).toBe('not a number');
+    });
+  });
 });
 
 describe('useLocalStorage', () => {

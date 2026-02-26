@@ -68,6 +68,8 @@ const WebhookSchema = new Schema<IWebhook>(
   { timestamps: true },
 );
 
+export type WebhookDocument = mongoose.HydratedDocument<IWebhook>;
+
 WebhookSchema.index({ team: 1, service: 1, name: 1 }, { unique: true });
 
 export default mongoose.model<IWebhook>('Webhook', WebhookSchema);

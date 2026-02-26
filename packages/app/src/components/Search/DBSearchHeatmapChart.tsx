@@ -12,7 +12,7 @@ import {
   DisplayType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Box, Flex } from '@mantine/core';
+import { Box, Button, Flex } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
 import { getDurationMsExpression } from '@/source';
@@ -93,7 +93,7 @@ export function DBSearchHeatmapChart({
       style={{ overflow: 'hidden' }}
       ref={setContainer}
     >
-      <Box mx="lg" mt="xs" mb={0}>
+      <Box px="sm" pt="xs" mb={0}>
         <DBSearchHeatmapForm
           connection={tcFromSource(source)}
           defaultValues={{
@@ -216,15 +216,15 @@ function DBSearchHeatmapForm({
             rules={{ required: true }}
           />
         </div>
-        <ActionIcon
-          w="40px"
-          variant="primary"
+
+        <Button
+          variant="secondary"
           type="submit"
-          h="auto"
-          title="Run"
+          size="xs"
+          leftSection={<IconPlayerPlay size={16} />}
         >
-          <IconPlayerPlay />
-        </ActionIcon>
+          Run
+        </Button>
       </Flex>
     </form>
   );
