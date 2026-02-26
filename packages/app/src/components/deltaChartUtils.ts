@@ -469,11 +469,17 @@ export function flattenedKeyToFilterKey(
     if (baseType.startsWith('Map(')) {
       if (key.startsWith(col.name + '.')) {
         const mapKey = key.slice(col.name.length + 1);
-        // Use the same format as the sidebar facets: toString(ColName.key)
-        // without backtick quoting. The sidebar wraps facet keys from
-        // useGetKeyValues with toString() (DBSearchPageFilters.tsx:1038),
-        // and the filter key must match exactly for checkboxes to appear.
-        return `toString(${col.name}.${mapKey})`;
+        // Match the exact format used by mergePath() in utils.ts and the
+        // trace flyout's "Add to Filters" action: backtick-quote each
+        // dot-separated segment independently. This produces:
+        //   toString(ResourceAttributes.`service`.`instance`.`id`)
+        // which is both valid ClickHouse SQL (backticks are identifiers)
+        // and matches the sidebar's facet key format from useGetKeyValues.
+        const quotedSegments = mapKey
+          .split('.')
+          .map(s => (s.startsWith('`') && s.endsWith('`') ? s : `\`${s}\``))
+          .join('.');
+        return `toString(${col.name}.${quotedSegments})`;
       }
     } else if (baseType.startsWith('Array(')) {
       const innerType = stripTypeWrappers(baseType.slice('Array('.length, -1));

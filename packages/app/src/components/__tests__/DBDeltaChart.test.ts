@@ -139,28 +139,29 @@ describe('flattenedKeyToSqlExpression', () => {
 });
 
 describe('flattenedKeyToFilterKey', () => {
-  it('converts Map column dot-notation to toString format matching sidebar facets', () => {
+  it('converts Map column keys to toString with backtick-quoted segments (matches mergePath)', () => {
     expect(
       flattenedKeyToFilterKey(
         'ResourceAttributes.service.name',
         traceColumnMeta,
       ),
-    ).toBe('toString(ResourceAttributes.service.name)');
+    ).toBe('toString(ResourceAttributes.`service`.`name`)');
   });
 
-  it('converts SpanAttributes Map keys to toString format', () => {
+  it('converts SpanAttributes Map keys to toString backtick format', () => {
     expect(
       flattenedKeyToFilterKey('SpanAttributes.http.method', traceColumnMeta),
-    ).toBe('toString(SpanAttributes.http.method)');
+    ).toBe('toString(SpanAttributes.`http`.`method`)');
   });
 
-  it('handles multi-segment dotted Map keys', () => {
+  it('handles multi-segment dotted Map keys with per-segment backticks', () => {
+    // Each segment is backtick-quoted independently, matching mergePath()
     expect(
       flattenedKeyToFilterKey(
-        'ResourceAttributes.process.runtime.name',
+        'ResourceAttributes.service.instance.id',
         traceColumnMeta,
       ),
-    ).toBe('toString(ResourceAttributes.process.runtime.name)');
+    ).toBe('toString(ResourceAttributes.`service`.`instance`.`id`)');
   });
 
   it('returns simple columns unchanged', () => {
