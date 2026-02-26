@@ -45,27 +45,11 @@ import {
   isHighCardinality,
   mergeValueStatisticsMaps,
   semanticBoost,
+  stripTypeWrappers,
 } from './deltaChartUtils';
 
 // Re-export types so callers importing from DBDeltaChart don't need to change.
 export type { AddFilterFn, HighlightPoint } from './deltaChartUtils';
-
-// Internal helper used only for timestamp column detection in this file.
-function stripTypeWrappersLocal(type: string): string {
-  let t = type.trim();
-  let changed = true;
-  while (changed) {
-    changed = false;
-    if (t.startsWith('LowCardinality(') && t.endsWith(')')) {
-      t = t.slice('LowCardinality('.length, -1).trim();
-      changed = true;
-    } else if (t.startsWith('Nullable(') && t.endsWith(')')) {
-      t = t.slice('Nullable('.length, -1).trim();
-      changed = true;
-    }
-  }
-  return t;
-}
 
 export default function DBDeltaChart({
   config,
@@ -231,15 +215,13 @@ export default function DBDeltaChart({
     ];
   };
 
-  // Lightweight count query — always runs to support adaptive sample sizing.
+  // Lightweight count query to support adaptive sample sizing.
   // ClickHouse resolves count() from MergeTree metadata, so this is near-instant.
-  const { data: countData } = useQueriedChartConfig(
-    {
-      ...config,
-      select: 'count() as total',
-    },
-    { enabled: true },
-  );
+  // useQueriedChartConfig internally gates on source/MV metadata readiness.
+  const { data: countData } = useQueriedChartConfig({
+    ...config,
+    select: 'count() as total',
+  });
   const totalCount = Number(
     (countData?.data as Record<string, unknown>[])?.[0]?.total ?? 0,
   );
@@ -416,9 +398,9 @@ export default function DBDeltaChart({
     // Find the first non-array DateTime64 column (typically 'Timestamp')
     const tsColName = columnMeta.find(
       c =>
-        (stripTypeWrappersLocal(c.type).startsWith('DateTime64(') ||
+        (stripTypeWrappers(c.type).startsWith('DateTime64(') ||
           c.type === 'DateTime64') &&
-        !stripTypeWrappersLocal(c.type).startsWith('Array('),
+        !stripTypeWrappers(c.type).startsWith('Array('),
     )?.name;
 
     const highlightIndex = new Map<string, Map<string, HighlightPoint[]>>();

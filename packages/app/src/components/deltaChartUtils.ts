@@ -7,7 +7,7 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function stripTypeWrappers(type: string): string {
+export function stripTypeWrappers(type: string): string {
   let t = type.trim();
   let changed = true;
   while (changed) {
@@ -181,25 +181,9 @@ export function isHighCardinality(
   return effectiveUniqueness > 0.9;
 }
 
-/*
- * Response Data is like...
-{
-  Timestamp: "",
-  Map: {
-    "property": value,
-  }
-}
-
-- Flatten
-- Count Property Occurences
-- Pick most common properties
-- Count values for most common properties
-
-- Merge both sets of properties? one property?
- */
-
-// TODO: doesn't work for empty objects?
-// https://stackoverflow.com/a/19101235
+// Recursively flattens nested objects/arrays into dot-notation keys.
+// Empty objects produce an empty {} entry; empty arrays produce an empty [] entry.
+// Based on https://stackoverflow.com/a/19101235
 export function flattenData(data: Record<string, any>) {
   const result: Record<string, any> = {};
   function recurse(cur: Record<string, any>, prop: string) {

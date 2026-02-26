@@ -1080,6 +1080,7 @@ function Heatmap({
             <div
               className="px-2 py-1"
               role="button"
+              tabIndex={0}
               style={{ cursor: 'pointer' }}
               onClick={e => {
                 e.stopPropagation();
@@ -1092,6 +1093,18 @@ function Heatmap({
                 // Hide the Filter button — only the X (clear) button remains.
                 setHasFiltered(true);
               }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onFilter(
+                    selectingInfo.xMin / 1000,
+                    selectingInfo.xMax / 1000,
+                    selectingInfo.yMin,
+                    selectingInfo.yMax,
+                  );
+                  setHasFiltered(true);
+                }
+              }}
             >
               Filter by Selection
             </div>
@@ -1099,6 +1112,7 @@ function Heatmap({
           <div
             className="px-2 py-1"
             role="button"
+            tabIndex={0}
             title="Clear selection"
             style={{
               cursor: 'pointer',
@@ -1107,6 +1121,12 @@ function Heatmap({
             onClick={e => {
               e.stopPropagation();
               clearSelectionAndRect();
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                clearSelectionAndRect();
+              }
             }}
           >
             ✕
