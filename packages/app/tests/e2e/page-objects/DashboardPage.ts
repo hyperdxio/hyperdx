@@ -59,11 +59,11 @@ export class DashboardPage {
   readonly timePicker: TimePickerComponent;
   readonly chartEditor: ChartEditorComponent;
   readonly granularityPicker: Locator;
+  readonly searchInput: Locator;
 
   private readonly createDashboardButton: Locator;
   private readonly addTileButton: Locator;
   private readonly dashboardNameHeading: Locator;
-  private readonly searchInput: Locator;
   private readonly searchSubmitButton: Locator;
   private readonly liveButton: Locator;
   private readonly tempDashboardBanner: Locator;
@@ -81,6 +81,9 @@ export class DashboardPage {
   private readonly confirmModal: Locator;
   private readonly confirmCancelButton: Locator;
   private readonly confirmConfirmButton: Locator;
+  private readonly dashboardMenuButton: Locator;
+  private readonly saveDefaultQueryAndFiltersMenuItem: Locator;
+  private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -119,6 +122,13 @@ export class DashboardPage {
     this.confirmModal = page.getByTestId('confirm-modal');
     this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
     this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
+    this.dashboardMenuButton = page.getByTestId('dashboard-menu-button');
+    this.saveDefaultQueryAndFiltersMenuItem = page.getByTestId(
+      'save-default-query-filters-menu-item',
+    );
+    this.removeDefaultQueryAndFiltersMenuItem = page.getByTestId(
+      'remove-default-query-filters-menu-item',
+    );
   }
 
   /**
@@ -297,6 +307,16 @@ export class DashboardPage {
   async setGlobalFilter(filter: string) {
     await this.searchInput.fill(filter);
     await this.searchSubmitButton.click();
+  }
+
+  async saveQueryAndFiltersAsDefault() {
+    await this.dashboardMenuButton.click();
+    await this.saveDefaultQueryAndFiltersMenuItem.click();
+  }
+
+  async removeSavedQueryAndFiltersDefaults() {
+    await this.dashboardMenuButton.click();
+    await this.removeDefaultQueryAndFiltersMenuItem.click();
   }
 
   /**

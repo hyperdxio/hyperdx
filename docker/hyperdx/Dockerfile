@@ -76,8 +76,10 @@ ARG CODE_VERSION
 ENV CODE_VERSION=$CODE_VERSION
 ENV NODE_ENV=production
 
-# Install libs used for the start script
-RUN npm install -g concurrently@9.1.0
+# Remove package managers from production image (not needed at runtime)
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
 USER node
 
@@ -118,9 +120,6 @@ COPY --from=node_base --link /usr/local/lib /usr/local/lib
 COPY --from=node_base /usr/lib /usr/lib
 COPY --from=node_base /usr/local/include /usr/local/include
 
-# Install libs used for the start script
-RUN npm install -g concurrently@9.1.0
-
 # Set up Clickhouse
 COPY --from=clickhouse ./local/*.xml /etc/clickhouse-server
 COPY --from=hyperdx ./clickhouseConfig.xml /etc/clickhouse-server/config.xml
@@ -146,18 +145,26 @@ COPY --from=migrate-builder /migrate /usr/local/bin/migrate
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/main' >> /etc/apk/repositories && \
   echo 'http://dl-cdn.alpinelinux.org/alpine/v3.9/community' >> /etc/apk/repositories && \
   apk update && \
-  apk add --no-cache mongodb yaml-cpp=0.6.2-r2 curl ca-certificates && \
+  apk add --no-cache mongodb yaml-cpp=0.6.2-r2 ca-certificates && \
+  apk add --no-cache --upgrade curl busybox && \
   addgroup -S -g ${USER_GID} otel && \
   adduser  -S -u ${USER_UID} -G otel otel && \
   mkdir -p /data/db && \
   install -d -m 0777 -o ${USER_UID} -g ${USER_GID} /etc/otel/supervisor-data && \
-  rm -rf /var/cache/apk/*
+  rm -rf /var/cache/apk/* && \
+  rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
 ENV NODE_ENV=production
 
-# Set up App (copy from prod stage)
+# Set up App
 COPY --from=prod /app /app
 COPY --from=hyperdx ./entry.local.base.sh /etc/local/entry.base.sh
+
+# Copy VEX exception files for Docker Scout vulnerability suppression
+# Reference via: docker scout cves --vex-location /etc/vex/ <image>
+COPY .vex/*.vex.json /etc/vex/
 
 WORKDIR /app
 
