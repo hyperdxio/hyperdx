@@ -266,12 +266,19 @@ describe('formatNumber', () => {
   });
 
   describe('NaN handling', () => {
-    it('returns string representation for NaN without options', () => {
-      expect(formatNumber(NaN)).toBe('NaN');
+    it('returns "N/A" for NaN without options', () => {
+      expect(formatNumber(NaN)).toBe('N/A');
+      expect(formatNumber(NaN, { output: 'number', mantissa: 2 })).toBe('N/A');
     });
 
-    it('returns string representation for NaN with options', () => {
-      expect(formatNumber(NaN, { output: 'number', mantissa: 2 })).toBe('NaN');
+    it('returns a string unchanged if a number cannot be parsed from it', () => {
+      // @ts-expect-error not passing a number
+      expect(formatNumber('not a number')).toBe('not a number');
+
+      expect(
+        // @ts-expect-error not passing a number
+        formatNumber('not a number', { output: 'number', mantissa: 2 }),
+      ).toBe('not a number');
     });
   });
 });
