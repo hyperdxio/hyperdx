@@ -902,14 +902,17 @@ function Heatmap({
               u.ctx.clip();
               u.ctx.fillStyle = 'rgba(255, 220, 50, 0.6)';
 
-              // Group points by X bucket and compute min/max Y bucket per column.
-              // Drawing a continuous rect from min to max makes highlights visible
-              // even when all matching spans have similar Y values (would otherwise
-              // render as a single 1-cell sliver, hard to see).
-              const xBucketRange = new Map<
-                number,
-                { yiMin: number; yiMax: number; xPx: number; full: boolean }
-              >();
+              // Draw one cell per unique (xi, yi) bucket position occupied by a
+              // matching span. This avoids the previous min-to-max range approach
+              // which always extended to yi=0 (the bottom of the chart) because any
+              // matching span with a near-zero duration pulled yiMin to 0 — even for
+              // attributes that only appear in slow spans.
+              //
+              // With per-cell drawing: if error=true only appears in 500ms+ spans,
+              // highlighted cells cluster near the top. If service=A appears in 100%
+              // of spans (all durations), cells are distributed across the full Y
+              // range, accurately reflecting the attribute's actual distribution.
+              const cellSet = new Set<number>(); // encoded as xi * yBinQty + yi
 
               for (const { tsMs, yValue } of pts) {
                 const xi = Math.max(
@@ -919,11 +922,13 @@ function Heatmap({
                     Math.round((tsMs - xs[0]) / xBinIncr),
                   ),
                 );
-                const xPx = u.valToPos(xs[xi * yBinQty], 'x', true);
 
                 if (yValue == null) {
-                  // Mark this column as full-height
-                  xBucketRange.set(xi, { yiMin: 0, yiMax: yBinQty - 1, xPx, full: true });
+                  // Can't determine Y position (e.g. complex expression): draw all
+                  // Y cells in this X column as fallback so there's visual feedback.
+                  for (let yi = 0; yi < yBinQty; yi++) {
+                    cellSet.add(xi * yBinQty + yi);
+                  }
                   continue;
                 }
 
@@ -934,29 +939,19 @@ function Heatmap({
                     Math.round((yValue - ys[0]) / yBinIncr),
                   ),
                 );
-
-                const existing = xBucketRange.get(xi);
-                if (!existing) {
-                  xBucketRange.set(xi, { yiMin: yi, yiMax: yi, xPx, full: false });
-                } else if (!existing.full) {
-                  existing.yiMin = Math.min(existing.yiMin, yi);
-                  existing.yiMax = Math.max(existing.yiMax, yi);
-                }
+                cellSet.add(xi * yBinQty + yi);
               }
 
-              for (const [, { yiMin, yiMax, xPx, full }] of xBucketRange) {
+              for (const cell of cellSet) {
+                const xi = Math.floor(cell / yBinQty);
+                const yi = cell % yBinQty;
+                const xPx = u.valToPos(xs[xi * yBinQty], 'x', true);
                 const cx = Math.round(xPx - xSizePx / 2);
-                if (full) {
-                  u.ctx.fillRect(cx, u.bbox.top, xSizePx, u.bbox.height);
-                } else {
-                  // Y axis is inverted: higher value = smaller pixel position (top).
-                  // valToPos(ys[yiMax]) gives the top pixel, valToPos(ys[yiMin]) gives the bottom.
-                  const topPx = u.valToPos(ys[yiMax], 'y', true);
-                  const botPx = u.valToPos(ys[yiMin], 'y', true);
-                  const cy = Math.round(topPx - ySizePx / 2);
-                  const h = Math.round(botPx - topPx + ySizePx);
-                  u.ctx.fillRect(cx, cy, xSizePx, Math.max(h, ySizePx));
-                }
+                // Y axis is inverted: higher value = smaller pixel position (top).
+                const cy = Math.round(
+                  u.valToPos(ys[yi], 'y', true) - ySizePx / 2,
+                );
+                u.ctx.fillRect(cx, cy, xSizePx, ySizePx);
               }
 
               u.ctx.restore();
