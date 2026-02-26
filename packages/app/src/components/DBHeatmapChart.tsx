@@ -758,6 +758,10 @@ function Heatmap({
     | undefined
   >(undefined);
 
+  // Gate tooltip display on actual mouse interaction. uPlot fires setCursor
+  // on init (before user hovers), which would show the tooltip on page load.
+  const mouseInsideRef = useRef(false);
+
   const { ref, width, height } = useElementSize();
 
   const tickFormatter = useCallback(
@@ -825,6 +829,9 @@ function Heatmap({
             xSize,
             ySize,
           }) => {
+            // Only show tooltip after the user has actually hovered the chart.
+            // uPlot fires setCursor on init which would trigger this on page load.
+            if (!mouseInsideRef.current) return;
             setHighlightedPoint({
               xVal,
               yVal,
@@ -985,7 +992,11 @@ function Heatmap({
     <div
       ref={ref}
       style={{ width: '100%', height: '100%', position: 'relative' }}
+      onMouseEnter={() => {
+        mouseInsideRef.current = true;
+      }}
       onMouseLeave={() => {
+        mouseInsideRef.current = false;
         setHighlightedPoint(undefined);
       }}
     >
