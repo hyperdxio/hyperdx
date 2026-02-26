@@ -416,3 +416,61 @@ describe('DBEditTimeChartForm - Save Button Metric Name Validation', () => {
     expect(metricSelect).toHaveAttribute('aria-invalid', 'true');
   });
 });
+
+describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () => {
+  const renderComponent = (props = {}) => {
+    return renderWithMantine(
+      <QueryClientProvider client={queryClient}>
+        <DBEditTimeChartForm
+          chartConfig={{
+            ...defaultChartConfig,
+            displayType: DisplayType.Number,
+          }}
+          dateRange={[new Date('2024-01-01'), new Date('2024-01-02')]}
+          dashboardId={'test-dashboard-id'}
+          {...props}
+        />
+      </QueryClientProvider>,
+    );
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should add an alert when clicking the add alert button', async () => {
+    renderComponent();
+
+    // Find and click the add alert button
+    const alertButton = screen.getByTestId('alert-button');
+    expect(alertButton).toHaveTextContent('Add Alert');
+    await userEvent.click(alertButton);
+
+    // Verify that the alert is added
+    const alert = screen.getByTestId('alert-details');
+    expect(alert).toBeInTheDocument();
+  });
+
+  it('should remove an alert when clicking the remove alert button', async () => {
+    const onSave = jest.fn();
+    renderComponent({ onSave });
+
+    // Find and click the add alert button
+    const alertButton = screen.getByTestId('alert-button');
+    await userEvent.click(alertButton);
+
+    // Verify that the alert is added
+    const alert = screen.getByTestId('alert-details');
+    expect(alert).toBeInTheDocument();
+
+    // The add and remove alert button are the same element
+    expect(alertButton).toHaveTextContent('Remove Alert');
+    await userEvent.click(alertButton);
+
+    // Verify that the alert is deleted
+    expect(alert).not.toBeInTheDocument();
+
+    // Verify that onSave was not called
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});
