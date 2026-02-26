@@ -121,11 +121,6 @@ function formatExternalWebhook(
  *         description:
  *           type: string
  *           description: Webhook description, shown in the UI
- *         headers:
- *           type: object
- *           additionalProperties:
- *             type: string
- *           description: Optional headers to include in the webhook request
  *         body:
  *           type: string
  *           description: Optional request body template
