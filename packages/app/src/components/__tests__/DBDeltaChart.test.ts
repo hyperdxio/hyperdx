@@ -1,6 +1,7 @@
 import {
   applyTopNAggregation,
   computeDistributionScore,
+  computeEffectiveSampleSize,
   computeEntropyScore,
   computeYValue,
   flattenedKeyToSqlExpression,
@@ -10,6 +11,10 @@ import {
   isTimestampArrayField,
   MAX_CHART_VALUES,
   MAX_CHART_VALUES_UPPER,
+  MAX_SAMPLE_SIZE,
+  MIN_SAMPLE_SIZE,
+  SAMPLE_RATIO,
+  SAMPLE_SIZE,
   semanticBoost,
 } from '../deltaChartUtils';
 
@@ -600,6 +605,39 @@ describe('semanticBoost', () => {
   it('is case-insensitive', () => {
     expect(semanticBoost('ResourceAttributes.Service.Name')).toBe(1);
     expect(semanticBoost('SpanAttributes.HTTP.METHOD')).toBe(1);
+  });
+});
+
+describe('computeEffectiveSampleSize', () => {
+  it('returns SAMPLE_SIZE when totalCount is 0 (fallback)', () => {
+    expect(computeEffectiveSampleSize(0)).toBe(SAMPLE_SIZE);
+  });
+
+  it('returns SAMPLE_SIZE when totalCount is negative', () => {
+    expect(computeEffectiveSampleSize(-1)).toBe(SAMPLE_SIZE);
+  });
+
+  it('returns MIN_SAMPLE_SIZE for small datasets', () => {
+    // 100 rows * 0.01 = 1 → clamped to MIN_SAMPLE_SIZE
+    expect(computeEffectiveSampleSize(100)).toBe(MIN_SAMPLE_SIZE);
+  });
+
+  it('returns SAMPLE_RATIO * totalCount for mid-size datasets', () => {
+    // 200,000 * 0.01 = 2000 → between MIN and MAX
+    const result = computeEffectiveSampleSize(200_000);
+    expect(result).toBe(Math.ceil(200_000 * SAMPLE_RATIO));
+    expect(result).toBeGreaterThan(MIN_SAMPLE_SIZE);
+    expect(result).toBeLessThan(MAX_SAMPLE_SIZE);
+  });
+
+  it('caps at MAX_SAMPLE_SIZE for very large datasets', () => {
+    // 10,000,000 * 0.01 = 100,000 → capped to MAX_SAMPLE_SIZE
+    expect(computeEffectiveSampleSize(10_000_000)).toBe(MAX_SAMPLE_SIZE);
+  });
+
+  it('returns exact 1% for datasets where 1% falls in the valid range', () => {
+    // 100,000 * 0.01 = 1000 → between MIN(500) and MAX(5000)
+    expect(computeEffectiveSampleSize(100_000)).toBe(1000);
   });
 });
 

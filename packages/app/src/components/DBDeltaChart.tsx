@@ -33,7 +33,9 @@ import {
   ALL_SPANS_COLOR,
   DISTRIBUTION_SCORING,
   SAMPLE_SIZE,
+  STABLE_SAMPLE_EXPR,
   computeDistributionScore,
+  computeEffectiveSampleSize,
   computeEntropyScore,
   computeYValue,
   flattenData,
@@ -179,7 +181,7 @@ export default function DBDeltaChart({
                 ]
               : []),
           ],
-          orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+          orderBy: [{ ordering: 'DESC', valueExpression: STABLE_SAMPLE_EXPR }],
           limit: { limit: SAMPLE_SIZE },
         },
       },
@@ -229,6 +231,20 @@ export default function DBDeltaChart({
     ];
   };
 
+  // Lightweight count query — always runs to support adaptive sample sizing.
+  // ClickHouse resolves count() from MergeTree metadata, so this is near-instant.
+  const { data: countData } = useQueriedChartConfig(
+    {
+      ...config,
+      select: 'count() as total',
+    },
+    { enabled: true },
+  );
+  const totalCount = Number(
+    (countData?.data as Record<string, unknown>[])?.[0]?.total ?? 0,
+  );
+  const effectiveSampleSize = computeEffectiveSampleSize(totalCount);
+
   const {
     data: outlierData,
     error: outlierError,
@@ -239,8 +255,8 @@ export default function DBDeltaChart({
       with: buildWithClauses(true),
       select: '*',
       filters: buildFilters(true),
-      orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-      limit: { limit: SAMPLE_SIZE },
+      orderBy: [{ ordering: 'DESC', valueExpression: STABLE_SAMPLE_EXPR }],
+      limit: { limit: effectiveSampleSize },
     },
     { enabled: hasSelection },
   );
@@ -252,8 +268,8 @@ export default function DBDeltaChart({
         with: buildWithClauses(false),
         select: '*',
         filters: buildFilters(false),
-        orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-        limit: { limit: SAMPLE_SIZE },
+        orderBy: [{ ordering: 'DESC', valueExpression: STABLE_SAMPLE_EXPR }],
+        limit: { limit: effectiveSampleSize },
       },
       { enabled: hasSelection },
     );
@@ -267,8 +283,8 @@ export default function DBDeltaChart({
     {
       ...config,
       select: '*',
-      orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-      limit: { limit: SAMPLE_SIZE },
+      orderBy: [{ ordering: 'DESC', valueExpression: STABLE_SAMPLE_EXPR }],
+      limit: { limit: effectiveSampleSize },
     },
     { enabled: !hasSelection },
   );
@@ -619,7 +635,11 @@ export default function DBDeltaChart({
             </Flex>
             {!isLoading && sampleRowCount > 0 && (
               <Text size="xs" c="dimmed" fs="italic">
-                (n={sampleRowCount.toLocaleString()} sampled)
+                (n={sampleRowCount.toLocaleString()}
+                {totalCount > 0
+                  ? ` of ${totalCount.toLocaleString()}`
+                  : ''}{' '}
+                sampled)
               </Text>
             )}
           </>
