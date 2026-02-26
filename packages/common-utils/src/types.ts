@@ -251,6 +251,7 @@ export enum WebhookService {
 }
 
 // Base webhook interface (matches backend IWebhook but with JSON-serialized types)
+// When making changes here, consider if they need to be made to the external API schema as well (packages/api/src/utils/zod.ts).
 export interface IWebhook {
   _id: string;
   createdAt: string;
