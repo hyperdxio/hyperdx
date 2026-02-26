@@ -27,6 +27,8 @@ import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
 import { parseJSON } from '@/utils';
 
+import { getLocalConnections } from './connection';
+
 // Columns for the sessions table as of OTEL Collector v0.129.1
 export const SESSION_TABLE_EXPRESSIONS = {
   resourceAttributesExpression: 'ResourceAttributes',
@@ -47,7 +49,8 @@ function setLocalSources(fn: (prev: TSource[]) => TSource[]) {
 }
 
 function getLocalSources(): TSource[] {
-  if (store.has(LOCAL_STORE_SOUCES_KEY)) {
+  const connections = getLocalConnections();
+  if (connections.length > 0 && store.has(LOCAL_STORE_SOUCES_KEY)) {
     return store.get(LOCAL_STORE_SOUCES_KEY, []) ?? [];
   }
   // pull sources from env var

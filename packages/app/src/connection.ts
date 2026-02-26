@@ -96,7 +96,7 @@ export function useCreateConnection() {
       return res;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connections'] });
+      queryClient.invalidateQueries({ queryKey: ['connections', 'sources'] });
     },
   });
 }
