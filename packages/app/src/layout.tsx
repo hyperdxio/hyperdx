@@ -41,7 +41,7 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
                 <Link
                   href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
                   target="_blank"
-                  rel="noopener noreferer"
+                  rel="noopener noreferrer"
                 >
                   ClickStack Docs
                 </Link>
