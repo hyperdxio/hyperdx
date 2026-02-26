@@ -79,7 +79,7 @@ services:
       - ch-server
       - db
   ch-server:
-    image: clickhouse/clickhouse-server:25.6-alpine
+    image: clickhouse/clickhouse-server:26.1-alpine
     # WARNING: Exposing the database port will make it accessible from outside the container,
     # potentially allowing unauthorized access. If you uncomment the ports below,
     # ensure to secure your database (e.g., with strong authentication, proper network rules, and firewalls).

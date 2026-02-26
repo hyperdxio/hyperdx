@@ -63,8 +63,12 @@ export class TimePickerComponent {
 
   /**
    * Open the time picker dropdown
+   * Idempotent: if the popover is already open, does nothing.
+   * Clicking the input when the popover is already open would close it.
    */
   async open() {
+    const isOpen = await this.pickerPopover.isVisible();
+    if (isOpen) return;
     await this.page.waitForLoadState('networkidle');
     await this.pickerInput.click();
     await this.pickerPopover.waitFor({ state: 'visible', timeout: 5000 });
@@ -114,17 +118,22 @@ export class TimePickerComponent {
 
   /**
    * Select a time interval option by label (e.g., "Last 1 hour", "Last 6 hours", "Live Tail")
+   * Precondition: the time picker popover must already be open (call open() first).
    */
   async selectTimeInterval(label: string) {
-    // Wait for DOM to stabilize before clicking
-    await this.page.waitForLoadState('networkidle');
     // Scope button search within the popover to avoid matching buttons elsewhere on the page
     const intervalButton = this.pickerPopover.getByRole('button', {
       name: label,
     });
-    // Wait for the specific button to be visible before clicking
+    // Wait for the specific button to be visible before clicking.
+    // Avoid calling waitForLoadState('networkidle') here — the popover is
+    // already open from open(), and waiting for network idle can coincide
+    // with React re-renders of the popover content, causing the button to
+    // briefly detach from the DOM right before the click.
     await intervalButton.waitFor({ state: 'visible', timeout: 5000 });
-    await intervalButton.click({ timeout: 5000 });
+    // Use a longer click timeout so Playwright can retry if the element
+    // briefly detaches due to an ongoing render cycle.
+    await intervalButton.click({ timeout: 10000 });
   }
 
   /**

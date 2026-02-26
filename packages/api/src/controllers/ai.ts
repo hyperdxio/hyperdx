@@ -78,6 +78,7 @@ export async function getAIMetadata(source: ISource) {
   const connection = await getConnectionById(
     source.team.toString(),
     connectionId,
+    true,
   );
 
   if (connection == null) {
