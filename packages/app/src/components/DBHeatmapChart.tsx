@@ -721,11 +721,26 @@ function Heatmap({
   // Keep ref in sync with latest prop value on every render
   highlightPointsRef.current = highlightPoints ?? null;
 
-  // Trigger a uPlot redraw when highlight points change so the draw hook re-runs
+  // Trigger a uPlot redraw when highlight points change so the draw hook re-runs.
+  // Wrapped in requestAnimationFrame to coalesce rapid hover events (e.g., mouse
+  // moving across multiple bars in quick succession) into a single frame repaint.
+  const rafIdRef = useRef<number | null>(null);
   useEffect(() => {
     if (uplotRef.current) {
-      uplotRef.current.redraw(false);
+      if (rafIdRef.current != null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        uplotRef.current?.redraw(false);
+      });
     }
+    return () => {
+      if (rafIdRef.current != null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
   }, [highlightPoints]);
 
   const [highlightedPoint, setHighlightedPoint] = useState<
