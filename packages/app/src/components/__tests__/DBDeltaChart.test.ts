@@ -139,19 +139,29 @@ describe('flattenedKeyToSqlExpression', () => {
 });
 
 describe('flattenedKeyToFilterKey', () => {
-  it('converts Map column dot-notation to toString with backtick-quoted segments', () => {
+  it('converts Map column dot-notation to toString with backtick-quoted key', () => {
     expect(
       flattenedKeyToFilterKey(
         'ResourceAttributes.service.name',
         traceColumnMeta,
       ),
-    ).toBe('toString(ResourceAttributes.`service`.`name`)');
+    ).toBe('toString(ResourceAttributes.`service.name`)');
   });
 
   it('converts SpanAttributes Map keys to toString format', () => {
     expect(
       flattenedKeyToFilterKey('SpanAttributes.http.method', traceColumnMeta),
-    ).toBe('toString(SpanAttributes.`http`.`method`)');
+    ).toBe('toString(SpanAttributes.`http.method`)');
+  });
+
+  it('handles dotted Map keys as single identifier (not nested path)', () => {
+    // "process.runtime.name" is ONE Map key, not three nested levels
+    expect(
+      flattenedKeyToFilterKey(
+        'ResourceAttributes.process.runtime.name',
+        traceColumnMeta,
+      ),
+    ).toBe('toString(ResourceAttributes.`process.runtime.name`)');
   });
 
   it('returns simple columns unchanged', () => {

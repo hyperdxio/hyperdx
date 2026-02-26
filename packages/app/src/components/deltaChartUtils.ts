@@ -469,12 +469,12 @@ export function flattenedKeyToFilterKey(
     if (baseType.startsWith('Map(')) {
       if (key.startsWith(col.name + '.')) {
         const mapKey = key.slice(col.name.length + 1);
-        // Backtick-quote each segment of the Map key for ClickHouse dot-notation
-        const quotedKey = mapKey
-          .split('.')
-          .map(s => '`' + s + '`')
-          .join('.');
-        return `toString(${col.name}.${quotedKey})`;
+        // Backtick-quote the entire Map key as a single identifier.
+        // Keys like "process.runtime.name" are a single Map key with dots —
+        // NOT a nested path. Quoting each segment separately would produce
+        // ResourceAttributes.`process`.`runtime`.`name` which ClickHouse
+        // interprets as nested tuple access and fails.
+        return `toString(${col.name}.\`${mapKey}\`)`;
       }
     } else if (baseType.startsWith('Array(')) {
       const innerType = stripTypeWrappers(baseType.slice('Array('.length, -1));
