@@ -84,7 +84,7 @@ export function isIdField(
   //   "ColName[N]" → colName is "ColName"
   //   "ColName" (no brackets) → colName is the key itself
   //   "ColName[N].subkey" → has brackets but doesn't end with ], skip
-  const arrMatch = key.match(/^([^\[]+)\[(\d+)\]$/);
+  const arrMatch = key.match(/^([^[]+)\[(\d+)\]$/);
   const colName = arrMatch ? arrMatch[1] : key.includes('[') ? null : key;
   if (!colName) return false;
   if (!/(Id|ID)$/.test(colName)) return false;
@@ -109,7 +109,7 @@ export function isTimestampArrayField(
   key: string,
   columnMeta: { name: string; type: string }[],
 ): boolean {
-  const arrMatch = key.match(/^([^\[]+)\[(\d+)\]$/);
+  const arrMatch = key.match(/^([^[]+)\[(\d+)\]$/);
   const colName = arrMatch ? arrMatch[1] : key.includes('[') ? null : key;
   if (!colName) return false;
 
@@ -610,14 +610,19 @@ export function applyTopNAggregation(
   if (data.length <= MAX_CHART_VALUES_UPPER) return data;
 
   const sorted = [...data].sort(
-    (a, b) =>
-      b.outlierCount + b.inlierCount - (a.outlierCount + a.inlierCount),
+    (a, b) => b.outlierCount + b.inlierCount - (a.outlierCount + a.inlierCount),
   );
   const top = sorted.slice(0, MAX_CHART_VALUES);
   const rest = sorted.slice(MAX_CHART_VALUES);
 
-  const otherOutlierCount = rest.reduce((sum, item) => sum + item.outlierCount, 0);
-  const otherInlierCount = rest.reduce((sum, item) => sum + item.inlierCount, 0);
+  const otherOutlierCount = rest.reduce(
+    (sum, item) => sum + item.outlierCount,
+    0,
+  );
+  const otherInlierCount = rest.reduce(
+    (sum, item) => sum + item.inlierCount,
+    0,
+  );
 
   return [
     ...top,

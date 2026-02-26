@@ -710,14 +710,22 @@ function Heatmap({
     setHasFiltered(false);
     if (uplotRef.current) {
       try {
-        uplotRef.current.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+        uplotRef.current.setSelect(
+          { left: 0, top: 0, width: 0, height: 0 },
+          false,
+        );
       } catch (err) {
-        console.warn('clearSelectionAndRect: failed to reset uPlot selection:', err);
+        console.warn(
+          'clearSelectionAndRect: failed to reset uPlot selection:',
+          err,
+        );
       }
     }
     onClearSelection?.();
   }, [onClearSelection]);
-  const highlightPointsRef = useRef<{ tsMs: number; yValue: number | null }[] | null>(null);
+  const highlightPointsRef = useRef<
+    { tsMs: number; yValue: number | null }[] | null
+  >(null);
   // Keep ref in sync with latest prop value on every render
   highlightPointsRef.current = highlightPoints ?? null;
 
@@ -941,10 +949,7 @@ function Heatmap({
               for (const { tsMs, yValue } of pts) {
                 const xi = Math.max(
                   0,
-                  Math.min(
-                    xBinQty - 1,
-                    Math.round((tsMs - xs[0]) / xBinIncr),
-                  ),
+                  Math.min(xBinQty - 1, Math.round((tsMs - xs[0]) / xBinIncr)),
                 );
 
                 if (yValue == null) {
@@ -1117,7 +1122,10 @@ function Heatmap({
             title="Clear selection"
             style={{
               cursor: 'pointer',
-              borderLeft: onFilter != null && !hasFiltered ? '1px solid #5F6776' : undefined,
+              borderLeft:
+                onFilter != null && !hasFiltered
+                  ? '1px solid #5F6776'
+                  : undefined,
             }}
             onClick={e => {
               e.stopPropagation();

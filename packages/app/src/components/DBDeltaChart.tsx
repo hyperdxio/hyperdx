@@ -5,14 +5,7 @@ import {
   ChartConfigWithOptDateRange,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Box,
-  Code,
-  Divider,
-  Flex,
-  Pagination,
-  Text,
-} from '@mantine/core';
+import { Box, Code, Divider, Flex, Pagination, Text } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 
 import { isAggregateFunction } from '@/ChartUtils';
@@ -21,6 +14,26 @@ import { getFirstTimestampValueExpression } from '@/source';
 import { getChartColorError, getChartColorSuccess } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
+import type { AddFilterFn, HighlightPoint } from './deltaChartUtils';
+import {
+  ALL_SPANS_COLOR,
+  computeComparisonScore,
+  computeDistributionScore,
+  computeEffectiveSampleSize,
+  computeEntropyScore,
+  computeYValue,
+  DISTRIBUTION_SCORING,
+  flattenData,
+  flattenedKeyToFilterKey,
+  getPropertyStatistics,
+  isDenylisted,
+  isHighCardinality,
+  mergeValueStatisticsMaps,
+  SAMPLE_SIZE,
+  semanticBoost,
+  STABLE_SAMPLE_EXPR,
+  stripTypeWrappers,
+} from './deltaChartUtils';
 import {
   CHART_GAP,
   CHART_HEIGHT,
@@ -28,26 +41,6 @@ import {
   PAGINATION_HEIGHT,
   PropertyComparisonChart,
 } from './PropertyComparisonChart';
-import type { AddFilterFn, HighlightPoint } from './deltaChartUtils';
-import {
-  ALL_SPANS_COLOR,
-  DISTRIBUTION_SCORING,
-  SAMPLE_SIZE,
-  STABLE_SAMPLE_EXPR,
-  computeComparisonScore,
-  computeDistributionScore,
-  computeEffectiveSampleSize,
-  computeEntropyScore,
-  computeYValue,
-  flattenData,
-  flattenedKeyToFilterKey,
-  getPropertyStatistics,
-  isDenylisted,
-  isHighCardinality,
-  mergeValueStatisticsMaps,
-  semanticBoost,
-  stripTypeWrappers,
-} from './deltaChartUtils';
 
 // Re-export types so callers importing from DBDeltaChart don't need to change.
 export type { AddFilterFn, HighlightPoint } from './deltaChartUtils';
@@ -290,12 +283,10 @@ export default function DBDeltaChart({
     highlightIndex,
     sampleRowCount,
   } = useMemo(() => {
-    const columnMeta = (
-      outlierData?.meta ??
+    const columnMeta = (outlierData?.meta ??
       inlierData?.meta ??
       allSpansData?.meta ??
-      []
-    ) as {
+      []) as {
       name: string;
       type: string;
     }[];
@@ -354,8 +345,7 @@ export default function DBDeltaChart({
           // Semantic boost only applies when the field has actual variance
           // (baseScore > 0). Scaled to 0.1 so it acts as a tiebreaker —
           // never overrides a genuinely more interesting distribution.
-          const boost =
-            baseScore > 0 ? semanticBoost(key) * 0.1 : 0;
+          const boost = baseScore > 0 ? semanticBoost(key) * 0.1 : 0;
           sortScore = baseScore + boost;
         }
 
@@ -451,11 +441,7 @@ export default function DBDeltaChart({
   const handleAddFilter = useCallback<NonNullable<AddFilterFn>>(
     (property, value, action) => {
       if (!onAddFilter) return;
-      onAddFilter(
-        flattenedKeyToFilterKey(property, columnMeta),
-        value,
-        action,
-      );
+      onAddFilter(flattenedKeyToFilterKey(property, columnMeta), value, action);
     },
     [onAddFilter, columnMeta],
   );
@@ -577,7 +563,8 @@ export default function DBDeltaChart({
   // Show a divider when both sections appear on the same page
   const showDivider = visibleOnPage.length > 0 && hiddenOnPage.length > 0;
   // Show a header when ONLY hidden fields appear on this page (no divider above)
-  const showHiddenHeader = hiddenOnPage.length > 0 && visibleOnPage.length === 0;
+  const showHiddenHeader =
+    hiddenOnPage.length > 0 && visibleOnPage.length === 0;
 
   return (
     <Box
