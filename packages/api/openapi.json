@@ -2230,6 +2230,187 @@
             }
           }
         }
+      },
+      "SlackWebhook": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "service",
+          "updatedAt",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Webhook ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Webhook name"
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "slack"
+            ],
+            "description": "Webhook service type"
+          },
+          "url": {
+            "type": "string",
+            "description": "Slack incoming webhook URL"
+          },
+          "description": {
+            "type": "string",
+            "description": "Webhook description, shown in the UI"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          }
+        }
+      },
+      "IncidentIOWebhook": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "service",
+          "updatedAt",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Webhook ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Webhook name"
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "incidentio"
+            ],
+            "description": "Webhook service type"
+          },
+          "url": {
+            "type": "string",
+            "description": "incident.io alert event HTTP source URL"
+          },
+          "description": {
+            "type": "string",
+            "description": "Webhook description, shown in the UI"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          }
+        }
+      },
+      "GenericWebhook": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "service",
+          "updatedAt",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Webhook ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Webhook name"
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "generic"
+            ],
+            "description": "Webhook service type"
+          },
+          "url": {
+            "type": "string",
+            "description": "Webhook destination URL"
+          },
+          "description": {
+            "type": "string",
+            "description": "Webhook description, shown in the UI"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Optional headers to include in the webhook request"
+          },
+          "body": {
+            "type": "string",
+            "description": "Optional request body template"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          }
+        }
+      },
+      "Webhook": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SlackWebhook"
+          },
+          {
+            "$ref": "#/components/schemas/IncidentIOWebhook"
+          },
+          {
+            "$ref": "#/components/schemas/GenericWebhook"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "service",
+          "mapping": {
+            "slack": "#/components/schemas/SlackWebhook",
+            "incidentio": "#/components/schemas/IncidentIOWebhook",
+            "generic": "#/components/schemas/GenericWebhook"
+          }
+        }
+      },
+      "WebhooksListResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Webhook"
+            }
+          }
+        }
       }
     }
   },
@@ -3572,6 +3753,51 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SourcesListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/webhooks": {
+      "get": {
+        "summary": "List Webhooks",
+        "description": "Retrieves a list of all webhooks for the authenticated team",
+        "operationId": "listWebhooks",
+        "tags": [
+          "Webhooks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved webhooks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhooksListResponse"
                 }
               }
             }

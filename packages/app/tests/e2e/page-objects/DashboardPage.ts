@@ -59,11 +59,11 @@ export class DashboardPage {
   readonly timePicker: TimePickerComponent;
   readonly chartEditor: ChartEditorComponent;
   readonly granularityPicker: Locator;
+  readonly searchInput: Locator;
 
   private readonly createDashboardButton: Locator;
   private readonly addTileButton: Locator;
   private readonly dashboardNameHeading: Locator;
-  private readonly searchInput: Locator;
   private readonly searchSubmitButton: Locator;
   private readonly liveButton: Locator;
   private readonly tempDashboardBanner: Locator;
@@ -73,6 +73,7 @@ export class DashboardPage {
   private readonly addFiltersButton: Locator;
   private readonly closeFiltersModalButton: Locator;
   private readonly filtersSourceSelector: Locator;
+  private readonly saveButton: Locator;
   private readonly tileSourceSelector: Locator;
   private readonly aliasInput: Locator;
   private readonly aggFnSelect: Locator;
@@ -80,6 +81,9 @@ export class DashboardPage {
   private readonly confirmModal: Locator;
   private readonly confirmCancelButton: Locator;
   private readonly confirmConfirmButton: Locator;
+  private readonly dashboardMenuButton: Locator;
+  private readonly saveDefaultQueryAndFiltersMenuItem: Locator;
+  private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -108,6 +112,7 @@ export class DashboardPage {
     this.addFiltersButton = page.getByTestId('add-filter-button');
     this.closeFiltersModalButton = page.getByTestId('close-filters-button');
     this.filtersSourceSelector = page.getByTestId('source-selector');
+    this.saveButton = page.getByTestId('chart-save-button');
 
     // Tile editor selectors
     this.tileSourceSelector = page.getByTestId('source-selector');
@@ -117,6 +122,13 @@ export class DashboardPage {
     this.confirmModal = page.getByTestId('confirm-modal');
     this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
     this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
+    this.dashboardMenuButton = page.getByTestId('dashboard-menu-button');
+    this.saveDefaultQueryAndFiltersMenuItem = page.getByTestId(
+      'save-default-query-filters-menu-item',
+    );
+    this.removeDefaultQueryAndFiltersMenuItem = page.getByTestId(
+      'remove-default-query-filters-menu-item',
+    );
   }
 
   /**
@@ -185,6 +197,13 @@ export class DashboardPage {
   }
 
   /**
+   * save tile to the dashboard
+   */
+  async saveTile() {
+    await this.saveButton.click();
+  }
+
+  /**
    * Create a new dashboard and open the tile editor (add tile), waiting for it to be ready.
    * Use when testing the chart/tile editor modal in isolation.
    */
@@ -216,11 +235,8 @@ export class DashboardPage {
     await this.page.waitForResponse(
       resp => resp.url().includes('/clickhouse-proxy') && resp.status() === 200,
     );
-
-    const saveButton = this.page.locator('[data-testid="chart-save-button"]');
-    await saveButton.click();
-
     // Wait for tile to be added
+    await this.saveTile();
   }
 
   /**
@@ -249,6 +265,14 @@ export class DashboardPage {
    */
   getTileButton(action: 'edit' | 'duplicate' | 'delete' | 'alerts') {
     return this.page.locator(`[data-testid^="tile-${action}-button-"]`).first();
+  }
+
+  /**
+   * Edit a tile
+   */
+  async editTile(tileIndex: number) {
+    await this.hoverOverTile(tileIndex);
+    await this.getTileButton('edit').click();
   }
 
   /**
@@ -283,6 +307,16 @@ export class DashboardPage {
   async setGlobalFilter(filter: string) {
     await this.searchInput.fill(filter);
     await this.searchSubmitButton.click();
+  }
+
+  async saveQueryAndFiltersAsDefault() {
+    await this.dashboardMenuButton.click();
+    await this.saveDefaultQueryAndFiltersMenuItem.click();
+  }
+
+  async removeSavedQueryAndFiltersDefaults() {
+    await this.dashboardMenuButton.click();
+    await this.removeDefaultQueryAndFiltersMenuItem.click();
   }
 
   /**
