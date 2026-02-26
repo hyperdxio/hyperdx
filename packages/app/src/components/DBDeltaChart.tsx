@@ -288,7 +288,7 @@ export default function DBDeltaChart({
     columnMeta,
     visibleProperties,
     hiddenProperties,
-    flattenedRawData,
+    highlightIndex,
     sampleRowCount,
   } = useMemo(() => {
     const columnMeta = (
@@ -382,12 +382,49 @@ export default function DBDeltaChart({
       }
     });
 
-    // Precompute flattened raw data for hover-based timestamp lookup.
-    // Combine outlier + inlier so highlights show ALL matching spans (not just the selection subset).
+    // Build a pre-indexed lookup for hover-based timestamp highlighting.
+    // Structure: property → value → HighlightPoint[]
+    // This replaces the O(n) scan per hover with an O(1) Map lookup.
     const flattenedRawData = [
       ...actualOutlierData.map(flattenData),
       ...actualInlierData.map(flattenData),
     ];
+
+    // Find the first non-array DateTime64 column (typically 'Timestamp')
+    const tsColName = columnMeta.find(
+      c =>
+        (stripTypeWrappersLocal(c.type).startsWith('DateTime64(') ||
+          c.type === 'DateTime64') &&
+        !stripTypeWrappersLocal(c.type).startsWith('Array('),
+    )?.name;
+
+    const highlightIndex = new Map<string, Map<string, HighlightPoint[]>>();
+    if (tsColName) {
+      for (const flat of flattenedRawData) {
+        const ts = flat[tsColName];
+        if (ts == null) continue;
+        const tsMs = new Date(ts as string).getTime();
+        if (isNaN(tsMs)) continue;
+        const yValue = computeYValue(valueExpr, flat);
+        const point: HighlightPoint = { tsMs, yValue };
+
+        for (const [key, val] of Object.entries(flat)) {
+          if (key === tsColName) continue;
+          const strVal = String(val);
+          let valueMap = highlightIndex.get(key);
+          if (!valueMap) {
+            valueMap = new Map<string, HighlightPoint[]>();
+            highlightIndex.set(key, valueMap);
+          }
+          let points = valueMap.get(strVal);
+          if (!points) {
+            points = [];
+            valueMap.set(strVal, points);
+          }
+          points.push(point);
+        }
+      }
+    }
 
     // Row counts for the sample-size annotation in the legend
     const sampleRowCount = actualOutlierData.length + actualInlierData.length;
@@ -398,10 +435,10 @@ export default function DBDeltaChart({
       columnMeta,
       visibleProperties,
       hiddenProperties,
-      flattenedRawData,
+      highlightIndex,
       sampleRowCount,
     };
-  }, [outlierData, inlierData, allSpansData, hasSelection]);
+  }, [outlierData, inlierData, allSpansData, hasSelection, valueExpr]);
 
   // Wrap onAddFilter to convert flattened dot-notation keys (from flattenData)
   // into valid ClickHouse SQL expressions before passing to the filter handler.
@@ -430,36 +467,13 @@ export default function DBDeltaChart({
     [],
   );
 
-  // Compute {tsMs, yValue} pairs for spans matching the hovered attribute value.
-  // Used to highlight corresponding heatmap cells (correct X + Y position).
+  // O(1) lookup: retrieve pre-indexed {tsMs, yValue} pairs for the hovered attribute.
   const highlightPoints = useMemo((): HighlightPoint[] | null => {
     if (!hoveredAttributeValue) return null;
     const { property, value } = hoveredAttributeValue;
-
-    // Find the first non-array DateTime64 column (typically 'Timestamp')
-    const tsColName = columnMeta.find(
-      c =>
-        (stripTypeWrappersLocal(c.type).startsWith('DateTime64(') ||
-          c.type === 'DateTime64') &&
-        !stripTypeWrappersLocal(c.type).startsWith('Array('),
-    )?.name;
-    if (!tsColName) return null;
-
-    const points: HighlightPoint[] = [];
-    for (const flat of flattenedRawData) {
-      if (String(flat[property]) === value) {
-        const ts = flat[tsColName];
-        if (ts != null) {
-          const tsMs = new Date(ts as string).getTime();
-          if (!isNaN(tsMs)) {
-            const yValue = computeYValue(valueExpr, flat);
-            points.push({ tsMs, yValue });
-          }
-        }
-      }
-    }
-    return points.length > 0 ? points : null;
-  }, [hoveredAttributeValue, flattenedRawData, columnMeta, valueExpr]);
+    const points = highlightIndex.get(property)?.get(value);
+    return points?.length ? points : null;
+  }, [hoveredAttributeValue, highlightIndex]);
 
   // Propagate highlight points to parent (e.g., DBSearchHeatmapChart)
   useEffect(() => {
