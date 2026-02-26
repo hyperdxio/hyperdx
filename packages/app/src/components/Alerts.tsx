@@ -65,6 +65,7 @@ const WebhookChannelForm = <T extends object>(
     <div>
       <Group gap="md" justify="space-between">
         <Select
+          data-testid="select-webhook"
           comboboxProps={{
             withinPortal: false,
           }}
@@ -79,12 +80,19 @@ const WebhookChannelForm = <T extends object>(
           control={props.control}
           {...props}
         />
-        <Button size="xs" variant="subtle" color="gray" onClick={open}>
+        <Button
+          data-testid="add-new-webhook-button"
+          size="xs"
+          variant="subtle"
+          color="gray"
+          onClick={open}
+        >
           Add New Incoming Webhook
         </Button>
       </Group>
 
       <Modal
+        data-testid="alert-modal"
         opened={opened}
         onClose={close}
         title="Add New Webhook"

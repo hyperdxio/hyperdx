@@ -5,6 +5,7 @@ import alertsRouter from '@/routers/external-api/v2/alerts';
 import chartsRouter from '@/routers/external-api/v2/charts';
 import dashboardRouter from '@/routers/external-api/v2/dashboards';
 import sourcesRouter from '@/routers/external-api/v2/sources';
+import webhooksRouter from '@/routers/external-api/v2/webhooks';
 import rateLimiter from '@/utils/rateLimiter';
 
 const router = express.Router();
@@ -44,6 +45,13 @@ router.use(
   defaultRateLimiter,
   validateUserAccessKey,
   sourcesRouter,
+);
+
+router.use(
+  '/webhooks',
+  defaultRateLimiter,
+  validateUserAccessKey,
+  webhooksRouter,
 );
 
 export default router;
