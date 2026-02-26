@@ -86,6 +86,7 @@ export class ChartEditorComponent {
     // need to wait for the recharts graph to render
     await this.page
       .locator('.recharts-responsive-container')
+      .first()
       .waitFor({ state: 'visible', timeout: 10000 });
   }
 
