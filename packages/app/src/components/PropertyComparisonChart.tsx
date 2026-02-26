@@ -205,8 +205,17 @@ export function PropertyComparisonChart({
 
   return (
     <div ref={chartWrapperRef} style={{ width: '100%', height: 120 }}>
-      <Text size="xs" ta="center" title={name}>
-        {truncateMiddle(name, 32)}
+      <Text
+        size="xs"
+        ta="center"
+        title={name}
+        style={{
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {name}
       </Text>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
