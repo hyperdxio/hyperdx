@@ -5,6 +5,7 @@ import {
   computeEffectiveSampleSize,
   computeEntropyScore,
   computeYValue,
+  flattenedKeyToFilterKey,
   flattenedKeyToSqlExpression,
   isDenylisted,
   isHighCardinality,
@@ -116,6 +117,45 @@ describe('flattenedKeyToSqlExpression', () => {
     expect(
       flattenedKeyToSqlExpression("Events.Attributes[0].it's.key", traceColumnMeta),
     ).toBe("Events.Attributes[1]['it''s.key']");
+  });
+});
+
+describe('flattenedKeyToFilterKey', () => {
+  it('converts Map column dot-notation to toString with backtick-quoted segments', () => {
+    expect(
+      flattenedKeyToFilterKey('ResourceAttributes.service.name', traceColumnMeta),
+    ).toBe("toString(ResourceAttributes.`service`.`name`)");
+  });
+
+  it('converts SpanAttributes Map keys to toString format', () => {
+    expect(
+      flattenedKeyToFilterKey('SpanAttributes.http.method', traceColumnMeta),
+    ).toBe("toString(SpanAttributes.`http`.`method`)");
+  });
+
+  it('returns simple columns unchanged', () => {
+    expect(
+      flattenedKeyToFilterKey('TraceId', traceColumnMeta),
+    ).toBe('TraceId');
+  });
+
+  it('returns simple columns unchanged for non-Map types', () => {
+    expect(
+      flattenedKeyToFilterKey('Timestamp', traceColumnMeta),
+    ).toBe('Timestamp');
+  });
+
+  it('falls back to SQL expression for Array(Map) columns', () => {
+    // Array(Map) sub-keys don't have sidebar facets, so use SQL expression
+    expect(
+      flattenedKeyToFilterKey('Events.Attributes[0].message.type', traceColumnMeta),
+    ).toBe("Events.Attributes[1]['message.type']");
+  });
+
+  it('returns unknown column keys unchanged', () => {
+    expect(
+      flattenedKeyToFilterKey('SomeUnknownColumn.key', traceColumnMeta),
+    ).toBe('SomeUnknownColumn.key');
   });
 });
 

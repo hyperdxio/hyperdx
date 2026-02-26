@@ -40,7 +40,7 @@ import {
   computeEntropyScore,
   computeYValue,
   flattenData,
-  flattenedKeyToSqlExpression,
+  flattenedKeyToFilterKey,
   getPropertyStatistics,
   isDenylisted,
   isHighCardinality,
@@ -445,12 +445,14 @@ export default function DBDeltaChart({
   }, [outlierData, inlierData, allSpansData, hasSelection, valueExpr]);
 
   // Wrap onAddFilter to convert flattened dot-notation keys (from flattenData)
-  // into valid ClickHouse SQL expressions before passing to the filter handler.
+  // into filter keys that match the sidebar facet format. For Map columns this
+  // produces toString(ColName.`key`) which is both valid SQL and matches the
+  // sidebar's facet key wrapping, making filters visible as checkboxes.
   const handleAddFilter = useCallback<NonNullable<AddFilterFn>>(
     (property, value, action) => {
       if (!onAddFilter) return;
       onAddFilter(
-        flattenedKeyToSqlExpression(property, columnMeta),
+        flattenedKeyToFilterKey(property, columnMeta),
         value,
         action,
       );

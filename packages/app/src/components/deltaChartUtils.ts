@@ -453,6 +453,41 @@ export function semanticBoost(key: string): number {
 export type ScoringStrategy = 'entropy' | 'skewness';
 export const DISTRIBUTION_SCORING: ScoringStrategy = 'entropy';
 
+/**
+ * Converts a flattened dot-notation property key into a filter key that matches
+ * the sidebar facet format. For Map columns, produces `toString(ColName.\`map.key\`)`
+ * which is both valid ClickHouse SQL and matches the sidebar's facet key wrapping.
+ * For simple columns, returns the key unchanged.
+ */
+export function flattenedKeyToFilterKey(
+  key: string,
+  columnMeta: { name: string; type: string }[],
+): string {
+  for (const col of columnMeta) {
+    const baseType = stripTypeWrappers(col.type);
+
+    if (baseType.startsWith('Map(')) {
+      if (key.startsWith(col.name + '.')) {
+        const mapKey = key.slice(col.name.length + 1);
+        // Backtick-quote each segment of the Map key for ClickHouse dot-notation
+        const quotedKey = mapKey
+          .split('.')
+          .map(s => '`' + s + '`')
+          .join('.');
+        return `toString(${col.name}.${quotedKey})`;
+      }
+    } else if (baseType.startsWith('Array(')) {
+      const innerType = stripTypeWrappers(baseType.slice('Array('.length, -1));
+      if (innerType.startsWith('Map(')) {
+        // Array(Map) columns: keep the SQL expression format for these
+        // since the sidebar doesn't have facets for per-index array Map sub-keys
+        return flattenedKeyToSqlExpression(key, columnMeta);
+      }
+    }
+  }
+  return key;
+}
+
 export type AddFilterFn = (
   property: string,
   value: string,
