@@ -1025,18 +1025,20 @@ function Heatmap({
             style={{
               position: 'absolute',
               top: highlightedPoint.yCoord + 5,
-              ...(highlightedPoint.xCoord > (width * 2) / 3
+              ...(highlightedPoint.xCoord > width / 2
                 ? {
                     right: width - highlightedPoint.xCoord + 10,
                   }
                 : {
                     left: highlightedPoint.xCoord + 10,
                   }),
+              maxWidth: '50%',
               backdropFilter: 'blur(8px)',
               backgroundColor: 'rgba(26, 29, 35, 0.75)',
               border: '1px solid #5F6776',
               borderRadius: 2,
               pointerEvents: 'none',
+              whiteSpace: 'nowrap',
             }}
           >
             <Text size="10px" pt="4px">
