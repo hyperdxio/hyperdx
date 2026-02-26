@@ -898,13 +898,13 @@ export const RawLogTable = memo(
                             header={header}
                             isLast={isLast}
                             onRemoveColumn={
-                              onRemoveColumn
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                              onRemoveColumn && (header.column.columnDef.meta as any)?.column
                                 ? () => {
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    const column = (header.column.columnDef.meta as any)?.column;
-                                    if (column) {
-                                      onRemoveColumn(column);
-                                    }
+                                    onRemoveColumn(
+                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                      (header.column.columnDef.meta as any)?.column,
+                                    );
                                   }
                                 : undefined
                             }
@@ -1387,7 +1387,29 @@ function DBSqlRowTableComponent({
   variant?: DBRowTableVariant;
 }) {
   const { data: me } = api.useMe();
-  const { toggleColumn } = useContext(RowSidePanelContext);
+  const { toggleColumn, displayedColumns: contextDisplayedColumns } =
+    useContext(RowSidePanelContext);
+
+  const onRemoveColumnFromTable = useCallback(
+    (chColumnName: string) => {
+      if (!toggleColumn) return;
+
+      // Direct match: works for simple column names (e.g. 'Timestamp', 'Body')
+      if (contextDisplayedColumns?.includes(chColumnName)) {
+        toggleColumn(chColumnName);
+        return;
+      }
+
+      // Alias match: find the SELECT expression that ends with "AS chColumnName"
+      // e.g. "ResourceAttributes['service.name'] AS service_name" -> matches 'service_name'
+      const exprWithAlias = contextDisplayedColumns?.find(expr =>
+        expr.trim().toLowerCase().endsWith(` as ${chColumnName.toLowerCase()}`),
+      );
+
+      toggleColumn(exprWithAlias ?? chColumnName);
+    },
+    [toggleColumn, contextDisplayedColumns],
+  );
 
   const [orderBy, setOrderBy] = useState<SortingState[number] | null>(
     initialSortBy?.[0] ?? null,
@@ -1647,7 +1669,9 @@ function DBSqlRowTableComponent({
         sortOrder={orderByArray}
         getRowWhere={getRowWhere}
         variant={variant}
-        onRemoveColumn={toggleColumn}
+        onRemoveColumn={
+          toggleColumn ? onRemoveColumnFromTable : undefined
+        }
       />
     </>
   );
