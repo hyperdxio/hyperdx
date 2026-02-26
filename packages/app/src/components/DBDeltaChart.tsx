@@ -34,6 +34,7 @@ import {
   DISTRIBUTION_SCORING,
   SAMPLE_SIZE,
   STABLE_SAMPLE_EXPR,
+  computeComparisonScore,
   computeDistributionScore,
   computeEffectiveSampleSize,
   computeEntropyScore,
@@ -337,13 +338,11 @@ export default function DBDeltaChart({
 
         let sortScore: number;
         if (hasSelection) {
-          const mergedArray = mergeValueStatisticsMaps(outlierCount, inlierCount);
-          let maxValueDelta = 0;
-          mergedArray.forEach(item => {
-            const delta = Math.abs(item.outlierCount - item.inlierCount);
-            if (delta > maxValueDelta) maxValueDelta = delta;
-          });
-          sortScore = maxValueDelta;
+          // Comparison mode: sort by proportional distribution difference.
+          // Normalizes each group's percentages before comparing, so fields
+          // with identical proportions (e.g., 100% "message" in both) score 0
+          // regardless of coverage rate differences between groups.
+          sortScore = computeComparisonScore(outlierCount, inlierCount);
         } else {
           // Distribution mode: sort by how useful the field is for filtering.
           // Fields with actual variance (multiple values, unequal distribution)

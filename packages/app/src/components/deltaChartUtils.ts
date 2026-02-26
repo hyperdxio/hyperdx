@@ -290,6 +290,57 @@ export function mergeValueStatisticsMaps(
 }
 
 /**
+ * Computes a comparison score for sorting properties in selection mode.
+ *
+ * Normalizes each group's percentages to sum to 100% before computing delta,
+ * so the score measures *proportional distribution difference*, not coverage
+ * rate difference. This prevents fields like Events.Name[N] (same "message"
+ * value in both groups but different coverage rates due to sample composition)
+ * from sorting above fields with genuinely different value distributions.
+ *
+ * Returns max(|normalizedOutlierPct - normalizedInlierPct|) across all values.
+ * Score is 0 when both groups have identical proportional distributions,
+ * regardless of how many spans in each group have this property.
+ */
+export function computeComparisonScore(
+  outlierValues: Map<string, number>,
+  inlierValues: Map<string, number>,
+): number {
+  const allValues = new Set([...outlierValues.keys(), ...inlierValues.keys()]);
+  if (allValues.size === 0) return 0;
+
+  // Sum each group's raw percentages (may not be 100% since denominator is totalRows)
+  let outlierSum = 0;
+  let inlierSum = 0;
+  outlierValues.forEach(v => (outlierSum += v));
+  inlierValues.forEach(v => (inlierSum += v));
+
+  // If either group has no data for this property, use raw delta as fallback
+  if (outlierSum === 0 && inlierSum === 0) return 0;
+  if (outlierSum === 0 || inlierSum === 0) {
+    // Property exists in one group but not the other — genuinely different
+    let maxDelta = 0;
+    allValues.forEach(value => {
+      const delta = Math.abs(
+        (outlierValues.get(value) ?? 0) - (inlierValues.get(value) ?? 0),
+      );
+      if (delta > maxDelta) maxDelta = delta;
+    });
+    return maxDelta;
+  }
+
+  // Normalize to proportions (0-100) and compute max delta
+  let maxDelta = 0;
+  allValues.forEach(value => {
+    const outlierNorm = ((outlierValues.get(value) ?? 0) / outlierSum) * 100;
+    const inlierNorm = ((inlierValues.get(value) ?? 0) / inlierSum) * 100;
+    const delta = Math.abs(outlierNorm - inlierNorm);
+    if (delta > maxDelta) maxDelta = delta;
+  });
+  return maxDelta;
+}
+
+/**
  * Computes a distribution skewness score for sorting properties in "all spans" mode.
  *
  * Score = max(pct) - mean(pcts):

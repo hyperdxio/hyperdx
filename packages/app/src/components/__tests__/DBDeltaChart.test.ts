@@ -1,5 +1,6 @@
 import {
   applyTopNAggregation,
+  computeComparisonScore,
   computeDistributionScore,
   computeEffectiveSampleSize,
   computeEntropyScore,
@@ -443,6 +444,59 @@ describe('applyTopNAggregation', () => {
     result.slice(0, MAX_CHART_VALUES).forEach(entry => {
       expect(entry.isOther).toBeFalsy();
     });
+  });
+});
+
+describe('computeComparisonScore', () => {
+  it('returns 0 when both groups have identical single-value proportions', () => {
+    // Events.Name[3] = "message" at different coverage rates but same proportion
+    // Outlier: 80% coverage, Inlier: 27% coverage — but both are 100% "message"
+    const outlier = new Map([['message', 80]]);
+    const inlier = new Map([['message', 27]]);
+    expect(computeComparisonScore(outlier, inlier)).toBeCloseTo(0);
+  });
+
+  it('returns 0 when both groups have identical multi-value proportions', () => {
+    // Same 60/40 split in both groups, different total coverage
+    const outlier = new Map([['GET', 48], ['POST', 32]]);
+    const inlier = new Map([['GET', 18], ['POST', 12]]);
+    expect(computeComparisonScore(outlier, inlier)).toBeCloseTo(0);
+  });
+
+  it('returns high score for genuinely different distributions', () => {
+    // Selection has mostly errors, background has mostly successes
+    const outlier = new Map([['error', 70], ['success', 10]]);
+    const inlier = new Map([['error', 5], ['success', 80]]);
+    expect(computeComparisonScore(outlier, inlier)).toBeGreaterThan(50);
+  });
+
+  it('returns high score when a value exists in one group but not the other', () => {
+    const outlier = new Map([['error', 50]]);
+    const inlier = new Map([['success', 80]]);
+    expect(computeComparisonScore(outlier, inlier)).toBeGreaterThan(50);
+  });
+
+  it('returns 0 when both groups are empty', () => {
+    expect(computeComparisonScore(new Map(), new Map())).toBe(0);
+  });
+
+  it('uses raw delta as fallback when one group has no data', () => {
+    const outlier = new Map([['error', 50]]);
+    expect(computeComparisonScore(outlier, new Map())).toBe(50);
+  });
+
+  it('ranks genuinely different fields above same-proportion fields', () => {
+    // Same proportion (100% "message" at different rates)
+    const sameScore = computeComparisonScore(
+      new Map([['message', 80]]),
+      new Map([['message', 27]]),
+    );
+    // Different distribution (90% error in selection vs 10% in background)
+    const diffScore = computeComparisonScore(
+      new Map([['error', 90], ['ok', 10]]),
+      new Map([['error', 10], ['ok', 90]]),
+    );
+    expect(diffScore).toBeGreaterThan(sameScore);
   });
 });
 
