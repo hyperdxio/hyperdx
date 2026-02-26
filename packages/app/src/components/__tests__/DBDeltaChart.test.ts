@@ -39,19 +39,28 @@ const traceColumnMeta = [
 describe('flattenedKeyToSqlExpression', () => {
   it('converts Map column dot-notation to bracket notation', () => {
     expect(
-      flattenedKeyToSqlExpression('ResourceAttributes.service.name', traceColumnMeta),
+      flattenedKeyToSqlExpression(
+        'ResourceAttributes.service.name',
+        traceColumnMeta,
+      ),
     ).toBe("ResourceAttributes['service.name']");
   });
 
   it('converts SpanAttributes dot-notation to bracket notation', () => {
     expect(
-      flattenedKeyToSqlExpression('SpanAttributes.http.method', traceColumnMeta),
+      flattenedKeyToSqlExpression(
+        'SpanAttributes.http.method',
+        traceColumnMeta,
+      ),
     ).toBe("SpanAttributes['http.method']");
   });
 
   it('converts Array(Map) dot-notation with 0-based index to 1-based bracket notation', () => {
     expect(
-      flattenedKeyToSqlExpression('Events.Attributes[0].message.type', traceColumnMeta),
+      flattenedKeyToSqlExpression(
+        'Events.Attributes[0].message.type',
+        traceColumnMeta,
+      ),
     ).toBe("Events.Attributes[1]['message.type']");
   });
 
@@ -63,20 +72,23 @@ describe('flattenedKeyToSqlExpression', () => {
 
   it('handles Links.Attributes Array(Map) correctly', () => {
     expect(
-      flattenedKeyToSqlExpression('Links.Attributes[0].some.key', traceColumnMeta),
+      flattenedKeyToSqlExpression(
+        'Links.Attributes[0].some.key',
+        traceColumnMeta,
+      ),
     ).toBe("Links.Attributes[1]['some.key']");
   });
 
   it('returns simple columns unchanged', () => {
-    expect(
-      flattenedKeyToSqlExpression('TraceId', traceColumnMeta),
-    ).toBe('TraceId');
+    expect(flattenedKeyToSqlExpression('TraceId', traceColumnMeta)).toBe(
+      'TraceId',
+    );
   });
 
   it('returns non-map nested columns unchanged (e.g., Arrays of primitives)', () => {
-    expect(
-      flattenedKeyToSqlExpression('Events.Name[0]', traceColumnMeta),
-    ).toBe('Events.Name[0]');
+    expect(flattenedKeyToSqlExpression('Events.Name[0]', traceColumnMeta)).toBe(
+      'Events.Name[0]',
+    );
   });
 
   it('returns key unchanged when no matching column found', () => {
@@ -89,33 +101,39 @@ describe('flattenedKeyToSqlExpression', () => {
     const meta = [
       { name: 'LogAttributes', type: 'LowCardinality(Map(String, String))' },
     ];
-    expect(
-      flattenedKeyToSqlExpression('LogAttributes.level', meta),
-    ).toBe("LogAttributes['level']");
+    expect(flattenedKeyToSqlExpression('LogAttributes.level', meta)).toBe(
+      "LogAttributes['level']",
+    );
   });
 
   it('handles Nullable(Map) wrapped types', () => {
     const meta = [{ name: 'Attrs', type: 'Nullable(Map(String, String))' }];
-    expect(
-      flattenedKeyToSqlExpression('Attrs.some.key', meta),
-    ).toBe("Attrs['some.key']");
+    expect(flattenedKeyToSqlExpression('Attrs.some.key', meta)).toBe(
+      "Attrs['some.key']",
+    );
   });
 
   it('returns key unchanged for empty columnMeta', () => {
-    expect(flattenedKeyToSqlExpression('ResourceAttributes.service.name', [])).toBe(
-      'ResourceAttributes.service.name',
-    );
+    expect(
+      flattenedKeyToSqlExpression('ResourceAttributes.service.name', []),
+    ).toBe('ResourceAttributes.service.name');
   });
 
   it('escapes single quotes in Map column keys to prevent SQL injection', () => {
     expect(
-      flattenedKeyToSqlExpression("ResourceAttributes.it's.key", traceColumnMeta),
+      flattenedKeyToSqlExpression(
+        "ResourceAttributes.it's.key",
+        traceColumnMeta,
+      ),
     ).toBe("ResourceAttributes['it''s.key']");
   });
 
   it('escapes single quotes in Array(Map) column keys', () => {
     expect(
-      flattenedKeyToSqlExpression("Events.Attributes[0].it's.key", traceColumnMeta),
+      flattenedKeyToSqlExpression(
+        "Events.Attributes[0].it's.key",
+        traceColumnMeta,
+      ),
     ).toBe("Events.Attributes[1]['it''s.key']");
   });
 });
@@ -123,32 +141,36 @@ describe('flattenedKeyToSqlExpression', () => {
 describe('flattenedKeyToFilterKey', () => {
   it('converts Map column dot-notation to toString with backtick-quoted segments', () => {
     expect(
-      flattenedKeyToFilterKey('ResourceAttributes.service.name', traceColumnMeta),
-    ).toBe("toString(ResourceAttributes.`service`.`name`)");
+      flattenedKeyToFilterKey(
+        'ResourceAttributes.service.name',
+        traceColumnMeta,
+      ),
+    ).toBe('toString(ResourceAttributes.`service`.`name`)');
   });
 
   it('converts SpanAttributes Map keys to toString format', () => {
     expect(
       flattenedKeyToFilterKey('SpanAttributes.http.method', traceColumnMeta),
-    ).toBe("toString(SpanAttributes.`http`.`method`)");
+    ).toBe('toString(SpanAttributes.`http`.`method`)');
   });
 
   it('returns simple columns unchanged', () => {
-    expect(
-      flattenedKeyToFilterKey('TraceId', traceColumnMeta),
-    ).toBe('TraceId');
+    expect(flattenedKeyToFilterKey('TraceId', traceColumnMeta)).toBe('TraceId');
   });
 
   it('returns simple columns unchanged for non-Map types', () => {
-    expect(
-      flattenedKeyToFilterKey('Timestamp', traceColumnMeta),
-    ).toBe('Timestamp');
+    expect(flattenedKeyToFilterKey('Timestamp', traceColumnMeta)).toBe(
+      'Timestamp',
+    );
   });
 
   it('falls back to SQL expression for Array(Map) columns', () => {
     // Array(Map) sub-keys don't have sidebar facets, so use SQL expression
     expect(
-      flattenedKeyToFilterKey('Events.Attributes[0].message.type', traceColumnMeta),
+      flattenedKeyToFilterKey(
+        'Events.Attributes[0].message.type',
+        traceColumnMeta,
+      ),
     ).toBe("Events.Attributes[1]['message.type']");
   });
 
@@ -188,7 +210,9 @@ describe('isIdField', () => {
   });
 
   it('does not match keys with sub-keys after array index (Array(Map) paths)', () => {
-    expect(isIdField('Events.Attributes[0].spanId', traceColumnMeta)).toBe(false);
+    expect(
+      isIdField('Events.Attributes[0].spanId', traceColumnMeta),
+    ).toBe(false);
   });
 
   it('returns false for unknown columns', () => {
@@ -202,20 +226,36 @@ describe('isIdField', () => {
 
 describe('isTimestampArrayField', () => {
   it('identifies Array(DateTime64) column elements by index', () => {
-    expect(isTimestampArrayField('Events.Timestamp[0]', traceColumnMeta)).toBe(true);
-    expect(isTimestampArrayField('Events.Timestamp[23]', traceColumnMeta)).toBe(true);
-    expect(isTimestampArrayField('Links.Timestamp[0]', traceColumnMeta)).toBe(true);
+    expect(isTimestampArrayField('Events.Timestamp[0]', traceColumnMeta)).toBe(
+      true,
+    );
+    expect(isTimestampArrayField('Events.Timestamp[23]', traceColumnMeta)).toBe(
+      true,
+    );
+    expect(isTimestampArrayField('Links.Timestamp[0]', traceColumnMeta)).toBe(
+      true,
+    );
   });
 
   it('identifies plain Array(DateTime64) column reference', () => {
-    expect(isTimestampArrayField('Events.Timestamp', traceColumnMeta)).toBe(true);
-    expect(isTimestampArrayField('Links.Timestamp', traceColumnMeta)).toBe(true);
+    expect(isTimestampArrayField('Events.Timestamp', traceColumnMeta)).toBe(
+      true,
+    );
+    expect(isTimestampArrayField('Links.Timestamp', traceColumnMeta)).toBe(
+      true,
+    );
   });
 
   it('does not match non-DateTime64 array columns', () => {
-    expect(isTimestampArrayField('Events.Name[0]', traceColumnMeta)).toBe(false);
-    expect(isTimestampArrayField('Links.TraceId[0]', traceColumnMeta)).toBe(false);
-    expect(isTimestampArrayField('Events.Attributes[0]', traceColumnMeta)).toBe(false);
+    expect(isTimestampArrayField('Events.Name[0]', traceColumnMeta)).toBe(
+      false,
+    );
+    expect(isTimestampArrayField('Links.TraceId[0]', traceColumnMeta)).toBe(
+      false,
+    );
+    expect(isTimestampArrayField('Events.Attributes[0]', traceColumnMeta)).toBe(
+      false,
+    );
   });
 
   it('does not match non-array DateTime64 columns', () => {
@@ -223,15 +263,21 @@ describe('isTimestampArrayField', () => {
   });
 
   it('does not match Array(Map) sub-key paths', () => {
-    expect(isTimestampArrayField('Events.Attributes[0].timestamp', traceColumnMeta)).toBe(false);
+    expect(
+      isTimestampArrayField('Events.Attributes[0].timestamp', traceColumnMeta),
+    ).toBe(false);
   });
 
   it('returns false for unknown columns', () => {
-    expect(isTimestampArrayField('Unknown.Timestamp[0]', traceColumnMeta)).toBe(false);
+    expect(isTimestampArrayField('Unknown.Timestamp[0]', traceColumnMeta)).toBe(
+      false,
+    );
   });
 
   it('handles Array(DateTime64) with timezone parameter', () => {
-    const meta = [{ name: 'MyTimestamps', type: "Array(DateTime64(9, 'UTC'))" }];
+    const meta = [
+      { name: 'MyTimestamps', type: "Array(DateTime64(9, 'UTC'))" },
+    ];
     expect(isTimestampArrayField('MyTimestamps[0]', meta)).toBe(true);
   });
 });
@@ -250,8 +296,12 @@ describe('isDenylisted', () => {
   });
 
   it('does not denylist useful fields', () => {
-    expect(isDenylisted('ResourceAttributes.service.name', traceColumnMeta)).toBe(false);
-    expect(isDenylisted('SpanAttributes.http.method', traceColumnMeta)).toBe(false);
+    expect(
+      isDenylisted('ResourceAttributes.service.name', traceColumnMeta),
+    ).toBe(false);
+    expect(isDenylisted('SpanAttributes.http.method', traceColumnMeta)).toBe(
+      false,
+    );
     expect(isDenylisted('Events.Name[0]', traceColumnMeta)).toBe(false);
   });
 });
@@ -278,7 +328,10 @@ describe('isHighCardinality', () => {
   });
 
   it('keeps low cardinality fields visible (few distinct values)', () => {
-    const outlierValues = new Map([['GET', 80], ['POST', 20]]);
+    const outlierValues = new Map([
+      ['GET', 80],
+      ['POST', 20],
+    ]);
     const outlierValueOccurences = new Map([['http.method', outlierValues]]);
     const outlierPropertyOccurences = new Map([['http.method', 1000]]);
 
@@ -295,7 +348,10 @@ describe('isHighCardinality', () => {
 
   it('uses min of both groups — keeps visible if either group has low cardinality', () => {
     // Outliers: 2 unique values (low cardinality)
-    const outlierValues = new Map([['GET', 80], ['POST', 20]]);
+    const outlierValues = new Map([
+      ['GET', 80],
+      ['POST', 20],
+    ]);
     const outlierValueOccurences = new Map([['method', outlierValues]]);
     const outlierPropertyOccurences = new Map([['method', 1000]]);
 
@@ -456,13 +512,13 @@ describe('applyTopNAggregation', () => {
       { name: 'c', outlierCount: 30, inlierCount: 30 }, // kept (60)
       { name: 'd', outlierCount: 20, inlierCount: 20 }, // kept (40)
       { name: 'e', outlierCount: 10, inlierCount: 10 }, // kept (20)
-      { name: 'f', outlierCount: 5, inlierCount: 5 },   // kept (10)
-      { name: 'g', outlierCount: 4, inlierCount: 4 },   // dropped
-      { name: 'h', outlierCount: 3, inlierCount: 3 },   // dropped
-      { name: 'i', outlierCount: 3, inlierCount: 2 },   // dropped
-      { name: 'j', outlierCount: 1, inlierCount: 1 },   // dropped
-      { name: 'k', outlierCount: 0, inlierCount: 1 },   // dropped
-      { name: 'l', outlierCount: 0, inlierCount: 0 },   // dropped
+      { name: 'f', outlierCount: 5, inlierCount: 5 }, // kept (10)
+      { name: 'g', outlierCount: 4, inlierCount: 4 }, // dropped
+      { name: 'h', outlierCount: 3, inlierCount: 3 }, // dropped
+      { name: 'i', outlierCount: 3, inlierCount: 2 }, // dropped
+      { name: 'j', outlierCount: 1, inlierCount: 1 }, // dropped
+      { name: 'k', outlierCount: 0, inlierCount: 1 }, // dropped
+      { name: 'l', outlierCount: 0, inlierCount: 0 }, // dropped
     ];
     const result = applyTopNAggregation(data);
     const other = result.find(r => r.isOther);
@@ -472,7 +528,19 @@ describe('applyTopNAggregation', () => {
   });
 
   it('Other bucket name shows the count of aggregated values', () => {
-    const data = makeData(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k']);
+    const data = makeData([
+      'a',
+      'b',
+      'c',
+      'd',
+      'e',
+      'f',
+      'g',
+      'h',
+      'i',
+      'j',
+      'k',
+    ]);
     const result = applyTopNAggregation(data);
     const other = result.find(r => r.isOther);
     expect(other?.name).toBe('Other (5)');
@@ -498,15 +566,27 @@ describe('computeComparisonScore', () => {
 
   it('returns 0 when both groups have identical multi-value proportions', () => {
     // Same 60/40 split in both groups, different total coverage
-    const outlier = new Map([['GET', 48], ['POST', 32]]);
-    const inlier = new Map([['GET', 18], ['POST', 12]]);
+    const outlier = new Map([
+      ['GET', 48],
+      ['POST', 32],
+    ]);
+    const inlier = new Map([
+      ['GET', 18],
+      ['POST', 12],
+    ]);
     expect(computeComparisonScore(outlier, inlier)).toBeCloseTo(0);
   });
 
   it('returns high score for genuinely different distributions', () => {
     // Selection has mostly errors, background has mostly successes
-    const outlier = new Map([['error', 70], ['success', 10]]);
-    const inlier = new Map([['error', 5], ['success', 80]]);
+    const outlier = new Map([
+      ['error', 70],
+      ['success', 10],
+    ]);
+    const inlier = new Map([
+      ['error', 5],
+      ['success', 80],
+    ]);
     expect(computeComparisonScore(outlier, inlier)).toBeGreaterThan(50);
   });
 
@@ -533,8 +613,14 @@ describe('computeComparisonScore', () => {
     );
     // Different distribution (90% error in selection vs 10% in background)
     const diffScore = computeComparisonScore(
-      new Map([['error', 90], ['ok', 10]]),
-      new Map([['error', 10], ['ok', 90]]),
+      new Map([
+        ['error', 90],
+        ['ok', 10],
+      ]),
+      new Map([
+        ['error', 10],
+        ['ok', 90],
+      ]),
     );
     expect(diffScore).toBeGreaterThan(sameScore);
   });
@@ -553,14 +639,22 @@ describe('computeDistributionScore', () => {
   it('returns 0 for a perfectly uniform 2-value field', () => {
     // 50% / 50% — uniform, nothing stands out
     expect(
-      computeDistributionScore(new Map([['GET', 50], ['POST', 50]])),
+      computeDistributionScore(
+        new Map([
+          ['GET', 50],
+          ['POST', 50],
+        ]),
+      ),
     ).toBe(0);
   });
 
   it('returns high score for a skewed 2-value field', () => {
     // 90% / 10% → score = 90 - 50 = 40
     const score = computeDistributionScore(
-      new Map([['fraud-detection', 90], ['auth', 10]]),
+      new Map([
+        ['fraud-detection', 90],
+        ['auth', 10],
+      ]),
     );
     expect(score).toBeCloseTo(40);
   });
@@ -568,11 +662,17 @@ describe('computeDistributionScore', () => {
   it('ranks more-skewed fields higher than less-skewed fields', () => {
     // 80%/20% → score = 80 - 50 = 30
     const scoreA = computeDistributionScore(
-      new Map([['a', 80], ['b', 20]]),
+      new Map([
+        ['a', 80],
+        ['b', 20],
+      ]),
     );
     // 60%/40% → score = 60 - 50 = 10
     const scoreB = computeDistributionScore(
-      new Map([['a', 60], ['b', 40]]),
+      new Map([
+        ['a', 60],
+        ['b', 40],
+      ]),
     );
     expect(scoreA).toBeGreaterThan(scoreB);
   });
@@ -580,7 +680,11 @@ describe('computeDistributionScore', () => {
   it('returns 0 for a perfectly uniform 3-value field', () => {
     // 33%/33%/33% → score = 33 - 33 = 0
     const score = computeDistributionScore(
-      new Map([['a', 33.33], ['b', 33.33], ['c', 33.33]]),
+      new Map([
+        ['a', 33.33],
+        ['b', 33.33],
+        ['c', 33.33],
+      ]),
     );
     expect(score).toBeCloseTo(0, 1);
   });
@@ -588,7 +692,11 @@ describe('computeDistributionScore', () => {
   it('returns positive score for a skewed 3-value field', () => {
     // 70%/20%/10% → score = 70 - 33.3 ≈ 36.7
     const score = computeDistributionScore(
-      new Map([['a', 70], ['b', 20], ['c', 10]]),
+      new Map([
+        ['a', 70],
+        ['b', 20],
+        ['c', 10],
+      ]),
     );
     expect(score).toBeCloseTo(36.67, 1);
   });
@@ -596,7 +704,10 @@ describe('computeDistributionScore', () => {
   it('single-value field scores lower than two-value skewed field', () => {
     const singleValue = computeDistributionScore(new Map([['only', 100]]));
     const skewed = computeDistributionScore(
-      new Map([['dominant', 95], ['other', 5]]),
+      new Map([
+        ['dominant', 95],
+        ['other', 5],
+      ]),
     );
     expect(skewed).toBeGreaterThan(singleValue);
   });
@@ -605,7 +716,12 @@ describe('computeDistributionScore', () => {
     // After the percentage fix, values represent % of ALL spans.
     // Property "env" appears in 60% of spans: prod=40%, staging=20%.
     // Score should be positive (skewed), not zero.
-    const score = computeDistributionScore(new Map([['prod', 40], ['staging', 20]]));
+    const score = computeDistributionScore(
+      new Map([
+        ['prod', 40],
+        ['staging', 20],
+      ]),
+    );
     // mean = 30, max = 40, score = 10
     expect(score).toBeCloseTo(10);
   });
@@ -627,31 +743,61 @@ describe('computeEntropyScore', () => {
 
   it('returns 0 for a perfectly uniform 2-value field', () => {
     // H = log2(2) = 1, maxH = log2(2) = 1 → 1 - 1/1 = 0
-    expect(computeEntropyScore(new Map([['GET', 50], ['POST', 50]]))).toBeCloseTo(0);
+    expect(
+      computeEntropyScore(
+        new Map([
+          ['GET', 50],
+          ['POST', 50],
+        ]),
+      ),
+    ).toBeCloseTo(0);
   });
 
   it('returns high score for a skewed 2-value field', () => {
-    const score = computeEntropyScore(new Map([['ok', 99], ['error', 1]]));
+    const score = computeEntropyScore(
+      new Map([
+        ['ok', 99],
+        ['error', 1],
+      ]),
+    );
     // Very skewed → low entropy → high score (close to 1)
     expect(score).toBeGreaterThan(0.5);
   });
 
   it('ranks more-skewed fields higher than less-skewed fields', () => {
-    const scoreA = computeEntropyScore(new Map([['a', 95], ['b', 5]]));
-    const scoreB = computeEntropyScore(new Map([['a', 60], ['b', 40]]));
+    const scoreA = computeEntropyScore(
+      new Map([
+        ['a', 95],
+        ['b', 5],
+      ]),
+    );
+    const scoreB = computeEntropyScore(
+      new Map([
+        ['a', 60],
+        ['b', 40],
+      ]),
+    );
     expect(scoreA).toBeGreaterThan(scoreB);
   });
 
   it('returns 0 for a perfectly uniform 3-value field', () => {
     const score = computeEntropyScore(
-      new Map([['a', 33.33], ['b', 33.33], ['c', 33.34]]),
+      new Map([
+        ['a', 33.33],
+        ['b', 33.33],
+        ['c', 33.34],
+      ]),
     );
     expect(score).toBeCloseTo(0, 2);
   });
 
   it('returns positive score for a skewed 3-value field', () => {
     const score = computeEntropyScore(
-      new Map([['a', 90], ['b', 5], ['c', 5]]),
+      new Map([
+        ['a', 90],
+        ['b', 5],
+        ['c', 5],
+      ]),
     );
     expect(score).toBeGreaterThan(0.3);
   });
@@ -659,8 +805,13 @@ describe('computeEntropyScore', () => {
   it('handles power-law distributions better than skewness scorer', () => {
     // Power-law: 50, 25, 12, 6, 4, 2, 1 — entropy captures this spread
     const powerLaw = new Map([
-      ['v1', 50], ['v2', 25], ['v3', 12], ['v4', 6],
-      ['v5', 4], ['v6', 2], ['v7', 1],
+      ['v1', 50],
+      ['v2', 25],
+      ['v3', 12],
+      ['v4', 6],
+      ['v5', 4],
+      ['v6', 2],
+      ['v7', 1],
     ]);
     const score = computeEntropyScore(powerLaw);
     expect(score).toBeGreaterThan(0.1);
@@ -669,7 +820,12 @@ describe('computeEntropyScore', () => {
 
   it('works when percentages do not sum to 100', () => {
     // Property appears in 60% of spans: prod=40%, staging=20%
-    const score = computeEntropyScore(new Map([['prod', 40], ['staging', 20]]));
+    const score = computeEntropyScore(
+      new Map([
+        ['prod', 40],
+        ['staging', 20],
+      ]),
+    );
     // Normalized by sum, so this is really 67%/33% — moderate skew
     expect(score).toBeGreaterThan(0);
     expect(score).toBeLessThan(0.5);
@@ -705,7 +861,10 @@ describe('semanticBoost', () => {
 describe('scoring integration: entropy + semantic boost as tiebreaker', () => {
   // These tests verify the intended scoring behavior in DBDeltaChart:
   // sortScore = baseScore > 0 ? baseScore + semanticBoost(key) * 0.1 : 0
-  const computeSortScore = (key: string, valuePercentages: Map<string, number>) => {
+  const computeSortScore = (
+    key: string,
+    valuePercentages: Map<string, number>,
+  ) => {
     const baseScore = computeEntropyScore(valuePercentages);
     const boost = baseScore > 0 ? semanticBoost(key) * 0.1 : 0;
     return baseScore + boost;
@@ -727,15 +886,26 @@ describe('scoring integration: entropy + semantic boost as tiebreaker', () => {
     );
     const nonBoostedSkewed = computeSortScore(
       'SpanAttributes.loyalty.level',
-      new Map([['bronze', 60], ['silver', 20], ['gold', 15], ['platinum', 5]]),
+      new Map([
+        ['bronze', 60],
+        ['silver', 20],
+        ['gold', 15],
+        ['platinum', 5],
+      ]),
     );
     expect(nonBoostedSkewed).toBeGreaterThan(boostedSingleValue);
   });
 
   it('among fields with similar variance, boosted attribute ranks higher', () => {
-    const skewedValues = new Map([['Error', 80], ['Unset', 20]]);
+    const skewedValues = new Map([
+      ['Error', 80],
+      ['Unset', 20],
+    ]);
     const boostedScore = computeSortScore('SpanAttributes.error', skewedValues);
-    const nonBoostedScore = computeSortScore('SpanAttributes.custom.flag', skewedValues);
+    const nonBoostedScore = computeSortScore(
+      'SpanAttributes.custom.flag',
+      skewedValues,
+    );
     expect(boostedScore).toBeGreaterThan(nonBoostedScore);
     // But the difference is small (tiebreaker only)
     expect(boostedScore - nonBoostedScore).toBeCloseTo(0.1, 1);
@@ -745,12 +915,18 @@ describe('scoring integration: entropy + semantic boost as tiebreaker', () => {
     // Boosted but mildly skewed
     const boostedMild = computeSortScore(
       'SpanAttributes.http.method',
-      new Map([['GET', 55], ['POST', 45]]),
+      new Map([
+        ['GET', 55],
+        ['POST', 45],
+      ]),
     );
     // Non-boosted but highly skewed
     const nonBoostedStrong = computeSortScore(
       'SpanAttributes.custom.field',
-      new Map([['dominant', 95], ['rare', 5]]),
+      new Map([
+        ['dominant', 95],
+        ['rare', 5],
+      ]),
     );
     expect(nonBoostedStrong).toBeGreaterThan(boostedMild);
   });
@@ -799,13 +975,21 @@ describe('computeYValue', () => {
   });
 
   it('handles division expression "Col / N"', () => {
-    expect(computeYValue('Duration / 1000000', { Duration: 5000000 })).toBeCloseTo(5);
+    expect(
+      computeYValue('Duration / 1000000', { Duration: 5000000 }),
+    ).toBeCloseTo(5);
   });
 
   it('handles parenthesized column in division "(Col)/N" (getDurationMsExpression format)', () => {
-    expect(computeYValue('(Duration)/1e6', { Duration: 5000000 })).toBeCloseTo(5);
-    expect(computeYValue('(Duration) / 1e6', { Duration: 5000000 })).toBeCloseTo(5);
-    expect(computeYValue('(Duration)/1000000', { Duration: 5000000 })).toBeCloseTo(5);
+    expect(computeYValue('(Duration)/1e6', { Duration: 5000000 })).toBeCloseTo(
+      5,
+    );
+    expect(
+      computeYValue('(Duration) / 1e6', { Duration: 5000000 }),
+    ).toBeCloseTo(5);
+    expect(
+      computeYValue('(Duration)/1000000', { Duration: 5000000 }),
+    ).toBeCloseTo(5);
   });
 
   it('handles simple parenthesized column reference "(Col)"', () => {
@@ -813,16 +997,24 @@ describe('computeYValue', () => {
   });
 
   it('handles multiplication expression "Col * N"', () => {
-    expect(computeYValue('Duration * 0.001', { Duration: 5000000 })).toBeCloseTo(5000);
+    expect(
+      computeYValue('Duration * 0.001', { Duration: 5000000 }),
+    ).toBeCloseTo(5000);
   });
 
   it('handles parenthesized column in multiplication "(Col) * N"', () => {
-    expect(computeYValue('(Duration) * 0.001', { Duration: 5000000 })).toBeCloseTo(5000);
-    expect(computeYValue('(Duration)*0.001', { Duration: 5000000 })).toBeCloseTo(5000);
+    expect(
+      computeYValue('(Duration) * 0.001', { Duration: 5000000 }),
+    ).toBeCloseTo(5000);
+    expect(
+      computeYValue('(Duration)*0.001', { Duration: 5000000 }),
+    ).toBeCloseTo(5000);
   });
 
   it('handles scientific notation divisor', () => {
-    expect(computeYValue('Duration / 1e6', { Duration: 5000000 })).toBeCloseTo(5);
+    expect(
+      computeYValue('Duration / 1e6', { Duration: 5000000 }),
+    ).toBeCloseTo(5);
   });
 
   it('returns null when column is missing', () => {
@@ -848,7 +1040,9 @@ describe('field split logic (visible vs hidden)', () => {
     expect(isDenylisted('Events.Timestamp[0]', traceColumnMeta)).toBe(true);
 
     // ResourceAttributes.service.name → not denylisted
-    expect(isDenylisted('ResourceAttributes.service.name', traceColumnMeta)).toBe(false);
+    expect(
+      isDenylisted('ResourceAttributes.service.name', traceColumnMeta),
+    ).toBe(false);
 
     // High cardinality field with 1000 unique values in 1000 rows → hidden
     const hcValues = new Map<string, number>();
@@ -864,7 +1058,10 @@ describe('field split logic (visible vs hidden)', () => {
     ).toBe(true);
 
     // Low cardinality field → visible
-    const lcValues = new Map([['production', 70], ['staging', 30]]);
+    const lcValues = new Map([
+      ['production', 70],
+      ['staging', 30],
+    ]);
     expect(
       isHighCardinality(
         'deployment.env',

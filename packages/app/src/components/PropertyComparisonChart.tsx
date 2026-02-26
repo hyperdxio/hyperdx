@@ -1,5 +1,5 @@
+import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { withErrorBoundary } from 'react-error-boundary';
 import {
   Bar,
@@ -12,11 +12,7 @@ import {
 } from 'recharts';
 import type { TooltipProps } from 'recharts';
 import { Flex, Text } from '@mantine/core';
-import {
-  IconCopy,
-  IconFilter,
-  IconFilterX,
-} from '@tabler/icons-react';
+import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
 import {
   getChartColorError,
@@ -185,7 +181,7 @@ export function PropertyComparisonChart({
     return () => window.removeEventListener('scroll', handleScroll, true);
   }, [clickedBar]);
 
-  const handleChartClick = useCallback((data: any, event: any) => {
+  const handleChartClick = (data: any, event: any) => {
     if (!data?.activePayload?.length) {
       setClickedBar(null);
       return;
@@ -201,7 +197,7 @@ export function PropertyComparisonChart({
       clientX: event.clientX,
       clientY: event.clientY,
     });
-  }, []);
+  };
 
   return (
     <div ref={chartWrapperRef} style={{ width: '100%', height: 120 }}>
@@ -234,8 +230,7 @@ export function PropertyComparisonChart({
           onMouseMove={(data: any) => {
             const label = data?.activeLabel;
             const isOther = data?.activePayload?.[0]?.payload?.isOther;
-            const newVal =
-              label != null && !isOther ? String(label) : null;
+            const newVal = label != null && !isOther ? String(label) : null;
             if (newVal !== lastHoveredBarRef.current) {
               lastHoveredBarRef.current = newVal;
               onHoverValue?.(name, newVal);
@@ -291,7 +286,9 @@ export function PropertyComparisonChart({
               {chartData.map((entry, index) => (
                 <Cell
                   key={`in-${index}`}
-                  fill={entry.isOther ? OTHER_BUCKET_COLOR : getChartColorSuccess()}
+                  fill={
+                    entry.isOther ? OTHER_BUCKET_COLOR : getChartColorSuccess()
+                  }
                   fillOpacity={
                     hoveredBar !== null && entry.name !== hoveredBar ? 0.2 : 1
                   }
