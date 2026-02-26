@@ -1,8 +1,7 @@
-import { Flex, Text } from '@mantine/core';
-import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { withErrorBoundary } from 'react-error-boundary';
+import type { TooltipProps } from 'recharts';
 import {
   Bar,
   BarChart,
@@ -12,7 +11,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import type { TooltipProps } from 'recharts';
+import { Flex, Text } from '@mantine/core';
+import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
 import {
   getChartColorError,
@@ -24,9 +24,9 @@ import { DBRowTableIconButton } from './DBTable/DBRowTableIconButton';
 import {
   AddFilterFn,
   ALL_SPANS_COLOR,
-  OTHER_BUCKET_COLOR,
   applyTopNAggregation,
   mergeValueStatisticsMaps,
+  OTHER_BUCKET_COLOR,
 } from './deltaChartUtils';
 
 import styles from '../../styles/HDXLineChart.module.scss';

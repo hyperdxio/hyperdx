@@ -165,10 +165,7 @@ describe('flattenedKeyToFilterKey', () => {
 
   it('escapes single quotes in Map keys', () => {
     expect(
-      flattenedKeyToFilterKey(
-        "ResourceAttributes.it's.key",
-        traceColumnMeta,
-      ),
+      flattenedKeyToFilterKey("ResourceAttributes.it's.key", traceColumnMeta),
     ).toBe("ResourceAttributes['it''s.key']");
   });
 

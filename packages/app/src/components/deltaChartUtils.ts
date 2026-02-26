@@ -454,10 +454,10 @@ export type ScoringStrategy = 'entropy' | 'skewness';
 export const DISTRIBUTION_SCORING: ScoringStrategy = 'entropy';
 
 /**
- * Converts a flattened dot-notation property key into a filter key that matches
- * the sidebar facet format. For Map columns, produces `toString(ColName.\`map.key\`)`
- * which is both valid ClickHouse SQL and matches the sidebar's facet key wrapping.
- * For simple columns, returns the key unchanged.
+ * Converts a flattened dot-notation property key into a filter key using
+ * ClickHouse bracket notation for Map columns: ColName['map.key'].
+ * This matches the search bar format (WHERE ResourceAttributes['k8s.pod.name'] = ...).
+ * For simple (non-Map) columns, returns the key unchanged.
  */
 export function flattenedKeyToFilterKey(
   key: string,

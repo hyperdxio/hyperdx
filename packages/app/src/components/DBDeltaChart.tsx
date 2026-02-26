@@ -435,9 +435,8 @@ export default function DBDeltaChart({
   }, [outlierData, inlierData, allSpansData, hasSelection, valueExpr]);
 
   // Wrap onAddFilter to convert flattened dot-notation keys (from flattenData)
-  // into filter keys that match the sidebar facet format. For Map columns this
-  // produces toString(ColName.`key`) which is both valid SQL and matches the
-  // sidebar's facet key wrapping, making filters visible as checkboxes.
+  // into ClickHouse bracket notation for Map columns: ColName['map.key'].
+  // This matches the search bar format and produces valid ClickHouse SQL.
   const handleAddFilter = useCallback<NonNullable<AddFilterFn>>(
     (property, value, action) => {
       if (!onAddFilter) return;
