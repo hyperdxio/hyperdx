@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import cx from 'classnames';
-import { Button, Group, Text } from '@mantine/core';
+import { ActionIcon, Button, Group, Text } from '@mantine/core';
 import {
   IconArrowDown,
   IconArrowUp,
   IconGripVertical,
+  IconX,
 } from '@tabler/icons-react';
 import { flexRender, Header } from '@tanstack/react-table';
 
@@ -15,12 +17,16 @@ export default function TableHeader({
   isLast,
   header,
   lastItemButtons,
+  onRemoveColumn,
 }: {
   isLast: boolean;
   header: Header<any, any>;
   lastItemButtons?: React.ReactNode;
+  onRemoveColumn?: () => void;
 }) {
   'use no memo'; // todo: table headers arent being resized properly with the react compiler
+  const [isHovered, setIsHovered] = useState(false);
+
   return (
     <th
       className="overflow-hidden"
@@ -32,6 +38,8 @@ export default function TableHeader({
         minWidth: header.getSize() === UNDEFINED_WIDTH ? 0 : header.getSize(),
         textAlign: 'left',
       }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <Group wrap="nowrap" gap={0} align="center">
         {!header.column.getCanSort() ? (
@@ -82,6 +90,20 @@ export default function TableHeader({
         )}
 
         <Group gap={0} wrap="nowrap" align="center">
+          {onRemoveColumn && isHovered && (
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="xs"
+              onClick={e => {
+                e.stopPropagation();
+                onRemoveColumn();
+              }}
+              title="Remove column"
+            >
+              <IconX size={10} />
+            </ActionIcon>
+          )}
           {header.column.getCanResize() && !isLast && (
             <div
               onMouseDown={header.getResizeHandler()}

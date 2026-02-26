@@ -1,6 +1,7 @@
 import React, {
   memo,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -98,6 +99,7 @@ import {
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import TableHeader from './DBTable/TableHeader';
+import { RowSidePanelContext } from './DBRowSidePanel';
 import {
   highlightText,
   TableSearchInput,
@@ -336,6 +338,7 @@ export const RawLogTable = memo(
     showExpandButton = true,
     getRowWhere,
     variant = 'default',
+    onRemoveColumn,
   }: {
     wrapLines?: boolean;
     displayedColumns: string[];
@@ -381,6 +384,7 @@ export const RawLogTable = memo(
     onSortingChange?: (v: SortingState | null) => void;
     getRowWhere?: (row: Record<string, any>) => RowWhereResult;
     variant?: DBRowTableVariant;
+    onRemoveColumn?: (column: string) => void;
   }) => {
     const dedupedRows = useMemo(() => {
       const lIds = new Set();
@@ -893,6 +897,17 @@ export const RawLogTable = memo(
                             key={header.id}
                             header={header}
                             isLast={isLast}
+                            onRemoveColumn={
+                              onRemoveColumn
+                                ? () => {
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                    const column = (header.column.columnDef.meta as any)?.column;
+                                    if (column) {
+                                      onRemoveColumn(column);
+                                    }
+                                  }
+                                : undefined
+                            }
                             lastItemButtons={
                               <Group gap={8} mr={8}>
                                 {tableId &&
@@ -1372,6 +1387,7 @@ function DBSqlRowTableComponent({
   variant?: DBRowTableVariant;
 }) {
   const { data: me } = api.useMe();
+  const { toggleColumn } = useContext(RowSidePanelContext);
 
   const [orderBy, setOrderBy] = useState<SortingState[number] | null>(
     initialSortBy?.[0] ?? null,
@@ -1631,6 +1647,7 @@ function DBSqlRowTableComponent({
         sortOrder={orderByArray}
         getRowWhere={getRowWhere}
         variant={variant}
+        onRemoveColumn={toggleColumn}
       />
     </>
   );
