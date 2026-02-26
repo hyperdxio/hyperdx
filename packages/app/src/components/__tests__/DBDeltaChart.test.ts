@@ -608,6 +608,60 @@ describe('semanticBoost', () => {
   });
 });
 
+describe('scoring integration: entropy + semantic boost as tiebreaker', () => {
+  // These tests verify the intended scoring behavior in DBDeltaChart:
+  // sortScore = baseScore > 0 ? baseScore + semanticBoost(key) * 0.1 : 0
+  const computeSortScore = (key: string, valuePercentages: Map<string, number>) => {
+    const baseScore = computeEntropyScore(valuePercentages);
+    const boost = baseScore > 0 ? semanticBoost(key) * 0.1 : 0;
+    return baseScore + boost;
+  };
+
+  it('single-value boosted attribute scores 0 (not boosted above multi-value fields)', () => {
+    // service.name with 100% "payment" — completely useless for outlier detection
+    const score = computeSortScore(
+      'ResourceAttributes.service.name',
+      new Map([['payment', 100]]),
+    );
+    expect(score).toBe(0);
+  });
+
+  it('multi-value non-boosted field with unequal distribution beats single-value boosted field', () => {
+    const boostedSingleValue = computeSortScore(
+      'ResourceAttributes.service.name',
+      new Map([['payment', 100]]),
+    );
+    const nonBoostedSkewed = computeSortScore(
+      'SpanAttributes.loyalty.level',
+      new Map([['bronze', 60], ['silver', 20], ['gold', 15], ['platinum', 5]]),
+    );
+    expect(nonBoostedSkewed).toBeGreaterThan(boostedSingleValue);
+  });
+
+  it('among fields with similar variance, boosted attribute ranks higher', () => {
+    const skewedValues = new Map([['Error', 80], ['Unset', 20]]);
+    const boostedScore = computeSortScore('SpanAttributes.error', skewedValues);
+    const nonBoostedScore = computeSortScore('SpanAttributes.custom.flag', skewedValues);
+    expect(boostedScore).toBeGreaterThan(nonBoostedScore);
+    // But the difference is small (tiebreaker only)
+    expect(boostedScore - nonBoostedScore).toBeCloseTo(0.1, 1);
+  });
+
+  it('boost never overrides a genuinely more interesting distribution', () => {
+    // Boosted but mildly skewed
+    const boostedMild = computeSortScore(
+      'SpanAttributes.http.method',
+      new Map([['GET', 55], ['POST', 45]]),
+    );
+    // Non-boosted but highly skewed
+    const nonBoostedStrong = computeSortScore(
+      'SpanAttributes.custom.field',
+      new Map([['dominant', 95], ['rare', 5]]),
+    );
+    expect(nonBoostedStrong).toBeGreaterThan(boostedMild);
+  });
+});
+
 describe('computeEffectiveSampleSize', () => {
   it('returns SAMPLE_SIZE when totalCount is 0 (fallback)', () => {
     expect(computeEffectiveSampleSize(0)).toBe(SAMPLE_SIZE);

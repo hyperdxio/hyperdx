@@ -397,9 +397,12 @@ const BOOSTED_ATTRIBUTE_SUFFIXES = [
 
 /**
  * Returns a semantic priority boost for well-known OTel attributes.
- * Returns a value in [0, 1] that is added to the entropy score,
- * ensuring these attributes sort to the top even if their distribution
- * is uniform (which is still useful — e.g., http.method with 50/50 GET/POST).
+ * Returns 1 for known attributes, 0 otherwise.
+ *
+ * IMPORTANT: This is a raw signal — callers must scale it down to a tiebreaker
+ * and only apply it when the field has actual variance (baseScore > 0).
+ * A single-value service.name (entropy=0) must NOT be boosted above a
+ * multi-value field with genuine distribution differences.
  */
 export function semanticBoost(key: string): number {
   const lowerKey = key.toLowerCase();

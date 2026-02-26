@@ -364,11 +364,18 @@ export default function DBDeltaChart({
           sortScore = maxValueDelta;
         } else {
           // Distribution mode: sort by how useful the field is for filtering.
+          // Fields with actual variance (multiple values, unequal distribution)
+          // always rank above single-value or perfectly uniform fields.
           const baseScore =
             DISTRIBUTION_SCORING === 'entropy'
               ? computeEntropyScore(outlierCount)
               : computeDistributionScore(outlierCount);
-          sortScore = baseScore + semanticBoost(key);
+          // Semantic boost only applies when the field has actual variance
+          // (baseScore > 0). Scaled to 0.1 so it acts as a tiebreaker —
+          // never overrides a genuinely more interesting distribution.
+          const boost =
+            baseScore > 0 ? semanticBoost(key) * 0.1 : 0;
+          sortScore = baseScore + boost;
         }
 
         return [key, sortScore] as const;
