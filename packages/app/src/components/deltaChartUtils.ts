@@ -395,6 +395,11 @@ export function computeYValue(
   return null;
 }
 
+// Number of rows randomly sampled per query (outlier, inlier, all-spans).
+// Tunable: increase for better coverage of rare attribute values at the cost
+// of higher query latency; decrease if ClickHouse scans become too slow.
+export const SAMPLE_SIZE = 1000;
+
 // When a field has more than this many distinct values, the remaining values
 // are collapsed into a single "Other (N)" bucket shown in neutral gray.
 export const MAX_CHART_VALUES = 6;

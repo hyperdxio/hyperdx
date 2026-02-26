@@ -31,6 +31,7 @@ import {
 import type { AddFilterFn, HighlightPoint } from './deltaChartUtils';
 import {
   ALL_SPANS_COLOR,
+  SAMPLE_SIZE,
   computeDistributionScore,
   computeYValue,
   flattenData,
@@ -176,7 +177,7 @@ export default function DBDeltaChart({
               : []),
           ],
           orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-          limit: { limit: 1000 },
+          limit: { limit: SAMPLE_SIZE },
         },
       },
     ];
@@ -236,7 +237,7 @@ export default function DBDeltaChart({
       select: '*',
       filters: buildFilters(true),
       orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-      limit: { limit: 1000 },
+      limit: { limit: SAMPLE_SIZE },
     },
     { enabled: hasSelection },
   );
@@ -249,7 +250,7 @@ export default function DBDeltaChart({
         select: '*',
         filters: buildFilters(false),
         orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-        limit: { limit: 1000 },
+        limit: { limit: SAMPLE_SIZE },
       },
       { enabled: hasSelection },
     );
@@ -264,7 +265,7 @@ export default function DBDeltaChart({
       ...config,
       select: '*',
       orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-      limit: { limit: 1000 },
+      limit: { limit: SAMPLE_SIZE },
     },
     { enabled: !hasSelection },
   );
@@ -285,6 +286,7 @@ export default function DBDeltaChart({
     visibleProperties,
     hiddenProperties,
     flattenedRawData,
+    sampleRowCount,
   } = useMemo(() => {
     const columnMeta = (
       outlierData?.meta ??
@@ -380,6 +382,9 @@ export default function DBDeltaChart({
       ...actualInlierData.map(flattenData),
     ];
 
+    // Row counts for the sample-size annotation in the legend
+    const sampleRowCount = actualOutlierData.length + actualInlierData.length;
+
     return {
       outlierValueOccurences,
       inlierValueOccurences,
@@ -387,6 +392,7 @@ export default function DBDeltaChart({
       visibleProperties,
       hiddenProperties,
       flattenedRawData,
+      sampleRowCount,
     };
   }, [outlierData, inlierData, allSpansData, hasSelection]);
 
@@ -590,6 +596,11 @@ export default function DBDeltaChart({
                 Background
               </Text>
             </Flex>
+            {!isLoading && sampleRowCount > 0 && (
+              <Text size="xs" c="dimmed" fs="italic">
+                (n={sampleRowCount.toLocaleString()} sampled)
+              </Text>
+            )}
           </>
         ) : (
           <>
@@ -606,6 +617,11 @@ export default function DBDeltaChart({
               <Text size="xs" c="dimmed">
                 All spans
               </Text>
+              {!isLoading && sampleRowCount > 0 && (
+                <Text size="xs" c="dimmed" fs="italic">
+                  (n={sampleRowCount.toLocaleString()} sampled)
+                </Text>
+              )}
             </Flex>
             <Text size="xs" c="dimmed" fs="italic">
               {isLoading
