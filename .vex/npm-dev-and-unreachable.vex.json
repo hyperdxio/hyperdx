@@ -4,14 +4,14 @@
   "author": "HyperDX Team",
   "role": "Supplier",
   "timestamp": "2026-02-26T00:00:00Z",
-  "version": 3,
+  "version": 4,
   "statements": [
     {
       "vulnerability": { "name": "CVE-2025-14505" },
       "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "elliptic is a transitive dependency of crypto build tooling only. ECDSA signing via elliptic is not used at application runtime. No patch is available upstream. The vulnerable code path (malformed public key parsing) is not reachable from any production code."
+      "impact_statement": "elliptic is a transitive dependency of Storybook dev tooling only (via crypto-browserify). ECDSA signing via elliptic is not used at application runtime. No patch is available upstream. The vulnerable code path (ECDSA signature generation with truncated k-nonce values) is not reachable from any production code."
     },
     {
       "vulnerability": { "name": "GHSA-34x7-hfp2-rc4v" },
@@ -39,7 +39,7 @@
       "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "tar is a build-only dependency pulled in transitively by cacache and node-gyp during install. It is not present in the production Docker image. The race condition via Unicode ligature path collision requires extracting attacker-controlled archives, which never occurs in this deployment."
+      "impact_statement": "tar is a build-only dependency pulled in transitively by cacache and node-gyp during install. It is not present in the production Docker image. The race condition via Unicode Sharp-S (ess-zett) path collision requires extracting attacker-controlled archives, which never occurs in this deployment."
     },
     {
       "vulnerability": { "name": "GHSA-f8q6-p94x-37v3" },
@@ -81,14 +81,14 @@
       "products": [{ "@id": "pkg:npm/%40hyperdx/app" }],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
-      "impact_statement": "webpack's AutoPublicPathRuntimeModule DOM Clobbering gadget requires the attacker to inject content that overwrites document.currentScript or document.baseURI. webpack is present only as a storybook dev dependency and is not used in the production application bundle."
+      "impact_statement": "webpack's AutoPublicPathRuntimeModule DOM Clobbering gadget requires the attacker to inject content that overwrites document.currentScript. The vulnerable webpack npm package is a storybook dev dependency. Next.js uses its own bundled webpack copy for production builds. The resolution forces webpack to >=5.105.0 which includes the fix for this vulnerability."
     },
     {
       "vulnerability": { "name": "CVE-2026-2739" },
       "products": [{ "@id": "pkg:npm/%40hyperdx/api" }, { "@id": "pkg:npm/%40hyperdx/app" }],
       "status": "not_affected",
       "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
-      "impact_statement": "bn.js (GHSA-378v-28hj-76wf) is used internally by elliptic for cryptographic operations. All inputs to bn.js in this context are developer-controlled cryptographic parameters, not user-supplied data. The infinite loop vulnerability requires adversary-controlled large integer inputs that are not possible in this deployment."
+      "impact_statement": "bn.js is used internally by crypto-browserify packages (elliptic, browserify-sign, etc.) which are Storybook dev dependencies only. The infinite loop vulnerability is triggered by maskn(0) corrupting internal BN state. These crypto-browserify packages are not executed at application runtime and no user-supplied data reaches bn.js in this deployment."
     },
     {
       "vulnerability": { "name": "GHSA-9wv6-86v2-598j" },
