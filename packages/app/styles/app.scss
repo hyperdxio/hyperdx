@@ -293,6 +293,13 @@ a,
   color: #2e224788;
 }
 
+// Heatmap selection uses the "error" color (red) to match the "Selection"
+// legend and bar color in the delta comparison charts below.
+.heatmap-selection-container .u-select {
+  border: 1px solid var(--color-chart-error, #ff6b6b);
+  background: color-mix(in srgb, var(--color-chart-error, #ff6b6b) 10%, transparent) !important;
+}
+
 .hdx-markdown {
   h1,
   h2,
