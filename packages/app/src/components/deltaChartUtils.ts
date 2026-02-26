@@ -469,12 +469,11 @@ export function flattenedKeyToFilterKey(
     if (baseType.startsWith('Map(')) {
       if (key.startsWith(col.name + '.')) {
         const mapKey = key.slice(col.name.length + 1);
-        // Backtick-quote the entire Map key as a single identifier.
-        // Keys like "process.runtime.name" are a single Map key with dots —
-        // NOT a nested path. Quoting each segment separately would produce
-        // ResourceAttributes.`process`.`runtime`.`name` which ClickHouse
-        // interprets as nested tuple access and fails.
-        return `toString(${col.name}.\`${mapKey}\`)`;
+        // Use the same format as the sidebar facets: toString(ColName.key)
+        // without backtick quoting. The sidebar wraps facet keys from
+        // useGetKeyValues with toString() (DBSearchPageFilters.tsx:1038),
+        // and the filter key must match exactly for checkboxes to appear.
+        return `toString(${col.name}.${mapKey})`;
       }
     } else if (baseType.startsWith('Array(')) {
       const innerType = stripTypeWrappers(baseType.slice('Array('.length, -1));
