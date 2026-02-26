@@ -335,6 +335,86 @@ export function computeDistributionScore(
   return maxPct - uniformExpected;
 }
 
+/**
+ * Shannon entropy-based distribution score for sorting properties.
+ *
+ * Returns a score in [0, 1] where:
+ *   - 1 = maximally useful for filtering (low entropy, one dominant value among several)
+ *   - 0 = not useful (single value, empty, or perfectly uniform)
+ *
+ * Formula: 1 - H(p) / log2(N), where H(p) = -Σ(p_i * log2(p_i)) and N = number of values.
+ * This is the normalized redundancy (1 - normalized entropy).
+ *
+ * Unlike computeDistributionScore, entropy naturally handles multi-modal distributions
+ * and power-law distributions without bias toward the single largest value.
+ */
+export function computeEntropyScore(
+  valuePercentages: Map<string, number>,
+): number {
+  const nValues = valuePercentages.size;
+  if (nValues <= 1) return 0;
+
+  let totalPct = 0;
+  valuePercentages.forEach(pct => {
+    totalPct += pct;
+  });
+  if (totalPct === 0) return 0;
+
+  let entropy = 0;
+  valuePercentages.forEach(pct => {
+    const p = pct / totalPct;
+    if (p > 0) {
+      entropy -= p * Math.log2(p);
+    }
+  });
+
+  const maxEntropy = Math.log2(nValues);
+  if (maxEntropy === 0) return 0;
+
+  // Normalized redundancy: 1 when fully skewed, 0 when perfectly uniform
+  return 1 - entropy / maxEntropy;
+}
+
+// Well-known OpenTelemetry attribute suffixes that are almost always useful
+// for debugging and filtering. These get a score boost to appear first.
+const BOOSTED_ATTRIBUTE_SUFFIXES = [
+  'service.name',
+  'http.method',
+  'http.request.method',
+  'http.status_code',
+  'http.response.status_code',
+  'error',
+  'error.type',
+  'deployment.environment',
+  'deployment.environment.name',
+  'rpc.method',
+  'rpc.service',
+  'db.system',
+  'db.operation',
+  'messaging.system',
+  'messaging.operation',
+];
+
+/**
+ * Returns a semantic priority boost for well-known OTel attributes.
+ * Returns a value in [0, 1] that is added to the entropy score,
+ * ensuring these attributes sort to the top even if their distribution
+ * is uniform (which is still useful — e.g., http.method with 50/50 GET/POST).
+ */
+export function semanticBoost(key: string): number {
+  const lowerKey = key.toLowerCase();
+  for (const suffix of BOOSTED_ATTRIBUTE_SUFFIXES) {
+    if (lowerKey.endsWith(suffix)) return 1;
+  }
+  return 0;
+}
+
+// Scoring strategy for "all spans" distribution mode.
+// 'entropy' uses Shannon entropy + semantic boosting (better for multi-modal distributions).
+// 'skewness' uses the original max(pct) - mean(pcts) formula.
+export type ScoringStrategy = 'entropy' | 'skewness';
+export const DISTRIBUTION_SCORING: ScoringStrategy = 'entropy';
+
 export type AddFilterFn = (
   property: string,
   value: string,

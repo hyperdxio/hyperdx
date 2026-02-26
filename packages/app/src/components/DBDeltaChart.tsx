@@ -31,8 +31,10 @@ import {
 import type { AddFilterFn, HighlightPoint } from './deltaChartUtils';
 import {
   ALL_SPANS_COLOR,
+  DISTRIBUTION_SCORING,
   SAMPLE_SIZE,
   computeDistributionScore,
+  computeEntropyScore,
   computeYValue,
   flattenData,
   flattenedKeyToSqlExpression,
@@ -40,6 +42,7 @@ import {
   isDenylisted,
   isHighCardinality,
   mergeValueStatisticsMaps,
+  semanticBoost,
 } from './deltaChartUtils';
 
 // Re-export types so callers importing from DBDeltaChart don't need to change.
@@ -344,8 +347,12 @@ export default function DBDeltaChart({
           });
           sortScore = maxValueDelta;
         } else {
-          // Distribution mode: sort by deviation from uniform distribution.
-          sortScore = computeDistributionScore(outlierCount);
+          // Distribution mode: sort by how useful the field is for filtering.
+          const baseScore =
+            DISTRIBUTION_SCORING === 'entropy'
+              ? computeEntropyScore(outlierCount)
+              : computeDistributionScore(outlierCount);
+          sortScore = baseScore + semanticBoost(key);
         }
 
         return [key, sortScore] as const;

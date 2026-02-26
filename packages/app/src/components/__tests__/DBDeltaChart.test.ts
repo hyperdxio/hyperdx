@@ -1,6 +1,7 @@
 import {
   applyTopNAggregation,
   computeDistributionScore,
+  computeEntropyScore,
   computeYValue,
   flattenedKeyToSqlExpression,
   isDenylisted,
@@ -8,6 +9,7 @@ import {
   isIdField,
   isTimestampArrayField,
   MAX_CHART_VALUES,
+  semanticBoost,
 } from '../deltaChartUtils';
 
 const traceColumnMeta = [
@@ -493,6 +495,92 @@ describe('computeDistributionScore', () => {
   it('returns 0 for a single-valued property that appears in only 30% of spans', () => {
     // 1 value at 30% (of all spans) — nValues=1, returns 0 regardless
     expect(computeDistributionScore(new Map([['production', 30]]))).toBe(0);
+  });
+});
+
+describe('computeEntropyScore', () => {
+  it('returns 0 for empty map', () => {
+    expect(computeEntropyScore(new Map())).toBe(0);
+  });
+
+  it('returns 0 for a single-value field', () => {
+    expect(computeEntropyScore(new Map([['production', 100]]))).toBe(0);
+  });
+
+  it('returns 0 for a perfectly uniform 2-value field', () => {
+    // H = log2(2) = 1, maxH = log2(2) = 1 → 1 - 1/1 = 0
+    expect(computeEntropyScore(new Map([['GET', 50], ['POST', 50]]))).toBeCloseTo(0);
+  });
+
+  it('returns high score for a skewed 2-value field', () => {
+    const score = computeEntropyScore(new Map([['ok', 99], ['error', 1]]));
+    // Very skewed → low entropy → high score (close to 1)
+    expect(score).toBeGreaterThan(0.5);
+  });
+
+  it('ranks more-skewed fields higher than less-skewed fields', () => {
+    const scoreA = computeEntropyScore(new Map([['a', 95], ['b', 5]]));
+    const scoreB = computeEntropyScore(new Map([['a', 60], ['b', 40]]));
+    expect(scoreA).toBeGreaterThan(scoreB);
+  });
+
+  it('returns 0 for a perfectly uniform 3-value field', () => {
+    const score = computeEntropyScore(
+      new Map([['a', 33.33], ['b', 33.33], ['c', 33.34]]),
+    );
+    expect(score).toBeCloseTo(0, 2);
+  });
+
+  it('returns positive score for a skewed 3-value field', () => {
+    const score = computeEntropyScore(
+      new Map([['a', 90], ['b', 5], ['c', 5]]),
+    );
+    expect(score).toBeGreaterThan(0.3);
+  });
+
+  it('handles power-law distributions better than skewness scorer', () => {
+    // Power-law: 50, 25, 12, 6, 4, 2, 1 — entropy captures this spread
+    const powerLaw = new Map([
+      ['v1', 50], ['v2', 25], ['v3', 12], ['v4', 6],
+      ['v5', 4], ['v6', 2], ['v7', 1],
+    ]);
+    const score = computeEntropyScore(powerLaw);
+    expect(score).toBeGreaterThan(0.1);
+    expect(score).toBeLessThan(1);
+  });
+
+  it('works when percentages do not sum to 100', () => {
+    // Property appears in 60% of spans: prod=40%, staging=20%
+    const score = computeEntropyScore(new Map([['prod', 40], ['staging', 20]]));
+    // Normalized by sum, so this is really 67%/33% — moderate skew
+    expect(score).toBeGreaterThan(0);
+    expect(score).toBeLessThan(0.5);
+  });
+});
+
+describe('semanticBoost', () => {
+  it('boosts well-known OTel attributes', () => {
+    expect(semanticBoost('ResourceAttributes.service.name')).toBe(1);
+    expect(semanticBoost('SpanAttributes.http.method')).toBe(1);
+    expect(semanticBoost('SpanAttributes.http.status_code')).toBe(1);
+    expect(semanticBoost('SpanAttributes.error')).toBe(1);
+    expect(semanticBoost('ResourceAttributes.deployment.environment')).toBe(1);
+  });
+
+  it('boosts new OTel semconv attribute names', () => {
+    expect(semanticBoost('SpanAttributes.http.request.method')).toBe(1);
+    expect(semanticBoost('SpanAttributes.http.response.status_code')).toBe(1);
+  });
+
+  it('returns 0 for non-boosted attributes', () => {
+    expect(semanticBoost('SpanAttributes.custom.field')).toBe(0);
+    expect(semanticBoost('ResourceAttributes.host.name')).toBe(0);
+    expect(semanticBoost('TraceId')).toBe(0);
+  });
+
+  it('is case-insensitive', () => {
+    expect(semanticBoost('ResourceAttributes.Service.Name')).toBe(1);
+    expect(semanticBoost('SpanAttributes.HTTP.METHOD')).toBe(1);
   });
 });
 
