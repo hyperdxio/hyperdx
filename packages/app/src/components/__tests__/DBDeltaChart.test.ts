@@ -8,7 +8,7 @@ import {
   isIdField,
   isTimestampArrayField,
   MAX_CHART_VALUES,
-} from '../DBDeltaChart';
+} from '../deltaChartUtils';
 
 const traceColumnMeta = [
   { name: 'Timestamp', type: 'DateTime64(9)' },
@@ -95,6 +95,18 @@ describe('flattenedKeyToSqlExpression', () => {
     expect(flattenedKeyToSqlExpression('ResourceAttributes.service.name', [])).toBe(
       'ResourceAttributes.service.name',
     );
+  });
+
+  it('escapes single quotes in Map column keys to prevent SQL injection', () => {
+    expect(
+      flattenedKeyToSqlExpression("ResourceAttributes.it's.key", traceColumnMeta),
+    ).toBe("ResourceAttributes['it''s.key']");
+  });
+
+  it('escapes single quotes in Array(Map) column keys', () => {
+    expect(
+      flattenedKeyToSqlExpression("Events.Attributes[0].it's.key", traceColumnMeta),
+    ).toBe("Events.Attributes[1]['it''s.key']");
   });
 });
 

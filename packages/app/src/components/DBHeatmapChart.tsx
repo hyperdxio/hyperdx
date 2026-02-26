@@ -711,7 +711,9 @@ function Heatmap({
     if (uplotRef.current) {
       try {
         uplotRef.current.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
-      } catch (_) {}
+      } catch (err) {
+        console.warn('clearSelectionAndRect: failed to reset uPlot selection:', err);
+      }
     }
     onClearSelection?.();
   }, [onClearSelection]);
@@ -1005,7 +1007,7 @@ function Heatmap({
                     left: highlightedPoint.xCoord + 10,
                   }),
               backdropFilter: 'blur(8px)',
-              backgroundColor: 'rgba(#1A1D23 0.75)',
+              backgroundColor: 'rgba(26, 29, 35, 0.75)',
               border: '1px solid #5F6776',
               borderRadius: 2,
               pointerEvents: 'none',
@@ -1038,7 +1040,7 @@ function Heatmap({
             display: 'flex',
             gap: 4,
             backdropFilter: 'blur(4px)',
-            backgroundColor: 'rgba(#1A1D23 0.4)',
+            backgroundColor: 'rgba(26, 29, 35, 0.4)',
             border: '1px solid #5F6776',
             borderRadius: 2,
             position: 'absolute',

@@ -72,20 +72,19 @@ export function DBSearchHeatmapChart({
 
   // When the user changes the timeframe, reset any existing selection so the
   // delta chart returns to distribution-only mode (no comparison).
-  const dateRangeRef = useRef(chartConfig.dateRange);
+  // Use primitive timestamp values as deps (not the Date array reference) so
+  // the effect only runs when the actual date values change, not on every render.
+  const dateRangeStart = chartConfig.dateRange[0].getTime();
+  const dateRangeEnd = chartConfig.dateRange[1].getTime();
+  const isFirstDateRangeRender = useRef(true);
   useEffect(() => {
-    const prev = dateRangeRef.current;
-    const next = chartConfig.dateRange;
-    if (
-      prev[0].getTime() !== next[0].getTime() ||
-      prev[1].getTime() !== next[1].getTime()
-    ) {
-      dateRangeRef.current = next;
-      setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
-    } else {
-      dateRangeRef.current = next;
+    if (isFirstDateRangeRender.current) {
+      isFirstDateRangeRender.current = false;
+      return;
     }
-  }, [chartConfig.dateRange, setFields]);
+    setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRangeStart, dateRangeEnd]);
 
   return (
     <Flex
