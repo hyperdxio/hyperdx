@@ -1,3 +1,5 @@
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+
 import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { expect, test } from '../utils/base-test';
@@ -296,14 +298,16 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await expect(dashboardPage.addNewTileButton).toBeVisible();
       await dashboardPage.addTile();
 
-      // Select source and create chart with specific metric
       await expect(dashboardPage.chartEditor.source).toBeVisible();
 
       await dashboardPage.chartEditor.waitForDataToLoad();
-      await dashboardPage.chartEditor.selectSource('Demo Metrics');
+
+      await dashboardPage.chartEditor.setChartType(DisplayType.Number);
+
+      await dashboardPage.chartEditor.selectSource(DEFAULT_METRICS_SOURCE_NAME);
       await dashboardPage.chartEditor.selectMetric(
-        'k8s.container.cpu_limit',
-        'k8s.container.cpu_limit:::::::gauge',
+        'k8s.pod.cpu.utilization',
+        'k8s.pod.cpu.utilization:::::::gauge',
       );
 
       await expect(dashboardPage.chartEditor.alertButton).toHaveText(

@@ -2,6 +2,7 @@
  * ChartEditorComponent - Reusable component for chart/tile editor
  * Used for creating and configuring dashboard tiles and chart explorer
  */
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Locator, Page } from '@playwright/test';
 
 import { getSqlEditor } from '../utils/locators';
@@ -14,6 +15,7 @@ export class ChartEditorComponent {
   readonly webhookAlertModal: WebhookAlertModalComponent;
 
   private readonly chartNameInput: Locator;
+  private readonly chartTypeInput: Locator;
   private readonly sourceSelector: Locator;
   private readonly metricSelector: Locator;
   private readonly addOrRemoveAlertButton: Locator;
@@ -24,6 +26,7 @@ export class ChartEditorComponent {
   constructor(page: Page) {
     this.page = page;
     this.chartNameInput = page.getByTestId('chart-name-input');
+    this.chartTypeInput = page.getByTestId('chart-type-input');
     this.sourceSelector = page.getByTestId('source-selector');
     this.metricSelector = page.getByTestId('metric-name-selector');
     this.addOrRemoveAlertButton = page.getByTestId('alert-button');
@@ -39,6 +42,13 @@ export class ChartEditorComponent {
    */
   async setChartName(name: string) {
     await this.chartNameInput.fill(name);
+  }
+
+  /**
+   * Set chart type
+   */
+  async setChartType(name: DisplayType) {
+    await this.chartTypeInput.getByRole('tab', { name }).click();
   }
 
   /**

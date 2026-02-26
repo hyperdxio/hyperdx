@@ -1022,7 +1022,13 @@ export default function EditTimeChartForm({
         control={control}
         name="displayType"
         render={({ field: { onChange, value } }) => (
-          <Tabs value={value} onChange={onChange} radius={'xs'} mb="md">
+          <Tabs
+            value={value}
+            onChange={onChange}
+            radius={'xs'}
+            mb="md"
+            data-testid="chart-type-input"
+          >
             <Tabs.List>
               <Tabs.Tab
                 value={DisplayType.Line}
