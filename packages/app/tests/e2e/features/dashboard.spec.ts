@@ -1,3 +1,6 @@
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+
+import { AlertsPage } from '../page-objects/AlertsPage';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { expect, test } from '../utils/base-test';
 import {
@@ -279,6 +282,113 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     await dashboardPage.unsavedChangesConfirmDiscardButton.click();
     await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
       timeout: 5000,
+    });
+  });
+
+  test('should add and remove alert on Number type chart', async () => {
+    test.setTimeout(60000);
+    const alertsPage = new AlertsPage(dashboardPage.page);
+
+    await test.step('Create new dashboard', async () => {
+      await expect(dashboardPage.createButton).toBeVisible();
+      await dashboardPage.createNewDashboard();
+    });
+
+    await test.step('create a Number type chart with alert', async () => {
+      await expect(dashboardPage.addNewTileButton).toBeVisible();
+      await dashboardPage.addTile();
+
+      await expect(dashboardPage.chartEditor.source).toBeVisible();
+
+      await dashboardPage.chartEditor.waitForDataToLoad();
+
+      await dashboardPage.chartEditor.setChartType(DisplayType.Number);
+
+      await dashboardPage.chartEditor.selectSource(DEFAULT_METRICS_SOURCE_NAME);
+      await dashboardPage.chartEditor.selectMetric(
+        'k8s.pod.cpu.utilization',
+        'k8s.pod.cpu.utilization:::::::gauge',
+      );
+
+      await expect(dashboardPage.chartEditor.alertButton).toHaveText(
+        'Add Alert',
+      );
+      await dashboardPage.chartEditor.clickAddAlert();
+      await dashboardPage.chartEditor.addNewWebhookButton.click();
+
+      await dashboardPage.chartEditor.webhookAlertModal.addWebhook(
+        'Generic',
+        'Test Webhook',
+        'https://example.com/webhook',
+      );
+
+      await dashboardPage.saveTile();
+    });
+
+    await test.step('Verify dashboard tiles and interactions', async () => {
+      const dashboardTiles = dashboardPage.getTiles();
+      await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
+
+      // Hover over first tile to reveal action buttons
+      await dashboardPage.hoverOverTile(0);
+
+      // Verify all action buttons are visible
+      const buttons: Array<'edit' | 'duplicate' | 'delete' | 'alerts'> = [
+        'edit',
+        'duplicate',
+        'delete',
+        'alerts',
+      ];
+      for (const button of buttons) {
+        const buttonLocator = dashboardPage.getTileButton(button);
+        await expect(buttonLocator).toBeVisible();
+      }
+    });
+
+    let dashboardUrl: string;
+    await test.step('Save dashboard URL', async () => {
+      dashboardUrl = dashboardPage.page.url();
+      console.log(`Dashboard URL: ${dashboardUrl}`);
+    });
+
+    await test.step('Navigate to alerts page', async () => {
+      await alertsPage.goto();
+    });
+
+    await test.step('Verify alerts page loads with content', async () => {
+      await expect(alertsPage.pageContainer).toBeVisible();
+
+      // Verify there are alert cards using web-first assertion
+      const alertCards = alertsPage.getAlertCards();
+      await expect(alertCards).toHaveCount(1, { timeout: 10000 });
+    });
+
+    await test.step('Navigate back to dashboard page', async () => {
+      await dashboardPage.page.goto(dashboardUrl);
+    });
+
+    await test.step('edit the tile to remove the alert', async () => {
+      // Hover over first tile to reveal edit button
+      await dashboardPage.editTile(0);
+
+      await expect(dashboardPage.chartEditor.alertButton).toHaveText(
+        'Remove Alert',
+      );
+      await dashboardPage.chartEditor.clickRemoveAlert();
+
+      await dashboardPage.saveTile();
+    });
+
+    await test.step('Navigate to alerts page', async () => {
+      await alertsPage.goto();
+    });
+
+    await test.step('Verify alerts page loads with no alerts', async () => {
+      await expect(alertsPage.pageContainer).toBeVisible();
+
+      // Verify there are alert cards using web-first assertion
+      const alertCards = alertsPage.getAlertCards();
+      await expect(alertCards).toHaveCount(0, { timeout: 10000 });
     });
   });
 

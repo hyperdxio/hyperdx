@@ -282,6 +282,7 @@ export function WebhookForm({
       <Stack mt="sm">
         <Text>{isEditing ? 'Edit Webhook' : 'Create Webhook'}</Text>
         <Radio.Group
+          data-testid="service-type-radio-group"
           label="Service Type"
           required
           value={service}
@@ -295,6 +296,7 @@ export function WebhookForm({
         </Radio.Group>
         <TextInput
           label="Webhook Name"
+          data-testid="webhook-name-input"
           placeholder="Post to #dev-alerts"
           required
           error={form.formState.errors.name?.message}
@@ -303,6 +305,7 @@ export function WebhookForm({
 
         <TextInput
           label="Webhook URL"
+          data-testid="webhook-url-input"
           placeholder={
             service === WebhookService.Slack
               ? 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
@@ -404,6 +407,7 @@ export function WebhookForm({
             <Button
               variant="primary"
               type="submit"
+              data-testid="add-webhook-button"
               loading={saveWebhook.isPending || updateWebhook.isPending}
             >
               {isEditing ? 'Update Webhook' : 'Add Webhook'}

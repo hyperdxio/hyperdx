@@ -2,23 +2,37 @@
  * ChartEditorComponent - Reusable component for chart/tile editor
  * Used for creating and configuring dashboard tiles and chart explorer
  */
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Locator, Page } from '@playwright/test';
 
 import { getSqlEditor } from '../utils/locators';
 
+import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
+
 export class ChartEditorComponent {
   readonly page: Page;
+  readonly addNewWebhookButton: Locator;
+  readonly webhookAlertModal: WebhookAlertModalComponent;
+
   private readonly chartNameInput: Locator;
+  private readonly chartTypeInput: Locator;
   private readonly sourceSelector: Locator;
   private readonly metricSelector: Locator;
+  private readonly addOrRemoveAlertButton: Locator;
+  private readonly webhookSelector: Locator;
   private readonly runQueryButton: Locator;
   private readonly saveButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.chartNameInput = page.getByTestId('chart-name-input');
+    this.chartTypeInput = page.getByTestId('chart-type-input');
     this.sourceSelector = page.getByTestId('source-selector');
     this.metricSelector = page.getByTestId('metric-name-selector');
+    this.addOrRemoveAlertButton = page.getByTestId('alert-button');
+    this.webhookSelector = page.getByTestId('select-webhook');
+    this.addNewWebhookButton = page.getByTestId('add-new-webhook-button');
+    this.webhookAlertModal = new WebhookAlertModalComponent(page);
     this.runQueryButton = page.getByTestId('chart-run-query-button');
     this.saveButton = page.getByTestId('chart-save-button');
   }
@@ -28,6 +42,13 @@ export class ChartEditorComponent {
    */
   async setChartName(name: string) {
     await this.chartNameInput.fill(name);
+  }
+
+  /**
+   * Set chart type
+   */
+  async setChartType(name: DisplayType) {
+    await this.chartTypeInput.getByRole('tab', { name }).click();
   }
 
   /**
@@ -75,6 +96,36 @@ export class ChartEditorComponent {
     } else {
       // Otherwise just press Enter to select the first match
       await this.page.keyboard.press('Enter');
+    }
+  }
+
+  async clickAddAlert() {
+    await this.addOrRemoveAlertButton.click();
+    this.addNewWebhookButton.waitFor({
+      state: 'visible',
+      timeout: 2000,
+    });
+  }
+
+  async clickRemoveAlert() {
+    await this.addOrRemoveAlertButton.click();
+    this.addNewWebhookButton.waitFor({
+      state: 'hidden',
+      timeout: 2000,
+    });
+  }
+
+  async selectWebhook(webhookName: string) {
+    // Click to open dropdown
+    await this.webhookSelector.click();
+
+    // Type to filter
+    await this.webhookSelector.fill(webhookName);
+
+    // Use getByRole for more reliable selection
+    const sourceOption = this.page.getByRole('option', { name: webhookName });
+    if ((await sourceOption.getAttribute('data-combobox-active')) != 'true') {
+      await sourceOption.click({ timeout: 5000 });
     }
   }
 
@@ -171,6 +222,10 @@ export class ChartEditorComponent {
 
   get metric() {
     return this.metricSelector;
+  }
+
+  get alertButton() {
+    return this.addOrRemoveAlertButton;
   }
 
   get runButton() {

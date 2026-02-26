@@ -253,7 +253,8 @@ const Tile = forwardRef(
           style={{ visibility: hovered ? 'visible' : 'hidden' }}
         >
           {(chart.config.displayType === DisplayType.Line ||
-            chart.config.displayType === DisplayType.StackedBar) && (
+            chart.config.displayType === DisplayType.StackedBar ||
+            chart.config.displayType === DisplayType.Number) && (
             <Indicator
               size={alert?.state === AlertState.OK ? 6 : 8}
               zIndex={1}
