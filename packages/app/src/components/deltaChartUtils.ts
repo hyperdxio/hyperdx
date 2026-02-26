@@ -480,9 +480,13 @@ export function computeYValue(
 // of higher query latency; decrease if ClickHouse scans become too slow.
 export const SAMPLE_SIZE = 1000;
 
-// When a field has more than this many distinct values, the remaining values
-// are collapsed into a single "Other (N)" bucket shown in neutral gray.
+// Maximum number of distinct values to show in a chart before collapsing
+// the rest into an "Other (N)" bucket. The effective limit adapts: when the
+// actual unique count is at most MAX_CHART_VALUES_UPPER, all values are shown
+// without aggregation. This avoids the awkward "Other (1)" or "Other (2)" cases
+// for attributes like http.status_code that naturally have 4-8 values.
 export const MAX_CHART_VALUES = 6;
+export const MAX_CHART_VALUES_UPPER = 8;
 
 // Color for the "All spans" distribution bar (no selection / comparison mode off).
 // Uses Mantine's blue-6 CSS variable so it adapts to light/dark themes.
@@ -491,9 +495,10 @@ export const ALL_SPANS_COLOR = 'var(--mantine-color-blue-6)';
 // Color for the "Other (N)" aggregated bucket — neutral gray.
 export const OTHER_BUCKET_COLOR = 'var(--mantine-color-gray-5)';
 
-// Aggregates chart data beyond MAX_CHART_VALUES into a single "Other (N)" entry.
+// Aggregates chart data beyond the effective limit into a single "Other (N)" entry.
 // Sorts by combined count (outlier + inlier) descending so the most frequent
-// values are kept. Returns data unchanged if already within the limit.
+// values are kept. The effective limit adapts: if the total unique count is at
+// most MAX_CHART_VALUES_UPPER, all values are shown without aggregation.
 export function applyTopNAggregation(
   data: { name: string; outlierCount: number; inlierCount: number }[],
 ): {
@@ -502,7 +507,8 @@ export function applyTopNAggregation(
   inlierCount: number;
   isOther?: boolean;
 }[] {
-  if (data.length <= MAX_CHART_VALUES) return data;
+  // Adaptive: show all values when they fit within the upper bound
+  if (data.length <= MAX_CHART_VALUES_UPPER) return data;
 
   const sorted = [...data].sort(
     (a, b) =>
