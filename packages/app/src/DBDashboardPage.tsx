@@ -899,7 +899,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       : null;
     const currentFilterValues = rawFilterQueries?.length
       ? rawFilterQueries
-      : null;
+      : [];
 
     setDashboard(
       produce(dashboard, draft => {
@@ -932,7 +932,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       produce(dashboard, draft => {
         draft.savedQuery = null;
         draft.savedQueryLanguage = null;
-        draft.savedFilterValues = null;
+        draft.savedFilterValues = [];
       }),
       () => {
         notifications.show({
