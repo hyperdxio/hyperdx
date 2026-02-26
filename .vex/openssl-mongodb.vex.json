@@ -4,7 +4,7 @@
   "author": "HyperDX Team",
   "role": "Supplier",
   "timestamp": "2026-02-17T00:00:00Z",
-  "version": 1,
+  "version": 2,
   "statements": [
     {
       "vulnerability": { "name": "CVE-2021-3711" },
@@ -110,13 +110,6 @@
       "status": "not_affected",
       "justification": "inline_mitigations_already_exist",
       "impact_statement": "MongoDB is deployed in localhost-only mode. OCSP responses from external sources are not processed in this deployment."
-    },
-    {
-      "vulnerability": { "name": "CVE-2025-9230" },
-      "products": [{ "@id": "pkg:oci/clickstack" }],
-      "status": "not_affected",
-      "justification": "inline_mitigations_already_exist",
-      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. This OpenSSL vulnerability is not exploitable in this deployment."
     },
     {
       "vulnerability": { "name": "CVE-2025-15467" },
