@@ -468,18 +468,13 @@ export function flattenedKeyToFilterKey(
 
     if (baseType.startsWith('Map(')) {
       if (key.startsWith(col.name + '.')) {
-        const mapKey = key.slice(col.name.length + 1);
-        // Match the exact format used by mergePath() in utils.ts and the
-        // trace flyout's "Add to Filters" action: backtick-quote each
-        // dot-separated segment independently. This produces:
-        //   toString(ResourceAttributes.`service`.`instance`.`id`)
-        // which is both valid ClickHouse SQL (backticks are identifiers)
-        // and matches the sidebar's facet key format from useGetKeyValues.
-        const quotedSegments = mapKey
-          .split('.')
-          .map(s => (s.startsWith('`') && s.endsWith('`') ? s : `\`${s}\``))
-          .join('.');
-        return `toString(${col.name}.${quotedSegments})`;
+        const mapKey = key.slice(col.name.length + 1).replace(/'/g, "''");
+        // Use bracket notation — the same format used by the search bar
+        // when filtering from trace detail: ResourceAttributes['k8s.pod.name']
+        // This is the only format that reliably works in ClickHouse SQL for
+        // Map columns with dotted keys. toString() and backtick approaches
+        // fail because ClickHouse interprets dots as nested tuple access.
+        return `${col.name}['${mapKey}']`;
       }
     } else if (baseType.startsWith('Array(')) {
       const innerType = stripTypeWrappers(baseType.slice('Array('.length, -1));

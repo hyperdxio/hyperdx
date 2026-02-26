@@ -139,29 +139,37 @@ describe('flattenedKeyToSqlExpression', () => {
 });
 
 describe('flattenedKeyToFilterKey', () => {
-  it('converts Map column keys to toString with backtick-quoted segments (matches mergePath)', () => {
+  it('converts Map column keys to bracket notation (matching search bar format)', () => {
     expect(
       flattenedKeyToFilterKey(
         'ResourceAttributes.service.name',
         traceColumnMeta,
       ),
-    ).toBe('toString(ResourceAttributes.`service`.`name`)');
+    ).toBe("ResourceAttributes['service.name']");
   });
 
-  it('converts SpanAttributes Map keys to toString backtick format', () => {
+  it('converts SpanAttributes Map keys to bracket notation', () => {
     expect(
       flattenedKeyToFilterKey('SpanAttributes.http.method', traceColumnMeta),
-    ).toBe('toString(SpanAttributes.`http`.`method`)');
+    ).toBe("SpanAttributes['http.method']");
   });
 
-  it('handles multi-segment dotted Map keys with per-segment backticks', () => {
-    // Each segment is backtick-quoted independently, matching mergePath()
+  it('handles multi-segment dotted Map keys as single bracket key', () => {
     expect(
       flattenedKeyToFilterKey(
         'ResourceAttributes.service.instance.id',
         traceColumnMeta,
       ),
-    ).toBe('toString(ResourceAttributes.`service`.`instance`.`id`)');
+    ).toBe("ResourceAttributes['service.instance.id']");
+  });
+
+  it('escapes single quotes in Map keys', () => {
+    expect(
+      flattenedKeyToFilterKey(
+        "ResourceAttributes.it's.key",
+        traceColumnMeta,
+      ),
+    ).toBe("ResourceAttributes['it''s.key']");
   });
 
   it('returns simple columns unchanged', () => {
