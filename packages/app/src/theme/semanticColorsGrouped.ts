@@ -10,6 +10,7 @@ export const semanticColorsGrouped = {
     'color-bg-active',
     'color-bg-field',
     'color-bg-field-highlighted',
+    'color-bg-field-addon',
     'color-bg-neutral',
     'color-bg-success',
     'color-bg-danger',

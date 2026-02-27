@@ -39,11 +39,11 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
-import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
-import WhereLanguageControlled from './components/WhereLanguageControlled';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from './components/SearchInput/SearchWhereInput';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { withAppNav } from './layout';
-import SearchInputV2 from './SearchInputV2';
 import { Session, useSessions } from './sessions';
 import SessionSidePanel from './SessionSidePanel';
 import { useSource, useSources } from './source';
@@ -238,7 +238,8 @@ export default function SessionsPage() {
   const { control, setValue, handleSubmit } = useForm({
     values: {
       where: appliedConfig.where,
-      whereLanguage: appliedConfig.whereLanguage,
+      whereLanguage:
+        appliedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
       source: appliedConfig.sessionSource,
     },
   });
@@ -415,6 +416,9 @@ export default function SessionsPage() {
             }
             whereLanguage={whereLanguage || undefined}
             where={where || undefined}
+            onLanguageChange={lang =>
+              setAppliedConfig(prev => ({ ...prev, whereLanguage: lang }))
+            }
           />
         )}
       <Box p="sm">
@@ -433,45 +437,13 @@ export default function SessionsPage() {
                 name="source"
                 allowedSourceKinds={[SourceKind.Session]}
               />
-              <WhereLanguageControlled
-                name="whereLanguage"
+              <SearchWhereInput
+                tableConnection={tcFromSource(traceTrace)}
                 control={control}
-                sqlInput={
-                  <Box style={{ width: '50%', flexGrow: 1 }}>
-                    <SQLInlineEditorControlled
-                      tableConnection={tcFromSource(traceTrace)}
-                      onSubmit={onSubmit}
-                      control={control}
-                      name="where"
-                      placeholder="SQL WHERE clause (ex. column = 'foo')"
-                      onLanguageChange={lang =>
-                        setValue('whereLanguage', lang, {
-                          shouldDirty: true,
-                        })
-                      }
-                      language="sql"
-                      label="WHERE"
-                      enableHotkey
-                      allowMultiline={true}
-                    />
-                  </Box>
-                }
-                luceneInput={
-                  <SearchInputV2
-                    tableConnection={tcFromSource(traceTrace)}
-                    control={control}
-                    onSubmit={onSubmit}
-                    name="where"
-                    onLanguageChange={lang =>
-                      setValue('whereLanguage', lang, {
-                        shouldDirty: true,
-                      })
-                    }
-                    language="lucene"
-                    placeholder="Search your events w/ Lucene ex. column:foo"
-                    enableHotkey
-                  />
-                }
+                name="where"
+                onSubmit={onSubmit}
+                enableHotkey
+                width="50%"
               />
               <TimePicker
                 inputValue={displayedTimeInputValue}
