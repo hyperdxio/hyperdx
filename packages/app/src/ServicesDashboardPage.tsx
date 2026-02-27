@@ -52,17 +52,17 @@ import DBListBarChart from '@/components/DBListBarChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import OnboardingModal from '@/components/OnboardingModal';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import SelectControlled from '@/components/SelectControlled';
 import ServiceDashboardDbQuerySidePanel from '@/components/ServiceDashboardDbQuerySidePanel';
 import ServiceDashboardEndpointSidePanel from '@/components/ServiceDashboardEndpointSidePanel';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
-import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { withAppNav } from '@/layout';
-import SearchInputV2 from '@/SearchInputV2';
 import {
   getExpressions,
   useServiceDashboardExpressions,
@@ -256,7 +256,8 @@ export function EndpointLatencyChart({
                 'from',
               ]),
               where: appliedConfig.where || '',
-              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              whereLanguage:
+                (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 // Separate the aggregations from the conversion to ms so that AggregatingMergeTree MVs can be used
                 {
@@ -312,7 +313,8 @@ export function EndpointLatencyChart({
                 'from',
               ]),
               where: appliedConfig.where || '',
-              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              whereLanguage:
+                (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 {
                   alias: 'data_nanoseconds',
@@ -373,7 +375,8 @@ function HttpTab({
           source: source.id,
           ...pick(source, ['timestampValueExpression', 'connection', 'from']),
           where: appliedConfig.where || '',
-          whereLanguage: appliedConfig.whereLanguage || 'sql',
+          whereLanguage:
+            (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
           displayType: DisplayType.Line,
           select: [
             // Separate the aggregations from the rate calculation so that AggregatingMergeTree MVs can be used
@@ -414,7 +417,8 @@ function HttpTab({
                 tableName: '',
               },
               where: appliedConfig.where || '',
-              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              whereLanguage:
+                (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 {
                   valueExpression: '',
@@ -572,7 +576,8 @@ function HttpTab({
                   'from',
                 ]),
                 where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
+                whereLanguage:
+                  (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
                 displayType: DisplayType.Line,
                 select: [
                   {
@@ -614,7 +619,8 @@ function HttpTab({
                   'from',
                 ]),
                 where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
+                whereLanguage:
+                  (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
                 select: [
                   // Separate the aggregations from the conversion to ms and rate so that AggregatingMergeTree MVs can be used
                   {
@@ -743,7 +749,8 @@ function HttpTab({
                   'from',
                 ]),
                 where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
+                whereLanguage:
+                  (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
                 select: [
                   // Separate the aggregations from the conversion to ms and rate so that AggregatingMergeTree MVs can be used
                   {
@@ -859,7 +866,8 @@ function DatabaseTab({
                 'from',
               ]),
               where: appliedConfig.where || '',
-              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              whereLanguage:
+                (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 // Separate the aggregations from the conversion to ms so that AggregatingMergeTree MVs can be used
                 {
@@ -980,7 +988,8 @@ function DatabaseTab({
                 'from',
               ]),
               where: appliedConfig.where || '',
-              whereLanguage: appliedConfig.whereLanguage || 'sql',
+              whereLanguage:
+                (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
               select: [
                 {
                   alias: 'total_query_count',
@@ -1157,7 +1166,9 @@ function DatabaseTab({
                     'from',
                   ]),
                   where: appliedConfig.where || '',
-                  whereLanguage: appliedConfig.whereLanguage || 'sql',
+                  whereLanguage:
+                    (appliedConfig.whereLanguage ?? getStoredLanguage()) ||
+                    'sql',
                   dateRange: searchedTimeRange,
                   groupBy: 'Statement',
                   selectGroupBy: false,
@@ -1240,7 +1251,9 @@ function DatabaseTab({
                     'from',
                   ]),
                   where: appliedConfig.where || '',
-                  whereLanguage: appliedConfig.whereLanguage || 'sql',
+                  whereLanguage:
+                    (appliedConfig.whereLanguage ?? getStoredLanguage()) ||
+                    'sql',
                   dateRange: searchedTimeRange,
                   groupBy: 'Statement',
                   orderBy: '"Total" DESC',
@@ -1337,7 +1350,8 @@ function ErrorsTab({
                   'from',
                 ]),
                 where: appliedConfig.where || '',
-                whereLanguage: appliedConfig.whereLanguage || 'sql',
+                whereLanguage:
+                  (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
                 displayType: DisplayType.StackedBar,
                 select: [
                   {
@@ -1406,10 +1420,15 @@ function ServicesDashboardPage() {
     };
   }, [appliedConfigParams, sources]);
 
+  // Services dashboard is SQL-first (WHERE filters are applied to metric/SQL queries).
+  // Default to 'sql' here; Search and Dashboard pages default to 'lucene'.
+  const effectiveWhereLanguage =
+    appliedConfigWithoutFilters?.whereLanguage ?? getStoredLanguage() ?? 'sql';
+
   const { control, setValue, handleSubmit } = useForm({
     defaultValues: {
       where: '',
-      whereLanguage: 'sql' as 'sql' | 'lucene',
+      whereLanguage: effectiveWhereLanguage as 'sql' | 'lucene',
       service: appliedConfigWithoutFilters?.service || '',
       source: appliedConfigWithoutFilters?.source ?? '',
     },
@@ -1543,43 +1562,12 @@ function ServicesDashboardPage() {
               name="service"
               dateRange={searchedTimeRange}
             />
-            <WhereLanguageControlled
-              name="whereLanguage"
+            <SearchWhereInput
+              tableConnection={tcFromSource(source)}
               control={control}
-              sqlInput={
-                <SQLInlineEditorControlled
-                  tableConnection={tcFromSource(source)}
-                  onSubmit={onSubmit}
-                  control={control}
-                  name="where"
-                  placeholder="SQL WHERE clause (ex. column = 'foo')"
-                  onLanguageChange={lang =>
-                    setValue('whereLanguage', lang, {
-                      shouldDirty: true,
-                    })
-                  }
-                  language="sql"
-                  label="WHERE"
-                  enableHotkey
-                  allowMultiline={true}
-                />
-              }
-              luceneInput={
-                <SearchInputV2
-                  tableConnection={tcFromSource(source)}
-                  control={control}
-                  name="where"
-                  onLanguageChange={lang =>
-                    setValue('whereLanguage', lang, {
-                      shouldDirty: true,
-                    })
-                  }
-                  language="lucene"
-                  placeholder="Search your events w/ Lucene ex. column:foo"
-                  enableHotkey
-                  onSubmit={onSubmit}
-                />
-              }
+              name="where"
+              onSubmit={onSubmit}
+              enableHotkey
             />
             <TimePicker
               inputValue={displayedTimeInputValue}

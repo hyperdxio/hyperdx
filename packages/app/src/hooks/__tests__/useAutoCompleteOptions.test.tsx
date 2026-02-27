@@ -2,7 +2,7 @@ import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { Field } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderHook } from '@testing-library/react';
 
-import { LuceneLanguageFormatter } from '../../SearchInputV2';
+import { LuceneLanguageFormatter } from '../../components/SearchInput/SearchInputV2';
 import { useAutoCompleteOptions } from '../useAutoCompleteOptions';
 import {
   useJsonColumns,
