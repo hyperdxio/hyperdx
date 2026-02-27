@@ -1,31 +1,41 @@
+import store from 'store2';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Connection } from '@hyperdx/common-utils/dist/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
-import { IS_LOCAL_MODE } from '@/config';
-import { localConnections } from '@/localStore';
+import { HDX_LOCAL_DEFAULT_CONNECTIONS, IS_LOCAL_MODE } from '@/config';
+import { parseJSON } from '@/utils';
 
-// Exported so storage event listeners in other modules can filter by key
-export const LOCAL_STORE_CONNECTIONS_KEY = 'hdx-local-connections';
+export const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
 
-export function getLocalConnections(): Connection[] {
-  return localConnections.getAll();
+function setLocalConnections(newConnections: Connection[]) {
+  // sessionStorage doesn't send a storage event to the open tab, only to
+  // other tabs. Dispatch one manually for same-tab listeners.
+  const storageEvent = new StorageEvent('storage', {
+    key: LOCAL_STORE_CONNECTIONS_KEY,
+    oldValue: store.session.get(LOCAL_STORE_CONNECTIONS_KEY),
+    newValue: JSON.stringify(newConnections),
+    storageArea: window.sessionStorage,
+    url: window.location.href,
+  });
+  store.session.set(LOCAL_STORE_CONNECTIONS_KEY, newConnections);
+  window.dispatchEvent(storageEvent);
 }
 
-/**
- * localStorage doesn't fire storage events to the same tab, so we dispatch
- * manually so that same-tab listeners (useMetadata, DBSearchPage) are notified.
- */
-function dispatchConnectionsChangedEvent(newConnections: Connection[]): void {
-  window.dispatchEvent(
-    new StorageEvent('storage', {
-      key: LOCAL_STORE_CONNECTIONS_KEY,
-      newValue: JSON.stringify(newConnections),
-      storageArea: window.localStorage,
-      url: window.location.href,
-    }),
-  );
+export function getLocalConnections(): Connection[] {
+  if (store.session.has(LOCAL_STORE_CONNECTIONS_KEY)) {
+    return store.session.get(LOCAL_STORE_CONNECTIONS_KEY) ?? [];
+  }
+  try {
+    const defaultConnections = parseJSON(HDX_LOCAL_DEFAULT_CONNECTIONS ?? '');
+    if (defaultConnections != null) {
+      return defaultConnections;
+    }
+  } catch (e) {
+    console.error('Error fetching default connections', e);
+  }
+  return [];
 }
 
 export function useConnections() {
@@ -33,7 +43,7 @@ export function useConnections() {
     queryKey: ['connections'],
     queryFn: () => {
       if (IS_LOCAL_MODE) {
-        return localConnections.getAll();
+        return getLocalConnections();
       }
       return hdxServer('connections').json();
     },
@@ -62,12 +72,9 @@ export function useCreateConnection() {
           );
         }
 
-        const id = 'local';
-        const newConnections: Connection[] = [{ ...connection, id }];
-        // Single-connection semantics: replace the whole collection
-        localConnections.set(newConnections);
-        dispatchConnectionsChangedEvent(newConnections);
-        return { id };
+        const createdConnection = { id: 'local' };
+        setLocalConnections([{ ...connection, ...createdConnection }]);
+        return createdConnection;
       }
 
       return hdxServer('connections', {
@@ -77,7 +84,6 @@ export function useCreateConnection() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connections'] });
-      queryClient.invalidateQueries({ queryKey: ['sources'] });
     },
   });
 }
@@ -94,9 +100,7 @@ export function useUpdateConnection() {
       id: string;
     }) => {
       if (IS_LOCAL_MODE) {
-        const newConnections: Connection[] = [{ ...connection, id: 'local' }];
-        localConnections.set(newConnections);
-        dispatchConnectionsChangedEvent(newConnections);
+        setLocalConnections([{ ...connection, id: 'local' }]);
         return;
       }
 
@@ -117,8 +121,8 @@ export function useDeleteConnection() {
   return useMutation({
     mutationFn: async ({ id }: { id: string }) => {
       if (IS_LOCAL_MODE) {
-        localConnections.delete(id);
-        dispatchConnectionsChangedEvent(localConnections.getAll());
+        const connections = getLocalConnections();
+        setLocalConnections(connections.filter(c => c.id !== id));
         return;
       }
 

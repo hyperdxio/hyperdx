@@ -9,10 +9,7 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  hashCode,
-  splitAndTrimWithBracket,
-} from '@hyperdx/common-utils/dist/core/utils';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   MetricsDataType,
   SourceKind,
@@ -24,8 +21,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { hdxServer } from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
 import { localSources } from '@/localStore';
-
-import { getLocalConnections } from './connection';
 
 // Columns for the sessions table as of OTEL Collector v0.129.1
 export const SESSION_TABLE_EXPRESSIONS = {

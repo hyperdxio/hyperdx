@@ -1391,18 +1391,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <IconRefresh size={18} />
           </ActionIcon>
         </Tooltip>
-        {!IS_LOCAL_MODE && (
-          <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-            <ActionIcon
-              variant="secondary"
-              onClick={() => setShowFiltersModal(true)}
-              data-testid="edit-filters-button"
-              size="input-sm"
-            >
-              <IconFilterEdit size={18} />
-            </ActionIcon>
-          </Tooltip>
-        )}
+        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+          <ActionIcon
+            variant="secondary"
+            onClick={() => setShowFiltersModal(true)}
+            data-testid="edit-filters-button"
+            size="input-sm"
+          >
+            <IconFilterEdit size={18} />
+          </ActionIcon>
+        </Tooltip>
         <Button
           data-testid="search-submit-button"
           variant="primary"

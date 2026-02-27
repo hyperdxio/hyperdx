@@ -1,15 +1,8 @@
 import store from 'store2';
 import { hashCode } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  Connection,
-  SavedSearch,
-  TSource,
-} from '@hyperdx/common-utils/dist/types';
+import { SavedSearch, TSource } from '@hyperdx/common-utils/dist/types';
 
-import {
-  HDX_LOCAL_DEFAULT_CONNECTIONS,
-  HDX_LOCAL_DEFAULT_SOURCES,
-} from './config';
+import { HDX_LOCAL_DEFAULT_SOURCES } from './config';
 import { parseJSON } from './utils';
 
 type EntityWithId = { id: string };
@@ -33,10 +26,9 @@ export function createEntityStore<T extends EntityWithId>(
     getAll,
 
     create(item: Omit<T, 'id'>): T {
-      // Use Math.abs to avoid negative numbers producing double-dash IDs like "local--123"
       const newItem = {
         ...item,
-        id: `local-${Math.abs(hashCode(Math.random().toString()))}`,
+        id: Math.abs(hashCode(Math.random().toString())).toString(16),
       } as T;
       store.transact(key, (prev: T[]) => [...(prev ?? []), newItem], []);
       return newItem;
@@ -78,23 +70,6 @@ export function createEntityStore<T extends EntityWithId>(
     },
   };
 }
-
-/**
- * Connections store with env-var default fallback.
- * Key changed from sessionStorage "connections" → localStorage "hdx-local-connections".
- */
-export const localConnections = createEntityStore<Connection>(
-  'hdx-local-connections',
-  () => {
-    try {
-      const defaults = parseJSON(HDX_LOCAL_DEFAULT_CONNECTIONS ?? '');
-      if (defaults != null) return defaults;
-    } catch (e) {
-      console.error('Error loading default connections', e);
-    }
-    return [];
-  },
-);
 
 /**
  * Sources store with env-var default fallback.
