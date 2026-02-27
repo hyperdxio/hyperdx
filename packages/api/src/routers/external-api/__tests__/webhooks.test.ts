@@ -154,6 +154,7 @@ describe('External API v2 Webhooks', () => {
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
       });
+      expect(response.body.data[0]).not.toHaveProperty('headers');
     });
 
     it('should return multiple webhooks of different service types', async () => {
