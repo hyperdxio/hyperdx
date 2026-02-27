@@ -85,7 +85,7 @@ export function PropertyComparisonChart({
   );
 
   return (
-    <div style={{ width: '100%', height: 120 }}>
+    <div style={{ width: '100%', height: CHART_HEIGHT }}>
       <Text size="xs" ta="center" title={name}>
         {truncateMiddle(name, 32)}
       </Text>
