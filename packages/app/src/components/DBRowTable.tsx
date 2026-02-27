@@ -99,7 +99,6 @@ import {
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import TableHeader from './DBTable/TableHeader';
-import { RowSidePanelContext } from './DBRowSidePanel';
 import {
   highlightText,
   TableSearchInput,
@@ -107,6 +106,7 @@ import {
 } from './DBTable/TableSearchInput';
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
+import { RowSidePanelContext } from './DBRowSidePanel';
 import {
   createExpandButtonColumn,
   ExpandedLogRow,
@@ -898,12 +898,14 @@ export const RawLogTable = memo(
                             header={header}
                             isLast={isLast}
                             onRemoveColumn={
+                              onRemoveColumn &&
                               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                              onRemoveColumn && (header.column.columnDef.meta as any)?.column
+                              (header.column.columnDef.meta as any)?.column
                                 ? () => {
                                     onRemoveColumn(
                                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                      (header.column.columnDef.meta as any)?.column,
+                                      (header.column.columnDef.meta as any)
+                                        ?.column,
                                     );
                                   }
                                 : undefined
@@ -1678,9 +1680,7 @@ function DBSqlRowTableComponent({
         sortOrder={orderByArray}
         getRowWhere={getRowWhere}
         variant={variant}
-        onRemoveColumn={
-          toggleColumn ? onRemoveColumnFromTable : undefined
-        }
+        onRemoveColumn={toggleColumn ? onRemoveColumnFromTable : undefined}
       />
     </>
   );
