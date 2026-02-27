@@ -1,5 +1,22 @@
 # @hyperdx/api
 
+## 2.20.0
+
+### Minor Changes
+
+- 3e8cc729: feat: add alerts to number chart
+
+### Patch Changes
+
+- d760d2db: chore: Run integration tests on different ports
+- fedd586b: feat: Remove potentially-sensitive fields from external webhooks API
+- 54744093: fix: AI Notebook CH connections need to send pw
+- 34c9afeb: feat: Add list webhooks API
+- Updated dependencies [cd2b7a76]
+- Updated dependencies [d760d2db]
+- Updated dependencies [34c9afeb]
+  - @hyperdx/common-utils@0.15.0
+
 ## 2.19.0
 
 ### Minor Changes
