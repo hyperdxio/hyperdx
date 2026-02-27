@@ -50,6 +50,8 @@
     textarea {
       border-radius: 0 var(--mantine-radius-default)
         var(--mantine-radius-default) 0;
+      /* Prevent scrollbar when placeholder text wraps in narrow containers (maxRows=1 when unfocused) */
+      overflow: hidden;
     }
   }
 
