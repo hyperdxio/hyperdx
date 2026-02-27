@@ -252,6 +252,7 @@ export function EndpointLatencyChart({
               source: source.id,
               ...pick(source, [
                 'timestampValueExpression',
+                'implicitColumnExpression',
                 'connection',
                 'from',
               ]),
@@ -309,6 +310,7 @@ export function EndpointLatencyChart({
               source: source.id,
               ...pick(source, [
                 'timestampValueExpression',
+                'implicitColumnExpression',
                 'connection',
                 'from',
               ]),
@@ -373,7 +375,12 @@ function HttpTab({
       if (reqChartType === 'overall') {
         return {
           source: source.id,
-          ...pick(source, ['timestampValueExpression', 'connection', 'from']),
+          ...pick(source, [
+            'timestampValueExpression',
+            'implicitColumnExpression',
+            'connection',
+            'from',
+          ]),
           where: appliedConfig.where || '',
           whereLanguage:
             (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
@@ -404,6 +411,7 @@ function HttpTab({
       }
       return {
         timestampValueExpression: 'series_time_bucket',
+        implicitColumnExpression: source.implicitColumnExpression,
         connection: source.connection,
         source: source.id,
         with: [
@@ -411,6 +419,7 @@ function HttpTab({
             name: 'error_series',
             chartConfig: {
               timestampValueExpression: source?.timestampValueExpression || '',
+              implicitColumnExpression: source?.implicitColumnExpression || '',
               connection: source?.connection ?? '',
               from: source?.from ?? {
                 databaseName: '',
@@ -536,7 +545,10 @@ function HttpTab({
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%" overflow="hidden">
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 350 }}>
+        <ChartBox
+          style={{ height: 350 }}
+          data-testid="services-request-error-rate-chart"
+        >
           {source && requestErrorRateConfig && (
             <DBTimeChart
               title="Request Error Rate"
@@ -563,7 +575,10 @@ function HttpTab({
         </ChartBox>
       </Grid.Col>
       <Grid.Col span={6}>
-        <ChartBox style={{ height: 350 }}>
+        <ChartBox
+          style={{ height: 350 }}
+          data-testid="services-request-throughput-chart"
+        >
           {source && expressions && (
             <DBTimeChart
               title="Request Throughput"
@@ -572,6 +587,7 @@ function HttpTab({
                 source: source.id,
                 ...pick(source, [
                   'timestampValueExpression',
+                  'implicitColumnExpression',
                   'connection',
                   'from',
                 ]),
@@ -615,6 +631,7 @@ function HttpTab({
                 source: source.id,
                 ...pick(source, [
                   'timestampValueExpression',
+                  'implicitColumnExpression',
                   'connection',
                   'from',
                 ]),
@@ -706,7 +723,10 @@ function HttpTab({
         )}
       </Grid.Col>
       <Grid.Col span={12}>
-        <ChartBox style={{ height: 350 }}>
+        <ChartBox
+          style={{ height: 350 }}
+          data-testid="services-top-endpoints-table"
+        >
           {source && expressions && (
             <DBTableChart
               title={
@@ -745,6 +765,7 @@ function HttpTab({
                 source: source.id,
                 ...pick(source, [
                   'timestampValueExpression',
+                  'implicitColumnExpression',
                   'connection',
                   'from',
                 ]),
@@ -862,6 +883,7 @@ function DatabaseTab({
             chartConfig: {
               ...pick(source, [
                 'timestampValueExpression',
+                'implicitColumnExpression',
                 'connection',
                 'from',
               ]),
@@ -984,6 +1006,7 @@ function DatabaseTab({
             chartConfig: {
               ...pick(source, [
                 'timestampValueExpression',
+                'implicitColumnExpression',
                 'connection',
                 'from',
               ]),
@@ -1162,6 +1185,7 @@ function DatabaseTab({
                   source: source.id,
                   ...pick(source, [
                     'timestampValueExpression',
+                    'implicitColumnExpression',
                     'connection',
                     'from',
                   ]),
@@ -1247,6 +1271,7 @@ function DatabaseTab({
                   source: source.id,
                   ...pick(source, [
                     'timestampValueExpression',
+                    'implicitColumnExpression',
                     'connection',
                     'from',
                   ]),
@@ -1346,6 +1371,7 @@ function ErrorsTab({
                 source: source.id,
                 ...pick(source, [
                   'timestampValueExpression',
+                  'implicitColumnExpression',
                   'connection',
                   'from',
                 ]),
@@ -1568,6 +1594,8 @@ function ServicesDashboardPage() {
               name="where"
               onSubmit={onSubmit}
               enableHotkey
+              data-testid="services-search-input"
+              minWidth="200px"
             />
             <TimePicker
               inputValue={displayedTimeInputValue}
