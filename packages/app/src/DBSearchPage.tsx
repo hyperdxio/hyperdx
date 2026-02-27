@@ -1900,6 +1900,7 @@ function DBSearchPage() {
                   }}
                   isReady={isReady}
                   source={searchedSource}
+                  onAddFilter={searchFilters.setFilterValue}
                 />
               )}
               {analysisMode === 'results' && (

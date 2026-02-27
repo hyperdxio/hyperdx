@@ -1,290 +1,78 @@
-import { memo, useEffect, useMemo, useState } from 'react';
-import { withErrorBoundary } from 'react-error-boundary';
-import {
-  Bar,
-  BarChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Code, Container, Flex, Pagination, Text } from '@mantine/core';
+import { Box, Code, Divider, Flex, Pagination, Text } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 
 import { isAggregateFunction } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
-import {
-  getChartColorError,
-  getChartColorSuccess,
-  truncateMiddle,
-} from '@/utils';
+import { getChartColorError, getChartColorSuccess } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
+import type { AddFilterFn, HighlightPoint } from './deltaChartUtils';
+import {
+  ALL_SPANS_COLOR,
+  computeComparisonScore,
+  computeDistributionScore,
+  computeEffectiveSampleSize,
+  computeEntropyScore,
+  computeYValue,
+  DISTRIBUTION_SCORING,
+  flattenData,
+  flattenedKeyToFilterKey,
+  getPropertyStatistics,
+  isDenylisted,
+  isHighCardinality,
+  mergeValueStatisticsMaps,
+  SAMPLE_SIZE,
+  semanticBoost,
+  STABLE_SAMPLE_EXPR,
+  stripTypeWrappers,
+} from './deltaChartUtils';
+import {
+  CHART_GAP,
+  CHART_HEIGHT,
+  CHART_WIDTH,
+  PAGINATION_HEIGHT,
+  PropertyComparisonChart,
+} from './PropertyComparisonChart';
 
-import styles from '../../styles/HDXLineChart.module.scss';
-
-/*
- * Response Data is like... 
-{
-  Timestamp: "",
-  Map: {
-    "property": value,
-  }
-}
-
-- Flatten
-- Count Property Occurences
-- Pick most common properties
-- Count values for most common properties
-
-- Merge both sets of properties? one property?
- */
-
-// TODO: doesn't work for empty objects?
-// https://stackoverflow.com/a/19101235
-function flattenData(data: Record<string, any>) {
-  const result: Record<string, any> = {};
-  function recurse(cur: Record<string, any>, prop: string) {
-    if (Object(cur) !== cur) {
-      result[prop] = cur;
-    } else if (Array.isArray(cur)) {
-      let l;
-      for (let i = 0, l = cur.length; i < l; i++)
-        recurse(cur[i], prop + '[' + i + ']');
-      if (l == 0) result[prop] = [];
-    } else {
-      let isEmpty = true;
-      for (const p in cur) {
-        isEmpty = false;
-        recurse(cur[p], prop ? prop + '.' + p : p);
-      }
-      if (isEmpty && prop) result[prop] = {};
-    }
-  }
-  recurse(data, '');
-  return result;
-}
-
-function getPropertyStatistics(data: Record<string, any>[]) {
-  const flattened = data.map(flattenData);
-  const propertyOccurences = new Map<string, number>();
-
-  const MIN_PROPERTY_OCCURENCES = 5;
-  const commonProperties = new Set<string>();
-
-  flattened.forEach(item => {
-    Object.entries(item).forEach(([key, value]) => {
-      const count = propertyOccurences.get(key) || 0;
-      propertyOccurences.set(key, count + 1);
-
-      if (count + 1 >= MIN_PROPERTY_OCCURENCES) {
-        commonProperties.add(key);
-      }
-    });
-  });
-
-  // property -> (value -> count)
-  const valueOccurences = new Map<string, Map<string, number>>();
-  flattened.forEach(item => {
-    Object.entries(item).forEach(([key, value]) => {
-      if (commonProperties.has(key)) {
-        let valuesMap = valueOccurences.get(key);
-        if (!valuesMap) {
-          valuesMap = new Map<string, number>();
-          valueOccurences.set(key, valuesMap);
-        }
-
-        const valueCount = valuesMap.get(value) || 0;
-        valuesMap.set(value, valueCount + 1);
-      }
-    });
-  });
-
-  const percentageOccurences = new Map<string, Map<string, number>>();
-  valueOccurences.forEach((valuesMap, property) => {
-    const percentageMap = new Map<string, number>();
-    valuesMap.forEach((valueCount, value) => {
-      percentageMap.set(
-        value,
-        (valueCount / (propertyOccurences.get(property) ?? 0)) * 100,
-      );
-    });
-    percentageOccurences.set(property, percentageMap);
-  });
-
-  return {
-    // valueOccurences,
-    percentageOccurences,
-    // commonProperties,
-    // propertyOccurences,
-  };
-}
-
-function mergeValueStatisticsMaps(
-  outlierValues: Map<string, number>, // value -> count
-  inlierValues: Map<string, number>,
-) {
-  const mergedArray: {
-    name: string;
-    outlierCount: number;
-    inlierCount: number;
-  }[] = [];
-  // Collect all value names for this property
-  // we sort them so timestamps are ordered
-  const allValues = Array.from(
-    new Set([...outlierValues.keys(), ...inlierValues.keys()]),
-  ).sort();
-
-  allValues.forEach(value => {
-    const count1 = outlierValues.get(value) || 0;
-    const count2 = inlierValues.get(value) || 0;
-    mergedArray.push({
-      name: value,
-      outlierCount: count1,
-      inlierCount: count2,
-    });
-  });
-
-  return mergedArray;
-}
-
-const HDXBarChartTooltip = withErrorBoundary(
-  memo((props: any) => {
-    const { active, payload, label, title } = props;
-    if (active && payload && payload.length) {
-      return (
-        <div className={styles.chartTooltip}>
-          <div className={styles.chartTooltipContent}>
-            {title && (
-              <Text size="xs" mb="xs">
-                {title}
-              </Text>
-            )}
-            <Text size="xs" mb="xs">
-              {label.length === 0 ? <i>Empty String</i> : label}
-            </Text>
-            {payload
-              .sort((a: any, b: any) => b.value - a.value)
-              .map((p: any) => (
-                <div key={p.dataKey}>
-                  {p.name}: {p.value.toFixed(2)}%
-                </div>
-              ))}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  }),
-  {
-    onError: console.error,
-    fallback: (
-      <div className="text-danger px-2 py-1 m-2 fs-8 font-monospace bg-danger-transparent">
-        An error occurred while rendering the tooltip.
-      </div>
-    ),
-  },
-);
-
-function PropertyComparisonChart({
-  name,
-  outlierValueOccurences,
-  inlierValueOccurences,
-}: {
-  name: string;
-  outlierValueOccurences: Map<string, number>;
-  inlierValueOccurences: Map<string, number>;
-}) {
-  const mergedValueStatistics = mergeValueStatisticsMaps(
-    outlierValueOccurences,
-    inlierValueOccurences,
-  );
-
-  return (
-    <div style={{ width: '100%', height: 120 }}>
-      <Text size="xs" ta="center" title={name}>
-        {truncateMiddle(name, 32)}
-      </Text>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          barGap={2}
-          width={500}
-          height={300}
-          data={mergedValueStatistics}
-          margin={{
-            top: 0,
-            right: 0,
-            left: 0,
-            bottom: 0,
-          }}
-        >
-          {/* <CartesianGrid strokeDasharray="3 3" /> */}
-          <XAxis
-            dataKey="name"
-            tick={{ fontSize: 10, fontFamily: 'IBM Plex Mono, monospace' }}
-          />
-          <YAxis
-            tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
-          />
-          <Tooltip
-            wrapperStyle={{
-              zIndex: 1000,
-            }}
-            content={<HDXBarChartTooltip title={name} />}
-            allowEscapeViewBox={{ y: true }}
-          />
-          <Bar
-            dataKey="outlierCount"
-            name="Outliers"
-            fill={getChartColorError()}
-            isAnimationActive={false}
-          />
-          <Bar
-            dataKey="inlierCount"
-            name="Inliers"
-            fill={getChartColorSuccess()}
-            isAnimationActive={false}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-// Layout constants for dynamic grid calculation.
-// CHART_WIDTH is the minimum chart width used to determine how many columns fit; actual rendered
-// width expands to fill the container (charts use width: '100%' inside a CSS grid).
-// CHART_HEIGHT must match PropertyComparisonChart's outer div height.
-// CHART_GAP is used both in the column/row formula and as the CSS grid gap.
-const CHART_WIDTH = 340; // minimum column width threshold (px)
-const CHART_HEIGHT = 120; // must match PropertyComparisonChart outer div height (px)
-const CHART_GAP = 16; // px; used in grid gap and layout math
-// Space reserved for the pagination row: Pagination control (~32px) + top padding (16px).
-// Always reserved (even when pagination is hidden via visibility:hidden) so rows count is stable.
-const PAGINATION_HEIGHT = 48;
+// Re-export types so callers importing from DBDeltaChart don't need to change.
+export type { AddFilterFn, HighlightPoint } from './deltaChartUtils';
 
 export default function DBDeltaChart({
   config,
   valueExpr,
-  xMin,
-  xMax,
-  yMin,
-  yMax,
+  xMin: rawXMin,
+  xMax: rawXMax,
+  yMin: rawYMin,
+  yMax: rawYMax,
+  onAddFilter,
+  onHighlightPoints,
 }: {
   config: ChartConfigWithDateRange;
   valueExpr: string;
-  xMin: number;
-  xMax: number;
-  yMin: number;
-  yMax: number;
+  xMin?: number | null;
+  xMax?: number | null;
+  yMin?: number | null;
+  yMax?: number | null;
+  onAddFilter?: AddFilterFn;
+  onHighlightPoints?: (points: HighlightPoint[] | null) => void;
 }) {
+  const hasSelection =
+    rawXMin != null && rawXMax != null && rawYMin != null && rawYMax != null;
+  // Safe numeric defaults so query builders always get valid values
+  // (outlier/inlier queries are gated by enabled:hasSelection)
+  const xMin = rawXMin ?? 0;
+  const xMax = rawXMax ?? 0;
+  const yMin = rawYMin ?? 0;
+  const yMax = rawYMax ?? 0;
+
   // Determine if the value expression uses aggregate functions
   const isAggregate = isAggregateFunction(valueExpr);
 
@@ -371,8 +159,8 @@ export default function DBDeltaChart({
                 ]
               : []),
           ],
-          orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-          limit: { limit: 1000 },
+          orderBy: [{ ordering: 'DESC', valueExpression: STABLE_SAMPLE_EXPR }],
+          limit: { limit: SAMPLE_SIZE },
         },
       },
     ];
@@ -421,70 +209,267 @@ export default function DBDeltaChart({
     ];
   };
 
-  const { data: outlierData, error } = useQueriedChartConfig({
+  // Lightweight count query to support adaptive sample sizing.
+  // ClickHouse resolves count() from MergeTree metadata, so this is near-instant.
+  // useQueriedChartConfig internally gates on source/MV metadata readiness.
+  const { data: countData } = useQueriedChartConfig({
     ...config,
-    with: buildWithClauses(true),
-    select: '*',
-    filters: buildFilters(true),
-    orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-    limit: { limit: 1000 },
+    select: 'count() as total',
   });
+  const totalCount = Number(
+    (countData?.data as Record<string, unknown>[])?.[0]?.total ?? 0,
+  );
+  const effectiveSampleSize = computeEffectiveSampleSize(totalCount);
 
-  const { data: inlierData } = useQueriedChartConfig({
-    ...config,
-    with: buildWithClauses(false),
-    select: '*',
-    filters: buildFilters(false),
-    orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-    limit: { limit: 1000 },
-  });
+  const {
+    data: outlierData,
+    error: outlierError,
+    isLoading: isOutlierLoading,
+  } = useQueriedChartConfig(
+    {
+      ...config,
+      with: buildWithClauses(true),
+      select: '*',
+      filters: buildFilters(true),
+      orderBy: [{ ordering: 'DESC', valueExpression: STABLE_SAMPLE_EXPR }],
+      limit: { limit: effectiveSampleSize },
+    },
+    { enabled: hasSelection },
+  );
 
-  // TODO: Is loading state
-  const { sortedProperties, outlierValueOccurences, inlierValueOccurences } =
-    useMemo(() => {
-      const { percentageOccurences: outlierValueOccurences } =
-        getPropertyStatistics(outlierData?.data ?? []);
+  const { data: inlierData, isLoading: isInlierLoading } =
+    useQueriedChartConfig(
+      {
+        ...config,
+        with: buildWithClauses(false),
+        select: '*',
+        filters: buildFilters(false),
+        orderBy: [{ ordering: 'DESC', valueExpression: STABLE_SAMPLE_EXPR }],
+        limit: { limit: effectiveSampleSize },
+      },
+      { enabled: hasSelection },
+    );
 
-      const { percentageOccurences: inlierValueOccurences } =
-        getPropertyStatistics(inlierData?.data ?? []);
+  // When no selection exists, fetch all spans without any range filter
+  const {
+    data: allSpansData,
+    error: allSpansError,
+    isLoading: isAllSpansLoading,
+  } = useQueriedChartConfig(
+    {
+      ...config,
+      select: '*',
+      orderBy: [{ ordering: 'DESC', valueExpression: STABLE_SAMPLE_EXPR }],
+      limit: { limit: effectiveSampleSize },
+    },
+    { enabled: !hasSelection },
+  );
 
-      // Get all the unique keys from the outliers
-      let uniqueKeys = new Set([...outlierValueOccurences.keys()]);
-      // If there's no outliers, use inliers as the unique keys
-      if (uniqueKeys.size === 0) {
-        uniqueKeys = new Set([...inlierValueOccurences.keys()]);
+  const isLoading = hasSelection
+    ? isOutlierLoading || isInlierLoading
+    : isAllSpansLoading;
+
+  const error = outlierError ?? allSpansError;
+
+  // Compute column metadata, property statistics, sorted/visible/hidden property lists.
+  // columnMeta is merged here (instead of a separate useMemo) so the denylist and
+  // cardinality checks can reference it during the same memoization pass.
+  const {
+    outlierValueOccurences,
+    inlierValueOccurences,
+    columnMeta,
+    visibleProperties,
+    hiddenProperties,
+    highlightIndex,
+    sampleRowCount,
+  } = useMemo(() => {
+    const columnMeta = (outlierData?.meta ??
+      inlierData?.meta ??
+      allSpansData?.meta ??
+      []) as {
+      name: string;
+      type: string;
+    }[];
+
+    // When no selection: use allSpans as "outlier" data and empty for inliers.
+    // The sort will rank by frequency (delta = count - 0 = count).
+    const actualOutlierData = hasSelection
+      ? (outlierData?.data ?? [])
+      : (allSpansData?.data ?? []);
+    const actualInlierData = hasSelection ? (inlierData?.data ?? []) : [];
+
+    const {
+      percentageOccurences: outlierValueOccurences,
+      propertyOccurences: outlierPropertyOccurences,
+    } = getPropertyStatistics(actualOutlierData);
+
+    const {
+      percentageOccurences: inlierValueOccurences,
+      propertyOccurences: inlierPropertyOccurences,
+    } = getPropertyStatistics(actualInlierData);
+
+    // Get all the unique keys from the outliers
+    let uniqueKeys = new Set([...outlierValueOccurences.keys()]);
+    // If there's no outliers, use inliers as the unique keys
+    if (uniqueKeys.size === 0) {
+      uniqueKeys = new Set([...inlierValueOccurences.keys()]);
+    }
+    // Sort properties by how useful they are for filtering/analysis.
+    // Comparison mode: sort by max difference between selection and background.
+    // Distribution mode (no selection): sort by deviation from uniform distribution —
+    //   score = max(pct) - mean(pcts)
+    //   This scores 0 for single-value fields (all-same) and for perfectly uniform
+    //   multi-value fields, and scores high for skewed distributions.
+    const sortedProperties = Array.from(uniqueKeys)
+      .map(key => {
+        const inlierCount =
+          inlierValueOccurences.get(key) ?? new Map<string, number>();
+        const outlierCount =
+          outlierValueOccurences.get(key) ?? new Map<string, number>();
+
+        let sortScore: number;
+        if (hasSelection) {
+          // Comparison mode: sort by proportional distribution difference.
+          // Normalizes each group's percentages before comparing, so fields
+          // with identical proportions (e.g., 100% "message" in both) score 0
+          // regardless of coverage rate differences between groups.
+          sortScore = computeComparisonScore(outlierCount, inlierCount);
+        } else {
+          // Distribution mode: sort by how useful the field is for filtering.
+          // Fields with actual variance (multiple values, unequal distribution)
+          // always rank above single-value or perfectly uniform fields.
+          const baseScore =
+            DISTRIBUTION_SCORING === 'entropy'
+              ? computeEntropyScore(outlierCount)
+              : computeDistributionScore(outlierCount);
+          // Semantic boost only applies when the field has actual variance
+          // (baseScore > 0). Scaled to 0.1 so it acts as a tiebreaker —
+          // never overrides a genuinely more interesting distribution.
+          const boost = baseScore > 0 ? semanticBoost(key) * 0.1 : 0;
+          sortScore = baseScore + boost;
+        }
+
+        return [key, sortScore] as const;
+      })
+      .sort((a, b) => b[1] - a[1])
+      .map(a => a[0]);
+
+    // Split properties into visible (shown in charts) and hidden (denylist or high cardinality)
+    const visibleProperties: string[] = [];
+    const hiddenProperties: string[] = [];
+
+    sortedProperties.forEach(key => {
+      if (isDenylisted(key, columnMeta)) {
+        hiddenProperties.push(key);
+      } else if (
+        isHighCardinality(
+          key,
+          outlierValueOccurences,
+          inlierValueOccurences,
+          outlierPropertyOccurences,
+          inlierPropertyOccurences,
+        )
+      ) {
+        hiddenProperties.push(key);
+      } else {
+        visibleProperties.push(key);
       }
-      // Now process the keys to find the ones with the highest delta between outlier and inlier percentages
-      const sortedProperties = Array.from(uniqueKeys)
-        .map(key => {
-          const inlierCount =
-            inlierValueOccurences.get(key) ?? new Map<string, number>();
-          const outlierCount =
-            outlierValueOccurences.get(key) ?? new Map<string, number>();
+    });
 
-          const mergedArray = mergeValueStatisticsMaps(
-            outlierCount,
-            inlierCount,
-          );
-          let maxValueDelta = 0;
-          mergedArray.forEach(item => {
-            const delta = Math.abs(item.outlierCount - item.inlierCount);
-            if (delta > maxValueDelta) {
-              maxValueDelta = delta;
-            }
-          });
+    // Build a pre-indexed lookup for hover-based timestamp highlighting.
+    // Structure: property → value → HighlightPoint[]
+    // This replaces the O(n) scan per hover with an O(1) Map lookup.
+    const flattenedRawData = [
+      ...actualOutlierData.map(flattenData),
+      ...actualInlierData.map(flattenData),
+    ];
 
-          return [key, maxValueDelta] as const;
-        })
-        .sort((a, b) => b[1] - a[1])
-        .map(a => a[0]);
+    // Find the first non-array DateTime64 column (typically 'Timestamp')
+    const tsColName = columnMeta.find(
+      c =>
+        (stripTypeWrappers(c.type).startsWith('DateTime64(') ||
+          c.type === 'DateTime64') &&
+        !stripTypeWrappers(c.type).startsWith('Array('),
+    )?.name;
 
-      return {
-        sortedProperties,
-        outlierValueOccurences,
-        inlierValueOccurences,
-      };
-    }, [outlierData?.data, inlierData?.data]);
+    const highlightIndex = new Map<string, Map<string, HighlightPoint[]>>();
+    if (tsColName) {
+      for (const flat of flattenedRawData) {
+        const ts = flat[tsColName];
+        if (ts == null) continue;
+        const tsMs = new Date(ts as string).getTime();
+        if (isNaN(tsMs)) continue;
+        const yValue = computeYValue(valueExpr, flat);
+        const point: HighlightPoint = { tsMs, yValue };
+
+        for (const [key, val] of Object.entries(flat)) {
+          if (key === tsColName) continue;
+          const strVal = String(val);
+          let valueMap = highlightIndex.get(key);
+          if (!valueMap) {
+            valueMap = new Map<string, HighlightPoint[]>();
+            highlightIndex.set(key, valueMap);
+          }
+          let points = valueMap.get(strVal);
+          if (!points) {
+            points = [];
+            valueMap.set(strVal, points);
+          }
+          points.push(point);
+        }
+      }
+    }
+
+    // Row counts for the sample-size annotation in the legend
+    const sampleRowCount = actualOutlierData.length + actualInlierData.length;
+
+    return {
+      outlierValueOccurences,
+      inlierValueOccurences,
+      columnMeta,
+      visibleProperties,
+      hiddenProperties,
+      highlightIndex,
+      sampleRowCount,
+    };
+  }, [outlierData, inlierData, allSpansData, hasSelection, valueExpr]);
+
+  // Wrap onAddFilter to convert flattened dot-notation keys (from flattenData)
+  // into ClickHouse bracket notation for Map columns: ColName['map.key'].
+  // This matches the search bar format and produces valid ClickHouse SQL.
+  const handleAddFilter = useCallback<NonNullable<AddFilterFn>>(
+    (property, value, action) => {
+      if (!onAddFilter) return;
+      onAddFilter(flattenedKeyToFilterKey(property, columnMeta), value, action);
+    },
+    [onAddFilter, columnMeta],
+  );
+
+  // Track hovered attribute value for correlation highlighting on the heatmap
+  const [hoveredAttributeValue, setHoveredAttributeValue] = useState<{
+    property: string;
+    value: string;
+  } | null>(null);
+
+  const handleHoverValue = useCallback(
+    (property: string, value: string | null) => {
+      setHoveredAttributeValue(value != null ? { property, value } : null);
+    },
+    [],
+  );
+
+  // O(1) lookup: retrieve pre-indexed {tsMs, yValue} pairs for the hovered attribute.
+  const highlightPoints = useMemo((): HighlightPoint[] | null => {
+    if (!hoveredAttributeValue) return null;
+    const { property, value } = hoveredAttributeValue;
+    const points = highlightIndex.get(property)?.get(value);
+    return points?.length ? points : null;
+  }, [hoveredAttributeValue, highlightIndex]);
+
+  // Propagate highlight points to parent (e.g., DBSearchHeatmapChart)
+  useEffect(() => {
+    onHighlightPoints?.(highlightPoints);
+  }, [highlightPoints, onHighlightPoints]);
 
   const [activePage, setPage] = useState(1);
 
@@ -513,7 +498,7 @@ export default function DBDeltaChart({
 
   if (error) {
     return (
-      <Container style={{ overflow: 'auto' }}>
+      <Box style={{ overflow: 'auto' }}>
         <Box mt="lg">
           <Text my="sm" size="sm">
             Error Message:
@@ -542,33 +527,145 @@ export default function DBDeltaChart({
             </Code>
           </Box>
         )}
-      </Container>
+      </Box>
     );
   }
 
-  const totalPages = Math.ceil(sortedProperties.length / PAGE_SIZE);
+  // Paginate by ROWS, not by item count, because visible and hidden fields are
+  // rendered in separate CSS grids. An incomplete last row of the visible
+  // section must not be "filled" with hidden items — each section always starts
+  // from column 1.
+  const visibleRows = Math.ceil(visibleProperties.length / columns);
+  const hiddenRows = Math.ceil(hiddenProperties.length / columns);
+  const totalRows = visibleRows + hiddenRows;
+  const totalPages = Math.ceil(totalRows / rows);
+
+  const pageRowStart = (activePage - 1) * rows;
+  const pageRowEnd = activePage * rows;
+
+  // Rows occupied by the visible section on this page
+  const visRowStart = Math.min(pageRowStart, visibleRows);
+  const visRowEnd = Math.min(pageRowEnd, visibleRows);
+  const visibleOnPage = visibleProperties.slice(
+    visRowStart * columns,
+    Math.min(visRowEnd * columns, visibleProperties.length),
+  );
+
+  // Rows occupied by the hidden section on this page
+  const hidRowStart = Math.max(0, pageRowStart - visibleRows);
+  const hidRowEnd = Math.min(hiddenRows, Math.max(0, pageRowEnd - visibleRows));
+  const hiddenOnPage = hiddenProperties.slice(
+    hidRowStart * columns,
+    Math.min(hidRowEnd * columns, hiddenProperties.length),
+  );
+
+  // Show a divider when both sections appear on the same page
+  const showDivider = visibleOnPage.length > 0 && hiddenOnPage.length > 0;
+  // Show a header when ONLY hidden fields appear on this page (no divider above)
+  const showHiddenHeader =
+    hiddenOnPage.length > 0 && visibleOnPage.length === 0;
 
   return (
     <Box
       ref={containerRef}
       p="sm"
       style={{
-        overflow: 'hidden',
+        overflowX: 'hidden',
+        overflowY: 'auto',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
       }}
     >
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${columns}, 1fr)`,
-          gap: CHART_GAP,
-        }}
-      >
-        {sortedProperties
-          .slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE)
-          .map(property => (
+      {/* Legend */}
+      <Flex gap="md" align="center" mb="xs" wrap="wrap">
+        {hasSelection ? (
+          <>
+            <Flex align="center" gap={4}>
+              <Box
+                w={10}
+                h={10}
+                style={{
+                  background: getChartColorError(),
+                  borderRadius: 2,
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="xs" c="dimmed">
+                Selection
+              </Text>
+            </Flex>
+            <Flex align="center" gap={4}>
+              <Box
+                w={10}
+                h={10}
+                style={{
+                  background: getChartColorSuccess(),
+                  borderRadius: 2,
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="xs" c="dimmed">
+                Background
+              </Text>
+            </Flex>
+            {!isLoading && sampleRowCount > 0 && (
+              <Text size="xs" c="dimmed" fs="italic">
+                (n={sampleRowCount.toLocaleString()}
+                {totalCount > 0
+                  ? ` of ${totalCount.toLocaleString()}`
+                  : ''}{' '}
+                sampled)
+              </Text>
+            )}
+          </>
+        ) : (
+          <>
+            <Flex align="center" gap={4}>
+              <Box
+                w={10}
+                h={10}
+                style={{
+                  background: ALL_SPANS_COLOR,
+                  borderRadius: 2,
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="xs" c="dimmed">
+                All spans
+              </Text>
+              {!isLoading && sampleRowCount > 0 && (
+                <Text size="xs" c="dimmed" fs="italic">
+                  (n={sampleRowCount.toLocaleString()} sampled)
+                </Text>
+              )}
+            </Flex>
+            <Text size="xs" c="dimmed" fs="italic">
+              {isLoading
+                ? 'Loading…'
+                : 'Select an area on the chart above to enable comparisons'}
+            </Text>
+          </>
+        )}
+      </Flex>
+      {/* Loading state */}
+      {isLoading && visibleOnPage.length === 0 && hiddenOnPage.length === 0 && (
+        <Flex align="center" justify="center" style={{ flex: 1 }}>
+          <Text size="sm" c="dimmed">
+            Loading attribute distributions…
+          </Text>
+        </Flex>
+      )}
+      {/* Primary fields — own grid so empty trailing cells don't interact with divider */}
+      {visibleOnPage.length > 0 && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${columns}, 1fr)`,
+            gap: CHART_GAP,
+          }}
+        >
+          {visibleOnPage.map(property => (
             <PropertyComparisonChart
               name={property}
               outlierValueOccurences={
@@ -577,12 +674,56 @@ export default function DBDeltaChart({
               inlierValueOccurences={
                 inlierValueOccurences.get(property) ?? new Map()
               }
+              onAddFilter={onAddFilter ? handleAddFilter : undefined}
+              hasSelection={hasSelection}
+              onHoverValue={onHighlightPoints ? handleHoverValue : undefined}
               key={property}
             />
           ))}
-      </div>
+        </div>
+      )}
+      {/* Divider between primary and lower-priority fields */}
+      {(showDivider || showHiddenHeader) && (
+        <Divider
+          mt="lg"
+          mb="xs"
+          label={
+            <Text size="xs" c="dimmed">
+              Lower-priority fields ({hiddenProperties.length})
+            </Text>
+          }
+          labelPosition="left"
+        />
+      )}
+      {/* Lower-priority fields — separate grid so rows align independently */}
+      {hiddenOnPage.length > 0 && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${columns}, 1fr)`,
+            gap: CHART_GAP,
+          }}
+        >
+          {hiddenOnPage.map(key => (
+            <PropertyComparisonChart
+              name={key}
+              outlierValueOccurences={
+                outlierValueOccurences.get(key) ?? new Map()
+              }
+              inlierValueOccurences={
+                inlierValueOccurences.get(key) ?? new Map()
+              }
+              onAddFilter={onAddFilter ? handleAddFilter : undefined}
+              hasSelection={hasSelection}
+              onHoverValue={onHighlightPoints ? handleHoverValue : undefined}
+              key={key}
+            />
+          ))}
+        </div>
+      )}
       <Flex
         justify="flex-end"
+        align="center"
         style={{
           marginTop: 'auto',
           paddingTop: CHART_GAP,

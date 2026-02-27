@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
@@ -284,16 +284,20 @@ function HeatmapContainer({
   config,
   enabled = true,
   onFilter,
+  onClearSelection,
   title,
   toolbarPrefix,
   toolbarSuffix,
+  highlightPoints,
 }: {
   config: HeatmapChartConfig;
   enabled?: boolean;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
+  onClearSelection?: () => void;
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
+  highlightPoints?: { tsMs: number; yValue: number | null }[] | null;
 }) {
   const dateRange = config.dateRange;
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
@@ -555,6 +559,8 @@ function HeatmapContainer({
           data={[time, bucket, count]}
           numberFormat={config.numberFormat}
           onFilter={onFilter}
+          onClearSelection={onClearSelection}
+          highlightPoints={highlightPoints}
         />
       )}
     </ChartContainer>
@@ -666,10 +672,14 @@ function Heatmap({
   data,
   numberFormat,
   onFilter,
+  onClearSelection,
+  highlightPoints,
 }: {
   data: Mode2DataArray;
   numberFormat?: NumberFormat;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
+  onClearSelection?: () => void;
+  highlightPoints?: { tsMs: number; yValue: number | null }[] | null;
 }) {
   const [selectingInfo, setSelectingInfo] = useState<
     | {
@@ -687,6 +697,60 @@ function Heatmap({
     | undefined
   >(undefined);
 
+  // After the user clicks "Filter by Selection", hide that button so only "X" remains.
+  // Resets to false when the selection is cleared.
+  const [hasFiltered, setHasFiltered] = useState(false);
+
+  // Refs for correlation highlight overlay: uPlot instance + latest highlight timestamps
+  const uplotRef = useRef<uPlot | null>(null);
+
+  // Clears the React selection state AND the uPlot selection rectangle
+  const clearSelectionAndRect = useCallback(() => {
+    setSelectingInfo(undefined);
+    setHasFiltered(false);
+    if (uplotRef.current) {
+      try {
+        uplotRef.current.setSelect(
+          { left: 0, top: 0, width: 0, height: 0 },
+          false,
+        );
+      } catch (err) {
+        console.warn(
+          'clearSelectionAndRect: failed to reset uPlot selection:',
+          err,
+        );
+      }
+    }
+    onClearSelection?.();
+  }, [onClearSelection]);
+  const highlightPointsRef = useRef<
+    { tsMs: number; yValue: number | null }[] | null
+  >(null);
+  // Keep ref in sync with latest prop value on every render
+  highlightPointsRef.current = highlightPoints ?? null;
+
+  // Trigger a uPlot redraw when highlight points change so the draw hook re-runs.
+  // Wrapped in requestAnimationFrame to coalesce rapid hover events (e.g., mouse
+  // moving across multiple bars in quick succession) into a single frame repaint.
+  const rafIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (uplotRef.current) {
+      if (rafIdRef.current != null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        uplotRef.current?.redraw(false);
+      });
+    }
+    return () => {
+      if (rafIdRef.current != null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
+  }, [highlightPoints]);
+
   const [highlightedPoint, setHighlightedPoint] = useState<
     | {
         xVal: number;
@@ -701,6 +765,10 @@ function Heatmap({
       }
     | undefined
   >(undefined);
+
+  // Gate tooltip display on actual mouse interaction. uPlot fires setCursor
+  // on init (before user hovers), which would show the tooltip on page load.
+  const mouseInsideRef = useRef(false);
 
   const { ref, width, height } = useElementSize();
 
@@ -769,6 +837,9 @@ function Heatmap({
             xSize,
             ySize,
           }) => {
+            // Only show tooltip after the user has actually hovered the chart.
+            // uPlot fires setCursor on init which would trigger this on page load.
+            if (!mouseInsideRef.current) return;
             setHighlightedPoint({
               xVal,
               yVal,
@@ -785,6 +856,14 @@ function Heatmap({
         {
           hooks: {
             setSelect: u => {
+              // Ignore zero-size selections (single-click, or when clearSelectionAndRect()
+              // calls u.setSelect({width:0,height:0}) to erase the visual rectangle).
+              // clearSelectionAndRect() calls setSelectingInfo(undefined) directly before
+              // calling u.setSelect, so we don't need to do anything here.
+              if (u.select.width <= 0 || u.select.height <= 0) {
+                return;
+              }
+
               // Calculate offset from parent so we can render tooltip
               // relative to the parent pixels
               const { offsetLeft, offsetTop } = u.over;
@@ -794,8 +873,8 @@ function Heatmap({
               const yMax = u.posToVal(u.select.top, 'y');
               const yMin = u.posToVal(u.select.top + u.select.height, 'y');
 
-              // This ensures we set the timeout after all click handlers
-              // to prevent our state from being wiped by onclick handler
+              // Small timeout to ensure this fires after uPlot completes its
+              // synchronous drag-end processing.
               setTimeout(() => {
                 setSelectingInfo({
                   top: u.select.top + offsetTop,
@@ -811,20 +890,119 @@ function Heatmap({
             },
           },
         },
+        {
+          // Correlation highlight: draws filled rectangles on the heatmap canvas
+          // at cells corresponding to spans matching the hovered attribute value.
+          // Mirrors heatmapPaths coordinate calculation exactly so highlights align
+          // with the heatmap cells they represent.
+          hooks: {
+            init: (u: uPlot) => {
+              // eslint-disable-next-line react-hooks/exhaustive-deps
+              uplotRef.current = u;
+            },
+            draw: (u: uPlot) => {
+              const pts = highlightPointsRef.current;
+              if (!pts?.length) return;
+
+              // Derive bin geometry from the mode-2 heatmap data
+              const [xs, ys] = u.data[1] as unknown as Mode2DataArray;
+              if (!xs?.length || !ys?.length || xs.length < 2 || ys.length < 2)
+                return;
+
+              const dlen = xs.length;
+              const yBinQty = dlen - ys.lastIndexOf(ys[0]);
+              if (yBinQty < 2) return;
+              const xBinQty = Math.floor(dlen / yBinQty);
+              const yBinIncr = ys[1] - ys[0]; // positive value increment per bin
+              const xBinIncr = xs[yBinQty] - xs[0]; // ms increment per time bucket
+              if (yBinIncr === 0 || xBinIncr === 0) return;
+
+              // Compute pixel cell size using actual data points (same as heatmapPaths).
+              // Using xs[0]/ys[0] as reference avoids issues with values far outside
+              // the visible scale range (e.g. valToPos(0) on a ms-epoch time axis).
+              const xSizePx = Math.abs(
+                u.valToPos(xs[0] + xBinIncr, 'x', true) -
+                  u.valToPos(xs[0], 'x', true),
+              );
+              const ySizePx = Math.abs(
+                u.valToPos(ys[0] + yBinIncr, 'y', true) -
+                  u.valToPos(ys[0], 'y', true),
+              );
+
+              u.ctx.save();
+              u.ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height);
+              u.ctx.clip();
+              u.ctx.fillStyle = 'rgba(255, 220, 50, 0.6)';
+
+              // Draw one cell per unique (xi, yi) bucket position occupied by a
+              // matching span. This avoids the previous min-to-max range approach
+              // which always extended to yi=0 (the bottom of the chart) because any
+              // matching span with a near-zero duration pulled yiMin to 0 — even for
+              // attributes that only appear in slow spans.
+              //
+              // With per-cell drawing: if error=true only appears in 500ms+ spans,
+              // highlighted cells cluster near the top. If service=A appears in 100%
+              // of spans (all durations), cells are distributed across the full Y
+              // range, accurately reflecting the attribute's actual distribution.
+              const cellSet = new Set<number>(); // encoded as xi * yBinQty + yi
+
+              for (const { tsMs, yValue } of pts) {
+                const xi = Math.max(
+                  0,
+                  Math.min(xBinQty - 1, Math.round((tsMs - xs[0]) / xBinIncr)),
+                );
+
+                if (yValue == null) {
+                  // Can't determine Y position (e.g. complex expression): draw all
+                  // Y cells in this X column as fallback so there's visual feedback.
+                  for (let yi = 0; yi < yBinQty; yi++) {
+                    cellSet.add(xi * yBinQty + yi);
+                  }
+                  continue;
+                }
+
+                const yi = Math.max(
+                  0,
+                  Math.min(
+                    yBinQty - 1,
+                    Math.round((yValue - ys[0]) / yBinIncr),
+                  ),
+                );
+                cellSet.add(xi * yBinQty + yi);
+              }
+
+              for (const cell of cellSet) {
+                const xi = Math.floor(cell / yBinQty);
+                const yi = cell % yBinQty;
+                const xPx = u.valToPos(xs[xi * yBinQty], 'x', true);
+                const cx = Math.round(xPx - xSizePx / 2);
+                // Y axis is inverted: higher value = smaller pixel position (top).
+                const cy = Math.round(
+                  u.valToPos(ys[yi], 'y', true) - ySizePx / 2,
+                );
+                u.ctx.fillRect(cx, cy, xSizePx, ySizePx);
+              }
+
+              u.ctx.restore();
+            },
+          },
+        },
       ],
     };
+    // uplotRef and highlightPointsRef are stable refs — not included in deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [width, height, tickFormatter]);
 
   return (
     <div
       ref={ref}
+      className="heatmap-selection-container"
       style={{ width: '100%', height: '100%', position: 'relative' }}
-      onClick={() => {
-        if (selectingInfo != null) {
-          setSelectingInfo(undefined);
-        }
+      onMouseEnter={() => {
+        mouseInsideRef.current = true;
       }}
       onMouseLeave={() => {
+        mouseInsideRef.current = false;
         setHighlightedPoint(undefined);
       }}
     >
@@ -853,18 +1031,20 @@ function Heatmap({
             style={{
               position: 'absolute',
               top: highlightedPoint.yCoord + 5,
-              ...(highlightedPoint.xCoord > (width * 2) / 3
+              ...(highlightedPoint.xCoord > width / 2
                 ? {
                     right: width - highlightedPoint.xCoord + 10,
                   }
                 : {
                     left: highlightedPoint.xCoord + 10,
                   }),
+              maxWidth: '50%',
               backdropFilter: 'blur(8px)',
-              backgroundColor: 'rgba(#1A1D23 0.75)',
+              backgroundColor: 'rgba(26, 29, 35, 0.75)',
               border: '1px solid #5F6776',
               borderRadius: 2,
               pointerEvents: 'none',
+              whiteSpace: 'nowrap',
             }}
           >
             <Text size="10px" pt="4px">
@@ -887,30 +1067,79 @@ function Heatmap({
           </div>
         </>
       )}
-      {selectingInfo != null && onFilter != null && (
+      {selectingInfo != null && (
         <div
-          className="px-2 py-1 fs-8"
+          className="fs-8"
           style={{
+            display: 'flex',
+            gap: 4,
             backdropFilter: 'blur(4px)',
-            backgroundColor: 'rgba(#1A1D23 0.4)',
+            backgroundColor: 'rgba(26, 29, 35, 0.4)',
             border: '1px solid #5F6776',
             borderRadius: 2,
             position: 'absolute',
-            bottom: height - selectingInfo?.top + 4,
-            left: selectingInfo?.left,
+            bottom: height - selectingInfo.top + 4,
+            left: selectingInfo.left,
           }}
-          onClick={e => {
-            e.stopPropagation();
-            onFilter?.(
-              selectingInfo.xMin / 1000,
-              selectingInfo.xMax / 1000,
-              selectingInfo.yMin,
-              selectingInfo.yMax,
-            );
-          }}
-          role="button"
         >
-          Filter by Selection
+          {onFilter != null && !hasFiltered && (
+            <div
+              className="px-2 py-1"
+              role="button"
+              tabIndex={0}
+              style={{ cursor: 'pointer' }}
+              onClick={e => {
+                e.stopPropagation();
+                onFilter(
+                  selectingInfo.xMin / 1000,
+                  selectingInfo.xMax / 1000,
+                  selectingInfo.yMin,
+                  selectingInfo.yMax,
+                );
+                // Hide the Filter button — only the X (clear) button remains.
+                setHasFiltered(true);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onFilter(
+                    selectingInfo.xMin / 1000,
+                    selectingInfo.xMax / 1000,
+                    selectingInfo.yMin,
+                    selectingInfo.yMax,
+                  );
+                  setHasFiltered(true);
+                }
+              }}
+            >
+              Filter by Selection
+            </div>
+          )}
+          <div
+            className="px-2 py-1"
+            role="button"
+            tabIndex={0}
+            title="Clear selection"
+            style={{
+              cursor: 'pointer',
+              borderLeft:
+                onFilter != null && !hasFiltered
+                  ? '1px solid #5F6776'
+                  : undefined,
+            }}
+            onClick={e => {
+              e.stopPropagation();
+              clearSelectionAndRect();
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                clearSelectionAndRect();
+              }
+            }}
+          >
+            ✕
+          </div>
         </div>
       )}
     </div>

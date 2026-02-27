@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -12,15 +12,12 @@ import {
   DisplayType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Flex } from '@mantine/core';
-import { Button } from '@mantine/core';
-import { Center } from '@mantine/core';
-import { Text } from '@mantine/core';
+import { Box, Button, Flex } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
 import { getDurationMsExpression } from '@/source';
 
-import DBDeltaChart from '../DBDeltaChart';
+import DBDeltaChart, { AddFilterFn, HighlightPoint } from '../DBDeltaChart';
 import DBHeatmapChart from '../DBHeatmapChart';
 import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
@@ -33,10 +30,12 @@ export function DBSearchHeatmapChart({
   chartConfig,
   source,
   isReady,
+  onAddFilter,
 }: {
   chartConfig: ChartConfigWithDateRange;
   source: TSource;
   isReady: boolean;
+  onAddFilter?: AddFilterFn;
 }) {
   const [fields, setFields] = useQueryStates({
     value: parseAsString.withDefault(getDurationMsExpression(source)),
@@ -48,6 +47,44 @@ export function DBSearchHeatmapChart({
     yMax: parseAsFloat,
   });
   const [container, setContainer] = useState<HTMLElement | null>(null);
+
+  // Highlight points from hovering an attribute value in the delta charts.
+  // Passed to the heatmap to draw filled cell overlays at the correct X+Y position.
+  const [highlightPoints, setHighlightPoints] = useState<
+    HighlightPoint[] | null
+  >(null);
+
+  const handleClearSelection = useCallback(() => {
+    setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+  }, [setFields]);
+
+  // After applying a filter, clear the heatmap selection so the delta chart
+  // resets to "all spans" distribution mode instead of staying in comparison mode.
+  const handleAddFilterAndClearSelection = useCallback<
+    NonNullable<AddFilterFn>
+  >(
+    (property, value, action) => {
+      setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+      onAddFilter?.(property, value, action);
+    },
+    [onAddFilter, setFields],
+  );
+
+  // When the user changes the timeframe, reset any existing selection so the
+  // delta chart returns to distribution-only mode (no comparison).
+  // Use primitive timestamp values as deps (not the Date array reference) so
+  // the effect only runs when the actual date values change, not on every render.
+  const dateRangeStart = chartConfig.dateRange[0].getTime();
+  const dateRangeEnd = chartConfig.dateRange[1].getTime();
+  const isFirstDateRangeRender = useRef(true);
+  useEffect(() => {
+    if (isFirstDateRangeRender.current) {
+      isFirstDateRangeRender.current = false;
+      return;
+    }
+    setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRangeStart, dateRangeEnd]);
 
   return (
     <Flex
@@ -94,8 +131,8 @@ export function DBSearchHeatmapChart({
             displayType: DisplayType.Heatmap,
           }}
           enabled={isReady}
+          highlightPoints={highlightPoints}
           onFilter={(xMin, xMax, yMin, yMax) => {
-            // Simply store the coordinates - DBDeltaChart will handle the logic
             setFields({
               xMin,
               xMax,
@@ -103,31 +140,22 @@ export function DBSearchHeatmapChart({
               yMax,
             });
           }}
+          onClearSelection={handleClearSelection}
         />
       </div>
-      {fields.xMin != null &&
-      fields.xMax != null &&
-      fields.yMin != null &&
-      fields.yMax != null ? (
-        <DBDeltaChart
-          config={{
-            ...chartConfig,
-            with: undefined,
-          }}
-          valueExpr={fields.value}
-          xMin={fields.xMin}
-          xMax={fields.xMax}
-          yMin={fields.yMin}
-          yMax={fields.yMax}
-        />
-      ) : (
-        <Center mih={100} h="100%">
-          <Text size="sm">
-            Please highlight an outlier range in the heatmap to view the delta
-            chart.
-          </Text>
-        </Center>
-      )}
+      <DBDeltaChart
+        config={{
+          ...chartConfig,
+          with: undefined,
+        }}
+        valueExpr={fields.value}
+        xMin={fields.xMin}
+        xMax={fields.xMax}
+        yMin={fields.yMin}
+        yMax={fields.yMax}
+        onAddFilter={onAddFilter ? handleAddFilterAndClearSelection : undefined}
+        onHighlightPoints={setHighlightPoints}
+      />
     </Flex>
   );
 }
