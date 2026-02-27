@@ -10,8 +10,8 @@ import { parseJSON } from '@/utils';
 export const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
 
 function setLocalConnections(newConnections: Connection[]) {
-  // sessionStorage doesn't send a storage event to the open tab, only to
-  // other tabs. Dispatch one manually for same-tab listeners.
+  // sessing sessionStorage doesn't send a storage event to the open tab, only
+  // another tab. Let's send one anyways for any listeners in other components
   const storageEvent = new StorageEvent('storage', {
     key: LOCAL_STORE_CONNECTIONS_KEY,
     oldValue: store.session.get(LOCAL_STORE_CONNECTIONS_KEY),
@@ -27,6 +27,7 @@ export function getLocalConnections(): Connection[] {
   if (store.session.has(LOCAL_STORE_CONNECTIONS_KEY)) {
     return store.session.get(LOCAL_STORE_CONNECTIONS_KEY) ?? [];
   }
+  // pull sources from env var
   try {
     const defaultConnections = parseJSON(HDX_LOCAL_DEFAULT_CONNECTIONS ?? '');
     if (defaultConnections != null) {
@@ -35,6 +36,7 @@ export function getLocalConnections(): Connection[] {
   } catch (e) {
     console.error('Error fetching default connections', e);
   }
+  // fallback to empty array
   return [];
 }
 
@@ -45,6 +47,7 @@ export function useConnections() {
       if (IS_LOCAL_MODE) {
         return getLocalConnections();
       }
+
       return hdxServer('connections').json();
     },
   });
@@ -72,18 +75,29 @@ export function useCreateConnection() {
           );
         }
 
+        // id key in local connection and return value
         const createdConnection = { id: 'local' };
-        setLocalConnections([{ ...connection, ...createdConnection }]);
+
+        // should be only one connection
+        setLocalConnections([
+          {
+            ...connection,
+            ...createdConnection,
+          },
+        ]);
         return createdConnection;
       }
 
-      return hdxServer('connections', {
+      const res = await hdxServer('connections', {
         method: 'POST',
         json: connection,
       }).json<{ id: string }>();
+
+      return res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connections'] });
+      queryClient.invalidateQueries({ queryKey: ['sources'] });
     },
   });
 }
@@ -100,7 +114,14 @@ export function useUpdateConnection() {
       id: string;
     }) => {
       if (IS_LOCAL_MODE) {
-        setLocalConnections([{ ...connection, id: 'local' }]);
+        // should be only one connection
+        setLocalConnections([
+          {
+            ...connection,
+            id: 'local',
+          },
+        ]);
+
         return;
       }
 
@@ -108,6 +129,8 @@ export function useUpdateConnection() {
         method: 'PUT',
         json: connection,
       });
+
+      return;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connections'] });
@@ -119,14 +142,26 @@ export function useDeleteConnection() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id }: { id: string }) => {
+    mutationFn: async ({
+      id,
+    }: {
+      id: string; // Ignored for local
+    }) => {
       if (IS_LOCAL_MODE) {
         const connections = getLocalConnections();
-        setLocalConnections(connections.filter(c => c.id !== id));
+        const newConnections = connections.filter(
+          connection => connection.id !== id,
+        );
+        setLocalConnections(newConnections);
+
         return;
       }
 
-      await hdxServer(`connections/${id}`, { method: 'DELETE' });
+      await hdxServer(`connections/${id}`, {
+        method: 'DELETE',
+      });
+
+      return;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connections'] });
