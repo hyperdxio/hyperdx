@@ -292,7 +292,8 @@ const getChartConfigFromAlert = (
     // Doesn't work for metric alerts yet
     if (
       tile.config.displayType === DisplayType.Line ||
-      tile.config.displayType === DisplayType.StackedBar
+      tile.config.displayType === DisplayType.StackedBar ||
+      tile.config.displayType === DisplayType.Number
     ) {
       return {
         connection,

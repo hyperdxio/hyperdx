@@ -203,7 +203,7 @@ release-local:
 		echo "Tag ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} already exists. Skipping push."; \
 	else \
 		echo "Tag ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} does not exist. Building and pushing..."; \
-		docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+		docker buildx build --squash --sbom=true --provenance=true . -f ./docker/hyperdx/Dockerfile \
 			--build-context clickhouse=./docker/clickhouse \
 			--build-context otel-collector=./docker/otel-collector \
 			--build-context hyperdx=./docker/hyperdx \
@@ -230,7 +230,7 @@ release-all-in-one:
 		echo "Tag ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} already exists. Skipping push."; \
 	else \
 		echo "Tag ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} does not exist. Building and pushing..."; \
-		docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+		docker buildx build --squash --sbom=true --provenance=true . -f ./docker/hyperdx/Dockerfile \
 			--build-context clickhouse=./docker/clickhouse \
 			--build-context otel-collector=./docker/otel-collector \
 			--build-context hyperdx=./docker/hyperdx \
@@ -257,7 +257,7 @@ release-app:
 		echo "Tag ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} already exists. Skipping push."; \
 	else \
 		echo "Tag ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} does not exist. Building and pushing..."; \
-		docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+		docker buildx build --squash --sbom=true --provenance=true . -f ./docker/hyperdx/Dockerfile \
 			--build-context hyperdx=./docker/hyperdx \
 			--build-context api=./packages/api \
 			--build-context app=./packages/app \
@@ -286,7 +286,7 @@ release-otel-collector-nightly:
 .PHONY: release-app-nightly
 release-app-nightly:
 	@echo "Building and pushing nightly tag ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}..."; \
-	docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+	docker buildx build --squash --sbom=true --provenance=true . -f ./docker/hyperdx/Dockerfile \
 		--build-context hyperdx=./docker/hyperdx \
 		--build-context api=./packages/api \
 		--build-context app=./packages/app \
@@ -301,7 +301,7 @@ release-app-nightly:
 .PHONY: release-local-nightly
 release-local-nightly:
 	@echo "Building and pushing nightly tag ${LOCAL_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}..."; \
-	docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+	docker buildx build --squash --sbom=true --provenance=true . -f ./docker/hyperdx/Dockerfile \
 		--build-context clickhouse=./docker/clickhouse \
 		--build-context otel-collector=./docker/otel-collector \
 		--build-context hyperdx=./docker/hyperdx \
@@ -319,7 +319,7 @@ release-local-nightly:
 .PHONY: release-all-in-one-nightly
 release-all-in-one-nightly:
 	@echo "Building and pushing nightly tag ${ALL_IN_ONE_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG}..."; \
-	docker buildx build --squash . -f ./docker/hyperdx/Dockerfile \
+	docker buildx build --squash --sbom=true --provenance=true . -f ./docker/hyperdx/Dockerfile \
 		--build-context clickhouse=./docker/clickhouse \
 		--build-context otel-collector=./docker/otel-collector \
 		--build-context hyperdx=./docker/hyperdx \

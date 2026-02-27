@@ -58,6 +58,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     filterValues: valuesForExistingFilters,
     filterQueries: queriesForExistingFilters,
     setFilterValue,
+    setFilterQueries,
   };
 };
 

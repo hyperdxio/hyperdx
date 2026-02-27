@@ -25,6 +25,8 @@ import { hdxServer } from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
 import { localSources } from '@/localStore';
 
+import { getLocalConnections } from './connection';
+
 // Columns for the sessions table as of OTEL Collector v0.129.1
 export const SESSION_TABLE_EXPRESSIONS = {
   resourceAttributesExpression: 'ResourceAttributes',
