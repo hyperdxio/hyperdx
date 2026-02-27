@@ -90,8 +90,9 @@ export default function TableHeader({
         )}
 
         <Group gap={0} wrap="nowrap" align="center">
-          {onRemoveColumn && isHovered && (
+          {onRemoveColumn && (
             <ActionIcon
+              style={{ visibility: isHovered ? 'visible' : 'hidden' }}
               variant="subtle"
               color="gray"
               size="xs"

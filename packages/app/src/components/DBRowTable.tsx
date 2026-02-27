@@ -1494,7 +1494,14 @@ function DBSqlRowTableComponent({
       const exprWithAlias = contextDisplayedColumns.find(expr =>
         expr.trim().toLowerCase().endsWith(` as ${chColumnName.toLowerCase()}`),
       );
-      toggleColumn(exprWithAlias ?? chColumnName);
+      if (exprWithAlias) {
+        toggleColumn(exprWithAlias);
+      } else {
+        console.warn(
+          'onRemoveColumnFromTable: could not find SELECT expr for',
+          chColumnName,
+        );
+      }
     },
     [toggleColumn, contextDisplayedColumns, columns],
   );
