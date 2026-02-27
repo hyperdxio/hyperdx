@@ -156,29 +156,29 @@ export function PropertyComparisonChart({
   // Track last hovered bar value to avoid firing onHoverValue on every pixel move
   const lastHoveredBarRef = useRef<string | null>(null);
 
-  // Dismiss popover when clicking outside both the popover and the chart wrapper
+  // Dismiss popover on click outside, scroll, or Escape key
   useEffect(() => {
     if (!clickedBar) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (
         popoverRef.current &&
-        !popoverRef.current.contains(e.target as Node) &&
-        chartWrapperRef.current &&
-        !chartWrapperRef.current.contains(e.target as Node)
+        !popoverRef.current.contains(e.target as Node)
       ) {
         setClickedBar(null);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [clickedBar]);
-
-  // Dismiss popover on scroll (prevents stale popover when chart scrolls offscreen)
-  useEffect(() => {
-    if (!clickedBar) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setClickedBar(null);
+    };
     const handleScroll = () => setClickedBar(null);
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
     window.addEventListener('scroll', handleScroll, true);
-    return () => window.removeEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
   }, [clickedBar]);
 
   const handleChartClick = (data: any, event: any) => {
