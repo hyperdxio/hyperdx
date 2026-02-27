@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import cx from 'classnames';
-import { ActionIcon, Button, Group, Text } from '@mantine/core';
+import { Button, Group, Text } from '@mantine/core';
 import {
   IconArrowDown,
   IconArrowUp,
@@ -12,6 +12,7 @@ import { flexRender, Header } from '@tanstack/react-table';
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 
 import styles from '../Table.module.scss';
+import { DBRowTableIconButton } from './DBRowTableIconButton';
 
 export default function TableHeader({
   isLast,
@@ -91,19 +92,16 @@ export default function TableHeader({
 
         <Group gap={0} wrap="nowrap" align="center">
           {onRemoveColumn && (
-            <ActionIcon
-              style={{ visibility: isHovered ? 'visible' : 'hidden' }}
-              variant="subtle"
-              color="gray"
-              size="xs"
-              onClick={e => {
-                e.stopPropagation();
-                onRemoveColumn();
-              }}
-              title="Remove column"
-            >
-              <IconX size={10} />
-            </ActionIcon>
+            <div style={{ visibility: isHovered ? 'visible' : 'hidden' }}>
+              <DBRowTableIconButton
+                onClick={onRemoveColumn}
+                title="Remove column"
+                variant="copy"
+                iconSize={10}
+              >
+                <IconX size={10} />
+              </DBRowTableIconButton>
+            </div>
           )}
           {header.column.getCanResize() && !isLast && (
             <div
