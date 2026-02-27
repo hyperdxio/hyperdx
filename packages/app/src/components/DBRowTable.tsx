@@ -1390,27 +1390,6 @@ function DBSqlRowTableComponent({
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
     useContext(RowSidePanelContext);
 
-  const onRemoveColumnFromTable = useCallback(
-    (chColumnName: string) => {
-      if (!toggleColumn) return;
-
-      // Direct match: works for simple column names (e.g. 'Timestamp', 'Body')
-      if (contextDisplayedColumns?.includes(chColumnName)) {
-        toggleColumn(chColumnName);
-        return;
-      }
-
-      // Alias match: find the SELECT expression that ends with "AS chColumnName"
-      // e.g. "ResourceAttributes['service.name'] AS service_name" -> matches 'service_name'
-      const exprWithAlias = contextDisplayedColumns?.find(expr =>
-        expr.trim().toLowerCase().endsWith(` as ${chColumnName.toLowerCase()}`),
-      );
-
-      toggleColumn(exprWithAlias ?? chColumnName);
-    },
-    [toggleColumn, contextDisplayedColumns],
-  );
-
   const [orderBy, setOrderBy] = useState<SortingState[number] | null>(
     initialSortBy?.[0] ?? null,
   );
@@ -1487,6 +1466,36 @@ function DBSqlRowTableComponent({
   }, [data, mergedConfig]);
 
   const columns = useMemo(() => Array.from(columnMap.keys()), [columnMap]);
+
+  // CH may rewrite column names in the result set (e.g. expression formatting),
+  // so we cannot rely on string matching between CH column names and SELECT expressions.
+  // Instead, use position-based mapping: columns[i] (CH name) corresponds to
+  // contextDisplayedColumns[i] (the original SELECT expression), since both arrays
+  // are ordered by the user's SELECT list.
+  const onRemoveColumnFromTable = useCallback(
+    (chColumnName: string) => {
+      if (!toggleColumn || !contextDisplayedColumns) return;
+
+      const colIdx = columns.indexOf(chColumnName);
+      if (colIdx >= 0 && colIdx < contextDisplayedColumns.length) {
+        toggleColumn(contextDisplayedColumns[colIdx]);
+        return;
+      }
+
+      // Fallback: direct match
+      if (contextDisplayedColumns.includes(chColumnName)) {
+        toggleColumn(chColumnName);
+        return;
+      }
+
+      // Alias match: find the SELECT expression that ends with "AS chColumnName"
+      const exprWithAlias = contextDisplayedColumns.find(expr =>
+        expr.trim().toLowerCase().endsWith(` as ${chColumnName.toLowerCase()}`),
+      );
+      toggleColumn(exprWithAlias ?? chColumnName);
+    },
+    [toggleColumn, contextDisplayedColumns, columns],
+  );
 
   // FIXME: do this on the db side ?
   // Or, the react-table should render object-type cells as JSON.stringify
