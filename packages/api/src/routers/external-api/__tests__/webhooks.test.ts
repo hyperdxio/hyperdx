@@ -138,7 +138,7 @@ describe('External API v2 Webhooks', () => {
       expect(response.body.data[0]).not.toHaveProperty('body');
     });
 
-    it('should list a Generic webhook with headers and body', async () => {
+    it('should list a Generic webhook with body but no headers', async () => {
       await Webhook.create({ ...MOCK_GENERIC_WEBHOOK, team: team._id });
 
       const response = await authRequest('get', WEBHOOKS_BASE_URL).expect(200);
@@ -150,11 +150,11 @@ describe('External API v2 Webhooks', () => {
         service: WebhookService.Generic,
         url: MOCK_GENERIC_WEBHOOK.url,
         description: MOCK_GENERIC_WEBHOOK.description,
-        headers: MOCK_GENERIC_WEBHOOK.headers,
         body: MOCK_GENERIC_WEBHOOK.body,
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
       });
+      expect(response.body.data[0]).not.toHaveProperty('headers');
     });
 
     it('should return multiple webhooks of different service types', async () => {
