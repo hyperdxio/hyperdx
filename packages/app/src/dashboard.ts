@@ -11,6 +11,7 @@ import { hashCode } from '@/utils';
 
 import { hdxServer } from './api';
 import { IS_LOCAL_MODE } from './config';
+import { createEntityStore } from './localStore';
 
 // TODO: Move to types
 export type Tile = {
@@ -30,6 +31,15 @@ export type Dashboard = {
   filters?: DashboardFilter[];
 };
 
+const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');
+
+async function fetchDashboards(): Promise<Dashboard[]> {
+  if (IS_LOCAL_MODE) {
+    return localDashboards.getAll();
+  }
+  return hdxServer('dashboards').json<Dashboard[]>();
+}
+
 export function useUpdateDashboard() {
   const queryClient = useQueryClient();
 
@@ -37,6 +47,11 @@ export function useUpdateDashboard() {
     mutationFn: async (
       dashboard: Partial<Dashboard> & { id: Dashboard['id'] },
     ) => {
+      if (IS_LOCAL_MODE) {
+        const { id, ...updates } = dashboard;
+        localDashboards.update(id, updates);
+        return;
+      }
       await hdxServer(`dashboards/${dashboard.id}`, {
         method: 'PATCH',
         json: dashboard,
@@ -53,6 +68,9 @@ export function useCreateDashboard() {
 
   return useMutation({
     mutationFn: async (dashboard: Omit<Dashboard, 'id'>) => {
+      if (IS_LOCAL_MODE) {
+        return localDashboards.create(dashboard);
+      }
       return hdxServer('dashboards', {
         method: 'POST',
         json: dashboard,
@@ -67,12 +85,7 @@ export function useCreateDashboard() {
 export function useDashboards() {
   return useQuery({
     queryKey: ['dashboards'],
-    queryFn: async () => {
-      if (IS_LOCAL_MODE) {
-        return [];
-      }
-      return hdxServer('dashboards').json<Dashboard[]>();
-    },
+    queryFn: fetchDashboards,
   });
 }
 
@@ -104,9 +117,7 @@ export function useDashboard({
   const { data: remoteDashboard, isFetching: isFetchingRemoteDashboard } =
     useQuery({
       queryKey: ['dashboards'],
-      queryFn: () => {
-        return hdxServer('dashboards').json<Dashboard[]>();
-      },
+      queryFn: fetchDashboards,
       select: data => {
         return data.find(d => d.id === dashboardId);
       },
@@ -176,6 +187,10 @@ export function useDeleteDashboard() {
 
   return useMutation({
     mutationFn: (id: string) => {
+      if (IS_LOCAL_MODE) {
+        localDashboards.delete(id);
+        return Promise.resolve();
+      }
       return hdxServer(`dashboards/${id}`, { method: 'DELETE' }).json<void>();
     },
     onSuccess: () => {

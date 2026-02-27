@@ -117,23 +117,6 @@ const NAV_LINKS: NavLinkConfig[] = [
 function NewDashboardButton() {
   const createDashboard = useCreateDashboard();
 
-  if (IS_LOCAL_MODE) {
-    return (
-      <Button
-        component={Link}
-        href="/dashboards"
-        data-testid="create-dashboard-button"
-        variant="transparent"
-        color="var(--color-text)"
-        py="0px"
-        px="sm"
-        fw={400}
-      >
-        <span className="pe-2">+</span> Create Dashboard
-      </Button>
-    );
-  }
-
   return (
     <Button
       data-testid="create-dashboard-button"
@@ -721,11 +704,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               icon={<IconTable size={16} />}
               href="/search"
               isExpanded={isSearchExpanded}
-              onToggle={
-                !IS_LOCAL_MODE
-                  ? () => setIsSearchExpanded(!isSearchExpanded)
-                  : undefined
-              }
+              onToggle={() => setIsSearchExpanded(!isSearchExpanded)}
             />
 
             {!isCollapsed && (
@@ -734,42 +713,40 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   {isLogViewsLoading ? (
                     <Loader variant="dots" mx="md" my="xs" size="sm" />
                   ) : (
-                    !IS_LOCAL_MODE && (
-                      <>
-                        <SearchInput
-                          placeholder="Saved Searches"
-                          value={searchesListQ}
-                          onChange={setSearchesListQ}
-                          onEnterDown={() => {
-                            (
-                              savedSearchesResultsRef?.current
-                                ?.firstChild as HTMLAnchorElement
-                            )?.focus?.();
-                          }}
-                        />
+                    <>
+                      <SearchInput
+                        placeholder="Saved Searches"
+                        value={searchesListQ}
+                        onChange={setSearchesListQ}
+                        onEnterDown={() => {
+                          (
+                            savedSearchesResultsRef?.current
+                              ?.firstChild as HTMLAnchorElement
+                          )?.focus?.();
+                        }}
+                      />
 
-                        {logViews.length === 0 && (
-                          <div className={styles.emptyMessage}>
-                            No saved searches
-                          </div>
-                        )}
-                        <div ref={savedSearchesResultsRef}>
-                          <AppNavLinkGroups
-                            name="saved-searches"
-                            groups={groupedFilteredSearchesList}
-                            renderLink={renderLogViewLink}
-                            forceExpandGroups={!!searchesListQ}
-                            onDragEnd={handleLogViewDragEnd}
-                          />
+                      {logViews.length === 0 && (
+                        <div className={styles.emptyMessage}>
+                          No saved searches
                         </div>
+                      )}
+                      <div ref={savedSearchesResultsRef}>
+                        <AppNavLinkGroups
+                          name="saved-searches"
+                          groups={groupedFilteredSearchesList}
+                          renderLink={renderLogViewLink}
+                          forceExpandGroups={!!searchesListQ}
+                          onDragEnd={handleLogViewDragEnd}
+                        />
+                      </div>
 
-                        {searchesListQ && filteredSearchesList.length === 0 ? (
-                          <div className={styles.emptyMessage}>
-                            No results matching <i>{searchesListQ}</i>
-                          </div>
-                        ) : null}
-                      </>
-                    )
+                      {searchesListQ && filteredSearchesList.length === 0 ? (
+                        <div className={styles.emptyMessage}>
+                          No results matching <i>{searchesListQ}</i>
+                        </div>
+                      ) : null}
+                    </>
                   )}
                 </div>
               </Collapse>
@@ -804,42 +781,40 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   {isDashboardsLoading ? (
                     <Loader variant="dots" mx="md" my="xs" size="sm" />
                   ) : (
-                    !IS_LOCAL_MODE && (
-                      <>
-                        <SearchInput
-                          placeholder="Saved Dashboards"
-                          value={dashboardsListQ}
-                          onChange={setDashboardsListQ}
-                          onEnterDown={() => {
-                            (
-                              dashboardsResultsRef?.current
-                                ?.firstChild as HTMLAnchorElement
-                            )?.focus?.();
-                          }}
-                        />
+                    <>
+                      <SearchInput
+                        placeholder="Saved Dashboards"
+                        value={dashboardsListQ}
+                        onChange={setDashboardsListQ}
+                        onEnterDown={() => {
+                          (
+                            dashboardsResultsRef?.current
+                              ?.firstChild as HTMLAnchorElement
+                          )?.focus?.();
+                        }}
+                      />
 
-                        <AppNavLinkGroups
-                          name="dashboards"
-                          groups={groupedFilteredDashboardsList}
-                          renderLink={renderDashboardLink}
-                          forceExpandGroups={!!dashboardsListQ}
-                          onDragEnd={handleDashboardDragEnd}
-                        />
+                      <AppNavLinkGroups
+                        name="dashboards"
+                        groups={groupedFilteredDashboardsList}
+                        renderLink={renderDashboardLink}
+                        forceExpandGroups={!!dashboardsListQ}
+                        onDragEnd={handleDashboardDragEnd}
+                      />
 
-                        {dashboards.length === 0 && (
-                          <div className={styles.emptyMessage}>
-                            No saved dashboards
-                          </div>
-                        )}
+                      {dashboards.length === 0 && (
+                        <div className={styles.emptyMessage}>
+                          No saved dashboards
+                        </div>
+                      )}
 
-                        {dashboardsListQ &&
-                        filteredDashboardsList.length === 0 ? (
-                          <div className={styles.emptyMessage}>
-                            No results matching <i>{dashboardsListQ}</i>
-                          </div>
-                        ) : null}
-                      </>
-                    )
+                      {dashboardsListQ &&
+                      filteredDashboardsList.length === 0 ? (
+                        <div className={styles.emptyMessage}>
+                          No results matching <i>{dashboardsListQ}</i>
+                        </div>
+                      ) : null}
+                    </>
                   )}
 
                   <AppNavGroupLabel

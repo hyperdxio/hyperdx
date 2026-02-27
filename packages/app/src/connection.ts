@@ -1,43 +1,31 @@
-import store from 'store2';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Connection } from '@hyperdx/common-utils/dist/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
-import { HDX_LOCAL_DEFAULT_CONNECTIONS, IS_LOCAL_MODE } from '@/config';
-import { parseJSON } from '@/utils';
+import { IS_LOCAL_MODE } from '@/config';
+import { localConnections } from '@/localStore';
 
-export const LOCAL_STORE_CONNECTIONS_KEY = 'connections';
-
-function setLocalConnections(newConnections: Connection[]) {
-  // sessing sessionStorage doesn't send a storage event to the open tab, only
-  // another tab. Let's send one anyways for any listeners in other components
-  const storageEvent = new StorageEvent('storage', {
-    key: LOCAL_STORE_CONNECTIONS_KEY,
-    oldValue: store.session.get(LOCAL_STORE_CONNECTIONS_KEY),
-    newValue: JSON.stringify(newConnections),
-    storageArea: window.sessionStorage,
-    url: window.location.href,
-  });
-  store.session.set(LOCAL_STORE_CONNECTIONS_KEY, newConnections);
-  window.dispatchEvent(storageEvent);
-}
+// Exported so storage event listeners in other modules can filter by key
+export const LOCAL_STORE_CONNECTIONS_KEY = 'hdx-local-connections';
 
 export function getLocalConnections(): Connection[] {
-  if (store.session.has(LOCAL_STORE_CONNECTIONS_KEY)) {
-    return store.session.get(LOCAL_STORE_CONNECTIONS_KEY) ?? [];
-  }
-  // pull sources from env var
-  try {
-    const defaultConnections = parseJSON(HDX_LOCAL_DEFAULT_CONNECTIONS ?? '');
-    if (defaultConnections != null) {
-      return defaultConnections;
-    }
-  } catch (e) {
-    console.error('Error fetching default connections', e);
-  }
-  // fallback to empty array
-  return [];
+  return localConnections.getAll();
+}
+
+/**
+ * localStorage doesn't fire storage events to the same tab, so we dispatch
+ * manually so that same-tab listeners (useMetadata, DBSearchPage) are notified.
+ */
+function dispatchConnectionsChangedEvent(newConnections: Connection[]): void {
+  window.dispatchEvent(
+    new StorageEvent('storage', {
+      key: LOCAL_STORE_CONNECTIONS_KEY,
+      newValue: JSON.stringify(newConnections),
+      storageArea: window.localStorage,
+      url: window.location.href,
+    }),
+  );
 }
 
 export function useConnections() {
@@ -45,9 +33,8 @@ export function useConnections() {
     queryKey: ['connections'],
     queryFn: () => {
       if (IS_LOCAL_MODE) {
-        return getLocalConnections();
+        return localConnections.getAll();
       }
-
       return hdxServer('connections').json();
     },
   });
@@ -75,25 +62,18 @@ export function useCreateConnection() {
           );
         }
 
-        // id key in local connection and return value
-        const createdConnection = { id: 'local' };
-
-        // should be only one connection
-        setLocalConnections([
-          {
-            ...connection,
-            ...createdConnection,
-          },
-        ]);
-        return createdConnection;
+        const id = 'local';
+        const newConnections: Connection[] = [{ ...connection, id }];
+        // Single-connection semantics: replace the whole collection
+        localConnections.set(newConnections);
+        dispatchConnectionsChangedEvent(newConnections);
+        return { id };
       }
 
-      const res = await hdxServer('connections', {
+      return hdxServer('connections', {
         method: 'POST',
         json: connection,
       }).json<{ id: string }>();
-
-      return res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connections'] });
@@ -113,14 +93,9 @@ export function useUpdateConnection() {
       id: string;
     }) => {
       if (IS_LOCAL_MODE) {
-        // should be only one connection
-        setLocalConnections([
-          {
-            ...connection,
-            id: 'local',
-          },
-        ]);
-
+        const newConnections: Connection[] = [{ ...connection, id: 'local' }];
+        localConnections.set(newConnections);
+        dispatchConnectionsChangedEvent(newConnections);
         return;
       }
 
@@ -128,8 +103,6 @@ export function useUpdateConnection() {
         method: 'PUT',
         json: connection,
       });
-
-      return;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connections'] });
@@ -141,26 +114,14 @@ export function useDeleteConnection() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({
-      id,
-    }: {
-      id: string; // Ignored for local
-    }) => {
+    mutationFn: async ({ id }: { id: string }) => {
       if (IS_LOCAL_MODE) {
-        const connections = getLocalConnections();
-        const newConnections = connections.filter(
-          connection => connection.id !== id,
-        );
-        setLocalConnections(newConnections);
-
+        localConnections.delete(id);
+        dispatchConnectionsChangedEvent(localConnections.getAll());
         return;
       }
 
-      await hdxServer(`connections/${id}`, {
-        method: 'DELETE',
-      });
-
-      return;
+      await hdxServer(`connections/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connections'] });

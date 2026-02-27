@@ -2,7 +2,6 @@
 // SourceForm.tsx and remove type assertions for TSource and TSourceUnion
 import pick from 'lodash/pick';
 import objectHash from 'object-hash';
-import store from 'store2';
 import {
   ColumnMeta,
   extractColumnReferencesFromKey,
@@ -23,9 +22,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
-import { HDX_LOCAL_DEFAULT_SOURCES } from '@/config';
 import { IS_LOCAL_MODE } from '@/config';
-import { parseJSON } from '@/utils';
+import { localSources } from '@/localStore';
 
 // Columns for the sessions table as of OTEL Collector v0.129.1
 export const SESSION_TABLE_EXPRESSIONS = {
@@ -39,29 +37,6 @@ export const JSON_SESSION_TABLE_EXPRESSIONS = {
   ...SESSION_TABLE_EXPRESSIONS,
   timestampValueExpression: 'Timestamp',
 } as const;
-
-const LOCAL_STORE_SOUCES_KEY = 'hdx-local-source';
-
-function setLocalSources(fn: (prev: TSource[]) => TSource[]) {
-  store.transact(LOCAL_STORE_SOUCES_KEY, fn, []);
-}
-
-function getLocalSources(): TSource[] {
-  if (store.has(LOCAL_STORE_SOUCES_KEY)) {
-    return store.get(LOCAL_STORE_SOUCES_KEY, []) ?? [];
-  }
-  // pull sources from env var
-  try {
-    const defaultSources = parseJSON(HDX_LOCAL_DEFAULT_SOURCES ?? '');
-    if (defaultSources != null) {
-      return defaultSources;
-    }
-  } catch (e) {
-    console.error('Error fetching default sources', e);
-  }
-  // fallback to empty array
-  return [];
-}
 
 // If a user specifies a timestampValueExpression with multiple columns,
 // this will return the first one. We'll want to refine this over time
@@ -106,9 +81,8 @@ export function useSources() {
     queryKey: ['sources'],
     queryFn: async () => {
       if (IS_LOCAL_MODE) {
-        return getLocalSources();
+        return localSources.getAll();
       }
-
       const rawSources = await hdxServer('sources').json<TSourceUnion[]>();
       return rawSources.map(addDefaultsToSource);
     },
@@ -119,12 +93,11 @@ export function useSource({ id }: { id?: string | null }) {
   return useQuery({
     queryKey: ['sources'],
     queryFn: async () => {
-      if (!IS_LOCAL_MODE) {
-        const rawSources = await hdxServer('sources').json<TSourceUnion[]>();
-        return rawSources.map(addDefaultsToSource);
-      } else {
-        return getLocalSources();
+      if (IS_LOCAL_MODE) {
+        return localSources.getAll();
       }
+      const rawSources = await hdxServer('sources').json<TSourceUnion[]>();
+      return rawSources.map(addDefaultsToSource);
     },
     select: (data: TSource[]): TSource => {
       return data.filter((s: any) => s.id === id)[0];
@@ -139,20 +112,13 @@ export function useUpdateSource() {
   return useMutation({
     mutationFn: async ({ source }: { source: TSource }) => {
       if (IS_LOCAL_MODE) {
-        setLocalSources(prev => {
-          return prev.map(s => {
-            if (s.id === source.id) {
-              return source;
-            }
-            return s;
-          });
-        });
-      } else {
-        return await hdxServer(`sources/${source.id}`, {
-          method: 'PUT',
-          json: source,
-        });
+        localSources.update(source.id, source);
+        return;
       }
+      return hdxServer(`sources/${source.id}`, {
+        method: 'PUT',
+        json: source,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sources'] });
@@ -166,27 +132,19 @@ export function useCreateSource() {
   const mut = useMutation({
     mutationFn: async ({ source }: { source: Omit<TSource, 'id'> }) => {
       if (IS_LOCAL_MODE) {
-        const localSources = getLocalSources();
-        const existingSource = localSources.find(
-          stored =>
-            objectHash(pick(stored, ['kind', 'name', 'connection'])) ===
-            objectHash(pick(source, ['kind', 'name', 'connection'])),
-        );
-        if (existingSource) {
-          // replace the existing source with the new one
-          return {
-            ...source,
-            id: existingSource.id,
-          };
+        const existing = localSources
+          .getAll()
+          .find(
+            stored =>
+              objectHash(pick(stored, ['kind', 'name', 'connection'])) ===
+              objectHash(pick(source, ['kind', 'name', 'connection'])),
+          );
+        if (existing) {
+          // Replace the existing source in-place rather than duplicating
+          localSources.update(existing.id, source);
+          return { ...source, id: existing.id } as TSource;
         }
-        const newSource = {
-          ...source,
-          id: `l${hashCode(Math.random().toString())}`,
-        };
-        setLocalSources(prev => {
-          return [...prev, newSource];
-        });
-        return newSource;
+        return localSources.create(source);
       }
 
       return hdxServer(`sources`, {
@@ -208,9 +166,7 @@ export function useDeleteSource() {
   return useMutation({
     mutationFn: async ({ id }: { id: string }) => {
       if (IS_LOCAL_MODE) {
-        setLocalSources(prev => {
-          return prev.filter(s => s.id !== id);
-        });
+        localSources.delete(id);
         return;
       }
       return hdxServer(`sources/${id}`, { method: 'DELETE' });
