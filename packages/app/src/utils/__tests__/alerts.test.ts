@@ -60,4 +60,36 @@ describe('normalizeNoOpAlertScheduleFields', () => {
       scheduleStartAt: '2024-01-01T00:00:00.000Z',
     });
   });
+
+  it('keeps an explicit offset reset when requested', () => {
+    const normalized = normalizeNoOpAlertScheduleFields(
+      {
+        scheduleOffsetMinutes: 0,
+      },
+      undefined,
+      {
+        preserveExplicitScheduleOffsetMinutes: true,
+      },
+    );
+
+    expect(normalized).toEqual({
+      scheduleOffsetMinutes: 0,
+    });
+  });
+
+  it('keeps an explicit start-at clear when requested', () => {
+    const normalized = normalizeNoOpAlertScheduleFields(
+      {
+        scheduleStartAt: null,
+      },
+      undefined,
+      {
+        preserveExplicitScheduleStartAt: true,
+      },
+    );
+
+    expect(normalized).toEqual({
+      scheduleStartAt: null,
+    });
+  });
 });

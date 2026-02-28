@@ -88,6 +88,7 @@ import {
 } from '@/hooks/useFetchMetricResourceAttrs';
 import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
+import { AlertWithCreatedBy } from '@/types';
 import {
   getMetricTableName,
   optionsToSelectData,
@@ -564,6 +565,9 @@ export type SavedChartConfigWithSelectArray = Omit<
 };
 
 type SavedChartConfigWithSeries = SavedChartConfig & {
+  alert?: SavedChartConfig['alert'] & {
+    createdBy?: AlertWithCreatedBy['createdBy'];
+  };
   series: SavedChartConfigWithSelectArray['select'];
 };
 
@@ -622,7 +626,7 @@ export default function EditTimeChartForm({
     register,
     setError,
     clearErrors,
-    formState: { errors, isDirty },
+    formState: { errors, isDirty, dirtyFields },
   } = useForm<SavedChartConfigWithSeries>({
     defaultValues: configWithSeries,
     values: configWithSeries,
@@ -782,6 +786,12 @@ export default function EditTimeChartForm({
         alert: normalizeNoOpAlertScheduleFields(
           config.alert,
           chartConfig.alert,
+          {
+            preserveExplicitScheduleOffsetMinutes:
+              dirtyFields.alert?.scheduleOffsetMinutes === true,
+            preserveExplicitScheduleStartAt:
+              dirtyFields.alert?.scheduleStartAt === true,
+          },
         ),
       };
 
@@ -813,6 +823,8 @@ export default function EditTimeChartForm({
     })();
   }, [
     chartConfig.alert,
+    dirtyFields.alert?.scheduleOffsetMinutes,
+    dirtyFields.alert?.scheduleStartAt,
     handleSubmit,
     setChartConfig,
     setQueriedConfigAndSource,
@@ -867,6 +879,12 @@ export default function EditTimeChartForm({
           alert: normalizeNoOpAlertScheduleFields(
             withoutSeries.alert,
             chartConfig.alert,
+            {
+              preserveExplicitScheduleOffsetMinutes:
+                dirtyFields.alert?.scheduleOffsetMinutes === true,
+              preserveExplicitScheduleStartAt:
+                dirtyFields.alert?.scheduleStartAt === true,
+            },
           ),
         };
         const normalizedChartConfig = normalizeChartConfig(
@@ -878,7 +896,15 @@ export default function EditTimeChartForm({
         onSave?.(normalizedChartConfig);
       }
     },
-    [onSave, displayType, tableSource, setError, chartConfig.alert],
+    [
+      onSave,
+      displayType,
+      tableSource,
+      setError,
+      chartConfig.alert,
+      dirtyFields.alert?.scheduleOffsetMinutes,
+      dirtyFields.alert?.scheduleStartAt,
+    ],
   );
 
   // Track previous values for detecting changes
@@ -1378,11 +1404,9 @@ export default function EditTimeChartForm({
                     control={control}
                   />
                 </Group>
-                {(alert as any)?.createdBy && (
+                {alert?.createdBy && (
                   <Text size="xs" opacity={0.6}>
-                    Created by{' '}
-                    {(alert as any).createdBy?.name ||
-                      (alert as any).createdBy?.email}
+                    Created by {alert.createdBy.name || alert.createdBy.email}
                   </Text>
                 )}
               </Group>

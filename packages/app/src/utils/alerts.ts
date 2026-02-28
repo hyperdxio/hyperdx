@@ -152,13 +152,22 @@ type AlertScheduleFields = {
   scheduleStartAt?: string | null;
 };
 
+type NormalizeAlertScheduleOptions = {
+  preserveExplicitScheduleOffsetMinutes?: boolean;
+  preserveExplicitScheduleStartAt?: boolean;
+};
+
 /**
  * Keep alert documents backward-compatible by avoiding no-op writes for
  * scheduling fields on pre-migration alerts that never had these keys.
  */
 export function normalizeNoOpAlertScheduleFields<
   T extends AlertScheduleFields | undefined,
->(alert: T, previousAlert?: AlertScheduleFields | null): T {
+>(
+  alert: T,
+  previousAlert?: AlertScheduleFields | null,
+  options: NormalizeAlertScheduleOptions = {},
+): T {
   if (alert == null) {
     return alert;
   }
@@ -173,12 +182,17 @@ export function normalizeNoOpAlertScheduleFields<
 
   if (
     (normalizedAlert.scheduleOffsetMinutes ?? 0) === 0 &&
-    !previousHadOffset
+    !previousHadOffset &&
+    !options.preserveExplicitScheduleOffsetMinutes
   ) {
     delete normalizedAlert.scheduleOffsetMinutes;
   }
 
-  if (normalizedAlert.scheduleStartAt == null && !previousHadStartAt) {
+  if (
+    normalizedAlert.scheduleStartAt == null &&
+    !previousHadStartAt &&
+    !options.preserveExplicitScheduleStartAt
+  ) {
     delete normalizedAlert.scheduleStartAt;
   }
 

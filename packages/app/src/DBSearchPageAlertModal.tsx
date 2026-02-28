@@ -96,7 +96,12 @@ const AlertForm = ({
 }) => {
   const { data: source } = useSource({ id: sourceId });
 
-  const { control, handleSubmit, setValue } = useForm<Alert>({
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    formState: { dirtyFields },
+  } = useForm<Alert>({
     defaultValues: defaultValues
       ? {
           ...defaultValues,
@@ -137,7 +142,14 @@ const AlertForm = ({
   return (
     <form
       onSubmit={handleSubmit(data =>
-        onSubmit(normalizeNoOpAlertScheduleFields(data, defaultValues)),
+        onSubmit(
+          normalizeNoOpAlertScheduleFields(data, defaultValues, {
+            preserveExplicitScheduleOffsetMinutes:
+              dirtyFields.scheduleOffsetMinutes === true,
+            preserveExplicitScheduleStartAt:
+              dirtyFields.scheduleStartAt === true,
+          }),
+        ),
       )}
     >
       <Stack gap="xs">
