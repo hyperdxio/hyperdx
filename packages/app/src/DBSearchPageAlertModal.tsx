@@ -40,6 +40,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCreateSavedSearch } from '@/savedSearch';
 import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
@@ -51,7 +52,8 @@ import {
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
 import { AlertScheduleFields } from './components/AlertScheduleFields';
-import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
+import { getStoredLanguage } from './components/SearchInput/SearchWhereInput';
+import { SQLInlineEditorControlled } from './components/SearchInput/SQLInlineEditor';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { AlertWithCreatedBy, SearchConfig } from './types';
@@ -315,6 +317,7 @@ export const DBSearchPageAlertModal = ({
   onClose: () => void;
   open: boolean;
 }) => {
+  const brandName = useBrandDisplayName();
   const queryClient = useQueryClient();
   const createAlert = api.useCreateAlert();
   const updateAlert = api.useUpdateAlert();
@@ -358,7 +361,8 @@ export const DBSearchPageAlertModal = ({
           name,
           select: searchedConfig.select ?? '',
           where: searchedConfig.where ?? '',
-          whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+          whereLanguage:
+            searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
           source: searchedConfig.source ?? '',
           orderBy: searchedConfig.orderBy ?? '',
           filters: searchedConfig.filters ?? [],
@@ -399,7 +403,7 @@ export const DBSearchPageAlertModal = ({
     } catch (error) {
       notifications.show({
         color: 'red',
-        message: 'Something went wrong. Please contact HyperDX team.',
+        message: `Something went wrong. Please contact ${brandName} team.`,
         autoClose: 5000,
       });
     }
@@ -418,7 +422,7 @@ export const DBSearchPageAlertModal = ({
     } catch (error) {
       notifications.show({
         color: 'red',
-        message: 'Something went wrong. Please contact HyperDX team.',
+        message: `Something went wrong. Please contact ${brandName} team.`,
         autoClose: 5000,
       });
     }

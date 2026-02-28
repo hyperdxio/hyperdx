@@ -11,10 +11,10 @@ import {
 import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
-import WhereLanguageControlled from '@/components/WhereLanguageControlled';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
-import SearchInputV2 from '@/SearchInputV2';
 import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
 
@@ -86,7 +86,10 @@ export default function ContextSubpanel({
   const { control } = useForm({
     defaultValues: {
       where: '',
-      whereLanguage: originalLanguage ?? ('lucene' as 'lucene' | 'sql'),
+      whereLanguage:
+        originalLanguage ??
+        getStoredLanguage() ??
+        ('lucene' as 'lucene' | 'sql'),
     },
   });
 
@@ -145,7 +148,7 @@ export default function ContextSubpanel({
     'k8s.pod.name': k8sPodName,
     'host.name': host,
     'service.name': service,
-  } = rowData.ResourceAttributes ?? {};
+  } = rowData[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES] ?? {};
 
   const CONTEXT_MAPPING = useMemo(
     () =>
@@ -261,35 +264,12 @@ export default function ContextSubpanel({
               onChange={v => setContextBy(v as ContextBy)}
             />
             {contextBy === ContextBy.Custom && (
-              <WhereLanguageControlled
-                name="whereLanguage"
+              <SearchWhereInput
+                tableConnection={tcFromSource(source)}
                 control={control}
-                sqlInput={
-                  originalLanguage === 'lucene' ? null : (
-                    <SQLInlineEditorControlled
-                      tableConnection={tcFromSource(source)}
-                      control={control}
-                      name="where"
-                      placeholder="SQL WHERE clause (ex. column = 'foo')"
-                      language="sql"
-                      enableHotkey
-                      size="sm"
-                    />
-                  )
-                }
-                luceneInput={
-                  originalLanguage === 'sql' ? null : (
-                    <SearchInputV2
-                      tableConnection={tcFromSource(source)}
-                      control={control}
-                      name="where"
-                      language="lucene"
-                      placeholder="Lucene where clause (ex. column:value)"
-                      enableHotkey
-                      size="sm"
-                    />
-                  )
-                }
+                name="where"
+                enableHotkey
+                size="xs"
               />
             )}
             <SegmentedControl

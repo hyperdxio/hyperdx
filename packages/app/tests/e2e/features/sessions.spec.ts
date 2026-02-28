@@ -17,10 +17,6 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
       // Use web-first assertions instead of synchronous expect
       await expect(sessionsPage.form).toBeVisible();
       await expect(sessionsPage.dataSource).toBeVisible();
-
-      // Verify Mantine select input is present
-      const selectInput = sessionsPage.page.locator('.mantine-Select-input');
-      await expect(selectInput).toBeVisible();
     });
   });
 

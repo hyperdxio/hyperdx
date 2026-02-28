@@ -1,5 +1,33 @@
 # @hyperdx/common-utils
 
+## 0.15.0
+
+### Minor Changes
+
+- cd2b7a76: fix: revert use_top_k_dynamic_filtering setting for issues with ORDER BY rand()
+
+### Patch Changes
+
+- d760d2db: chore: Run integration tests on different ports
+- 34c9afeb: feat: Add list webhooks API
+
+## 0.14.0
+
+### Minor Changes
+
+- 8326fc6e: feat: use optimization settings if available for use in CH
+
+## 0.13.0
+
+### Minor Changes
+
+- 051276fc: feat: pie chart now available for chart visualization
+- b676f268: feat: Add config property to external dashboard APIs. Deprecate series.
+
+### Patch Changes
+
+- 4f1da032: fix: clickstack build fixed when running same-site origin by omitting credentials from Authorization header for local mode fetch
+
 ## 0.12.3
 
 ### Patch Changes

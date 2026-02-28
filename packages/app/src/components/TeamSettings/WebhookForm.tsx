@@ -27,6 +27,7 @@ import ReactCodeMirror, {
 } from '@uiw/react-codemirror';
 
 import api from '@/api';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { isValidUrl } from '@/utils';
 
 const DEFAULT_GENERIC_WEBHOOK_BODY = [
@@ -65,6 +66,7 @@ export function WebhookForm({
   onClose: VoidFunction;
   onSuccess: (webhookId?: string) => void;
 }) {
+  const brandName = useBrandDisplayName();
   const saveWebhook = api.useSaveWebhook();
   const updateWebhook = api.useUpdateWebhook();
   const testWebhook = api.useTestWebhook();
@@ -233,7 +235,7 @@ export function WebhookForm({
       onClose();
     } catch (e) {
       console.error(e);
-      let message = 'Something went wrong. Please contact HyperDX team.';
+      let message = `Something went wrong. Please contact ${brandName} team.`;
 
       if (e instanceof HTTPError) {
         try {
@@ -280,6 +282,7 @@ export function WebhookForm({
       <Stack mt="sm">
         <Text>{isEditing ? 'Edit Webhook' : 'Create Webhook'}</Text>
         <Radio.Group
+          data-testid="service-type-radio-group"
           label="Service Type"
           required
           value={service}
@@ -293,6 +296,7 @@ export function WebhookForm({
         </Radio.Group>
         <TextInput
           label="Webhook Name"
+          data-testid="webhook-name-input"
           placeholder="Post to #dev-alerts"
           required
           error={form.formState.errors.name?.message}
@@ -301,6 +305,7 @@ export function WebhookForm({
 
         <TextInput
           label="Webhook URL"
+          data-testid="webhook-url-input"
           placeholder={
             service === WebhookService.Slack
               ? 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
@@ -402,6 +407,7 @@ export function WebhookForm({
             <Button
               variant="primary"
               type="submit"
+              data-testid="add-webhook-button"
               loading={saveWebhook.isPending || updateWebhook.isPending}
             >
               {isEditing ? 'Update Webhook' : 'Add Webhook'}

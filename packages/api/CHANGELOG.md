@@ -1,5 +1,49 @@
 # @hyperdx/api
 
+## 2.20.0
+
+### Minor Changes
+
+- 3e8cc729: feat: add alerts to number chart
+
+### Patch Changes
+
+- d760d2db: chore: Run integration tests on different ports
+- fedd586b: feat: Remove potentially-sensitive fields from external webhooks API
+- 54744093: fix: AI Notebook CH connections need to send pw
+- 34c9afeb: feat: Add list webhooks API
+- Updated dependencies [cd2b7a76]
+- Updated dependencies [d760d2db]
+- Updated dependencies [34c9afeb]
+  - @hyperdx/common-utils@0.15.0
+
+## 2.19.0
+
+### Minor Changes
+
+- 8326fc6e: feat: use optimization settings if available for use in CH
+
+### Patch Changes
+
+- cbe319c0: fix: use field as metricName in external metrics API when metricName is not provided
+- b5bb69e3: fix: Improve Pie Chart implemententation
+- Updated dependencies [8326fc6e]
+  - @hyperdx/common-utils@0.14.0
+
+## 2.18.0
+
+### Minor Changes
+
+- b676f268: feat: Add config property to external dashboard APIs. Deprecate series.
+
+### Patch Changes
+
+- 18e96904: fix: update required fields in our spec
+- Updated dependencies [051276fc]
+- Updated dependencies [4f1da032]
+- Updated dependencies [b676f268]
+  - @hyperdx/common-utils@0.13.0
+
 ## 2.17.0
 
 ### Patch Changes
