@@ -1,4 +1,4 @@
-# @hyperdx/api
+# hyperdx api
 
 ## 2.20.0
 
