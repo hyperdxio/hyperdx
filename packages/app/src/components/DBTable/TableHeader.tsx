@@ -12,6 +12,7 @@ import { flexRender, Header } from '@tanstack/react-table';
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 
 import styles from '../Table.module.scss';
+
 import { DBRowTableIconButton } from './DBRowTableIconButton';
 
 export default function TableHeader({
