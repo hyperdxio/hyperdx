@@ -153,6 +153,43 @@ describe('alerts router', () => {
     expect(alertAfterNullScheduleStartAt?.scheduleStartAt).toBeNull();
   });
 
+  it('preserves scheduleOffsetMinutes when schedule fields are omitted in updates', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const createdAlert = await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          interval: '15m',
+        }),
+        scheduleOffsetMinutes: 2,
+      })
+      .expect(200);
+
+    await agent
+      .put(`/alerts/${createdAlert.body.data._id}`)
+      .send({
+        channel: createdAlert.body.data.channel,
+        interval: createdAlert.body.data.interval,
+        threshold: 10,
+        thresholdType: createdAlert.body.data.thresholdType,
+        source: createdAlert.body.data.source,
+        dashboardId: dashboard.body.id,
+        tileId: dashboard.body.tiles[0].id,
+      })
+      .expect(200);
+
+    const updatedAlert = await Alert.findById(createdAlert.body.data._id);
+    expect(updatedAlert?.scheduleOffsetMinutes).toBe(2);
+    expect(updatedAlert?.scheduleStartAt).toBeUndefined();
+  });
+
   it('resets scheduleOffsetMinutes to 0 when scheduleStartAt is set without offset', async () => {
     const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
@@ -411,7 +448,7 @@ describe('alerts router', () => {
   });
 
   it('can unsilence an alert', async () => {
-    const { agent, user } = await getLoggedInAgent(server);
+    const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
