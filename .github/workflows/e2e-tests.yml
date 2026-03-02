@@ -1,0 +1,98 @@
+name: E2E Tests
+on:
+  workflow_call:
+
+jobs:
+  e2e-tests:
+    name: E2E Tests - Shard ${{ matrix.shard }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache-dependency-path: 'yarn.lock'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Build dependencies
+        run: npx nx run-many -t ci:build
+
+      - name: Install Playwright browsers
+        run: cd packages/app && npx playwright install --with-deps chromium
+
+      - name: Start E2E Docker Compose
+        run: |
+          docker compose -p e2e -f packages/app/tests/e2e/docker-compose.yml up -d
+          echo "Waiting for MongoDB..."
+          for i in $(seq 1 30); do
+            if docker compose -p e2e -f packages/app/tests/e2e/docker-compose.yml exec -T db mongosh --port 29998 --quiet --eval "db.adminCommand({ping:1})" >/dev/null 2>&1; then
+              echo "MongoDB is ready"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "MongoDB failed to become ready after 30 seconds"
+              exit 1
+            fi
+            echo "Waiting for MongoDB... ($i/30)"
+            sleep 1
+          done
+          echo "Waiting for ClickHouse..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8123/ping >/dev/null 2>&1; then
+              echo "ClickHouse is ready"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "ClickHouse failed to become ready after 60 seconds"
+              exit 1
+            fi
+            echo "Waiting for ClickHouse... ($i/60)"
+            sleep 1
+          done
+
+      - name: Run Playwright tests (full-stack mode)
+        # E2E uses local docker-compose (MongoDB on 29998, ClickHouse on 8123)
+        env:
+          E2E_FULLSTACK: 'true'
+          E2E_UNIQUE_USER: 'true'
+          E2E_API_HEALTH_CHECK_MAX_RETRIES: '60'
+          MONGO_URI: mongodb://localhost:29998/hyperdx-e2e
+        run: |
+          cd packages/app
+          yarn test:e2e --shard=${{ matrix.shard }}/4
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: packages/app/playwright-report/
+          retention-days: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.shard }}
+          path: packages/app/test-results/
+          retention-days: 30
+
+      - name: Stop E2E containers
+        if: always()
+        run:
+          docker compose -p e2e -f packages/app/tests/e2e/docker-compose.yml
+          down -v

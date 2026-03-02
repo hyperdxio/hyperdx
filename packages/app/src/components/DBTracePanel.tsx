@@ -16,6 +16,7 @@ import {
 import { IconPencil } from '@tabler/icons-react';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
@@ -23,7 +24,6 @@ import TabBar from '@/TabBar';
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { SourceSelectControlled } from './SourceSelect';
-import { SQLInlineEditorControlled } from './SQLInlineEditor';
 
 enum Tab {
   Overview = 'overview',
@@ -155,13 +155,14 @@ export default function DBTracePanel({
       {(showTraceIdInput || !traceId) && parentSourceId != null && (
         <Stack gap="xs">
           <Text size="xs">Trace ID Expression</Text>
-          <Flex>
+          <Flex align="center">
             <SQLInlineEditorControlled
               tableConnection={tcFromSource(parentSourceData)}
               name="traceIdExpression"
               placeholder="Log Trace ID Column (ex. trace_id)"
               control={traceIdControl}
               size="xs"
+              parentRef={typeof document !== 'undefined' ? document.body : null}
             />
             <Button
               ms="sm"

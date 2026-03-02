@@ -522,6 +522,7 @@ export abstract class BaseClickhouseClient {
       date_time_output_format: 'iso',
       wait_end_of_query: 0,
       cancel_http_readonly_queries_on_client_close: 1,
+      output_format_json_quote_64bit_integers: 1, // In 25.8, the default value for this was changed from 1 to 0. Due to JavaScript's poor precision for big integers, we should enable this https://github.com/ClickHouse/ClickHouse/pull/74079
     };
 
     const metadata = getMetadata(this);
@@ -545,7 +546,8 @@ export abstract class BaseClickhouseClient {
       'query_plan_max_limit_for_top_k_optimization',
       '100000',
     );
-    applySettingIfAvailable('use_top_k_dynamic_filtering', '1');
+    // TODO: HDX-3499 look into when we can and can't use this setting. For example, event deltas ORDER BY rand(), which is not compatible with this setting
+    // applySettingIfAvailable('use_top_k_dynamic_filtering', '1');
     // Enables skip indexes to be used on data read
     applySettingIfAvailable('use_skip_indexes_on_data_read', '1');
     // Evaluate WHERE filters with mixed AND and OR conditions using skip indexes.

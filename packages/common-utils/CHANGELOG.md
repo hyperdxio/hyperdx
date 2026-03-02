@@ -1,5 +1,22 @@
 # @hyperdx/common-utils
 
+## 0.15.0
+
+### Minor Changes
+
+- cd2b7a76: fix: revert use_top_k_dynamic_filtering setting for issues with ORDER BY rand()
+
+### Patch Changes
+
+- d760d2db: chore: Run integration tests on different ports
+- 34c9afeb: feat: Add list webhooks API
+
+## 0.14.0
+
+### Minor Changes
+
+- 8326fc6e: feat: use optimization settings if available for use in CH
+
 ## 0.13.0
 
 ### Minor Changes

@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useState } from 'react';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import {
   MetricsDataType,
   MetricTable,
@@ -233,6 +234,18 @@ function OnboardingModalComponent({
       setStep(startStep);
     }
   }, [startStep, step]);
+  useEffect(() => {
+    if (
+      (step === 'auto-detect' || step === 'source') &&
+      sources &&
+      sources.length > 0
+    ) {
+      // Sources may load in late once a connection is defined.
+      // If this happens, close the modal, we don't want to bother the user
+      // by forcing redefining their sources
+      setStep('closed');
+    }
+  }, [step, sources]);
 
   const createSourceMutation = useCreateSource();
   const createConnectionMutation = useCreateConnection();
@@ -244,6 +257,47 @@ function OnboardingModalComponent({
   // We should only try to auto-detect once
   const [hasAutodetected, setHasAutodetected] = useState(false);
   const [autoDetectedSources, setAutoDetectedSources] = useState<TSource[]>([]);
+
+  // Auto-connect for clickstack build: test default credentials against origin
+  const [hasAttemptedAutoConnect, setHasAttemptedAutoConnect] = useState(false);
+  useEffect(() => {
+    if (!IS_CLICKHOUSE_BUILD) return;
+    if (step !== 'connection') return;
+    if (connections?.length !== 0) return;
+    if (hasAttemptedAutoConnect) return;
+    // lets try to auto connect to the origin clickhouse server
+    setHasAttemptedAutoConnect(true);
+    const host = window.location.origin;
+    const client = new ClickhouseClient({
+      host,
+      username: 'default',
+      password: '',
+    });
+    client
+      .query({ query: 'SELECT 1', shouldSkipApplySettings: true })
+      .then(result => {
+        result.json().then(() => {
+          createConnectionMutation.mutate(
+            {
+              connection: {
+                name: 'Default',
+                host,
+                username: 'default',
+                password: '',
+              },
+            },
+            {
+              onSuccess: () => {
+                setStep('auto-detect');
+              },
+            },
+          );
+        });
+      })
+      .catch(() => {
+        // Auto-connect failed, user will use the form manually
+      });
+  }, [step, connections, hasAttemptedAutoConnect, createConnectionMutation]);
 
   const handleAutoDetectSources = useCallback(
     async (connectionId: string) => {
@@ -693,7 +747,9 @@ function OnboardingModalComponent({
               connection={{
                 id: '',
                 name: 'Default',
-                host: 'http://localhost:8123',
+                host: IS_CLICKHOUSE_BUILD
+                  ? window.location.origin
+                  : 'http://localhost:8123',
                 username: 'default',
                 password: '',
               }}

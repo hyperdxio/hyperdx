@@ -1648,6 +1648,26 @@ describe('External API v2 Dashboards - new format', () => {
     },
   });
 
+  const createPieChart = (sourceId: string): ExternalDashboardTileWithId => ({
+    name: 'Pie Chart',
+    x: 6,
+    y: 3,
+    w: 3,
+    h: 3,
+    id: new ObjectId().toString(),
+    config: {
+      displayType: 'pie',
+      sourceId,
+      select: [
+        {
+          aggFn: 'count',
+          where: '',
+        },
+      ],
+      groupBy: 'service.name',
+    },
+  });
+
   const server = getServer();
   let agent, team, user, traceSource, metricSource;
 
@@ -1912,6 +1932,7 @@ describe('External API v2 Dashboards - new format', () => {
           createTableChart(traceSource._id.toString()),
           createNumberChart(traceSource._id.toString()),
           createMarkdownChart(),
+          createPieChart(traceSource._id.toString()),
         ],
         tags: ['test', 'chart-types'],
       };
@@ -1922,18 +1943,45 @@ describe('External API v2 Dashboards - new format', () => {
 
       const { id } = response.body.data;
       expect(response.body.data).toHaveProperty('id');
-      expect(response.body.data.tiles.length).toBe(4);
+      expect(response.body.data.tiles.length).toBe(5);
 
       // Verify by retrieving the dashboard
       const retrieveResponse = await authRequest('get', `${BASE_URL}/${id}`);
 
       expect(retrieveResponse.status).toBe(200);
-      expect(retrieveResponse.body.data.tiles.length).toBe(4);
+      expect(retrieveResponse.body.data.tiles.length).toBe(5);
       expect(retrieveResponse.body.data.tags).toEqual(['test', 'chart-types']);
     });
 
     it('can round-trip all supported chart types and all supported fields on each chart type', async () => {
       // Arrange
+      const pieChart: ExternalDashboardTile = {
+        name: 'Pie Chart',
+        x: 6,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'pie',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.5,
+              valueExpression: 'Duration',
+              alias: 'Median Duration',
+              where: "env = 'production'",
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'service.name',
+          numberFormat: {
+            output: 'number',
+            mantissa: 2,
+          },
+        },
+      };
+
       const lineChart: ExternalDashboardTile = {
         name: 'Line Chart',
         x: 0,
@@ -2087,7 +2135,14 @@ describe('External API v2 Dashboards - new format', () => {
       const response = await authRequest('post', BASE_URL)
         .send({
           name: 'Dashboard with All Chart Types',
-          tiles: [lineChart, barChart, tableChart, numberChart, markdownChart],
+          tiles: [
+            lineChart,
+            barChart,
+            tableChart,
+            numberChart,
+            markdownChart,
+            pieChart,
+          ],
           tags: ['round-trip-test'],
         })
         .expect(200);
@@ -2098,6 +2153,7 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[2], ['id'])).toEqual(tableChart);
       expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberChart);
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(markdownChart);
+      expect(omit(response.body.data.tiles[5], ['id'])).toEqual(pieChart);
     });
 
     it('should return 400 when source IDs do not exist', async () => {

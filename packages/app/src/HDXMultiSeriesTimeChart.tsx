@@ -20,12 +20,14 @@ import {
 import { AxisDomain } from 'recharts/types/util/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { IconCaretDownFilled, IconCaretUpFilled } from '@tabler/icons-react';
 
 import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 
+import {
+  ChartTooltipContainer,
+  ChartTooltipItem,
+} from './components/charts/ChartTooltip';
 import {
   convertGranularityToSeconds,
   LineData,
@@ -48,40 +50,6 @@ type TooltipPayload = {
   opacity?: number;
 };
 
-const percentFormatter = new Intl.NumberFormat('en-US', {
-  style: 'percent',
-  maximumFractionDigits: 2,
-});
-
-const calculatePercentChange = (current: number, previous: number) => {
-  if (previous === 0) {
-    return current === 0 ? 0 : undefined;
-  }
-  return (current - previous) / previous;
-};
-
-const PercentChange = ({
-  current,
-  previous,
-}: {
-  current: number;
-  previous: number;
-}) => {
-  const percentChange = calculatePercentChange(current, previous);
-  if (percentChange == undefined) {
-    return null;
-  }
-
-  const Icon = percentChange > 0 ? IconCaretUpFilled : IconCaretDownFilled;
-
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 0 }}>
-      (<Icon size={12} />
-      {percentFormatter.format(Math.abs(percentChange))})
-    </span>
-  );
-};
-
 export const TooltipItem = memo(
   ({
     p,
@@ -93,30 +61,16 @@ export const TooltipItem = memo(
     numberFormat?: NumberFormat;
   }) => {
     return (
-      <div className="d-flex gap-2 items-center justify-center">
-        <div>
-          <svg width="12" height="4">
-            <line
-              x1="0"
-              y1="2"
-              x2="12"
-              y2="2"
-              stroke={p.color}
-              opacity={p.opacity}
-              strokeDasharray={p.strokeDasharray}
-            />
-          </svg>
-        </div>
-        <div>
-          <span style={{ color: p.color }}>
-            {truncateMiddle(p.name ?? p.dataKey, 50)}
-          </span>
-          : {numberFormat ? formatNumber(p.value, numberFormat) : p.value}{' '}
-          {previous && (
-            <PercentChange current={p.value} previous={previous?.value} />
-          )}
-        </div>
-      </div>
+      <ChartTooltipItem
+        color={p.color ?? ''}
+        name={p.name ?? p.dataKey}
+        value={p.value}
+        numberFormat={numberFormat}
+        indicator="line"
+        strokeDasharray={p.strokeDasharray}
+        opacity={p.opacity}
+        previous={previous?.value}
+      />
     );
   },
 );
@@ -145,42 +99,42 @@ const HDXLineChartTooltip = withErrorBoundary(
     );
 
     if (active && payload && payload.length) {
+      const header = (
+        <>
+          <FormatTime value={label * 1000} />
+          {previousPeriodOffsetSeconds != null && (
+            <>
+              {' (vs '}
+              <FormatTime
+                value={(label - previousPeriodOffsetSeconds) * 1000}
+              />
+              {')'}
+            </>
+          )}
+        </>
+      );
       return (
-        <div className={styles.chartTooltip}>
-          <div className={styles.chartTooltipHeader}>
-            <FormatTime value={label * 1000} />
-            {previousPeriodOffsetSeconds != null && (
-              <>
-                {' (vs '}
-                <FormatTime
-                  value={(label - previousPeriodOffsetSeconds) * 1000}
-                />
-                {')'}
-              </>
-            )}
-          </div>
-          <div className={styles.chartTooltipContent}>
-            {payload
-              .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
-              .map((p: TooltipPayload) => {
-                const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
-                const isPreviousPeriod = previousKey === p.dataKey;
-                const previousPayload =
-                  !isPreviousPeriod && previousKey
-                    ? payloadByKey.get(previousKey)
-                    : undefined;
+        <ChartTooltipContainer header={header}>
+          {payload
+            .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
+            .map((p: TooltipPayload) => {
+              const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
+              const isPreviousPeriod = previousKey === p.dataKey;
+              const previousPayload =
+                !isPreviousPeriod && previousKey
+                  ? payloadByKey.get(previousKey)
+                  : undefined;
 
-                return (
-                  <TooltipItem
-                    key={p.dataKey}
-                    p={p}
-                    numberFormat={numberFormat}
-                    previous={previousPayload}
-                  />
-                );
-              })}
-          </div>
-        </div>
+              return (
+                <TooltipItem
+                  key={p.dataKey}
+                  p={p}
+                  numberFormat={numberFormat}
+                  previous={previousPayload}
+                />
+              );
+            })}
+        </ChartTooltipContainer>
       );
     }
     return null;
@@ -194,38 +148,6 @@ const HDXLineChartTooltip = withErrorBoundary(
     ),
   },
 );
-
-function CopyableLegendItem({ entry }: any) {
-  return (
-    <span
-      className={styles.legendItem}
-      style={{ color: entry.color }}
-      role="button"
-      onClick={() => {
-        window.navigator.clipboard.writeText(entry.value);
-        notifications.show({ color: 'green', message: `Copied to clipboard` });
-      }}
-      title="Click to expand"
-    >
-      <div className="d-flex gap-1 items-center justify-center">
-        <div>
-          <svg width="12" height="4">
-            <line
-              x1="0"
-              y1="2"
-              x2="12"
-              y2="2"
-              stroke={entry.color}
-              opacity={entry.opacity}
-              strokeDasharray={entry.payload?.strokeDasharray}
-            />
-          </svg>
-        </div>
-        {entry.value}
-      </div>
-    </span>
-  );
-}
 
 function ExpandableLegendItem({
   entry,

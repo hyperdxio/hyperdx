@@ -4,6 +4,7 @@ import {
   MetricsDataType,
   NumberFormatSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 import { z } from 'zod';
@@ -234,6 +235,14 @@ const externalDashboardNumberChartConfigSchema = z.object({
   numberFormat: NumberFormatSchema.optional(),
 });
 
+const externalDashboardPieChartConfigSchema = z.object({
+  displayType: z.literal('pie'),
+  sourceId: objectIdSchema,
+  select: z.array(externalDashboardSelectItemSchema).length(1),
+  groupBy: z.string().max(10000).optional(),
+  numberFormat: NumberFormatSchema.optional(),
+});
+
 const externalDashboardSearchChartConfigSchema = z.object({
   displayType: z.literal('search'),
   sourceId: objectIdSchema,
@@ -253,6 +262,7 @@ export const externalDashboardTileConfigSchema = z
     externalDashboardBarChartConfigSchema,
     externalDashboardTableChartConfigSchema,
     externalDashboardNumberChartConfigSchema,
+    externalDashboardPieChartConfigSchema,
     externalDashboardMarkdownChartConfigSchema,
     externalDashboardSearchChartConfigSchema,
   ])
@@ -396,3 +406,41 @@ export const alertSchema = z
     message: z.string().min(1).max(4096).nullish(),
   })
   .and(zSavedSearchAlert.or(zTileAlert));
+
+// ==============================
+// Webhooks
+// ==============================
+
+const baseWebhookSchema = {
+  id: z.string(),
+  name: z.string(),
+  url: z.string().optional(),
+  description: z.string().optional(),
+  updatedAt: z.string(),
+  createdAt: z.string(),
+};
+
+const slackWebhookSchema = z.object({
+  ...baseWebhookSchema,
+  service: z.literal(WebhookService.Slack),
+});
+
+const incidentIOWebhookSchema = z.object({
+  ...baseWebhookSchema,
+  service: z.literal(WebhookService.IncidentIO),
+});
+
+const genericWebhookSchema = z.object({
+  ...baseWebhookSchema,
+  service: z.literal(WebhookService.Generic),
+  body: z.string().optional(),
+  // headers are intentionally omitted from response schemas to avoid leaking sensitive information.
+});
+
+export const externalWebhookSchema = z.discriminatedUnion('service', [
+  slackWebhookSchema,
+  incidentIOWebhookSchema,
+  genericWebhookSchema,
+]);
+
+export type ExternalWebhook = z.infer<typeof externalWebhookSchema>;

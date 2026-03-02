@@ -105,7 +105,7 @@ export const Tags = React.memo(
             </ActionIcon>
           )}
         </Popover.Target>
-        <Popover.Dropdown p={0} bg="dark">
+        <Popover.Dropdown p={0}>
           {isLoading && 'Loading'}
           {isError && 'Error'}
           <Input

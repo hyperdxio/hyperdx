@@ -13,17 +13,16 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Flex } from '@mantine/core';
-import { ActionIcon } from '@mantine/core';
-import { Paper } from '@mantine/core';
+import { Button } from '@mantine/core';
 import { Center } from '@mantine/core';
 import { Text } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { getDurationMsExpression } from '@/source';
 
 import DBDeltaChart from '../DBDeltaChart';
 import DBHeatmapChart from '../DBHeatmapChart';
-import { SQLInlineEditorControlled } from '../SQLInlineEditor';
 
 const Schema = z.object({
   value: z.string().trim().min(1),
@@ -57,7 +56,7 @@ export function DBSearchHeatmapChart({
       style={{ overflow: 'hidden' }}
       ref={setContainer}
     >
-      <Box mx="lg" mt="xs" mb={0}>
+      <Box px="sm" pt="xs" mb={0}>
         <DBSearchHeatmapForm
           connection={tcFromSource(source)}
           defaultValues={{
@@ -122,14 +121,12 @@ export function DBSearchHeatmapChart({
           yMax={fields.yMax}
         />
       ) : (
-        <Paper shadow="xs" p="xl" h="100%">
-          <Center mih={100} h="100%">
-            <Text size="sm">
-              Please highlight an outlier range in the heatmap to view the delta
-              chart.
-            </Text>
-          </Center>
-        </Paper>
+        <Center mih={100} h="100%">
+          <Text size="sm">
+            Please highlight an outlier range in the heatmap to view the delta
+            chart.
+          </Text>
+        </Center>
       )}
     </Flex>
   );
@@ -157,47 +154,44 @@ function DBSearchHeatmapForm({
       style={{ position: 'relative' }}
     >
       <Flex m="0" mb="xs" align="stretch" gap="xs">
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <SQLInlineEditorControlled
-            parentRef={parentRef}
-            tableConnection={connection}
-            control={form.control}
-            name="value"
-            size="xs"
-            tooltipText="Controls the Y axis range and scale — defines the metric plotted vertically."
-            placeholder="SQL expression"
-            language="sql"
-            onSubmit={form.handleSubmit(onSubmit)}
-            label="Value"
-            error={form.formState.errors.value?.message}
-            rules={{ required: true }}
-          />
-        </div>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <SQLInlineEditorControlled
-            parentRef={parentRef}
-            tableConnection={connection}
-            control={form.control}
-            name="count"
-            placeholder="SQL expression"
-            language="sql"
-            size="xs"
-            tooltipText="Controls the color intensity (Z axis) — shows how frequently or strongly each value occurs."
-            onSubmit={form.handleSubmit(onSubmit)}
-            label="Count"
-            error={form.formState.errors.count?.message}
-            rules={{ required: true }}
-          />
-        </div>
-        <ActionIcon
-          w="40px"
-          variant="primary"
+        <SQLInlineEditorControlled
+          parentRef={parentRef}
+          tableConnection={connection}
+          control={form.control}
+          name="value"
+          size="xs"
+          tooltipText="Controls the Y axis range and scale — defines the metric plotted vertically."
+          placeholder="SQL expression"
+          language="sql"
+          onSubmit={form.handleSubmit(onSubmit)}
+          label="Value"
+          error={form.formState.errors.value?.message}
+          rules={{ required: true }}
+        />
+
+        <SQLInlineEditorControlled
+          parentRef={parentRef}
+          tableConnection={connection}
+          control={form.control}
+          name="count"
+          placeholder="SQL expression"
+          language="sql"
+          size="xs"
+          tooltipText="Controls the color intensity (Z axis) — shows how frequently or strongly each value occurs."
+          onSubmit={form.handleSubmit(onSubmit)}
+          label="Count"
+          error={form.formState.errors.count?.message}
+          rules={{ required: true }}
+        />
+
+        <Button
+          variant="secondary"
           type="submit"
-          h="auto"
-          title="Run"
+          size="xs"
+          leftSection={<IconPlayerPlay size={16} />}
         >
-          <IconPlayerPlay />
-        </ActionIcon>
+          Run
+        </Button>
       </Flex>
     </form>
   );

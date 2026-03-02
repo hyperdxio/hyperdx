@@ -81,14 +81,16 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
-import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
@@ -101,7 +103,6 @@ import {
   useUpdateSavedSearch,
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
-import SearchInputV2 from '@/SearchInputV2';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
@@ -414,7 +415,8 @@ function SaveSearchModalComponent({
             name,
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
-            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+            whereLanguage:
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -432,7 +434,8 @@ function SaveSearchModalComponent({
             name,
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
-            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+            whereLanguage:
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -881,7 +884,8 @@ function DBSearchPage() {
     values: {
       select: searchedConfig.select || '',
       where: searchedConfig.where || '',
-      whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+      whereLanguage:
+        searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
       source: searchedConfig.source || defaultSourceId,
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
@@ -944,7 +948,8 @@ function DBSearchPage() {
       reset({
         select: searchedConfig?.select ?? '',
         where: searchedConfig?.where ?? '',
-        whereLanguage: searchedConfig?.whereLanguage ?? 'lucene',
+        whereLanguage:
+          searchedConfig?.whereLanguage ?? getStoredLanguage() ?? 'lucene',
         source: searchedConfig?.source ?? undefined,
         filters: searchedConfig?.filters ?? [],
         orderBy: searchedConfig?.orderBy ?? '',
@@ -982,7 +987,7 @@ function DBSearchPage() {
         source: defaultSourceId,
         where: '',
         select: '',
-        whereLanguage: 'lucene',
+        whereLanguage: getStoredLanguage() ?? 'lucene',
         filters: [],
         orderBy: '',
       });
@@ -1173,7 +1178,8 @@ function DBSearchPage() {
             name: savedSearch.name,
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
-            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+            whereLanguage:
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -1544,14 +1550,6 @@ function DBSearchPage() {
     [setSaveSearchModalState],
   );
 
-  const onLanguageChange = useCallback(
-    (lang: 'sql' | 'lucene') =>
-      setValue('whereLanguage', lang, {
-        shouldDirty: true,
-      }),
-    [setValue],
-  );
-
   const onModelFormExpandClose = useCallback(() => {
     setModelFormExpanded(false);
   }, [setModelFormExpanded]);
@@ -1613,7 +1611,7 @@ function DBSearchPage() {
               setModelFormExpanded={setModelFormExpanded}
             />
           </Group>
-          <Box style={{ minWidth: 100, flexGrow: 1 }}>
+          <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
             <SQLInlineEditorControlled
               tableConnection={inputSourceTableConnection}
               control={control}
@@ -1623,6 +1621,7 @@ function DBSearchPage() {
               onSubmit={onSubmit}
               label="SELECT"
               size="xs"
+              allowMultiline
             />
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
@@ -1719,44 +1718,15 @@ function DBSearchPage() {
           onCreate={onNewSourceCreate}
         />
         <Flex gap="sm" mt="sm" px="sm">
-          <WhereLanguageControlled
-            name="whereLanguage"
+          <SearchWhereInput
+            tableConnection={inputSourceTableConnection}
             control={control}
-            sqlInput={
-              <Box style={{ width: '75%', flexGrow: 1 }}>
-                <SQLInlineEditorControlled
-                  tableConnection={inputSourceTableConnection}
-                  control={control}
-                  name="where"
-                  placeholder="SQL WHERE clause (ex. column = 'foo')"
-                  onLanguageChange={onLanguageChange}
-                  language="sql"
-                  onSubmit={onSubmit}
-                  label="WHERE"
-                  queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
-                  enableHotkey
-                  allowMultiline={true}
-                />
-              </Box>
-            }
-            luceneInput={
-              <SearchInputV2
-                tableConnection={tcFromSource(inputSourceObj)}
-                control={control}
-                name="where"
-                onLanguageChange={lang =>
-                  setValue('whereLanguage', lang, {
-                    shouldDirty: true,
-                  })
-                }
-                onSubmit={onSubmit}
-                language="lucene"
-                placeholder="Search your events w/ Lucene ex. column:foo"
-                queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
-                enableHotkey
-                data-testid="search-input"
-              />
-            }
+            name="where"
+            onSubmit={onSubmit}
+            sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
+            luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
+            enableHotkey
+            data-testid="search-input"
           />
           <TimePicker
             data-testid="time-picker"
@@ -1773,20 +1743,22 @@ function DBSearchPage() {
           />
           {isLive && (
             <Tooltip label="Live tail refresh interval">
-              <Select
-                size="sm"
-                w={80}
-                data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
-                value={String(refreshFrequency)}
-                onChange={value =>
-                  setRefreshFrequency(value ? parseInt(value, 10) : null)
-                }
-                allowDeselect={false}
-                comboboxProps={{
-                  withinPortal: true,
-                  zIndex: 1000,
-                }}
-              />
+              <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
+                <Select
+                  size="sm"
+                  w="100%"
+                  data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+                  value={String(refreshFrequency)}
+                  onChange={value =>
+                    setRefreshFrequency(value ? parseInt(value, 10) : null)
+                  }
+                  allowDeselect={false}
+                  comboboxProps={{
+                    withinPortal: true,
+                    zIndex: 1000,
+                  }}
+                />
+              </Box>
             </Tooltip>
           )}
           <SearchSubmitButton isFormStateDirty={formState.isDirty} />
@@ -1873,7 +1845,7 @@ function DBSearchPage() {
                         />
                       </Box>
                     )}
-                    <Box flex="1" mih="0">
+                    <Box flex="1" mih="0" px="sm">
                       <PatternTable
                         source={searchedSource}
                         config={{
@@ -1902,10 +1874,9 @@ function DBSearchPage() {
                   source={searchedSource}
                 />
               )}
-              <Flex direction="column" mih="0">
-                {analysisMode === 'results' &&
-                  chartConfig &&
-                  histogramTimeChartConfig && (
+              {analysisMode === 'results' && (
+                <Flex direction="column" mih="0">
+                  {chartConfig && histogramTimeChartConfig && (
                     <>
                       <Box className={searchPageStyles.searchStatsContainer}>
                         <Group
@@ -1919,7 +1890,6 @@ function DBSearchPage() {
                           />
                           <Group gap="sm" align="center">
                             {shouldShowLiveModeHint &&
-                              analysisMode === 'results' &&
                               denoiseResults != true && (
                                 <ResumeLiveTailButton
                                   handleResumeLiveTail={handleResumeLiveTail}
@@ -1956,109 +1926,95 @@ function DBSearchPage() {
                       )}
                     </>
                   )}
-                {hasQueryError && queryError ? (
-                  <>
-                    <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
-                      {whereSuggestions && whereSuggestions.length > 0 && (
-                        <Box mb="xl">
-                          <Text size="lg">
-                            <b>Query Helper</b>
+                  {hasQueryError && queryError ? (
+                    <>
+                      <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
+                        {whereSuggestions && whereSuggestions.length > 0 && (
+                          <Box mb="xl">
+                            <Text size="lg">
+                              <b>Query Helper</b>
+                            </Text>
+                            <Grid>
+                              {whereSuggestions!.map(s => (
+                                <>
+                                  <Grid.Col span={10}>
+                                    <Text>{s.userMessage('where')}</Text>
+                                  </Grid.Col>
+                                  <Grid.Col span={2}>
+                                    <Button
+                                      onClick={() =>
+                                        setValue('where', s.corrected())
+                                      }
+                                    >
+                                      Accept
+                                    </Button>
+                                  </Grid.Col>
+                                </>
+                              ))}
+                            </Grid>
+                          </Box>
+                        )}
+                        <Box mt="sm">
+                          <Text my="sm" size="sm">
+                            Error encountered for query with inputs:
                           </Text>
-                          <Grid>
-                            {whereSuggestions!.map(s => (
-                              <>
-                                <Grid.Col span={10}>
-                                  <Text>{s.userMessage('where')}</Text>
-                                </Grid.Col>
-                                <Grid.Col span={2}>
-                                  <Button
-                                    onClick={() =>
-                                      setValue('where', s.corrected())
-                                    }
-                                  >
-                                    Accept
-                                  </Button>
-                                </Grid.Col>
-                              </>
-                            ))}
-                          </Grid>
-                        </Box>
-                      )}
-                      <Box mt="sm">
-                        <Text my="sm" size="sm">
-                          Error encountered for query with inputs:
-                        </Text>
-                        <Paper
-                          flex="auto"
-                          p={'sm'}
-                          shadow="none"
-                          radius="sm"
-                          style={{ overflow: 'hidden' }}
-                        >
-                          <Grid>
-                            <Grid.Col span={2}>
-                              <Text>SELECT</Text>
-                            </Grid.Col>
-                            <Grid.Col span={10}>
-                              <SQLPreview
-                                data={`${chartConfig.select as string}`}
-                                formatData={false}
-                              />
-                            </Grid.Col>
-                            <Grid.Col span={2}>
-                              <Text>ORDER BY</Text>
-                            </Grid.Col>
-                            <Grid.Col span={10}>
-                              <SQLPreview
-                                data={`${chartConfig.orderBy}`}
-                                formatData={false}
-                              />
-                            </Grid.Col>
-                            <Grid.Col span={2}>
-                              <Text>
-                                {chartConfig.whereLanguage === 'lucene'
-                                  ? 'Searched For'
-                                  : 'WHERE'}
-                              </Text>
-                            </Grid.Col>
-                            <Grid.Col span={10}>
-                              {chartConfig.whereLanguage === 'lucene' ? (
-                                <CodeMirror
-                                  indentWithTab={false}
-                                  value={chartConfig.where}
-                                  theme="dark"
-                                  basicSetup={{
-                                    lineNumbers: false,
-                                    foldGutter: false,
-                                    highlightActiveLine: false,
-                                    highlightActiveLineGutter: false,
-                                  }}
-                                  editable={false}
+                          <Paper
+                            flex="auto"
+                            p={'sm'}
+                            shadow="none"
+                            radius="sm"
+                            style={{ overflow: 'hidden' }}
+                          >
+                            <Grid>
+                              <Grid.Col span={2}>
+                                <Text>SELECT</Text>
+                              </Grid.Col>
+                              <Grid.Col span={10}>
+                                <SQLPreview
+                                  data={`${chartConfig.select as string}`}
+                                  formatData={false}
                                 />
-                              ) : (
-                                <SQLPreview data={`${chartConfig.where}`} />
-                              )}
-                            </Grid.Col>
-                          </Grid>
-                        </Paper>
-                      </Box>
-                      <Box mt="lg">
-                        <Text my="sm" size="sm">
-                          Error Message:
-                        </Text>
-                        <Code
-                          block
-                          style={{
-                            whiteSpace: 'pre-wrap',
-                          }}
-                        >
-                          {queryError.message}
-                        </Code>
-                      </Box>
-                      {queryError instanceof ClickHouseQueryError && (
+                              </Grid.Col>
+                              <Grid.Col span={2}>
+                                <Text>ORDER BY</Text>
+                              </Grid.Col>
+                              <Grid.Col span={10}>
+                                <SQLPreview
+                                  data={`${chartConfig.orderBy}`}
+                                  formatData={false}
+                                />
+                              </Grid.Col>
+                              <Grid.Col span={2}>
+                                <Text>
+                                  {chartConfig.whereLanguage === 'lucene'
+                                    ? 'Searched For'
+                                    : 'WHERE'}
+                                </Text>
+                              </Grid.Col>
+                              <Grid.Col span={10}>
+                                {chartConfig.whereLanguage === 'lucene' ? (
+                                  <CodeMirror
+                                    indentWithTab={false}
+                                    value={chartConfig.where}
+                                    theme="dark"
+                                    basicSetup={{
+                                      lineNumbers: false,
+                                      foldGutter: false,
+                                      highlightActiveLine: false,
+                                      highlightActiveLineGutter: false,
+                                    }}
+                                    editable={false}
+                                  />
+                                ) : (
+                                  <SQLPreview data={`${chartConfig.where}`} />
+                                )}
+                              </Grid.Col>
+                            </Grid>
+                          </Paper>
+                        </Box>
                         <Box mt="lg">
                           <Text my="sm" size="sm">
-                            Original Query:
+                            Error Message:
                           </Text>
                           <Code
                             block
@@ -2066,38 +2022,52 @@ function DBSearchPage() {
                               whiteSpace: 'pre-wrap',
                             }}
                           >
-                            <SQLPreview data={queryError.query} formatData />
+                            {queryError.message}
                           </Code>
                         </Box>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <Box flex="1" mih="0">
-                    {chartConfig &&
-                      searchedConfig.source &&
-                      dbSqlRowTableConfig &&
-                      analysisMode === 'results' && (
-                        <DBSqlRowTableWithSideBar
-                          context={rowTableContext}
-                          config={dbSqlRowTableConfig}
-                          sourceId={searchedConfig.source}
-                          onSidebarOpen={onSidebarOpen}
-                          onExpandedRowsChange={onExpandedRowsChange}
-                          enabled={isReady}
-                          isLive={isLive ?? true}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
-                          onScroll={onTableScroll}
-                          onError={handleTableError}
-                          denoiseResults={denoiseResults}
-                          collapseAllRows={collapseAllRows}
-                          onSortingChange={onSortingChange}
-                          initialSortBy={initialSortBy}
-                        />
-                      )}
-                  </Box>
-                )}
-              </Flex>
+                        {queryError instanceof ClickHouseQueryError && (
+                          <Box mt="lg">
+                            <Text my="sm" size="sm">
+                              Original Query:
+                            </Text>
+                            <Code
+                              block
+                              style={{
+                                whiteSpace: 'pre-wrap',
+                              }}
+                            >
+                              <SQLPreview data={queryError.query} formatData />
+                            </Code>
+                          </Box>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <Box flex="1" mih="0" px="sm">
+                      {chartConfig &&
+                        searchedConfig.source &&
+                        dbSqlRowTableConfig && (
+                          <DBSqlRowTableWithSideBar
+                            context={rowTableContext}
+                            config={dbSqlRowTableConfig}
+                            sourceId={searchedConfig.source}
+                            onSidebarOpen={onSidebarOpen}
+                            onExpandedRowsChange={onExpandedRowsChange}
+                            enabled={isReady}
+                            isLive={isLive ?? true}
+                            queryKeyPrefix={QUERY_KEY_PREFIX}
+                            onScroll={onTableScroll}
+                            onError={handleTableError}
+                            denoiseResults={denoiseResults}
+                            collapseAllRows={collapseAllRows}
+                            onSortingChange={onSortingChange}
+                            initialSortBy={initialSortBy}
+                          />
+                        )}
+                    </Box>
+                  )}
+                </Flex>
+              )}
             </div>
           </>
         )}

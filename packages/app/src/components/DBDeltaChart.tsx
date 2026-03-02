@@ -1,269 +1,29 @@
-import { memo, useMemo, useState } from 'react';
-import { withErrorBoundary } from 'react-error-boundary';
-import {
-  Bar,
-  BarChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { useEffect, useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Box,
-  Code,
-  Container,
-  Flex,
-  Group,
-  Pagination,
-  Text,
-} from '@mantine/core';
+import { Box, Code, Container, Flex, Pagination, Text } from '@mantine/core';
+import { useElementSize } from '@mantine/hooks';
 
 import { isAggregateFunction } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
-import {
-  getChartColorError,
-  getChartColorSuccess,
-  truncateMiddle,
-} from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
-
-import styles from '../../styles/HDXLineChart.module.scss';
-
-/*
- * Response Data is like... 
-{
-  Timestamp: "",
-  Map: {
-    "property": value,
-  }
-}
-
-- Flatten
-- Count Property Occurences
-- Pick most common properties
-- Count values for most common properties
-
-- Merge both sets of properties? one property?
- */
-
-// TODO: doesn't work for empty objects?
-// https://stackoverflow.com/a/19101235
-function flattenData(data: Record<string, any>) {
-  const result: Record<string, any> = {};
-  function recurse(cur: Record<string, any>, prop: string) {
-    if (Object(cur) !== cur) {
-      result[prop] = cur;
-    } else if (Array.isArray(cur)) {
-      let l;
-      for (let i = 0, l = cur.length; i < l; i++)
-        recurse(cur[i], prop + '[' + i + ']');
-      if (l == 0) result[prop] = [];
-    } else {
-      let isEmpty = true;
-      for (const p in cur) {
-        isEmpty = false;
-        recurse(cur[p], prop ? prop + '.' + p : p);
-      }
-      if (isEmpty && prop) result[prop] = {};
-    }
-  }
-  recurse(data, '');
-  return result;
-}
-
-function getPropertyStatistics(data: Record<string, any>[]) {
-  const flattened = data.map(flattenData);
-  const propertyOccurences = new Map<string, number>();
-
-  const MIN_PROPERTY_OCCURENCES = 5;
-  const commonProperties = new Set<string>();
-
-  flattened.forEach(item => {
-    Object.entries(item).forEach(([key, value]) => {
-      const count = propertyOccurences.get(key) || 0;
-      propertyOccurences.set(key, count + 1);
-
-      if (count + 1 >= MIN_PROPERTY_OCCURENCES) {
-        commonProperties.add(key);
-      }
-    });
-  });
-
-  // property -> (value -> count)
-  const valueOccurences = new Map<string, Map<string, number>>();
-  flattened.forEach(item => {
-    Object.entries(item).forEach(([key, value]) => {
-      if (commonProperties.has(key)) {
-        let valuesMap = valueOccurences.get(key);
-        if (!valuesMap) {
-          valuesMap = new Map<string, number>();
-          valueOccurences.set(key, valuesMap);
-        }
-
-        const valueCount = valuesMap.get(value) || 0;
-        valuesMap.set(value, valueCount + 1);
-      }
-    });
-  });
-
-  const percentageOccurences = new Map<string, Map<string, number>>();
-  valueOccurences.forEach((valuesMap, property) => {
-    const percentageMap = new Map<string, number>();
-    valuesMap.forEach((valueCount, value) => {
-      percentageMap.set(
-        value,
-        (valueCount / (propertyOccurences.get(property) ?? 0)) * 100,
-      );
-    });
-    percentageOccurences.set(property, percentageMap);
-  });
-
-  return {
-    // valueOccurences,
-    percentageOccurences,
-    // commonProperties,
-    // propertyOccurences,
-  };
-}
-
-function mergeValueStatisticsMaps(
-  outlierValues: Map<string, number>, // value -> count
-  inlierValues: Map<string, number>,
-) {
-  const mergedArray: {
-    name: string;
-    outlierCount: number;
-    inlierCount: number;
-  }[] = [];
-  // Collect all value names for this property
-  // we sort them so timestamps are ordered
-  const allValues = Array.from(
-    new Set([...outlierValues.keys(), ...inlierValues.keys()]),
-  ).sort();
-
-  allValues.forEach(value => {
-    const count1 = outlierValues.get(value) || 0;
-    const count2 = inlierValues.get(value) || 0;
-    mergedArray.push({
-      name: value,
-      outlierCount: count1,
-      inlierCount: count2,
-    });
-  });
-
-  return mergedArray;
-}
-
-const HDXBarChartTooltip = withErrorBoundary(
-  memo((props: any) => {
-    const { active, payload, label, title } = props;
-    if (active && payload && payload.length) {
-      return (
-        <div className={styles.chartTooltip}>
-          <div className={styles.chartTooltipContent}>
-            {title && (
-              <Text size="xs" mb="xs">
-                {title}
-              </Text>
-            )}
-            <Text size="xs" mb="xs">
-              {label.length === 0 ? <i>Empty String</i> : label}
-            </Text>
-            {payload
-              .sort((a: any, b: any) => b.value - a.value)
-              .map((p: any) => (
-                <div key={p.dataKey}>
-                  {p.name}: {p.value.toFixed(2)}%
-                </div>
-              ))}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  }),
-  {
-    onError: console.error,
-    fallback: (
-      <div className="text-danger px-2 py-1 m-2 fs-8 font-monospace bg-danger-transparent">
-        An error occurred while rendering the tooltip.
-      </div>
-    ),
-  },
-);
-
-function PropertyComparisonChart({
-  name,
-  outlierValueOccurences,
-  inlierValueOccurences,
-}: {
-  name: string;
-  outlierValueOccurences: Map<string, number>;
-  inlierValueOccurences: Map<string, number>;
-}) {
-  const mergedValueStatistics = mergeValueStatisticsMaps(
-    outlierValueOccurences,
-    inlierValueOccurences,
-  );
-
-  return (
-    <div style={{ width: 340, height: 120 }}>
-      <Text size="xs" ta="center" title={name}>
-        {truncateMiddle(name, 32)}
-      </Text>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          barGap={2}
-          width={500}
-          height={300}
-          data={mergedValueStatistics}
-          margin={{
-            top: 0,
-            right: 0,
-            left: 0,
-            bottom: 0,
-          }}
-        >
-          {/* <CartesianGrid strokeDasharray="3 3" /> */}
-          <XAxis
-            dataKey="name"
-            tick={{ fontSize: 10, fontFamily: 'IBM Plex Mono, monospace' }}
-          />
-          <YAxis
-            tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
-          />
-          <Tooltip
-            wrapperStyle={{
-              zIndex: 1000,
-            }}
-            content={<HDXBarChartTooltip title={name} />}
-            allowEscapeViewBox={{ y: true }}
-          />
-          <Bar
-            dataKey="outlierCount"
-            name="Outliers"
-            fill={getChartColorError()}
-            isAnimationActive={false}
-          />
-          <Bar
-            dataKey="inlierCount"
-            name="Inliers"
-            fill={getChartColorSuccess()}
-            isAnimationActive={false}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
+import {
+  getPropertyStatistics,
+  mergeValueStatisticsMaps,
+} from './deltaChartUtils';
+import {
+  CHART_GAP,
+  CHART_HEIGHT,
+  CHART_WIDTH,
+  PAGINATION_HEIGHT,
+  PropertyComparisonChart,
+} from './PropertyComparisonChart';
 
 export default function DBDeltaChart({
   config,
@@ -483,7 +243,28 @@ export default function DBDeltaChart({
 
   const [activePage, setPage] = useState(1);
 
-  const PAGE_SIZE = 12;
+  const {
+    ref: containerRef,
+    width: containerWidth,
+    height: containerHeight,
+  } = useElementSize();
+
+  const columns = Math.max(
+    1,
+    Math.floor((containerWidth + CHART_GAP) / (CHART_WIDTH + CHART_GAP)),
+  );
+  const rows = Math.max(
+    1,
+    Math.floor(
+      (containerHeight - PAGINATION_HEIGHT + CHART_GAP) /
+        (CHART_HEIGHT + CHART_GAP),
+    ),
+  );
+  const PAGE_SIZE = columns * rows;
+
+  useEffect(() => {
+    setPage(1);
+  }, [PAGE_SIZE, xMin, xMax, yMin, yMax]);
 
   if (error) {
     return (
@@ -520,18 +301,27 @@ export default function DBDeltaChart({
     );
   }
 
+  const totalPages = Math.ceil(sortedProperties.length / PAGE_SIZE);
+
   return (
-    <Box style={{ overflow: 'auto', height: '100%' }}>
-      <Flex justify="flex-end" mx="md" mb="md">
-        <Pagination
-          size="xs"
-          value={activePage}
-          onChange={setPage}
-          total={Math.ceil(sortedProperties.length / PAGE_SIZE)}
-        />
-      </Flex>
-      <Group>
-        {Array.from(sortedProperties)
+    <Box
+      ref={containerRef}
+      p="sm"
+      style={{
+        overflow: 'hidden',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${columns}, 1fr)`,
+          gap: CHART_GAP,
+        }}
+      >
+        {sortedProperties
           .slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE)
           .map(property => (
             <PropertyComparisonChart
@@ -545,7 +335,22 @@ export default function DBDeltaChart({
               key={property}
             />
           ))}
-      </Group>
+      </div>
+      <Flex
+        justify="flex-end"
+        style={{
+          marginTop: 'auto',
+          paddingTop: CHART_GAP,
+          visibility: totalPages > 1 ? 'visible' : 'hidden',
+        }}
+      >
+        <Pagination
+          size="xs"
+          value={activePage}
+          onChange={setPage}
+          total={totalPages}
+        />
+      </Flex>
     </Box>
   );
 }

@@ -1,0 +1,150 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/hyperdxio/hyperdx/blob/main/.vex/openssl-mongodb.vex.json",
+  "author": "HyperDX Team",
+  "role": "Supplier",
+  "timestamp": "2026-02-17T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": { "name": "CVE-2021-3711" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. OpenSSL certificate-parsing vulnerabilities are not exploitable in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2021-3712" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. OpenSSL certificate-parsing vulnerabilities are not exploitable in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2021-4044" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. OpenSSL vulnerabilities are not exploitable in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2022-0778" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode. Certificate processing from untrusted sources does not occur, making this infinite-loop vulnerability unexploitable."
+    },
+    {
+      "vulnerability": { "name": "CVE-2022-1473" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. This memory leak vulnerability is not exploitable in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2022-3358" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode. Custom cipher usage from untrusted sources does not occur in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2022-3602" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. This buffer overflow vulnerability is not exploitable in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2022-3786" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. This buffer overflow vulnerability is not exploitable in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2022-3996" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode. The double-locking issue is not triggerable via external input in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2023-0286" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode. External GeneralName certificate parsing does not occur in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2023-0464" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode. Untrusted X.509 certificate chains with policy constraints are not processed in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2023-5363" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode. Untrusted key/IV inputs from external sources are not processed in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2024-4741" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. This use-after-free vulnerability is not exploitable in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2024-5535" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode. The SSL_select_next_proto vulnerability requires attacker-controlled input not present in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2024-6119" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode. OCSP responses from external sources are not processed in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2025-9230" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. This OpenSSL vulnerability is not exploitable in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2025-15467" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. This OpenSSL vulnerability is not exploitable in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2025-69419" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. This OpenSSL vulnerability is not exploitable in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2025-69420" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. This OpenSSL vulnerability is not exploitable in this deployment."
+    },
+    {
+      "vulnerability": { "name": "CVE-2025-69421" },
+      "products": [{ "@id": "pkg:oci/clickstack" }],
+      "status": "not_affected",
+      "justification": "inline_mitigations_already_exist",
+      "impact_statement": "MongoDB is deployed in localhost-only mode and does not process external TLS certificates. This OpenSSL vulnerability is not exploitable in this deployment."
+    }
+  ]
+}
