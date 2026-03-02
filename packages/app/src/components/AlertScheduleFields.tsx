@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Control,
   Controller,
@@ -9,8 +9,20 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { NumberInput } from 'react-hook-form-mantine';
-import { Group, Text } from '@mantine/core';
+import {
+  Box,
+  Collapse,
+  Group,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconInfoCircle,
+} from '@tabler/icons-react';
 
 import { parseScheduleStartAtValue } from '@/utils/alerts';
 
@@ -39,6 +51,16 @@ export function AlertScheduleFields<T extends FieldValues>({
     name: scheduleStartAtName,
   }) as string | null | undefined;
   const hasScheduleStartAtAnchor = scheduleStartAtValue != null;
+  const hasAdvancedSettings =
+    (scheduleOffsetMinutes ?? 0) > 0 || hasScheduleStartAtAnchor;
+
+  const [opened, setOpened] = useState(hasAdvancedSettings);
+
+  useEffect(() => {
+    if (hasAdvancedSettings) {
+      setOpened(true);
+    }
+  }, [hasAdvancedSettings]);
 
   useEffect(() => {
     const normalizedOffset = scheduleOffsetMinutes ?? 0;
@@ -63,60 +85,106 @@ export function AlertScheduleFields<T extends FieldValues>({
 
   return (
     <>
-      {showScheduleOffsetInput && (
-        <>
-          <Group gap="xs" mt="xs">
-            <Text size="sm" opacity={0.7}>
-              Start offset (min)
-            </Text>
-            <NumberInput
-              min={0}
-              max={maxScheduleOffsetMinutes}
-              step={1}
-              size="xs"
-              w={100}
-              control={control}
-              name={scheduleOffsetName}
-              disabled={hasScheduleStartAtAnchor}
-            />
-            <Text size="sm" opacity={0.7}>
-              {offsetWindowLabel}
-            </Text>
-          </Group>
-          {hasScheduleStartAtAnchor && (
-            <Text size="xs" opacity={0.6} mt={4}>
-              Start offset is ignored while an anchor start time is set.
-            </Text>
+      <UnstyledButton onClick={() => setOpened(o => !o)} mt="xs">
+        <Group gap={4}>
+          {opened ? (
+            <IconChevronDown size={14} opacity={0.5} />
+          ) : (
+            <IconChevronRight size={14} opacity={0.5} />
           )}
-        </>
-      )}
-      <Group gap="xs" mt="xs" align="start">
-        <Text size="sm" opacity={0.7} mt={6}>
-          Anchor start time
+          <Text size="xs" c="dimmed">
+            Advanced Options
+          </Text>
+        </Group>
+      </UnstyledButton>
+      <Collapse in={opened}>
+        <Text size="xs" c="dimmed" mt="xs">
+          Control when alert evaluation windows begin. Use an offset to delay
+          checks (e.g. for late-arriving data), or set an anchor to align
+          windows to a specific start time.
         </Text>
-        <Controller
-          control={control}
-          name={scheduleStartAtName}
-          render={({ field, fieldState: { error } }) => (
-            <DateTimePicker
-              size="xs"
+        {showScheduleOffsetInput && (
+          <>
+            <Group gap="xs" mt="xs">
+              <Group gap={4}>
+                <Text size="sm" opacity={0.7}>
+                  Start offset (min)
+                </Text>
+                <Tooltip
+                  label="Delays the start of each evaluation window by this many minutes. Useful when data is ingested with a lag."
+                  multiline
+                  w={260}
+                  withArrow
+                  zIndex={10050}
+                >
+                  <Box style={{ lineHeight: 1, cursor: 'help' }}>
+                    <IconInfoCircle size={14} opacity={0.4} />
+                  </Box>
+                </Tooltip>
+              </Group>
+              <NumberInput
+                min={0}
+                max={maxScheduleOffsetMinutes}
+                step={1}
+                size="xs"
+                w={100}
+                control={control}
+                name={scheduleOffsetName}
+                disabled={hasScheduleStartAtAnchor}
+              />
+              <Text size="sm" opacity={0.7}>
+                {offsetWindowLabel}
+              </Text>
+            </Group>
+            {hasScheduleStartAtAnchor && (
+              <Text size="xs" opacity={0.6} mt={4}>
+                Start offset is ignored while an anchor start time is set.
+              </Text>
+            )}
+          </>
+        )}
+        <Group gap="xs" mt="xs" align="start">
+          <Group gap={4} mt={6}>
+            <Text size="sm" opacity={0.7}>
+              Anchor start time
+            </Text>
+            <Tooltip
+              label="Pin alert windows to a fixed starting point instead of the default rolling schedule. Windows repeat at the configured interval from this time."
+              multiline
               w={260}
-              placeholder="Pick date and time"
-              clearable
-              dropdownType="popover"
-              popoverProps={{ withinPortal: true, zIndex: 10050 }}
-              value={parseScheduleStartAtValue(
-                field.value as string | null | undefined,
-              )}
-              onChange={value => field.onChange(value?.toISOString() ?? null)}
-              error={error?.message}
-            />
-          )}
-        />
-        <Text size="xs" opacity={0.6} mt={6}>
-          Displayed in local time, stored as UTC
-        </Text>
-      </Group>
+              withArrow
+              zIndex={10050}
+            >
+              <Box style={{ lineHeight: 1, cursor: 'help' }}>
+                <IconInfoCircle size={14} opacity={0.4} />
+              </Box>
+            </Tooltip>
+          </Group>
+          <Controller
+            control={control}
+            name={scheduleStartAtName}
+            render={({ field, fieldState: { error } }) => (
+              <DateTimePicker
+                size="xs"
+                valueFormat="YYYY-MM-DD HH:mm"
+                w={260}
+                placeholder="Pick date and time"
+                clearable
+                dropdownType="popover"
+                popoverProps={{ withinPortal: true, zIndex: 10050 }}
+                value={parseScheduleStartAtValue(
+                  field.value as string | null | undefined,
+                )}
+                onChange={value => field.onChange(value?.toISOString() ?? null)}
+                error={error?.message}
+              />
+            )}
+          />
+          <Text size="xs" opacity={0.6} mt={6}>
+            Displayed in local time, stored as UTC
+          </Text>
+        </Group>
+      </Collapse>
     </>
   );
 }
