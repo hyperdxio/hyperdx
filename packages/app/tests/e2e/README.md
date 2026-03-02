@@ -179,6 +179,10 @@ test.describe('My Feature', () => {
 `@full-stack` so that when running with `./scripts/test-e2e.sh --local`, they
 are skipped appropriately.
 
+### Claude Skill
+
+Use the `/playwright <requirements to test>` command in Claude Code to have Claude help write E2E tests. Update `.claude/skills/playwright/SKILL.md` with additional guidance whenever Claude does poorly.
+
 ## Test Organization
 
 ```

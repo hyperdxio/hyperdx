@@ -16,7 +16,6 @@ Instead of stuffing all instructions into `CLAUDE.md` (which goes into every con
 - **`tech_stack.md`** - Technology choices, UI component patterns, library usage
 - **`development.md`** - Development workflows, testing strategy, common tasks, debugging
 - **`code_style.md`** - Code patterns and best practices (read only when actively coding)
-- **`e2e.md`** - Patterns and workflows for Playwright end-to-end testing
 
 ## Usage Pattern
 
