@@ -30,12 +30,18 @@ export function createEntityStore<T extends EntityWithId>(
         ...item,
         id: Math.abs(hashCode(Math.random().toString())).toString(16),
       } as T;
-      store.transact(key, (prev: T[]) => [...(prev ?? []), newItem], []);
+      // Seed transact from defaults when the key is absent so that
+      // env-var-seeded items are not silently dropped on the first write.
+      const alt = !store.has(key) ? (getDefaultItems?.() ?? []) : [];
+      store.transact(key, (prev: T[]) => [...(prev ?? []), newItem], alt);
       return newItem;
     },
 
     update(id: string, updates: Partial<Omit<T, 'id'>>): T {
       let updated: T | undefined;
+      // Same rationale: seed transact from defaults when the key is absent so
+      // that updates against env-var-provided items don't throw 'not found'.
+      const alt = !store.has(key) ? (getDefaultItems?.() ?? []) : [];
       store.transact(
         key,
         (prev: T[]) =>
@@ -46,7 +52,7 @@ export function createEntityStore<T extends EntityWithId>(
             }
             return item;
           }),
-        [],
+        alt,
       );
       if (updated == null) {
         throw new Error(
@@ -57,10 +63,11 @@ export function createEntityStore<T extends EntityWithId>(
     },
 
     delete(id: string): void {
+      const alt = !store.has(key) ? (getDefaultItems?.() ?? []) : [];
       store.transact(
         key,
         (prev: T[]) => (prev ?? []).filter(item => item.id !== id),
-        [],
+        alt,
       );
     },
 
