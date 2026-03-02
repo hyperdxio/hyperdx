@@ -509,7 +509,12 @@ export default function AlertsPage() {
               <AlertCardList alerts={alerts} />
             </>
           ) : (
-            <div className="text-center my-4 fs-8">No alerts created yet</div>
+            <div
+              data-testid="alerts-empty-state"
+              className="text-center my-4 fs-8"
+            >
+              No alerts created yet
+            </div>
           )}
         </Container>
       </div>

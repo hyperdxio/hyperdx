@@ -230,6 +230,7 @@ const AlertForm = ({
         <div>
           {defaultValues && (
             <Button
+              data-testid="alert-form-delete"
               variant="subtle"
               color="red"
               size="compact-sm"
@@ -244,7 +245,12 @@ const AlertForm = ({
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" loading={loading}>
+          <Button
+            data-testid="alert-form-submit"
+            variant="primary"
+            type="submit"
+            loading={loading}
+          >
             {defaultValues
               ? 'Save Alert'
               : hasSavedSearch
@@ -407,6 +413,7 @@ export const DBSearchPageAlertModal = ({
             </Text>
             {!id && (
               <TextInput
+                data-testid="saved-search-name-input"
                 size="xs"
                 placeholder="Saved search name"
                 value={name}
