@@ -78,7 +78,10 @@ import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
@@ -87,7 +90,6 @@ import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
-import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import {
   getMetricTableName,
@@ -453,33 +455,14 @@ function ChartSeriesEditorComponent({
                       showHaving === showGroupBy ? 'span 3' : undefined,
                   }}
                 >
-                  {aggConditionLanguage === 'sql' ? (
-                    <SQLInlineEditorControlled
-                      tableConnection={tableConnection}
-                      control={control}
-                      name={`${namePrefix}aggCondition`}
-                      placeholder="SQL WHERE clause (ex. column = 'foo')"
-                      onLanguageChange={lang =>
-                        setValue(`${namePrefix}aggConditionLanguage`, lang)
-                      }
-                      additionalSuggestions={attributeSuggestions}
-                      language="sql"
-                      onSubmit={onSubmit}
-                    />
-                  ) : (
-                    <SearchInputV2
-                      tableConnection={tableConnection}
-                      control={control}
-                      name={`${namePrefix}aggCondition`}
-                      onLanguageChange={lang =>
-                        setValue(`${namePrefix}aggConditionLanguage`, lang)
-                      }
-                      language="lucene"
-                      placeholder="Search your events w/ Lucene ex. column:foo"
-                      onSubmit={onSubmit}
-                      additionalSuggestions={attributeSuggestions}
-                    />
-                  )}
+                  <SearchWhereInput
+                    tableConnection={tableConnection}
+                    control={control}
+                    name={`${namePrefix}aggCondition`}
+                    onSubmit={onSubmit}
+                    showLabel={false}
+                    additionalSuggestions={attributeSuggestions}
+                  />
                 </div>
               </>
             )}
@@ -601,7 +584,13 @@ export default function EditTimeChartForm({
   const configWithSeries: SavedChartConfigWithSeries = useMemo(
     () => ({
       ...chartConfig,
-      series: Array.isArray(chartConfig.select) ? chartConfig.select : [],
+      series: Array.isArray(chartConfig.select)
+        ? chartConfig.select.map(s => ({
+            ...s,
+            aggConditionLanguage:
+              s.aggConditionLanguage ?? getStoredLanguage() ?? 'lucene',
+          }))
+        : [],
     }),
     [chartConfig],
   );
@@ -638,7 +627,6 @@ export default function EditTimeChartForm({
 
   const select = useWatch({ control, name: 'select' });
   const sourceId = useWatch({ control, name: 'source' });
-  const whereLanguage = useWatch({ control, name: 'whereLanguage' });
   const alert = useWatch({ control, name: 'alert' });
   const seriesReturnType = useWatch({ control, name: 'seriesReturnType' });
   const groupBy = useWatch({ control, name: 'groupBy' });
@@ -880,7 +868,7 @@ export default function EditTimeChartForm({
           {
             aggFn: 'count',
             aggCondition: '',
-            aggConditionLanguage: 'lucene',
+            aggConditionLanguage: getStoredLanguage() ?? 'lucene',
             valueExpression: '',
           },
         ];
@@ -1306,27 +1294,16 @@ export default function EditTimeChartForm({
                   onSubmit={onSubmit}
                   label="SELECT"
                 />
-                {whereLanguage === 'sql' ? (
-                  <SQLInlineEditorControlled
-                    tableConnection={tableConnection}
-                    control={control}
-                    name={`where`}
-                    placeholder="SQL WHERE clause (ex. column = 'foo')"
-                    onLanguageChange={lang => setValue('whereLanguage', lang)}
-                    language="sql"
-                    onSubmit={onSubmit}
-                  />
-                ) : (
-                  <SearchInputV2
-                    tableConnection={tableConnection}
-                    control={control}
-                    name="where"
-                    onLanguageChange={lang => setValue('whereLanguage', lang)}
-                    language="lucene"
-                    placeholder="Search your events w/ Lucene ex. column:foo"
-                    onSubmit={onSubmit}
-                  />
-                )}
+                <SearchWhereInput
+                  tableConnection={tableConnection}
+                  control={control}
+                  name="where"
+                  onSubmit={onSubmit}
+                  onLanguageChange={(lang: 'sql' | 'lucene') =>
+                    setValue('whereLanguage', lang)
+                  }
+                  showLabel={false}
+                />
               </Flex>
             )}
           </>

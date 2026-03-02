@@ -18,7 +18,6 @@ export const Default = () => {
         onChange={setValue}
         placeholder="Type your SQL query..."
         label="SQL Query"
-        allowMultiline
       />
     </QueryClientProvider>
   );

@@ -29,9 +29,15 @@
   --mantine-webkit-font-smoothing: inherit;
   --mantine-moz-font-smoothing: inherit;
 
-  color-scheme: dark;
-
   --app-font-family: var(--font-inter);
+}
+
+[data-mantine-color-scheme='dark'] {
+  color-scheme: dark;
+}
+
+[data-mantine-color-scheme='light'] {
+  color-scheme: light;
 }
 
 body {

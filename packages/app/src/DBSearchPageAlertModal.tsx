@@ -48,7 +48,8 @@ import {
 
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
-import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
+import { getStoredLanguage } from './components/SearchInput/SearchWhereInput';
+import { SQLInlineEditorControlled } from './components/SearchInput/SQLInlineEditor';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { AlertWithCreatedBy, SearchConfig } from './types';
@@ -311,7 +312,8 @@ export const DBSearchPageAlertModal = ({
           name,
           select: searchedConfig.select ?? '',
           where: searchedConfig.where ?? '',
-          whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+          whereLanguage:
+            searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
           source: searchedConfig.source ?? '',
           orderBy: searchedConfig.orderBy ?? '',
           filters: searchedConfig.filters ?? [],
