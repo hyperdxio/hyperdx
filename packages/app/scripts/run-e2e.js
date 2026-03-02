@@ -10,6 +10,7 @@
  *   yarn test:e2e --ui --local       # Open UI (local mode)
  *   yarn test:e2e --debug            # Debug mode (full-stack)
  *   yarn test:e2e --debug --local    # Debug (local mode)
+ *   yarn test:e2e --dev              # Hot reload (next dev) instead of build+start
  */
 
 import { spawn } from 'child_process';
@@ -26,10 +27,11 @@ const args = process.argv.slice(2);
 const useLocal = args.includes('--local');
 const useUI = args.includes('--ui');
 const useDebug = args.includes('--debug');
+const useDev = args.includes('--dev');
 
 // Remove our custom flags from args
 const playwrightArgs = args.filter(
-  arg => !['--local', '--ui', '--debug'].includes(arg),
+  arg => !['--local', '--ui', '--debug', '--dev'].includes(arg),
 );
 
 // Build playwright command
@@ -55,6 +57,7 @@ playwrightCmd.push(...playwrightArgs);
 const env = {
   ...process.env,
   ...(!useLocal && { E2E_FULLSTACK: 'true' }),
+  ...(useDev && { E2E_USE_DEV: 'true' }),
 };
 
 // Full-stack: inject DEFAULT_CONNECTIONS/DEFAULT_SOURCES from fixture so the API gets them
@@ -72,7 +75,7 @@ if (!useLocal) {
 // eslint-disable-next-line no-console
 console.info(`Running: ${playwrightCmd.join(' ')}`);
 // eslint-disable-next-line no-console
-console.info(`Mode: ${useLocal ? 'Local (frontend only)' : 'Full-stack'}`);
+console.info(`Mode: ${useLocal ? 'Local (frontend only)' : 'Full-stack'}${useDev ? ' + dev (hot reload)' : ''}`);
 
 const child = spawn('npx', playwrightCmd, {
   stdio: 'inherit',
