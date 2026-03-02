@@ -93,7 +93,7 @@
   --color-bg-surface: var(--click-global-color-background-default);
   --color-bg-inverted: var(--mantine-color-dark-1);
   --color-bg-muted: var(--click-global-color-background-muted);
-  --color-bg-highlighted: rgb(75 78 102 / 70%);
+  --color-bg-highlighted: rgb(80 80 80 / 70%);
   --color-bg-sidenav: var(--click-global-color-background-default);
   --color-bg-sidenav-link-active: var(--palette-neutral-712);
   --color-bg-sidenav-link-active-hover: var(--mantine-color-gray-7);
@@ -101,7 +101,8 @@
   --color-bg-hover: var(--palette-neutral-725);
   --color-bg-active: var(--palette-neutral-800);
   --color-bg-field: var(--click-field-color-background-default);
-  --color-bg-field-highlighted: #4d4f66;
+  --color-bg-field-highlighted: var(--palette-neutral-650);
+  --color-bg-field-addon: var(--palette-neutral-712);
   --color-bg-neutral: #4d4f66;
   --color-bg-success: #22c55e;
   --color-bg-danger: #ef4444;
@@ -296,6 +297,7 @@
   --color-bg-active: #dee2e6;
   --color-bg-field: var(--click-field-color-background-default);
   --color-bg-field-highlighted: var(--click-global-color-background-default);
+  --color-bg-field-addon: var(--click-global-color-background-default);
   --color-bg-neutral: #adb5bd;
   --color-bg-success: #16a34a;
   --color-bg-danger: #dc2626;
