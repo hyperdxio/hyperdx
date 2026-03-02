@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
@@ -702,6 +702,10 @@ function Heatmap({
     | undefined
   >(undefined);
 
+  // Gate tooltip display on actual mouse interaction. uPlot fires setCursor
+  // on init (before user hovers), which would show the tooltip on page load.
+  const mouseInsideRef = useRef(false);
+
   const { ref, width, height } = useElementSize();
 
   const tickFormatter = useCallback(
@@ -751,7 +755,8 @@ function Heatmap({
         },
       },
       plugins: [
-        // legendAsTooltipPlugin(),
+        // legendAsTooltipPlugin()
+        // eslint-disable-next-line react-hooks/refs -- mouseInsideRef is read at event time, not during render
         highlightDataPlugin({
           proximity: 20,
           yFormatter: tickFormatter,
@@ -769,6 +774,9 @@ function Heatmap({
             xSize,
             ySize,
           }) => {
+            // Only show tooltip after the user has actually hovered the chart.
+            // uPlot fires setCursor on init which would trigger this on page load.
+            if (!mouseInsideRef.current) return;
             setHighlightedPoint({
               xVal,
               yVal,
@@ -785,6 +793,11 @@ function Heatmap({
         {
           hooks: {
             setSelect: u => {
+              // Ignore zero-size selections (e.g. single-click)
+              if (u.select.width <= 0 || u.select.height <= 0) {
+                return;
+              }
+
               // Calculate offset from parent so we can render tooltip
               // relative to the parent pixels
               const { offsetLeft, offsetTop } = u.over;
@@ -818,13 +831,18 @@ function Heatmap({
   return (
     <div
       ref={ref}
+      className="heatmap-selection-container"
       style={{ width: '100%', height: '100%', position: 'relative' }}
       onClick={() => {
         if (selectingInfo != null) {
           setSelectingInfo(undefined);
         }
       }}
+      onMouseEnter={() => {
+        mouseInsideRef.current = true;
+      }}
       onMouseLeave={() => {
+        mouseInsideRef.current = false;
         setHighlightedPoint(undefined);
       }}
     >
@@ -853,15 +871,17 @@ function Heatmap({
             style={{
               position: 'absolute',
               top: highlightedPoint.yCoord + 5,
-              ...(highlightedPoint.xCoord > (width * 2) / 3
+              ...(highlightedPoint.xCoord > width / 2
                 ? {
                     right: width - highlightedPoint.xCoord + 10,
                   }
                 : {
                     left: highlightedPoint.xCoord + 10,
                   }),
+              maxWidth: '50%',
+              whiteSpace: 'nowrap' as const,
               backdropFilter: 'blur(8px)',
-              backgroundColor: 'rgba(#1A1D23 0.75)',
+              backgroundColor: 'rgba(26, 29, 35, 0.75)',
               border: '1px solid #5F6776',
               borderRadius: 2,
               pointerEvents: 'none',
@@ -892,7 +912,7 @@ function Heatmap({
           className="px-2 py-1 fs-8"
           style={{
             backdropFilter: 'blur(4px)',
-            backgroundColor: 'rgba(#1A1D23 0.4)',
+            backgroundColor: 'rgba(26, 29, 35, 0.4)',
             border: '1px solid #5F6776',
             borderRadius: 2,
             position: 'absolute',
@@ -909,6 +929,18 @@ function Heatmap({
             );
           }}
           role="button"
+          tabIndex={0}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onFilter?.(
+                selectingInfo.xMin / 1000,
+                selectingInfo.xMax / 1000,
+                selectingInfo.yMin,
+                selectingInfo.yMax,
+              );
+            }
+          }}
         >
           Filter by Selection
         </div>
