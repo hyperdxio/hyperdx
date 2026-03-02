@@ -140,8 +140,7 @@ export function applyTopNAggregation(
   if (data.length <= MAX_CHART_VALUES_UPPER) return data;
 
   const sorted = [...data].sort(
-    (a, b) =>
-      b.outlierCount + b.inlierCount - (a.outlierCount + a.inlierCount),
+    (a, b) => b.outlierCount + b.inlierCount - (a.outlierCount + a.inlierCount),
   );
   const top = sorted.slice(0, MAX_CHART_VALUES);
   const rest = sorted.slice(MAX_CHART_VALUES);
