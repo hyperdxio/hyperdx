@@ -3,6 +3,8 @@ import path from 'path';
 
 // Check if we should use full-stack mode (with backend)
 const USE_FULLSTACK = process.env.E2E_FULLSTACK === 'true';
+// Check if we should use next dev (hot reload) instead of build + start
+const USE_DEV = process.env.E2E_USE_DEV === 'true';
 const AUTH_FILE = path.join(__dirname, 'tests/e2e/.auth/user.json');
 
 // Timeout configuration constants (in milliseconds)
@@ -81,8 +83,10 @@ export default defineConfig({
           stderr: 'pipe',
         },
         {
-          command:
-            'SERVER_URL=http://localhost:29000 PORT=28081 yarn build && SERVER_URL=http://localhost:29000 PORT=28081 yarn start',
+          // Full UI: Alerts + Dashboards. Not local mode; Alerts enabled;
+          command: USE_DEV
+            ? 'SERVER_URL=http://localhost:29000 PORT=28081 next dev --webpack'
+            : 'SERVER_URL=http://localhost:29000 PORT=28081 yarn build && SERVER_URL=http://localhost:29000 PORT=28081 yarn start',
           port: 28081,
           reuseExistingServer: !process.env.CI,
           timeout: APP_SERVER_STARTUP_TIMEOUT_MS,
@@ -92,8 +96,9 @@ export default defineConfig({
       ]
     : {
         // Local mode: Frontend only
-        command:
-          'NEXT_PUBLIC_IS_LOCAL_MODE=true yarn build && NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=8081 yarn start',
+        command: USE_DEV
+          ? 'NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=8081 next dev --webpack'
+          : 'NEXT_PUBLIC_IS_LOCAL_MODE=true yarn build && NEXT_PUBLIC_IS_LOCAL_MODE=true PORT=8081 yarn start',
         port: 8081,
         reuseExistingServer: !process.env.CI,
         timeout: APP_SERVER_STARTUP_TIMEOUT_MS,
