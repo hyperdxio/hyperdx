@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import cx from 'classnames';
 import { Button, Group, Text } from '@mantine/core';
 import {
@@ -11,9 +10,10 @@ import { flexRender, Header } from '@tanstack/react-table';
 
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 
-import styles from '../Table.module.scss';
-
 import { DBRowTableIconButton } from './DBRowTableIconButton';
+
+import logTableStyles from '../../../styles/LogTable.module.scss';
+import styles from '../Table.module.scss';
 
 export default function TableHeader({
   isLast,
@@ -27,11 +27,11 @@ export default function TableHeader({
   onRemoveColumn?: () => void;
 }) {
   'use no memo'; // todo: table headers arent being resized properly with the react compiler
-  const [isHovered, setIsHovered] = useState(false);
-
   return (
     <th
-      className="overflow-hidden"
+      className={cx('overflow-hidden', {
+        [logTableStyles.headerCellWithAction]: !!onRemoveColumn,
+      })}
       key={header.id}
       colSpan={header.colSpan}
       style={{
@@ -40,8 +40,6 @@ export default function TableHeader({
         minWidth: header.getSize() === UNDEFINED_WIDTH ? 0 : header.getSize(),
         textAlign: 'left',
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <Group wrap="nowrap" gap={0} align="center">
         {!header.column.getCanSort() ? (
@@ -93,7 +91,7 @@ export default function TableHeader({
 
         <Group gap={0} wrap="nowrap" align="center">
           {onRemoveColumn && (
-            <div style={{ visibility: isHovered ? 'visible' : 'hidden' }}>
+            <div className={logTableStyles.headerRemoveButton}>
               <DBRowTableIconButton
                 onClick={onRemoveColumn}
                 title="Remove column"
