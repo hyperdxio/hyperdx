@@ -2485,6 +2485,149 @@ describe('checkAlerts', () => {
       );
     });
 
+    it('TILE alert (metrics) with groupBy - should track per-group alerts', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('10m');
+
+      // Insert gauge metrics for two different services
+      const gaugePoints = [
+        // service-a: high CPU values (should trigger alert)
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-a',
+          Value: 50,
+          TimeUnix: new Date(eventMs),
+        },
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-a',
+          Value: 40,
+          TimeUnix: new Date(eventMs + ms('1m')),
+        },
+        // service-b: high CPU values (should also trigger alert)
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-b',
+          Value: 30,
+          TimeUnix: new Date(eventMs),
+        },
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-b',
+          Value: 20,
+          TimeUnix: new Date(eventMs + ms('1m')),
+        },
+      ].map(point => ({
+        ...point,
+        ResourceAttributes: { host: 'host1' },
+      }));
+
+      await bulkInsertMetricsGauge(gaugePoints);
+
+      const source = await Source.create({
+        kind: 'metric',
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: '',
+        },
+        metricTables: {
+          gauge: DEFAULT_METRICS_TABLE.GAUGE,
+          histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          sum: DEFAULT_METRICS_TABLE.SUM,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection.id,
+        name: 'Metrics',
+      });
+
+      const dashboard = await new Dashboard({
+        name: 'My Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: '17quud',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'CPU by Service',
+              select: [
+                {
+                  aggFn: 'max',
+                  valueExpression: 'Value',
+                  metricType: 'gauge',
+                  metricName: 'test.cpu',
+                },
+              ],
+              where: '',
+              displayType: 'line',
+              source: source.id,
+              groupBy: 'ServiceName',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: '17quud',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      // First run: should trigger alerts for both services
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Check that we have 2 alert histories (one per group)
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1, group: 1 });
+
+      expect(alertHistories.length).toBe(2);
+
+      // Both groups should be in ALERT state with non-empty group names
+      const groups = alertHistories.map(h => h.group);
+      expect(groups.some(g => g?.includes('service-a'))).toBe(true);
+      expect(groups.some(g => g?.includes('service-b'))).toBe(true);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[1].state).toBe('ALERT');
+
+      // Webhook should be called twice (once per group)
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+    });
+
     // TODO: revisit this once the auto-resolve feature is implemented
     it('should check 3 time buckets [1 error, 3 errors, 1 error] with threshold 2 and maintain ALERT state with 3 lastValues entries', async () => {
       const {
