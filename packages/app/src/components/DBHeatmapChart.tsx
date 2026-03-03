@@ -756,7 +756,7 @@ function Heatmap({
       },
       plugins: [
         // legendAsTooltipPlugin()
-        // mouseInsideRef is read at event time, not during render
+        // eslint-disable-next-line react-hooks/refs -- mouseInsideRef is read at event time, not during render
         highlightDataPlugin({
           proximity: 20,
           yFormatter: tickFormatter,
