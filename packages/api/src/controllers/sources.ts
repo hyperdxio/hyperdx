@@ -37,7 +37,7 @@ export function updateSource(
 ) {
   const cleanedSource = cleanSourceData(source);
   return Source.findOneAndUpdate({ _id: sourceId, team }, cleanedSource, {
-    new: true,
+    returnDocument: 'after',
   });
 }
 

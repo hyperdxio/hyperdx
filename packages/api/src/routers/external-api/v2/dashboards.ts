@@ -1139,7 +1139,7 @@ router.put(
       const updatedDashboard = await Dashboard.findOneAndUpdate(
         { _id: dashboardId, team: teamId },
         { $set: setPayload },
-        { new: true },
+        { returnDocument: 'after' },
       );
 
       if (updatedDashboard == null) {

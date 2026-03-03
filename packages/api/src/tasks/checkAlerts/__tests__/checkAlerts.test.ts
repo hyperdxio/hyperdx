@@ -4403,6 +4403,43 @@ describe('checkAlerts', () => {
       );
     });
 
+    it('should exclude alert histories older than 7 days', async () => {
+      const now = new Date('2025-01-10T00:00:00Z');
+
+      const alertId = new mongoose.Types.ObjectId();
+      // Recent history (within 7 days) — should be included
+      await saveAlert(alertId, new Date('2025-01-09T00:00:00Z'));
+      // Old history (8 days ago) — should be excluded
+      await saveAlert(alertId, new Date('2025-01-02T00:00:00Z'));
+
+      const result = await getPreviousAlertHistories(
+        [alertId.toString()],
+        now,
+      );
+
+      expect(result.size).toBe(1);
+      expect(result.get(alertId.toString())!.createdAt).toEqual(
+        new Date('2025-01-09T00:00:00Z'),
+      );
+    });
+
+    it('should return no results when all histories are older than 7 days', async () => {
+      const now = new Date('2025-01-10T00:00:00Z');
+
+      const alertId = new mongoose.Types.ObjectId();
+      // Both histories are older than 7 days
+      await saveAlert(alertId, new Date('2025-01-01T00:00:00Z'));
+      await saveAlert(alertId, new Date('2025-01-02T00:00:00Z'));
+
+      const result = await getPreviousAlertHistories(
+        [alertId.toString()],
+        now,
+      );
+
+      expect(result.size).toBe(0);
+      expect(result.get(alertId.toString())).toBeUndefined();
+    });
+
     it('should batch alert IDs across multiple aggregation queries if necessary', async () => {
       const alert1Id = new mongoose.Types.ObjectId();
       await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));

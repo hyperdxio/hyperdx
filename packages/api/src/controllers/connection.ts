@@ -46,9 +46,5 @@ export async function updateConnection(
 }
 
 export async function deleteConnection(team: string, connectionId: string) {
-  const doc = await Connection.findOne({ _id: connectionId, team });
-  if (doc) {
-    await Connection.deleteOne({ _id: connectionId, team });
-  }
-  return doc;
+  return Connection.findOneAndDelete({ _id: connectionId, team });
 }

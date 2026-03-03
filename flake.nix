@@ -1,3 +1,48 @@
+# HyperDX Nix Flake — Development Environment & Test Infrastructure
+#
+# ── Running Integration Tests ─────────────────────────────────────────
+#
+# Tests require MongoDB (or FerretDB) and ClickHouse. The recommended
+# approach uses host-networking Docker containers started via nix apps.
+#
+# IMPORTANT: Use clickhouse/clickhouse-server:25.6-alpine (pulled from
+# Docker Hub), NOT the Nix-built clickhouse:latest image. The Nix image
+# bundles ClickHouse 26.x which has breaking changes that cause ~49
+# test failures (empty query results, type mismatches). The host-
+# networking scripts below already use the correct 25.6-alpine image.
+#
+# ── Test with MongoDB ─────────────────────────────────────────────────
+#
+#   1. Start services (MongoDB 5.0 + ClickHouse 25.6):
+#        nix run .#test-services-up
+#
+#   2. Run tests (inside nix dev shell):
+#        nix develop -c bash -c 'cd packages/api && yarn ci:int'
+#
+#   3. Stop services:
+#        nix run .#test-services-down
+#
+# ── Test with FerretDB ────────────────────────────────────────────────
+#
+#   1. Start services (FerretDB 2.7 + PostgreSQL/DocumentDB + ClickHouse 25.6):
+#        nix run .#test-services-up-ferretdb
+#
+#   2. Run tests (inside nix dev shell):
+#        nix develop -c bash -c 'cd packages/api && yarn ci:int'
+#
+#   3. Stop services:
+#        nix run .#test-services-down
+#
+# Both backends should produce: 30/30 suites, 410/410 tests passed.
+#
+# ── Makefile targets (CI) ─────────────────────────────────────────────
+#
+# The Makefile also has `make nix-ci-int` and `make nix-ci-int-ferretdb`
+# which use docker-compose with Nix-built container images. These use a
+# different ClickHouse image and may have unrelated failures. Prefer the
+# host-networking scripts above for local development and validation.
+#
+# ──────────────────────────────────────────────────────────────────────
 {
   description = "HyperDX development environment";
 
@@ -100,15 +145,13 @@
             echo "  yarn setup          - Install deps"
             echo "  yarn lint           - Lint all packages"
             echo "  make ci-unit        - Unit tests"
-            echo "  make ci-int         - Integration tests (needs Docker)"
-            echo "  make nix-ci-int     - Integration tests (Nix images + MongoDB 7)"
-            echo "  make nix-ci-int-ferretdb - Integration tests (Nix images + FerretDB)"
             echo ""
-            echo "Quick test (host networking, no compose):"
-            echo "  nix run .#test-services-up          - Start MongoDB + ClickHouse"
-            echo "  nix run .#test-services-up-ferretdb - Start FerretDB + ClickHouse"
-            echo "  cd packages/api && yarn ci:int      - Run integration tests"
-            echo "  nix run .#test-services-down        - Stop services"
+            echo "Integration tests (recommended — uses ClickHouse 25.6-alpine):"
+            echo ""
+            echo "  MongoDB:   nix run .#test-services-up"
+            echo "  FerretDB:  nix run .#test-services-up-ferretdb"
+            echo "  Run tests: cd packages/api && yarn ci:int"
+            echo "  Stop:      nix run .#test-services-down"
           '';
         };
 

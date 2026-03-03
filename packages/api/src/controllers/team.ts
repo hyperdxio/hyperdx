@@ -74,18 +74,18 @@ export function getTeamByApiKey(apiKey: string) {
 }
 
 export function rotateTeamApiKey(teamId: ObjectId) {
-  return Team.findByIdAndUpdate(teamId, { apiKey: uuidv4() }, { new: true });
+  return Team.findByIdAndUpdate(teamId, { apiKey: uuidv4() }, { returnDocument: 'after' });
 }
 
 export function setTeamName(teamId: ObjectId, name: string) {
-  return Team.findByIdAndUpdate(teamId, { name }, { new: true });
+  return Team.findByIdAndUpdate(teamId, { name }, { returnDocument: 'after' });
 }
 
 export function updateTeamClickhouseSettings(
   teamId: ObjectId,
   settings: TeamClickHouseSettings,
 ) {
-  return Team.findByIdAndUpdate(teamId, settings, { new: true });
+  return Team.findByIdAndUpdate(teamId, settings, { returnDocument: 'after' });
 }
 
 export async function getTags(teamId: ObjectId) {
@@ -96,10 +96,10 @@ export async function getTags(teamId: ObjectId) {
 
   const tagSet = new Set<string>();
   for (const d of dashboards) {
-    for (const tag of (d as any).tags ?? []) tagSet.add(tag);
+    for (const tag of d.tags ?? []) tagSet.add(tag);
   }
   for (const s of savedSearches) {
-    for (const tag of (s as any).tags ?? []) tagSet.add(tag);
+    for (const tag of s.tags ?? []) tagSet.add(tag);
   }
   return [...tagSet];
 }

@@ -1,10 +1,13 @@
 import mongoose from 'mongoose';
 
+import { deleteConnection } from '@/controllers/connection';
+import { deleteTeamMember } from '@/controllers/user';
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import TeamInvite from '@/models/teamInvite';
+import User from '@/models/user';
 import Webhook, { WebhookService } from '@/models/webhook';
 
 /**
@@ -210,6 +213,73 @@ describe('FerretDB regression - findAndModify operations', () => {
 
       const deleted = await TeamInvite.findById(invite._id);
       expect(deleted).toBeNull();
+    });
+  });
+
+  describe('atomic delete operations (TOCTOU prevention)', () => {
+    it('deleteConnection uses atomic findOneAndDelete', async () => {
+      const { team } = await getLoggedInAgent(server);
+
+      const connection = await Connection.create({
+        name: 'Atomic Delete Test',
+        host: 'localhost:9000',
+        username: 'default',
+        password: 'test-password',
+        team: team._id,
+      });
+
+      const spy = jest.spyOn(Connection, 'findOneAndDelete');
+
+      const result = await deleteConnection(
+        team._id.toString(),
+        connection._id.toString(),
+      );
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith({
+        _id: connection._id.toString(),
+        team: team._id.toString(),
+      });
+      expect(result).not.toBeNull();
+      expect(result!.name).toBe('Atomic Delete Test');
+
+      // Verify actually deleted
+      const deleted = await Connection.findById(connection._id);
+      expect(deleted).toBeNull();
+
+      spy.mockRestore();
+    });
+
+    it('deleteTeamMember uses atomic findOneAndDelete for user removal', async () => {
+      const { team, user: requestingUser } = await getLoggedInAgent(server);
+
+      // Create a second user to delete
+      const userToDelete = await User.create({
+        email: 'deleteme@example.com',
+        team: team._id,
+      });
+
+      const spy = jest.spyOn(User, 'findOneAndDelete');
+
+      const result = await deleteTeamMember(
+        team._id.toString(),
+        userToDelete._id.toString(),
+        requestingUser._id,
+      );
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith({
+        team: team._id.toString(),
+        _id: userToDelete._id.toString(),
+      });
+      expect(result).not.toBeNull();
+      expect(result!.email).toBe('deleteme@example.com');
+
+      // Verify actually deleted
+      const deleted = await User.findById(userToDelete._id);
+      expect(deleted).toBeNull();
+
+      spy.mockRestore();
     });
   });
 });

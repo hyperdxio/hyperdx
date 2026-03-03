@@ -50,7 +50,7 @@ export function updateSavedSearch(
       ...savedSearch,
       team: teamId,
     },
-    { new: true },
+    { returnDocument: 'after' },
   );
 }
 

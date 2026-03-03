@@ -24,11 +24,14 @@ export async function getRecentAlertHistories({
 }): Promise<Omit<IAlertHistory, 'alert'>[]> {
   const thirtyDaysAgo = new Date(Date.now() - ms('30d'));
 
+  // Fetch more than `limit` since grouping by createdAt may collapse multiple
+  // records into one entry. Multiply by 10 as a reasonable upper bound.
   const histories = await AlertHistory.find({
     alert: new mongoose.Types.ObjectId(alertId),
     createdAt: { $gte: thirtyDaysAgo },
   })
     .sort({ createdAt: -1 })
+    .limit(limit * 10)
     .lean();
 
   // Group by createdAt timestamp

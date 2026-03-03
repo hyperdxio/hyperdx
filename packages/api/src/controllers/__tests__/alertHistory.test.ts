@@ -312,6 +312,47 @@ describe('alertHistory controller', () => {
       expect(histories[0].lastValues[1].startTime).toEqual(newer);
     });
 
+    it('should apply limit at the database query level', async () => {
+      const team = await Team.create({ name: 'Test Team' });
+      const alert = await Alert.create({
+        team: team._id,
+        threshold: 100,
+        interval: '5m',
+        channel: { type: null },
+      });
+
+      // Create 5 histories with distinct timestamps
+      for (let i = 0; i < 5; i++) {
+        await AlertHistory.create({
+          alert: alert._id,
+          createdAt: new Date(Date.now() - i * 60000),
+          state: AlertState.OK,
+          counts: 0,
+          lastValues: [
+            { startTime: new Date(Date.now() - i * 60000), count: 0 },
+          ],
+        });
+      }
+
+      // Spy on AlertHistory.find to inspect the chained .limit() call
+      const findSpy = jest.spyOn(AlertHistory, 'find');
+
+      const limit = 2;
+      await getRecentAlertHistories({
+        alertId: new mongoose.Types.ObjectId(alert._id),
+        limit,
+      });
+
+      expect(findSpy).toHaveBeenCalledTimes(1);
+
+      // Verify .limit() was chained with limit * 10
+      const query = findSpy.mock.results[0].value;
+      // The Mongoose query object stores options including limit
+      expect(query.getOptions().limit).toBe(limit * 10);
+
+      findSpy.mockRestore();
+    });
+
     it('should only return histories for the specified alert', async () => {
       const team = await Team.create({ name: 'Test Team' });
       const alert1 = await Alert.create({

@@ -45,7 +45,7 @@ export const updatePresetDashboardFilter = async (
       _id: new mongoose.Types.ObjectId(presetDashboardFilter.id),
       team: new mongoose.Types.ObjectId(teamId),
     },
-    { new: true },
+    { returnDocument: 'after' },
   );
 };
 

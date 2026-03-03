@@ -167,7 +167,7 @@ export async function updateDashboard(
       ...updates,
       tags: updates.tags && uniq(updates.tags),
     },
-    { new: true },
+    { returnDocument: 'after' },
   );
   if (updatedDashboard == null) {
     throw new Error('Could not update dashboard');

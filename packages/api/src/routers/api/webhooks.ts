@@ -173,7 +173,7 @@ router.put(
           headers,
           body,
         },
-        { new: true },
+        { returnDocument: 'after' },
       );
 
       if (updatedWebhook) {

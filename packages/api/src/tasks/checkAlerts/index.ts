@@ -729,10 +729,12 @@ export const getPreviousAlertHistories = async (
 
   const resultChunks = await Promise.all(
     chunkedIds.map(async ids => {
-      // Fetch all matching histories, sorted to leverage compound index
+      // Fetch recent matching histories, sorted to leverage compound index.
+      // Bound to last 7 days to avoid loading unbounded history into memory.
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const histories = await AlertHistory.find({
         alert: { $in: ids },
-        createdAt: { $lte: now },
+        createdAt: { $gte: sevenDaysAgo, $lte: now },
       })
         .sort({ alert: 1, createdAt: -1 })
         .lean();

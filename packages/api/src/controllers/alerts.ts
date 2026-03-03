@@ -167,7 +167,7 @@ export const createOrUpdateDashboardAlerts = async (
           : makeAlert(alert, userId);
 
       return await Alert.findOneAndUpdate(filter, alertValues, {
-        new: true,
+        returnDocument: 'after',
         upsert: true,
       });
     }),
