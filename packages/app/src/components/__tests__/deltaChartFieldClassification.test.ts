@@ -1,4 +1,5 @@
 import {
+  getBaseColumnName,
   isDenylisted,
   isHighCardinality,
   isIdField,
@@ -21,6 +22,28 @@ const traceColumnMeta = [
   { name: 'Links.Timestamp', type: 'Array(DateTime64(9))' },
   { name: 'Links.Attributes', type: 'Array(Map(String, String))' },
 ];
+
+describe('getBaseColumnName', () => {
+  it('returns plain key as-is', () => {
+    expect(getBaseColumnName('TraceId')).toBe('TraceId');
+    expect(getBaseColumnName('SpanAttributes.http.method')).toBe(
+      'SpanAttributes.http.method',
+    );
+  });
+
+  it('strips array index from key', () => {
+    expect(getBaseColumnName('Events.Name[0]')).toBe('Events.Name');
+    expect(getBaseColumnName('Links.TraceId[5]')).toBe('Links.TraceId');
+  });
+
+  it('returns null for keys with sub-keys after array index', () => {
+    expect(getBaseColumnName('Events.Attributes[0].spanId')).toBeNull();
+  });
+
+  it('returns null for malformed array keys', () => {
+    expect(getBaseColumnName('Events[0][1]')).toBeNull();
+  });
+});
 
 describe('stripTypeWrappers', () => {
   it('removes LowCardinality wrapper', () => {

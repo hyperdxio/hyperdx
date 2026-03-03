@@ -115,6 +115,16 @@ export function mergeValueStatisticsMaps(
 // Field classification helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Extracts the base column name from a flattened key.
+ * Strips array indices (e.g., "Events.Name[0]" → "Events.Name").
+ * Returns null for keys with sub-keys after array indices (e.g., "Events.Attributes[0].spanId").
+ */
+export function getBaseColumnName(key: string): string | null {
+  const arrMatch = key.match(/^([^[]+)\[(\d+)\]$/);
+  return arrMatch ? arrMatch[1] : key.includes('[') ? null : key;
+}
+
 /** Removes `LowCardinality(...)` and `Nullable(...)` wrappers from ClickHouse type strings. */
 export function stripTypeWrappers(type: string): string {
   let t = type.trim();
@@ -140,8 +150,7 @@ export function isIdField(
   key: string,
   columnMeta: { name: string; type: string }[],
 ): boolean {
-  const arrMatch = key.match(/^([^[]+)\[(\d+)\]$/);
-  const colName = arrMatch ? arrMatch[1] : key.includes('[') ? null : key;
+  const colName = getBaseColumnName(key);
   if (!colName) return false;
   if (!/(Id|ID)$/.test(colName)) return false;
 
@@ -164,8 +173,7 @@ export function isTimestampArrayField(
   key: string,
   columnMeta: { name: string; type: string }[],
 ): boolean {
-  const arrMatch = key.match(/^([^[]+)\[(\d+)\]$/);
-  const colName = arrMatch ? arrMatch[1] : key.includes('[') ? null : key;
+  const colName = getBaseColumnName(key);
   if (!colName) return false;
 
   const col = columnMeta.find(c => c.name === colName);
