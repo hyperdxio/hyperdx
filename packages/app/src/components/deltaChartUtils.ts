@@ -89,10 +89,6 @@ export function getPropertyStatistics(data: Record<string, any>[]) {
 export const MAX_CHART_VALUES = 6;
 export const MAX_CHART_VALUES_UPPER = 8;
 
-// Color for the "All spans" distribution bar (no selection / comparison mode off).
-// Uses Mantine's blue-6 CSS variable so it adapts to light/dark themes.
-export const ALL_SPANS_COLOR = 'var(--mantine-color-blue-6)';
-
 // Color for the "Other (N)" aggregated bucket — neutral gray.
 export const OTHER_BUCKET_COLOR = 'var(--mantine-color-gray-5)';
 
