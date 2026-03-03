@@ -103,7 +103,7 @@ function TruncatedTick({ x = 0, y = 0, payload }: TickProps) {
         y={0}
         dy={12}
         textAnchor="middle"
-        fill="currentColor"
+        fill="var(--color-text-muted)"
         fontSize={10}
         fontFamily="IBM Plex Mono, monospace"
       >
