@@ -659,6 +659,9 @@ export default function EditTimeChartForm({
   const maxAlertScheduleOffsetMinutes = alert?.interval
     ? Math.max(intervalToMinutes(alert.interval) - 1, 0)
     : 0;
+  const alertIntervalLabel = alert?.interval
+    ? TILE_ALERT_INTERVAL_OPTIONS[alert.interval]
+    : undefined;
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -1373,51 +1376,52 @@ export default function EditTimeChartForm({
         )}
         {alert && (
           <Paper my="sm">
-            <Stack gap="xs">
-              <Paper px="md" py="sm" radius="xs" data-testid="alert-details">
-                <Group gap="xs" justify="space-between">
-                  <Group gap="xs">
-                    <Text size="sm" opacity={0.7}>
-                      Alert when the value
-                    </Text>
-                    <NativeSelect
-                      data={optionsToSelectData(
-                        TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
-                      )}
-                      size="xs"
-                      name={`alert.thresholdType`}
-                      control={control}
-                    />
-                    <NumberInput
-                      min={MINIMUM_THRESHOLD_VALUE}
-                      size="xs"
-                      w={80}
-                      control={control}
-                      name={`alert.threshold`}
-                    />
-                    over
-                    <NativeSelect
-                      data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
-                      size="xs"
-                      name={`alert.interval`}
-                      control={control}
-                    />
-                    <Text size="sm" opacity={0.7}>
-                      window via
-                    </Text>
-                    <NativeSelect
-                      data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-                      size="xs"
-                      name={`alert.channel.type`}
-                      control={control}
-                    />
-                  </Group>
-                  {alert?.createdBy && (
-                    <Text size="xs" opacity={0.6}>
-                      Created by {alert.createdBy.name || alert.createdBy.email}
-                    </Text>
-                  )}
+            <Stack gap="xs" data-testid="alert-details">
+              <Paper px="md" py="sm" radius="xs">
+                <Text size="xxs" opacity={0.5} mb={4}>
+                  Trigger
+                </Text>
+                <Group gap="xs">
+                  <Text size="sm" opacity={0.7}>
+                    Alert when the value
+                  </Text>
+                  <NativeSelect
+                    data={optionsToSelectData(
+                      TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
+                    )}
+                    size="xs"
+                    name={`alert.thresholdType`}
+                    control={control}
+                  />
+                  <NumberInput
+                    min={MINIMUM_THRESHOLD_VALUE}
+                    size="xs"
+                    w={80}
+                    control={control}
+                    name={`alert.threshold`}
+                  />
+                  over
+                  <NativeSelect
+                    data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
+                    size="xs"
+                    name={`alert.interval`}
+                    control={control}
+                  />
+                  <Text size="sm" opacity={0.7}>
+                    window via
+                  </Text>
+                  <NativeSelect
+                    data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                    size="xs"
+                    name={`alert.channel.type`}
+                    control={control}
+                  />
                 </Group>
+                {alert?.createdBy && (
+                  <Text size="xs" opacity={0.6} mt="xs">
+                    Created by {alert.createdBy.name || alert.createdBy.email}
+                  </Text>
+                )}
                 <AlertScheduleFields
                   control={control}
                   setValue={setValue}
@@ -1425,9 +1429,15 @@ export default function EditTimeChartForm({
                   scheduleStartAtName="alert.scheduleStartAt"
                   scheduleOffsetMinutes={alertScheduleOffsetMinutes}
                   maxScheduleOffsetMinutes={maxAlertScheduleOffsetMinutes}
-                  offsetWindowLabel="from each alert window"
+                  offsetWindowLabel={
+                    alertIntervalLabel
+                      ? `from each ${alertIntervalLabel} window`
+                      : 'from each alert window'
+                  }
                 />
-                <Text size="xxs" opacity={0.5} mb={4} mt="xs">
+              </Paper>
+              <Paper px="md" py="sm" radius="xs">
+                <Text size="xxs" opacity={0.5} mb={4}>
                   Send to
                 </Text>
                 <AlertChannelForm

@@ -99,9 +99,7 @@ export function AlertScheduleFields<T extends FieldValues>({
       <Collapse in={opened}>
         <Box data-testid="alert-advanced-settings-panel">
           <Text size="xs" c="dimmed" mt="xs">
-            Control when alert evaluation windows begin. Use an offset to delay
-            checks for late-arriving data, or set an anchor to align windows to
-            a specific start time.
+            Optional schedule controls for aligning alert windows.
           </Text>
           {showScheduleOffsetInput && (
             <>
@@ -136,10 +134,6 @@ export function AlertScheduleFields<T extends FieldValues>({
                   {offsetWindowLabel}
                 </Text>
               </Group>
-              <Text size="xs" opacity={0.6} mt={4}>
-                Use this to align recurring windows to a fixed offset{' '}
-                {offsetWindowLabel}.
-              </Text>
               {hasScheduleStartAtAnchor && (
                 <Text size="xs" opacity={0.6} mt={4}>
                   Start offset is ignored while an anchor start time is set.
