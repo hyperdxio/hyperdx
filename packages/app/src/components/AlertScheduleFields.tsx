@@ -9,9 +9,20 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { NumberInput } from 'react-hook-form-mantine';
-import { Anchor, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
+import {
+  Box,
+  Collapse,
+  Group,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
-import { IconHelpCircle, IconSettings } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconInfoCircle,
+} from '@tabler/icons-react';
 
 import { parseScheduleStartAtValue } from '@/utils/alerts';
 
@@ -44,9 +55,7 @@ export function AlertScheduleFields<T extends FieldValues>({
   const hasScheduleStartAtAnchor = scheduleStartAtValue != null;
   const hasAdvancedScheduleValues =
     (scheduleOffsetMinutes ?? 0) > 0 || hasScheduleStartAtAnchor;
-  const [showAdvancedSettings, setShowAdvancedSettings] = useState(
-    hasAdvancedScheduleValues,
-  );
+  const [opened, setOpened] = useState(hasAdvancedScheduleValues);
 
   useEffect(() => {
     const normalizedOffset = scheduleOffsetMinutes ?? 0;
@@ -70,51 +79,49 @@ export function AlertScheduleFields<T extends FieldValues>({
   ]);
 
   return (
-    <Stack gap="xs" mt="xs">
-      {!showAdvancedSettings ? (
-        <Anchor
-          underline="always"
-          size="xs"
-          onClick={() => setShowAdvancedSettings(true)}
-          data-testid="alert-advanced-settings-toggle"
-        >
-          <Group gap="xs">
-            <IconSettings size={14} />
+    <>
+      <UnstyledButton
+        onClick={() => setOpened(current => !current)}
+        mt="xs"
+        data-testid="alert-advanced-settings-toggle"
+      >
+        <Group gap={4}>
+          {opened ? (
+            <IconChevronDown size={14} opacity={0.5} />
+          ) : (
+            <IconChevronRight size={14} opacity={0.5} />
+          )}
+          <Text size="xs" c="dimmed">
             Advanced Settings
-          </Group>
-        </Anchor>
-      ) : (
-        <Button
-          size="xs"
-          variant="subtle"
-          w="fit-content"
-          onClick={() => setShowAdvancedSettings(false)}
-          data-testid="alert-advanced-settings-toggle"
-        >
-          Hide Advanced Settings
-        </Button>
-      )}
-      {showAdvancedSettings && (
-        <Stack gap="sm" data-testid="alert-advanced-settings-panel">
+          </Text>
+        </Group>
+      </UnstyledButton>
+      <Collapse in={opened}>
+        <Box data-testid="alert-advanced-settings-panel">
+          <Text size="xs" c="dimmed" mt="xs">
+            Control when alert evaluation windows begin. Use an offset to delay
+            checks for late-arriving data, or set an anchor to align windows to
+            a specific start time.
+          </Text>
           {showScheduleOffsetInput && (
-            <Stack gap={4}>
-              <Group gap="xs">
-                <Text size="sm" opacity={0.7}>
-                  Start offset (min)
-                </Text>
-                <Tooltip
-                  label="Shifts each alert window forward by a fixed number of minutes inside the selected interval. For example, a 15 minute alert with offset 5 runs on windows starting at :05, :20, :35, and :50."
-                  multiline
-                  maw={360}
-                >
-                  <IconHelpCircle size={16} />
-                </Tooltip>
-              </Group>
-              <Text size="xs" opacity={0.6}>
-                Use this to align recurring windows to a fixed offset{' '}
-                {offsetWindowLabel}.
-              </Text>
-              <Group gap="xs">
+            <>
+              <Group gap="xs" mt="xs">
+                <Group gap={4}>
+                  <Text size="sm" opacity={0.7}>
+                    Start offset (min)
+                  </Text>
+                  <Tooltip
+                    label="Delays the start of each evaluation window by this many minutes. Useful when data is ingested with a lag."
+                    multiline
+                    w={260}
+                    withArrow
+                    zIndex={10050}
+                  >
+                    <Box style={{ lineHeight: 1, cursor: 'help' }}>
+                      <IconInfoCircle size={14} opacity={0.4} />
+                    </Box>
+                  </Tooltip>
+                </Group>
                 <NumberInput
                   min={0}
                   max={maxScheduleOffsetMinutes}
@@ -129,39 +136,43 @@ export function AlertScheduleFields<T extends FieldValues>({
                   {offsetWindowLabel}
                 </Text>
               </Group>
+              <Text size="xs" opacity={0.6} mt={4}>
+                Use this to align recurring windows to a fixed offset{' '}
+                {offsetWindowLabel}.
+              </Text>
               {hasScheduleStartAtAnchor && (
-                <Text size="xs" opacity={0.6}>
+                <Text size="xs" opacity={0.6} mt={4}>
                   Start offset is ignored while an anchor start time is set.
                 </Text>
               )}
-            </Stack>
+            </>
           )}
-          <Stack gap={4}>
-            <Group gap="xs">
+          <Group gap="xs" mt="xs" align="start">
+            <Group gap={4} mt={6}>
               <Text size="sm" opacity={0.7}>
                 Anchor start time
               </Text>
               <Tooltip
-                label="Anchors the recurring alert schedule to an exact date and time. Future checks repeat on the alert interval from this anchor, which helps match external systems with fixed schedules."
+                label="Pins alert windows to a fixed starting point instead of the default rolling schedule. Windows repeat at the configured interval from this time."
                 multiline
-                maw={360}
+                w={260}
+                withArrow
+                zIndex={10050}
               >
-                <IconHelpCircle size={16} />
+                <Box style={{ lineHeight: 1, cursor: 'help' }}>
+                  <IconInfoCircle size={14} opacity={0.4} />
+                </Box>
               </Tooltip>
             </Group>
-            <Text size="xs" opacity={0.6}>
-              Use an exact start time to repeat isolated windows on the selected
-              interval. Displayed in local time, stored as UTC.
-            </Text>
             <Controller
               control={control}
               name={scheduleStartAtName}
               render={({ field, fieldState: { error } }) => (
                 <DateTimePicker
                   size="xs"
+                  valueFormat={DATE_TIME_INPUT_FORMAT}
                   w={260}
                   placeholder={DATE_TIME_INPUT_FORMAT}
-                  valueFormat={DATE_TIME_INPUT_FORMAT}
                   clearable
                   dropdownType="popover"
                   popoverProps={{ withinPortal: true, zIndex: 10050 }}
@@ -175,9 +186,12 @@ export function AlertScheduleFields<T extends FieldValues>({
                 />
               )}
             />
-          </Stack>
-        </Stack>
-      )}
-    </Stack>
+            <Text size="xs" opacity={0.6} mt={6}>
+              Displayed in local time, stored as UTC
+            </Text>
+          </Group>
+        </Box>
+      </Collapse>
+    </>
   );
 }

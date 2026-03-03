@@ -480,17 +480,15 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
     await userEvent.click(screen.getByTestId('alert-button'));
 
     expect(
-      screen.queryByTestId('alert-advanced-settings-panel'),
-    ).not.toBeInTheDocument();
+      screen.getByTestId('alert-advanced-settings-panel'),
+    ).not.toBeVisible();
 
     await userEvent.click(screen.getByTestId('alert-advanced-settings-toggle'));
 
-    expect(
-      screen.getByTestId('alert-advanced-settings-panel'),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('alert-advanced-settings-panel')).toBeVisible();
     expect(screen.getByText('Anchor start time')).toBeInTheDocument();
     expect(
       screen.getByTestId('alert-advanced-settings-toggle'),
-    ).toHaveTextContent('Hide Advanced Settings');
+    ).toHaveTextContent('Advanced Settings');
   });
 });
