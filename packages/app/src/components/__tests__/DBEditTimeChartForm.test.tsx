@@ -473,4 +473,24 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
     // Verify that onSave was not called
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  it('shows alert scheduling fields inside advanced settings', async () => {
+    renderComponent();
+
+    await userEvent.click(screen.getByTestId('alert-button'));
+
+    expect(
+      screen.queryByTestId('alert-advanced-settings-panel'),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('alert-advanced-settings-toggle'));
+
+    expect(
+      screen.getByTestId('alert-advanced-settings-panel'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Anchor start time')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('alert-advanced-settings-toggle'),
+    ).toHaveTextContent('Hide Advanced Settings');
+  });
 });
