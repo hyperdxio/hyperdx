@@ -534,6 +534,8 @@ export const renderAlertTemplate = async ({
             type: channel.type,
             id: channel.channel._id.toString(),
           },
+          // Explicitly track if this is a grouped alert
+          isGrouped: view.isGroupedAlert,
           ...(view.isGroupedAlert && group ? { groupId: group } : {}),
         });
 
