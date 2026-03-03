@@ -81,6 +81,17 @@ export function getPropertyStatistics(data: Record<string, any>[]) {
   };
 }
 
+// Maximum number of distinct values to show in a chart before collapsing
+// the rest into an "Other (N)" bucket. The effective limit adapts: when the
+// actual unique count is at most MAX_CHART_VALUES_UPPER, all values are shown
+// without aggregation. This avoids the awkward "Other (1)" or "Other (2)" cases
+// for attributes like http.status_code that naturally have 4-8 values.
+export const MAX_CHART_VALUES = 6;
+export const MAX_CHART_VALUES_UPPER = 8;
+
+// Color for the "Other (N)" aggregated bucket — neutral gray.
+export const OTHER_BUCKET_COLOR = 'var(--mantine-color-gray-5)';
+
 export function mergeValueStatisticsMaps(
   outlierValues: Map<string, number>, // value -> count
   inlierValues: Map<string, number>,
@@ -107,4 +118,45 @@ export function mergeValueStatisticsMaps(
   });
 
   return mergedArray;
+}
+
+// Aggregates chart data beyond the effective limit into a single "Other (N)" entry.
+// Sorts by combined count (outlier + inlier) descending so the most frequent
+// values are kept. The effective limit adapts: if the total unique count is at
+// most MAX_CHART_VALUES_UPPER, all values are shown without aggregation.
+export function applyTopNAggregation(
+  data: { name: string; outlierCount: number; inlierCount: number }[],
+): {
+  name: string;
+  outlierCount: number;
+  inlierCount: number;
+  isOther?: boolean;
+}[] {
+  // Adaptive: show all values when they fit within the upper bound
+  if (data.length <= MAX_CHART_VALUES_UPPER) return data;
+
+  const sorted = [...data].sort(
+    (a, b) => b.outlierCount + b.inlierCount - (a.outlierCount + a.inlierCount),
+  );
+  const top = sorted.slice(0, MAX_CHART_VALUES);
+  const rest = sorted.slice(MAX_CHART_VALUES);
+
+  const otherOutlierCount = rest.reduce(
+    (sum, item) => sum + item.outlierCount,
+    0,
+  );
+  const otherInlierCount = rest.reduce(
+    (sum, item) => sum + item.inlierCount,
+    0,
+  );
+
+  return [
+    ...top,
+    {
+      name: `Other (${rest.length})`,
+      outlierCount: otherOutlierCount,
+      inlierCount: otherInlierCount,
+      isOther: true,
+    },
+  ];
 }
