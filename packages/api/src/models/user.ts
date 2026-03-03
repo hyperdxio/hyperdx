@@ -22,6 +22,7 @@ const UserSchema = new Schema(
     email: {
       type: String,
       required: true,
+      set: (v: string) => v?.toLowerCase(),
     },
     team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
     accessKey: {

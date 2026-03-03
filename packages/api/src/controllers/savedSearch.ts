@@ -11,10 +11,12 @@ type SavedSearchWithoutId = Omit<z.infer<typeof SavedSearchSchema>, 'id'>;
 
 export async function getSavedSearches(teamId: string) {
   const savedSearches = await SavedSearch.find({ team: teamId });
-  const alerts = await Alert.find(
-    { team: teamId, savedSearch: { $exists: true, $ne: null } },
-    { __v: 0 },
-  ).populate('createdBy', 'email name');
+  const alerts = await Alert.find({
+    team: teamId,
+    savedSearch: { $exists: true, $ne: null },
+  })
+    .select({ __v: 0 })
+    .populate('createdBy', 'email name');
 
   const alertsBySavedSearchId = groupBy(alerts, 'savedSearch');
 

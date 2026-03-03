@@ -1044,7 +1044,7 @@ describe('checkAlerts', () => {
       now: Date,
       details: AlertDetails,
       clickhouseClient: ClickhouseClient,
-      connection: IConnection,
+      connectionId: string,
       alertProvider: AlertProvider,
       teamWebhooksById: Map<string, IWebhook>,
     ) => {
@@ -1059,7 +1059,7 @@ describe('checkAlerts', () => {
           previousMap,
         },
         clickhouseClient,
-        connection.id,
+        connectionId,
         alertProvider,
         teamWebhooksById,
       );
@@ -4412,7 +4412,7 @@ describe('checkAlerts', () => {
       await saveAlert(alert2Id, new Date('2025-01-01T00:10:00Z'));
       await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
 
-      const aggregateSpy = jest.spyOn(AlertHistory, 'aggregate');
+      const findSpy = jest.spyOn(AlertHistory, 'find');
 
       const result = await getPreviousAlertHistories(
         [
@@ -4423,7 +4423,7 @@ describe('checkAlerts', () => {
         new Date('2025-01-01T00:20:00Z'),
       );
 
-      expect(aggregateSpy).toHaveBeenCalledTimes(4); // 152 ids, batch size 50 => 4 batches
+      expect(findSpy).toHaveBeenCalledTimes(4); // 152 ids, batch size 50 => 4 batches
       expect(result.size).toBe(2);
       expect(result.get(alert1Id.toString())!.createdAt).toEqual(
         new Date('2025-01-01T00:05:00Z'),

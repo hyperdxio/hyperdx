@@ -1,6 +1,6 @@
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
-import { ObjectId } from 'mongodb';
+import mongoose from 'mongoose';
 import request from 'supertest';
 
 import {
@@ -39,11 +39,11 @@ const createMockDashboardWithIds = (sourceId: string, overrides = {}) => ({
   tiles: [
     {
       ...makeExternalChart({ sourceId }),
-      id: new ObjectId().toString(),
+      id: new mongoose.Types.ObjectId().toString(),
     },
     {
       ...makeExternalChart({ sourceId }),
-      id: new ObjectId().toString(),
+      id: new mongoose.Types.ObjectId().toString(),
     },
   ],
   tags: TEST_TAGS,
@@ -58,7 +58,7 @@ const createTimeSeriesChart = (sourceId: string) => ({
   y: 0,
   w: 6,
   h: 3,
-  id: new ObjectId().toString(),
+  id: new mongoose.Types.ObjectId().toString(),
   seriesReturnType: 'column',
   series: [
     {
@@ -77,7 +77,7 @@ const createTableChart = (sourceId: string) => ({
   y: 0,
   w: 6,
   h: 3,
-  id: new ObjectId().toString(),
+  id: new mongoose.Types.ObjectId().toString(),
   seriesReturnType: 'column',
   series: [
     {
@@ -97,7 +97,7 @@ const createNumberChart = (sourceId: string) => ({
   y: 3,
   w: 3,
   h: 3,
-  id: new ObjectId().toString(),
+  id: new mongoose.Types.ObjectId().toString(),
   seriesReturnType: 'column',
   series: [
     {
@@ -115,7 +115,7 @@ const createMarkdownChart = () => ({
   y: 3,
   w: 3,
   h: 3,
-  id: new ObjectId().toString(),
+  id: new mongoose.Types.ObjectId().toString(),
   seriesReturnType: 'column',
   series: [
     {
@@ -349,7 +349,7 @@ describe('External API v2 Dashboards', () => {
     });
 
     it('should return 404 when dashboard does not exist', async () => {
-      const nonExistentId = new ObjectId().toString();
+      const nonExistentId = new mongoose.Types.ObjectId().toString();
       await authRequest('get', `${BASE_URL}/${nonExistentId}`).expect(404);
     });
   });
@@ -592,7 +592,7 @@ describe('External API v2 Dashboards', () => {
     });
 
     it('should return 400 when source IDs do not exist', async () => {
-      const nonExistentSourceId = new ObjectId().toString();
+      const nonExistentSourceId = new mongoose.Types.ObjectId().toString();
       const mockDashboard = createMockDashboard(nonExistentSourceId);
 
       const response = await authRequest('post', BASE_URL)
@@ -664,7 +664,7 @@ describe('External API v2 Dashboards', () => {
     });
 
     it('should return 400 when filter source ID does not exist', async () => {
-      const nonExistentSourceId = new ObjectId().toString();
+      const nonExistentSourceId = new mongoose.Types.ObjectId().toString();
       const dashboardPayload = {
         name: 'Dashboard with Bad Filter Source',
         tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
@@ -695,7 +695,7 @@ describe('External API v2 Dashboards', () => {
         tags: TEST_TAGS,
         filters: [
           {
-            id: new ObjectId().toString(),
+            id: new mongoose.Types.ObjectId().toString(),
             type: 'QUERY_EXPRESSION' as const,
             name: 'Filter with ID',
             expression: 'environment',
@@ -743,8 +743,8 @@ describe('External API v2 Dashboards', () => {
 
     it('should update dashboard filters when provided', async () => {
       const dashboard = await createTestDashboard();
-      const filterId1 = new ObjectId().toString();
-      const filterId2 = new ObjectId().toString();
+      const filterId1 = new mongoose.Types.ObjectId().toString();
+      const filterId2 = new mongoose.Types.ObjectId().toString();
       const updatedPayload = createMockDashboardWithIds(
         traceSource._id.toString(),
         {
@@ -796,8 +796,8 @@ describe('External API v2 Dashboards', () => {
     });
 
     it('should preserve existing dashboard filters when filters are not provided', async () => {
-      const existingFilterId1 = new ObjectId().toString();
-      const existingFilterId2 = new ObjectId().toString();
+      const existingFilterId1 = new mongoose.Types.ObjectId().toString();
+      const existingFilterId2 = new mongoose.Types.ObjectId().toString();
       const existingFilters = [
         {
           id: existingFilterId1,
@@ -853,8 +853,8 @@ describe('External API v2 Dashboards', () => {
     });
 
     it('should clear existing dashboard filters when provided an empty filters array', async () => {
-      const existingFilterId1 = new ObjectId().toString();
-      const existingFilterId2 = new ObjectId().toString();
+      const existingFilterId1 = new mongoose.Types.ObjectId().toString();
+      const existingFilterId2 = new mongoose.Types.ObjectId().toString();
       const existingFilters = [
         {
           id: existingFilterId1,
@@ -904,14 +904,14 @@ describe('External API v2 Dashboards', () => {
 
     it('should return 400 when filter source ID does not exist on update', async () => {
       const dashboard = await createTestDashboard();
-      const nonExistentSourceId = new ObjectId().toString();
+      const nonExistentSourceId = new mongoose.Types.ObjectId().toString();
       const updatedPayload = createMockDashboardWithIds(
         traceSource._id.toString(),
         {
           name: 'Updated Name',
           filters: [
             {
-              id: new ObjectId().toString(),
+              id: new mongoose.Types.ObjectId().toString(),
               type: 'QUERY_EXPRESSION' as const,
               name: 'Bad Source Filter',
               expression: 'environment',
@@ -931,7 +931,7 @@ describe('External API v2 Dashboards', () => {
     });
 
     it('should return 404 when dashboard does not exist', async () => {
-      const nonExistentId = new ObjectId().toString();
+      const nonExistentId = new mongoose.Types.ObjectId().toString();
       const mockDashboard = createMockDashboardWithIds(
         traceSource._id.toString(),
       );
@@ -944,7 +944,7 @@ describe('External API v2 Dashboards', () => {
     it('can round-trip all supported chart types and all supported fields on each chart type', async () => {
       // Arrange
       const lineChart = {
-        id: new ObjectId().toString(),
+        id: new mongoose.Types.ObjectId().toString(),
         name: 'Line Chart',
         x: 0,
         y: 0,
@@ -990,7 +990,7 @@ describe('External API v2 Dashboards', () => {
       };
 
       const barChart = {
-        id: new ObjectId().toString(),
+        id: new mongoose.Types.ObjectId().toString(),
         name: 'Bar Chart',
         x: 6,
         y: 0,
@@ -1021,7 +1021,7 @@ describe('External API v2 Dashboards', () => {
       };
 
       const tableChart = {
-        id: new ObjectId().toString(),
+        id: new mongoose.Types.ObjectId().toString(),
         name: 'Table Chart',
         x: 12,
         y: 0,
@@ -1069,7 +1069,7 @@ describe('External API v2 Dashboards', () => {
       };
 
       const numberChart = {
-        id: new ObjectId().toString(),
+        id: new mongoose.Types.ObjectId().toString(),
         name: 'Number Chart',
         x: 18,
         y: 0,
@@ -1097,7 +1097,7 @@ describe('External API v2 Dashboards', () => {
       };
 
       const markdownChart = {
-        id: new ObjectId().toString(),
+        id: new mongoose.Types.ObjectId().toString(),
         name: 'Markdown Chart',
         x: 0,
         y: 3,
@@ -1137,7 +1137,7 @@ describe('External API v2 Dashboards', () => {
 
     it('should return 400 when source IDs do not exist', async () => {
       const dashboard = await createTestDashboard();
-      const nonExistentSourceId = new ObjectId().toString();
+      const nonExistentSourceId = new mongoose.Types.ObjectId().toString();
       const updatedDashboard = createMockDashboardWithIds(nonExistentSourceId, {
         name: 'Updated Dashboard Name',
       });

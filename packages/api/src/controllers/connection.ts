@@ -23,7 +23,7 @@ export function createConnection(
   return Connection.create({ ...connection, team });
 }
 
-export function updateConnection(
+export async function updateConnection(
   team: string,
   connectionId: string,
   connection: Omit<IConnection, 'id' | '_id'>,
@@ -41,15 +41,14 @@ export function updateConnection(
     );
   }
 
-  return Connection.findOneAndUpdate(
-    { _id: connectionId, team },
-    updateOperation,
-    {
-      new: true,
-    },
-  );
+  await Connection.updateOne({ _id: connectionId, team }, updateOperation);
+  return Connection.findOne({ _id: connectionId, team });
 }
 
-export function deleteConnection(team: string, connectionId: string) {
-  return Connection.findOneAndDelete({ _id: connectionId, team });
+export async function deleteConnection(team: string, connectionId: string) {
+  const doc = await Connection.findOne({ _id: connectionId, team });
+  if (doc) {
+    await Connection.deleteOne({ _id: connectionId, team });
+  }
+  return doc;
 }

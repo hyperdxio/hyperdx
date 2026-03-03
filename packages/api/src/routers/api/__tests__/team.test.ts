@@ -1,5 +1,4 @@
 import _ from 'lodash';
-import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
@@ -61,7 +60,7 @@ Object {
       team: team.id,
       kind: 'log',
       name: 'My New Source',
-      connection: new ObjectId().toString(),
+      connection: new mongoose.Types.ObjectId().toString(),
       from: {
         databaseName: 'system',
         tableName: 'query_log',
@@ -71,14 +70,17 @@ Object {
       id: 'l-1148034466',
     });
 
+    const sourcesResp = await agent.get('/sources').expect(200);
+    const sourceId = sourcesResp.body[0]._id;
+
     await agent
       .post('/saved-search')
       .send({
-        id: '1',
         name: 'Test',
         select: 'SELECT * FROM table',
         where: 'WHERE x = 1',
-        source: 'l-1148034466',
+        whereLanguage: 'sql',
+        source: sourceId,
         tags: ['test', 'test2'],
       })
       .expect(200);

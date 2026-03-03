@@ -1,6 +1,6 @@
 import express from 'express';
 import _ from 'lodash';
-import { ObjectId } from 'mongodb';
+import mongoose from 'mongoose';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
@@ -28,7 +28,7 @@ router.get('/', async (req, res, next) => {
     const data = await Promise.all(
       alerts.map(async alert => {
         const history = await getRecentAlertHistories({
-          alertId: new ObjectId(alert._id),
+          alertId: new mongoose.Types.ObjectId(alert._id),
           limit: 20,
         });
 

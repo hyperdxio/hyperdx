@@ -1,5 +1,4 @@
 import compression from 'compression';
-import MongoStore from 'connect-mongo';
 import express from 'express';
 import session from 'express-session';
 import onHeaders from 'on-headers';
@@ -16,6 +15,7 @@ import sourcesRouter from './routers/api/sources';
 import externalRoutersV2 from './routers/external-api/v2';
 import usageStats from './tasks/usageStats';
 import logger, { expressLogger } from './utils/logger';
+import { MongooseSessionStore } from './utils/mongooseSessionStore';
 import passport from './utils/passport';
 
 const app: express.Application = express();
@@ -30,7 +30,9 @@ const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
     maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
   },
   rolling: true,
-  store: new MongoStore({ mongoUrl: config.MONGO_URI }),
+  store: new MongooseSessionStore({
+    sessionTTL: 1000 * 60 * 60 * 24 * 30, // 30 days
+  }),
 };
 
 app.set('trust proxy', 1);

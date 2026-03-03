@@ -1,0 +1,33 @@
+name: hdx-ci
+services:
+  otel-collector:
+    image: otel-collector:latest
+    environment:
+      CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
+      HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: ${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+      HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
+    ports:
+      - '23133:13133'
+    networks:
+      - internal
+    restart: on-failure
+    depends_on:
+      - ch-server
+  ch-server:
+    image: clickhouse:latest
+    restart: on-failure
+    ports:
+      - 8123:8123
+    networks:
+      - internal
+  db:
+    image: mongodb:latest
+    command: --bind_ip_all --port 29999
+    ports:
+      - 29999:29999
+    networks:
+      - internal
+networks:
+  internal:
+    name: 'hyperdx-ci-internal-network'

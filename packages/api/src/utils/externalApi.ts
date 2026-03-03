@@ -7,7 +7,7 @@ import {
   SelectList,
 } from '@hyperdx/common-utils/dist/types';
 import { omit, pick } from 'lodash';
-import { FlattenMaps, LeanDocument } from 'mongoose';
+import mongoose from 'mongoose';
 
 import {
   AlertChannel,
@@ -15,6 +15,7 @@ import {
   AlertInterval,
   AlertState,
   AlertThresholdType,
+  IAlert,
 } from '@/models/alert';
 import type { DashboardDocument } from '@/models/dashboard';
 import {
@@ -463,7 +464,7 @@ export type ExternalAlert = {
 
 type AlertDocumentObject =
   | AlertDocument
-  | FlattenMaps<LeanDocument<AlertDocument>>;
+  | (IAlert & { _id: mongoose.Types.ObjectId; __v?: number });
 
 function hasCreatedAt(
   alert: AlertDocumentObject,

@@ -1,4 +1,5 @@
 import express from 'express';
+import ms from 'ms';
 import { serializeError } from 'serialize-error';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
@@ -12,6 +13,7 @@ import { createTeam, isTeamExisting } from '@/controllers/team';
 import { handleAuthError, redirectToDashboard } from '@/middleware/auth';
 import TeamInvite from '@/models/teamInvite';
 import User from '@/models/user'; // TODO -> do not import model directly
+import type { UserDocument } from '@/models/user';
 import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
 import passport from '@/utils/passport';
@@ -85,50 +87,50 @@ router.post(
         return res.status(409).json({ error: 'teamAlreadyExists' });
       }
 
-      (User as any).register(
-        new User({ email }),
-        password,
-        async (err: Error, user: any) => {
-          if (err) {
-            logger.error(
-              { err: serializeError(err) },
-              'User registration error',
-            );
-            return res.status(400).json({ error: 'invalid' });
-          }
+      let user: UserDocument;
+      try {
+        user = await (User as any).register(
+          new User({ email }),
+          password,
+        );
+      } catch (err) {
+        logger.error(
+          { err: serializeError(err as Error) },
+          'User registration error',
+        );
+        return res.status(400).json({ error: 'invalid' });
+      }
 
-          const team = await createTeam({
-            name: `${email}'s Team`,
-            collectorAuthenticationEnforced: true,
-          });
-          user.team = team._id;
-          user.name = email;
-          await user.save();
+      const team = await createTeam({
+        name: `${email}'s Team`,
+        collectorAuthenticationEnforced: true,
+      });
+      user.team = team._id;
+      user.name = email;
+      await user.save();
 
-          // Set up default connections and sources for this new team
-          try {
-            await setupTeamDefaults(team._id.toString());
-          } catch (error) {
-            logger.error(
-              { err: serializeError(error) },
-              'Failed to setup team defaults',
-            );
-            // Continue with registration even if setup defaults fails
-          }
+      // Set up default connections and sources for this new team
+      try {
+        await setupTeamDefaults(team._id.toString());
+      } catch (error) {
+        logger.error(
+          { err: serializeError(error) },
+          'Failed to setup team defaults',
+        );
+        // Continue with registration even if setup defaults fails
+      }
 
-          return passport.authenticate('local')(req, res, () => {
-            if (req?.user?.team) {
-              return res.status(200).json({ status: 'success' });
-            }
+      return passport.authenticate('local')(req, res, () => {
+        if (req?.user?.team) {
+          return res.status(200).json({ status: 'success' });
+        }
 
-            logger.error(
-              { userId: req?.user?._id },
-              'Password login for user failed, user or team not found',
-            );
-            return res.status(400).json({ error: 'invalid' });
-          });
-        },
-      );
+        logger.error(
+          { userId: req?.user?._id },
+          'Password login for user failed, user or team not found',
+        );
+        return res.status(400).json({ error: 'invalid' });
+      });
     } catch (e) {
       next(e);
     }
@@ -156,38 +158,43 @@ router.post('/team/setup/:token', async (req, res, next) => {
       );
     }
 
+    const thirtyDaysAgo = new Date(Date.now() - ms('30d'));
     const teamInvite = await TeamInvite.findOne({
       token: req.params.token,
+      createdAt: { $gte: thirtyDaysAgo },
     });
     if (!teamInvite) {
       return res.status(401).send('Invalid token');
     }
 
-    (User as any).register(
-      new User({
-        email: teamInvite.email,
-        name: teamInvite.email,
-        team: teamInvite.teamId,
-      }),
-      password, // TODO: validate password
-      async (err: Error, user: any) => {
-        if (err) {
-          logger.error({ err: serializeError(err) }, 'Team setup error');
-          return res.redirect(
-            `${config.FRONTEND_URL}/join-team?token=${token}&err=500`,
-          );
-        }
+    let user: UserDocument;
+    try {
+      user = await (User as any).register(
+        new User({
+          email: teamInvite.email,
+          name: teamInvite.email,
+          team: teamInvite.teamId,
+        }),
+        password, // TODO: validate password
+      );
+    } catch (err) {
+      logger.error(
+        { err: serializeError(err as Error) },
+        'Team setup error',
+      );
+      return res.redirect(
+        `${config.FRONTEND_URL}/join-team?token=${token}&err=500`,
+      );
+    }
 
-        await TeamInvite.findByIdAndRemove(teamInvite._id);
+    await TeamInvite.findByIdAndDelete(teamInvite._id);
 
-        req.login(user, err => {
-          if (err) {
-            return next(err);
-          }
-          redirectToDashboard(req, res);
-        });
-      },
-    );
+    req.login(user, err => {
+      if (err) {
+        return next(err);
+      }
+      redirectToDashboard(req, res);
+    });
   } catch (e) {
     next(e);
   }

@@ -161,8 +161,7 @@ async function loadAlert(
   }
 
   if (config.IS_LOCAL_APP_MODE) {
-    // The id is the 12 character string `_local_team_', which will become an ObjectId
-    // as the ASCII hex values, so 5f6c6f63616c5f7465616d5f.
+    // Use the local app team's fixed ObjectId for alert processing.
     alert.team = new mongoose.Types.ObjectId(LOCAL_APP_TEAM.id);
   }
 

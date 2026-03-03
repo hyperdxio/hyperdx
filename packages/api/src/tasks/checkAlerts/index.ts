@@ -728,54 +728,33 @@ export const getPreviousAlertHistories = async (
   );
 
   const resultChunks = await Promise.all(
-    chunkedIds.map(async ids =>
-      AlertHistory.aggregate<AggregatedAlertHistory>([
-        // Filter for the given alerts, and only entries created before "now"
-        // This uses the compound index { alert: 1, createdAt: -1 }
-        {
-          $match: {
-            alert: { $in: ids },
-            createdAt: { $lte: now },
-          },
-        },
-        // Sort by alert and createdAt to leverage the index
-        // This ensures we can use the compound index efficiently
-        {
-          $sort: { alert: 1, createdAt: -1 },
-        },
-        // Group by alert ID AND group (if present), taking the first (latest) document for each combination
-        {
-          $group: {
-            _id: {
-              alert: '$alert',
-              group: '$group',
-            },
-            latestDoc: { $first: '$$ROOT' },
-          },
-        },
-        // Reshape and extract fields from the latest document
-        {
-          $project: {
-            _id: '$_id.alert',
-            createdAt: '$latestDoc.createdAt',
-            state: '$latestDoc.state',
-            group: '$_id.group',
-          },
-        },
-      ]),
-    ),
-  );
+    chunkedIds.map(async ids => {
+      // Fetch all matching histories, sorted to leverage compound index
+      const histories = await AlertHistory.find({
+        alert: { $in: ids },
+        createdAt: { $lte: now },
+      })
+        .sort({ alert: 1, createdAt: -1 })
+        .lean();
 
-  // Create a map with composite keys for grouped alerts (alertId||group) or simple keys for non-grouped alerts
-  return new Map<string, AggregatedAlertHistory>(
-    resultChunks.flat().map(history => {
-      const key = computeHistoryMapKey(
-        history._id.toString(),
-        history.group || '',
-      );
-      return [key, history];
+      // Group by (alert, group) in JS, keeping only the first (latest) per combo
+      const latestMap = new Map<string, AggregatedAlertHistory>();
+      for (const h of histories) {
+        const key = computeHistoryMapKey(h.alert.toString(), h.group || '');
+        if (!latestMap.has(key)) {
+          latestMap.set(key, {
+            _id: h.alert as unknown as ObjectId,
+            createdAt: h.createdAt,
+            state: h.state,
+            group: h.group,
+          });
+        }
+      }
+      return [...latestMap.entries()];
     }),
   );
+
+  return new Map<string, AggregatedAlertHistory>(resultChunks.flat());
 };
 
 export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {

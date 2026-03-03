@@ -1,5 +1,4 @@
 import express from 'express';
-import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
@@ -174,12 +173,15 @@ router.put(
           headers,
           body,
         },
-        { new: true, select: { __v: 0, team: 0 } },
+        { new: true },
       );
 
-      res.json({
-        data: updatedWebhook,
-      });
+      if (updatedWebhook) {
+        const { __v, team, ...data } = updatedWebhook.toJSON();
+        res.json({ data });
+      } else {
+        res.json({ data: updatedWebhook });
+      }
     } catch (err) {
       next(err);
     }
@@ -233,7 +235,7 @@ router.post(
 
       // Create a temporary webhook object for testing
       const testWebhook = new Webhook({
-        team: new ObjectId(teamId),
+        team: new mongoose.Types.ObjectId(teamId),
         service,
         url,
         queryParams: queryParams,

@@ -30,10 +30,6 @@ mongoose.connection.on('reconnected', () => {
   logger.warn('Reconnected to MongoDB');
 });
 
-mongoose.connection.on('reconnectFailed', () => {
-  logger.error('Failed to reconnect to MongoDB');
-});
-
 export const connectDB = async () => {
   // breadcrumbs for future greppers: aws4 is included as a dependency of the api so that
   // users can use AWS auth in their mongo connection string here, e.g.

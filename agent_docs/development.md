@@ -64,6 +64,44 @@ yarn dev:int
 - Includes all necessary services (ClickHouse, MongoDB, OTel Collector)
 - Tests run against real database instances for accurate integration testing
 
+### Nix Development Testing
+
+When using `nix develop`, Docker Compose bridge networking may not be reachable
+from the Nix sandbox. Use host-networked containers instead:
+
+```bash
+# Start MongoDB + ClickHouse with host networking
+nix run .#test-services-up
+# or: make test-services-up
+
+# Enter nix shell and run tests
+nix develop
+cd packages/api && yarn ci:int
+
+# Stop services when done
+nix run .#test-services-down
+# or: make test-services-down
+```
+
+Port configuration is centralized in `nix/ports.nix`. The API test server uses
+port 19123 (not 9000) to avoid conflicting with ClickHouse's native port.
+
+### Nix CI with Container Images
+
+For full CI runs using Nix-built container images:
+
+```bash
+# MongoDB backend
+nix run .#ci-int
+
+# FerretDB backend
+nix run .#ci-int-ferretdb
+
+# Watch mode (pass test file patterns as args)
+nix run .#dev-int
+nix run .#dev-int-ferretdb
+```
+
 ## Common Development Tasks
 
 ### Adding New Features

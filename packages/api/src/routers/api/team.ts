@@ -2,6 +2,7 @@ import { TeamClickHouseSettingsSchema } from '@hyperdx/common-utils/dist/types';
 import crypto from 'crypto';
 import express from 'express';
 import pick from 'lodash/pick';
+import ms from 'ms';
 import { z } from 'zod';
 import { processRequest, validateRequest } from 'zod-express-middleware';
 
@@ -153,9 +154,11 @@ router.post(
       const normalizedEmail = toEmail.toLowerCase();
 
       // Check for existing invitation with normalized email
+      const thirtyDaysAgo = new Date(Date.now() - ms('30d'));
       let teamInvite = await TeamInvite.findOne({
         teamId,
         email: normalizedEmail,
+        createdAt: { $gte: thirtyDaysAgo },
       });
 
       if (!teamInvite) {
@@ -182,15 +185,11 @@ router.get('/invitations', async (req, res, next) => {
     if (teamId == null) {
       throw new Error(`User ${req.user?._id} not associated with a team`);
     }
-    const teamInvites = await TeamInvite.find(
-      { teamId },
-      {
-        createdAt: 1,
-        email: 1,
-        name: 1,
-        token: 1,
-      },
-    );
+    const thirtyDaysAgo = new Date(Date.now() - ms('30d'));
+    const teamInvites = await TeamInvite.find({
+      teamId,
+      createdAt: { $gte: thirtyDaysAgo },
+    }).select('createdAt email name token');
     res.json({
       data: teamInvites.map(ti => ({
         _id: ti._id,

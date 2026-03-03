@@ -1,6 +1,7 @@
 import { WebhookService } from '@hyperdx/common-utils/dist/types';
-import { ObjectId } from 'mongodb';
 import mongoose, { Schema } from 'mongoose';
+
+import type { ObjectId } from '@/models';
 
 export { WebhookService };
 
@@ -32,7 +33,7 @@ export interface IWebhook {
 
 const WebhookSchema = new Schema<IWebhook>(
   {
-    team: { type: Schema.Types.ObjectId, ref: 'Team' },
+    team: { type: Schema.Types.ObjectId, ref: 'Team', required: true },
     service: {
       type: String,
       enum: Object.values(WebhookService),

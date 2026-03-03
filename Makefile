@@ -65,6 +65,52 @@ dev-unit:
 ci-unit:
 	npx nx run-many -t ci:unit
 
+# --- Host-networked test services (for nix develop) ---
+
+.PHONY: test-services-up
+test-services-up:
+	nix run .#test-services-up
+
+.PHONY: test-services-down
+test-services-down:
+	nix run .#test-services-down
+
+.PHONY: test-services-up-ferretdb
+test-services-up-ferretdb:
+	nix run .#test-services-up-ferretdb
+
+# --- Nix-built container targets ---
+
+.PHONY: nix-load-images
+nix-load-images:
+	nix run .#load-test-images
+
+# --- MongoDB (Nix) ---
+.PHONY: nix-ci-int
+nix-ci-int: nix-load-images
+	docker compose -p int -f ./docker-compose.ci.nix.yml up -d
+	npx nx run-many -t ci:int --parallel=false
+	docker compose -p int -f ./docker-compose.ci.nix.yml down
+
+.PHONY: nix-dev-int
+nix-dev-int: nix-load-images
+	docker compose -p int -f ./docker-compose.ci.nix.yml up -d
+	npx nx run @hyperdx/api:dev:int $(FILE)
+	docker compose -p int -f ./docker-compose.ci.nix.yml down
+
+# --- FerretDB (Nix) ---
+.PHONY: nix-ci-int-ferretdb
+nix-ci-int-ferretdb: nix-load-images
+	docker compose -p int -f ./docker-compose.ci.ferretdb.yml up -d
+	npx nx run-many -t ci:int --parallel=false
+	docker compose -p int -f ./docker-compose.ci.ferretdb.yml down
+
+.PHONY: nix-dev-int-ferretdb
+nix-dev-int-ferretdb: nix-load-images
+	docker compose -p int -f ./docker-compose.ci.ferretdb.yml up -d
+	npx nx run @hyperdx/api:dev:int $(FILE)
+	docker compose -p int -f ./docker-compose.ci.ferretdb.yml down
+
 .PHONY: e2e
 e2e:
 	# Run full-stack by default (MongoDB + API + local Docker ClickHouse)

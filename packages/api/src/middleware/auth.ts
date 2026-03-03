@@ -98,10 +98,10 @@ export function isUserAuthenticated(
     logger.warn('Skipping authentication in local app mode');
     req.user = {
       // @ts-ignore
-      _id: '_local_user_',
+      _id: '000000000000000000000002',
       email: 'local-user@hyperdx.io',
       // @ts-ignore
-      team: '_local_team_',
+      team: '000000000000000000000001',
     };
     return next();
   }

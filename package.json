@@ -65,6 +65,7 @@
   },
   "packageManager": "yarn@4.5.1",
   "resolutions": {
+    "@hyperdx/passport-local-mongoose@npm:9.0.1": "patch:@hyperdx/passport-local-mongoose@npm%3A9.0.1#~/.yarn/patches/@hyperdx-passport-local-mongoose-npm-9.0.1-718b308ef0.patch",
     "@types/react": "19.0.7",
     "@types/react-dom": "19.0.3",
     "@types/express": "4.17.21",

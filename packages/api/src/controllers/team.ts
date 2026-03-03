@@ -8,7 +8,7 @@ import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import Team from '@/models/team';
 
-const LOCAL_APP_TEAM_ID = '_local_team_';
+const LOCAL_APP_TEAM_ID = '000000000000000000000001';
 export const LOCAL_APP_TEAM = {
   _id: new mongoose.Types.ObjectId(LOCAL_APP_TEAM_ID),
   id: LOCAL_APP_TEAM_ID,
@@ -89,23 +89,17 @@ export function updateTeamClickhouseSettings(
 }
 
 export async function getTags(teamId: ObjectId) {
-  const [dashboardTags, savedSearchTags] = await Promise.all([
-    Dashboard.aggregate([
-      { $match: { team: teamId } },
-      { $unwind: '$tags' },
-      { $group: { _id: '$tags' } },
-    ]),
-    SavedSearch.aggregate([
-      { $match: { team: teamId } },
-      { $unwind: '$tags' },
-      { $group: { _id: '$tags' } },
-    ]),
+  const [dashboards, savedSearches] = await Promise.all([
+    Dashboard.find({ team: teamId }, { tags: 1 }).lean(),
+    SavedSearch.find({ team: teamId }, { tags: 1 }).lean(),
   ]);
 
-  return [
-    ...new Set([
-      ...dashboardTags.map(t => t._id),
-      ...savedSearchTags.map(t => t._id),
-    ]),
-  ];
+  const tagSet = new Set<string>();
+  for (const d of dashboards) {
+    for (const tag of (d as any).tags ?? []) tagSet.add(tag);
+  }
+  for (const s of savedSearches) {
+    for (const tag of (s as any).tags ?? []) tagSet.add(tag);
+  }
+  return [...tagSet];
 }

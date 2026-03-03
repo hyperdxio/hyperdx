@@ -1,4 +1,4 @@
-import { ObjectId } from 'mongodb';
+import mongoose from 'mongoose';
 
 import { getRecentAlertHistories } from '@/controllers/alertHistory';
 import { clearDBCollections, closeDB, connectDB } from '@/fixtures';
@@ -21,7 +21,7 @@ describe('alertHistory controller', () => {
 
   describe('getRecentAlertHistories', () => {
     it('should return empty array when no histories exist', async () => {
-      const alertId = new ObjectId();
+      const alertId = new mongoose.Types.ObjectId();
       const histories = await getRecentAlertHistories({
         alertId,
         limit: 10,
@@ -39,8 +39,8 @@ describe('alertHistory controller', () => {
         channel: { type: null },
       });
 
-      const now = new Date('2024-01-15T12:00:00Z');
-      const earlier = new Date('2024-01-15T11:00:00Z');
+      const now = new Date();
+      const earlier = new Date(Date.now() - 60 * 60 * 1000);
 
       await AlertHistory.create({
         alert: alert._id,
@@ -59,7 +59,7 @@ describe('alertHistory controller', () => {
       });
 
       const histories = await getRecentAlertHistories({
-        alertId: new ObjectId(alert._id),
+        alertId: new mongoose.Types.ObjectId(alert._id),
         limit: 10,
       });
 
@@ -95,7 +95,7 @@ describe('alertHistory controller', () => {
       }
 
       const histories = await getRecentAlertHistories({
-        alertId: new ObjectId(alert._id),
+        alertId: new mongoose.Types.ObjectId(alert._id),
         limit: 3,
       });
 
@@ -111,7 +111,7 @@ describe('alertHistory controller', () => {
         channel: { type: null },
       });
 
-      const timestamp = new Date('2024-01-15T12:00:00Z');
+      const timestamp = new Date();
 
       // Create multiple histories with the same timestamp
       await AlertHistory.create({
@@ -131,7 +131,7 @@ describe('alertHistory controller', () => {
       });
 
       const histories = await getRecentAlertHistories({
-        alertId: new ObjectId(alert._id),
+        alertId: new mongoose.Types.ObjectId(alert._id),
         limit: 10,
       });
 
@@ -150,7 +150,7 @@ describe('alertHistory controller', () => {
         channel: { type: null },
       });
 
-      const timestamp = new Date('2024-01-15T12:00:00Z');
+      const timestamp = new Date();
 
       // Create histories with mixed states at the same timestamp
       await AlertHistory.create({
@@ -178,7 +178,7 @@ describe('alertHistory controller', () => {
       });
 
       const histories = await getRecentAlertHistories({
-        alertId: new ObjectId(alert._id),
+        alertId: new mongoose.Types.ObjectId(alert._id),
         limit: 10,
       });
 
@@ -196,7 +196,7 @@ describe('alertHistory controller', () => {
         channel: { type: null },
       });
 
-      const timestamp = new Date('2024-01-15T12:00:00Z');
+      const timestamp = new Date();
 
       await AlertHistory.create({
         alert: alert._id,
@@ -215,7 +215,7 @@ describe('alertHistory controller', () => {
       });
 
       const histories = await getRecentAlertHistories({
-        alertId: new ObjectId(alert._id),
+        alertId: new mongoose.Types.ObjectId(alert._id),
         limit: 10,
       });
 
@@ -232,9 +232,9 @@ describe('alertHistory controller', () => {
         channel: { type: null },
       });
 
-      const oldest = new Date('2024-01-15T10:00:00Z');
-      const middle = new Date('2024-01-15T11:00:00Z');
-      const newest = new Date('2024-01-15T12:00:00Z');
+      const newest = new Date();
+      const middle = new Date(Date.now() - 60 * 60 * 1000);
+      const oldest = new Date(Date.now() - 2 * 60 * 60 * 1000);
 
       // Create in random order
       await AlertHistory.create({
@@ -262,7 +262,7 @@ describe('alertHistory controller', () => {
       });
 
       const histories = await getRecentAlertHistories({
-        alertId: new ObjectId(alert._id),
+        alertId: new mongoose.Types.ObjectId(alert._id),
         limit: 10,
       });
 
@@ -281,9 +281,9 @@ describe('alertHistory controller', () => {
         channel: { type: null },
       });
 
-      const timestamp = new Date('2024-01-15T12:00:00Z');
-      const older = new Date('2024-01-15T11:00:00Z');
-      const newer = new Date('2024-01-15T13:00:00Z');
+      const timestamp = new Date();
+      const older = new Date(Date.now() - 60 * 60 * 1000);
+      const newer = new Date(Date.now() + 60 * 60 * 1000);
 
       await AlertHistory.create({
         alert: alert._id,
@@ -302,7 +302,7 @@ describe('alertHistory controller', () => {
       });
 
       const histories = await getRecentAlertHistories({
-        alertId: new ObjectId(alert._id),
+        alertId: new mongoose.Types.ObjectId(alert._id),
         limit: 10,
       });
 
@@ -328,7 +328,7 @@ describe('alertHistory controller', () => {
         channel: { type: null },
       });
 
-      const timestamp = new Date('2024-01-15T12:00:00Z');
+      const timestamp = new Date();
 
       await AlertHistory.create({
         alert: alert1._id,
@@ -347,7 +347,7 @@ describe('alertHistory controller', () => {
       });
 
       const histories = await getRecentAlertHistories({
-        alertId: new ObjectId(alert1._id),
+        alertId: new mongoose.Types.ObjectId(alert1._id),
         limit: 10,
       });
 

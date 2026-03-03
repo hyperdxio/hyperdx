@@ -156,7 +156,6 @@ const AlertSchema = new Schema<IAlert>(
           type: Date,
           required: true,
         },
-        required: false,
       },
     },
   },

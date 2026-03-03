@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { ObjectId } from 'mongodb';
+import mongoose from 'mongoose';
 import request from 'supertest';
 
 import { getLoggedInAgent, getServer } from '../../../fixtures';
@@ -46,7 +46,7 @@ describe('External API Alerts', () => {
     const { numTiles = 1, name = 'Test Dashboard' } = options;
 
     const tiles = Array.from({ length: numTiles }, (_, i) => ({
-      id: new ObjectId().toString(),
+      id: new mongoose.Types.ObjectId().toString(),
       name: `Chart ${i + 1}`,
       x: i * 6,
       y: Math.floor(i / 2) * 3,
@@ -75,7 +75,7 @@ describe('External API Alerts', () => {
       thresholdType: AlertThresholdType.ABOVE,
       channel: {
         type: 'webhook',
-        webhookId: new ObjectId().toString(),
+        webhookId: new mongoose.Types.ObjectId().toString(),
       },
       name: 'Test Alert',
       message: 'Test Alert Message',
@@ -97,15 +97,15 @@ describe('External API Alerts', () => {
   const createTestAlertDirectly = async (overrides = {}) => {
     return Alert.create({
       team: team._id,
-      dashboardId: new ObjectId().toString(),
-      tileId: new ObjectId().toString(),
+      dashboard: new mongoose.Types.ObjectId(),
+      tileId: new mongoose.Types.ObjectId().toString(),
       threshold: 100,
       interval: '1h',
       source: AlertSource.TILE,
       thresholdType: AlertThresholdType.ABOVE,
       channel: {
         type: 'webhook',
-        webhookId: new ObjectId().toString(),
+        webhookId: new mongoose.Types.ObjectId().toString(),
       },
       name: 'Direct DB Alert',
       message: 'Created directly in DB',
@@ -126,7 +126,7 @@ describe('External API Alerts', () => {
         thresholdType: AlertThresholdType.ABOVE,
         channel: {
           type: 'webhook',
-          webhookId: new ObjectId().toString(),
+          webhookId: new mongoose.Types.ObjectId().toString(),
         },
         name: 'Format Test Alert',
         message: 'This is a test alert for format verification',
@@ -201,7 +201,7 @@ describe('External API Alerts', () => {
       const dashboard = await createTestDashboard();
 
       // Create alert data
-      const webhookId = new ObjectId().toString();
+      const webhookId = new mongoose.Types.ObjectId().toString();
       const alertInput = {
         dashboardId: dashboard._id.toString(),
         tileId: dashboard.tiles[0].id,
@@ -271,7 +271,7 @@ describe('External API Alerts', () => {
           thresholdType: AlertThresholdType.ABOVE,
           channel: {
             type: 'webhook',
-            webhookId: new ObjectId().toString(),
+            webhookId: new mongoose.Types.ObjectId().toString(),
           },
           name: `Alert for ${tile.id}`,
           message: `This is an alert for ${tile.id}`,
@@ -332,7 +332,7 @@ describe('External API Alerts', () => {
     });
 
     it('should return 404 for non-existent alert', async () => {
-      const nonExistentId = new ObjectId().toString();
+      const nonExistentId = new mongoose.Types.ObjectId().toString();
       await authRequest('get', `${ALERTS_BASE_URL}/${nonExistentId}`).expect(
         404,
       );
@@ -450,7 +450,7 @@ describe('External API Alerts', () => {
       // Create an unauthenticated agent
       const unauthenticatedAgent = request(server.getHttpServer());
 
-      const testId = new ObjectId().toString();
+      const testId = new mongoose.Types.ObjectId().toString();
       await unauthenticatedAgent
         .get(`${ALERTS_BASE_URL}/${testId}`)
         .expect(401);

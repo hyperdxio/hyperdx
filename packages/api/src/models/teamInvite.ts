@@ -1,11 +1,13 @@
 import mongoose, { Schema } from 'mongoose';
 import ms from 'ms';
 
+type ObjectId = mongoose.Types.ObjectId;
+
 export interface ITeamInvite {
   createdAt: Date;
   email: string;
   name?: string;
-  teamId: string;
+  teamId: ObjectId;
   token: string;
   updatedAt: Date;
 }

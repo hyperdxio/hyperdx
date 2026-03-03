@@ -42,10 +42,13 @@ export async function deleteTeamMember(
         },
       },
     ),
-    User.findOneAndDelete({
-      team: teamId,
-      _id: userIdToDelete,
-    }),
+    (async () => {
+      const user = await User.findOne({ team: teamId, _id: userIdToDelete });
+      if (user) {
+        await User.deleteOne({ team: teamId, _id: userIdToDelete });
+      }
+      return user;
+    })(),
   ]);
 
   return deletedUser;

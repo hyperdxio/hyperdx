@@ -1,0 +1,18 @@
+diff --git a/index.js b/index.js
+index c8c468a3eec403e67a7b7f4d998adfa4cd390ed8..74d4abc3fe0ea1b839b94154d0728b0f46fb7a70 100755
+--- a/index.js
++++ b/index.js
+@@ -88,12 +88,10 @@ module.exports = function (schema, options) {
+ 
+   schema.add(schemaFields);
+ 
+-  schema.pre('save', function (next) {
++  schema.pre('save', function () {
+     if (options.usernameLowerCase && this[options.usernameField]) {
+       this[options.usernameField] = this[options.usernameField].toLowerCase();
+     }
+-
+-    next();
+   });
+ 
+   schema.methods.setPassword = function (password, cb) {

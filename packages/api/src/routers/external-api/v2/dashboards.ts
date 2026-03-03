@@ -1,6 +1,5 @@
 import express from 'express';
 import { uniq } from 'lodash';
-import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
@@ -923,7 +922,7 @@ router.post(
       }
 
       const charts = tiles.map(tile => {
-        const chartId = new ObjectId().toString();
+        const chartId = new mongoose.Types.ObjectId().toString();
         return translateExternalChartToTileConfig({
           ...tile,
           id: chartId,
@@ -933,7 +932,7 @@ router.post(
       const filtersWithIds = (filters || []).map(filter =>
         translateExternalFilterToFilter({
           ...filter,
-          id: new ObjectId().toString(),
+          id: new mongoose.Types.ObjectId().toString(),
         }),
       );
 
