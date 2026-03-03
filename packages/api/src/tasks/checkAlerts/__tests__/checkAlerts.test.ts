@@ -2626,6 +2626,38 @@ describe('checkAlerts', () => {
 
       // Webhook should be called twice (once per group)
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+
+      // Validate webhook messages contain correct group names
+      const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
+      const messages = calls.map((call: any) => ({
+        url: call[0],
+        text: call[1].text,
+        body: call[1].blocks[0].text.text,
+      }));
+
+      // Both calls should target the correct webhook URL
+      expect(messages[0].url).toBe('https://hooks.slack.com/services/123');
+      expect(messages[1].url).toBe('https://hooks.slack.com/services/123');
+
+      // Title should reference the chart name and dashboard
+      for (const msg of messages) {
+        expect(msg.text).toContain('CPU by Service');
+        expect(msg.text).toContain('My Dashboard');
+        expect(msg.text).toContain('exceeds 1');
+      }
+
+      // Body should contain Group: "ServiceName:service-a" or "ServiceName:service-b"
+      const bodies = messages.map((m: any) => m.body);
+      expect(
+        bodies.some(
+          (b: string) => b.includes('Group:') && b.includes('service-a'),
+        ),
+      ).toBe(true);
+      expect(
+        bodies.some(
+          (b: string) => b.includes('Group:') && b.includes('service-b'),
+        ),
+      ).toBe(true);
     });
 
     // TODO: revisit this once the auto-resolve feature is implemented
