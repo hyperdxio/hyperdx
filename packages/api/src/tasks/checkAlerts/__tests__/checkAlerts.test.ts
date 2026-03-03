@@ -30,6 +30,7 @@ import { ITeam } from '@/models/team';
 import Webhook, { IWebhook } from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
 import {
+  alertHasGroupBy,
   doesExceedThreshold,
   getPreviousAlertHistories,
   processAlert,
@@ -122,6 +123,90 @@ describe('checkAlerts', () => {
     });
   });
 
+  describe('alertHasGroupBy', () => {
+    const makeDetails = (
+      overrides: Partial<{
+        alertGroupBy: string;
+        taskType: AlertTaskType;
+        tileGroupBy: string;
+      }> = {},
+    ): AlertDetails => {
+      const base = {
+        alert: { groupBy: overrides.alertGroupBy } as any,
+        source: {} as any,
+        previousMap: new Map(),
+      };
+
+      if (overrides.taskType === AlertTaskType.TILE) {
+        return {
+          ...base,
+          taskType: AlertTaskType.TILE,
+          tile: {
+            config: { groupBy: overrides.tileGroupBy ?? '' },
+          } as any,
+          dashboard: {} as any,
+        };
+      }
+
+      return {
+        ...base,
+        taskType: AlertTaskType.SAVED_SEARCH,
+        savedSearch: {} as any,
+      };
+    };
+
+    it('should return false for saved search alert without groupBy', () => {
+      expect(alertHasGroupBy(makeDetails())).toBe(false);
+    });
+
+    it('should return false for saved search alert with empty groupBy', () => {
+      expect(alertHasGroupBy(makeDetails({ alertGroupBy: '' }))).toBe(false);
+    });
+
+    it('should return true for saved search alert with groupBy', () => {
+      expect(
+        alertHasGroupBy(makeDetails({ alertGroupBy: 'ServiceName' })),
+      ).toBe(true);
+    });
+
+    it('should return false for tile alert without groupBy', () => {
+      expect(
+        alertHasGroupBy(makeDetails({ taskType: AlertTaskType.TILE })),
+      ).toBe(false);
+    });
+
+    it('should return false for tile alert with empty tile groupBy', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({ taskType: AlertTaskType.TILE, tileGroupBy: '' }),
+        ),
+      ).toBe(false);
+    });
+
+    it('should return true for tile alert with tile config groupBy', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({
+            taskType: AlertTaskType.TILE,
+            tileGroupBy: 'ServiceName',
+          }),
+        ),
+      ).toBe(true);
+    });
+
+    it('should return true for tile alert when alert.groupBy is set (even if tile groupBy is empty)', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({
+            taskType: AlertTaskType.TILE,
+            alertGroupBy: 'ServiceName',
+            tileGroupBy: '',
+          }),
+        ),
+      ).toBe(true);
+    });
+  });
+
   describe('Alert Templates', () => {
     // Create a mock metadata object with the necessary methods
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -194,6 +279,7 @@ describe('checkAlerts', () => {
       attributes: {},
       granularity: '1m',
       group: 'http',
+      isGroupedAlert: false,
       startTime: new Date('2023-03-17T22:13:03.103Z'),
       endTime: new Date('2023-03-17T22:13:59.103Z'),
       value: 10,
@@ -224,6 +310,7 @@ describe('checkAlerts', () => {
       endTime: new Date('2023-03-17T22:13:59.103Z'),
       attributes: {},
       granularity: '5 minute',
+      isGroupedAlert: false,
       value: 5,
     };
 

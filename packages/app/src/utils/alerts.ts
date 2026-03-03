@@ -14,6 +14,8 @@ import {
   ChartAlertBaseSchema,
 } from '@hyperdx/common-utils/dist/types';
 
+import { IS_DEV } from '@/config';
+
 export function intervalToGranularity(interval: AlertInterval) {
   if (interval === '1m') return Granularity.OneMinute;
   if (interval === '5m') return Granularity.FiveMinute;
@@ -94,7 +96,7 @@ export const ALERT_INTERVAL_OPTIONS: Record<AlertInterval, string> = {
 };
 
 export const TILE_ALERT_INTERVAL_OPTIONS = _.pick(ALERT_INTERVAL_OPTIONS, [
-  // Exclude 1m
+  ...(IS_DEV ? (['1m'] as const) : []),
   '5m',
   '15m',
   '30m',
