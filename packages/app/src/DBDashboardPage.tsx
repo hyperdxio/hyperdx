@@ -556,7 +556,13 @@ const EditTileModal = ({
         'You have unsaved changes. Discard them and close the editor?',
         'Discard',
       ).then(ok => {
-        if (ok) onClose();
+        if (ok) {
+          // Reset dirty state before closing so any re-invocation of
+          // handleClose (e.g. from Mantine focus management after the
+          // confirm modal closes) doesn't re-show the confirm dialog.
+          setHasUnsavedChanges(false);
+          onClose();
+        }
       });
     } else {
       onClose();
