@@ -11,6 +11,7 @@ import {
   getAlertById,
   getAlertsEnhanced,
   updateAlert,
+  validateAlertInput,
 } from '@/controllers/alerts';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
@@ -97,6 +98,7 @@ router.post(
     }
     try {
       const alertInput = req.body;
+      await validateAlertInput(teamId, alertInput);
       return res.json({
         data: await createAlert(teamId, alertInput, userId),
       });
