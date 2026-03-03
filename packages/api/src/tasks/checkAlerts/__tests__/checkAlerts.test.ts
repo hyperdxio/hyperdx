@@ -30,6 +30,7 @@ import { ITeam } from '@/models/team';
 import Webhook, { IWebhook } from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
 import {
+  alertHasGroupBy,
   doesExceedThreshold,
   getPreviousAlertHistories,
   processAlert,
@@ -122,6 +123,90 @@ describe('checkAlerts', () => {
     });
   });
 
+  describe('alertHasGroupBy', () => {
+    const makeDetails = (
+      overrides: Partial<{
+        alertGroupBy: string;
+        taskType: AlertTaskType;
+        tileGroupBy: string;
+      }> = {},
+    ): AlertDetails => {
+      const base = {
+        alert: { groupBy: overrides.alertGroupBy } as any,
+        source: {} as any,
+        previousMap: new Map(),
+      };
+
+      if (overrides.taskType === AlertTaskType.TILE) {
+        return {
+          ...base,
+          taskType: AlertTaskType.TILE,
+          tile: {
+            config: { groupBy: overrides.tileGroupBy ?? '' },
+          } as any,
+          dashboard: {} as any,
+        };
+      }
+
+      return {
+        ...base,
+        taskType: AlertTaskType.SAVED_SEARCH,
+        savedSearch: {} as any,
+      };
+    };
+
+    it('should return false for saved search alert without groupBy', () => {
+      expect(alertHasGroupBy(makeDetails())).toBe(false);
+    });
+
+    it('should return false for saved search alert with empty groupBy', () => {
+      expect(alertHasGroupBy(makeDetails({ alertGroupBy: '' }))).toBe(false);
+    });
+
+    it('should return true for saved search alert with groupBy', () => {
+      expect(
+        alertHasGroupBy(makeDetails({ alertGroupBy: 'ServiceName' })),
+      ).toBe(true);
+    });
+
+    it('should return false for tile alert without groupBy', () => {
+      expect(
+        alertHasGroupBy(makeDetails({ taskType: AlertTaskType.TILE })),
+      ).toBe(false);
+    });
+
+    it('should return false for tile alert with empty tile groupBy', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({ taskType: AlertTaskType.TILE, tileGroupBy: '' }),
+        ),
+      ).toBe(false);
+    });
+
+    it('should return true for tile alert with tile config groupBy', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({
+            taskType: AlertTaskType.TILE,
+            tileGroupBy: 'ServiceName',
+          }),
+        ),
+      ).toBe(true);
+    });
+
+    it('should return true for tile alert when alert.groupBy is set (even if tile groupBy is empty)', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({
+            taskType: AlertTaskType.TILE,
+            alertGroupBy: 'ServiceName',
+            tileGroupBy: '',
+          }),
+        ),
+      ).toBe(true);
+    });
+  });
+
   describe('Alert Templates', () => {
     // Create a mock metadata object with the necessary methods
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -194,6 +279,7 @@ describe('checkAlerts', () => {
       attributes: {},
       granularity: '1m',
       group: 'http',
+      isGroupedAlert: false,
       startTime: new Date('2023-03-17T22:13:03.103Z'),
       endTime: new Date('2023-03-17T22:13:59.103Z'),
       value: 10,
@@ -224,6 +310,7 @@ describe('checkAlerts', () => {
       endTime: new Date('2023-03-17T22:13:59.103Z'),
       attributes: {},
       granularity: '5 minute',
+      isGroupedAlert: false,
       value: 5,
     };
 
@@ -2396,6 +2483,186 @@ describe('checkAlerts', () => {
           ],
         },
       );
+    });
+
+    it('TILE alert (metrics) with groupBy - should track per-group alerts', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10), place data within that range
+      const eventMs = now.getTime() - ms('7m'); // 22:05
+
+      // Insert gauge metrics for two different services
+      // Note: ResourceAttributes must differ per service so that
+      // AttributesHash (cityHash64 of mapConcat(ScopeAttributes, ResourceAttributes, Attributes))
+      // produces distinct hashes. Otherwise, the Bucketed CTE collapses all rows into one group.
+      const gaugePoints = [
+        // service-a: high CPU values (should trigger alert)
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-a',
+          Value: 50,
+          TimeUnix: new Date(eventMs),
+          ResourceAttributes: { 'service.name': 'service-a', host: 'host1' },
+        },
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-a',
+          Value: 40,
+          TimeUnix: new Date(eventMs + ms('1m')),
+          ResourceAttributes: { 'service.name': 'service-a', host: 'host1' },
+        },
+        // service-b: high CPU values (should also trigger alert)
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-b',
+          Value: 30,
+          TimeUnix: new Date(eventMs),
+          ResourceAttributes: { 'service.name': 'service-b', host: 'host1' },
+        },
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-b',
+          Value: 20,
+          TimeUnix: new Date(eventMs + ms('1m')),
+          ResourceAttributes: { 'service.name': 'service-b', host: 'host1' },
+        },
+      ];
+
+      await bulkInsertMetricsGauge(gaugePoints);
+
+      const source = await Source.create({
+        kind: 'metric',
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: '',
+        },
+        metricTables: {
+          gauge: DEFAULT_METRICS_TABLE.GAUGE,
+          histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          sum: DEFAULT_METRICS_TABLE.SUM,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection.id,
+        name: 'Metrics',
+      });
+
+      const dashboard = await new Dashboard({
+        name: 'My Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: '17quud',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'CPU by Service',
+              select: [
+                {
+                  aggFn: 'max',
+                  valueExpression: 'Value',
+                  metricType: 'gauge',
+                  metricName: 'test.cpu',
+                },
+              ],
+              where: '',
+              displayType: 'line',
+              source: source.id,
+              groupBy: 'ServiceName',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: '17quud',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      // First run: should trigger alerts for both services
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Check that we have 2 alert histories (one per group)
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1, group: 1 });
+
+      expect(alertHistories.length).toBe(2);
+
+      // Both groups should be in ALERT state with non-empty group names
+      const groups = alertHistories.map(h => h.group);
+      expect(groups.some(g => g?.includes('service-a'))).toBe(true);
+      expect(groups.some(g => g?.includes('service-b'))).toBe(true);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[1].state).toBe('ALERT');
+
+      // Webhook should be called twice (once per group)
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+
+      // Validate webhook messages contain correct group names
+      const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
+      const messages = calls.map((call: any) => ({
+        url: call[0],
+        text: call[1].text,
+        body: call[1].blocks[0].text.text,
+      }));
+
+      // Both calls should target the correct webhook URL
+      expect(messages[0].url).toBe('https://hooks.slack.com/services/123');
+      expect(messages[1].url).toBe('https://hooks.slack.com/services/123');
+
+      // Title should reference the chart name and dashboard
+      for (const msg of messages) {
+        expect(msg.text).toContain('CPU by Service');
+        expect(msg.text).toContain('My Dashboard');
+        expect(msg.text).toContain('exceeds 1');
+      }
+
+      // Body should contain Group: "ServiceName:service-a" or "ServiceName:service-b"
+      const bodies = messages.map((m: any) => m.body);
+      expect(
+        bodies.some(
+          (b: string) => b.includes('Group:') && b.includes('service-a'),
+        ),
+      ).toBe(true);
+      expect(
+        bodies.some(
+          (b: string) => b.includes('Group:') && b.includes('service-b'),
+        ),
+      ).toBe(true);
     });
 
     // TODO: revisit this once the auto-resolve feature is implemented
