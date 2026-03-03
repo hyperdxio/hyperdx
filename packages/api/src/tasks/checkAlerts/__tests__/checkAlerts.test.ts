@@ -2490,9 +2490,13 @@ describe('checkAlerts', () => {
         await setupSavedSearchAlertTest();
 
       const now = new Date('2023-11-16T22:12:00.000Z');
-      const eventMs = now.getTime() - ms('10m');
+      // Alert window is [22:05, 22:10), place data within that range
+      const eventMs = now.getTime() - ms('7m'); // 22:05
 
       // Insert gauge metrics for two different services
+      // Note: ResourceAttributes must differ per service so that
+      // AttributesHash (cityHash64 of mapConcat(ScopeAttributes, ResourceAttributes, Attributes))
+      // produces distinct hashes. Otherwise, the Bucketed CTE collapses all rows into one group.
       const gaugePoints = [
         // service-a: high CPU values (should trigger alert)
         {
@@ -2500,12 +2504,14 @@ describe('checkAlerts', () => {
           ServiceName: 'service-a',
           Value: 50,
           TimeUnix: new Date(eventMs),
+          ResourceAttributes: { 'service.name': 'service-a', host: 'host1' },
         },
         {
           MetricName: 'test.cpu',
           ServiceName: 'service-a',
           Value: 40,
           TimeUnix: new Date(eventMs + ms('1m')),
+          ResourceAttributes: { 'service.name': 'service-a', host: 'host1' },
         },
         // service-b: high CPU values (should also trigger alert)
         {
@@ -2513,17 +2519,16 @@ describe('checkAlerts', () => {
           ServiceName: 'service-b',
           Value: 30,
           TimeUnix: new Date(eventMs),
+          ResourceAttributes: { 'service.name': 'service-b', host: 'host1' },
         },
         {
           MetricName: 'test.cpu',
           ServiceName: 'service-b',
           Value: 20,
           TimeUnix: new Date(eventMs + ms('1m')),
+          ResourceAttributes: { 'service.name': 'service-b', host: 'host1' },
         },
-      ].map(point => ({
-        ...point,
-        ResourceAttributes: { host: 'host1' },
-      }));
+      ];
 
       await bulkInsertMetricsGauge(gaugePoints);
 
