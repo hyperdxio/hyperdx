@@ -637,15 +637,17 @@ export const makeAlertInput = ({
   interval = '15m',
   threshold = 8,
   tileId,
+  webhookId = 'test-webhook-id',
 }: {
   dashboardId: string;
   interval?: AlertInterval;
   threshold?: number;
   tileId: string;
+  webhookId?: string;
 }): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
-    webhookId: 'test-webhook-id',
+    webhookId,
   },
   interval,
   threshold,
@@ -659,14 +661,16 @@ export const makeSavedSearchAlertInput = ({
   savedSearchId,
   interval = '15m',
   threshold = 8,
+  webhookId = 'test-webhook-id',
 }: {
   savedSearchId: string;
   interval?: AlertInterval;
   threshold?: number;
+  webhookId?: string;
 }): Partial<AlertInput> => ({
   channel: {
     type: 'webhook',
-    webhookId: 'test-webhook-id',
+    webhookId,
   },
   interval,
   threshold,

@@ -229,3 +229,20 @@ $button-height: 18px;
   box-shadow: none;
   padding: 0;
 }
+
+.headerCellWithAction {
+  transition: background-color 0.15s ease-in-out;
+
+  &:hover {
+    background-color: var(--log-table-muted-bg);
+  }
+
+  &:hover .headerRemoveButton {
+    opacity: 1;
+  }
+}
+
+.headerRemoveButton {
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
