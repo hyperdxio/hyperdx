@@ -9,7 +9,10 @@ import {
   getAlerts,
   updateAlert,
 } from '@/controllers/alerts';
-import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
+import {
+  processRequestWithEnhancedErrors as processRequest,
+  validateRequestWithEnhancedErrors as validateRequest,
+} from '@/utils/enhancedErrors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
@@ -406,7 +409,7 @@ router.get('/', async (req, res, next) => {
  */
 router.post(
   '/',
-  validateRequest({
+  processRequest({
     body: alertSchema,
   }),
   async (req, res, next) => {
@@ -416,8 +419,7 @@ router.post(
       return res.sendStatus(403);
     }
     try {
-      const alertInput = alertSchema.parse(req.body);
-      const createdAlert = await createAlert(teamId, alertInput, userId);
+      const createdAlert = await createAlert(teamId, req.body, userId);
 
       return res.json({
         data: translateAlertDocumentToExternalAlert(createdAlert),
@@ -493,7 +495,7 @@ router.post(
  */
 router.put(
   '/:id',
-  validateRequest({
+  processRequest({
     body: alertSchema,
     params: z.object({
       id: objectIdSchema,
@@ -508,8 +510,7 @@ router.put(
       }
       const { id } = req.params;
 
-      const alertInput = alertSchema.parse(req.body);
-      const alert = await updateAlert(id, teamId, alertInput);
+      const alert = await updateAlert(id, teamId, req.body);
 
       if (alert == null) {
         return res.sendStatus(404);

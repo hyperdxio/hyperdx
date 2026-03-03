@@ -2,7 +2,7 @@ import express from 'express';
 import _ from 'lodash';
 import { ObjectId } from 'mongodb';
 import { z } from 'zod';
-import { validateRequest } from 'zod-express-middleware';
+import { processRequest, validateRequest } from 'zod-express-middleware';
 
 import { getRecentAlertHistories } from '@/controllers/alertHistory';
 import {
@@ -90,7 +90,7 @@ router.get('/', async (req, res, next) => {
 
 router.post(
   '/',
-  validateRequest({ body: alertSchema }),
+  processRequest({ body: alertSchema }),
   async (req, res, next) => {
     const teamId = req.user?.team;
     const userId = req.user?._id;
@@ -98,11 +98,8 @@ router.post(
       return res.sendStatus(403);
     }
     try {
-      // Re-parse at runtime so nested refinements are enforced server-side and
-      // unknown fields are dropped consistently for internal API callers.
-      const alertInput = alertSchema.parse(req.body);
       return res.json({
-        data: await createAlert(teamId, alertInput, userId),
+        data: await createAlert(teamId, req.body, userId),
       });
     } catch (e) {
       next(e);
@@ -112,7 +109,7 @@ router.post(
 
 router.put(
   '/:id',
-  validateRequest({
+  processRequest({
     body: alertSchema,
     params: z.object({
       id: objectIdSchema,
@@ -125,11 +122,8 @@ router.put(
         return res.sendStatus(403);
       }
       const { id } = req.params;
-      // Re-parse at runtime so nested refinements are enforced server-side and
-      // unknown fields are dropped consistently for internal API callers.
-      const alertInput = alertSchema.parse(req.body);
       res.json({
-        data: await updateAlert(id, teamId, alertInput),
+        data: await updateAlert(id, teamId, req.body),
       });
     } catch (e) {
       next(e);
