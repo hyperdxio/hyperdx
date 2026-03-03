@@ -6,6 +6,7 @@ import {
   randomMongoId,
 } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];
 
@@ -18,9 +19,26 @@ const MOCK_DASHBOARD = {
 
 describe('alerts router', () => {
   const server = getServer();
+  let agent: Awaited<ReturnType<typeof getLoggedInAgent>>['agent'];
+  let team: Awaited<ReturnType<typeof getLoggedInAgent>>['team'];
+  let user: Awaited<ReturnType<typeof getLoggedInAgent>>['user'];
+  let webhook: WebhookDocument;
 
   beforeAll(async () => {
     await server.start();
+  });
+
+  beforeEach(async () => {
+    const result = await getLoggedInAgent(server);
+    agent = result.agent;
+    team = result.team;
+    user = result.user;
+    webhook = await Webhook.create({
+      name: 'Test Webhook',
+      service: WebhookService.Slack,
+      url: 'https://hooks.slack.com/test',
+      team: team._id,
+    });
   });
 
   afterEach(async () => {
@@ -32,7 +50,6 @@ describe('alerts router', () => {
   });
 
   it('can create an alert', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -43,6 +60,7 @@ describe('alerts router', () => {
         makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
         }),
       )
       .expect(200);
@@ -51,7 +69,6 @@ describe('alerts router', () => {
   });
 
   it('can delete an alert', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const resp = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -62,6 +79,7 @@ describe('alerts router', () => {
         makeAlertInput({
           dashboardId: resp.body.id,
           tileId: MOCK_TILES[0].id,
+          webhookId: webhook._id.toString(),
         }),
       )
       .expect(200);
@@ -71,7 +89,6 @@ describe('alerts router', () => {
   });
 
   it('can update an alert', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -82,6 +99,7 @@ describe('alerts router', () => {
         makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: MOCK_TILES[0].id,
+          webhookId: webhook._id.toString(),
         }),
       )
       .expect(200);
@@ -99,7 +117,6 @@ describe('alerts router', () => {
   });
 
   it('preserves scheduleStartAt when omitted in updates and clears when null', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -112,6 +129,7 @@ describe('alerts router', () => {
         ...makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
         }),
         scheduleStartAt,
       })
@@ -154,7 +172,6 @@ describe('alerts router', () => {
   });
 
   it('preserves scheduleOffsetMinutes when schedule fields are omitted in updates', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -167,6 +184,7 @@ describe('alerts router', () => {
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
           interval: '15m',
+          webhookId: webhook._id.toString(),
         }),
         scheduleOffsetMinutes: 2,
       })
@@ -191,7 +209,6 @@ describe('alerts router', () => {
   });
 
   it('resets scheduleOffsetMinutes to 0 when scheduleStartAt is set without offset', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -203,6 +220,7 @@ describe('alerts router', () => {
         ...makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
         }),
         scheduleOffsetMinutes: 2,
       })
@@ -232,7 +250,6 @@ describe('alerts router', () => {
   });
 
   it('resets stale scheduleOffsetMinutes when scheduleStartAt is cleared without offset', async () => {
-    const { agent, team } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -242,7 +259,7 @@ describe('alerts router', () => {
       team: team._id,
       channel: {
         type: 'webhook',
-        webhookId: 'test-webhook-id',
+        webhookId: webhook._id.toString(),
       },
       interval: '15m',
       threshold: 8,
@@ -261,6 +278,7 @@ describe('alerts router', () => {
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
           interval: '15m',
+          webhookId: webhook._id.toString(),
         }),
         scheduleStartAt: null,
       })
@@ -272,7 +290,6 @@ describe('alerts router', () => {
   });
 
   it('rejects scheduleStartAt values more than 1 year in the future', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -288,6 +305,7 @@ describe('alerts router', () => {
         ...makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
         }),
         scheduleStartAt: farFutureScheduleStartAt,
       })
@@ -295,7 +313,6 @@ describe('alerts router', () => {
   });
 
   it('rejects scheduleStartAt values older than 10 years in the past', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -311,6 +328,7 @@ describe('alerts router', () => {
         ...makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
         }),
         scheduleStartAt: tooOldScheduleStartAt,
       })
@@ -318,7 +336,6 @@ describe('alerts router', () => {
   });
 
   it('rejects scheduleOffsetMinutes when scheduleStartAt is provided', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -330,6 +347,7 @@ describe('alerts router', () => {
         ...makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
         }),
         scheduleOffsetMinutes: 2,
         scheduleStartAt: new Date().toISOString(),
@@ -338,7 +356,6 @@ describe('alerts router', () => {
   });
 
   it('preserves createdBy field during updates', async () => {
-    const { agent, user } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -352,6 +369,7 @@ describe('alerts router', () => {
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
           threshold: 5,
+          webhookId: webhook._id.toString(),
         }),
       )
       .expect(200);
@@ -385,21 +403,20 @@ describe('alerts router', () => {
   });
 
   it('has alerts attached to dashboards', async () => {
-    const { agent } = await getLoggedInAgent(server);
-
     await agent.post('/dashboards').send(MOCK_DASHBOARD).expect(200);
     const initialDashboards = await agent.get('/dashboards').expect(200);
 
     // Create alerts for all charts
     const dashboard = initialDashboards.body[0];
     await Promise.all(
-      dashboard.tiles.map(tile =>
+      dashboard.tiles.map((tile: { id: string }) =>
         agent
           .post('/alerts')
           .send(
             makeAlertInput({
               dashboardId: dashboard._id,
               tileId: tile.id,
+              webhookId: webhook._id.toString(),
             }),
           )
           .expect(200),
@@ -415,7 +432,6 @@ describe('alerts router', () => {
   });
 
   it('can silence an alert', async () => {
-    const { agent, user } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -426,6 +442,7 @@ describe('alerts router', () => {
         makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
         }),
       )
       .expect(200);
@@ -448,7 +465,6 @@ describe('alerts router', () => {
   });
 
   it('can unsilence an alert', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -459,6 +475,7 @@ describe('alerts router', () => {
         makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
         }),
       )
       .expect(200);
@@ -484,7 +501,6 @@ describe('alerts router', () => {
   });
 
   it('returns silenced info in GET /alerts', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const dashboard = await agent
       .post('/dashboards')
       .send(MOCK_DASHBOARD)
@@ -495,6 +511,7 @@ describe('alerts router', () => {
         makeAlertInput({
           dashboardId: dashboard.body.id,
           tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
         }),
       )
       .expect(200);
@@ -517,7 +534,6 @@ describe('alerts router', () => {
   });
 
   it('prevents silencing an alert that does not exist', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const fakeId = randomMongoId();
     const mutedUntil = new Date(Date.now() + 3600000).toISOString();
 
@@ -528,7 +544,6 @@ describe('alerts router', () => {
   });
 
   it('prevents unsilencing an alert that does not exist', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const fakeId = randomMongoId();
 
     await agent.delete(`/alerts/${fakeId}/silenced`).expect(404); // Should fail

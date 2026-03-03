@@ -6,6 +6,8 @@ import { getLoggedInAgent, getServer } from '../../../fixtures';
 import { AlertSource, AlertThresholdType } from '../../../models/alert';
 import Alert from '../../../models/alert';
 import Dashboard from '../../../models/dashboard';
+import { SavedSearch } from '../../../models/savedSearch';
+import Webhook, { WebhookService } from '../../../models/webhook';
 
 // Constants
 const ALERTS_BASE_URL = '/api/v2/alerts';
@@ -39,9 +41,27 @@ describe('External API Alerts', () => {
     return agent[method](url).set('Authorization', `Bearer ${user?.accessKey}`);
   };
 
+  // Helper to create a webhook for testing
+  const createTestWebhook = async (options: { teamId?: any } = {}) => {
+    return await Webhook.findOneAndUpdate(
+      {
+        name: 'Test Webhook',
+        service: WebhookService.Slack,
+        team: options.teamId ?? team._id,
+      },
+      {
+        name: 'Test Webhook',
+        service: WebhookService.Slack,
+        url: 'https://hooks.slack.com/test',
+        team: options.teamId ?? team._id,
+      },
+      { upsert: true, new: true },
+    );
+  };
+
   // Helper to create a dashboard for testing
   const createTestDashboard = async (
-    options: { numTiles?: number; name?: string } = {},
+    options: { numTiles?: number; name?: string; teamId?: any } = {},
   ) => {
     const { numTiles = 1, name = 'Test Dashboard' } = options;
 
@@ -58,13 +78,25 @@ describe('External API Alerts', () => {
     return new Dashboard({
       name,
       tiles,
-      team: team._id,
+      team: options.teamId ?? team._id,
+    }).save();
+  };
+
+  // Helper to create a saved search for testing
+  const createTestSavedSearch = async (options: { teamId?: any } = {}) => {
+    return new SavedSearch({
+      name: 'Test Saved Search',
+      where: 'error',
+      whereLanguage: 'lucene',
+      source: new ObjectId(),
+      team: options.teamId ?? team._id,
     }).save();
   };
 
   // Helper to create a test alert via API
   const createTestAlert = async (overrides = {}) => {
     const dashboard = await createTestDashboard();
+    const webhook = await createTestWebhook();
 
     const alertInput = {
       dashboardId: dashboard._id.toString(),
@@ -75,7 +107,7 @@ describe('External API Alerts', () => {
       thresholdType: AlertThresholdType.ABOVE,
       channel: {
         type: 'webhook',
-        webhookId: new ObjectId().toString(),
+        webhookId: webhook._id.toString(),
       },
       name: 'Test Alert',
       message: 'Test Alert Message',
@@ -89,11 +121,12 @@ describe('External API Alerts', () => {
     return {
       alert: response.body.data,
       dashboard,
+      webhook,
       alertInput,
     };
   };
 
-  // Helper to create a test alert directly in the database
+  // Helper to create a test alert directly in the database (bypasses validation)
   const createTestAlertDirectly = async (overrides = {}) => {
     return Alert.create({
       team: team._id,
@@ -115,8 +148,9 @@ describe('External API Alerts', () => {
 
   describe('Response Format', () => {
     it('should return responses in the expected format', async () => {
-      // Create a test alert with known values
+      // Create a test dashboard and webhook with known values
       const testDashboard = await createTestDashboard();
+      const testWebhook = await createTestWebhook();
       const testAlert = {
         dashboardId: testDashboard._id.toString(),
         tileId: testDashboard.tiles[0].id,
@@ -126,7 +160,7 @@ describe('External API Alerts', () => {
         thresholdType: AlertThresholdType.ABOVE,
         channel: {
           type: 'webhook',
-          webhookId: new ObjectId().toString(),
+          webhookId: testWebhook._id.toString(),
         },
         name: 'Format Test Alert',
         message: 'This is a test alert for format verification',
@@ -197,11 +231,10 @@ describe('External API Alerts', () => {
 
   describe('Creating alerts', () => {
     it('should create an alert', async () => {
-      // Create a test dashboard
+      // Create a test dashboard and webhook
       const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
 
-      // Create alert data
-      const webhookId = new ObjectId().toString();
       const alertInput = {
         dashboardId: dashboard._id.toString(),
         tileId: dashboard.tiles[0].id,
@@ -211,7 +244,7 @@ describe('External API Alerts', () => {
         thresholdType: AlertThresholdType.ABOVE,
         channel: {
           type: 'webhook',
-          webhookId: webhookId,
+          webhookId: webhook._id.toString(),
         },
         name: 'Test Alert',
         message: 'Test Alert Message',
@@ -303,6 +336,7 @@ describe('External API Alerts', () => {
     it('should create multiple alerts for different tiles', async () => {
       // Create a dashboard with multiple tiles
       const dashboard = await createTestDashboard({ numTiles: 3 });
+      const webhook = await createTestWebhook();
 
       // Store created alert IDs for verification
       const createdAlertIds: string[] = [];
@@ -318,7 +352,7 @@ describe('External API Alerts', () => {
           thresholdType: AlertThresholdType.ABOVE,
           channel: {
             type: 'webhook',
-            webhookId: new ObjectId().toString(),
+            webhookId: webhook._id.toString(),
           },
           name: `Alert for ${tile.id}`,
           message: `This is an alert for ${tile.id}`,
@@ -514,6 +548,253 @@ describe('External API Alerts', () => {
 
       const deletedAlert = listResponse.body.data.find(a => a.id === alert.id);
       expect(deletedAlert).toBeUndefined();
+    });
+  });
+
+  describe('Input validation', () => {
+    describe('webhook validation', () => {
+      it('should reject a non-existent webhook', async () => {
+        const dashboard = await createTestDashboard();
+
+        const alertInput = {
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: new ObjectId().toString(), // does not exist
+          },
+        };
+
+        await authRequest('post', ALERTS_BASE_URL).send(alertInput).expect(400);
+      });
+
+      it('should reject a webhook belonging to another team', async () => {
+        const dashboard = await createTestDashboard();
+        const otherTeamWebhook = await createTestWebhook({
+          teamId: new ObjectId(),
+        });
+
+        const alertInput = {
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: otherTeamWebhook._id.toString(),
+          },
+        };
+
+        await authRequest('post', ALERTS_BASE_URL).send(alertInput).expect(400);
+      });
+
+      it('should reject an update with a webhook belonging to another team', async () => {
+        const { alert, dashboard } = await createTestAlert();
+        const otherTeamWebhook = await createTestWebhook({
+          teamId: new ObjectId(),
+        });
+
+        const updatePayload = {
+          threshold: 200,
+          interval: '1h',
+          thresholdType: AlertThresholdType.ABOVE,
+          source: AlertSource.TILE,
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          channel: {
+            type: 'webhook',
+            webhookId: otherTeamWebhook._id.toString(),
+          },
+        };
+
+        await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+          .send(updatePayload)
+          .expect(400);
+      });
+    });
+
+    describe('dashboard (TILE source) validation', () => {
+      it('should reject a non-existent dashboard', async () => {
+        const webhook = await createTestWebhook();
+
+        const alertInput = {
+          dashboardId: new ObjectId().toString(), // does not exist
+          tileId: new ObjectId().toString(),
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        };
+
+        await authRequest('post', ALERTS_BASE_URL).send(alertInput).expect(400);
+      });
+
+      it('should reject a dashboard belonging to another team', async () => {
+        const webhook = await createTestWebhook();
+        const otherTeamDashboard = await createTestDashboard({
+          teamId: new ObjectId(),
+        });
+
+        const alertInput = {
+          dashboardId: otherTeamDashboard._id.toString(),
+          tileId: otherTeamDashboard.tiles[0].id,
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        };
+
+        await authRequest('post', ALERTS_BASE_URL).send(alertInput).expect(400);
+      });
+
+      it('should reject an update with a dashboard belonging to another team', async () => {
+        const { alert, webhook } = await createTestAlert();
+        const otherTeamDashboard = await createTestDashboard({
+          teamId: new ObjectId(),
+        });
+
+        const updatePayload = {
+          threshold: 200,
+          interval: '1h',
+          thresholdType: AlertThresholdType.ABOVE,
+          source: AlertSource.TILE,
+          dashboardId: otherTeamDashboard._id.toString(),
+          tileId: otherTeamDashboard.tiles[0].id,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        };
+
+        await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+          .send(updatePayload)
+          .expect(400);
+      });
+    });
+
+    describe('saved search (SAVED_SEARCH source) validation', () => {
+      it('should reject a non-existent saved search', async () => {
+        const webhook = await createTestWebhook();
+
+        const alertInput = {
+          savedSearchId: new ObjectId().toString(), // does not exist
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.SAVED_SEARCH,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        };
+
+        await authRequest('post', ALERTS_BASE_URL).send(alertInput).expect(400);
+      });
+
+      it('should reject a saved search belonging to another team', async () => {
+        const webhook = await createTestWebhook();
+        const otherTeamSavedSearch = await createTestSavedSearch({
+          teamId: new ObjectId(),
+        });
+
+        const alertInput = {
+          savedSearchId: otherTeamSavedSearch._id.toString(),
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.SAVED_SEARCH,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        };
+
+        await authRequest('post', ALERTS_BASE_URL).send(alertInput).expect(400);
+      });
+
+      it('should create an alert with a valid saved search belonging to the team', async () => {
+        const webhook = await createTestWebhook();
+        const savedSearch = await createTestSavedSearch();
+
+        const alertInput = {
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.SAVED_SEARCH,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          name: 'Saved Search Alert',
+        };
+
+        const response = await authRequest('post', ALERTS_BASE_URL)
+          .send(alertInput)
+          .expect(200);
+
+        expect(response.body.data.source).toBe(AlertSource.SAVED_SEARCH);
+        expect(response.body.data.savedSearchId).toBe(
+          savedSearch._id.toString(),
+        );
+      });
+
+      it('should reject an update with a saved search belonging to another team', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const webhook = await createTestWebhook();
+
+        // Create a saved search alert first
+        const createResponse = await authRequest('post', ALERTS_BASE_URL)
+          .send({
+            savedSearchId: savedSearch._id.toString(),
+            threshold: 100,
+            interval: '1h',
+            source: AlertSource.SAVED_SEARCH,
+            thresholdType: AlertThresholdType.ABOVE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+          })
+          .expect(200);
+
+        const otherTeamSavedSearch = await createTestSavedSearch({
+          teamId: new ObjectId(),
+        });
+
+        const updatePayload = {
+          savedSearchId: otherTeamSavedSearch._id.toString(),
+          threshold: 200,
+          interval: '1h',
+          source: AlertSource.SAVED_SEARCH,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        };
+
+        await authRequest(
+          'put',
+          `${ALERTS_BASE_URL}/${createResponse.body.data.id}`,
+        )
+          .send(updatePayload)
+          .expect(400);
+      });
     });
   });
 

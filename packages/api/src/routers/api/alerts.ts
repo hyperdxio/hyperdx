@@ -11,6 +11,7 @@ import {
   getAlertById,
   getAlertsEnhanced,
   updateAlert,
+  validateAlertInput,
 } from '@/controllers/alerts';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
@@ -98,8 +99,10 @@ router.post(
       return res.sendStatus(403);
     }
     try {
+      const alertInput = req.body;
+      await validateAlertInput(teamId, alertInput);
       return res.json({
-        data: await createAlert(teamId, req.body, userId),
+        data: await createAlert(teamId, alertInput, userId),
       });
     } catch (e) {
       next(e);
@@ -122,8 +125,10 @@ router.put(
         return res.sendStatus(403);
       }
       const { id } = req.params;
+      const alertInput = req.body;
+      await validateAlertInput(teamId, alertInput);
       res.json({
-        data: await updateAlert(id, teamId, req.body),
+        data: await updateAlert(id, teamId, alertInput),
       });
     } catch (e) {
       next(e);

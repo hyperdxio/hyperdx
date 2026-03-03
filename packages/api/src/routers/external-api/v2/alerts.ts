@@ -8,6 +8,7 @@ import {
   getAlertById,
   getAlerts,
   updateAlert,
+  validateAlertInput,
 } from '@/controllers/alerts';
 import {
   processRequestWithEnhancedErrors as processRequest,
@@ -419,7 +420,10 @@ router.post(
       return res.sendStatus(403);
     }
     try {
-      const createdAlert = await createAlert(teamId, req.body, userId);
+      const alertInput = req.body;
+      await validateAlertInput(teamId, alertInput);
+
+      const createdAlert = await createAlert(teamId, alertInput, userId);
 
       return res.json({
         data: translateAlertDocumentToExternalAlert(createdAlert),
@@ -510,7 +514,10 @@ router.put(
       }
       const { id } = req.params;
 
-      const alert = await updateAlert(id, teamId, req.body);
+      const alertInput = req.body;
+      await validateAlertInput(teamId, alertInput);
+
+      const alert = await updateAlert(id, teamId, alertInput);
 
       if (alert == null) {
         return res.sendStatus(404);
