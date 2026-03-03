@@ -879,6 +879,8 @@ function Heatmap({
                     left: highlightedPoint.xCoord + 10,
                   }),
               maxWidth: '50%',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
               whiteSpace: 'nowrap' as const,
               backdropFilter: 'blur(8px)',
               backgroundColor: 'rgba(26, 29, 35, 0.75)',

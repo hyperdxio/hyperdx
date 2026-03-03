@@ -161,7 +161,7 @@ export function PropertyComparisonChart({
           <Tooltip
             content={<HDXBarChartTooltip title={name} />}
             allowEscapeViewBox={{ x: true, y: true }}
-            wrapperStyle={{ zIndex: 9998 }}
+            wrapperStyle={{ zIndex: 1000 }}
           />
           <Bar
             dataKey="outlierCount"
