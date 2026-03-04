@@ -1,3 +1,4 @@
+import { chSqlToAliasMap } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
@@ -578,12 +579,14 @@ ${targetTemplate}`;
     }
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
+    const resolvedSelect =
+      savedSearch.select || source.defaultTableSelectExpression || '';
     const chartConfig: ChartConfigWithOptDateRange = {
       connection: '', // no need for the connection id since clickhouse client is already initialized
       displayType: DisplayType.Search,
       dateRange: [startTime, endTime],
       from: source.from,
-      select: savedSearch.select || source.defaultTableSelectExpression || '', // remove alert body if there is no select and defaultTableSelectExpression
+      select: resolvedSelect,
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       implicitColumnExpression: source.implicitColumnExpression,
@@ -597,11 +600,29 @@ ${targetTemplate}`;
 
     let truncatedResults = '';
     try {
-      const query = await renderChartConfig(
+      // Render once to discover aliases from the SELECT expression,
+      // then re-render with WITH clauses only if aliases are found
+      let query = await renderChartConfig(
         chartConfig,
         metadata,
         source.querySettings,
       );
+      const aliasMap = chSqlToAliasMap(query);
+      const aliasWith = Object.entries(aliasMap)
+        .filter(([, value]) => value != null && value.trim() !== '')
+        .map(([name, value]) => ({
+          name,
+          sql: { sql: value, params: {} },
+          isSubquery: false as const,
+        }));
+      if (aliasWith.length > 0) {
+        chartConfig.with = aliasWith;
+        query = await renderChartConfig(
+          chartConfig,
+          metadata,
+          source.querySettings,
+        );
+      }
       const raw = await clickhouseClient
         .query<'CSV'>({
           query: query.sql,

@@ -3,13 +3,17 @@
 // --------------------------------------------------------
 import PQueue from '@esm2cjs/p-queue';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
-import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  chSqlToAliasMap,
+  ResponseJSON,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
   getMetadata,
   Metadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithOptDateRange,
@@ -457,6 +461,50 @@ export const processAlert = async (
     }
 
     const metadata = getMetadata(clickhouseClient);
+
+    // For saved search alerts, the WHERE clause may reference aliased columns
+    // from the saved search's select expression (e.g. `toString(Body) AS body`).
+    // The alert query itself uses count(*), not the saved search's select,
+    // so we render the saved search's select separately to discover aliases
+    // and inject them as WITH clauses into the alert query.
+    if (details.taskType === AlertTaskType.SAVED_SEARCH) {
+      const savedSearch = details.savedSearch;
+      const resolvedSelect =
+        savedSearch.select || source.defaultTableSelectExpression || '';
+      try {
+        const aliasDiscoveryConfig: ChartConfigWithOptDateRange = {
+          connection: connectionId,
+          displayType: DisplayType.Search,
+          from: source.from,
+          select: resolvedSelect,
+          where: savedSearch.where,
+          whereLanguage: savedSearch.whereLanguage,
+          implicitColumnExpression: source.implicitColumnExpression,
+          timestampValueExpression: source.timestampValueExpression,
+        };
+        const aliasQuery = await renderChartConfig(
+          aliasDiscoveryConfig,
+          metadata,
+          source.querySettings,
+        );
+        const aliasMap = chSqlToAliasMap(aliasQuery);
+        const withClauses = Object.entries(aliasMap)
+          .filter(([, value]) => value != null && value.trim() !== '')
+          .map(([name, value]) => ({
+            name,
+            sql: { sql: value, params: {} },
+            isSubquery: false as const,
+          }));
+        if (withClauses.length > 0) {
+          chartConfig.with = withClauses;
+        }
+      } catch (e) {
+        logger.warn(
+          { error: serializeError(e), alertId: alert.id },
+          'Failed to compute alias WITH clauses for alert check',
+        );
+      }
+    }
 
     // Optimize chart config with materialized views, if available
     const optimizedChartConfig = source?.materializedViews?.length
