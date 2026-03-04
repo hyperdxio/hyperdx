@@ -299,6 +299,12 @@ a,
   color: #2e224788;
 }
 
+// Heatmap selection uses red to match the outlier/selection color in delta charts.
+.heatmap-selection-container .u-select {
+  border-color: rgba(255, 99, 71, 0.8);
+  background: rgba(255, 99, 71, 0.05) !important;
+}
+
 .hdx-markdown {
   h1,
   h2,

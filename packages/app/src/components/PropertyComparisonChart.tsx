@@ -1,8 +1,10 @@
 import { memo } from 'react';
 import { withErrorBoundary } from 'react-error-boundary';
+import type { TooltipProps } from 'recharts';
 import {
   Bar,
   BarChart,
+  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -10,13 +12,13 @@ import {
 } from 'recharts';
 import { Text } from '@mantine/core';
 
-import {
-  getChartColorError,
-  getChartColorSuccess,
-  truncateMiddle,
-} from '@/utils';
+import { getChartColorError, getChartColorSuccess } from '@/utils';
 
-import { mergeValueStatisticsMaps } from './deltaChartUtils';
+import {
+  applyTopNAggregation,
+  mergeValueStatisticsMaps,
+  OTHER_BUCKET_COLOR,
+} from './deltaChartUtils';
 
 import styles from '../../styles/HDXLineChart.module.scss';
 
@@ -32,9 +34,20 @@ export const CHART_GAP = 16; // px; used in grid gap and layout math
 // Always reserved (even when pagination is hidden via visibility:hidden) so rows count is stable.
 export const PAGINATION_HEIGHT = 48;
 
+type TooltipPayloadItem = {
+  dataKey: string;
+  name: string;
+  value: number;
+  payload?: Record<string, unknown>;
+};
+
+type TooltipContentProps = TooltipProps<number, string> & {
+  title?: string;
+};
+
+// Hover-only tooltip: shows value name and percentages.
 const HDXBarChartTooltip = withErrorBoundary(
-  memo((props: any) => {
-    const { active, payload, label, title } = props;
+  memo(({ active, payload, label, title }: TooltipContentProps) => {
     if (active && payload && payload.length) {
       return (
         <div className={styles.chartTooltip}>
@@ -45,11 +58,11 @@ const HDXBarChartTooltip = withErrorBoundary(
               </Text>
             )}
             <Text size="xs" mb="xs">
-              {label.length === 0 ? <i>Empty String</i> : label}
+              {String(label).length === 0 ? <i>Empty String</i> : String(label)}
             </Text>
-            {payload
-              .sort((a: any, b: any) => b.value - a.value)
-              .map((p: any) => (
+            {(payload as TooltipPayloadItem[])
+              .sort((a, b) => b.value - a.value)
+              .map(p => (
                 <div key={p.dataKey}>
                   {p.name}: {p.value.toFixed(2)}%
                 </div>
@@ -70,6 +83,36 @@ const HDXBarChartTooltip = withErrorBoundary(
   },
 );
 
+type TickProps = {
+  x?: number;
+  y?: number;
+  payload?: { value: string | number };
+};
+
+// Custom XAxis tick that truncates long labels and adds a native SVG tooltip.
+function TruncatedTick({ x = 0, y = 0, payload }: TickProps) {
+  const value = String(payload?.value ?? '');
+  const MAX_CHARS = 12;
+  const displayValue =
+    value.length > MAX_CHARS ? value.slice(0, MAX_CHARS) + '…' : value;
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <title>{value}</title>
+      <text
+        x={0}
+        y={0}
+        dy={12}
+        textAnchor="middle"
+        fill="var(--color-text-muted)"
+        fontSize={10}
+        fontFamily="IBM Plex Mono, monospace"
+      >
+        {displayValue}
+      </text>
+    </g>
+  );
+}
+
 export function PropertyComparisonChart({
   name,
   outlierValueOccurences,
@@ -83,18 +126,28 @@ export function PropertyComparisonChart({
     outlierValueOccurences,
     inlierValueOccurences,
   );
+  const chartData = applyTopNAggregation(mergedValueStatistics);
 
   return (
     <div style={{ width: '100%', height: CHART_HEIGHT }}>
-      <Text size="xs" ta="center" title={name}>
-        {truncateMiddle(name, 32)}
+      <Text
+        size="xs"
+        ta="center"
+        title={name}
+        style={{
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {name}
       </Text>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           barGap={2}
           width={500}
           height={300}
-          data={mergedValueStatistics}
+          data={chartData}
           margin={{
             top: 0,
             right: 0,
@@ -102,32 +155,43 @@ export function PropertyComparisonChart({
             bottom: 0,
           }}
         >
-          <XAxis
-            dataKey="name"
-            tick={{ fontSize: 10, fontFamily: 'IBM Plex Mono, monospace' }}
-          />
+          <XAxis dataKey="name" tick={<TruncatedTick />} />
           <YAxis
             tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
           />
           <Tooltip
-            wrapperStyle={{
-              zIndex: 1000,
-            }}
             content={<HDXBarChartTooltip title={name} />}
-            allowEscapeViewBox={{ y: true }}
+            allowEscapeViewBox={{ x: true, y: true }}
+            wrapperStyle={{ zIndex: 1000 }}
           />
           <Bar
             dataKey="outlierCount"
-            name="Outliers"
+            name="Selection"
             fill={getChartColorError()}
             isAnimationActive={false}
-          />
+          >
+            {chartData.map((entry, index) => (
+              <Cell
+                key={`out-${index}`}
+                fill={entry.isOther ? OTHER_BUCKET_COLOR : getChartColorError()}
+              />
+            ))}
+          </Bar>
           <Bar
             dataKey="inlierCount"
-            name="Inliers"
+            name="Background"
             fill={getChartColorSuccess()}
             isAnimationActive={false}
-          />
+          >
+            {chartData.map((entry, index) => (
+              <Cell
+                key={`in-${index}`}
+                fill={
+                  entry.isOther ? OTHER_BUCKET_COLOR : getChartColorSuccess()
+                }
+              />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>
