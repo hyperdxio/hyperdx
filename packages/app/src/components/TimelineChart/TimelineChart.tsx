@@ -1,9 +1,19 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { useDrag } from '@/hooks/useDrag';
+import { useStableCallback } from '@/hooks/useStableCallback';
+
 import useResizable from '../../hooks/useResizable';
-import { useDrag, usePrevious } from '../../utils';
+import { usePrevious } from '../../utils';
 
 import {
   TimelineChartRowEvents,
@@ -35,16 +45,11 @@ type Cursor = {
 type TimelineChartProps = {
   rows: Row[];
   cursors?: Cursor[];
-  scale?: number;
   rowHeight: number;
-  onMouseMove?: (ts: number) => void;
-  onClick?: (ts: number) => void;
   onEventClick?: (e: Row) => void;
   labelWidth: number;
   className?: string;
   style?: any;
-  setScale?: (cb: (scale: number) => number) => void;
-  scaleWithScroll?: boolean;
   initialScrollRowIndex?: number;
 };
 
@@ -52,18 +57,16 @@ export const TimelineChart = memo(function ({
   rows,
   cursors,
   rowHeight,
-  onMouseMove,
   onEventClick,
   labelWidth: initialLabelWidth,
   className,
   style,
-  onClick,
-  scale = 1,
-  setScale,
   initialScrollRowIndex,
-  scaleWithScroll = false,
 }: TimelineChartProps) {
+  const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState(0);
+  const [cursorXPerc, setCursorXPerc] = useState(0);
+
   const prevScale = usePrevious(scale);
   const initialWidthPercent = (initialLabelWidth / window.innerWidth) * 100;
   const { size: labelWidthPercent, startResize } = useResizable(
@@ -74,49 +77,8 @@ export const TimelineChart = memo(function ({
   const labelWidth = (labelWidthPercent / 100) * window.innerWidth;
 
   const timelineRef = useRef<HTMLDivElement>(null);
-  const onMouseEvent = (
-    e: { clientX: number; clientY: number },
-    cb: typeof onClick | typeof onMouseMove,
-  ) => {
-    if (timelineRef.current != null && cb != null) {
-      const timelineContainer = timelineRef.current;
-      const rect = timelineContainer.getBoundingClientRect();
 
-      const x = e.clientX - rect.left;
-
-      // Remove label width from calculations
-      // Use clientWidth as that removes scroll bars
-      const xPerc =
-        (x - labelWidth) / (timelineContainer.clientWidth - labelWidth);
-      cb(Math.max((offset / 100 + xPerc / scale) * maxVal));
-    }
-  };
-
-  const useDragOptions: Parameters<typeof useDrag>[1] = useMemo(
-    () => ({
-      onDrag: e => {
-        setOffset(v =>
-          Math.min(
-            Math.max(v - e.movementX * (0.125 / scale), 0),
-            100 - 100 / scale,
-          ),
-        );
-      },
-    }),
-    [scale, setOffset],
-  );
-  useDrag(timelineRef, useDragOptions);
-
-  const [cursorXPerc, setCursorXPerc] = useState(0);
-
-  const onWheel = (e: WheelEvent) => {
-    if (scaleWithScroll) {
-      e.preventDefault();
-      setScale?.(v => Math.max(v - e.deltaY * 0.001, 1));
-    }
-  };
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (prevScale != null && prevScale != scale) {
       setOffset(offset => {
         const newScale = scale;
@@ -135,18 +97,57 @@ export const TimelineChart = memo(function ({
     }
   }, [scale, prevScale, cursorXPerc]);
 
+  const onDragMove = useStableCallback(
+    ({ movementX, movementY }: PointerEvent) => {
+      setOffset(v =>
+        Math.min(
+          Math.max(v - movementX * (0.125 / scale), 0),
+          100 - 100 / scale,
+        ),
+      );
+
+      setScale(v => Math.max(v + movementY * 0.01, 1));
+    },
+  );
+
+  const dragHandlers = useMemo(
+    () => ({
+      onDragStart: () => {
+        if (timelineRef.current) {
+          timelineRef.current.style.userSelect = 'none';
+        }
+      },
+
+      onDragEnd: () => {
+        if (timelineRef.current) {
+          timelineRef.current.style.userSelect = 'auto';
+        }
+      },
+
+      onDragMove,
+    }),
+    [onDragMove],
+  );
+
+  const onPointerDown = useDrag(dragHandlers);
+
+  const onWheel = useStableCallback((e: WheelEvent) => {
+    setOffset(v =>
+      Math.min(Math.max(v + e.deltaX * (0.125 / scale), 0), 100 - 100 / scale),
+    );
+  });
+
   useEffect(() => {
     const element = timelineRef.current;
+
     if (element != null) {
-      element.addEventListener('wheel', onWheel, {
-        passive: false,
-      });
+      element.addEventListener('wheel', onWheel);
 
       return () => {
         element.removeEventListener('wheel', onWheel);
       };
     }
-  });
+  }, [onWheel]);
 
   const maxVal = useMemo(() => {
     let max = 0;
@@ -184,15 +185,10 @@ export const TimelineChart = memo(function ({
 
   return (
     <div
-      style={{ position: 'relative', ...style }}
+      style={{ position: 'relative', overscrollBehaviorX: 'contain', ...style }}
       className={className}
       ref={timelineRef}
-      onClick={e => {
-        onMouseEvent(e, onClick);
-      }}
-      onMouseMove={e => {
-        onMouseEvent(e, onMouseMove);
-      }}
+      onPointerDown={onPointerDown}
     >
       {(cursors ?? ([] as const)).map(cursor => {
         const xPerc = (cursor.start / maxVal - offset / 100) * scale;
@@ -268,6 +264,10 @@ export const TimelineChart = memo(function ({
                   <div
                     className={resizeStyles.resizeHandle}
                     onMouseDown={startResize}
+                    onPointerDown={e => {
+                      // so it doesn't trigger drag start in useDrag
+                      e.stopPropagation();
+                    }}
                     style={{ backgroundColor: 'var(--color-bg-neutral)' }}
                   />
                 </div>

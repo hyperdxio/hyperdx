@@ -952,7 +952,6 @@ export function DBTraceWaterfallChartContainer({
                 overflowY: 'auto',
                 maxHeight: `${heightPx}px`,
               }}
-              scale={1}
               rowHeight={22}
               labelWidth={300}
               onEventClick={(event: {
