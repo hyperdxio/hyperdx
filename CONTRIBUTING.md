@@ -68,6 +68,23 @@ To develop from WSL, follow instructions
 
 ## Testing
 
+### E2E Tests
+
+E2E tests run against a full local stack (MongoDB + ClickHouse + API). Docker must be running.
+
+```bash
+# Run all E2E tests
+./scripts/test-e2e.sh
+
+# Run a specific spec file
+./scripts/test-e2e.sh --quiet packages/app/tests/e2e/features/<feature>.spec.ts
+
+# Run a specific test by name
+./scripts/test-e2e.sh --quiet packages/app/tests/e2e/features/<feature>.spec.ts --grep "\"test name\""
+```
+
+Tests live in `packages/app/tests/e2e/`. Page objects are in `page-objects/`, shared components in `components/`.
+
 ### Integration Tests
 
 To run the tests locally, you can run the following command:
@@ -90,6 +107,24 @@ common-utils) to test and run:
 ```bash
 yarn dev:unit
 ```
+
+## AI-Assisted Development
+
+The repo ships with configuration for AI coding assistants that enables interactive browser-based E2E test generation and debugging via the [Playwright MCP server](https://github.com/microsoft/playwright/tree/main/packages/playwright-mcp).
+
+### Claude Code
+
+The project includes agents and skills for test generation, healing, and planning under `.claude/`. These are loaded automatically when you open the project in Claude Code. No additional setup required.
+
+### Cursor
+
+A Playwright MCP server config is included at `.cursor/mcp.json`. To activate it:
+
+1. Open **Cursor Settings → Tools & MCP**
+2. The `playwright-test` server should appear automatically from the project config
+3. Enable it
+
+This gives Cursor's AI access to a live browser for test exploration and debugging.
 
 ## Additional support
 
