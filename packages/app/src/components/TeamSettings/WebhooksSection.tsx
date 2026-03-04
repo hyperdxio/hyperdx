@@ -104,7 +104,13 @@ export default function WebhooksSection() {
 
       <Stack>
         {groupedWebhooks.length === 0 ? (
-          <Text size="sm" c="dimmed" ta="center" py="xl">
+          <Text
+            data-testid="webhooks-empty-state"
+            size="sm"
+            c="dimmed"
+            ta="center"
+            py="xl"
+          >
             No webhooks configured yet
           </Text>
         ) : (
@@ -190,7 +196,11 @@ export default function WebhooksSection() {
       </Stack>
 
       {!isAddWebhookModalOpen ? (
-        <Button variant="secondary" onClick={openWebhookModal}>
+        <Button
+          data-testid="add-webhook-section-button"
+          variant="secondary"
+          onClick={openWebhookModal}
+        >
           Add Webhook
         </Button>
       ) : (
