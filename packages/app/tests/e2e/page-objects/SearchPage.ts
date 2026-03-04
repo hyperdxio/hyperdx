@@ -7,6 +7,7 @@ import { Locator, Page } from '@playwright/test';
 import { FilterComponent } from '../components/FilterComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
 import { SavedSearchModalComponent } from '../components/SavedSearchModalComponent';
+import { SearchPageAlertModalComponent } from '../components/SearchPageAlertModalComponent';
 import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
@@ -22,8 +23,11 @@ export class SearchPage {
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
+  readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
   readonly editSourceMenuItem: Locator;
+
+  private readonly alertsButtonLocator: Locator;
 
   // Page-specific locators
   private readonly searchForm: Locator;
@@ -51,6 +55,8 @@ export class SearchPage {
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
+    this.alertModal = new SearchPageAlertModalComponent(page);
+    this.alertsButtonLocator = page.getByTestId('alerts-button');
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');
@@ -187,6 +193,17 @@ export class SearchPage {
       : this.saveSearchButton;
     await button.scrollIntoViewIfNeeded();
     await button.click();
+  }
+
+  /**
+   * Open the alerts creation modal for the current saved search
+   */
+  async openAlertsModal() {
+    await this.alertsButtonLocator.click();
+  }
+
+  get alertsButton() {
+    return this.alertsButtonLocator;
   }
 
   /**
