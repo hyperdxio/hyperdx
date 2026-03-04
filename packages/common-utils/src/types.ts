@@ -251,6 +251,7 @@ export enum WebhookService {
 }
 
 // Base webhook interface (matches backend IWebhook but with JSON-serialized types)
+// When making changes here, consider if they need to be made to the external API schema as well (packages/api/src/utils/zod.ts).
 export interface IWebhook {
   _id: string;
   createdAt: string;
@@ -569,6 +570,9 @@ export const DashboardSchema = z.object({
   tiles: z.array(TileSchema),
   tags: z.array(z.string()),
   filters: z.array(DashboardFilterSchema).optional(),
+  savedQuery: z.string().nullable().optional(),
+  savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
+  savedFilterValues: z.array(FilterSchema).optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
 export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;

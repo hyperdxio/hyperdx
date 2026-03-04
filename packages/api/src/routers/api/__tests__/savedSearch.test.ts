@@ -4,6 +4,7 @@ import {
   makeSavedSearchAlertInput,
 } from '@/fixtures';
 import Alert from '@/models/alert';
+import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_SAVED_SEARCH = {
   name: 'error',
@@ -17,9 +18,26 @@ const MOCK_SAVED_SEARCH = {
 
 describe('savedSearch router', () => {
   const server = getServer();
+  let agent: Awaited<ReturnType<typeof getLoggedInAgent>>['agent'];
+  let team: Awaited<ReturnType<typeof getLoggedInAgent>>['team'];
+  let user: Awaited<ReturnType<typeof getLoggedInAgent>>['user'];
+  let webhook: WebhookDocument;
 
   beforeAll(async () => {
     await server.start();
+  });
+
+  beforeEach(async () => {
+    const result = await getLoggedInAgent(server);
+    agent = result.agent;
+    team = result.team;
+    user = result.user;
+    webhook = await Webhook.create({
+      name: 'Test Webhook',
+      service: WebhookService.Slack,
+      url: 'https://hooks.slack.com/test',
+      team: team._id,
+    });
   });
 
   afterEach(async () => {
@@ -31,7 +49,6 @@ describe('savedSearch router', () => {
   });
 
   it('can create a saved search', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const savedSearch = await agent
       .post('/saved-search')
       .send(MOCK_SAVED_SEARCH)
@@ -41,7 +58,6 @@ describe('savedSearch router', () => {
   });
 
   it('cannot create a saved search with empty name', async () => {
-    const { agent } = await getLoggedInAgent(server);
     await agent
       .post('/saved-search')
       .send({ ...MOCK_SAVED_SEARCH, name: ' ' }) // Trimmed string will be empty and invalid
@@ -49,7 +65,6 @@ describe('savedSearch router', () => {
   });
 
   it('can update a saved search', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const savedSearch = await agent
       .post('/saved-search')
       .send(MOCK_SAVED_SEARCH)
@@ -62,7 +77,6 @@ describe('savedSearch router', () => {
   });
 
   it('cannot update a saved search with empty name', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const savedSearch = await agent
       .post('/saved-search')
       .send(MOCK_SAVED_SEARCH)
@@ -74,7 +88,6 @@ describe('savedSearch router', () => {
   });
 
   it('can update a saved search with undefined name', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const savedSearch = await agent
       .post('/saved-search')
       .send(MOCK_SAVED_SEARCH)
@@ -87,7 +100,6 @@ describe('savedSearch router', () => {
   });
 
   it('can get saved searches', async () => {
-    const { agent } = await getLoggedInAgent(server);
     await agent.post('/saved-search').send(MOCK_SAVED_SEARCH).expect(200);
     const savedSearches = await agent.get('/saved-search').expect(200);
     expect(savedSearches.body.length).toBe(1);
@@ -95,7 +107,6 @@ describe('savedSearch router', () => {
   });
 
   it('can delete a saved search', async () => {
-    const { agent } = await getLoggedInAgent(server);
     const savedSearch = await agent
       .post('/saved-search')
       .send(MOCK_SAVED_SEARCH)
@@ -106,6 +117,7 @@ describe('savedSearch router', () => {
       .send(
         makeSavedSearchAlertInput({
           savedSearchId: savedSearch.body._id,
+          webhookId: webhook._id.toString(),
         }),
       )
       .expect(200);
@@ -116,8 +128,6 @@ describe('savedSearch router', () => {
   });
 
   it('sets createdBy on alerts created from a saved search and populates it in list', async () => {
-    const { agent, user } = await getLoggedInAgent(server);
-
     // Create a saved search
     const savedSearch = await agent
       .post('/saved-search')
@@ -130,6 +140,7 @@ describe('savedSearch router', () => {
       .send(
         makeSavedSearchAlertInput({
           savedSearchId: savedSearch.body._id,
+          webhookId: webhook._id.toString(),
         }),
       )
       .expect(200);

@@ -27,18 +27,18 @@ import {
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
+import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
+import { TimelineChart } from '@/components/TimelineChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useResizable from '@/hooks/useResizable';
-import useRowWhere, { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
+import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import SearchInputV2 from '@/SearchInputV2';
 import {
   getDisplayedTimestampValueExpression,
   getDurationSecondsExpression,
   getEventBody,
   getSpanEventBody,
 } from '@/source';
-import TimelineChart from '@/TimelineChart';
 import { useFormatTime } from '@/useFormatTime';
 import {
   getChartColorError,
@@ -940,12 +940,8 @@ export function DBTraceWaterfallChartContainer({
                 maxHeight: `${heightPx}px`,
               }}
               scale={1}
-              setScale={() => {}}
               rowHeight={22}
               labelWidth={300}
-              onClick={ts => {
-                // onTimeClick(ts + startedAt);
-              }}
               onEventClick={(event: {
                 id: string;
                 type?: string;

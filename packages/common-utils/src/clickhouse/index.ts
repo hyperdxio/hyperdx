@@ -522,6 +522,7 @@ export abstract class BaseClickhouseClient {
       date_time_output_format: 'iso',
       wait_end_of_query: 0,
       cancel_http_readonly_queries_on_client_close: 1,
+      output_format_json_quote_64bit_integers: 1, // In 25.8, the default value for this was changed from 1 to 0. Due to JavaScript's poor precision for big integers, we should enable this https://github.com/ClickHouse/ClickHouse/pull/74079
     };
 
     const metadata = getMetadata(this);

@@ -508,6 +508,26 @@
         ],
         "description": "Query language for the where clause."
       },
+      "SavedFilterValue": {
+        "type": "object",
+        "required": [
+          "condition"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "sql"
+            ],
+            "default": "sql"
+          },
+          "condition": {
+            "type": "string",
+            "description": "SQL filter condition. For example use expressions in the form \"column IN ('value')\".",
+            "example": "ServiceName IN ('hdx-oss-dev-api')"
+          }
+        }
+      },
       "MetricDataType": {
         "type": "string",
         "enum": [
@@ -1525,6 +1545,26 @@
             "items": {
               "$ref": "#/components/schemas/Filter"
             }
+          },
+          "savedQuery": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional default dashboard query restored when loading the dashboard.",
+            "example": "service.name = 'api'"
+          },
+          "savedQueryLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "nullable": true,
+            "description": "Query language used by savedQuery.",
+            "default": "lucene",
+            "example": "sql"
+          },
+          "savedFilterValues": {
+            "type": "array",
+            "description": "Optional default dashboard filter values restored when loading the dashboard.",
+            "items": {
+              "$ref": "#/components/schemas/SavedFilterValue"
+            }
           }
         }
       },
@@ -1562,6 +1602,26 @@
             "description": "Dashboard filter keys to add to the dashboard and apply across all tiles",
             "items": {
               "$ref": "#/components/schemas/FilterInput"
+            }
+          },
+          "savedQuery": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional default dashboard query to persist on the dashboard.",
+            "example": "service.name = 'api'"
+          },
+          "savedQueryLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "nullable": true,
+            "description": "Query language used by savedQuery.",
+            "default": "lucene",
+            "example": "sql"
+          },
+          "savedFilterValues": {
+            "type": "array",
+            "description": "Optional default dashboard filter values to persist on the dashboard.",
+            "items": {
+              "$ref": "#/components/schemas/SavedFilterValue"
             }
           }
         }
@@ -1602,6 +1662,26 @@
             "description": "Dashboard filter keys on the dashboard, applied across all tiles",
             "items": {
               "$ref": "#/components/schemas/Filter"
+            }
+          },
+          "savedQuery": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional default dashboard query to persist on the dashboard.",
+            "example": "service.name = 'api'"
+          },
+          "savedQueryLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "nullable": true,
+            "description": "Query language used by savedQuery.",
+            "default": "lucene",
+            "example": "sql"
+          },
+          "savedFilterValues": {
+            "type": "array",
+            "description": "Optional default dashboard filter values to persist on the dashboard.",
+            "items": {
+              "$ref": "#/components/schemas/SavedFilterValue"
             }
           }
         }
@@ -2227,6 +2307,180 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Source"
+            }
+          }
+        }
+      },
+      "SlackWebhook": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "service",
+          "updatedAt",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Webhook ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Webhook name"
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "slack"
+            ],
+            "description": "Webhook service type"
+          },
+          "url": {
+            "type": "string",
+            "description": "Slack incoming webhook URL"
+          },
+          "description": {
+            "type": "string",
+            "description": "Webhook description, shown in the UI"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          }
+        }
+      },
+      "IncidentIOWebhook": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "service",
+          "updatedAt",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Webhook ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Webhook name"
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "incidentio"
+            ],
+            "description": "Webhook service type"
+          },
+          "url": {
+            "type": "string",
+            "description": "incident.io alert event HTTP source URL"
+          },
+          "description": {
+            "type": "string",
+            "description": "Webhook description, shown in the UI"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          }
+        }
+      },
+      "GenericWebhook": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "service",
+          "updatedAt",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Webhook ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Webhook name"
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "generic"
+            ],
+            "description": "Webhook service type"
+          },
+          "url": {
+            "type": "string",
+            "description": "Webhook destination URL"
+          },
+          "description": {
+            "type": "string",
+            "description": "Webhook description, shown in the UI"
+          },
+          "body": {
+            "type": "string",
+            "description": "Optional request body template"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          }
+        }
+      },
+      "Webhook": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SlackWebhook"
+          },
+          {
+            "$ref": "#/components/schemas/IncidentIOWebhook"
+          },
+          {
+            "$ref": "#/components/schemas/GenericWebhook"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "service",
+          "mapping": {
+            "slack": "#/components/schemas/SlackWebhook",
+            "incidentio": "#/components/schemas/IncidentIOWebhook",
+            "generic": "#/components/schemas/GenericWebhook"
+          }
+        }
+      },
+      "WebhooksListResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Webhook"
             }
           }
         }
@@ -3572,6 +3826,51 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SourcesListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/webhooks": {
+      "get": {
+        "summary": "List Webhooks",
+        "description": "Retrieves a list of all webhooks for the authenticated team",
+        "operationId": "listWebhooks",
+        "tags": [
+          "Webhooks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved webhooks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhooksListResponse"
                 }
               }
             }

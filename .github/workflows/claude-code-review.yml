@@ -41,8 +41,8 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          use_sticky_comment: true
-          allowed_bots: cursor,cursor[bot]
+          track_progress: true
+          allowed_bots: cursor,cursor[bot],claude,claude[bot]
           github_token: ${{ secrets.GITHUB_TOKEN }} # Bypasses OIDC auth (required for pull_request_target)
           allowed_non_write_users: '*' # Allows fork contributors to trigger reviews
           prompt: |
@@ -70,11 +70,9 @@ jobs:
 
             Note: If the team wants a more thorough review, they can comment on the PR requesting one.
 
-            Return your review as your final response — the action will post it as a sticky comment on the PR.
+            Return your review as your final response.
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.claude.com/en/docs/claude-code/sdk#command-line for available options
-          claude_args:
-            '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh
-            issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr
-            view:*),Bash(gh pr list:*)"'
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
