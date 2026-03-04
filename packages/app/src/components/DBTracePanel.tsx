@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { parseAsJson, useQueryState } from 'nuqs';
+import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -20,10 +20,17 @@ import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEdi
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
+import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { SourceSelectControlled } from './SourceSelect';
+
+const eventRowWhereParser = parseAsJsonEncoded<{
+  id: string;
+  type: string;
+  aliasWith: WithClause[];
+}>();
 
 enum Tab {
   Overview = 'overview',
@@ -96,7 +103,7 @@ export default function DBTracePanel({
 
   const [eventRowWhere, setEventRowWhere] = useQueryState(
     'eventRowWhere',
-    parseAsJson<{ id: string; type: string; aliasWith: WithClause[] }>(),
+    eventRowWhereParser,
   );
 
   const {
