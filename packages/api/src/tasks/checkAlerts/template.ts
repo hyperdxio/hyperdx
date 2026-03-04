@@ -1,4 +1,3 @@
-import { chSqlToAliasMap } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
@@ -28,7 +27,10 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
-import { doesExceedThreshold } from '@/tasks/checkAlerts';
+import {
+  computeAliasWithClauses,
+  doesExceedThreshold,
+} from '@/tasks/checkAlerts';
 import {
   AlertProvider,
   PopulatedAlertChannel,
@@ -600,29 +602,19 @@ ${targetTemplate}`;
 
     let truncatedResults = '';
     try {
-      // Render once to discover aliases from the SELECT expression,
-      // then re-render with WITH clauses only if aliases are found
-      let query = await renderChartConfig(
+      const aliasWith = await computeAliasWithClauses(
+        savedSearch,
+        source,
+        metadata,
+      );
+      if (aliasWith) {
+        chartConfig.with = aliasWith;
+      }
+      const query = await renderChartConfig(
         chartConfig,
         metadata,
         source.querySettings,
       );
-      const aliasMap = chSqlToAliasMap(query);
-      const aliasWith = Object.entries(aliasMap)
-        .filter(([, value]) => value != null && value.trim() !== '')
-        .map(([name, value]) => ({
-          name,
-          sql: { sql: value, params: {} },
-          isSubquery: false as const,
-        }));
-      if (aliasWith.length > 0) {
-        chartConfig.with = aliasWith;
-        query = await renderChartConfig(
-          chartConfig,
-          metadata,
-          source.querySettings,
-        );
-      }
       const raw = await clickhouseClient
         .query<'CSV'>({
           query: query.sql,

@@ -74,6 +74,40 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
   return false;
 };
 
+/**
+ * Render a saved search's SELECT to discover column aliases (e.g. `toString(Body) AS body`)
+ * and return them as WITH clauses that can be injected into alert/sample-log queries
+ * whose own SELECT doesn't include those aliases.
+ */
+export async function computeAliasWithClauses(
+  savedSearch: Pick<ISavedSearch, 'select' | 'where' | 'whereLanguage'>,
+  source: ISource,
+  metadata: Metadata,
+): Promise<ChartConfigWithOptDateRange['with']> {
+  const resolvedSelect =
+    savedSearch.select || source.defaultTableSelectExpression || '';
+  const config: ChartConfigWithOptDateRange = {
+    connection: '',
+    displayType: DisplayType.Search,
+    from: source.from,
+    select: resolvedSelect,
+    where: savedSearch.where,
+    whereLanguage: savedSearch.whereLanguage,
+    implicitColumnExpression: source.implicitColumnExpression,
+    timestampValueExpression: source.timestampValueExpression,
+  };
+  const query = await renderChartConfig(config, metadata, source.querySettings);
+  const aliasMap = chSqlToAliasMap(query);
+  const withClauses = Object.entries(aliasMap)
+    .filter(([, value]) => value != null && value.trim() !== '')
+    .map(([name, value]) => ({
+      name,
+      sql: { sql: value, params: {} },
+      isSubquery: false as const,
+    }));
+  return withClauses.length > 0 ? withClauses : undefined;
+}
+
 export const doesExceedThreshold = (
   thresholdType: AlertThresholdType,
   threshold: number,
@@ -468,34 +502,13 @@ export const processAlert = async (
     // so we render the saved search's select separately to discover aliases
     // and inject them as WITH clauses into the alert query.
     if (details.taskType === AlertTaskType.SAVED_SEARCH) {
-      const savedSearch = details.savedSearch;
-      const resolvedSelect =
-        savedSearch.select || source.defaultTableSelectExpression || '';
       try {
-        const aliasDiscoveryConfig: ChartConfigWithOptDateRange = {
-          connection: connectionId,
-          displayType: DisplayType.Search,
-          from: source.from,
-          select: resolvedSelect,
-          where: savedSearch.where,
-          whereLanguage: savedSearch.whereLanguage,
-          implicitColumnExpression: source.implicitColumnExpression,
-          timestampValueExpression: source.timestampValueExpression,
-        };
-        const aliasQuery = await renderChartConfig(
-          aliasDiscoveryConfig,
+        const withClauses = await computeAliasWithClauses(
+          details.savedSearch,
+          source,
           metadata,
-          source.querySettings,
         );
-        const aliasMap = chSqlToAliasMap(aliasQuery);
-        const withClauses = Object.entries(aliasMap)
-          .filter(([, value]) => value != null && value.trim() !== '')
-          .map(([name, value]) => ({
-            name,
-            sql: { sql: value, params: {} },
-            isSubquery: false as const,
-          }));
-        if (withClauses.length > 0) {
+        if (withClauses) {
           chartConfig.with = withClauses;
         }
       } catch (e) {
