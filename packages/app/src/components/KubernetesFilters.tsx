@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Group, Select } from '@mantine/core';
@@ -23,7 +23,7 @@ type FilterSelectProps = {
   fieldName: string;
   value: string | null;
   onChange: (value: string | null) => void;
-  chartConfig: ChartConfigWithDateRange;
+  chartConfig: BuilderChartConfigWithDateRange;
   dataTestId?: string;
 };
 
@@ -157,7 +157,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
   }, [searchQuery, metricSource.resourceAttributesExpression]);
 
   // Create chart config for fetching key values
-  const chartConfig: ChartConfigWithDateRange = {
+  const chartConfig: BuilderChartConfigWithDateRange = {
     from: {
       databaseName: metricSource.from.databaseName,
       tableName: metricSource.metricTables?.gauge || '',

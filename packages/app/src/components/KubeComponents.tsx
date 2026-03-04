@@ -4,7 +4,7 @@ import { sub } from 'date-fns';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   DateRange,
   SearchCondition,
   SearchConditionLanguage,
@@ -47,7 +47,7 @@ export const useV2LogBatch = <T = any,>(
     whereLanguage,
   }: {
     dateRange: DateRange['dateRange'];
-    extraSelects?: ChartConfigWithDateRange['select'];
+    extraSelects?: BuilderChartConfigWithDateRange['select'];
     limit?: number;
     logSource: TSource;
     order: 'asc' | 'desc';

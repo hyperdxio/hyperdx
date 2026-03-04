@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
@@ -19,8 +19,8 @@ export default function PatternTable({
   bodyValueExpression,
   source,
 }: {
-  config: ChartConfigWithDateRange;
-  totalCountConfig: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
+  totalCountConfig: BuilderChartConfigWithDateRange;
   bodyValueExpression: string;
   totalCountQueryKeyPrefix: string;
   source?: TSource;

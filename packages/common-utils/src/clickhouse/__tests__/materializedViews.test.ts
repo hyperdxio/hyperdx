@@ -6,10 +6,10 @@ import {
   tryOptimizeConfigWithMaterializedViewWithExplanations,
 } from '@/core/materializedViews';
 import { Metadata } from '@/core/metadata';
+import { isBuilderChartConfig } from '@/guards';
 import {
   ChartConfigWithOptDateRange,
   MaterializedViewConfiguration,
-  QuerySettings,
   TSource,
 } from '@/types';
 
@@ -1713,7 +1713,10 @@ describe('materializedViews', () => {
     it('should optimize a config with the MV that will scan the fewest rows, if multiple MVs could be used', async () => {
       mockClickHouseClient.testChartConfigValidity.mockImplementation(
         ({ config }) => {
-          if (config.from.tableName === 'db_statement_rollup_1s') {
+          if (
+            isBuilderChartConfig(config) &&
+            config.from.tableName === 'db_statement_rollup_1s'
+          ) {
             return Promise.resolve({
               isValid: true,
               rowEstimate: 1000,
@@ -1964,7 +1967,10 @@ describe('materializedViews', () => {
           Promise.resolve({
             isValid: true,
             rowEstimate:
-              config.from.tableName === 'logs_rollup_1h' ? 500 : 1000,
+              isBuilderChartConfig(config) &&
+              config.from.tableName === 'logs_rollup_1h'
+                ? 500
+                : 1000,
           }),
       );
 
@@ -2124,7 +2130,10 @@ describe('materializedViews', () => {
           Promise.resolve({
             isValid: true,
             rowEstimate:
-              config.from.tableName === 'logs_rollup_1h' ? 500 : 1000,
+              isBuilderChartConfig(config) &&
+              config.from.tableName === 'logs_rollup_1h'
+                ? 500
+                : 1000,
           }),
       );
 

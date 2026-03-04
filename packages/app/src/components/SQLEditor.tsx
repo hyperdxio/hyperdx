@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useRef } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
-import { acceptCompletion, startCompletion } from '@codemirror/autocomplete';
-import { sql, SQLDialect } from '@codemirror/lang-sql';
-import { Flex, Group, Paper, Text, useMantineColorScheme } from '@mantine/core';
+import { startCompletion } from '@codemirror/autocomplete';
+import { sql } from '@codemirror/lang-sql';
+import { Paper, useMantineColorScheme } from '@mantine/core';
 import CodeMirror, {
   Compartment,
   EditorView,
-  keymap,
-  Prec,
   ReactCodeMirrorRef,
 } from '@uiw/react-codemirror';
 
@@ -15,6 +13,7 @@ type SQLInlineEditorProps = {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  height?: string;
 };
 
 const styleTheme = EditorView.baseTheme({
@@ -33,6 +32,7 @@ export default function SQLEditor({
   onChange,
   placeholder,
   value,
+  height,
 }: SQLInlineEditorProps) {
   const { colorScheme } = useMantineColorScheme();
   const ref = useRef<ReactCodeMirrorRef>(null);
@@ -57,6 +57,7 @@ export default function SQLEditor({
           value={value}
           onChange={onChange}
           theme={colorScheme === 'dark' ? 'dark' : 'light'}
+          height={height}
           minHeight={'100px'}
           extensions={[
             styleTheme,
@@ -92,6 +93,7 @@ export default function SQLEditor({
 
 export function SQLEditorControlled({
   placeholder,
+  height,
   ...props
 }: Omit<SQLInlineEditorProps, 'value' | 'onChange'> & UseControllerProps<any>) {
   const { field } = useController(props);
@@ -101,6 +103,7 @@ export function SQLEditorControlled({
       onChange={field.onChange}
       placeholder={placeholder}
       value={field.value}
+      height={height}
       {...props}
     />
   );

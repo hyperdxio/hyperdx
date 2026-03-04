@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { omit } from 'lodash';
 import {
   Control,
   Controller,
@@ -15,6 +14,12 @@ import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  isBuilderChartConfig,
+  isBuilderSavedChartConfig,
+  isRawSqlChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
@@ -39,6 +44,7 @@ import {
   Group,
   Menu,
   Paper,
+  SegmentedControl,
   Stack,
   Switch,
   Tabs,
@@ -83,7 +89,7 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_LOCAL_MODE, IS_SQL_CHARTS_ENABLED } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
 import {
@@ -108,6 +114,16 @@ import {
 
 import HDXMarkdownChart from '../HDXMarkdownChart';
 
+import RawSqlChartEditor from './ChartEditor/RawSqlChartEditor';
+import {
+  ChartEditorFormState,
+  SavedChartConfigWithSelectArray,
+} from './ChartEditor/types';
+import {
+  convertFormStateToChartConfig,
+  convertFormStateToSavedChartConfig,
+  convertSavedChartConfigToFormState,
+} from './ChartEditor/utils';
 import { ErrorBoundary } from './Error/ErrorBoundary';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { AggFnSelectControlled } from './AggFnSelect';
@@ -128,13 +144,20 @@ import SaveToDashboardModal from './SaveToDashboardModal';
 import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
-const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
-  ((queriedConfig?.select?.length ?? 0) > 0 ||
-    typeof queriedConfig?.select === 'string') &&
-  queriedConfig?.from?.databaseName &&
-  // tableName is empty for metric sources
-  (queriedConfig?.from?.tableName || queriedConfig?.metricTables) &&
-  queriedConfig?.timestampValueExpression;
+const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) => {
+  if (!queriedConfig) return false;
+  if (isRawSqlChartConfig(queriedConfig)) {
+    return !!(queriedConfig.sqlTemplate && queriedConfig.connection);
+  }
+  return (
+    ((queriedConfig.select?.length ?? 0) > 0 ||
+      typeof queriedConfig.select === 'string') &&
+    queriedConfig.from?.databaseName &&
+    // tableName is empty for metric sources
+    (queriedConfig.from?.tableName || queriedConfig.metricTables) &&
+    queriedConfig.timestampValueExpression
+  );
+};
 
 const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
 
@@ -142,39 +165,17 @@ const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
 const getSeriesFieldPath = (
   namePrefix: string,
   fieldName: string,
-): FieldPath<SavedChartConfigWithSeries> => {
-  return `${namePrefix}${fieldName}` as FieldPath<SavedChartConfigWithSeries>;
+): FieldPath<ChartEditorFormState> => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return `${namePrefix}${fieldName}` as FieldPath<ChartEditorFormState>;
 };
-
-export function normalizeChartConfig<
-  C extends Pick<
-    SavedChartConfig,
-    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables'
-  >,
->(config: C, source: TSource): C {
-  const isMetricSource = source.kind === SourceKind.Metric;
-  return {
-    ...config,
-    // Strip out metric-specific fields for non-metric sources
-    select:
-      !isMetricSource && Array.isArray(config.select)
-        ? config.select.map(s => omit(s, ['metricName', 'metricType']))
-        : config.select,
-    metricTables: isMetricSource ? config.metricTables : undefined,
-    // Order By and Having can only be set by the user for table charts
-    having:
-      config.displayType === DisplayType.Table ? config.having : undefined,
-    orderBy:
-      config.displayType === DisplayType.Table ? config.orderBy : undefined,
-  };
-}
 
 // Helper function to validate metric names for metric sources
 const validateMetricNames = (
   tableSource: TSource | undefined,
   series: SavedChartConfigWithSelectArray['select'] | undefined,
   setError: (
-    name: FieldPath<SavedChartConfigWithSeries>,
+    name: FieldPath<ChartEditorFormState>,
     error: { type: string; message: string },
   ) => void,
 ): boolean => {
@@ -235,7 +236,7 @@ function ChartSeriesEditorComponent({
   length: number;
   tableSource?: TSource;
   errors?: FieldErrors<SeriesItem>;
-  clearErrors: UseFormClearErrors<SavedChartConfigWithSeries>;
+  clearErrors: UseFormClearErrors<ChartEditorFormState>;
 }) {
   const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
   const aggConditionLanguage = useWatch({
@@ -537,17 +538,6 @@ const zSavedChartConfig = z
   })
   .passthrough();
 
-export type SavedChartConfigWithSelectArray = Omit<
-  SavedChartConfig,
-  'select'
-> & {
-  select: Exclude<SavedChartConfig['select'], string>;
-};
-
-type SavedChartConfigWithSeries = SavedChartConfig & {
-  series: SavedChartConfigWithSelectArray['select'];
-};
-
 export default function EditTimeChartForm({
   dashboardId,
   chartConfig,
@@ -579,19 +569,8 @@ export default function EditTimeChartForm({
   'data-testid'?: string;
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
 }) {
-  // useFieldArray only supports array type fields, and select can be either a string or array.
-  // To solve for this, we maintain an extra form field called 'series' which is always an array.
-  const configWithSeries: SavedChartConfigWithSeries = useMemo(
-    () => ({
-      ...chartConfig,
-      series: Array.isArray(chartConfig.select)
-        ? chartConfig.select.map(s => ({
-            ...s,
-            aggConditionLanguage:
-              s.aggConditionLanguage ?? getStoredLanguage() ?? 'lucene',
-          }))
-        : [],
-    }),
+  const formValue: ChartEditorFormState = useMemo(
+    () => convertSavedChartConfigToFormState(chartConfig),
     [chartConfig],
   );
 
@@ -603,9 +582,9 @@ export default function EditTimeChartForm({
     setError,
     clearErrors,
     formState: { errors, isDirty },
-  } = useForm<SavedChartConfigWithSeries>({
-    defaultValues: configWithSeries,
-    values: configWithSeries,
+  } = useForm<ChartEditorFormState>({
+    defaultValues: formValue,
+    values: formValue,
     resolver: zodResolver(zSavedChartConfig),
   });
 
@@ -615,7 +594,7 @@ export default function EditTimeChartForm({
     remove: removeSeries,
     swap: swapSeries,
   } = useFieldArray({
-    control: control as Control<SavedChartConfigWithSeries>,
+    control,
     name: 'series',
   });
 
@@ -635,6 +614,10 @@ export default function EditTimeChartForm({
   const markdown = useWatch({ control, name: 'markdown' });
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
   const granularity = useWatch({ control, name: 'granularity' });
+  const configType = useWatch({ control, name: 'configType' });
+
+  const isRawSqlInput =
+    configType === 'sql' && displayType === DisplayType.Table;
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -668,8 +651,10 @@ export default function EditTimeChartForm({
 
   const showGeneratedSql = ['table', 'time', 'number', 'pie'].includes(
     activeTab,
-  ); // Whether to show the generated SQL preview
-  const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
+  );
+
+  const showSampleEvents =
+    tableSource?.kind !== SourceKind.Metric && !isRawSqlInput;
 
   const [
     alignDateRangeToGranularity,
@@ -717,7 +702,7 @@ export default function EditTimeChartForm({
   );
 
   const setQueriedConfigAndSource = useCallback(
-    (config: ChartConfigWithDateRange, source: TSource) => {
+    (config: ChartConfigWithDateRange, source: TSource | undefined) => {
       setQueriedConfig(config);
       setQueriedSource(source);
     },
@@ -725,7 +710,7 @@ export default function EditTimeChartForm({
   );
 
   const dbTimeChartConfig = useMemo(() => {
-    if (!queriedConfig) {
+    if (!queriedConfig || !isBuilderChartConfig(queriedConfig)) {
       return undefined;
     }
 
@@ -745,40 +730,28 @@ export default function EditTimeChartForm({
 
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
-      // Validate metric sources have metric names selected
-      if (validateMetricNames(tableSource, form.series, setError)) {
+      const isRawSqlChart =
+        form.configType === 'sql' && form.displayType === DisplayType.Table;
+
+      if (
+        !isRawSqlChart &&
+        validateMetricNames(tableSource, form.series, setError)
+      ) {
         return;
       }
 
-      // Merge the series and select fields back together, and prevent the series field from being submitted
-      const config = {
-        ...omit(form, ['series']),
-        select:
-          form.displayType === DisplayType.Search ? form.select : form.series,
-      };
+      const savedConfig = convertFormStateToSavedChartConfig(form, tableSource);
+      const queriedConfig = convertFormStateToChartConfig(
+        form,
+        dateRange,
+        tableSource,
+      );
 
-      setChartConfig?.(config);
-      if (tableSource != null) {
-        const isSelectEmpty = !config.select || config.select.length === 0; // select is string or array
-        const newConfig = {
-          ...config,
-          from: tableSource.from,
-          timestampValueExpression: tableSource.timestampValueExpression,
-          dateRange,
-          connection: tableSource.connection,
-          implicitColumnExpression: tableSource.implicitColumnExpression,
-          metricTables: tableSource.metricTables,
-          select: isSelectEmpty
-            ? tableSource.defaultTableSelectExpression || ''
-            : config.select,
-        };
+      if (savedConfig && queriedConfig) {
+        setChartConfig?.(savedConfig);
         setQueriedConfigAndSource(
-          // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
-          // YOUR STATE IS AN OBJECT. YOU'RE COPYING BY REFERENCE WHICH MIGHT
-          // ACCIDENTALLY CAUSE A useQuery SOMEWHERE TO FIRE A REQUEST EVERY TIME
-          // AN INPUT CHANGES. USE structuredClone TO PERFORM A DEEP COPY INSTEAD
-          structuredClone(normalizeChartConfig(newConfig, tableSource)),
-          tableSource,
+          queriedConfig,
+          isRawSqlChart ? undefined : tableSource,
         );
       }
     })();
@@ -801,7 +774,10 @@ export default function EditTimeChartForm({
 
   const tableSortState = useMemo(
     () =>
-      queriedConfig?.orderBy && typeof queriedConfig.orderBy === 'string'
+      queriedConfig != null &&
+      isBuilderChartConfig(queriedConfig) &&
+      queriedConfig.orderBy &&
+      typeof queriedConfig.orderBy === 'string'
         ? orderByStringToSortingState(queriedConfig.orderBy)
         : undefined,
     [queriedConfig],
@@ -814,33 +790,26 @@ export default function EditTimeChartForm({
   }, [onSubmit, submitRef]);
 
   const handleSave = useCallback(
-    (v: SavedChartConfigWithSeries) => {
-      if (tableSource != null) {
-        // Validate metric sources have metric names selected
-        if (validateMetricNames(tableSource, v.series, setError)) {
-          return;
-        }
+    (form: ChartEditorFormState) => {
+      const isRawSqlChart =
+        form.configType === 'sql' && form.displayType === DisplayType.Table;
 
-        // If the chart type is search, we need to ensure the select is a string
-        if (
-          displayType === DisplayType.Search &&
-          typeof v.select !== 'string'
-        ) {
-          v.select = '';
-        } else if (displayType !== DisplayType.Search) {
-          v.select = v.series;
-        }
-
-        const normalizedChartConfig = normalizeChartConfig(
-          // Avoid saving the series field. Series should be persisted in the select field.
-          omit(v, ['series']),
-          tableSource,
-        );
-
-        onSave?.(normalizedChartConfig);
+      // Validate metric sources have metric names selected
+      if (
+        !isRawSqlChart &&
+        validateMetricNames(tableSource, form.series, setError)
+      ) {
+        return;
       }
+
+      const savedChartConfig = convertFormStateToSavedChartConfig(
+        form,
+        tableSource,
+      );
+
+      if (savedChartConfig) onSave?.(savedChartConfig);
     },
-    [onSave, displayType, tableSource, setError],
+    [onSave, tableSource, setError],
   );
 
   // Track previous values for detecting changes
@@ -863,7 +832,7 @@ export default function EditTimeChartForm({
         setValue('select', '');
         setValue('series', []);
       }
-      if (displayType !== DisplayType.Search && typeof select === 'string') {
+      if (displayType !== DisplayType.Search && !Array.isArray(select)) {
         const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
           {
             aggFn: 'count',
@@ -900,11 +869,17 @@ export default function EditTimeChartForm({
   // and explaining whether a MV can be used.
   const chartConfigForExplanations: ChartConfigWithOptTimestamp | undefined =
     useMemo(() => {
+      if (queriedConfig && isRawSqlChartConfig(queriedConfig))
+        return { ...queriedConfig, dateRange };
+
+      if (chartConfig && isRawSqlSavedChartConfig(chartConfig))
+        return { ...chartConfig, dateRange };
+
       const userHasSubmittedQuery = !!queriedConfig;
       const queriedSourceMatchesSelectedSource =
         queriedSource?.id === tableSource?.id;
       const urlParamsSourceMatchesSelectedSource =
-        chartConfig?.source === tableSource?.id;
+        chartConfig.source === tableSource?.id;
 
       const effectiveQueriedConfig =
         activeTab === 'time' ? dbTimeChartConfig : queriedConfig;
@@ -912,7 +887,7 @@ export default function EditTimeChartForm({
       const config =
         userHasSubmittedQuery && queriedSourceMatchesSelectedSource
           ? effectiveQueriedConfig
-          : chartConfig && urlParamsSourceMatchesSelectedSource
+          : chartConfig && urlParamsSourceMatchesSelectedSource && tableSource
             ? {
                 ...chartConfig,
                 dateRange,
@@ -922,7 +897,7 @@ export default function EditTimeChartForm({
               }
             : undefined;
 
-      if (!config) {
+      if (!config || isRawSqlChartConfig(config)) {
         return undefined;
       }
 
@@ -954,7 +929,10 @@ export default function EditTimeChartForm({
 
   const sampleEventsConfig = useMemo(
     () =>
-      tableSource != null && queriedConfig != null && queryReady
+      tableSource != null &&
+      queriedConfig != null &&
+      isBuilderChartConfig(queriedConfig) &&
+      queryReady
         ? {
             ...queriedConfig,
             orderBy: [
@@ -1067,11 +1045,29 @@ export default function EditTimeChartForm({
           <InputControlled
             name="name"
             control={control}
-            w="100%"
+            flex={1}
             type="text"
             placeholder="My Chart Name"
             data-testid="chart-name-input"
           />
+          {IS_SQL_CHARTS_ENABLED && displayType === DisplayType.Table && (
+            <Controller
+              control={control}
+              name="configType"
+              render={({ field: { onChange, value } }) => (
+                <SegmentedControl
+                  value={value}
+                  onChange={(value: string) => {
+                    onChange(value ?? 'builder');
+                  }}
+                  data={[
+                    { label: 'Builder', value: 'builder' },
+                    { label: 'SQL', value: 'sql' },
+                  ]}
+                />
+              )}
+            />
+          )}
         </Flex>
         <Divider my="md" />
         {activeTab === 'markdown' ? (
@@ -1095,9 +1091,14 @@ export default function EditTimeChartForm({
               />
             </Box>
           </div>
+        ) : isRawSqlInput ? (
+          <RawSqlChartEditor
+            control={control}
+            onOpenDisplaySettings={openDisplaySettings}
+          />
         ) : (
           <>
-            <Flex mb="md" align="center" gap="sm" justify="space-between">
+            <Flex mb="md" align="center" justify="space-between">
               <Group>
                 <Text pe="md" size="sm">
                   Data Source
@@ -1112,14 +1113,18 @@ export default function EditTimeChartForm({
                   }
                 />
               </Group>
-              {tableSource && activeTab !== 'search' && (
-                <MVOptimizationIndicator
-                  source={tableSource}
-                  config={chartConfigForExplanations}
-                />
-              )}
+              <Group>
+                {tableSource &&
+                  activeTab !== 'search' &&
+                  chartConfigForExplanations &&
+                  isBuilderChartConfig(chartConfigForExplanations) && (
+                    <MVOptimizationIndicator
+                      source={tableSource}
+                      config={chartConfigForExplanations}
+                    />
+                  )}
+              </Group>
             </Flex>
-
             {displayType !== DisplayType.Search && Array.isArray(select) ? (
               <>
                 {fields.map((field, index) => (
@@ -1393,7 +1398,7 @@ export default function EditTimeChartForm({
             )}
           </Flex>
           <Flex gap="sm" mb="sm" align="center" justify="end">
-            {activeTab === 'table' && (
+            {activeTab === 'table' && !isRawSqlInput && (
               <div style={{ width: 400 }}>
                 <SQLInlineEditorControlled
                   parentRef={parentRef}
@@ -1475,13 +1480,16 @@ export default function EditTimeChartForm({
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBTableChart
             config={queriedConfig}
-            getRowSearchLink={row =>
-              buildTableRowSearchUrl({
-                row,
-                source: tableSource,
-                config: queriedConfig,
-                dateRange: queriedConfig.dateRange,
-              })
+            getRowSearchLink={
+              isBuilderChartConfig(queriedConfig)
+                ? row =>
+                    buildTableRowSearchUrl({
+                      row,
+                      source: tableSource,
+                      config: queriedConfig,
+                      dateRange: queriedConfig.dateRange,
+                    })
+                : undefined
             }
             onSortingChange={onTableSortingChange}
             sort={tableSortState}
@@ -1514,24 +1522,31 @@ export default function EditTimeChartForm({
           />
         </div>
       )}
-      {queryReady && queriedConfig != null && activeTab === 'number' && (
-        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
-          <DBNumberChart
-            config={queriedConfig}
-            showMVOptimizationIndicator={false}
-          />
-        </div>
-      )}
+      {queryReady &&
+        queriedConfig != null &&
+        isBuilderChartConfig(queriedConfig) &&
+        activeTab === 'number' && (
+          <div
+            className="flex-grow-1 d-flex flex-column"
+            style={{ height: 400 }}
+          >
+            <DBNumberChart
+              config={queriedConfig}
+              showMVOptimizationIndicator={false}
+            />
+          </div>
+        )}
       {queryReady &&
         tableSource &&
         queriedConfig != null &&
+        isBuilderChartConfig(queriedConfig) &&
         activeTab === 'search' && (
           <div
             className="flex-grow-1 d-flex flex-column"
             style={{ height: 400 }}
           >
             <DBSqlRowTableWithSideBar
-              sourceId={sourceId}
+              sourceId={tableSource.id}
               config={{
                 ...queriedConfig,
                 orderBy: [
@@ -1578,13 +1593,13 @@ export default function EditTimeChartForm({
                   </Text>
                 </Accordion.Control>
                 <Accordion.Panel>
-                  {sampleEventsConfig != null && (
+                  {sampleEventsConfig != null && tableSource && (
                     <div
                       className="flex-grow-1 d-flex flex-column"
                       style={{ height: 400 }}
                     >
                       <DBSqlRowTableWithSideBar
-                        sourceId={sourceId}
+                        sourceId={tableSource.id}
                         config={sampleEventsConfig}
                         enabled={isSampleEventsOpen}
                         isLive={false}

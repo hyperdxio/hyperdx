@@ -12,6 +12,11 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  isBuilderSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
+  BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
@@ -62,6 +67,7 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
   }
   if (
     details.taskType === AlertTaskType.TILE &&
+    isBuilderSavedChartConfig(details.tile.config) &&
     details.tile.config.groupBy &&
     details.tile.config.groupBy.length > 0
   ) {
@@ -285,7 +291,7 @@ const getChartConfigFromAlert = (
   connection: string,
   dateRange: [Date, Date],
   windowSizeInMins: number,
-): ChartConfigWithOptDateRange | undefined => {
+): BuilderChartConfigWithOptDateRange | undefined => {
   const { alert, source } = details;
   if (details.taskType === AlertTaskType.SAVED_SEARCH) {
     const savedSearch = details.savedSearch;
@@ -312,6 +318,10 @@ const getChartConfigFromAlert = (
     };
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
+
+    // Alerts are not supported for raw sql based charts
+    if (isRawSqlSavedChartConfig(tile.config)) return undefined;
+
     // Doesn't work for metric alerts yet
     if (
       tile.config.displayType === DisplayType.Line ||

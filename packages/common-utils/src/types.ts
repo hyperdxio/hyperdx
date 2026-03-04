@@ -416,29 +416,37 @@ export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
-export const _ChartConfigSchema = z.object({
+
+/**
+ * Schema describing display settings which are shared between Raw SQL
+ * chart configs and Structured ChartBuilder chart configs
+ **/
+const SharedChartDisplaySettingsSchema = z.object({
   displayType: z.nativeEnum(DisplayType).optional(),
   numberFormat: NumberFormatSchema.optional(),
+  granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
+  compareToPreviousPeriod: z.boolean().optional(),
+  fillNulls: z.union([z.number(), z.literal(false)]).optional(),
+  alignDateRangeToGranularity: z.boolean().optional(),
+});
+
+export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
-  granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
   filters: z.array(FilterSchema).optional(),
   connection: z.string(),
-  fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   selectGroupBy: z.boolean().optional(),
   metricTables: MetricTableSchema.optional(),
   seriesReturnType: z.enum(['ratio', 'column']).optional(),
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
-  compareToPreviousPeriod: z.boolean().optional(),
   source: z.string().optional(),
-  alignDateRangeToGranularity: z.boolean().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.
-// It needs to be a separate, named schema to avoid use ot z.lazy(...),
+// It needs to be a separate, named schema to avoid use of z.lazy(...),
 // use of which allows for type mistakes to make it past linting.
 export const CteChartConfigSchema = z.intersection(
   _ChartConfigSchema.partial({ timestampValueExpression: true }),
@@ -451,7 +459,7 @@ export type CteChartConfig = z.infer<typeof CteChartConfigSchema>;
 // non-recursive chart config so that it can reference a complete chart config
 // schema. This structure does mean that we cannot nest `with` clauses but does
 // ensure the type system can catch more issues in the build pipeline.
-export const ChartConfigSchema = z.intersection(
+const BuilderChartConfigSchema = z.intersection(
   z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
   z
     .object({
@@ -477,6 +485,22 @@ export const ChartConfigSchema = z.intersection(
     .partial(),
 );
 
+export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
+
+/** Schema describing Raw SQL chart configs */
+const RawSqlChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
+  configType: z.literal('sql'),
+  sqlTemplate: z.string(),
+  connection: z.string(),
+});
+
+export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
+
+export const ChartConfigSchema = z.union([
+  BuilderChartConfigSchema,
+  RawSqlChartConfigSchema,
+]);
+
 export type ChartConfig = z.infer<typeof ChartConfigSchema>;
 
 export type DateRange = {
@@ -486,31 +510,38 @@ export type DateRange = {
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
+export type BuilderChartConfigWithDateRange = BuilderChartConfig & DateRange;
+export type RawSqlConfigWithDateRange = RawSqlChartConfig & DateRange;
 
-export type ChartConfigWithOptTimestamp = Omit<
-  ChartConfigWithDateRange,
+export type BuilderChartConfigWithOptTimestamp = Omit<
+  BuilderChartConfigWithDateRange,
   'timestampValueExpression'
 > & {
   timestampValueExpression?: string;
 };
+
+export type ChartConfigWithOptTimestamp =
+  | BuilderChartConfigWithOptTimestamp
+  | RawSqlConfigWithDateRange;
+
 // For non-time-based searches (ex. grab 1 row)
-export type ChartConfigWithOptDateRange = Omit<
-  ChartConfig,
+export type BuilderChartConfigWithOptDateRange = Omit<
+  BuilderChartConfig,
   'timestampValueExpression'
 > & {
   timestampValueExpression?: string;
 } & Partial<DateRange>;
 
+export type ChartConfigWithOptDateRange =
+  | BuilderChartConfigWithOptDateRange
+  | (RawSqlChartConfig & Partial<DateRange>);
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
-export const SavedChartConfigSchema = z
+const BuilderSavedChartConfigWithoutAlertSchema = z
   .object({
     name: z.string().optional(),
     source: z.string(),
-    alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
-    ]),
   })
   .extend(
     _ChartConfigSchema.omit({
@@ -525,6 +556,31 @@ export const SavedChartConfigSchema = z
     }).shape,
   );
 
+const BuilderSavedChartConfigSchema =
+  BuilderSavedChartConfigWithoutAlertSchema.extend({
+    alert: z.union([
+      AlertBaseSchema.optional(),
+      ChartAlertBaseSchema.optional(),
+    ]),
+  });
+
+export type BuilderSavedChartConfig = z.infer<
+  typeof BuilderSavedChartConfigSchema
+>;
+
+const RawSqlSavedChartConfigSchema = RawSqlChartConfigSchema.extend({
+  name: z.string().optional(),
+});
+
+export const SavedChartConfigSchema = z.union([
+  BuilderSavedChartConfigSchema,
+  RawSqlSavedChartConfigSchema,
+]);
+
+export type RawSqlSavedChartConfig = z.infer<
+  typeof RawSqlSavedChartConfigSchema
+>;
+
 export type SavedChartConfig = z.infer<typeof SavedChartConfigSchema>;
 
 export const TileSchema = z.object({
@@ -535,8 +591,12 @@ export const TileSchema = z.object({
   h: z.number(),
   config: SavedChartConfigSchema,
 });
+
 export const TileTemplateSchema = TileSchema.extend({
-  config: TileSchema.shape.config.omit({ alert: true }),
+  config: z.union([
+    BuilderSavedChartConfigWithoutAlertSchema,
+    RawSqlSavedChartConfigSchema,
+  ]),
 });
 
 export type Tile = z.infer<typeof TileSchema>;
