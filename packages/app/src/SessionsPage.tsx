@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import { sub } from 'date-fns';
-import { parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
+import {
+  parseAsInteger,
+  parseAsString,
+  parseAsStringEnum,
+  useQueryStates,
+} from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { NumberParam } from 'serialize-query-params';
-import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   SearchCondition,
@@ -330,16 +333,9 @@ export default function SessionsPage() {
     [],
   );
 
-  const [selectedSessionQuery, setSelectedSessionQuery] = useQueryParams(
-    {
-      sid: withDefault(StringParam, undefined),
-      sfrom: withDefault(NumberParam, undefined),
-      sto: withDefault(NumberParam, undefined),
-    },
-    {
-      updateType: 'pushIn',
-      enableBatching: true,
-    },
+  const [selectedSessionQuery, setSelectedSessionQuery] = useQueryStates(
+    { sid: parseAsString, sfrom: parseAsInteger, sto: parseAsInteger },
+    { history: 'push' },
   );
 
   const selectedSession = useMemo(() => {
@@ -358,9 +354,9 @@ export default function SessionsPage() {
     (session: Session | undefined) => {
       if (session == null) {
         setSelectedSessionQuery({
-          sid: undefined,
-          sfrom: undefined,
-          sto: undefined,
+          sid: null,
+          sfrom: null,
+          sto: null,
         });
       } else {
         setSelectedSessionQuery({

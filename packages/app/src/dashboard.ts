@@ -101,7 +101,7 @@ export function useDashboard({
 
   const [localDashboard, setLocalDashboard] = useQueryState(
     'dashboard',
-    parseAsJson<Dashboard>(),
+    parseAsJson<Dashboard>(v => v as Dashboard),
   );
 
   const updateDashboard = useUpdateDashboard();

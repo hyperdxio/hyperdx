@@ -7,7 +7,7 @@ import { FilterState, filtersToQuery, parseQuery } from '@/searchFilters';
 const useDashboardFilters = (filters: DashboardFilter[]) => {
   const [filterQueries, setFilterQueries] = useQueryState(
     'filters',
-    parseAsJson<Filter[]>(),
+    parseAsJson<Filter[]>(v => v as Filter[]),
   );
 
   const setFilterValue = useCallback(

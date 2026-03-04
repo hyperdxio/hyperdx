@@ -3,8 +3,8 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { filter } from 'lodash';
+import { useQueryState } from 'nuqs';
 import { Controller, useForm, useWatch } from 'react-hook-form';
-import { StringParam, useQueryParam } from 'use-query-params';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
@@ -190,7 +190,7 @@ type SourceResolutionFormValues = z.infer<typeof SourceResolutionForm>;
 function Mapping({ input }: { input: Input }) {
   const router = useRouter();
   const { data: sources } = useSources();
-  const [dashboardId] = useQueryParam('dashboardId', StringParam);
+  const [dashboardId] = useQueryState('dashboardId');
 
   const { handleSubmit, getFieldState, control, setValue } =
     useForm<SourceResolutionFormValues>({

@@ -223,7 +223,7 @@ function DBChartExplorerPage() {
 
   const [chartConfig, setChartConfig] = useQueryState(
     'config',
-    parseAsJson<SavedChartConfig>().withDefault({
+    parseAsJson<SavedChartConfig>(v => v as SavedChartConfig).withDefault({
       ...DEFAULT_CHART_CONFIG,
       source: sources?.[0]?.id ?? '',
     }),

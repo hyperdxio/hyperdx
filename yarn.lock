@@ -4312,7 +4312,6 @@ __metadata:
     "@hyperdx/browser": "npm:^0.21.1"
     "@hyperdx/common-utils": "npm:^0.15.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
-    "@jedmao/location": "npm:^3.0.0"
     "@lezer/highlight": "npm:^1.2.0"
     "@mantine/core": "npm:^7.17.8"
     "@mantine/dates": "npm:^7.17.8"
@@ -4386,11 +4385,10 @@ __metadata:
     msw: "npm:^2.3.0"
     msw-storybook-addon: "npm:^2.0.2"
     next: "npm:^16.1.5"
-    next-query-params: "npm:^4.3.1"
     next-runtime-env: "npm:1"
     next-seo: "npm:^4.28.1"
     numbro: "npm:^2.4.0"
-    nuqs: "npm:1.17.0"
+    nuqs: "npm:^2.8.8"
     object-hash: "npm:^3.0.0"
     postcss: "npm:^8.4.38"
     postcss-preset-mantine: "npm:^1.15.0"
@@ -4412,7 +4410,6 @@ __metadata:
     recharts: "npm:^2.12.7"
     rrweb: "npm:2.0.0-alpha.8"
     sass: "npm:^1.54.8"
-    serialize-query-params: "npm:^2.0.2"
     sql-formatter: "npm:^15.4.0"
     sqlstring: "npm:^2.3.3"
     store2: "npm:^2.14.3"
@@ -4426,7 +4423,6 @@ __metadata:
     typescript: "npm:^5.9.3"
     uplot: "npm:^1.6.31"
     uplot-react: "npm:^1.2.2"
-    use-query-params: "npm:^2.1.2"
     zod: "npm:3.25"
   languageName: unknown
   linkType: soft
@@ -4933,13 +4929,6 @@ __metadata:
   version: 0.1.3
   resolution: "@istanbuljs/schema@npm:0.1.3"
   checksum: 10c0/61c5286771676c9ca3eb2bd8a7310a9c063fb6e0e9712225c8471c582d157392c88f5353581c8c9adbe0dff98892317d2fdfc56c3499aa42e0194405206a963a
-  languageName: node
-  linkType: hard
-
-"@jedmao/location@npm:^3.0.0":
-  version: 3.0.0
-  resolution: "@jedmao/location@npm:3.0.0"
-  checksum: 10c0/dded42a7991aaf625c9696519aec188834b205b066e1696cd42280b70dff080d85f79353c3c21dd9ec8e9c122f193080c5a552d0916368dc13e1b03b11507184
   languageName: node
   linkType: hard
 
@@ -8101,7 +8090,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@standard-schema/spec@npm:^1.0.0":
+"@standard-schema/spec@npm:1.0.0, @standard-schema/spec@npm:^1.0.0":
   version: 1.0.0
   resolution: "@standard-schema/spec@npm:1.0.0"
   checksum: 10c0/a1ab9a8bdc09b5b47aa8365d0e0ec40cc2df6437be02853696a0e377321653b0d3ac6f079a8c67d5ddbe9821025584b1fb71d9cc041a6666a96f1fadf2ece15f
@@ -20124,7 +20113,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mitt@npm:^3.0.0, mitt@npm:^3.0.1":
+"mitt@npm:^3.0.0":
   version: 3.0.1
   resolution: "mitt@npm:3.0.1"
   checksum: 10c0/3ab4fdecf3be8c5255536faa07064d05caa3dd332bd318ff02e04621f7b3069ca1de9106cfe8e7ced675abfc2bec2ce4c4ef321c4a1bb1fb29df8ae090741913
@@ -20417,19 +20406,6 @@ __metadata:
   version: 2.6.2
   resolution: "neo-async@npm:2.6.2"
   checksum: 10c0/c2f5a604a54a8ec5438a342e1f356dff4bc33ccccdb6dc668d94fe8e5eccfc9d2c2eea6064b0967a767ba63b33763f51ccf2cd2441b461a7322656c1f06b3f5d
-  languageName: node
-  linkType: hard
-
-"next-query-params@npm:^4.3.1":
-  version: 4.3.1
-  resolution: "next-query-params@npm:4.3.1"
-  dependencies:
-    tslib: "npm:^2.0.3"
-  peerDependencies:
-    next: ^10.0.0 || ^11.0.0 || ^12.0.0 || ^13.0.0 || ^14.0.0
-    react: ^16.8.0 || ^17.0.0 || ^18.0.0
-    use-query-params: ^2.0.0
-  checksum: 10c0/d5752b77b7d3606f36703ac664cf95a75fe0bf1c297c1f06083fe61883a6c037d633558208d4f3e03744b31a079a712ced025da7bdb6f90216eb0ec17b7509a3
   languageName: node
   linkType: hard
 
@@ -20745,14 +20721,30 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nuqs@npm:1.17.0":
-  version: 1.17.0
-  resolution: "nuqs@npm:1.17.0"
+"nuqs@npm:^2.8.8":
+  version: 2.8.8
+  resolution: "nuqs@npm:2.8.8"
   dependencies:
-    mitt: "npm:^3.0.1"
+    "@standard-schema/spec": "npm:1.0.0"
   peerDependencies:
-    next: ">=13.4 <14.0.2 || ^14.0.3"
-  checksum: 10c0/98e26518fdeda9518defe8abb34fd722f9fbc6d62dc7713dbc7bf365b5afc4c7c934088d7c7ed528621c222017841411241f0cfe97c615a3e7fb4d80354e8349
+    "@remix-run/react": ">=2"
+    "@tanstack/react-router": ^1
+    next: ">=14.2.0"
+    react: ">=18.2.0 || ^19.0.0-0"
+    react-router: ^5 || ^6 || ^7
+    react-router-dom: ^5 || ^6 || ^7
+  peerDependenciesMeta:
+    "@remix-run/react":
+      optional: true
+    "@tanstack/react-router":
+      optional: true
+    next:
+      optional: true
+    react-router:
+      optional: true
+    react-router-dom:
+      optional: true
+  checksum: 10c0/d3a5503268d5a297c5b5acbd0c6f362f7462f67fea31f88264748ccab7788343bd428b49b7e63f5c5be08afcb22a2ee569fd36b6d0b8f95b8cfca7013ea700e3
   languageName: node
   linkType: hard
 
@@ -23914,13 +23906,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"serialize-query-params@npm:^2.0.2":
-  version: 2.0.2
-  resolution: "serialize-query-params@npm:2.0.2"
-  checksum: 10c0/fdef1e8eb45ce585b12535ab7e546a2583220a2deb969359ccef50519dc541dd6690c00c8de7a2465b9b0b0072a3308b55df77bd568284989df1e72869c9ee3f
-  languageName: node
-  linkType: hard
-
 "serve-static@npm:^1.16.0":
   version: 1.16.3
   resolution: "serve-static@npm:1.16.3"
@@ -26590,18 +26575,6 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/1958886fc35262d973f5cd4ce16acd6ce3a66707a72761c93abd1b5ae64e1a11efa83f68e6c8c9bf1647628037980ce59df64cba50adb36bd4071851e70527d2
-  languageName: node
-  linkType: hard
-
-"use-query-params@npm:^2.1.2":
-  version: 2.2.0
-  resolution: "use-query-params@npm:2.2.0"
-  dependencies:
-    serialize-query-params: "npm:^2.0.2"
-  peerDependencies:
-    react: ">=16.8.0"
-    react-dom: ">=16.8.0"
-  checksum: 10c0/5f92511b6643e91609d1a0f043be93f0d989260a2476214c9b98b5885ff03cebe4240bbe75527a8a73c05653dae2c8a5769f72ba5ae0eacc2b0001d4732cc6b3
   languageName: node
   linkType: hard
 

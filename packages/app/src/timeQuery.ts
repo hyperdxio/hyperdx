@@ -16,14 +16,13 @@ import {
   sub,
   subMilliseconds,
 } from 'date-fns';
-import { parseAsFloat, useQueryStates } from 'nuqs';
 import {
-  NumberParam,
-  StringParam,
-  useQueryParam,
-  useQueryParams,
-  withDefault,
-} from 'use-query-params';
+  parseAsFloat,
+  parseAsInteger,
+  parseAsString,
+  useQueryState,
+  useQueryStates,
+} from 'nuqs';
 import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import { DateRange } from '@hyperdx/common-utils/dist/types';
 
@@ -95,15 +94,9 @@ export function useTimeQuery({
     undefined | string
   >(undefined);
 
-  const [_timeRangeQuery, setTimeRangeQuery] = useQueryParams(
-    {
-      from: withDefault(NumberParam, undefined),
-      to: withDefault(NumberParam, undefined),
-    },
-    {
-      updateType: 'pushIn',
-      enableBatching: true,
-    },
+  const [_timeRangeQuery, setTimeRangeQuery] = useQueryStates(
+    { from: parseAsInteger, to: parseAsInteger },
+    { history: 'push' },
   );
 
   const timeRangeQuery = useMemo(
@@ -115,13 +108,9 @@ export function useTimeQuery({
   );
 
   // Allow browser back/fwd button to modify the displayed time input value
-  const [inputTimeQuery, setInputTimeQuery] = useQueryParam(
+  const [inputTimeQuery, setInputTimeQuery] = useQueryState(
     'tq',
-    withDefault(StringParam, ''),
-    {
-      updateType: 'pushIn',
-      enableBatching: true,
-    },
+    parseAsString.withDefault('').withOptions({ history: 'push' }),
   );
   const prevInputTimeQuery = usePrevious(inputTimeQuery);
 

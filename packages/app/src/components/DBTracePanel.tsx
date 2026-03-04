@@ -96,7 +96,9 @@ export default function DBTracePanel({
 
   const [eventRowWhere, setEventRowWhere] = useQueryState(
     'eventRowWhere',
-    parseAsJson<{ id: string; type: string; aliasWith: WithClause[] }>(),
+    parseAsJson<{ id: string; type: string; aliasWith: WithClause[] }>(
+      v => v as { id: string; type: string; aliasWith: WithClause[] },
+    ),
   );
 
   const {

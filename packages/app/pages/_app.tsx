@@ -2,10 +2,9 @@ import React, { useEffect } from 'react';
 import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
-import { NextAdapter } from 'next-query-params';
 import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
-import { QueryParamProvider } from 'use-query-params';
+import { NuqsAdapter } from 'nuqs/adapters/next/pages';
 import HyperDX from '@hyperdx/browser';
 import {
   MutationCache,
@@ -27,7 +26,6 @@ import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
 import { ConfirmProvider } from '@/useConfirm';
-import { QueryParamProvider as HDXQueryParamProvider } from '@/useQueryParam';
 import {
   SystemColorSchemeScript,
   useResolvedColorScheme,
@@ -175,14 +173,12 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       <AppThemeProvider>
         <AppHeadContent />
         <DynamicFavicon />
-        <HDXQueryParamProvider>
-          <QueryParamProvider adapter={NextAdapter}>
-            <QueryClientProvider client={queryClient}>
-              <AppContent Component={Component} pageProps={pageProps} />
-              <ReactQueryDevtools initialIsOpen={true} />
-            </QueryClientProvider>
-          </QueryParamProvider>
-        </HDXQueryParamProvider>
+        <NuqsAdapter>
+          <QueryClientProvider client={queryClient}>
+            <AppContent Component={Component} pageProps={pageProps} />
+            <ReactQueryDevtools initialIsOpen={true} />
+          </QueryClientProvider>
+        </NuqsAdapter>
       </AppThemeProvider>
     </React.Fragment>
   );

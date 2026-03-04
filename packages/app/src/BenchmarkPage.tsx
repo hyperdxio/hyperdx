@@ -147,13 +147,13 @@ function useIndexes(
 }
 
 function BenchmarkPage() {
-  const [queries, setQueries] = useQueryState<string[]>(
+  const [queries, setQueries] = useQueryState(
     'queries',
-    parseAsJson(),
+    parseAsJson<string[]>(v => v as string[]),
   );
-  const [connections, setConnections] = useQueryState<string[]>(
+  const [connections, setConnections] = useQueryState(
     'connections',
-    parseAsJson(),
+    parseAsJson<string[]>(v => v as string[]),
   );
   const [iterations, setIterations] = useQueryState<number>(
     'iterations',

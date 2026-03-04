@@ -4,12 +4,11 @@ import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
 import Fuse from 'fuse.js';
 import {
-  NumberParam,
-  StringParam,
-  useQueryParam,
-  useQueryParams,
-  withDefault,
-} from 'use-query-params';
+  parseAsInteger,
+  parseAsString,
+  useQueryState,
+  useQueryStates,
+} from 'nuqs';
 import HyperDX from '@hyperdx/browser';
 import { AlertState } from '@hyperdx/common-utils/dist/types';
 import {
@@ -431,14 +430,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const router = useRouter();
   const { pathname, query } = router;
 
-  const [timeRangeQuery] = useQueryParams({
-    from: withDefault(NumberParam, -1),
-    to: withDefault(NumberParam, -1),
+  const [timeRangeQuery] = useQueryStates({
+    from: parseAsInteger.withDefault(-1),
+    to: parseAsInteger.withDefault(-1),
   });
-  const [inputTimeQuery] = useQueryParam('tq', withDefault(StringParam, ''), {
-    updateType: 'pushIn',
-    enableBatching: true,
-  });
+  const [inputTimeQuery] = useQueryState(
+    'tq',
+    parseAsString.withDefault('').withOptions({ history: 'push' }),
+  );
 
   const { data: meData } = api.useMe();
 
