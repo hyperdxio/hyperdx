@@ -1115,6 +1115,14 @@ async function translateMetricChartConfig(
       ? renderDeltaExpression(chartConfig, 'Value')
       : `last_value(Value)`;
 
+    let groupBy: ChSql | undefined;
+    if (isUsingGroupBy(chartConfig)) {
+      groupBy = concatChSql(
+        ',',
+        await renderSelectList(chartConfig.groupBy, chartConfig, metadata),
+      );
+    }
+
     return {
       ...restChartConfig,
       with: [
@@ -1123,6 +1131,7 @@ async function translateMetricChartConfig(
           sql: chSql`
             SELECT
               *,
+              ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
               cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
             FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
             WHERE ${where}
@@ -1133,6 +1142,7 @@ async function translateMetricChartConfig(
           sql: chSql`
             SELECT
               ${timeExpr},
+              ${groupBy ? 'group,' : ''}
               AttributesHash,
               ${bucketValueExpr} AS LastValue,
               any(ScopeAttributes) AS ScopeAttributes,
@@ -1149,7 +1159,7 @@ async function translateMetricChartConfig(
               any(StartTimeUnix) AS StartTimeUnix,
               any(Flags) AS Flags
             FROM Source
-            GROUP BY AttributesHash, ${timeBucketCol}
+            GROUP BY ${groupBy ? 'group, ' : ''}AttributesHash, ${timeBucketCol}
             ORDER BY AttributesHash, ${timeBucketCol}
           `,
         },
@@ -1165,6 +1175,7 @@ async function translateMetricChartConfig(
         databaseName: '',
         tableName: 'Bucketed',
       },
+      ...(groupBy ? { groupBy: 'group' } : {}),
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       timestampValueExpression: timeBucketCol,
       settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
@@ -1214,6 +1225,14 @@ async function translateMetricChartConfig(
      *
      * Note, IsMonotonic = 0, has Cumulative agg temporality
      */
+    let groupBy: ChSql | undefined;
+    if (isUsingGroupBy(chartConfig)) {
+      groupBy = concatChSql(
+        ',',
+        await renderSelectList(chartConfig.groupBy, chartConfig, metadata),
+      );
+    }
+
     return {
       ...restChartConfig,
       with: [
@@ -1222,10 +1241,11 @@ async function translateMetricChartConfig(
           sql: chSql`
                 SELECT
                   *,
+                  ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
                   cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
                   IF(AggregationTemporality = 1,
                     SUM(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
-                    IF(IsMonotonic = 0, 
+                    IF(IsMonotonic = 0,
                       Value,
                       deltaSum(Value) OVER (PARTITION BY AttributesHash ORDER BY AttributesHash, TimeUnix ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
                     )
@@ -1239,9 +1259,10 @@ async function translateMetricChartConfig(
           sql: chSql`
             SELECT
               ${timeExpr},
+              ${groupBy ? 'group,' : ''}
               AttributesHash,
               last_value(Source.Rate) AS ${valueHighCol},
-              any(${valueHighCol}) OVER(PARTITION BY AttributesHash ORDER BY \`${timeBucketCol}\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
+              any(${valueHighCol}) OVER(PARTITION BY ${groupBy ? 'group, ' : ''}AttributesHash ORDER BY \`${timeBucketCol}\` ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS ${valueHighPrevCol},
               IF(IsMonotonic = 1, ${valueHighCol} - ${valueHighPrevCol}, ${valueHighCol}) AS Rate,
               last_value(Source.Sum) AS Sum,
               any(ResourceAttributes) AS ResourceAttributes,
@@ -1261,7 +1282,7 @@ async function translateMetricChartConfig(
               any(AggregationTemporality) AS AggregationTemporality,
               any(IsMonotonic) AS IsMonotonic
             FROM Source
-            GROUP BY AttributesHash, \`${timeBucketCol}\`
+            GROUP BY ${groupBy ? 'group, ' : ''}AttributesHash, \`${timeBucketCol}\`
             ORDER BY AttributesHash, \`${timeBucketCol}\`
           `,
         },
@@ -1288,6 +1309,7 @@ async function translateMetricChartConfig(
         databaseName: '',
         tableName: 'Bucketed',
       },
+      ...(groupBy ? { groupBy: 'group' } : {}),
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
