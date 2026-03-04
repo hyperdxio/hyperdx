@@ -47,6 +47,9 @@ export type ExternalDashboard = {
   tiles: ExternalDashboardTileWithId[];
   tags?: string[];
   filters?: ExternalDashboardFilterWithId[];
+  savedQuery?: string | null;
+  savedQueryLanguage?: string | null;
+  savedFilterValues?: DashboardDocument['savedFilterValues'];
 };
 
 // --------------------------------------------------------------------------------
@@ -196,6 +199,9 @@ export function convertToExternalDashboard(
     tiles: dashboard.tiles.map(convertTileToExternalChart),
     tags: dashboard.tags || [],
     filters: dashboard.filters?.map(translateFilterToExternalFilter) || [],
+    savedQuery: dashboard.savedQuery ?? null,
+    savedQueryLanguage: dashboard.savedQueryLanguage ?? null,
+    savedFilterValues: dashboard.savedFilterValues ?? [],
   };
 }
 

@@ -16,7 +16,6 @@ import router from 'next/router';
 import {
   parseAsBoolean,
   parseAsInteger,
-  parseAsJson,
   parseAsString,
   parseAsStringEnum,
   useQueryState,
@@ -129,8 +128,9 @@ import {
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import {
+  parseAsJsonEncoded,
   parseAsSortingStateString,
-  parseAsStringWithNewLines,
+  parseAsStringEncoded,
 } from './utils/queryParsers';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
@@ -801,11 +801,11 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
-  where: parseAsStringWithNewLines,
-  select: parseAsStringWithNewLines,
+  where: parseAsStringEncoded,
+  select: parseAsStringEncoded,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
-  filters: parseAsJson<Filter[]>(),
-  orderBy: parseAsStringWithNewLines,
+  filters: parseAsJsonEncoded<Filter[]>(),
+  orderBy: parseAsStringEncoded,
 };
 
 function DBSearchPage() {

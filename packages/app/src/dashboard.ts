@@ -32,7 +32,7 @@ export type Dashboard = {
   filters?: DashboardFilter[];
   savedQuery?: string | null;
   savedQueryLanguage?: SearchConditionLanguage | null;
-  savedFilterValues?: Filter[] | null;
+  savedFilterValues?: Filter[];
 };
 
 export function useUpdateDashboard() {

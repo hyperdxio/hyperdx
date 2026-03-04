@@ -1,3 +1,4 @@
+import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { uniq } from 'lodash';
 import { ObjectId } from 'mongodb';
@@ -17,6 +18,7 @@ import {
   externalDashboardFilterSchema,
   externalDashboardFilterSchemaWithId,
   ExternalDashboardFilterWithId,
+  externalDashboardSavedFilterValueSchema,
   externalDashboardTileListSchema,
   ExternalDashboardTileWithId,
   objectIdSchema,
@@ -67,6 +69,62 @@ async function getMissingSources(
   return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
 }
 
+type SavedQueryLanguage = z.infer<typeof whereLanguageSchema>;
+
+function resolveSavedQueryLanguage(params: {
+  savedQuery: string | null | undefined;
+  savedQueryLanguage: SavedQueryLanguage | null | undefined;
+}): SavedQueryLanguage | null | undefined {
+  const { savedQuery, savedQueryLanguage } = params;
+  if (savedQueryLanguage !== undefined) return savedQueryLanguage;
+  if (savedQuery === null) return null;
+  if (savedQuery) return 'lucene';
+
+  return undefined;
+}
+
+const dashboardBodyBaseShape = {
+  name: z.string().max(1024),
+  tiles: externalDashboardTileListSchema,
+  tags: tagsSchema,
+  savedQuery: z.string().nullable().optional(),
+  savedQueryLanguage: whereLanguageSchema.nullable().optional(),
+  savedFilterValues: z
+    .array(externalDashboardSavedFilterValueSchema)
+    .optional(),
+};
+
+function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
+  z.ZodObject<
+    typeof dashboardBodyBaseShape & {
+      filters: z.ZodOptional<z.ZodArray<z.ZodTypeAny>>;
+    }
+  >
+> {
+  return z
+    .object({
+      ...dashboardBodyBaseShape,
+      filters: z.array(filterSchema).optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (data.savedQuery != null && data.savedQueryLanguage === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'savedQueryLanguage cannot be null when savedQuery is provided',
+          path: ['savedQueryLanguage'],
+        });
+      }
+    });
+}
+
+const createDashboardBodySchema = buildDashboardBodySchema(
+  externalDashboardFilterSchema,
+);
+const updateDashboardBodySchema = buildDashboardBodySchema(
+  externalDashboardFilterSchemaWithId,
+);
+
 /**
  * @openapi
  * components:
@@ -83,6 +141,18 @@ async function getMissingSources(
  *       type: string
  *       enum: [sql, lucene]
  *       description: Query language for the where clause.
+ *     SavedFilterValue:
+ *       type: object
+ *       required: [condition]
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [sql]
+ *           default: sql
+ *         condition:
+ *           type: string
+ *           description: SQL filter condition. For example use expressions in the form "column IN ('value')".
+ *           example: "ServiceName IN ('hdx-oss-dev-api')"
  *     MetricDataType:
  *       type: string
  *       enum: [sum, gauge, histogram, summary, exponential histogram]
@@ -838,6 +908,22 @@ async function getMissingSources(
  *           description: Dashboard filter keys added to the dashboard and applied to all tiles
  *           items:
  *             $ref: '#/components/schemas/Filter'
+ *         savedQuery:
+ *           type: string
+ *           nullable: true
+ *           description: Optional default dashboard query restored when loading the dashboard.
+ *           example: "service.name = 'api'"
+ *         savedQueryLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           nullable: true
+ *           description: Query language used by savedQuery.
+ *           default: "lucene"
+ *           example: "sql"
+ *         savedFilterValues:
+ *           type: array
+ *           description: Optional default dashboard filter values restored when loading the dashboard.
+ *           items:
+ *             $ref: '#/components/schemas/SavedFilterValue'
  *
  *     CreateDashboardRequest:
  *       type: object
@@ -865,6 +951,22 @@ async function getMissingSources(
  *           description: Dashboard filter keys to add to the dashboard and apply across all tiles
  *           items:
  *             $ref: '#/components/schemas/FilterInput'
+ *         savedQuery:
+ *           type: string
+ *           nullable: true
+ *           description: Optional default dashboard query to persist on the dashboard.
+ *           example: "service.name = 'api'"
+ *         savedQueryLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           nullable: true
+ *           description: Query language used by savedQuery.
+ *           default: "lucene"
+ *           example: "sql"
+ *         savedFilterValues:
+ *           type: array
+ *           description: Optional default dashboard filter values to persist on the dashboard.
+ *           items:
+ *             $ref: '#/components/schemas/SavedFilterValue'
  *
  *     UpdateDashboardRequest:
  *       type: object
@@ -893,6 +995,22 @@ async function getMissingSources(
  *           description: Dashboard filter keys on the dashboard, applied across all tiles
  *           items:
  *             $ref: '#/components/schemas/Filter'
+ *         savedQuery:
+ *           type: string
+ *           nullable: true
+ *           description: Optional default dashboard query to persist on the dashboard.
+ *           example: "service.name = 'api'"
+ *         savedQueryLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           nullable: true
+ *           description: Query language used by savedQuery.
+ *           default: "lucene"
+ *           example: "sql"
+ *         savedFilterValues:
+ *           type: array
+ *           description: Optional default dashboard filter values to persist on the dashboard.
+ *           items:
+ *             $ref: '#/components/schemas/SavedFilterValue'
  *
  *     DashboardResponse:
  *       allOf:
@@ -994,7 +1112,16 @@ router.get('/', async (req, res, next) => {
 
     const dashboards = await Dashboard.find(
       { team: teamId },
-      { _id: 1, name: 1, tiles: 1, tags: 1, filters: 1 },
+      {
+        _id: 1,
+        name: 1,
+        tiles: 1,
+        tags: 1,
+        filters: 1,
+        savedQuery: 1,
+        savedQueryLanguage: 1,
+        savedFilterValues: 1,
+      },
     ).sort({ name: -1 });
 
     res.json({
@@ -1102,7 +1229,16 @@ router.get(
 
       const dashboard = await Dashboard.findOne(
         { team: teamId, _id: req.params.id },
-        { _id: 1, name: 1, tiles: 1, tags: 1, filters: 1 },
+        {
+          _id: 1,
+          name: 1,
+          tiles: 1,
+          tags: 1,
+          filters: 1,
+          savedQuery: 1,
+          savedQueryLanguage: 1,
+          savedFilterValues: 1,
+        },
       );
 
       if (dashboard == null) {
@@ -1252,12 +1388,7 @@ router.get(
 router.post(
   '/',
   validateRequest({
-    body: z.object({
-      name: z.string().max(1024),
-      tiles: externalDashboardTileListSchema,
-      tags: tagsSchema,
-      filters: z.array(externalDashboardFilterSchema).optional(),
-    }),
+    body: createDashboardBodySchema,
   }),
   async (req, res, next) => {
     try {
@@ -1266,7 +1397,15 @@ router.post(
         return res.sendStatus(403);
       }
 
-      const { name, tiles, tags, filters } = req.body;
+      const {
+        name,
+        tiles,
+        tags,
+        filters,
+        savedQuery,
+        savedQueryLanguage,
+        savedFilterValues,
+      } = req.body;
 
       const missingSources = await getMissingSources(teamId, tiles, filters);
       if (missingSources.length > 0) {
@@ -1299,11 +1438,19 @@ router.post(
         }),
       );
 
+      const normalizedSavedQueryLanguage = resolveSavedQueryLanguage({
+        savedQuery,
+        savedQueryLanguage,
+      });
+
       const newDashboard = await new Dashboard({
         name,
         tiles: internalTiles,
         tags: tags && uniq(tags),
         filters: filtersWithIds,
+        savedQuery,
+        savedQueryLanguage: normalizedSavedQueryLanguage,
+        savedFilterValues,
         team: teamId,
       }).save();
 
@@ -1460,12 +1607,7 @@ router.put(
     params: z.object({
       id: objectIdSchema,
     }),
-    body: z.object({
-      name: z.string().max(1024),
-      tiles: externalDashboardTileListSchema,
-      tags: tagsSchema,
-      filters: z.array(externalDashboardFilterSchemaWithId).optional(),
-    }),
+    body: updateDashboardBodySchema,
   }),
   async (req, res, next) => {
     try {
@@ -1478,7 +1620,15 @@ router.put(
         return res.sendStatus(400);
       }
 
-      const { name, tiles, tags, filters } = req.body ?? {};
+      const {
+        name,
+        tiles,
+        tags,
+        filters,
+        savedQuery,
+        savedQueryLanguage,
+        savedFilterValues,
+      } = req.body ?? {};
 
       const missingSources = await getMissingSources(teamId, tiles, filters);
       if (missingSources.length > 0) {
@@ -1527,6 +1677,19 @@ router.put(
             return translateExternalFilterToFilter({ ...filter, id: filterId });
           },
         );
+      }
+      if (savedQuery !== undefined) {
+        setPayload.savedQuery = savedQuery;
+      }
+      const normalizedSavedQueryLanguage = resolveSavedQueryLanguage({
+        savedQuery,
+        savedQueryLanguage,
+      });
+      if (normalizedSavedQueryLanguage !== undefined) {
+        setPayload.savedQueryLanguage = normalizedSavedQueryLanguage;
+      }
+      if (savedFilterValues !== undefined) {
+        setPayload.savedFilterValues = savedFilterValues;
       }
 
       const updatedDashboard = await Dashboard.findOneAndUpdate(
