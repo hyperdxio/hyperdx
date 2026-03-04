@@ -332,6 +332,7 @@ const getChartConfigFromAlert = (
         select: tile.config.select,
         timestampValueExpression: source.timestampValueExpression,
         where: tile.config.where,
+        whereLanguage: tile.config.whereLanguage,
         seriesReturnType: tile.config.seriesReturnType,
       };
     }
