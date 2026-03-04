@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.19.0",
+  "version": "2.20.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -31,7 +31,7 @@
     "@dagrejs/dagre": "^1.1.5",
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/browser": "^0.21.1",
-    "@hyperdx/common-utils": "^0.14.0",
+    "@hyperdx/common-utils": "^0.15.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
     "@lezer/highlight": "^1.2.0",
     "@mantine/core": "^7.17.8",
@@ -148,7 +148,7 @@
     "postcss": "^8.4.38",
     "postcss-preset-mantine": "^1.15.0",
     "prettier": "^3.3.2",
-    "storybook": "^10.1.10",
+    "storybook": "^10.2.10",
     "stylelint": "^16.26.1",
     "stylelint-config-standard-scss": "^16.0.0",
     "stylelint-prettier": "^5.0.3",

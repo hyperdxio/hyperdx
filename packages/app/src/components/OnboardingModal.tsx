@@ -234,6 +234,18 @@ function OnboardingModalComponent({
       setStep(startStep);
     }
   }, [startStep, step]);
+  useEffect(() => {
+    if (
+      (step === 'auto-detect' || step === 'source') &&
+      sources &&
+      sources.length > 0
+    ) {
+      // Sources may load in late once a connection is defined.
+      // If this happens, close the modal, we don't want to bother the user
+      // by forcing redefining their sources
+      setStep('closed');
+    }
+  }, [step, sources]);
 
   const createSourceMutation = useCreateSource();
   const createConnectionMutation = useCreateConnection();

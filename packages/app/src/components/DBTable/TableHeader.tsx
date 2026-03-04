@@ -4,26 +4,34 @@ import {
   IconArrowDown,
   IconArrowUp,
   IconGripVertical,
+  IconX,
 } from '@tabler/icons-react';
 import { flexRender, Header } from '@tanstack/react-table';
 
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 
+import { DBRowTableIconButton } from './DBRowTableIconButton';
+
+import logTableStyles from '../../../styles/LogTable.module.scss';
 import styles from '../Table.module.scss';
 
 export default function TableHeader({
   isLast,
   header,
   lastItemButtons,
+  onRemoveColumn,
 }: {
   isLast: boolean;
   header: Header<any, any>;
   lastItemButtons?: React.ReactNode;
+  onRemoveColumn?: () => void;
 }) {
   'use no memo'; // todo: table headers arent being resized properly with the react compiler
   return (
     <th
-      className="overflow-hidden"
+      className={cx('overflow-hidden', {
+        [logTableStyles.headerCellWithAction]: !!onRemoveColumn,
+      })}
       key={header.id}
       colSpan={header.colSpan}
       style={{
@@ -82,6 +90,18 @@ export default function TableHeader({
         )}
 
         <Group gap={0} wrap="nowrap" align="center">
+          {onRemoveColumn && (
+            <div className={logTableStyles.headerRemoveButton}>
+              <DBRowTableIconButton
+                onClick={onRemoveColumn}
+                title="Remove column"
+                variant="copy"
+                iconSize={10}
+              >
+                <IconX size={10} />
+              </DBRowTableIconButton>
+            </div>
+          )}
           {header.column.getCanResize() && !isLast && (
             <div
               onMouseDown={header.getResizeHandler()}

@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.19.0",
+  "version": "2.20.0",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -9,7 +9,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.23",
     "@esm2cjs/p-queue": "^7.3.0",
-    "@hyperdx/common-utils": "^0.14.0",
+    "@hyperdx/common-utils": "^0.15.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
     "@hyperdx/passport-local-mongoose": "^9.0.1",
     "@opentelemetry/api": "^1.8.0",
@@ -45,7 +45,7 @@
     "pino-http": "^11.0.0",
     "promised-handlebars": "^2.0.1",
     "protobufjs": "^7.5.2",
-    "semver": "^7.5.2",
+    "semver": "^7.5.3",
     "serialize-error": "^8.1.0",
     "uuid": "^8.3.2",
     "zod": "3.25",

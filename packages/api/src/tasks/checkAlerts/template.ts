@@ -67,6 +67,7 @@ export type AlertMessageTemplateDefaultView = {
   endTime: Date;
   granularity: string;
   group?: string;
+  isGroupedAlert: boolean;
   savedSearch?: ISavedSearch | null;
   source?: ISource | null;
   startTime: Date;
@@ -527,11 +528,6 @@ export const renderAlertTemplate = async ({
         const startTime = view.startTime.getTime();
         const endTime = view.endTime.getTime();
 
-        // Generate eventId with explicit distinction between grouped and non-grouped alerts
-        // to prevent collisions between empty group names and non-grouped alerts
-        const isGroupedAlert = Boolean(
-          alert.groupBy && alert.groupBy.trim() !== '',
-        );
         const eventId = objectHash({
           alertId: alert.id,
           channel: {
@@ -539,9 +535,8 @@ export const renderAlertTemplate = async ({
             id: channel.channel._id.toString(),
           },
           // Explicitly track if this is a grouped alert
-          isGrouped: isGroupedAlert,
-          // Only include groupId if this is actually a grouped alert with a non-empty group value
-          ...(isGroupedAlert && group ? { groupId: group } : {}),
+          isGrouped: view.isGroupedAlert,
+          ...(view.isGroupedAlert && group ? { groupId: group } : {}),
         });
 
         await notifyChannel({

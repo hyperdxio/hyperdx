@@ -15,7 +15,7 @@ import produce from 'immer';
 import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
-import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -72,7 +72,6 @@ import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
@@ -85,6 +84,9 @@ import ChartContainer from './components/charts/ChartContainer';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from './components/SearchInput/SearchWhereInput';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
@@ -98,7 +100,6 @@ import DashboardFiltersModal from './DashboardFiltersModal';
 import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
-import SearchInputV2 from './SearchInputV2';
 import {
   getFirstTimestampValueExpression,
   useSource,
@@ -118,6 +119,10 @@ const ReactGridLayout = WidthProvider(RGL);
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
+
+const whereLanguageParser = parseAsString.withDefault(
+  typeof window !== 'undefined' ? (getStoredLanguage() ?? 'lucene') : 'lucene',
+);
 
 const Tile = forwardRef(
   (
@@ -551,7 +556,13 @@ const EditTileModal = ({
         'You have unsaved changes. Discard them and close the editor?',
         'Discard',
       ).then(ok => {
-        if (ok) onClose();
+        if (ok) {
+          // Reset dirty state before closing so any re-invocation of
+          // handleClose (e.g. from Mantine focus management after the
+          // confirm modal closes) doesn't re-show the confirm dialog.
+          setHasUnsavedChanges(false);
+          onClose();
+        }
       });
     } else {
       onClose();
@@ -735,7 +746,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
   const [whereLanguage, setWhereLanguage] = useQueryState(
     'whereLanguage',
-    parseAsString.withDefault('lucene'),
+    whereLanguageParser,
   );
   // Get raw filter queries from URL (not processed by hook)
   const [rawFilterQueries] = useQueryState('filters', parseAsJson<Filter[]>());
@@ -784,7 +795,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     defaultValues: {
       granularity: granularity ?? 'auto',
       where: where ?? '',
-      whereLanguage: (whereLanguage as SearchConditionLanguage) ?? 'lucene',
+      whereLanguage:
+        (whereLanguage as SearchConditionLanguage) ??
+        getStoredLanguage() ??
+        'lucene',
     },
   });
 
@@ -1323,43 +1337,26 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       <Flex
         gap="sm"
         mt="sm"
+        wrap="wrap"
         component="form"
         onSubmit={e => {
           e.preventDefault();
           onSubmit();
         }}
       >
-        <Controller
+        <SearchWhereInput
+          tableConnections={tableConnections}
           control={control}
-          name="whereLanguage"
-          render={({ field }) =>
-            field.value === 'sql' ? (
-              <SQLInlineEditorControlled
-                tableConnections={tableConnections}
-                control={control}
-                name="where"
-                placeholder="SQL WHERE clause (ex. column = 'foo')"
-                onLanguageChange={lang => setValue('whereLanguage', lang)}
-                language="sql"
-                onSubmit={onSubmit}
-                label="GLOBAL WHERE"
-                enableHotkey
-                allowMultiline={true}
-              />
-            ) : (
-              <SearchInputV2
-                tableConnections={tableConnections}
-                control={control}
-                name="where"
-                onLanguageChange={lang => setValue('whereLanguage', lang)}
-                language="lucene"
-                placeholder="Search your events w/ Lucene ex. column:foo"
-                enableHotkey
-                data-testid="search-input"
-                onSubmit={onSubmit}
-              />
-            )
+          name="where"
+          onSubmit={onSubmit}
+          onLanguageChange={(lang: 'sql' | 'lucene') =>
+            setValue('whereLanguage', lang)
           }
+          label="WHERE"
+          enableHotkey
+          allowMultiline
+          minWidth={300}
+          data-testid="search-input"
         />
         <TimePicker
           inputValue={displayedTimeInputValue}

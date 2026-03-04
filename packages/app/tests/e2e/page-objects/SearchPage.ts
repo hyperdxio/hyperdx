@@ -30,6 +30,7 @@ export class SearchPage {
   private readonly searchInput: Locator;
   private readonly searchButton: Locator;
   private readonly saveSearchButton: Locator;
+  private readonly languageSelect: Locator;
   private readonly updateSearchButton: Locator;
   private readonly luceneTab: Locator;
   private readonly sqlTab: Locator;
@@ -57,8 +58,12 @@ export class SearchPage {
     this.searchButton = page.getByTestId('search-submit-button');
     this.saveSearchButton = page.getByTestId('save-search-button');
     this.updateSearchButton = page.getByTestId('update-search-button');
-    this.luceneTab = page.getByRole('button', { name: 'Lucene', exact: true });
-    this.sqlTab = page.getByRole('button', { name: 'SQL', exact: true });
+    const whereLanguageSwitch = page.getByTestId('where-language-switch');
+    this.languageSelect = whereLanguageSwitch.getByRole('textbox', {
+      name: 'Query language',
+    });
+    this.sqlTab = page.getByRole('option', { name: 'SQL', exact: true });
+    this.luceneTab = page.getByRole('option', { name: 'Lucene', exact: true });
     this.sourceSelector = page.getByTestId('source-selector');
     this.sourceSettingsMenu = page.getByTestId('source-settings-menu');
     this.editSourceMenuItem = page.getByTestId('edit-sources-menu-item');
@@ -127,6 +132,7 @@ export class SearchPage {
    * Switch to SQL mode
    */
   async switchToSQLMode() {
+    await this.languageSelect.click();
     await this.sqlTab.click();
   }
 
@@ -134,6 +140,7 @@ export class SearchPage {
    * Switch to Lucene mode
    */
   async switchToLuceneMode() {
+    await this.languageSelect.click();
     await this.luceneTab.click();
   }
 

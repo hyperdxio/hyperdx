@@ -442,8 +442,8 @@ const incidentIOWebhookSchema = z.object({
 const genericWebhookSchema = z.object({
   ...baseWebhookSchema,
   service: z.literal(WebhookService.Generic),
-  headers: z.record(z.string(), z.string()).optional(),
   body: z.string().optional(),
+  // headers are intentionally omitted from response schemas to avoid leaking sensitive information.
 });
 
 export const externalWebhookSchema = z.discriminatedUnion('service', [
