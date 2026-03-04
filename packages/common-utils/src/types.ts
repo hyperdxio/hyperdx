@@ -655,7 +655,7 @@ export const DashboardSchema = z.object({
   filters: z.array(DashboardFilterSchema).optional(),
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
-  savedFilterValues: z.array(FilterSchema).nullable().optional(),
+  savedFilterValues: z.array(FilterSchema).optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
 export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;

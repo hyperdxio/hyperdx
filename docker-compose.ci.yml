@@ -8,6 +8,7 @@ services:
     environment:
       CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
       HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: ${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
+      HYPERDX_OTEL_EXPORTER_TABLES_TTL: '87600h'
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
       HYPERDX_LOG_LEVEL: ${HYPERDX_LOG_LEVEL}
     volumes:
@@ -18,6 +19,7 @@ services:
     #   - '4317:4317' # OTLP gRPC receiver
     #   - '4318:4318' # OTLP http receiver
     #   - '8888:8888' # metrics extension
+    restart: on-failure
     networks:
       - internal
     depends_on:

@@ -522,6 +522,26 @@
         ],
         "description": "Query language for the where clause."
       },
+      "SavedFilterValue": {
+        "type": "object",
+        "required": [
+          "condition"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "sql"
+            ],
+            "default": "sql"
+          },
+          "condition": {
+            "type": "string",
+            "description": "SQL filter condition. For example use expressions in the form \"column IN ('value')\".",
+            "example": "ServiceName IN ('hdx-oss-dev-api')"
+          }
+        }
+      },
       "MetricDataType": {
         "type": "string",
         "enum": [
@@ -1539,6 +1559,26 @@
             "items": {
               "$ref": "#/components/schemas/Filter"
             }
+          },
+          "savedQuery": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional default dashboard query restored when loading the dashboard.",
+            "example": "service.name = 'api'"
+          },
+          "savedQueryLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "nullable": true,
+            "description": "Query language used by savedQuery.",
+            "default": "lucene",
+            "example": "sql"
+          },
+          "savedFilterValues": {
+            "type": "array",
+            "description": "Optional default dashboard filter values restored when loading the dashboard.",
+            "items": {
+              "$ref": "#/components/schemas/SavedFilterValue"
+            }
           }
         }
       },
@@ -1576,6 +1616,26 @@
             "description": "Dashboard filter keys to add to the dashboard and apply across all tiles",
             "items": {
               "$ref": "#/components/schemas/FilterInput"
+            }
+          },
+          "savedQuery": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional default dashboard query to persist on the dashboard.",
+            "example": "service.name = 'api'"
+          },
+          "savedQueryLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "nullable": true,
+            "description": "Query language used by savedQuery.",
+            "default": "lucene",
+            "example": "sql"
+          },
+          "savedFilterValues": {
+            "type": "array",
+            "description": "Optional default dashboard filter values to persist on the dashboard.",
+            "items": {
+              "$ref": "#/components/schemas/SavedFilterValue"
             }
           }
         }
@@ -1616,6 +1676,26 @@
             "description": "Dashboard filter keys on the dashboard, applied across all tiles",
             "items": {
               "$ref": "#/components/schemas/Filter"
+            }
+          },
+          "savedQuery": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional default dashboard query to persist on the dashboard.",
+            "example": "service.name = 'api'"
+          },
+          "savedQueryLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "nullable": true,
+            "description": "Query language used by savedQuery.",
+            "default": "lucene",
+            "example": "sql"
+          },
+          "savedFilterValues": {
+            "type": "array",
+            "description": "Optional default dashboard filter values to persist on the dashboard.",
+            "items": {
+              "$ref": "#/components/schemas/SavedFilterValue"
             }
           }
         }

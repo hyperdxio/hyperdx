@@ -50,6 +50,26 @@ import {
 } from '@/tasks/util';
 import logger from '@/utils/logger';
 
+/**
+ * Determine if an alert has group-by behavior.
+ * For saved search alerts, groupBy is on alert.groupBy.
+ * For tile alerts, groupBy is on tile.config.groupBy.
+ */
+export const alertHasGroupBy = (details: AlertDetails): boolean => {
+  const { alert } = details;
+  if (alert.groupBy && alert.groupBy.length > 0) {
+    return true;
+  }
+  if (
+    details.taskType === AlertTaskType.TILE &&
+    details.tile.config.groupBy &&
+    details.tile.config.groupBy.length > 0
+  ) {
+    return true;
+  }
+  return false;
+};
+
 export const doesExceedThreshold = (
   thresholdType: AlertThresholdType,
   threshold: number,
@@ -156,6 +176,7 @@ const fireChannelEvent = async ({
   dashboard,
   endTime,
   group,
+  isGroupedAlert,
   metadata,
   savedSearch,
   source,
@@ -172,6 +193,7 @@ const fireChannelEvent = async ({
   dashboard?: IDashboard | null;
   endTime: Date;
   group?: string;
+  isGroupedAlert: boolean;
   metadata: Metadata;
   savedSearch?: ISavedSearch | null;
   source?: ISource | null;
@@ -230,6 +252,7 @@ const fireChannelEvent = async ({
     endTime,
     granularity: `${windowSizeInMins} minute`,
     group,
+    isGroupedAlert,
     savedSearch,
     source,
     startTime,
@@ -406,6 +429,7 @@ const getChartConfigFromAlert = (
         select: tile.config.select,
         timestampValueExpression: source.timestampValueExpression,
         where: tile.config.where,
+        whereLanguage: tile.config.whereLanguage,
         seriesReturnType: tile.config.seriesReturnType,
       };
     }
@@ -523,10 +547,10 @@ export const processAlert = async (
       scheduleOffsetMinutes,
       scheduleStartAt,
     );
-    const hasGroupBy = alert.groupBy && alert.groupBy.length > 0;
+    const hasGroupBy = alertHasGroupBy(details);
 
     // Check if we should skip this alert check based on last evaluation time
-    if (shouldSkipAlertCheck(details, !!hasGroupBy, nowInMinsRoundDown)) {
+    if (shouldSkipAlertCheck(details, hasGroupBy, nowInMinsRoundDown)) {
       logger.info(
         {
           windowSizeInMins,
@@ -544,7 +568,7 @@ export const processAlert = async (
 
     const dateRange = getAlertEvaluationDateRange(
       details,
-      !!hasGroupBy,
+      hasGroupBy,
       nowInMinsRoundDown,
       windowSizeInMins,
       scheduleStartAt,
@@ -663,6 +687,7 @@ export const processAlert = async (
           startTime,
           endTime: fns.addMinutes(startTime, windowSizeInMins),
           group,
+          isGroupedAlert: hasGroupBy,
           metadata,
           savedSearch: (details as any).savedSearch,
           source,

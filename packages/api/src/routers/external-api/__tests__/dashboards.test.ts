@@ -40,6 +40,9 @@ describe('External API v2 Dashboards - old format', () => {
     name: 'Test External Dashboard',
     tiles: [makeExternalChart({ sourceId }), makeExternalChart({ sourceId })],
     tags: TEST_TAGS,
+    savedQuery: null,
+    savedQueryLanguage: null,
+    savedFilterValues: [],
     ...overrides,
   });
 
@@ -57,6 +60,9 @@ describe('External API v2 Dashboards - old format', () => {
     ],
     tags: TEST_TAGS,
     filters: [],
+    savedQuery: null,
+    savedQueryLanguage: null,
+    savedFilterValues: [],
     ...overrides,
   });
 
@@ -280,6 +286,9 @@ describe('External API v2 Dashboards - old format', () => {
           ],
           tags: ['format-test'],
           filters: [],
+          savedQuery: null,
+          savedQueryLanguage: null,
+          savedFilterValues: [],
         },
       });
 
@@ -360,6 +369,80 @@ describe('External API v2 Dashboards - old format', () => {
       expect(dashboards).toHaveLength(1);
       expect(dashboards[0].name).toBe(mockDashboard.name);
       expect(dashboards[0].tiles).toHaveLength(2);
+    });
+
+    it('should create a dashboard with saved query defaults', async () => {
+      const mockDashboard = createMockDashboard(traceSource._id.toString(), {
+        savedQuery: "service.name = 'api'",
+        savedQueryLanguage: 'sql',
+        savedFilterValues: [
+          {
+            type: 'sql',
+            condition: "ServiceName IN ('hdx-oss-dev-api')",
+          },
+        ],
+      });
+
+      const response = await authRequest('post', BASE_URL)
+        .send(mockDashboard)
+        .expect(200);
+
+      expect(response.body.data.savedQuery).toBe("service.name = 'api'");
+      expect(response.body.data.savedQueryLanguage).toBe('sql');
+      expect(response.body.data.savedFilterValues).toEqual([
+        {
+          type: 'sql',
+          condition: "ServiceName IN ('hdx-oss-dev-api')",
+        },
+      ]);
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+      expect(dashboardInDb?.savedQuery).toBe("service.name = 'api'");
+      expect(dashboardInDb?.savedQueryLanguage).toBe('sql');
+      expect(dashboardInDb?.savedFilterValues).toEqual([
+        {
+          type: 'sql',
+          condition: "ServiceName IN ('hdx-oss-dev-api')",
+        },
+      ]);
+    });
+
+    it('should default savedQueryLanguage to lucene when savedQuery is provided without a language', async () => {
+      const mockDashboard = omit(
+        createMockDashboard(traceSource._id.toString(), {
+          savedQuery: "service.name = 'api'",
+        }),
+        'savedQueryLanguage',
+      );
+
+      const response = await authRequest('post', BASE_URL)
+        .send(mockDashboard)
+        .expect(200);
+
+      expect(response.body.data.savedQuery).toBe("service.name = 'api'");
+      expect(response.body.data.savedQueryLanguage).toBe('lucene');
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+      expect(dashboardInDb?.savedQueryLanguage).toBe('lucene');
+    });
+
+    it('should return 400 when savedQueryLanguage is null and savedQuery is provided', async () => {
+      const mockDashboard = createMockDashboard(traceSource._id.toString(), {
+        savedQuery: "service.name = 'api'",
+        savedQueryLanguage: null,
+      });
+
+      const response = await authRequest('post', BASE_URL)
+        .send(mockDashboard)
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'savedQueryLanguage cannot be null when savedQuery is provided',
+      );
     });
 
     it('can create all chart types', async () => {
@@ -879,6 +962,56 @@ describe('External API v2 Dashboards - old format', () => {
       ).lean();
       expect(updatedDashboardInDb?.name).toBe('Updated Dashboard Name');
       expect(updatedDashboardInDb?.tiles).toHaveLength(2);
+    });
+
+    it('should update and clear saved query defaults', async () => {
+      const dashboard = await createTestDashboard({
+        savedQuery: 'service:api',
+        savedQueryLanguage: 'lucene',
+        savedFilterValues: [
+          {
+            type: 'lucene',
+            condition: 'env:prod',
+          },
+        ],
+      });
+      const updatedDashboard = createMockDashboardWithIds(
+        traceSource._id.toString(),
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send(updatedDashboard)
+        .expect(200);
+
+      expect(response.body.data.savedQuery).toBeNull();
+      expect(response.body.data.savedQueryLanguage).toBeNull();
+      expect(response.body.data.savedFilterValues).toEqual([]);
+
+      const updatedDashboardInDb = await Dashboard.findById(
+        dashboard._id,
+      ).lean();
+      expect(updatedDashboardInDb?.savedQuery).toBeNull();
+      expect(updatedDashboardInDb?.savedQueryLanguage).toBeNull();
+      expect(updatedDashboardInDb?.savedFilterValues).toEqual([]);
+    });
+
+    it('should return 400 when savedQueryLanguage is null and savedQuery is provided on update', async () => {
+      const dashboard = await createTestDashboard();
+      const updatedDashboard = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {
+          savedQuery: "service.name = 'api'",
+          savedQueryLanguage: null,
+        },
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send(updatedDashboard)
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'savedQueryLanguage cannot be null when savedQuery is provided',
+      );
     });
 
     it('should update dashboard filters when provided', async () => {
@@ -1814,6 +1947,9 @@ describe('External API v2 Dashboards - new format', () => {
           ],
           tags: ['format-test'],
           filters: [],
+          savedQuery: null,
+          savedQueryLanguage: null,
+          savedFilterValues: [],
         },
       });
 
@@ -1922,6 +2058,21 @@ describe('External API v2 Dashboards - new format', () => {
       expect(dashboards).toHaveLength(1);
       expect(dashboards[0].name).toBe(mockDashboard.name);
       expect(dashboards[0].tiles).toHaveLength(2);
+    });
+
+    it('should return 400 when savedQueryLanguage is null and savedQuery is provided', async () => {
+      const mockDashboard = createMockDashboard(traceSource._id.toString(), {
+        savedQuery: "service.name = 'api'",
+        savedQueryLanguage: null,
+      });
+
+      const response = await authRequest('post', BASE_URL)
+        .send(mockDashboard)
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'savedQueryLanguage cannot be null when savedQuery is provided',
+      );
     });
 
     it('can create all chart types', async () => {
@@ -2304,6 +2455,25 @@ describe('External API v2 Dashboards - new format', () => {
       ).lean();
       expect(updatedDashboardInDb?.name).toBe('Updated Dashboard Name');
       expect(updatedDashboardInDb?.tiles).toHaveLength(2);
+    });
+
+    it('should return 400 when savedQueryLanguage is null and savedQuery is provided on update', async () => {
+      const dashboard = await createTestDashboard();
+      const updatedDashboard = createMockDashboardWithIds(
+        traceSource._id.toString(),
+        {
+          savedQuery: "service.name = 'api'",
+          savedQueryLanguage: null,
+        },
+      );
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send(updatedDashboard)
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'savedQueryLanguage cannot be null when savedQuery is provided',
+      );
     });
 
     it('should update dashboard filters when provided', async () => {
