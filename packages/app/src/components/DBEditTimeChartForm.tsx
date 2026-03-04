@@ -815,6 +815,7 @@ export default function EditTimeChartForm({
   // Track previous values for detecting changes
   const prevGranularityRef = useRef(granularity);
   const prevDisplayTypeRef = useRef(displayType);
+  const prevConfigTypeRef = useRef(configType);
 
   useEffect(() => {
     // Emulate the granularity picker auto-searching similar to dashboards
@@ -825,8 +826,12 @@ export default function EditTimeChartForm({
   }, [granularity, onSubmit]);
 
   useEffect(() => {
-    if (displayType !== prevDisplayTypeRef.current) {
+    if (
+      displayType !== prevDisplayTypeRef.current ||
+      configType !== prevConfigTypeRef.current
+    ) {
       prevDisplayTypeRef.current = displayType;
+      prevConfigTypeRef.current = configType;
 
       if (displayType === DisplayType.Search && typeof select !== 'string') {
         setValue('select', '');
@@ -847,7 +852,7 @@ export default function EditTimeChartForm({
       }
       onSubmit();
     }
-  }, [displayType, select, setValue, onSubmit]);
+  }, [displayType, select, setValue, onSubmit, configType]);
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
@@ -1056,9 +1061,9 @@ export default function EditTimeChartForm({
               name="configType"
               render={({ field: { onChange, value } }) => (
                 <SegmentedControl
-                  value={value}
+                  value={value === 'sql' ? 'sql' : 'builder'}
                   onChange={(value: string) => {
-                    onChange(value ?? 'builder');
+                    onChange(value == 'sql' ? 'sql' : undefined);
                   }}
                   data={[
                     { label: 'Builder', value: 'builder' },
