@@ -205,7 +205,7 @@ export default function TeamMembersSection() {
   };
 
   return (
-    <Box id="team_members">
+    <Box id="team_members" data-testid="team-members-section">
       <Text size="md">Team</Text>
       <Divider my="md" />
 
@@ -214,6 +214,7 @@ export default function TeamMembersSection() {
           <Group align="center" justify="space-between">
             <div className="fs-7">Team Members</div>
             <Button
+              data-testid="invite-member-button"
               variant="primary"
               leftSection={<IconUserPlus size={16} />}
               onClick={() => setTeamInviteModalShow(true)}
@@ -361,6 +362,7 @@ export default function TeamMembersSection() {
           </Text>
           <Group justify="flex-end" gap="xs">
             <Button
+              data-testid="cancel-delete-member"
               variant="secondary"
               onClick={() =>
                 setDeleteTeamMemberConfirmationModalData({
@@ -373,6 +375,7 @@ export default function TeamMembersSection() {
               Cancel
             </Button>
             <Button
+              data-testid="confirm-delete-member"
               variant="danger"
               onClick={() =>
                 deleteTeamMemberConfirmationModalData.id &&
@@ -408,6 +411,7 @@ function InviteTeamMemberForm({
     >
       <Stack>
         <TextInput
+          data-testid="invite-email-input"
           label="Email"
           name="email"
           type="email"
@@ -421,6 +425,7 @@ function InviteTeamMemberForm({
           The invite link will automatically expire after 30 days.
         </div>
         <Button
+          data-testid="send-invite-button"
           variant="primary"
           type="submit"
           disabled={!email || isSubmitting}
