@@ -14,6 +14,7 @@ import {
   Metadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithOptDateRange,
@@ -98,14 +99,7 @@ export async function computeAliasWithClauses(
   };
   const query = await renderChartConfig(config, metadata, source.querySettings);
   const aliasMap = chSqlToAliasMap(query);
-  const withClauses = Object.entries(aliasMap)
-    .filter(([, value]) => value != null && value.trim() !== '')
-    .map(([name, value]) => ({
-      name,
-      sql: { sql: value, params: {} },
-      isSubquery: false as const,
-    }));
-  return withClauses.length > 0 ? withClauses : undefined;
+  return aliasMapToWithClauses(aliasMap);
 }
 
 export const doesExceedThreshold = (
