@@ -53,7 +53,7 @@ function ConnectionsSection() {
   const [isCreatingConnection, setIsCreatingConnection] = useState(false);
 
   return (
-    <Box id="connections">
+    <Box id="connections" data-testid="connections-section">
       <Text size="md">Connections</Text>
       <Divider my="md" />
       <Card>
@@ -112,6 +112,7 @@ function ConnectionsSection() {
         {!isCreatingConnection &&
           (IS_LOCAL_MODE ? (connections?.length ?? 0) < 1 : true) && (
             <Button
+              data-testid="add-connection-button"
               variant="primary"
               onClick={() => setIsCreatingConnection(true)}
             >
@@ -142,7 +143,7 @@ function ConnectionsSection() {
 
 function SourcesSection() {
   return (
-    <Box id="sources">
+    <Box id="sources" data-testid="sources-section">
       <Text size="md">Sources</Text>
       <Divider my="md" />
       <SourcesList
@@ -155,7 +156,7 @@ function SourcesSection() {
 }
 function IntegrationsSection() {
   return (
-    <Box id="integrations">
+    <Box id="integrations" data-testid="integrations-section">
       <Text size="md">Integrations</Text>
       <Divider my="md" />
       <Card>
@@ -203,7 +204,7 @@ function TeamNameSection() {
     [refetchTeam, setTeamName],
   );
   return (
-    <Box id="team_name">
+    <Box id="team_name" data-testid="team-name-section">
       <Text size="md">Team Name</Text>
       <Divider my="md" />
       <Card>
@@ -211,6 +212,7 @@ function TeamNameSection() {
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <Group gap="xs">
               <TextInput
+                data-testid="team-name-input"
                 size="xs"
                 placeholder="My Team"
                 required
@@ -227,6 +229,7 @@ function TeamNameSection() {
                 }}
               />
               <Button
+                data-testid="team-name-save-button"
                 type="submit"
                 size="xs"
                 variant="primary"
@@ -235,6 +238,7 @@ function TeamNameSection() {
                 Save
               </Button>
               <Button
+                data-testid="team-name-cancel-button"
                 type="button"
                 size="xs"
                 variant="secondary"
@@ -247,9 +251,12 @@ function TeamNameSection() {
           </form>
         ) : (
           <Group gap="lg">
-            <div className="fs-7">{team?.name}</div>
+            <div className="fs-7" data-testid="team-name-display">
+              {team?.name}
+            </div>
             {hasAdminAccess && (
               <Button
+                data-testid="team-name-change-button"
                 size="xs"
                 variant="secondary"
                 leftSection={<IconPencil size={16} />}
@@ -582,7 +589,7 @@ function ApiKeysSection() {
   };
 
   return (
-    <Box id="api_keys">
+    <Box id="api_keys" data-testid="api-keys-section">
       <Text size="md">API Keys</Text>
       <Divider my="md" />
       <Card mb="md">
@@ -593,6 +600,7 @@ function ApiKeysSection() {
           )}
           {hasAdminAccess && (
             <Button
+              data-testid="rotate-api-key-button"
               variant="danger"
               onClick={() => setRotateApiKeyConfirmationModalShow(true)}
             >
@@ -619,6 +627,7 @@ function ApiKeysSection() {
             </Text>
             <Group justify="end">
               <Button
+                data-testid="rotate-api-key-cancel"
                 variant="secondary"
                 className="mt-2 px-4 ms-2 float-end"
                 size="sm"
@@ -627,6 +636,7 @@ function ApiKeysSection() {
                 Cancel
               </Button>
               <Button
+                data-testid="rotate-api-key-confirm"
                 variant="danger"
                 className="mt-2 px-4 float-end"
                 size="sm"
@@ -657,7 +667,7 @@ export default function TeamPage() {
     team?.allowedAuthMethods != null && team?.allowedAuthMethods.length > 0;
 
   return (
-    <div className="TeamPage">
+    <div className="TeamPage" data-testid="team-page">
       <Head>
         <title>My Team - {brandName}</title>
       </Head>

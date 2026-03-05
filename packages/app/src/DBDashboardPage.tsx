@@ -91,7 +91,7 @@ import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { parseAsStringWithNewLines } from './utils/queryParsers';
+import { parseAsStringEncoded } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
@@ -556,7 +556,13 @@ const EditTileModal = ({
         'You have unsaved changes. Discard them and close the editor?',
         'Discard',
       ).then(ok => {
-        if (ok) onClose();
+        if (ok) {
+          // Reset dirty state before closing so any re-invocation of
+          // handleClose (e.g. from Mantine focus management after the
+          // confirm modal closes) doesn't re-show the confirm dialog.
+          setHasUnsavedChanges(false);
+          onClose();
+        }
       });
     } else {
       onClose();
@@ -736,7 +742,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   ) as [SQLInterval | undefined, (value: SQLInterval | undefined) => void];
   const [where, setWhere] = useQueryState(
     'where',
-    parseAsStringWithNewLines.withDefault(''),
+    parseAsStringEncoded.withDefault(''),
   );
   const [whereLanguage, setWhereLanguage] = useQueryState(
     'whereLanguage',
@@ -907,7 +913,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       : null;
     const currentFilterValues = rawFilterQueries?.length
       ? rawFilterQueries
-      : null;
+      : [];
 
     setDashboard(
       produce(dashboard, draft => {
@@ -940,7 +946,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       produce(dashboard, draft => {
         draft.savedQuery = null;
         draft.savedQueryLanguage = null;
-        draft.savedFilterValues = null;
+        draft.savedFilterValues = [];
       }),
       () => {
         notifications.show({
