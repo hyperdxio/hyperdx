@@ -164,6 +164,90 @@ export function applyTopNAggregation(
 }
 
 // ---------------------------------------------------------------------------
+// Filter key conversion helpers
+// ---------------------------------------------------------------------------
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Converts a flattened dot-notation property key (produced by flattenData())
+ * into a valid ClickHouse SQL expression for use in filter conditions.
+ *
+ * flattenData() uses JavaScript's object/array iteration, producing keys like:
+ *   "ResourceAttributes.service.name"     for Map(String, String) columns
+ *   "Events.Attributes[0].message.type"   for Array(Map(String, String)) columns
+ *
+ * These must be converted to bracket notation for ClickHouse Map access:
+ *   "ResourceAttributes['service.name']"
+ *   "Events.Attributes[1]['message.type']"  (note: 0-based JS -> 1-based CH index)
+ */
+export function flattenedKeyToSqlExpression(
+  key: string,
+  columnMeta: { name: string; type: string }[],
+): string {
+  for (const col of columnMeta) {
+    const baseType = stripTypeWrappers(col.type);
+
+    if (baseType.startsWith('Map(')) {
+      if (key.startsWith(col.name + '.')) {
+        const mapKey = key.slice(col.name.length + 1).replace(/'/g, "''");
+        return `${col.name}['${mapKey}']`;
+      }
+    } else if (baseType.startsWith('Array(')) {
+      const innerType = stripTypeWrappers(baseType.slice('Array('.length, -1));
+      if (innerType.startsWith('Map(')) {
+        const pattern = new RegExp(
+          `^${escapeRegExp(col.name)}\\[(\\d+)\\]\\.(.+)$`,
+        );
+        const match = key.match(pattern);
+        if (match) {
+          const chIndex = parseInt(match[1]) + 1;
+          const mapKey = match[2].replace(/'/g, "''");
+          return `${col.name}[${chIndex}]['${mapKey}']`;
+        }
+      }
+    }
+  }
+  return key;
+}
+
+/**
+ * Converts a flattened dot-notation property key into a filter key using
+ * ClickHouse bracket notation for Map columns.
+ * This matches the search bar format (WHERE ResourceAttributes['k8s.pod.name'] = ...).
+ * For simple (non-Map) columns, returns the key unchanged.
+ */
+export function flattenedKeyToFilterKey(
+  key: string,
+  columnMeta: { name: string; type: string }[],
+): string {
+  for (const col of columnMeta) {
+    const baseType = stripTypeWrappers(col.type);
+
+    if (baseType.startsWith('Map(')) {
+      if (key.startsWith(col.name + '.')) {
+        const mapKey = key.slice(col.name.length + 1).replace(/'/g, "''");
+        return `${col.name}['${mapKey}']`;
+      }
+    } else if (baseType.startsWith('Array(')) {
+      const innerType = stripTypeWrappers(baseType.slice('Array('.length, -1));
+      if (innerType.startsWith('Map(')) {
+        return flattenedKeyToSqlExpression(key, columnMeta);
+      }
+    }
+  }
+  return key;
+}
+
+export type AddFilterFn = (
+  property: string,
+  value: string,
+  action?: 'only' | 'exclude' | 'include',
+) => void;
+
+// ---------------------------------------------------------------------------
 // Field classification helpers
 // ---------------------------------------------------------------------------
 

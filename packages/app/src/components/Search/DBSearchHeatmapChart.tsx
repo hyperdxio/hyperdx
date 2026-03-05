@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -21,6 +21,7 @@ import { IconPlayerPlay } from '@tabler/icons-react';
 import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { getDurationMsExpression } from '@/source';
 
+import type { AddFilterFn } from '../DBDeltaChart';
 import DBDeltaChart from '../DBDeltaChart';
 import DBHeatmapChart from '../DBHeatmapChart';
 
@@ -33,10 +34,12 @@ export function DBSearchHeatmapChart({
   chartConfig,
   source,
   isReady,
+  onAddFilter,
 }: {
   chartConfig: ChartConfigWithDateRange;
   source: TSource;
   isReady: boolean;
+  onAddFilter?: AddFilterFn;
 }) {
   const [fields, setFields] = useQueryStates({
     value: parseAsString.withDefault(getDurationMsExpression(source)),
@@ -48,6 +51,18 @@ export function DBSearchHeatmapChart({
     yMax: parseAsFloat,
   });
   const [container, setContainer] = useState<HTMLElement | null>(null);
+
+  // After applying a filter, clear the heatmap selection so the delta chart
+  // resets instead of staying in comparison mode.
+  const handleAddFilterAndClearSelection = useCallback<
+    NonNullable<AddFilterFn>
+  >(
+    (property, value, action) => {
+      setFields({ xMin: null, xMax: null, yMin: null, yMax: null });
+      onAddFilter?.(property, value, action);
+    },
+    [onAddFilter, setFields],
+  );
 
   return (
     <Flex
@@ -119,6 +134,9 @@ export function DBSearchHeatmapChart({
           xMax={fields.xMax}
           yMin={fields.yMin}
           yMax={fields.yMax}
+          onAddFilter={
+            onAddFilter ? handleAddFilterAndClearSelection : undefined
+          }
         />
       ) : (
         <Center mih={100} h="100%">

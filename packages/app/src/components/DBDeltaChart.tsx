@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
@@ -21,12 +21,17 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
+import type { AddFilterFn } from './deltaChartUtils';
 import {
+  flattenedKeyToFilterKey,
   getPropertyStatistics,
   isDenylisted,
   isHighCardinality,
   mergeValueStatisticsMaps,
 } from './deltaChartUtils';
+
+// Re-export types so callers importing from DBDeltaChart don't need to change.
+export type { AddFilterFn } from './deltaChartUtils';
 import {
   CHART_GAP,
   CHART_HEIGHT,
@@ -42,6 +47,7 @@ export default function DBDeltaChart({
   xMax,
   yMin,
   yMax,
+  onAddFilter,
 }: {
   config: ChartConfigWithDateRange;
   valueExpr: string;
@@ -49,6 +55,7 @@ export default function DBDeltaChart({
   xMax: number;
   yMin: number;
   yMax: number;
+  onAddFilter?: AddFilterFn;
 }) {
   // Determine if the value expression uses aggregate functions
   const isAggregate = isAggregateFunction(valueExpr);
@@ -208,6 +215,15 @@ export default function DBDeltaChart({
   const columnMeta = useMemo<{ name: string; type: string }[]>(
     () => outlierData?.meta ?? inlierData?.meta ?? [],
     [outlierData?.meta, inlierData?.meta],
+  );
+
+  // Wrap onAddFilter to convert flattened dot-notation keys into ClickHouse bracket notation
+  const handleAddFilter = useCallback<NonNullable<AddFilterFn>>(
+    (property, value, action) => {
+      if (!onAddFilter) return;
+      onAddFilter(flattenedKeyToFilterKey(property, columnMeta), value, action);
+    },
+    [onAddFilter, columnMeta],
   );
 
   // TODO: Is loading state
@@ -405,6 +421,7 @@ export default function DBDeltaChart({
               inlierValueOccurences={
                 inlierValueOccurences.get(property) ?? new Map()
               }
+              onAddFilter={onAddFilter ? handleAddFilter : undefined}
               key={property}
             />
           ))}
@@ -441,6 +458,7 @@ export default function DBDeltaChart({
               inlierValueOccurences={
                 inlierValueOccurences.get(key) ?? new Map()
               }
+              onAddFilter={onAddFilter ? handleAddFilter : undefined}
               key={key}
             />
           ))}

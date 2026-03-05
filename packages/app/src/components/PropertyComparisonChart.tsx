@@ -1,4 +1,5 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { withErrorBoundary } from 'react-error-boundary';
 import type { TooltipProps } from 'recharts';
 import {
@@ -10,10 +11,17 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Text } from '@mantine/core';
+import { Flex, Text } from '@mantine/core';
+import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
-import { getChartColorError, getChartColorSuccess } from '@/utils';
+import {
+  getChartColorError,
+  getChartColorSuccess,
+  truncateMiddle,
+} from '@/utils';
 
+import { DBRowTableIconButton } from './DBTable/DBRowTableIconButton';
+import type { AddFilterFn } from './deltaChartUtils';
 import {
   applyTopNAggregation,
   mergeValueStatisticsMaps,
@@ -46,6 +54,7 @@ type TooltipContentProps = TooltipProps<number, string> & {
 };
 
 // Hover-only tooltip: shows value name and percentages.
+// Actions are handled by the click popover in PropertyComparisonChart.
 const HDXBarChartTooltip = withErrorBoundary(
   memo(({ active, payload, label, title }: TooltipContentProps) => {
     if (active && payload && payload.length) {
@@ -94,7 +103,7 @@ function TruncatedTick({ x = 0, y = 0, payload }: TickProps) {
   const value = String(payload?.value ?? '');
   const MAX_CHARS = 12;
   const displayValue =
-    value.length > MAX_CHARS ? value.slice(0, MAX_CHARS) + '…' : value;
+    value.length > MAX_CHARS ? value.slice(0, MAX_CHARS) + '\u2026' : value;
   return (
     <g transform={`translate(${x},${y})`}>
       <title>{value}</title>
@@ -117,16 +126,69 @@ export function PropertyComparisonChart({
   name,
   outlierValueOccurences,
   inlierValueOccurences,
+  onAddFilter,
 }: {
   name: string;
   outlierValueOccurences: Map<string, number>;
   inlierValueOccurences: Map<string, number>;
+  onAddFilter?: AddFilterFn;
 }) {
   const mergedValueStatistics = mergeValueStatisticsMaps(
     outlierValueOccurences,
     inlierValueOccurences,
   );
   const chartData = applyTopNAggregation(mergedValueStatistics);
+
+  const [clickedBar, setClickedBar] = useState<{
+    value: string;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
+  const [copiedValue, setCopiedValue] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Dismiss popover on click outside, scroll, or Escape key
+  useEffect(() => {
+    if (!clickedBar) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target as Node)
+      ) {
+        setClickedBar(null);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setClickedBar(null);
+    };
+    const handleScroll = () => setClickedBar(null);
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [clickedBar]);
+
+  const handleChartClick = (data: any, event: any) => {
+    if (!data?.activePayload?.length) {
+      setClickedBar(null);
+      return;
+    }
+    if (data.activePayload[0]?.payload?.isOther) {
+      setClickedBar(null);
+      return;
+    }
+    // Reset copy confirmation so it doesn't carry over to the new bar's popover
+    setCopiedValue(false);
+    setClickedBar({
+      value: String(data.activeLabel ?? ''),
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+  };
 
   return (
     <div style={{ width: '100%', height: CHART_HEIGHT }}>
@@ -154,6 +216,8 @@ export function PropertyComparisonChart({
             left: 0,
             bottom: 0,
           }}
+          onClick={handleChartClick}
+          style={{ cursor: 'pointer' }}
         >
           <XAxis dataKey="name" tick={<TruncatedTick />} />
           <YAxis
@@ -194,6 +258,97 @@ export function PropertyComparisonChart({
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+      {clickedBar &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            className={styles.chartTooltip}
+            style={{
+              position: 'fixed',
+              left: clickedBar.clientX,
+              top: clickedBar.clientY - 8,
+              transform: 'translate(-50%, -100%)',
+              zIndex: 1000,
+              borderRadius: 4,
+              padding: '8px 12px',
+              minWidth: 200,
+              maxWidth: 320,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            }}
+          >
+            <Text
+              size="xs"
+              c="dimmed"
+              fw={600}
+              mb={4}
+              style={{ wordBreak: 'break-all' }}
+              title={name}
+            >
+              {truncateMiddle(name, 40)}
+            </Text>
+            <Text size="xs" mb={6} style={{ wordBreak: 'break-all' }}>
+              {clickedBar.value.length === 0 ? (
+                <i>Empty String</i>
+              ) : (
+                clickedBar.value
+              )}
+            </Text>
+            <Flex gap={12} mb={8}>
+              <Text size="xs" c={getChartColorError()}>
+                Selection:{' '}
+                {(outlierValueOccurences.get(clickedBar.value) ?? 0).toFixed(1)}
+                %
+              </Text>
+              <Text size="xs" c={getChartColorSuccess()}>
+                Background:{' '}
+                {(inlierValueOccurences.get(clickedBar.value) ?? 0).toFixed(1)}%
+              </Text>
+            </Flex>
+            <Flex gap={4} align="center">
+              {onAddFilter && (
+                <>
+                  <DBRowTableIconButton
+                    variant="copy"
+                    title="Filter for this value"
+                    onClick={() => {
+                      onAddFilter(name, clickedBar.value, 'include');
+                      setClickedBar(null);
+                    }}
+                  >
+                    <IconFilter size={12} />
+                  </DBRowTableIconButton>
+                  <DBRowTableIconButton
+                    variant="copy"
+                    title="Exclude this value"
+                    onClick={() => {
+                      onAddFilter(name, clickedBar.value, 'exclude');
+                      setClickedBar(null);
+                    }}
+                  >
+                    <IconFilterX size={12} />
+                  </DBRowTableIconButton>
+                </>
+              )}
+              <DBRowTableIconButton
+                variant="copy"
+                title={copiedValue ? 'Copied!' : 'Copy value'}
+                isActive={copiedValue}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(clickedBar.value);
+                    setCopiedValue(true);
+                    setTimeout(() => setCopiedValue(false), 2000);
+                  } catch (err) {
+                    console.error('Failed to copy:', err);
+                  }
+                }}
+              >
+                <IconCopy size={12} />
+              </DBRowTableIconButton>
+            </Flex>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
