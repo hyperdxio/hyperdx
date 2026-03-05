@@ -1,14 +1,11 @@
 import { useMemo } from 'react';
 import stripAnsi from 'strip-ansi';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
 import { timeBucketByGranularity, toStartOfInterval } from '@/ChartUtils';
-import {
-  selectColumnMapWithoutAdditionalKeys,
-  useConfigWithPrimaryAndPartitionKey,
-} from '@/components/DBRowTable';
+import { useConfigWithPrimaryAndPartitionKey } from '@/components/DBRowTable';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 
@@ -130,7 +127,7 @@ function usePatterns({
   statusCodeExpression,
   enabled = true,
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
   severityTextExpression?: string;
@@ -220,7 +217,7 @@ export function useGroupedPatterns({
   totalCount,
   enabled = true,
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   samples: number;
   bodyValueExpression: string;
   severityTextExpression?: string;

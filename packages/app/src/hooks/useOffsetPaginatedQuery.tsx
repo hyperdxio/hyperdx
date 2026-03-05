@@ -13,6 +13,10 @@ import {
   isTimestampExpressionInFirstOrderBy,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  isBuilderChartConfig,
+  isRawSqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
   ChartConfigWithOptTimestamp,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -72,6 +76,7 @@ type QueryMeta = {
   metadata: Metadata;
   optimizedConfig?: ChartConfigWithOptTimestamp;
   source: TSource | undefined;
+  readonly: boolean;
 };
 
 // Get time window from page param
@@ -80,9 +85,10 @@ function getTimeWindowFromPageParam(
   pageParam: TPageParam,
 ): TimeWindow {
   const [startDate, endDate] = config.dateRange;
-  const windows = isFirstOrderByAscending(config.orderBy)
-    ? generateTimeWindowsAscending(startDate, endDate)
-    : generateTimeWindowsDescending(startDate, endDate);
+  const windows =
+    isBuilderChartConfig(config) && isFirstOrderByAscending(config.orderBy)
+      ? generateTimeWindowsAscending(startDate, endDate)
+      : generateTimeWindowsDescending(startDate, endDate);
   const window = windows[pageParam.windowIndex];
   if (window == null) {
     throw new Error('Invalid time window for page param');
@@ -96,7 +102,8 @@ function getNextPageParam(
   allPages: TQueryFnData[],
   config: ChartConfigWithOptTimestamp,
 ): TPageParam | undefined {
-  if (lastPage == null) {
+  // Pagination is not supported for raw SQL tables since they may not be ordered at all.
+  if (lastPage == null || isRawSqlChartConfig(config)) {
     return undefined;
   }
 
@@ -124,7 +131,8 @@ function getNextPageParam(
   }
 
   // If no more results in current window, move to next window (if windowing is being used)
-  const shouldUseWindowing = isTimestampExpressionInFirstOrderBy(config);
+  const shouldUseWindowing =
+    isBuilderChartConfig(config) && isTimestampExpressionInFirstOrderBy(config);
   const nextWindowIndex = currentWindow.windowIndex + 1;
   if (shouldUseWindowing && nextWindowIndex < windows.length) {
     return {
@@ -146,8 +154,14 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     throw new Error('Query missing client meta');
   }
 
-  const { queryClient, metadata, hasPreviousQueries, optimizedConfig, source } =
-    meta as QueryMeta;
+  const {
+    queryClient,
+    metadata,
+    hasPreviousQueries,
+    optimizedConfig,
+    source,
+    readonly,
+  } = meta as QueryMeta;
 
   // Only stream incrementally if this is a fresh query with no previous
   // response or if it's a paginated query
@@ -162,7 +176,8 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   const config = optimizedConfig ?? rawConfig;
 
   // Get the time window for this page
-  const shouldUseWindowing = isTimestampExpressionInFirstOrderBy(config);
+  const shouldUseWindowing =
+    isBuilderChartConfig(config) && isTimestampExpressionInFirstOrderBy(config);
   const timeWindow = shouldUseWindowing
     ? getTimeWindowFromPageParam(config, pageParam)
     : {
@@ -173,14 +188,16 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       };
 
   // Create config with windowed date range
-  const windowedConfig = {
-    ...config,
-    dateRange: [timeWindow.startTime, timeWindow.endTime] as [Date, Date],
-    limit: {
-      limit: config.limit?.limit,
-      offset: pageParam.offset,
-    },
-  };
+  const windowedConfig = isBuilderChartConfig(config)
+    ? {
+        ...config,
+        dateRange: [timeWindow.startTime, timeWindow.endTime] as [Date, Date],
+        limit: {
+          limit: config.limit?.limit,
+          offset: pageParam.offset,
+        },
+      }
+    : config;
 
   const query = await renderChartConfig(
     windowedConfig,
@@ -194,6 +211,8 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     setTimeout(() => abortController.abort(), queryTimeout * 1000);
   }
 
+  // Readonly = 2 means the query is readonly but can still specify query settings.
+  const clickHouseSettings = readonly ? { readonly: '2' } : {};
   const resultSet =
     await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
       query: query.sql,
@@ -201,6 +220,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       format: 'JSONCompactEachRowWithNamesAndTypes',
       abort_signal: abortController?.signal || signal,
       connectionId: config.connection,
+      clickhouse_settings: clickHouseSettings,
     });
 
   const stream = resultSet.stream();
@@ -402,14 +422,15 @@ export default function useOffsetPaginatedQuery(
   const hasPreviousQueries =
     matchedQueries.filter(([_, data]) => data != null).length > 0;
 
+  const builderConfig = isBuilderChartConfig(config) ? config : undefined;
   const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
-    useMVOptimizationExplanation(config, {
-      enabled: !!enabled,
+    useMVOptimizationExplanation(builderConfig, {
+      enabled: !!enabled && !!builderConfig,
       placeholderData: undefined,
     });
 
   const { data: source, isLoading: isSourceLoading } = useSource({
-    id: config?.source,
+    id: builderConfig?.source,
   });
 
   const {
@@ -445,6 +466,8 @@ export default function useOffsetPaginatedQuery(
       metadata,
       optimizedConfig: mvOptimizationData?.optimizedConfig,
       source,
+      // Additional readonly protection when the user is running a raw SQL query
+      readonly: isRawSqlChartConfig(config),
     } satisfies QueryMeta,
     queryFn,
     gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data

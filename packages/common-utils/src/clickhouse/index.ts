@@ -23,6 +23,7 @@ import {
   replaceJsonExpressions,
   splitAndTrimWithBracket,
 } from '@/core/utils';
+import { isBuilderChartConfig } from '@/guards';
 import { ChartConfigWithOptDateRange, QuerySettings } from '@/types';
 
 // export @clickhouse/client-common types
@@ -625,7 +626,9 @@ export abstract class BaseClickhouseClient {
     };
     querySettings: QuerySettings | undefined;
   }): Promise<ResponseJSON<Record<string, string | number>>> {
-    config = setChartSelectsAlias(config);
+    config = isBuilderChartConfig(config)
+      ? setChartSelectsAlias(config)
+      : config;
     const queries: ChSql[] = await Promise.all(
       splitChartConfigs(config).map(c =>
         renderChartConfig(c, metadata, querySettings),
@@ -652,7 +655,7 @@ export abstract class BaseClickhouseClient {
       return resultSets[0];
     }
     // metrics -> join resultSets
-    else if (resultSets.length > 1) {
+    else if (isBuilderChartConfig(config) && resultSets.length > 1) {
       const metaSet = new Map<string, { name: string; type: string }>();
       const tsBucketMap = new Map<string, Record<string, string | number>>();
       for (const resultSet of resultSets) {

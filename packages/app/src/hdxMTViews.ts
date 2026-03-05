@@ -13,7 +13,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   AggregateFunction,
-  ChartConfigWithOptDateRange,
+  BuilderChartConfigWithOptDateRange,
   DerivedColumn,
   QuerySettings,
   SQLInterval,
@@ -58,7 +58,7 @@ const getAggFn = (
 
 const buildMTViewDataTableDDL = (
   table: string,
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRange,
 ) => {
   if (!Array.isArray(chartConfig.select)) {
     throw new Error('Only array select is supported');
@@ -96,7 +96,7 @@ const buildMTViewDDL = (name: string, table: string, query: ChSql) => {
 };
 
 export const buildMTViewSelectQuery = async (
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRange,
   metadata: Metadata,
   querySettings: QuerySettings | undefined,
   customGranularity?: SQLInterval,

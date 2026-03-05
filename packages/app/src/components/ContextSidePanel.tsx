@@ -5,7 +5,7 @@ import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
@@ -38,7 +38,7 @@ enum ContextBy {
 
 interface ContextSubpanelProps {
   source: TSource;
-  dbSqlRowTableConfig: ChartConfigWithDateRange | undefined;
+  dbSqlRowTableConfig: BuilderChartConfigWithDateRange | undefined;
   rowData: Record<string, any>;
   rowId: string | undefined;
   breadcrumbPath?: BreadcrumbPath;

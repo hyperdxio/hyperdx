@@ -17,7 +17,11 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartCo
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  ChartConfigWithOptDateRange,
+  isBuilderSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
+  BuilderChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
@@ -67,6 +71,7 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
   }
   if (
     details.taskType === AlertTaskType.TILE &&
+    isBuilderSavedChartConfig(details.tile.config) &&
     details.tile.config.groupBy &&
     details.tile.config.groupBy.length > 0
   ) {
@@ -84,10 +89,10 @@ export async function computeAliasWithClauses(
   savedSearch: Pick<ISavedSearch, 'select' | 'where' | 'whereLanguage'>,
   source: ISource,
   metadata: Metadata,
-): Promise<ChartConfigWithOptDateRange['with']> {
+): Promise<BuilderChartConfigWithOptDateRange['with']> {
   const resolvedSelect =
     savedSearch.select || source.defaultTableSelectExpression || '';
-  const config: ChartConfigWithOptDateRange = {
+  const config: BuilderChartConfigWithOptDateRange = {
     connection: '',
     displayType: DisplayType.Search,
     from: source.from,
@@ -317,7 +322,7 @@ const getChartConfigFromAlert = (
   connection: string,
   dateRange: [Date, Date],
   windowSizeInMins: number,
-): ChartConfigWithOptDateRange | undefined => {
+): BuilderChartConfigWithOptDateRange | undefined => {
   const { alert, source } = details;
   if (details.taskType === AlertTaskType.SAVED_SEARCH) {
     const savedSearch = details.savedSearch;
@@ -344,6 +349,10 @@ const getChartConfigFromAlert = (
     };
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
+
+    // Alerts are not supported for raw sql based charts
+    if (isRawSqlSavedChartConfig(tile.config)) return undefined;
+
     // Doesn't work for metric alerts yet
     if (
       tile.config.displayType === DisplayType.Line ||

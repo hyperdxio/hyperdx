@@ -5,7 +5,7 @@ import {
   Metadata,
   MetadataCache,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
@@ -19,8 +19,8 @@ import {
 
 // Create a mock ChartConfig based on the Zod schema
 const createMockChartConfig = (
-  overrides: Partial<ChartConfigWithDateRange> = {},
-): ChartConfigWithDateRange =>
+  overrides: Partial<BuilderChartConfigWithDateRange> = {},
+): BuilderChartConfigWithDateRange =>
   ({
     timestampValueExpression: '',
     connection: 'foo',
@@ -29,7 +29,7 @@ const createMockChartConfig = (
       tableName: 'traces',
     },
     ...overrides,
-  }) as ChartConfigWithDateRange;
+  }) as BuilderChartConfigWithDateRange;
 
 jest.mock('@/source', () => ({
   useSources: jest.fn().mockReturnValue({
