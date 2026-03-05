@@ -25,9 +25,11 @@ import type { AddFilterFn } from './deltaChartUtils';
 import {
   flattenedKeyToFilterKey,
   getPropertyStatistics,
+  getStableSampleExpression,
   isDenylisted,
   isHighCardinality,
   mergeValueStatisticsMaps,
+  SAMPLE_SIZE,
 } from './deltaChartUtils';
 
 // Re-export types so callers importing from DBDeltaChart don't need to change.
@@ -48,6 +50,7 @@ export default function DBDeltaChart({
   yMin,
   yMax,
   onAddFilter,
+  spanIdExpression,
 }: {
   config: ChartConfigWithDateRange;
   valueExpr: string;
@@ -56,9 +59,13 @@ export default function DBDeltaChart({
   yMin: number;
   yMax: number;
   onAddFilter?: AddFilterFn;
+  spanIdExpression?: string;
 }) {
   // Determine if the value expression uses aggregate functions
   const isAggregate = isAggregateFunction(valueExpr);
+
+  // Build deterministic ORDER BY expression from source's spanIdExpression
+  const stableSampleExpr = getStableSampleExpression(spanIdExpression);
 
   // Get the timestamp expression from config
   const timestampExpr = getFirstTimestampValueExpression(
@@ -143,8 +150,8 @@ export default function DBDeltaChart({
                 ]
               : []),
           ],
-          orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-          limit: { limit: 1000 },
+          orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
+          limit: { limit: SAMPLE_SIZE },
         },
       },
     ];
@@ -198,8 +205,8 @@ export default function DBDeltaChart({
     with: buildWithClauses(true),
     select: '*',
     filters: buildFilters(true),
-    orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-    limit: { limit: 1000 },
+    orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
+    limit: { limit: SAMPLE_SIZE },
   });
 
   const { data: inlierData } = useQueriedChartConfig({
@@ -207,8 +214,8 @@ export default function DBDeltaChart({
     with: buildWithClauses(false),
     select: '*',
     filters: buildFilters(false),
-    orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-    limit: { limit: 1000 },
+    orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
+    limit: { limit: SAMPLE_SIZE },
   });
 
   // Column metadata for field classification (from ClickHouse response)

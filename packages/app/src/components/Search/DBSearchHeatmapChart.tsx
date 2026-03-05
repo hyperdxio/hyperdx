@@ -137,6 +137,7 @@ export function DBSearchHeatmapChart({
           onAddFilter={
             onAddFilter ? handleAddFilterAndClearSelection : undefined
           }
+          spanIdExpression={source.spanIdExpression}
         />
       ) : (
         <Center mih={100} h="100%">
