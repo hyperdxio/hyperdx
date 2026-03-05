@@ -76,6 +76,7 @@ type QueryMeta = {
   metadata: Metadata;
   optimizedConfig?: ChartConfigWithOptTimestamp;
   source: TSource | undefined;
+  readonly: boolean;
 };
 
 // Get time window from page param
@@ -153,8 +154,14 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     throw new Error('Query missing client meta');
   }
 
-  const { queryClient, metadata, hasPreviousQueries, optimizedConfig, source } =
-    meta as QueryMeta;
+  const {
+    queryClient,
+    metadata,
+    hasPreviousQueries,
+    optimizedConfig,
+    source,
+    readonly,
+  } = meta as QueryMeta;
 
   // Only stream incrementally if this is a fresh query with no previous
   // response or if it's a paginated query
@@ -204,6 +211,8 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     setTimeout(() => abortController.abort(), queryTimeout * 1000);
   }
 
+  // Readonly = 2 means the query is readonly but can still specify query settings.
+  const clickHouseSettings = readonly ? { readonly: '2' } : {};
   const resultSet =
     await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
       query: query.sql,
@@ -211,6 +220,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       format: 'JSONCompactEachRowWithNamesAndTypes',
       abort_signal: abortController?.signal || signal,
       connectionId: config.connection,
+      clickhouse_settings: clickHouseSettings,
     });
 
   const stream = resultSet.stream();
@@ -456,6 +466,8 @@ export default function useOffsetPaginatedQuery(
       metadata,
       optimizedConfig: mvOptimizationData?.optimizedConfig,
       source,
+      // Additional readonly protection when the user is running a raw SQL query
+      readonly: isRawSqlChartConfig(config),
     } satisfies QueryMeta,
     queryFn,
     gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data

@@ -162,6 +162,11 @@ async function* fetchDataInChunks({
     await renderMTViewConfig();
   }
 
+  // Readonly = 2 means the query is readonly but can still specify query settings.
+  const clickHouseSettings = isRawSqlChartConfig(config)
+    ? { readonly: '2' }
+    : {};
+
   if (enableParallelQueries) {
     // fetch in parallel
     const promises = windows.map(async (w, index) => {
@@ -176,6 +181,7 @@ async function* fetchDataInChunks({
           metadata,
           opts: {
             abort_signal: signal,
+            clickhouse_settings: clickHouseSettings,
           },
           querySettings,
         }),
