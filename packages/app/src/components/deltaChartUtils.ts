@@ -283,3 +283,36 @@ export function isHighCardinality(
 
   return effectiveUniqueness > 0.9;
 }
+
+// ---------------------------------------------------------------------------
+// Sampling configuration
+// ---------------------------------------------------------------------------
+
+// SAMPLE_SIZE: default number of rows sampled when the total count is unknown.
+// MIN_SAMPLE_SIZE / MAX_SAMPLE_SIZE: bounds for adaptive sampling.
+// SAMPLE_RATIO: fraction of total rows to sample (e.g., 0.01 = 1%).
+//
+// Adaptive formula: clamp(MIN, ceil(totalCount * SAMPLE_RATIO), MAX)
+// Falls back to SAMPLE_SIZE when total count is not yet available.
+//
+// STABLE_SAMPLE_EXPR: ClickHouse expression used for ORDER BY in sample queries.
+// 'cityHash64(SpanId)' gives deterministic ordering — same data always produces
+// the same sample, so hover highlights are stable across re-renders.
+// Set to 'rand()' to restore non-deterministic sampling.
+export const SAMPLE_SIZE = 1000;
+export const MIN_SAMPLE_SIZE = 500;
+export const MAX_SAMPLE_SIZE = 5000;
+export const SAMPLE_RATIO = 0.01;
+export const STABLE_SAMPLE_EXPR = 'cityHash64(SpanId)';
+
+/**
+ * Computes the effective sample size based on total row count.
+ * Returns SAMPLE_SIZE as fallback when totalCount is 0 or unavailable.
+ */
+export function computeEffectiveSampleSize(totalCount: number): number {
+  if (totalCount <= 0) return SAMPLE_SIZE;
+  return Math.min(
+    MAX_SAMPLE_SIZE,
+    Math.max(MIN_SAMPLE_SIZE, Math.ceil(totalCount * SAMPLE_RATIO)),
+  );
+}

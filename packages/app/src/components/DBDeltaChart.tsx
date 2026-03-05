@@ -22,10 +22,13 @@ import { getFirstTimestampValueExpression } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
 import {
+  computeEffectiveSampleSize,
   getPropertyStatistics,
   isDenylisted,
   isHighCardinality,
   mergeValueStatisticsMaps,
+  SAMPLE_SIZE,
+  STABLE_SAMPLE_EXPR,
 } from './deltaChartUtils';
 import {
   CHART_GAP,
@@ -136,8 +139,8 @@ export default function DBDeltaChart({
                 ]
               : []),
           ],
-          orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-          limit: { limit: 1000 },
+          orderBy: [{ ordering: 'DESC', valueExpression: STABLE_SAMPLE_EXPR }],
+          limit: { limit: SAMPLE_SIZE },
         },
       },
     ];
@@ -191,8 +194,8 @@ export default function DBDeltaChart({
     with: buildWithClauses(true),
     select: '*',
     filters: buildFilters(true),
-    orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-    limit: { limit: 1000 },
+    orderBy: [{ ordering: 'DESC', valueExpression: STABLE_SAMPLE_EXPR }],
+    limit: { limit: SAMPLE_SIZE },
   });
 
   const { data: inlierData } = useQueriedChartConfig({
@@ -200,8 +203,8 @@ export default function DBDeltaChart({
     with: buildWithClauses(false),
     select: '*',
     filters: buildFilters(false),
-    orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-    limit: { limit: 1000 },
+    orderBy: [{ ordering: 'DESC', valueExpression: STABLE_SAMPLE_EXPR }],
+    limit: { limit: SAMPLE_SIZE },
   });
 
   // Column metadata for field classification (from ClickHouse response)
