@@ -233,7 +233,7 @@ export function PropertyComparisonChart({
           />
           <Tooltip
             content={<HDXBarChartTooltip title={name} />}
-            allowEscapeViewBox={{ x: true, y: true }}
+            allowEscapeViewBox={{ x: false, y: true }}
             wrapperStyle={{ zIndex: 1000 }}
           />
           <Bar
