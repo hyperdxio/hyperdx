@@ -1197,7 +1197,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           );
         }}
       />
-      {IS_LOCAL_MODE === false && isLocalDashboard && (
+      {isLocalDashboard && (
         <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
           <Flex justify="space-between" align="center">
             <Text size="sm">
@@ -1397,18 +1397,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <IconRefresh size={18} />
           </ActionIcon>
         </Tooltip>
-        {!IS_LOCAL_MODE && (
-          <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-            <ActionIcon
-              variant="secondary"
-              onClick={() => setShowFiltersModal(true)}
-              data-testid="edit-filters-button"
-              size="input-sm"
-            >
-              <IconFilterEdit size={18} />
-            </ActionIcon>
-          </Tooltip>
-        )}
+        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+          <ActionIcon
+            variant="secondary"
+            onClick={() => setShowFiltersModal(true)}
+            data-testid="edit-filters-button"
+            size="input-sm"
+          >
+            <IconFilterEdit size={18} />
+          </ActionIcon>
+        </Tooltip>
         <Button
           data-testid="search-submit-button"
           variant="primary"
