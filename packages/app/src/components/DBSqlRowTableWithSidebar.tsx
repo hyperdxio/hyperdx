@@ -11,6 +11,7 @@ import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { useSource } from '@/source';
 import TabBar from '@/TabBar';
 import { useLocalStorage } from '@/utils';
+import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import { useNestedPanelState } from './ContextSidePanel';
 import { RowDataPanel } from './DBRowDataPanel';
@@ -62,7 +63,7 @@ export default function DBSqlRowTableWithSideBar({
   variant,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
-  const [rowId, setRowId] = useQueryState('rowWhere');
+  const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
   const [rowSource, setRowSource] = useQueryState('rowSource');
   const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
   const { setContextRowId, setContextRowSource } = useNestedPanelState();

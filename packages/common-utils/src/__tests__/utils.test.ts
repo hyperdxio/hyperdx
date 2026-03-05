@@ -10,6 +10,7 @@ import {
 } from '@/types';
 
 import {
+  aliasMapToWithClauses,
   convertToDashboardTemplate,
   extractSettingsClauseFromEnd,
   findJsonExpressions,
@@ -1737,6 +1738,73 @@ describe('utils', () => {
         granularity: 1000,
       });
       expect(result).toEqual(expected);
+    });
+  });
+
+  describe('aliasMapToWithClauses', () => {
+    it('should return undefined for undefined input', () => {
+      expect(aliasMapToWithClauses(undefined)).toBeUndefined();
+    });
+
+    it('should return undefined for empty alias map', () => {
+      expect(aliasMapToWithClauses({})).toBeUndefined();
+    });
+
+    it('should return undefined when all values are undefined', () => {
+      expect(
+        aliasMapToWithClauses({ body: undefined, service: undefined }),
+      ).toBeUndefined();
+    });
+
+    it('should return undefined when all values are empty strings', () => {
+      expect(
+        aliasMapToWithClauses({ body: '', service: '  ' }),
+      ).toBeUndefined();
+    });
+
+    it('should convert a single alias to a WITH clause', () => {
+      expect(aliasMapToWithClauses({ body: 'toString(Body)' })).toEqual([
+        {
+          name: 'body',
+          sql: { sql: 'toString(Body)', params: {} },
+          isSubquery: false,
+        },
+      ]);
+    });
+
+    it('should convert multiple aliases to WITH clauses', () => {
+      const result = aliasMapToWithClauses({
+        body: 'toString(Body)',
+        service: "ResourceAttributes['service.name']",
+      });
+      expect(result).toEqual([
+        {
+          name: 'body',
+          sql: { sql: 'toString(Body)', params: {} },
+          isSubquery: false,
+        },
+        {
+          name: 'service',
+          sql: {
+            sql: "ResourceAttributes['service.name']",
+            params: {},
+          },
+          isSubquery: false,
+        },
+      ]);
+    });
+
+    it('should skip entries with undefined or empty values', () => {
+      const result = aliasMapToWithClauses({
+        body: 'toString(Body)',
+        empty: '',
+        blank: '  ',
+        missing: undefined,
+        service: "ResourceAttributes['service.name']",
+      });
+      expect(result).toHaveLength(2);
+      expect(result![0].name).toBe('body');
+      expect(result![1].name).toBe('service');
     });
   });
 });

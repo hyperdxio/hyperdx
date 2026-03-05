@@ -283,3 +283,43 @@ export function isHighCardinality(
 
   return effectiveUniqueness > 0.9;
 }
+
+// ---------------------------------------------------------------------------
+// Sampling configuration
+// ---------------------------------------------------------------------------
+
+/** Default number of rows sampled when the total count is unknown */
+export const SAMPLE_SIZE = 1000;
+
+/** Minimum number of rows to sample */
+export const MIN_SAMPLE_SIZE = 500;
+
+/** Maximum number of rows to sample */
+export const MAX_SAMPLE_SIZE = 5000;
+
+/** Fraction of total rows to sample (e.g., 0.01 = 1%) */
+export const SAMPLE_RATIO = 0.01;
+
+/**
+ * Builds a deterministic ORDER BY expression for stable sampling.
+ * Uses the source's spanIdExpression when available, falls back to rand().
+ */
+export function getStableSampleExpression(spanIdExpression?: string): string {
+  if (spanIdExpression) {
+    return `cityHash64(${spanIdExpression})`;
+  }
+  return 'rand()';
+}
+
+/**
+ * Computes the effective sample size based on total row count.
+ * Adaptive formula: clamp(MIN_SAMPLE_SIZE, ceil(totalCount * SAMPLE_RATIO), MAX_SAMPLE_SIZE).
+ * Returns SAMPLE_SIZE as fallback when totalCount is 0 or unavailable.
+ */
+export function computeEffectiveSampleSize(totalCount: number): number {
+  if (totalCount <= 0) return SAMPLE_SIZE;
+  return Math.min(
+    MAX_SAMPLE_SIZE,
+    Math.max(MIN_SAMPLE_SIZE, Math.ceil(totalCount * SAMPLE_RATIO)),
+  );
+}

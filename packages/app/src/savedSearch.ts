@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { SavedSearch } from '@hyperdx/common-utils/dist/types';
 import {
   useMutation,
@@ -9,20 +8,21 @@ import {
 
 import { hdxServer } from './api';
 import { IS_LOCAL_MODE } from './config';
+import { localSavedSearches } from './localStore';
 import { SavedSearchWithEnhancedAlerts } from './types';
+
+async function fetchSavedSearches(): Promise<SavedSearchWithEnhancedAlerts[]> {
+  if (IS_LOCAL_MODE) {
+    // Locally stored saved searches never have alert data (alerts are cloud-only)
+    return localSavedSearches.getAll() as SavedSearchWithEnhancedAlerts[];
+  }
+  return hdxServer('saved-search').json<SavedSearchWithEnhancedAlerts[]>();
+}
 
 export function useSavedSearches() {
   return useQuery({
     queryKey: ['saved-search'],
-    queryFn: async () => {
-      if (IS_LOCAL_MODE) {
-        return [];
-      } else {
-        return hdxServer('saved-search').json<
-          SavedSearchWithEnhancedAlerts[]
-        >();
-      }
-    },
+    queryFn: fetchSavedSearches,
   });
 }
 
@@ -35,12 +35,7 @@ export function useSavedSearch(
 ) {
   return useQuery({
     queryKey: ['saved-search'],
-    queryFn: () => {
-      if (IS_LOCAL_MODE) {
-        return [];
-      }
-      return hdxServer('saved-search').json<SavedSearchWithEnhancedAlerts[]>();
-    },
+    queryFn: fetchSavedSearches,
     select: data => data.find(s => s.id === id),
     ...options,
   });
@@ -51,6 +46,11 @@ export function useCreateSavedSearch() {
 
   return useMutation({
     mutationFn: (data: Omit<SavedSearch, 'id'>) => {
+      if (IS_LOCAL_MODE) {
+        return Promise.resolve(
+          localSavedSearches.create(data) as SavedSearchWithEnhancedAlerts,
+        );
+      }
       return hdxServer('saved-search', {
         method: 'POST',
         json: data,
@@ -67,6 +67,15 @@ export function useUpdateSavedSearch() {
 
   return useMutation({
     mutationFn: (data: Partial<SavedSearch> & { id: SavedSearch['id'] }) => {
+      if (IS_LOCAL_MODE) {
+        const { id, ...updates } = data;
+        return Promise.resolve(
+          localSavedSearches.update(
+            id,
+            updates,
+          ) as SavedSearchWithEnhancedAlerts,
+        );
+      }
       return hdxServer(`saved-search/${data.id}`, {
         method: 'PATCH',
         json: data,
@@ -83,6 +92,10 @@ export function useDeleteSavedSearch() {
 
   return useMutation({
     mutationFn: (id: string) => {
+      if (IS_LOCAL_MODE) {
+        localSavedSearches.delete(id);
+        return Promise.resolve();
+      }
       return hdxServer(`saved-search/${id}`, { method: 'DELETE' }).json<void>();
     },
     onSuccess: () => {

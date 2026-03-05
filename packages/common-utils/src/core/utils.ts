@@ -7,6 +7,7 @@ export { default as objectHash } from 'object-hash';
 
 import { isBuilderSavedChartConfig } from '@/guards';
 import {
+  BuilderChartConfig,
   BuilderChartConfigWithDateRange,
   BuilderChartConfigWithOptTimestamp,
   DashboardFilter,
@@ -931,4 +932,33 @@ export function parseTokenizerFromTextIndex({
       console.error(`Unknown tokenizer ${tokenizerName} in type ${typeFull}.`);
       return undefined;
   }
+}
+
+/**
+ * Converts an aliasMap (e.g. from chSqlToAliasMap) to an array of WITH clause entries.
+ * These WITH clauses define aliases as expressions (isSubquery: false),
+ * making them available in WHERE and other clauses.
+ */
+export function aliasMapToWithClauses(
+  aliasMap: Record<string, string | undefined> | undefined,
+): BuilderChartConfig['with'] {
+  if (!aliasMap) {
+    return undefined;
+  }
+
+  const withClauses = Object.entries(aliasMap)
+    .filter(
+      (entry): entry is [string, string] =>
+        entry[1] != null && entry[1].trim() !== '',
+    )
+    .map(([name, value]) => ({
+      name,
+      sql: {
+        sql: value,
+        params: {},
+      },
+      isSubquery: false,
+    }));
+
+  return withClauses.length > 0 ? withClauses : undefined;
 }

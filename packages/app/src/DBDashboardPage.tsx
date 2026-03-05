@@ -95,7 +95,7 @@ import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { parseAsStringWithNewLines } from './utils/queryParsers';
+import { parseAsStringEncoded } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
@@ -766,7 +766,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   ) as [SQLInterval | undefined, (value: SQLInterval | undefined) => void];
   const [where, setWhere] = useQueryState(
     'where',
-    parseAsStringWithNewLines.withDefault(''),
+    parseAsStringEncoded.withDefault(''),
   );
   const [whereLanguage, setWhereLanguage] = useQueryState(
     'whereLanguage',
@@ -1221,7 +1221,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           );
         }}
       />
-      {IS_LOCAL_MODE === false && isLocalDashboard && (
+      {isLocalDashboard && (
         <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
           <Flex justify="space-between" align="center">
             <Text size="sm">
@@ -1421,18 +1421,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <IconRefresh size={18} />
           </ActionIcon>
         </Tooltip>
-        {!IS_LOCAL_MODE && (
-          <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-            <ActionIcon
-              variant="secondary"
-              onClick={() => setShowFiltersModal(true)}
-              data-testid="edit-filters-button"
-              size="input-sm"
-            >
-              <IconFilterEdit size={18} />
-            </ActionIcon>
-          </Tooltip>
-        )}
+        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+          <ActionIcon
+            variant="secondary"
+            onClick={() => setShowFiltersModal(true)}
+            data-testid="edit-filters-button"
+            size="input-sm"
+          >
+            <IconFilterEdit size={18} />
+          </ActionIcon>
+        </Tooltip>
         <Button
           data-testid="search-submit-button"
           variant="primary"

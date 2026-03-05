@@ -22,9 +22,11 @@ import { getFirstTimestampValueExpression } from '@/source';
 import { SQLPreview } from './ChartSQLPreview';
 import {
   getPropertyStatistics,
+  getStableSampleExpression,
   isDenylisted,
   isHighCardinality,
   mergeValueStatisticsMaps,
+  SAMPLE_SIZE,
 } from './deltaChartUtils';
 import {
   CHART_GAP,
@@ -41,6 +43,7 @@ export default function DBDeltaChart({
   xMax,
   yMin,
   yMax,
+  spanIdExpression,
 }: {
   config: BuilderChartConfigWithDateRange;
   valueExpr: string;
@@ -48,9 +51,13 @@ export default function DBDeltaChart({
   xMax: number;
   yMin: number;
   yMax: number;
+  spanIdExpression?: string;
 }) {
   // Determine if the value expression uses aggregate functions
   const isAggregate = isAggregateFunction(valueExpr);
+
+  // Build deterministic ORDER BY expression from source's spanIdExpression
+  const stableSampleExpr = getStableSampleExpression(spanIdExpression);
 
   // Get the timestamp expression from config
   const timestampExpr = getFirstTimestampValueExpression(
@@ -135,8 +142,8 @@ export default function DBDeltaChart({
                 ]
               : []),
           ],
-          orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-          limit: { limit: 1000 },
+          orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
+          limit: { limit: SAMPLE_SIZE },
         },
       },
     ];
@@ -190,8 +197,8 @@ export default function DBDeltaChart({
     with: buildWithClauses(true),
     select: '*',
     filters: buildFilters(true),
-    orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-    limit: { limit: 1000 },
+    orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
+    limit: { limit: SAMPLE_SIZE },
   });
 
   const { data: inlierData } = useQueriedChartConfig({
@@ -199,8 +206,8 @@ export default function DBDeltaChart({
     with: buildWithClauses(false),
     select: '*',
     filters: buildFilters(false),
-    orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-    limit: { limit: 1000 },
+    orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
+    limit: { limit: SAMPLE_SIZE },
   });
 
   // Column metadata for field classification (from ClickHouse response)

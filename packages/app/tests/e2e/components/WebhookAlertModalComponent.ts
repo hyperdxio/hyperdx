@@ -3,7 +3,7 @@ import { Locator, Page } from '@playwright/test';
 export class WebhookAlertModalComponent {
   private readonly modal: Locator;
   private readonly serviceTypeRadioGroup: Locator;
-  private readonly webhookNameInput: Locator;
+  readonly webhookNameInput: Locator;
   private readonly webhookUrlInput: Locator;
   private readonly addWebhookButton: Locator;
 
