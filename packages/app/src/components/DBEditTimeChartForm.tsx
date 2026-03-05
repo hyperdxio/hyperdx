@@ -888,10 +888,10 @@ export default function EditTimeChartForm({
   }, [granularity, onSubmit]);
 
   useEffect(() => {
-    if (
-      displayType !== prevDisplayTypeRef.current ||
-      configType !== prevConfigTypeRef.current
-    ) {
+    const displayTypeChanged = displayType !== prevDisplayTypeRef.current;
+    const configTypeChanged = configType !== prevConfigTypeRef.current;
+
+    if (displayTypeChanged || configTypeChanged) {
       prevDisplayTypeRef.current = displayType;
       prevConfigTypeRef.current = configType;
 
@@ -899,6 +899,7 @@ export default function EditTimeChartForm({
         setValue('select', '');
         setValue('series', []);
       }
+
       if (displayType !== DisplayType.Search && !Array.isArray(select)) {
         const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
           {
@@ -912,7 +913,11 @@ export default function EditTimeChartForm({
         setValue('select', defaultSeries);
         setValue('series', defaultSeries);
       }
-      onSubmit();
+
+      // Don't auto-submit when config type changes, to avoid clearing form state (like source)
+      if (displayTypeChanged) {
+        onSubmit();
+      }
     }
   }, [displayType, select, setValue, onSubmit, configType]);
 
@@ -1159,6 +1164,7 @@ export default function EditTimeChartForm({
         ) : isRawSqlInput ? (
           <RawSqlChartEditor
             control={control}
+            setValue={setValue}
             onOpenDisplaySettings={openDisplaySettings}
           />
         ) : (

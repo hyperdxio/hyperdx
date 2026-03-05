@@ -12,12 +12,12 @@ import {
   getFirstTimestampValueExpression,
   joinQuerySettings,
   optimizeTimestampValueExpression,
-  parseToNumber,
   parseToStartOfFunction,
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import { isBuilderChartConfig, isRawSqlChartConfig } from '@/guards';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
+import { renderRawSqlChartConfig } from '@/rawSqlParams';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
@@ -1408,7 +1408,7 @@ export async function renderChartConfig(
   querySettings: QuerySettings | undefined,
 ): Promise<ChSql> {
   if (isRawSqlChartConfig(rawChartConfig)) {
-    return chSql`${{ UNSAFE_RAW_SQL: rawChartConfig.sqlTemplate ?? '' }}`;
+    return renderRawSqlChartConfig(rawChartConfig);
   }
 
   // metric types require more rewriting since we know more about the schema

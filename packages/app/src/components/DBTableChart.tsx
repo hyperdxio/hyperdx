@@ -19,6 +19,7 @@ import { useSource } from '@/source';
 import { useIntersectionObserver } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
+import { getClientSideSortingFn } from './DBTable/sorting';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { SQLPreview } from './ChartSQLPreview';
 
@@ -143,6 +144,7 @@ export default function DBTableChart({
         numberFormat: groupByKeys.includes(key)
           ? undefined
           : config.numberFormat,
+        sortingFn: getClientSideSortingFn(data?.meta, key),
       }));
   }, [config.numberFormat, aliasMap, queriedConfig, data, hiddenColumns]);
 
@@ -234,6 +236,7 @@ export default function DBTableChart({
           columns={columns}
           getRowSearchLink={getRowSearchLink}
           sorting={effectiveSort}
+          enableClientSideSorting={isRawSqlChartConfig(config)}
           onSortingChange={handleSortingChange}
           variant={variant}
           tableBottom={
