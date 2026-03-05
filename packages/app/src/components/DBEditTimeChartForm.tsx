@@ -1060,10 +1060,8 @@ export default function EditTimeChartForm({
               name="configType"
               render={({ field: { onChange, value } }) => (
                 <SegmentedControl
-                  value={value === 'sql' ? 'sql' : 'builder'}
-                  onChange={(value: string) => {
-                    onChange(value == 'sql' ? 'sql' : 'builder');
-                  }}
+                  value={value ?? 'builder'}
+                  onChange={onChange}
                   data={[
                     { label: 'Builder', value: 'builder' },
                     { label: 'SQL', value: 'sql' },
