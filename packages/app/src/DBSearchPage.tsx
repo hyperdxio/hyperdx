@@ -27,10 +27,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  aliasMapToWithClauses,
   isBrowser,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   DisplayType,
