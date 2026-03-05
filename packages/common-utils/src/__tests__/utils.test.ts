@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
+import { isBuilderSavedChartConfig } from '@/guards';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   DashboardSchema,
   MetricsDataType,
   SourceKind,
@@ -272,7 +273,10 @@ describe('utils', () => {
     });
 
     it('should return the first column name for an array of objects input', () => {
-      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+      const orderBy: Exclude<
+        BuilderChartConfigWithDateRange['orderBy'],
+        string
+      > = [
         { valueExpression: 'column1', ordering: 'ASC' },
         { valueExpression: 'column2', ordering: 'ASC' },
       ];
@@ -288,7 +292,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: undefined,
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -297,7 +301,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: '',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -306,7 +310,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'ServiceName',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -315,7 +319,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'ServiceName ASC, Timestamp',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -324,7 +328,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'Timestamp',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -333,7 +337,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'Timestamp DESC, ServiceName',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -342,7 +346,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'Timestamp desc, ServiceName',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -354,7 +358,7 @@ describe('utils', () => {
           { valueExpression: 'Timestamp', ordering: 'ASC' },
           { valueExpression: 'ServiceName', ordering: 'ASC' },
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -363,7 +367,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'toStartOfDay(Timestamp), Timestamp',
         orderBy: '(toStartOfDay(Timestamp)) DESC, Timestamp',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -372,7 +376,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'toStartOfDay(Timestamp), Timestamp',
         orderBy: '(toStartOfHour(TimestampTime), TimestampTime) DESC',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -382,7 +386,7 @@ describe('utils', () => {
         timestampValueExpression:
           'toStartOfInterval(TimestampTime, INTERVAL 1 DAY)',
         orderBy: 'toStartOfInterval(TimestampTime, INTERVAL 1 DAY) DESC',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -412,7 +416,10 @@ describe('utils', () => {
     });
 
     it('should return true for ascending order in object input', () => {
-      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+      const orderBy: Exclude<
+        BuilderChartConfigWithDateRange['orderBy'],
+        string
+      > = [
         { valueExpression: 'column1', ordering: 'ASC' },
         { valueExpression: 'column2', ordering: 'DESC' },
       ];
@@ -420,7 +427,10 @@ describe('utils', () => {
     });
 
     it('should return false for descending order in object input', () => {
-      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+      const orderBy: Exclude<
+        BuilderChartConfigWithDateRange['orderBy'],
+        string
+      > = [
         { valueExpression: 'column1', ordering: 'DESC' },
         { valueExpression: 'column2', ordering: 'ASC' },
       ];
@@ -731,7 +741,10 @@ describe('utils', () => {
       ];
 
       const template = convertToDashboardTemplate(dashboard, sources);
-      const selectList = template.tiles[0].config.select;
+      const tileConfig = template.tiles[0].config;
+      if (!isBuilderSavedChartConfig(tileConfig))
+        throw new Error('Expected builder config');
+      const selectList = tileConfig.select;
       expect(Array.isArray(selectList)).toBe(true);
       expect((selectList as any[])[0]).toMatchObject({
         aggFn: 'quantile',

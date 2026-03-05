@@ -8,7 +8,7 @@ import {
   inferTimestampColumn,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Code, Divider, Group, Modal, Text } from '@mantine/core';
 import { useDisclosure, useElementSize } from '@mantine/hooks';
@@ -269,15 +269,15 @@ type HeatmapChartConfig = {
       countExpression?: string;
     },
   ];
-  from: ChartConfigWithDateRange['from'];
-  where: ChartConfigWithDateRange['where'];
-  dateRange: ChartConfigWithDateRange['dateRange'];
-  granularity: ChartConfigWithDateRange['granularity'];
-  timestampValueExpression: ChartConfigWithDateRange['timestampValueExpression'];
-  numberFormat?: ChartConfigWithDateRange['numberFormat'];
-  filters?: ChartConfigWithDateRange['filters'];
+  from: BuilderChartConfigWithDateRange['from'];
+  where: BuilderChartConfigWithDateRange['where'];
+  dateRange: BuilderChartConfigWithDateRange['dateRange'];
+  granularity: BuilderChartConfigWithDateRange['granularity'];
+  timestampValueExpression: BuilderChartConfigWithDateRange['timestampValueExpression'];
+  numberFormat?: BuilderChartConfigWithDateRange['numberFormat'];
+  filters?: BuilderChartConfigWithDateRange['filters'];
   connection: string;
-  with?: ChartConfigWithDateRange['with'];
+  with?: BuilderChartConfigWithDateRange['with'];
 };
 
 function HeatmapContainer({
@@ -306,7 +306,7 @@ function HeatmapContainer({
   // When valueExpression is an aggregate like count(), we need to use a CTE to calculate the heatmap
   const isAggregateExpression = isAggregateFunction(valueExpression);
 
-  const minMaxConfig: ChartConfigWithDateRange = isAggregateExpression
+  const minMaxConfig: BuilderChartConfigWithDateRange = isAggregateExpression
     ? {
         ...config,
         where: '',
@@ -372,7 +372,7 @@ function HeatmapContainer({
   const min = Number.parseInt(minMaxData?.data?.[0]?.['min'] ?? '0', 10);
   const max = Number.parseInt(minMaxData?.data?.[0]?.['max'] ?? '0', 10);
 
-  const bucketConfig: ChartConfigWithDateRange = isAggregateExpression
+  const bucketConfig: BuilderChartConfigWithDateRange = isAggregateExpression
     ? {
         ...config,
         where: '',

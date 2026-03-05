@@ -16,18 +16,22 @@ import {
   parseToStartOfFunction,
   splitAndTrimWithBracket,
 } from '@/core/utils';
+import { isBuilderChartConfig, isRawSqlChartConfig } from '@/guards';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
+  BuilderChartConfigWithDateRange,
+  BuilderChartConfigWithOptDateRange,
   ChartConfig,
   ChartConfigSchema,
-  ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   ChSqlSchema,
   CteChartConfig,
+  DateRange,
   MetricsDataType,
   QuerySettings,
+  RawSqlChartConfig,
   SearchCondition,
   SearchConditionLanguage,
   SelectList,
@@ -71,23 +75,23 @@ const DEFAULT_METRIC_TABLE_TIME_COLUMN = 'TimeUnix';
 export const FIXED_TIME_BUCKET_EXPR_ALIAS = '__hdx_time_bucket';
 
 export function isUsingGroupBy(
-  chartConfig: ChartConfigWithOptDateRange,
-): chartConfig is Omit<ChartConfigWithDateRange, 'groupBy'> & {
-  groupBy: NonNullable<ChartConfigWithDateRange['groupBy']>;
+  chartConfig: BuilderChartConfigWithOptDateRange,
+): chartConfig is Omit<BuilderChartConfigWithDateRange, 'groupBy'> & {
+  groupBy: NonNullable<BuilderChartConfigWithDateRange['groupBy']>;
 } {
   return chartConfig.groupBy != null && chartConfig.groupBy.length > 0;
 }
 
 export function isUsingGranularity(
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRange,
 ): chartConfig is Omit<
-  Omit<Omit<ChartConfigWithDateRange, 'granularity'>, 'dateRange'>,
+  Omit<Omit<BuilderChartConfigWithDateRange, 'granularity'>, 'dateRange'>,
   'timestampValueExpression'
 > & {
-  granularity: NonNullable<ChartConfigWithDateRange['granularity']>;
-  dateRange: NonNullable<ChartConfigWithDateRange['dateRange']>;
+  granularity: NonNullable<BuilderChartConfigWithDateRange['granularity']>;
+  dateRange: NonNullable<BuilderChartConfigWithDateRange['dateRange']>;
   timestampValueExpression: NonNullable<
-    ChartConfigWithDateRange['timestampValueExpression']
+    BuilderChartConfigWithDateRange['timestampValueExpression']
   >;
 } {
   return (
@@ -97,13 +101,17 @@ export function isUsingGranularity(
 }
 
 export const isMetricChartConfig = (
-  chartConfig: ChartConfigWithOptDateRange,
-) => {
+  chartConfig: BuilderChartConfigWithOptDateRange,
+): chartConfig is BuilderChartConfigWithOptDateRange & {
+  metricTables: NonNullable<BuilderChartConfigWithOptDateRange['metricTables']>;
+} => {
   return chartConfig.metricTables != null;
 };
 
 // TODO: apply this to all chart configs
-export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
+export const setChartSelectsAlias = (
+  config: BuilderChartConfigWithOptDateRange,
+) => {
   if (Array.isArray(config.select) && isMetricChartConfig(config)) {
     return {
       ...config,
@@ -120,10 +128,16 @@ export const setChartSelectsAlias = (config: ChartConfigWithOptDateRange) => {
   return config;
 };
 
-export const splitChartConfigs = (config: ChartConfigWithOptDateRange) => {
+export const splitChartConfigs = (
+  config: ChartConfigWithOptDateRange,
+): ChartConfigWithOptDateRangeEx[] => {
   // only split metric queries for now
-  if (isMetricChartConfig(config) && Array.isArray(config.select)) {
-    const _configs: ChartConfigWithOptDateRange[] = [];
+  if (
+    isBuilderChartConfig(config) &&
+    isMetricChartConfig(config) &&
+    Array.isArray(config.select)
+  ) {
+    const _configs: BuilderChartConfigWithOptDateRange[] = [];
     // split the query into multiple queries
     for (const select of config.select) {
       _configs.push({
@@ -133,7 +147,12 @@ export const splitChartConfigs = (config: ChartConfigWithOptDateRange) => {
     }
     return _configs;
   }
-  return [config];
+
+  if (isRawSqlChartConfig(config) || isBuilderChartConfig(config)) {
+    return [config]; // narrowed to BuilderChartConfig or RawSqlChartConfig, assignable to RawSqlChartConfigEx
+  }
+
+  throw new Error(`Unexpected chart config type: ${JSON.stringify(config)}`);
 };
 
 const INVERSE_OPERATOR_MAP = {
@@ -391,7 +410,7 @@ const aggFnExpr = ({
 
 async function renderSelectList(
   selectList: SelectList,
-  chartConfig: ChartConfigWithOptDateRangeEx,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ) {
   if (typeof selectList === 'string') {
@@ -546,7 +565,7 @@ export async function timeFilterExpr({
   metadata: Metadata;
   tableName: string;
   timestampValueExpression: string;
-  with?: ChartConfigWithDateRange['with'];
+  with?: BuilderChartConfigWithDateRange['with'];
 }) {
   const startTime = dateRange[0].getTime();
   const endTime = dateRange[1].getTime();
@@ -634,7 +653,7 @@ export async function timeFilterExpr({
 }
 
 async function renderSelect(
-  chartConfig: ChartConfigWithOptDateRangeEx,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
   /**
@@ -666,7 +685,7 @@ async function renderSelect(
 function renderFrom({
   from,
 }: {
-  from: ChartConfigWithDateRange['from'];
+  from: BuilderChartConfigWithDateRange['from'];
 }): ChSql {
   return concatChSql(
     '.',
@@ -689,10 +708,10 @@ async function renderWhereExpression({
   condition: SearchCondition;
   language: SearchConditionLanguage;
   metadata: Metadata;
-  from: ChartConfigWithDateRange['from'];
+  from: BuilderChartConfigWithDateRange['from'];
   implicitColumnExpression?: string;
   connectionId: string;
-  with?: ChartConfigWithDateRange['with'];
+  with?: BuilderChartConfigWithDateRange['with'];
 }): Promise<ChSql> {
   let _condition = condition;
   if (language === 'lucene') {
@@ -740,7 +759,7 @@ async function renderWhereExpression({
 }
 
 async function renderWhere(
-  chartConfig: ChartConfigWithOptDateRangeEx,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
   let whereSearchCondition: ChSql | [] = [];
@@ -847,7 +866,7 @@ async function renderWhere(
 }
 
 async function renderGroupBy(
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRange,
   metadata: Metadata,
 ): Promise<ChSql | undefined> {
   return concatChSql(
@@ -866,7 +885,7 @@ async function renderGroupBy(
 }
 
 async function renderHaving(
-  chartConfig: ChartConfigWithOptDateRangeEx,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql | undefined> {
   if (!isNonEmptyWhereExpr(chartConfig.having)) {
@@ -885,7 +904,7 @@ async function renderHaving(
 }
 
 function renderOrderBy(
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRange,
 ): ChSql | undefined {
   const isIncludingTimeBucket = isUsingGranularity(chartConfig);
 
@@ -909,7 +928,7 @@ function renderOrderBy(
 }
 
 function renderLimit(
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRange,
 ): ChSql | undefined {
   if (chartConfig.limit == null || chartConfig.limit.limit == null) {
     return undefined;
@@ -924,7 +943,7 @@ function renderLimit(
 }
 
 function renderSettings(
-  chartConfig: ChartConfigWithOptDateRangeEx,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   querySettings: QuerySettings | undefined,
 ) {
   const querySettingsJoined = joinQuerySettings(querySettings);
@@ -937,13 +956,24 @@ function renderSettings(
 
 // includedDataInterval isn't exported at this time. It's only used internally
 // for metric SQL generation.
-export type ChartConfigWithOptDateRangeEx = ChartConfigWithOptDateRange & {
+type InternalChartFields = {
   includedDataInterval?: string;
   settings?: ChSql;
 };
 
+type BuilderChartConfigWithOptDateRangeEx = BuilderChartConfigWithOptDateRange &
+  InternalChartFields;
+
+type RawSqlChartConfigEx = RawSqlChartConfig &
+  Partial<DateRange> &
+  InternalChartFields;
+
+export type ChartConfigWithOptDateRangeEx =
+  | BuilderChartConfigWithOptDateRangeEx
+  | RawSqlChartConfigEx;
+
 async function renderWith(
-  chartConfig: ChartConfigWithOptDateRangeEx,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
   querySettings: QuerySettings | undefined,
 ): Promise<ChSql | undefined> {
@@ -1031,7 +1061,7 @@ function intervalToSeconds(interval: SQLInterval): number {
 }
 
 function renderFill(
-  chartConfig: ChartConfigWithOptDateRangeEx,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
 ): ChSql | undefined {
   const { granularity, dateRange } = chartConfig;
   if (dateRange && granularity && granularity !== 'auto') {
@@ -1049,7 +1079,7 @@ function renderFill(
 }
 
 function renderDeltaExpression(
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRange,
   valueExpression: string,
 ) {
   const interval =
@@ -1067,9 +1097,9 @@ function renderDeltaExpression(
 }
 
 async function translateMetricChartConfig(
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
-): Promise<ChartConfigWithOptDateRangeEx> {
+): Promise<BuilderChartConfigWithOptDateRangeEx> {
   const metricTables = chartConfig.metricTables;
   if (!metricTables) {
     return chartConfig;
@@ -1318,7 +1348,7 @@ async function translateMetricChartConfig(
         Array.isArray(chartConfig.dateRange)
           ? convertDateRangeToGranularityString(chartConfig.dateRange)
           : chartConfig.granularity,
-    } as ChartConfigWithOptDateRangeEx;
+    } as BuilderChartConfigWithOptDateRangeEx;
 
     const timeBucketSelect = isUsingGranularity(cteChartConfig)
       ? timeBucketExpr({
@@ -1377,6 +1407,10 @@ export async function renderChartConfig(
   metadata: Metadata,
   querySettings: QuerySettings | undefined,
 ): Promise<ChSql> {
+  if (isRawSqlChartConfig(rawChartConfig)) {
+    return chSql`${{ UNSAFE_RAW_SQL: rawChartConfig.sqlTemplate ?? '' }}`;
+  }
+
   // metric types require more rewriting since we know more about the schema
   // but goes through the same generation process
   const chartConfig = isMetricChartConfig(rawChartConfig)

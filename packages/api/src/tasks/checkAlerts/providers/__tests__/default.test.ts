@@ -148,8 +148,10 @@ describe('DefaultAlertProvider', () => {
       });
 
       // Create tile with source
-      const tile = makeTile({ id: 'test-tile-123' });
-      tile.config.source = source._id.toString();
+      const tile = makeTile({
+        id: 'test-tile-123',
+        sourceId: source._id.toString(),
+      });
 
       // Create dashboard
       const dashboard = await Dashboard.create({
@@ -301,8 +303,10 @@ describe('DefaultAlertProvider', () => {
       );
 
       // Create tile and alert
-      const tile = makeTile({ id: 'test-tile-123' });
-      tile.config.source = source._id.toString();
+      const tile = makeTile({
+        id: 'test-tile-123',
+        sourceId: source._id.toString(),
+      });
 
       const dashboard = await Dashboard.create({
         team: team._id,
@@ -503,8 +507,10 @@ describe('DefaultAlertProvider', () => {
     it('should skip alerts with missing source', async () => {
       const team = await createTeam({ name: 'Test Team' });
 
-      const tile = makeTile({ id: 'test-tile' });
-      tile.config.source = new mongoose.Types.ObjectId().toString(); // Non-existent source
+      const tile = makeTile({
+        id: 'test-tile',
+        sourceId: new mongoose.Types.ObjectId().toString(), // Non-existent source
+      });
 
       const dashboard = await Dashboard.create({
         team: team._id,
@@ -684,8 +690,10 @@ describe('DefaultAlertProvider', () => {
       });
 
       // Create tile with source
-      const tile = makeTile({ id: 'test-tile-123' });
-      tile.config.source = source._id.toString();
+      const tile = makeTile({
+        id: 'test-tile-123',
+        sourceId: source._id.toString(),
+      });
 
       // Create dashboard
       const dashboard = await Dashboard.create({

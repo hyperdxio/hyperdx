@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
-  ChartConfigWithDateRange,
-  ChartConfigWithOptDateRange,
+  BuilderChartConfigWithDateRange,
   Filter,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -46,7 +45,7 @@ export default function DBDeltaChart({
   yMax,
   spanIdExpression,
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   valueExpr: string;
   xMin: number;
   xMax: number;
@@ -102,7 +101,7 @@ export default function DBDeltaChart({
   // Helper to build WITH clauses for a query (outlier or inlier)
   const buildWithClauses = (
     isOutlier: boolean,
-  ): NonNullable<ChartConfigWithOptDateRange['with']> => {
+  ): NonNullable<BuilderChartConfigWithDateRange['with']> => {
     const aggregatedTimestampsCTE = buildAggregatedTimestampsCTE();
 
     // Build the SQL condition for filtering

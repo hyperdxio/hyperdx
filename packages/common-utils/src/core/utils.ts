@@ -5,10 +5,11 @@ import { z } from 'zod';
 
 export { default as objectHash } from 'object-hash';
 
+import { isBuilderSavedChartConfig } from '@/guards';
 import {
-  ChartConfig,
-  ChartConfigWithDateRange,
-  ChartConfigWithOptTimestamp,
+  BuilderChartConfig,
+  BuilderChartConfigWithDateRange,
+  BuilderChartConfigWithOptTimestamp,
   DashboardFilter,
   DashboardFilterSchema,
   DashboardSchema,
@@ -472,9 +473,13 @@ export function convertToDashboardTemplate(
   ): TileTemplate => {
     const tile = TileTemplateSchema.strip().parse(structuredClone(input));
     // Extract name from source or default to '' if not found
-    tile.config.source = (
-      sources.find(source => source.id === tile.config.source) ?? { name: '' }
-    ).name;
+    // Raw SQL configs don't have a source field, so only update builder configs
+    const tileConfig = tile.config;
+    if (isBuilderSavedChartConfig(tileConfig)) {
+      tileConfig.source = (
+        sources.find(source => source.id === tileConfig.source) ?? { name: '' }
+      ).name;
+    }
     return tile;
   };
 
@@ -539,7 +544,7 @@ export function convertToDashboardDocument(
 }
 
 export const getFirstOrderingItem = (
-  orderBy: ChartConfigWithDateRange['orderBy'],
+  orderBy: BuilderChartConfigWithDateRange['orderBy'],
 ) => {
   if (!orderBy || orderBy.length === 0) return undefined;
 
@@ -560,7 +565,7 @@ export const removeTrailingDirection = (s: string) => {
 };
 
 export const isTimestampExpressionInFirstOrderBy = (
-  config: ChartConfigWithOptTimestamp,
+  config: BuilderChartConfigWithOptTimestamp,
 ) => {
   const firstOrderingItem = getFirstOrderingItem(config.orderBy);
   if (!firstOrderingItem || config.timestampValueExpression == null)
@@ -581,7 +586,7 @@ export const isTimestampExpressionInFirstOrderBy = (
 };
 
 export const isFirstOrderByAscending = (
-  orderBy: ChartConfigWithDateRange['orderBy'],
+  orderBy: BuilderChartConfigWithDateRange['orderBy'],
 ): boolean => {
   const primaryOrderingItem = getFirstOrderingItem(orderBy);
 
@@ -936,7 +941,7 @@ export function parseTokenizerFromTextIndex({
  */
 export function aliasMapToWithClauses(
   aliasMap: Record<string, string | undefined> | undefined,
-): ChartConfig['with'] {
+): BuilderChartConfig['with'] {
   if (!aliasMap) {
     return undefined;
   }

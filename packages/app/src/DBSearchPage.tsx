@@ -32,6 +32,7 @@ import {
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
@@ -1465,7 +1466,7 @@ function DBSearchPage() {
     [onTimeRangeSelect, setIsLive],
   );
 
-  const filtersChartConfig = useMemo<ChartConfigWithDateRange>(() => {
+  const filtersChartConfig = useMemo<BuilderChartConfigWithDateRange>(() => {
     const overrides = {
       orderBy: undefined,
       dateRange: searchedTimeRange,

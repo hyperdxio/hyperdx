@@ -7,12 +7,12 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
-import { ChartConfig } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfig } from '@hyperdx/common-utils/dist/types';
 
 const MAX_STRING_LENGTH = 512;
 
 // Type for WITH clause entries, derived from ChartConfig's with property
-export type WithClause = NonNullable<ChartConfig['with']>[number];
+export type WithClause = NonNullable<BuilderChartConfig['with']>[number];
 
 // Internal row field names used by the table component for row tracking
 export const INTERNAL_ROW_FIELDS = {

@@ -12,8 +12,13 @@ import {
   renderChartConfig,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isBuilderChartConfig,
+  isRawSqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import {
+  BuilderChartConfigWithOptDateRange,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   QuerySettings,
@@ -65,6 +70,9 @@ const shouldUseChunking = (
 ): config is ChartConfigWithDateRange & {
   granularity: string;
 } => {
+  // Avoid chunking for raw SQL charts since they can include arbitrary window functions, etc.
+  if (isRawSqlChartConfig(config)) return false;
+
   // Granularity is required for chunking, otherwise we could break other group-bys.
   if (!isUsingGranularity(config)) return false;
 
@@ -143,7 +151,7 @@ async function* fetchDataInChunks({
       ? getGranularityAlignedTimeWindows(config)
       : [undefined];
 
-  if (IS_MTVIEWS_ENABLED) {
+  if (IS_MTVIEWS_ENABLED && isBuilderChartConfig(config)) {
     const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
       await buildMTViewSelectQuery(config, metadata, querySettings);
     // TODO: show the DDLs in the UI so users can run commands manually
@@ -153,6 +161,11 @@ async function* fetchDataInChunks({
     console.log('mtViewDDL:', mtViewDDL);
     await renderMTViewConfig();
   }
+
+  // Readonly = 2 means the query is readonly but can still specify query settings.
+  const clickHouseSettings = isRawSqlChartConfig(config)
+    ? { readonly: '2' }
+    : {};
 
   if (enableParallelQueries) {
     // fetch in parallel
@@ -168,6 +181,7 @@ async function* fetchDataInChunks({
           metadata,
           opts: {
             abort_signal: signal,
+            clickhouse_settings: clickHouseSettings,
           },
           querySettings,
         }),
@@ -258,14 +272,15 @@ export function useQueriedChartConfig(
   const queryClient = useQueryClient();
   const metadata = useMetadataWithSettings();
 
+  const builderConfig = isBuilderChartConfig(config) ? config : undefined;
   const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
-    useMVOptimizationExplanation(config, {
-      enabled: !!enabled,
+    useMVOptimizationExplanation(builderConfig, {
+      enabled: !!enabled && !!builderConfig,
       placeholderData: undefined,
     });
 
   const { data: source, isLoading: isSourceLoading } = useSource({
-    id: config.source,
+    id: builderConfig?.source,
   });
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
@@ -351,14 +366,15 @@ export function useRenderedSqlChartConfig(
 
   const metadata = useMetadataWithSettings();
 
+  const builderConfig = isBuilderChartConfig(config) ? config : undefined;
   const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
-    useMVOptimizationExplanation(config, {
-      enabled: !!enabled,
+    useMVOptimizationExplanation(builderConfig, {
+      enabled: !!enabled && !!builderConfig,
       placeholderData: undefined,
     });
 
   const { data: source, isLoading: isSourceLoading } = useSource({
-    id: config.source,
+    id: builderConfig?.source,
   });
 
   const query = useQuery({
@@ -383,7 +399,7 @@ export function useRenderedSqlChartConfig(
 }
 
 export function useAliasMapFromChartConfig(
-  config: ChartConfigWithOptDateRange | undefined,
+  config: BuilderChartConfigWithOptDateRange | undefined,
   options?: UseQueryOptions<Record<string, string>>,
 ) {
   // For granularity: 'auto', the bucket size depends on dateRange duration (not absolute times).
