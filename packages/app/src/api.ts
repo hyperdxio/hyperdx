@@ -11,7 +11,11 @@ import type { UseQueryOptions } from '@tanstack/react-query';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
-import { Dashboard } from './dashboard';
+import {
+  Dashboard,
+  fetchLocalDashboards,
+  getLocalDashboardTags,
+} from './dashboard';
 import type { AlertsPageItem } from './types';
 
 type ServicesResponse = {
@@ -117,12 +121,9 @@ const api = {
   useDashboards(options?: UseQueryOptions<Dashboard[] | null, Error>) {
     return useQuery({
       queryKey: [`dashboards`],
-      queryFn: () => {
-        if (IS_LOCAL_MODE) {
-          return null;
-        }
-        return hdxServer(`dashboards`, { method: 'GET' }).json<Dashboard[]>();
-      },
+      queryFn: IS_LOCAL_MODE
+        ? async () => fetchLocalDashboards()
+        : () => hdxServer(`dashboards`, { method: 'GET' }).json<Dashboard[]>(),
       ...options,
     });
   },
@@ -359,7 +360,9 @@ const api = {
   useTags() {
     return useQuery({
       queryKey: [`team/tags`],
-      queryFn: () => hdxServer(`team/tags`).json<{ data: string[] }>(),
+      queryFn: IS_LOCAL_MODE
+        ? async () => ({ data: getLocalDashboardTags() })
+        : () => hdxServer(`team/tags`).json<{ data: string[] }>(),
     });
   },
   useSaveWebhook() {
