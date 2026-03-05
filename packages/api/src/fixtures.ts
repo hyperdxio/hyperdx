@@ -1,5 +1,6 @@
 import { createNativeClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
+  BuilderSavedChartConfig,
   DisplayType,
   SavedChartConfig,
   Tile,
@@ -421,7 +422,8 @@ export const randomMongoId = () =>
 
 export const makeTile = (opts?: {
   id?: string;
-  alert?: SavedChartConfig['alert'];
+  alert?: BuilderSavedChartConfig['alert'];
+  sourceId?: string;
 }): Tile => ({
   id: opts?.id ?? randomMongoId(),
   x: 1,
@@ -433,10 +435,11 @@ export const makeTile = (opts?: {
 
 export const makeChartConfig = (opts?: {
   id?: string;
-  alert?: SavedChartConfig['alert'];
+  alert?: BuilderSavedChartConfig['alert'];
+  sourceId?: string;
 }): SavedChartConfig => ({
   name: 'Test Chart',
-  source: 'test-source',
+  source: opts?.sourceId ?? 'test-source',
   displayType: DisplayType.Line,
   select: [
     {

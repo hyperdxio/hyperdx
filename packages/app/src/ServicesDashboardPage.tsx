@@ -11,8 +11,7 @@ import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  ChartConfigWithDateRange,
-  ChartConfigWithOptDateRange,
+  BuilderChartConfigWithDateRange,
   CteChartConfig,
   DisplayType,
   Filter,
@@ -370,7 +369,7 @@ function HttpTab({
   }, []);
 
   const requestErrorRateConfig =
-    useMemo<ChartConfigWithDateRange | null>(() => {
+    useMemo<BuilderChartConfigWithDateRange | null>(() => {
       if (!source || !expressions) return null;
       if (reqChartType === 'overall') {
         return {
@@ -407,7 +406,7 @@ function HttpTab({
           numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
           filters: getScopedFilters({ appliedConfig, expressions }),
           dateRange: searchedTimeRange,
-        } satisfies ChartConfigWithDateRange;
+        } satisfies BuilderChartConfigWithDateRange;
       }
       return {
         timestampValueExpression: 'series_time_bucket',
@@ -465,7 +464,7 @@ function HttpTab({
               dateRange: searchedTimeRange,
               granularity:
                 convertDateRangeToGranularityString(searchedTimeRange),
-            } as ChartConfigWithOptDateRange,
+            } as CteChartConfig,
             isSubquery: true,
           },
           // Select the top N series from the search as we don't want to crash the browser.
@@ -539,7 +538,7 @@ function HttpTab({
         displayType: DisplayType.Line,
         numberFormat: ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
         groupBy: 'zipped, endpoint',
-      } satisfies ChartConfigWithDateRange;
+      } satisfies BuilderChartConfigWithDateRange;
     }, [source, searchedTimeRange, appliedConfig, expressions, reqChartType]);
 
   return (
@@ -872,7 +871,7 @@ function DatabaseTab({
   }, []);
 
   const totalTimePerQueryConfig =
-    useMemo<ChartConfigWithDateRange | null>(() => {
+    useMemo<BuilderChartConfigWithDateRange | null>(() => {
       if (!source || !expressions) return null;
 
       return {
@@ -991,11 +990,11 @@ function DatabaseTab({
         timestampValueExpression: 'series_time_bucket',
         connection: source.connection,
         source: source.id,
-      } satisfies ChartConfigWithDateRange;
+      } satisfies BuilderChartConfigWithDateRange;
     }, [appliedConfig, expressions, searchedTimeRange, source]);
 
   const totalThroughputPerQueryConfig =
-    useMemo<ChartConfigWithDateRange | null>(() => {
+    useMemo<BuilderChartConfigWithDateRange | null>(() => {
       if (!source || !expressions) return null;
 
       return {
@@ -1112,7 +1111,7 @@ function DatabaseTab({
         timestampValueExpression: 'series_time_bucket',
         connection: source.connection,
         source: source.id,
-      } satisfies ChartConfigWithDateRange;
+      } satisfies BuilderChartConfigWithDateRange;
     }, [appliedConfig, expressions, searchedTimeRange, source]);
 
   const displaySwitcher = (

@@ -2,7 +2,7 @@ import { differenceInSeconds } from 'date-fns';
 
 import { BaseClickhouseClient } from '@/clickhouse';
 import {
-  ChartConfigWithOptDateRange,
+  BuilderChartConfigWithOptDateRange,
   CteChartConfig,
   InternalAggregateFunction,
   InternalAggregateFunctionSchema,
@@ -19,7 +19,7 @@ import {
 } from './utils';
 
 type SelectItem = Exclude<
-  ChartConfigWithOptDateRange['select'],
+  BuilderChartConfigWithOptDateRange['select'],
   string
 >[number];
 
@@ -123,7 +123,7 @@ function getAggregatedColumnConfig(
  **/
 function mvConfigSupportsGranularity(
   mvConfig: MaterializedViewConfiguration,
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRange,
 ): boolean {
   if (!chartConfig.granularity && !chartConfig.dateRange) {
     return true;
@@ -171,7 +171,7 @@ function countIntervalsInDateRange(
 
 function mvConfigSupportsDateRange(
   mvConfig: MaterializedViewConfiguration,
-  chartConfig: ChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRange,
 ) {
   if (mvConfig.minDate && !chartConfig.dateRange) {
     return false;
@@ -287,7 +287,7 @@ export type MVOptimizationExplanation = {
 };
 
 export async function tryConvertConfigToMaterializedViewSelect<
-  C extends ChartConfigWithOptDateRange | CteChartConfig,
+  C extends BuilderChartConfigWithOptDateRange | CteChartConfig,
 >(
   chartConfig: C,
   mvConfig: MaterializedViewConfiguration,
@@ -377,7 +377,7 @@ export async function tryConvertConfigToMaterializedViewSelect<
 }
 
 /** Attempts to optimize a config with a single MV Config */
-async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
+async function tryOptimizeConfig<C extends BuilderChartConfigWithOptDateRange>(
   config: C,
   metadata: Metadata,
   clickhouseClient: BaseClickhouseClient,
@@ -481,7 +481,7 @@ async function tryOptimizeConfig<C extends ChartConfigWithOptDateRange>(
 
 /** Attempts to optimize a config with each of the provided MV Configs */
 export async function tryOptimizeConfigWithMaterializedViewWithExplanations<
-  C extends ChartConfigWithOptDateRange,
+  C extends BuilderChartConfigWithOptDateRange,
 >(
   config: C,
   metadata: Metadata,
@@ -535,7 +535,7 @@ export async function tryOptimizeConfigWithMaterializedViewWithExplanations<
 }
 
 export async function tryOptimizeConfigWithMaterializedView<
-  C extends ChartConfigWithOptDateRange,
+  C extends BuilderChartConfigWithOptDateRange,
 >(
   config: C,
   metadata: Metadata,
@@ -580,13 +580,13 @@ function toMvId(
   return `${mv.databaseName}.${mv.tableName}`;
 }
 
-export interface GetKeyValueCall<C extends ChartConfigWithOptDateRange> {
+export interface GetKeyValueCall<C extends BuilderChartConfigWithOptDateRange> {
   chartConfig: C;
   keys: string[];
 }
 
 export async function optimizeGetKeyValuesCalls<
-  C extends ChartConfigWithOptDateRange,
+  C extends BuilderChartConfigWithOptDateRange,
 >({
   chartConfig,
   keys,

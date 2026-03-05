@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Flex, Text } from '@mantine/core';
 
 import {
@@ -55,7 +55,7 @@ export const DBPieChart = ({
   toolbarPrefix,
   toolbarSuffix,
 }: {
-  config: ChartConfigWithOptTimestamp;
+  config: BuilderChartConfigWithOptTimestamp;
   title?: React.ReactNode;
   enabled?: boolean;
   queryKeyPrefix?: string;

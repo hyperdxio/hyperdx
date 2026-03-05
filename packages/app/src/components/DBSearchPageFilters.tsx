@@ -5,7 +5,7 @@ import {
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -346,7 +346,7 @@ export type FilterGroupProps = {
   hasLoadedMore: boolean;
   isDefaultExpanded?: boolean;
   'data-testid'?: string;
-  chartConfig: ChartConfigWithDateRange;
+  chartConfig: BuilderChartConfigWithDateRange;
   isLive?: boolean;
   onRangeChange?: (range: { min: number; max: number }) => void;
   distributionKey?: string; // Optional key to use for distribution queries, defaults to name
@@ -848,7 +848,7 @@ const DBSearchPageFiltersComponent = ({
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
   isLive: boolean;
-  chartConfig: ChartConfigWithDateRange;
+  chartConfig: BuilderChartConfigWithDateRange;
   sourceId?: string;
   showDelta: boolean;
   denoiseResults: boolean;
