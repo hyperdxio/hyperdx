@@ -288,28 +288,32 @@ export function isHighCardinality(
 // Sampling configuration
 // ---------------------------------------------------------------------------
 
-// SAMPLE_SIZE: default number of rows sampled when the total count is unknown.
-// MIN_SAMPLE_SIZE / MAX_SAMPLE_SIZE: bounds for adaptive sampling.
-// SAMPLE_RATIO: fraction of total rows to sample (e.g., 0.01 = 1%).
-//
-// Adaptive formula: clamp(MIN, ceil(totalCount * SAMPLE_RATIO), MAX)
-// Falls back to SAMPLE_SIZE when total count is not yet available.
-//
-// STABLE_SAMPLE_EXPR: ClickHouse expression used for ORDER BY in sample queries.
-// Deterministic ordering ensures the same data always produces the same sample,
-// so hover highlights are stable across re-renders.
-// Currently trace-specific (SpanId is always present on the traces search page
-// where Event Deltas is rendered). If Event Deltas expands to logs/metrics,
-// this should be parameterized per source.
-// Set to 'rand()' to restore non-deterministic sampling.
+/** Default number of rows sampled when the total count is unknown */
 export const SAMPLE_SIZE = 1000;
+
+/** Minimum number of rows to sample */
 export const MIN_SAMPLE_SIZE = 500;
+
+/** Maximum number of rows to sample */
 export const MAX_SAMPLE_SIZE = 5000;
+
+/** Fraction of total rows to sample (e.g., 0.01 = 1%) */
 export const SAMPLE_RATIO = 0.01;
-export const STABLE_SAMPLE_EXPR = 'cityHash64(SpanId)';
+
+/**
+ * Builds a deterministic ORDER BY expression for stable sampling.
+ * Uses the source's spanIdExpression when available, falls back to rand().
+ */
+export function getStableSampleExpression(spanIdExpression?: string): string {
+  if (spanIdExpression) {
+    return `cityHash64(${spanIdExpression})`;
+  }
+  return 'rand()';
+}
 
 /**
  * Computes the effective sample size based on total row count.
+ * Adaptive formula: clamp(MIN_SAMPLE_SIZE, ceil(totalCount * SAMPLE_RATIO), MAX_SAMPLE_SIZE).
  * Returns SAMPLE_SIZE as fallback when totalCount is 0 or unavailable.
  */
 export function computeEffectiveSampleSize(totalCount: number): number {

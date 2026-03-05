@@ -1,10 +1,31 @@
 import {
   computeEffectiveSampleSize,
+  getStableSampleExpression,
   MAX_SAMPLE_SIZE,
   MIN_SAMPLE_SIZE,
   SAMPLE_RATIO,
   SAMPLE_SIZE,
 } from '../deltaChartUtils';
+
+describe('getStableSampleExpression', () => {
+  it('returns cityHash64 of spanIdExpression when provided', () => {
+    expect(getStableSampleExpression('SpanId')).toBe('cityHash64(SpanId)');
+  });
+
+  it('uses custom spanId column name', () => {
+    expect(getStableSampleExpression('my_span_id')).toBe(
+      'cityHash64(my_span_id)',
+    );
+  });
+
+  it('falls back to rand() when spanIdExpression is undefined', () => {
+    expect(getStableSampleExpression(undefined)).toBe('rand()');
+  });
+
+  it('falls back to rand() when spanIdExpression is empty', () => {
+    expect(getStableSampleExpression('')).toBe('rand()');
+  });
+});
 
 describe('computeEffectiveSampleSize', () => {
   it('returns SAMPLE_SIZE when totalCount is 0 (fallback)', () => {

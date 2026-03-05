@@ -119,6 +119,7 @@ export function DBSearchHeatmapChart({
           xMax={fields.xMax}
           yMin={fields.yMin}
           yMax={fields.yMax}
+          spanIdExpression={source.spanIdExpression}
         />
       ) : (
         <Center mih={100} h="100%">
