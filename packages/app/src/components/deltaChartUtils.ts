@@ -347,14 +347,16 @@ export function computeComparisonScore(
 
   if (outlierSum === 0 && inlierSum === 0) return 0;
   if (outlierSum === 0 || inlierSum === 0) {
-    let maxDelta = 0;
-    allValues.forEach(value => {
-      const delta = Math.abs(
-        (outlierValues.get(value) ?? 0) - (inlierValues.get(value) ?? 0),
-      );
-      if (delta > maxDelta) maxDelta = delta;
+    // One group has data, the other doesn't — normalize the present group
+    // to [0, 100] so the score is scale-consistent with the two-group case.
+    const presentValues = outlierSum > 0 ? outlierValues : inlierValues;
+    const presentSum = outlierSum > 0 ? outlierSum : inlierSum;
+    let maxNormPct = 0;
+    presentValues.forEach(v => {
+      const pct = (v / presentSum) * 100;
+      if (pct > maxNormPct) maxNormPct = pct;
     });
-    return maxDelta;
+    return maxNormPct;
   }
 
   let maxDelta = 0;

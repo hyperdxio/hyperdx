@@ -33,9 +33,17 @@ describe('computeComparisonScore', () => {
     expect(computeComparisonScore(outlier, inlier)).toBeGreaterThan(70);
   });
 
-  it('uses raw delta when one group has no data', () => {
+  it('normalizes to [0, 100] when one group has no data', () => {
+    // Single-value field: 100% of the present group → max normalized pct = 100
     const outlier = new Map([['error', 50]]);
-    expect(computeComparisonScore(outlier, new Map())).toBe(50);
+    expect(computeComparisonScore(outlier, new Map())).toBe(100);
+
+    // Two-value field: 80/20 split → max normalized pct = 80
+    const outlier2 = new Map([
+      ['error', 80],
+      ['ok', 20],
+    ]);
+    expect(computeComparisonScore(outlier2, new Map())).toBe(80);
   });
 
   it('normalizes by group sum so different sample sizes produce same score', () => {

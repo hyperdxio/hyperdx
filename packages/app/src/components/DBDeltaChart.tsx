@@ -27,6 +27,7 @@ import {
   isDenylisted,
   isHighCardinality,
   SAMPLE_SIZE,
+  semanticBoost,
 } from './deltaChartUtils';
 import {
   CHART_GAP,
@@ -252,8 +253,12 @@ export default function DBDeltaChart({
         const outlierCount =
           outlierValueOccurences.get(key) ?? new Map<string, number>();
 
-        // Use proportional comparison scoring which normalizes group sizes
-        const sortScore = computeComparisonScore(outlierCount, inlierCount);
+        // Use proportional comparison scoring which normalizes group sizes.
+        // Semantic boost acts as a tiebreaker for well-known OTel attributes
+        // (only applied when the field has actual variance).
+        const baseScore = computeComparisonScore(outlierCount, inlierCount);
+        const boost = baseScore > 0 ? semanticBoost(key) * 0.1 : 0;
+        const sortScore = baseScore + boost;
 
         return [key, sortScore] as const;
       })
