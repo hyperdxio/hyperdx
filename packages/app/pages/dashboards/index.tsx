@@ -1,2 +1,2 @@
-import DBDashboardPage from '@/DBDashboardPage';
-export default DBDashboardPage;
+import DashboardsListPage from '@/DashboardsListPage';
+export default DashboardsListPage;

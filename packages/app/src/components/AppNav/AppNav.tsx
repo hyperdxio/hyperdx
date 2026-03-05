@@ -41,17 +41,12 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
-import { IS_K8S_DASHBOARD_ENABLED, IS_LOCAL_MODE } from '@/config';
-import {
-  useCreateDashboard,
-  useDashboards,
-  useUpdateDashboard,
-} from '@/dashboard';
+import { IS_LOCAL_MODE } from '@/config';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches, useUpdateSavedSearch } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
-import type { SavedSearch, ServerDashboard } from '@/types';
+import type { SavedSearch } from '@/types';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
 import { useWindowSize } from '@/utils';
@@ -73,7 +68,6 @@ const APP_VERSION =
   process.env.NEXT_PUBLIC_APP_VERSION ?? packageJson.version ?? 'dev';
 
 const UNTAGGED_SEARCHES_GROUP_NAME = 'Saved Searches';
-const UNTAGGED_DASHBOARDS_GROUP_NAME = 'Saved Dashboards';
 
 // Navigation link configuration
 type NavLinkConfig = {
@@ -113,54 +107,6 @@ const NAV_LINKS: NavLinkConfig[] = [
     isBeta: true,
   },
 ];
-
-function NewDashboardButton() {
-  const createDashboard = useCreateDashboard();
-
-  if (IS_LOCAL_MODE) {
-    return (
-      <Button
-        component={Link}
-        href="/dashboards"
-        data-testid="create-dashboard-button"
-        variant="transparent"
-        color="var(--color-text)"
-        py="0px"
-        px="sm"
-        fw={400}
-      >
-        <span className="pe-2">+</span> Create Dashboard
-      </Button>
-    );
-  }
-
-  return (
-    <Button
-      data-testid="create-dashboard-button"
-      variant="transparent"
-      color="var(--color-text)"
-      py="0px"
-      px="sm"
-      fw={400}
-      onClick={() =>
-        createDashboard.mutate(
-          {
-            name: 'My Dashboard',
-            tiles: [],
-            tags: [],
-          },
-          {
-            onSuccess: data => {
-              Router.push(`/dashboards/${data.id}`);
-            },
-          },
-        )
-      }
-    >
-      <span className="pe-2">+</span> Create Dashboard
-    </Button>
-  );
-}
 
 function SearchInput({
   placeholder,
@@ -418,15 +364,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   } = useSavedSearches();
   const logViews = useMemo(() => logViewsData ?? [], [logViewsData]);
 
-  const updateDashboard = useUpdateDashboard();
   const updateLogView = useUpdateSavedSearch();
-
-  const {
-    data: dashboardsData,
-    isLoading: isDashboardsLoading,
-    refetch: refetchDashboards,
-  } = useDashboards();
-  const dashboards = useMemo(() => dashboardsData ?? [], [dashboardsData]);
 
   const router = useRouter();
   const { pathname, query } = router;
@@ -446,11 +384,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     key: 'isSearchExpanded',
     defaultValue: true,
   });
-  const [isDashboardsExpanded, setIsDashboardExpanded] =
-    useLocalStorage<boolean>({
-      key: 'isDashboardsExpanded',
-      defaultValue: true,
-    });
   const { width } = useWindowSize();
 
   const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<boolean>({
@@ -491,24 +424,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     untaggedGroupName: UNTAGGED_SEARCHES_GROUP_NAME,
   });
 
-  const {
-    q: dashboardsListQ,
-    setQ: setDashboardsListQ,
-    filteredList: filteredDashboardsList,
-    groupedFilteredList: groupedFilteredDashboardsList,
-  } = useSearchableList({
-    items: dashboards,
-    untaggedGroupName: UNTAGGED_DASHBOARDS_GROUP_NAME,
-  });
-
-  const [isDashboardsPresetsCollapsed, setDashboardsPresetsCollapsed] =
-    useLocalStorage<boolean>({
-      key: 'isDashboardsPresetsCollapsed',
-      defaultValue: false,
-    });
-
   const savedSearchesResultsRef = useRef<HTMLDivElement>(null);
-  const dashboardsResultsRef = useRef<HTMLDivElement>(null);
 
   const renderLogViewLink = useCallback(
     (savedSearch: SavedSearch) => (
@@ -585,50 +501,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       );
     },
     [logViews, refetchLogViews, updateLogView],
-  );
-
-  const renderDashboardLink = useCallback(
-    (dashboard: ServerDashboard) => (
-      <Link
-        href={`/dashboards/${dashboard.id}`}
-        key={dashboard.id}
-        tabIndex={0}
-        className={cx(styles.subMenuItem, {
-          [styles.subMenuItemActive]: dashboard.id === query.dashboardId,
-        })}
-        draggable
-        data-dashboardid={dashboard.id}
-      >
-        {dashboard.name}
-      </Link>
-    ),
-    [query.dashboardId],
-  );
-
-  const handleDashboardDragEnd = useCallback(
-    (target: HTMLElement | null, name: string | null) => {
-      if (!target?.dataset.dashboardid || name == null) {
-        return;
-      }
-      const dashboard = dashboards.find(
-        d => d.id === target.dataset.dashboardid,
-      );
-      if (dashboard?.tags?.includes(name)) {
-        return;
-      }
-      updateDashboard.mutate(
-        {
-          id: target.dataset.dashboardid,
-          tags: name === UNTAGGED_DASHBOARDS_GROUP_NAME ? [] : [name],
-        },
-        {
-          onSuccess: () => {
-            refetchDashboards();
-          },
-        },
-      );
-    },
-    [dashboards, refetchDashboards, updateDashboard],
   );
 
   const [
@@ -792,105 +664,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               label="Dashboards"
               href="/dashboards"
               icon={<IconLayoutGrid size={16} />}
-              isExpanded={isDashboardsExpanded}
-              onToggle={() => setIsDashboardExpanded(!isDashboardsExpanded)}
             />
-
-            {!isCollapsed && (
-              <Collapse in={isDashboardsExpanded}>
-                <div className={styles.subMenu}>
-                  <NewDashboardButton />
-
-                  {isDashboardsLoading ? (
-                    <Loader variant="dots" mx="md" my="xs" size="sm" />
-                  ) : (
-                    !IS_LOCAL_MODE && (
-                      <>
-                        <SearchInput
-                          placeholder="Saved Dashboards"
-                          value={dashboardsListQ}
-                          onChange={setDashboardsListQ}
-                          onEnterDown={() => {
-                            (
-                              dashboardsResultsRef?.current
-                                ?.firstChild as HTMLAnchorElement
-                            )?.focus?.();
-                          }}
-                        />
-
-                        <AppNavLinkGroups
-                          name="dashboards"
-                          groups={groupedFilteredDashboardsList}
-                          renderLink={renderDashboardLink}
-                          forceExpandGroups={!!dashboardsListQ}
-                          onDragEnd={handleDashboardDragEnd}
-                        />
-
-                        {dashboards.length === 0 && (
-                          <div className={styles.emptyMessage}>
-                            No saved dashboards
-                          </div>
-                        )}
-
-                        {dashboardsListQ &&
-                        filteredDashboardsList.length === 0 ? (
-                          <div className={styles.emptyMessage}>
-                            No results matching <i>{dashboardsListQ}</i>
-                          </div>
-                        ) : null}
-                      </>
-                    )
-                  )}
-
-                  <AppNavGroupLabel
-                    name="Presets"
-                    collapsed={isDashboardsPresetsCollapsed}
-                    onClick={() =>
-                      setDashboardsPresetsCollapsed(
-                        !isDashboardsPresetsCollapsed,
-                      )
-                    }
-                  />
-                  <Collapse in={!isDashboardsPresetsCollapsed}>
-                    <Link
-                      href={`/clickhouse`}
-                      tabIndex={0}
-                      className={cx(styles.subMenuItem, {
-                        [styles.subMenuItemActive]:
-                          pathname.startsWith('/clickhouse'),
-                      })}
-                      data-testid="nav-link-clickhouse-dashboard"
-                    >
-                      ClickHouse
-                    </Link>
-                    <Link
-                      href={`/services`}
-                      tabIndex={0}
-                      className={cx(styles.subMenuItem, {
-                        [styles.subMenuItemActive]:
-                          pathname.startsWith('/services'),
-                      })}
-                      data-testid="nav-link-services-dashboard"
-                    >
-                      Services
-                    </Link>
-                    {IS_K8S_DASHBOARD_ENABLED && (
-                      <Link
-                        href={`/kubernetes`}
-                        tabIndex={0}
-                        className={cx(styles.subMenuItem, {
-                          [styles.subMenuItemActive]:
-                            pathname.startsWith('/kubernetes'),
-                        })}
-                        data-testid="nav-link-k8s-dashboard"
-                      >
-                        Kubernetes
-                      </Link>
-                    )}
-                  </Collapse>
-                </div>
-              </Collapse>
-            )}
 
             {/* Team Settings (Cloud only) */}
             {!IS_LOCAL_MODE && (

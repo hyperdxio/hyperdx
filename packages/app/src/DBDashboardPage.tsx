@@ -9,6 +9,7 @@ import {
 } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { formatRelative } from 'date-fns';
 import produce from 'immer';
@@ -34,7 +35,9 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Anchor,
   Box,
+  Breadcrumbs,
   Button,
   Flex,
   Group,
@@ -1209,7 +1212,15 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </Flex>
         </Paper>
       )}
-      <Flex mt="xs" mb="md" justify="space-between" align="center">
+      <Breadcrumbs mb="xs" mt="xs" fz="sm">
+        <Anchor component={Link} href="/dashboards" fz="sm" c="dimmed">
+          Dashboards
+        </Anchor>
+        <Text fz="sm" c="dimmed">
+          {dashboard?.name ?? 'Untitled'}
+        </Text>
+      </Breadcrumbs>
+      <Flex mb="md" justify="space-between" align="center">
         <DashboardName
           key={`${dashboardHash}`}
           name={dashboard?.name ?? ''}
