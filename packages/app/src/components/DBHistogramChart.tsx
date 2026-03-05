@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import { CategoricalChartState } from 'recharts/types/chart/types';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 
 import { buildMVDateRangeIndicator } from '@/ChartUtils';
@@ -199,7 +199,7 @@ export default function DBHistogramChart({
   toolbarSuffix,
   showMVOptimizationIndicator = true,
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   onSettled?: () => void;
   queryKeyPrefix?: string;
   enabled?: boolean;

@@ -6,24 +6,19 @@ import {
   convertCHDataTypeToJSType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
+import { BuilderChartConfig } from '@hyperdx/common-utils/dist/types';
 
 const MAX_STRING_LENGTH = 512;
+
+// Type for WITH clause entries, derived from ChartConfig's with property
+export type WithClause = NonNullable<BuilderChartConfig['with']>[number];
 
 // Internal row field names used by the table component for row tracking
 export const INTERNAL_ROW_FIELDS = {
   ID: '__hyperdx_id',
   ALIAS_WITH: '__hyperdx_alias_with',
 } as const;
-
-// Type for WITH clause entries, matching ChartConfig's with property
-export type WithClause = {
-  name: string;
-  sql: {
-    sql: string;
-    params: Record<string, unknown>;
-  };
-  isSubquery: boolean;
-};
 
 // Result type for row WHERE clause with alias support
 export type RowWhereResult = {
@@ -133,29 +128,6 @@ export function processRowToWhereClause(
   return res;
 }
 
-/**
- * Converts an aliasMap to an array of WITH clause entries.
- * This allows aliases to be properly defined when querying for a specific row.
- */
-export function aliasMapToWithClauses(
-  aliasMap: Record<string, string | undefined> | undefined,
-): WithClause[] {
-  if (!aliasMap) {
-    return [];
-  }
-
-  return Object.entries(aliasMap)
-    .filter(([, value]) => value != null && value.trim() !== '')
-    .map(([name, value]) => ({
-      name,
-      sql: {
-        sql: value as string,
-        params: {},
-      },
-      isSubquery: false,
-    }));
-}
-
 export default function useRowWhere({
   meta,
   aliasMap,
@@ -186,7 +158,10 @@ export default function useRowWhere({
   );
 
   // Memoize the aliasWith array since it only depends on aliasMap
-  const aliasWith = useMemo(() => aliasMapToWithClauses(aliasMap), [aliasMap]);
+  const aliasWith = useMemo(
+    () => aliasMapToWithClauses(aliasMap) ?? [],
+    [aliasMap],
+  );
 
   return useCallback(
     (row: Record<string, any>): RowWhereResult => {

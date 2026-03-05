@@ -1,5 +1,6 @@
 import { createNativeClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
+  BuilderSavedChartConfig,
   DisplayType,
   SavedChartConfig,
   Tile,
@@ -70,185 +71,49 @@ const healthCheck = async () => {
   }
 };
 
-const connectClickhouse = async () => {
-  // health check
+const REQUIRED_TABLES = [
+  DEFAULT_LOGS_TABLE,
+  DEFAULT_TRACES_TABLE,
+  DEFAULT_METRICS_TABLE.GAUGE,
+  DEFAULT_METRICS_TABLE.SUM,
+  DEFAULT_METRICS_TABLE.HISTOGRAM,
+  DEFAULT_METRICS_TABLE.SUMMARY,
+  DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM,
+];
+
+const waitForClickhouseSchema = async () => {
   await healthCheck();
 
   const client = await getTestFixtureClickHouseClient();
-  await client.command({
-    query: `
-      CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}
-      (
-        Timestamp DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-        TimestampTime DateTime DEFAULT toDateTime(Timestamp),
-        TraceId String CODEC(ZSTD(1)),
-        SpanId String CODEC(ZSTD(1)),
-        TraceFlags UInt8,
-        SeverityText LowCardinality(String) CODEC(ZSTD(1)),
-        SeverityNumber UInt8,
-        ServiceName LowCardinality(String) CODEC(ZSTD(1)),
-        Body String CODEC(ZSTD(1)),
-        ResourceSchemaUrl LowCardinality(String) CODEC(ZSTD(1)),
-        ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-        ScopeSchemaUrl LowCardinality(String) CODEC(ZSTD(1)),
-        ScopeName String CODEC(ZSTD(1)),
-        ScopeVersion LowCardinality(String) CODEC(ZSTD(1)),
-        ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-        LogAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-        INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
-        INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-        INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-        INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-        INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-        INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-        INDEX idx_log_attr_value mapValues(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-        INDEX idx_body Body TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
-      )
-      ENGINE = MergeTree
-      PARTITION BY toDate(TimestampTime)
-      PRIMARY KEY (ServiceName, TimestampTime)
-      ORDER BY (ServiceName, TimestampTime, Timestamp)
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
-    `,
-    // Recommended for cluster usage to avoid situations
-    // where a query processing error occurred after the response code
-    // and HTTP headers were sent to the client.
-    // See https://clickhouse.com/docs/en/interfaces/http/#response-buffering
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
+  const maxWaitMs = 30_000;
+  const pollIntervalMs = 500;
+  const start = Date.now();
 
-  await client.command({
-    query: `
-      CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}
-        (
-          ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-          ResourceSchemaUrl String CODEC(ZSTD(1)),
-          ScopeName String CODEC(ZSTD(1)),
-          ScopeVersion String CODEC(ZSTD(1)),
-          ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-          ScopeDroppedAttrCount UInt32 CODEC(ZSTD(1)),
-          ScopeSchemaUrl String CODEC(ZSTD(1)),
-          ServiceName LowCardinality(String) CODEC(ZSTD(1)),
-          MetricName String CODEC(ZSTD(1)),
-          MetricDescription String CODEC(ZSTD(1)),
-          MetricUnit String CODEC(ZSTD(1)),
-          Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-          StartTimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-          TimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-          Value Float64 CODEC(ZSTD(1)),
-          Flags UInt32 CODEC(ZSTD(1)),
-          INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_attr_key mapKeys(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1
-      )
-      ENGINE = MergeTree
-      PARTITION BY toDate(TimeUnix)
-      ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
-    `,
-    // Recommended for cluster usage to avoid situations
-    // where a query processing error occurred after the response code
-    // and HTTP headers were sent to the client.
-    // See https://clickhouse.com/docs/en/interfaces/http/#response-buffering
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
+  while (Date.now() - start < maxWaitMs) {
+    const result = await client
+      .query({
+        query: `SELECT name FROM system.tables WHERE database = '${DEFAULT_DATABASE}'`,
+        format: 'JSONEachRow',
+      })
+      .then((res: any) => res.json());
 
-  await client.command({
-    query: `
-      CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}
-      (
-          ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-          ResourceSchemaUrl String CODEC(ZSTD(1)),
-          ScopeName String CODEC(ZSTD(1)),
-          ScopeVersion String CODEC(ZSTD(1)),
-          ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-          ScopeDroppedAttrCount UInt32 CODEC(ZSTD(1)),
-          ScopeSchemaUrl String CODEC(ZSTD(1)),
-          ServiceName LowCardinality(String) CODEC(ZSTD(1)),
-          MetricName String CODEC(ZSTD(1)),
-          MetricDescription String CODEC(ZSTD(1)),
-          MetricUnit String CODEC(ZSTD(1)),
-          Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-          StartTimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-          TimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-          Value Float64 CODEC(ZSTD(1)),
-          Flags UInt32 CODEC(ZSTD(1)),
-          AggregationTemporality Int32 CODEC(ZSTD(1)),
-          IsMonotonic Bool CODEC(Delta(1), ZSTD(1)),
-          INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_attr_key mapKeys(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1
-      )
-      ENGINE = MergeTree
-      PARTITION BY toDate(TimeUnix)
-      ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
-    `,
-    // Recommended for cluster usage to avoid situations
-    // where a query processing error occurred after the response code
-    // and HTTP headers were sent to the client.
-    // See https://clickhouse.com/docs/en/interfaces/http/#response-buffering
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
+    const existingTables = new Set(result.map((row: any) => row.name));
+    const missing = REQUIRED_TABLES.filter(t => !existingTables.has(t));
 
-  await client.command({
-    query: `
-      CREATE TABLE IF NOT EXISTS ${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}
-      (
-          ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-          ResourceSchemaUrl String CODEC(ZSTD(1)),
-          ScopeName String CODEC(ZSTD(1)),
-          ScopeVersion String CODEC(ZSTD(1)),
-          ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-          ScopeDroppedAttrCount UInt32 CODEC(ZSTD(1)),
-          ScopeSchemaUrl String CODEC(ZSTD(1)),
-          ServiceName LowCardinality(String) CODEC(ZSTD(1)),
-          MetricName String CODEC(ZSTD(1)),
-          MetricDescription String CODEC(ZSTD(1)),
-          MetricUnit String CODEC(ZSTD(1)),
-          Attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-          StartTimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-          TimeUnix DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-          Count UInt64 CODEC(Delta(8), ZSTD(1)),
-          Sum Float64 CODEC(ZSTD(1)),
-          BucketCounts Array(UInt64) CODEC(ZSTD(1)),
-          ExplicitBounds Array(Float64) CODEC(ZSTD(1)),
-          Flags UInt32 CODEC(ZSTD(1)),
-          Min Float64 CODEC(ZSTD(1)),
-          Max Float64 CODEC(ZSTD(1)),
-          AggregationTemporality Int32 CODEC(ZSTD(1)),
-          INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_attr_key mapKeys(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-          INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1
-      )
-      ENGINE = MergeTree
-      PARTITION BY toDate(TimeUnix)
-      ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
-      SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
-    `,
-    // Recommended for cluster usage to avoid situations
-    // where a query processing error occurred after the response code
-    // and HTTP headers were sent to the client.
-    // See https://clickhouse.com/docs/en/interfaces/http/#response-buffering
-    clickhouse_settings: {
-      wait_end_of_query: 1,
-    },
-  });
+    if (missing.length === 0) {
+      logger.info('All required ClickHouse tables are ready');
+      return;
+    }
+
+    logger.info(
+      `Waiting for ClickHouse tables: ${missing.join(', ')} (${Math.round((Date.now() - start) / 1000)}s elapsed)`,
+    );
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+  }
+
+  throw new Error(
+    `Timed out waiting for ClickHouse tables after ${maxWaitMs / 1000}s`,
+  );
 };
 
 export const connectDB = async () => {
@@ -287,7 +152,7 @@ export const initCiEnvs = async () => {
   }
 
   // Populate fake persistent data here...
-  await connectClickhouse();
+  await waitForClickhouseSchema();
 };
 
 class MockServer extends Server {
@@ -388,6 +253,8 @@ export const clearClickhouseTables = async () => {
     `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.GAUGE}`,
     `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUM}`,
     `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.HISTOGRAM}`,
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.SUMMARY}`,
+    `${DEFAULT_DATABASE}.${DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM}`,
   ];
 
   const promises: any = [];
@@ -555,7 +422,8 @@ export const randomMongoId = () =>
 
 export const makeTile = (opts?: {
   id?: string;
-  alert?: SavedChartConfig['alert'];
+  alert?: BuilderSavedChartConfig['alert'];
+  sourceId?: string;
 }): Tile => ({
   id: opts?.id ?? randomMongoId(),
   x: 1,
@@ -567,10 +435,11 @@ export const makeTile = (opts?: {
 
 export const makeChartConfig = (opts?: {
   id?: string;
-  alert?: SavedChartConfig['alert'];
+  alert?: BuilderSavedChartConfig['alert'];
+  sourceId?: string;
 }): SavedChartConfig => ({
   name: 'Test Chart',
-  source: 'test-source',
+  source: opts?.sourceId ?? 'test-source',
   displayType: DisplayType.Line,
   select: [
     {

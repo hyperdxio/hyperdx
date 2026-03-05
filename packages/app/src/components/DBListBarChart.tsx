@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import type { FloatingPosition } from '@mantine/core';
 import { Box, Code, Flex, HoverCard, Text } from '@mantine/core';
 
@@ -185,7 +185,7 @@ export default function DBListBarChart({
   toolbarItems,
   showMVOptimizationIndicator = true,
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   onSettled?: () => void;
   getRowSearchLink?: (row: any) => string;
   hoverCardPosition?: FloatingPosition;

@@ -1,4 +1,5 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { Tile } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import ms from 'ms';
@@ -102,6 +103,16 @@ async function getTileDetails(
       tileId,
       dashboardId: dashboard._id,
       alertId: alert.id,
+    });
+    return [];
+  }
+
+  if (isRawSqlSavedChartConfig(tile.config)) {
+    logger.warn({
+      tileId,
+      dashboardId: dashboard._id,
+      alertId: alert.id,
+      message: 'skipping alert with raw sql chart config, not supported',
     });
     return [];
   }

@@ -1,5 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  isBuilderChartConfig,
+  isRawSqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
@@ -48,7 +52,9 @@ export default function DBTableChart({
 }) {
   const [sort, setSort] = useState<SortingState>([]);
 
-  const { data: source } = useSource({ id: config.source });
+  const { data: source } = useSource({
+    id: isBuilderChartConfig(config) ? config.source : undefined,
+  });
 
   const effectiveSort = useMemo(
     () => controlledSort || sort,
@@ -66,6 +72,8 @@ export default function DBTableChart({
   );
 
   const queriedConfig = useMemo(() => {
+    if (isRawSqlChartConfig(config)) return config;
+
     const _config = convertToTableChartConfig(config);
 
     if (effectiveSort.length) {
@@ -79,8 +87,9 @@ export default function DBTableChart({
     return _config;
   }, [config, effectiveSort]);
 
-  const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(queriedConfig);
+  const { data: mvOptimizationData } = useMVOptimizationExplanation(
+    isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined,
+  );
 
   const { data, fetchNextPage, hasNextPage, isLoading, isError, error } =
     useOffsetPaginatedQuery(queriedConfig, {
@@ -91,6 +100,10 @@ export default function DBTableChart({
 
   // Returns an array of aliases, so we can check if something is using an alias
   const aliasMap = useMemo(() => {
+    if (isRawSqlChartConfig(config)) {
+      return [];
+    }
+
     // If the config.select is a string, we can't infer this.
     // One day, we could potentially run this through chSqlToAliasMap but AST parsing
     //  doesn't work for most DBTableChart queries.
@@ -103,7 +116,8 @@ export default function DBTableChart({
       }
       return acc;
     }, [] as string[]);
-  }, [config.select]);
+  }, [config]);
+
   const columns = useMemo(() => {
     const rows = data?.data ?? [];
     if (rows.length === 0) {
@@ -111,7 +125,11 @@ export default function DBTableChart({
     }
 
     let groupByKeys: string[] = [];
-    if (queriedConfig.groupBy && typeof queriedConfig.groupBy === 'string') {
+    if (
+      isBuilderChartConfig(queriedConfig) &&
+      queriedConfig.groupBy &&
+      typeof queriedConfig.groupBy === 'string'
+    ) {
       groupByKeys = queriedConfig.groupBy.split(',').map(v => v.trim());
     }
 
@@ -126,13 +144,7 @@ export default function DBTableChart({
           ? undefined
           : config.numberFormat,
       }));
-  }, [
-    config.numberFormat,
-    aliasMap,
-    queriedConfig.groupBy,
-    data,
-    hiddenColumns,
-  ]);
+  }, [config.numberFormat, aliasMap, queriedConfig, data, hiddenColumns]);
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
@@ -141,7 +153,11 @@ export default function DBTableChart({
       allToolbarItems.push(...toolbarPrefix);
     }
 
-    if (source && showMVOptimizationIndicator) {
+    if (
+      source &&
+      showMVOptimizationIndicator &&
+      isBuilderChartConfig(queriedConfig)
+    ) {
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-table-chart-mv-indicator"

@@ -3,7 +3,7 @@ import {
   Field,
   TableConnection,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
 import {
   deduplicate2dArray,
@@ -103,21 +103,21 @@ export function useAutoCompleteOptions(
   );
 
   // hooks to get key values
-  const chartConfigs: ChartConfigWithDateRange[] = toArray(tableConnection).map(
-    ({ databaseName, tableName, connectionId }) => ({
-      connection: connectionId,
-      from: {
-        databaseName,
-        tableName,
-      },
-      timestampValueExpression: '',
-      select: '',
-      where: '',
-      // TODO: Pull in date for query as arg
-      // just assuming 1/2 day is okay to query over right now
-      dateRange: [new Date(NOW - (86400 * 1000) / 2), new Date(NOW)],
-    }),
-  );
+  const chartConfigs: BuilderChartConfigWithDateRange[] = toArray(
+    tableConnection,
+  ).map(({ databaseName, tableName, connectionId }) => ({
+    connection: connectionId,
+    from: {
+      databaseName,
+      tableName,
+    },
+    timestampValueExpression: '',
+    select: '',
+    where: '',
+    // TODO: Pull in date for query as arg
+    // just assuming 1/2 day is okay to query over right now
+    dateRange: [new Date(NOW - (86400 * 1000) / 2), new Date(NOW)],
+  }));
   const { data: keyVals } = useMultipleGetKeyValues({
     chartConfigs,
     keys: searchKeys,

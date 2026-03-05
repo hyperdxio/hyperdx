@@ -27,7 +27,10 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
-import { doesExceedThreshold } from '@/tasks/checkAlerts';
+import {
+  computeAliasWithClauses,
+  doesExceedThreshold,
+} from '@/tasks/checkAlerts';
 import {
   AlertProvider,
   PopulatedAlertChannel,
@@ -67,6 +70,7 @@ export type AlertMessageTemplateDefaultView = {
   endTime: Date;
   granularity: string;
   group?: string;
+  isGroupedAlert: boolean;
   savedSearch?: ISavedSearch | null;
   source?: ISource | null;
   startTime: Date;
@@ -527,11 +531,6 @@ export const renderAlertTemplate = async ({
         const startTime = view.startTime.getTime();
         const endTime = view.endTime.getTime();
 
-        // Generate eventId with explicit distinction between grouped and non-grouped alerts
-        // to prevent collisions between empty group names and non-grouped alerts
-        const isGroupedAlert = Boolean(
-          alert.groupBy && alert.groupBy.trim() !== '',
-        );
         const eventId = objectHash({
           alertId: alert.id,
           channel: {
@@ -539,9 +538,8 @@ export const renderAlertTemplate = async ({
             id: channel.channel._id.toString(),
           },
           // Explicitly track if this is a grouped alert
-          isGrouped: isGroupedAlert,
-          // Only include groupId if this is actually a grouped alert with a non-empty group value
-          ...(isGroupedAlert && group ? { groupId: group } : {}),
+          isGrouped: view.isGroupedAlert,
+          ...(view.isGroupedAlert && group ? { groupId: group } : {}),
         });
 
         await notifyChannel({
@@ -583,12 +581,14 @@ ${targetTemplate}`;
     }
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
+    const resolvedSelect =
+      savedSearch.select || source.defaultTableSelectExpression || '';
     const chartConfig: ChartConfigWithOptDateRange = {
       connection: '', // no need for the connection id since clickhouse client is already initialized
       displayType: DisplayType.Search,
       dateRange: [startTime, endTime],
       from: source.from,
-      select: savedSearch.select || source.defaultTableSelectExpression || '', // remove alert body if there is no select and defaultTableSelectExpression
+      select: resolvedSelect,
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       implicitColumnExpression: source.implicitColumnExpression,
@@ -602,6 +602,14 @@ ${targetTemplate}`;
 
     let truncatedResults = '';
     try {
+      const aliasWith = await computeAliasWithClauses(
+        savedSearch,
+        source,
+        metadata,
+      );
+      if (aliasWith) {
+        chartConfig.with = aliasWith;
+      }
       const query = await renderChartConfig(
         chartConfig,
         metadata,

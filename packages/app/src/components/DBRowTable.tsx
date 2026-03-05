@@ -32,7 +32,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   SelectList,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -271,7 +271,7 @@ const SqlModal = ({
 }: {
   opened: boolean;
   onClose: () => void;
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
 }) => {
   const { data: sql, isLoading: isLoadingSql } = useRenderedSqlChartConfig(
     config,
@@ -368,7 +368,7 @@ export const RawLogTable = memo(
     error?: ClickHouseQueryError | Error;
     dateRange?: [Date, Date];
     loadingDate?: Date;
-    config?: ChartConfigWithDateRange;
+    config?: BuilderChartConfigWithDateRange;
     onChildModalOpen?: (open: boolean) => void;
     source?: TSource;
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
@@ -1290,7 +1290,7 @@ function getSelectLength(select: SelectList): number {
 }
 
 export function useConfigWithPrimaryAndPartitionKey(
-  config: ChartConfigWithDateRange,
+  config: BuilderChartConfigWithDateRange,
 ) {
   const { data: tableMetadata } = useTableMetadata({
     databaseName: config.from.databaseName,
@@ -1365,7 +1365,7 @@ function DBSqlRowTableComponent({
   initialSortBy,
   variant = 'default',
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   sourceId?: string;
   onRowDetailsClick?: (rowWhere: RowWhereResult) => void;
   highlightedLineId?: string;

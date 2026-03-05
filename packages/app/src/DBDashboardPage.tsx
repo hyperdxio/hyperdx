@@ -19,18 +19,22 @@ import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  AlertState,
-  DashboardFilter,
-  SourceKind,
-  TSourceUnion,
-} from '@hyperdx/common-utils/dist/types';
+  isBuilderChartConfig,
+  isBuilderSavedChartConfig,
+  isRawSqlChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
+  AlertState,
   ChartConfigWithDateRange,
+  DashboardFilter,
   DisplayType,
   Filter,
   SearchCondition,
   SearchConditionLanguage,
+  SourceKind,
   SQLInterval,
+  TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -91,7 +95,7 @@ import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { parseAsStringWithNewLines } from './utils/queryParsers';
+import { parseAsStringEncoded } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
 import { useDashboard } from './dashboard';
@@ -188,11 +192,18 @@ const Tile = forwardRef(
     >(undefined);
 
     const { data: source } = useSource({
-      id: chart.config.source,
+      id: isBuilderSavedChartConfig(chart.config)
+        ? chart.config.source
+        : undefined,
     });
 
     useEffect(() => {
-      if (source != null) {
+      if (isRawSqlSavedChartConfig(chart.config)) {
+        setQueriedConfig({ ...chart.config, dateRange, granularity });
+        return;
+      }
+
+      if (source != null && isBuilderSavedChartConfig(chart.config)) {
         const isMetricSource = source.kind === SourceKind.Metric;
 
         // TODO: will need to update this when we allow for multiple metrics per chart
@@ -223,7 +234,9 @@ const Tile = forwardRef(
 
     const [hovered, setHovered] = useState(false);
 
-    const alert = chart.config.alert;
+    const alert = isBuilderSavedChartConfig(chart.config)
+      ? chart.config.alert
+      : undefined;
     const alertIndicatorColor = useMemo(() => {
       if (!alert) {
         return 'transparent';
@@ -349,6 +362,9 @@ const Tile = forwardRef(
         const toolbar = hideToolbar ? [] : [hoverToolbar];
         const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
 
+        // Markdown charts may not have queriedConfig, if config.source is not set
+        const effectiveMarkdownConfig = queriedConfig ?? chart.config;
+
         return (
           <ErrorBoundary
             onError={console.error}
@@ -359,26 +375,28 @@ const Tile = forwardRef(
             }
           >
             {(queriedConfig?.displayType === DisplayType.Line ||
-              queriedConfig?.displayType === DisplayType.StackedBar) && (
-              <DBTimeChart
-                key={`${keyPrefix}-${chart.id}`}
-                title={title}
-                toolbarPrefix={toolbar}
-                sourceId={chart.config.source}
-                showDisplaySwitcher={true}
-                config={queriedConfig}
-                onTimeRangeSelect={onTimeRangeSelect}
-                setDisplayType={displayType => {
-                  onUpdateChart?.({
-                    ...chart,
-                    config: {
-                      ...chart.config,
-                      displayType,
-                    },
-                  });
-                }}
-              />
-            )}
+              queriedConfig?.displayType === DisplayType.StackedBar) &&
+              isBuilderChartConfig(queriedConfig) &&
+              isBuilderSavedChartConfig(chart.config) && (
+                <DBTimeChart
+                  key={`${keyPrefix}-${chart.id}`}
+                  title={title}
+                  toolbarPrefix={toolbar}
+                  sourceId={chart.config.source}
+                  showDisplaySwitcher={true}
+                  config={queriedConfig}
+                  onTimeRangeSelect={onTimeRangeSelect}
+                  setDisplayType={displayType => {
+                    onUpdateChart?.({
+                      ...chart,
+                      config: {
+                        ...chart.config,
+                        displayType,
+                      },
+                    });
+                  }}
+                />
+              )}
             {queriedConfig?.displayType === DisplayType.Table && (
               <Box p="xs" h="100%">
                 <DBTableChart
@@ -387,78 +405,83 @@ const Tile = forwardRef(
                   toolbarPrefix={toolbar}
                   config={queriedConfig}
                   variant="muted"
-                  getRowSearchLink={row =>
-                    buildTableRowSearchUrl({
-                      row,
-                      source,
-                      config: queriedConfig,
-                      dateRange: dateRange,
-                    })
+                  getRowSearchLink={
+                    isBuilderChartConfig(queriedConfig)
+                      ? row =>
+                          buildTableRowSearchUrl({
+                            row,
+                            source,
+                            config: queriedConfig,
+                            dateRange: dateRange,
+                          })
+                      : undefined
                   }
                 />
               </Box>
             )}
-            {queriedConfig?.displayType === DisplayType.Number && (
-              <DBNumberChart
-                key={`${keyPrefix}-${chart.id}`}
-                title={title}
-                toolbarPrefix={toolbar}
-                config={queriedConfig}
-              />
-            )}
-            {queriedConfig?.displayType === DisplayType.Pie && (
-              <DBPieChart
-                key={`${keyPrefix}-${chart.id}`}
-                title={title}
-                toolbarPrefix={toolbar}
-                config={queriedConfig}
-              />
-            )}
-            {/* Markdown charts may not have queriedConfig, if source is not set */}
-            {(queriedConfig?.displayType === DisplayType.Markdown ||
-              (!queriedConfig &&
-                chart.config.displayType === DisplayType.Markdown)) && (
-              <HDXMarkdownChart
-                key={`${keyPrefix}-${chart.id}`}
-                title={title}
-                toolbarItems={toolbar}
-                config={queriedConfig ?? chart.config}
-              />
-            )}
-            {queriedConfig?.displayType === DisplayType.Search && (
-              <ChartContainer
-                title={title}
-                toolbarItems={toolbar}
-                disableReactiveContainer
-              >
-                <DBSqlRowTableWithSideBar
+            {queriedConfig?.displayType === DisplayType.Number &&
+              isBuilderChartConfig(queriedConfig) && (
+                <DBNumberChart
                   key={`${keyPrefix}-${chart.id}`}
-                  enabled
-                  sourceId={chart.config.source}
-                  config={{
-                    ...queriedConfig,
-                    orderBy: [
-                      {
-                        ordering: 'DESC',
-                        valueExpression: getFirstTimestampValueExpression(
-                          queriedConfig.timestampValueExpression,
-                        ),
-                      },
-                    ],
-                    dateRange,
-                    select:
-                      queriedConfig.select ||
-                      source?.defaultTableSelectExpression ||
-                      '',
-                    groupBy: undefined,
-                    granularity: undefined,
-                  }}
-                  isLive={false}
-                  queryKeyPrefix={'search'}
-                  variant="muted"
+                  title={title}
+                  toolbarPrefix={toolbar}
+                  config={queriedConfig}
                 />
-              </ChartContainer>
-            )}
+              )}
+            {queriedConfig?.displayType === DisplayType.Pie &&
+              isBuilderChartConfig(queriedConfig) && (
+                <DBPieChart
+                  key={`${keyPrefix}-${chart.id}`}
+                  title={title}
+                  toolbarPrefix={toolbar}
+                  config={queriedConfig}
+                />
+              )}
+            {effectiveMarkdownConfig?.displayType === DisplayType.Markdown &&
+              'markdown' in effectiveMarkdownConfig && (
+                <HDXMarkdownChart
+                  key={`${keyPrefix}-${chart.id}`}
+                  title={title}
+                  toolbarItems={toolbar}
+                  config={effectiveMarkdownConfig}
+                />
+              )}
+            {queriedConfig?.displayType === DisplayType.Search &&
+              isBuilderChartConfig(queriedConfig) &&
+              isBuilderSavedChartConfig(chart.config) && (
+                <ChartContainer
+                  title={title}
+                  toolbarItems={toolbar}
+                  disableReactiveContainer
+                >
+                  <DBSqlRowTableWithSideBar
+                    key={`${keyPrefix}-${chart.id}`}
+                    enabled
+                    sourceId={chart.config.source}
+                    config={{
+                      ...queriedConfig,
+                      orderBy: [
+                        {
+                          ordering: 'DESC',
+                          valueExpression: getFirstTimestampValueExpression(
+                            queriedConfig.timestampValueExpression,
+                          ),
+                        },
+                      ],
+                      dateRange,
+                      select:
+                        queriedConfig.select ||
+                        source?.defaultTableSelectExpression ||
+                        '',
+                      groupBy: undefined,
+                      granularity: undefined,
+                    }}
+                    isLive={false}
+                    queryKeyPrefix={'search'}
+                    variant="muted"
+                  />
+                </ChartContainer>
+              )}
           </ErrorBoundary>
         );
       },
@@ -717,6 +740,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     const tc: TableConnection[] = [];
 
     for (const { config } of dashboard.tiles) {
+      if (!isBuilderSavedChartConfig(config)) continue;
       const source = sources?.find(v => v.id === config.source);
       if (!source) continue;
       // TODO: will need to update this when we allow for multiple metrics per chart
@@ -742,7 +766,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   ) as [SQLInterval | undefined, (value: SQLInterval | undefined) => void];
   const [where, setWhere] = useQueryState(
     'where',
-    parseAsStringWithNewLines.withDefault(''),
+    parseAsStringEncoded.withDefault(''),
   );
   const [whereLanguage, setWhereLanguage] = useQueryState(
     'whereLanguage',
@@ -913,7 +937,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       : null;
     const currentFilterValues = rawFilterQueries?.length
       ? rawFilterQueries
-      : null;
+      : [];
 
     setDashboard(
       produce(dashboard, draft => {
@@ -946,7 +970,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       produce(dashboard, draft => {
         draft.savedQuery = null;
         draft.savedQueryLanguage = null;
-        draft.savedFilterValues = null;
+        draft.savedFilterValues = [];
       }),
       () => {
         notifications.show({
@@ -1197,7 +1221,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           );
         }}
       />
-      {IS_LOCAL_MODE === false && isLocalDashboard && (
+      {isLocalDashboard && (
         <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
           <Flex justify="space-between" align="center">
             <Text size="sm">
@@ -1397,18 +1421,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <IconRefresh size={18} />
           </ActionIcon>
         </Tooltip>
-        {!IS_LOCAL_MODE && (
-          <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-            <ActionIcon
-              variant="secondary"
-              onClick={() => setShowFiltersModal(true)}
-              data-testid="edit-filters-button"
-              size="input-sm"
-            >
-              <IconFilterEdit size={18} />
-            </ActionIcon>
-          </Tooltip>
-        )}
+        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+          <ActionIcon
+            variant="secondary"
+            onClick={() => setShowFiltersModal(true)}
+            data-testid="edit-filters-button"
+            size="input-sm"
+          >
+            <IconFilterEdit size={18} />
+          </ActionIcon>
+        </Tooltip>
         <Button
           data-testid="search-submit-button"
           variant="primary"

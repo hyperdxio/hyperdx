@@ -1,3 +1,14 @@
+# Claude Code user-local settings (not project config)
+.claude/settings.local.json
+
+# Override global .gitignore to track project-level AI tooling configs
+!.cursor
+!.cursor/mcp.json
+
+# Playwright MCP scratch files
+seed.spec.ts
+specs/
+
 # misc
 **/.DS_Store
 **/*.pem
