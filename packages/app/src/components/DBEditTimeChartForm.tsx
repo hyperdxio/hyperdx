@@ -16,7 +16,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isBuilderChartConfig,
-  isBuilderSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
@@ -1063,7 +1062,7 @@ export default function EditTimeChartForm({
                 <SegmentedControl
                   value={value === 'sql' ? 'sql' : 'builder'}
                   onChange={(value: string) => {
-                    onChange(value == 'sql' ? 'sql' : undefined);
+                    onChange(value == 'sql' ? 'sql' : 'builder');
                   }}
                   data={[
                     { label: 'Builder', value: 'builder' },

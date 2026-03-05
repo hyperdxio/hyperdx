@@ -342,7 +342,7 @@ describe('convertSavedChartConfigToFormState', () => {
     expect(result.series).toEqual([]);
   });
 
-  it('sets configType to undefined for BuilderSavedChartConfig', () => {
+  it('sets configType to builder for BuilderSavedChartConfig', () => {
     const config: BuilderSavedChartConfig = {
       source: 'source-1',
       displayType: DisplayType.Line,
@@ -350,7 +350,7 @@ describe('convertSavedChartConfigToFormState', () => {
       where: '',
     };
     const result = convertSavedChartConfigToFormState(config);
-    expect(result.configType).toBeUndefined();
+    expect(result.configType).toBe('builder');
   });
 
   it('maps array select to series with aggConditionLanguage defaulted', () => {

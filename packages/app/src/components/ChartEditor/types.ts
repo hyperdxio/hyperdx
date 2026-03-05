@@ -23,6 +23,7 @@ export type SavedChartConfigWithSelectArray = Omit<
  * arrays. `series` stores the array `select` data for the form.
  **/
 export type ChartEditorFormState = Partial<BuilderSavedChartConfig> &
-  Partial<RawSqlSavedChartConfig> & {
+  Partial<Omit<RawSqlSavedChartConfig, 'configType'>> & {
     series: SavedChartConfigWithSelectArray['select'];
+    configType?: 'sql' | 'builder';
   };

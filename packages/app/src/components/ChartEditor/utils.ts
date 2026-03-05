@@ -135,7 +135,7 @@ export function convertSavedChartConfigToFormState(
 ): ChartEditorFormState {
   return {
     ...config,
-    configType: isRawSqlSavedChartConfig(config) ? 'sql' : undefined,
+    configType: isRawSqlSavedChartConfig(config) ? 'sql' : 'builder',
     series:
       isBuilderSavedChartConfig(config) && Array.isArray(config.select)
         ? config.select.map(s => ({
