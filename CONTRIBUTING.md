@@ -110,7 +110,7 @@ yarn dev:unit
 
 ## AI-Assisted Development
 
-The repo ships with configuration for AI coding assistants that enables interactive browser-based E2E test generation and debugging via the [Playwright MCP server](https://github.com/microsoft/playwright/tree/main/packages/playwright-mcp).
+The repo ships with configuration for AI coding assistants that enables interactive browser-based E2E test generation and debugging via the [Playwright MCP server](https://github.com/microsoft/playwright-mcp).
 
 ### Claude Code
 
