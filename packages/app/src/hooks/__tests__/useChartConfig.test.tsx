@@ -1,6 +1,7 @@
 import React from 'react';
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
@@ -1398,6 +1399,9 @@ describe('useChartConfig', () => {
 
       // Verify the query used the optimized config (materialized view)
       const queryCall = mockClickhouseClient.queryChartConfig.mock.calls[0][0];
+      if (!isBuilderChartConfig(queryCall.config)) {
+        throw new Error('Expected a BuilderChartConfig');
+      }
       expect(queryCall.config.from.tableName).toBe('metrics_rollup_1h');
 
       expect(result2.current.data?.data).toBeDefined();

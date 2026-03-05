@@ -1,5 +1,5 @@
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -640,7 +640,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const granularityFromFunction =
         convertToTimeChartConfig(config).granularity;
@@ -654,7 +654,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const granularityFromFunction =
         convertToTimeChartConfig(config).granularity;
@@ -669,7 +669,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const granularityFromFunction =
         convertToTimeChartConfig(config).granularity;
@@ -687,7 +687,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const convertedConfig = convertToNumberChartConfig(config);
 
@@ -704,7 +704,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const convertedConfig = convertToTableChartConfig(config);
 
@@ -718,7 +718,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const convertedConfig = convertToTableChartConfig(config);
 
@@ -732,7 +732,7 @@ describe('ChartUtils', () => {
           new Date('2025-11-26T00:00:00Z'),
           new Date('2025-11-27T00:00:00Z'),
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       const convertedConfig = convertToTableChartConfig(config);
 

@@ -3,9 +3,9 @@ import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 
+import { TimelineChart } from '@/components/TimelineChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
-import TimelineChart from '@/TimelineChart';
 
 import { RowSidePanelContext } from '../DBRowSidePanel';
 import {
@@ -15,13 +15,13 @@ import {
 } from '../DBTraceWaterfallChart';
 
 // Mock setup
-jest.mock('@/TimelineChart', () => {
+jest.mock('@/components/TimelineChart', () => {
   const mockComponent = function MockTimelineChart(props: any) {
     mockComponent.latestProps = props;
     return <div data-testid="timeline-chart">TimelineChart</div>;
   };
   mockComponent.latestProps = {};
-  return mockComponent;
+  return { TimelineChart: mockComponent };
 });
 
 jest.mock('@/hooks/useOffsetPaginatedQuery');

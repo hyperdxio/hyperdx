@@ -9,8 +9,8 @@
 
 ARG NODE_VERSION=22.22
 ARG CLICKHOUSE_VERSION=26.1
-ARG OTEL_COLLECTOR_VERSION=0.145.0
-ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.145.0
+ARG OTEL_COLLECTOR_VERSION=0.147.0
+ARG OTEL_COLLECTOR_OPAMPSUPERVISOR_VERSION=0.147.0
 
 # base #############################################################################################
 # == Otel Collector Image ==

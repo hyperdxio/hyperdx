@@ -1,11 +1,11 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 import { sq } from 'date-fns/locale';
 import ms from 'ms';
-import { parseAsString, useQueryState } from 'nuqs';
+import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
@@ -17,6 +17,7 @@ import SearchWhereInput, {
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
+import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import { ROW_DATA_ALIASES } from './DBRowDataPanel';
 import DBRowSidePanel, { RowSidePanelContext } from './DBRowSidePanel';
@@ -37,7 +38,7 @@ enum ContextBy {
 
 interface ContextSubpanelProps {
   source: TSource;
-  dbSqlRowTableConfig: ChartConfigWithDateRange | undefined;
+  dbSqlRowTableConfig: BuilderChartConfigWithDateRange | undefined;
   rowData: Record<string, any>;
   rowId: string | undefined;
   breadcrumbPath?: BreadcrumbPath;
@@ -48,8 +49,10 @@ interface ContextSubpanelProps {
 export function useNestedPanelState(isNested?: boolean) {
   // Query state (URL-based) for root level
   const queryState = {
-    contextRowId: useQueryState('contextRowId', parseAsString),
-    contextRowSource: useQueryState('contextRowSource', parseAsString),
+    contextRowId: useQueryState('contextRowId', parseAsStringEncoded),
+    // Source IDs are MongoDB ObjectIDs (hex strings) and contain no special
+    // characters, so no encoding is needed here.
+    contextRowSource: useQueryState('contextRowSource'),
   };
 
   // Local state for nested levels

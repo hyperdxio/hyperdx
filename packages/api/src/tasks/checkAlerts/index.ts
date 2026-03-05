@@ -3,16 +3,25 @@
 // --------------------------------------------------------
 import PQueue from '@esm2cjs/p-queue';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
-import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  chSqlToAliasMap,
+  ResponseJSON,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
   getMetadata,
   Metadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  ChartConfigWithOptDateRange,
+  isBuilderSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
+  BuilderChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
@@ -62,6 +71,7 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
   }
   if (
     details.taskType === AlertTaskType.TILE &&
+    isBuilderSavedChartConfig(details.tile.config) &&
     details.tile.config.groupBy &&
     details.tile.config.groupBy.length > 0
   ) {
@@ -69,6 +79,33 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
   }
   return false;
 };
+
+/**
+ * Render a saved search's SELECT to discover column aliases (e.g. `toString(Body) AS body`)
+ * and return them as WITH clauses that can be injected into alert/sample-log queries
+ * whose own SELECT doesn't include those aliases.
+ */
+export async function computeAliasWithClauses(
+  savedSearch: Pick<ISavedSearch, 'select' | 'where' | 'whereLanguage'>,
+  source: ISource,
+  metadata: Metadata,
+): Promise<BuilderChartConfigWithOptDateRange['with']> {
+  const resolvedSelect =
+    savedSearch.select || source.defaultTableSelectExpression || '';
+  const config: BuilderChartConfigWithOptDateRange = {
+    connection: '',
+    displayType: DisplayType.Search,
+    from: source.from,
+    select: resolvedSelect,
+    where: savedSearch.where,
+    whereLanguage: savedSearch.whereLanguage,
+    implicitColumnExpression: source.implicitColumnExpression,
+    timestampValueExpression: source.timestampValueExpression,
+  };
+  const query = await renderChartConfig(config, metadata, source.querySettings);
+  const aliasMap = chSqlToAliasMap(query);
+  return aliasMapToWithClauses(aliasMap);
+}
 
 export const doesExceedThreshold = (
   thresholdType: AlertThresholdType,
@@ -382,7 +419,7 @@ const getChartConfigFromAlert = (
   connection: string,
   dateRange: [Date, Date],
   windowSizeInMins: number,
-): ChartConfigWithOptDateRange | undefined => {
+): BuilderChartConfigWithOptDateRange | undefined => {
   const { alert, source } = details;
   if (details.taskType === AlertTaskType.SAVED_SEARCH) {
     const savedSearch = details.savedSearch;
@@ -409,6 +446,10 @@ const getChartConfigFromAlert = (
     };
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
+
+    // Alerts are not supported for raw sql based charts
+    if (isRawSqlSavedChartConfig(tile.config)) return undefined;
+
     // Doesn't work for metric alerts yet
     if (
       tile.config.displayType === DisplayType.Line ||
@@ -605,6 +646,29 @@ export const processAlert = async (
     }
 
     const metadata = getMetadata(clickhouseClient);
+
+    // For saved search alerts, the WHERE clause may reference aliased columns
+    // from the saved search's select expression (e.g. `toString(Body) AS body`).
+    // The alert query itself uses count(*), not the saved search's select,
+    // so we render the saved search's select separately to discover aliases
+    // and inject them as WITH clauses into the alert query.
+    if (details.taskType === AlertTaskType.SAVED_SEARCH) {
+      try {
+        const withClauses = await computeAliasWithClauses(
+          details.savedSearch,
+          source,
+          metadata,
+        );
+        if (withClauses) {
+          chartConfig.with = withClauses;
+        }
+      } catch (e) {
+        logger.warn(
+          { error: serializeError(e), alertId: alert.id },
+          'Failed to compute alias WITH clauses for alert check',
+        );
+      }
+    }
 
     // Optimize chart config with materialized views, if available
     const optimizedChartConfig = source?.materializedViews?.length

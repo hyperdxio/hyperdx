@@ -16,7 +16,6 @@ import router from 'next/router';
 import {
   parseAsBoolean,
   parseAsInteger,
-  parseAsJson,
   parseAsString,
   parseAsStringEnum,
   useQueryState,
@@ -28,10 +27,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  aliasMapToWithClauses,
   isBrowser,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
@@ -94,7 +95,6 @@ import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
-import { aliasMapToWithClauses } from '@/hooks/useRowWhere';
 import { withAppNav } from '@/layout';
 import {
   useCreateSavedSearch,
@@ -129,8 +129,9 @@ import {
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import {
+  parseAsJsonEncoded,
   parseAsSortingStateString,
-  parseAsStringWithNewLines,
+  parseAsStringEncoded,
 } from './utils/queryParsers';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
@@ -801,11 +802,11 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
-  where: parseAsStringWithNewLines,
-  select: parseAsStringWithNewLines,
+  where: parseAsStringEncoded,
+  select: parseAsStringEncoded,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
-  filters: parseAsJson<Filter[]>(),
-  orderBy: parseAsStringWithNewLines,
+  filters: parseAsJsonEncoded<Filter[]>(),
+  orderBy: parseAsStringEncoded,
 };
 
 function DBSearchPage() {
@@ -1465,7 +1466,7 @@ function DBSearchPage() {
     [onTimeRangeSelect, setIsLive],
   );
 
-  const filtersChartConfig = useMemo<ChartConfigWithDateRange>(() => {
+  const filtersChartConfig = useMemo<BuilderChartConfigWithDateRange>(() => {
     const overrides = {
       orderBy: undefined,
       dateRange: searchedTimeRange,
@@ -1635,77 +1636,75 @@ function DBSearchPage() {
               size="xs"
             />
           </Box>
-          {!IS_LOCAL_MODE && (
-            <>
-              {!savedSearchId ? (
-                <Button
-                  data-testid="save-search-button"
-                  variant="secondary"
-                  size="xs"
-                  onClick={onSaveSearch}
-                  style={{ flexShrink: 0 }}
+          <>
+            {!savedSearchId ? (
+              <Button
+                data-testid="save-search-button"
+                variant="secondary"
+                size="xs"
+                onClick={onSaveSearch}
+                style={{ flexShrink: 0 }}
+              >
+                Save
+              </Button>
+            ) : (
+              <Button
+                data-testid="update-search-button"
+                variant="secondary"
+                size="xs"
+                onClick={() => {
+                  setSaveSearchModalState('update');
+                }}
+                style={{ flexShrink: 0 }}
+              >
+                Update
+              </Button>
+            )}
+            {!IS_LOCAL_MODE && (
+              <Button
+                data-testid="alerts-button"
+                variant="secondary"
+                size="xs"
+                onClick={openAlertModal}
+                style={{ flexShrink: 0 }}
+              >
+                Alerts
+              </Button>
+            )}
+            {!!savedSearch && (
+              <>
+                <Tags
+                  allowCreate
+                  values={savedSearch.tags || []}
+                  onChange={handleUpdateTags}
                 >
-                  Save
-                </Button>
-              ) : (
-                <Button
-                  data-testid="update-search-button"
-                  variant="secondary"
-                  size="xs"
-                  onClick={() => {
+                  <Button
+                    data-testid="tags-button"
+                    variant="secondary"
+                    px="xs"
+                    size="xs"
+                    style={{ flexShrink: 0 }}
+                  >
+                    <IconTags size={14} className="me-1" />
+                    {savedSearch.tags?.length || 0}
+                  </Button>
+                </Tags>
+
+                <SearchPageActionBar
+                  onClickDeleteSavedSearch={() => {
+                    deleteSavedSearch.mutate(savedSearch?.id ?? '', {
+                      onSuccess: () => {
+                        router.push('/search');
+                      },
+                    });
+                  }}
+                  onClickRenameSavedSearch={() => {
                     setSaveSearchModalState('update');
                   }}
-                  style={{ flexShrink: 0 }}
-                >
-                  Update
-                </Button>
-              )}
-              {!IS_LOCAL_MODE && (
-                <Button
-                  data-testid="alerts-button"
-                  variant="secondary"
-                  size="xs"
-                  onClick={openAlertModal}
-                  style={{ flexShrink: 0 }}
-                >
-                  Alerts
-                </Button>
-              )}
-              {!!savedSearch && (
-                <>
-                  <Tags
-                    allowCreate
-                    values={savedSearch.tags || []}
-                    onChange={handleUpdateTags}
-                  >
-                    <Button
-                      data-testid="tags-button"
-                      variant="secondary"
-                      px="xs"
-                      size="xs"
-                      style={{ flexShrink: 0 }}
-                    >
-                      <IconTags size={14} className="me-1" />
-                      {savedSearch.tags?.length || 0}
-                    </Button>
-                  </Tags>
-
-                  <SearchPageActionBar
-                    onClickDeleteSavedSearch={() => {
-                      deleteSavedSearch.mutate(savedSearch?.id ?? '', {
-                        onSuccess: () => {
-                          router.push('/search');
-                        },
-                      });
-                    }}
-                    onClickRenameSavedSearch={() => {
-                      setSaveSearchModalState('update');
-                    }}
-                  />
-                </>
-              )}
-            </>
-          )}
+                />
+              </>
+            )}
+          </>
         </Flex>
         <SourceEditModal
           opened={modelFormExpanded}

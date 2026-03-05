@@ -1,7 +1,8 @@
 import { ClickhouseClient } from '../clickhouse/node';
 import { Metadata, MetadataCache } from '../core/metadata';
 import * as renderChartConfigModule from '../core/renderChartConfig';
-import { ChartConfigWithDateRange, TSource } from '../types';
+import { isBuilderChartConfig } from '../guards';
+import { BuilderChartConfigWithDateRange, TSource } from '../types';
 
 // Mock ClickhouseClient
 const mockClickhouseClient = {
@@ -232,7 +233,7 @@ describe('Metadata', () => {
   });
 
   describe('getKeyValues', () => {
-    const mockChartConfig: ChartConfigWithDateRange = {
+    const mockChartConfig: BuilderChartConfigWithDateRange = {
       from: {
         databaseName: 'test_db',
         tableName: 'test_table',
@@ -372,7 +373,7 @@ describe('Metadata', () => {
   });
 
   describe('getValuesDistribution', () => {
-    const mockChartConfig: ChartConfigWithDateRange = {
+    const mockChartConfig: BuilderChartConfigWithDateRange = {
       from: {
         databaseName: 'test_db',
         tableName: 'test_table',
@@ -462,6 +463,8 @@ describe('Metadata', () => {
       });
 
       const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
       expect(actualConfig.with).toContainEqual({
         name: 'service',
         sql: {
@@ -480,7 +483,7 @@ describe('Metadata', () => {
     });
 
     it('should include filters from the config in the query', async () => {
-      const configWithFilters: ChartConfigWithDateRange = {
+      const configWithFilters: BuilderChartConfigWithDateRange = {
         ...mockChartConfig,
         filters: [
           {
@@ -502,6 +505,8 @@ describe('Metadata', () => {
       });
 
       const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
       expect(actualConfig.filters).toContainEqual({
         type: 'sql',
         condition: "ServiceName IN ('clickhouse')",

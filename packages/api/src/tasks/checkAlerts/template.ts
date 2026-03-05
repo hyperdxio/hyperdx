@@ -27,7 +27,10 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
-import { doesExceedThreshold } from '@/tasks/checkAlerts';
+import {
+  computeAliasWithClauses,
+  doesExceedThreshold,
+} from '@/tasks/checkAlerts';
 import {
   AlertProvider,
   PopulatedAlertChannel,
@@ -578,12 +581,14 @@ ${targetTemplate}`;
     }
     // TODO: show group + total count for group-by alerts
     // fetch sample logs
+    const resolvedSelect =
+      savedSearch.select || source.defaultTableSelectExpression || '';
     const chartConfig: ChartConfigWithOptDateRange = {
       connection: '', // no need for the connection id since clickhouse client is already initialized
       displayType: DisplayType.Search,
       dateRange: [startTime, endTime],
       from: source.from,
-      select: savedSearch.select || source.defaultTableSelectExpression || '', // remove alert body if there is no select and defaultTableSelectExpression
+      select: resolvedSelect,
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
       implicitColumnExpression: source.implicitColumnExpression,
@@ -597,6 +602,14 @@ ${targetTemplate}`;
 
     let truncatedResults = '';
     try {
+      const aliasWith = await computeAliasWithClauses(
+        savedSearch,
+        source,
+        metadata,
+      );
+      if (aliasWith) {
+        chartConfig.with = aliasWith;
+      }
       const query = await renderChartConfig(
         chartConfig,
         metadata,

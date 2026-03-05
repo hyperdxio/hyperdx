@@ -13,7 +13,11 @@ import {
   tableExpr,
 } from '@/clickhouse';
 import { renderChartConfig } from '@/core/renderChartConfig';
-import type { ChartConfig, ChartConfigWithDateRange, TSource } from '@/types';
+import type {
+  BuilderChartConfig,
+  BuilderChartConfigWithDateRange,
+  TSource,
+} from '@/types';
 
 import { optimizeGetKeyValuesCalls } from './materializedViews';
 import { objectHash } from './utils';
@@ -923,7 +927,7 @@ export class Metadata {
     limit = 100,
     source,
   }: {
-    chartConfig: ChartConfigWithDateRange;
+    chartConfig: BuilderChartConfigWithDateRange;
     key: string;
     samples?: number;
     limit?: number;
@@ -940,7 +944,7 @@ export class Metadata {
     return this.cache.getOrFetch(
       `${objectHash(cacheKeyConfig)}.${key}.valuesDistribution`,
       async () => {
-        const config: ChartConfigWithDateRange = {
+        const config: BuilderChartConfigWithDateRange = {
           ...chartConfig,
           with: [
             ...(chartConfig.with || []),
@@ -1013,7 +1017,7 @@ export class Metadata {
     signal,
     source,
   }: {
-    chartConfig: ChartConfigWithDateRange;
+    chartConfig: BuilderChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
@@ -1132,7 +1136,7 @@ export class Metadata {
     disableRowLimit,
     signal,
   }: {
-    chartConfig: ChartConfigWithDateRange;
+    chartConfig: BuilderChartConfigWithDateRange;
     keys: string[];
     source: TSource | undefined;
     limit?: number;
@@ -1210,7 +1214,9 @@ export type TableConnectionChoice =
       tableConnections?: never;
     };
 
-export function tcFromChartConfig(config?: ChartConfig): TableConnection {
+export function tcFromChartConfig(
+  config?: BuilderChartConfig,
+): TableConnection {
   return {
     databaseName: config?.from?.databaseName ?? '',
     tableName: config?.from?.tableName ?? '',
