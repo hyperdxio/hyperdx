@@ -883,6 +883,108 @@ function AggregatedColumnRow({
 // OR traceModel.logModel = 'log_id_blah'
 // custom always points towards the url param
 
+function OrderByFormRow({
+  control,
+  databaseName,
+  tableName,
+  connectionId,
+}: {
+  control: Control<TSourceUnion>;
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+}) {
+  const orderByInput = useWatch({
+    control,
+    name: 'orderByExpression',
+  });
+
+  const [explainExpression, setExplainExpression] = useState<string>();
+
+  const setExplainExpressionDebounced = useDebouncedCallback((expr: string) => {
+    setExplainExpression(expr);
+  }, 1_000);
+
+  useDidUpdate(() => {
+    setExplainExpressionDebounced(orderByInput ?? '');
+  }, [orderByInput]);
+
+  const {
+    data: explainData,
+    error: explainError,
+    isLoading: explainLoading,
+  } = useExplainQuery(
+    {
+      from: { databaseName, tableName },
+      connection: connectionId,
+      select: '*',
+      where: '',
+      orderBy: explainExpression,
+    },
+    {
+      enabled: !!explainExpression,
+    },
+  );
+
+  const runValidation = () => {
+    setExplainExpression(orderByInput ?? '');
+  };
+
+  const isExpressionValid = !!explainData?.length;
+  const isExpressionInvalid = explainError instanceof ClickHouseQueryError;
+
+  const shouldShowResult =
+    explainExpression === (orderByInput ?? '') &&
+    !!explainExpression &&
+    (isExpressionValid || isExpressionInvalid);
+
+  return (
+    <>
+      <FormRow
+        label="Order By"
+        helpText="Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default."
+      >
+        <Flex align="center" gap="sm">
+          <Box flex={1}>
+            <InputControlled
+              control={control}
+              name="orderByExpression"
+              placeholder="e.g. Timestamp DESC"
+            />
+          </Box>
+          <Tooltip label="Validate expression">
+            <ActionIcon
+              size="xs"
+              variant="subtle"
+              color="gray"
+              loading={explainLoading}
+              disabled={!orderByInput || explainLoading}
+              onClick={runValidation}
+            >
+              <IconCheck size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </Flex>
+      </FormRow>
+      {shouldShowResult && (
+        <Box>
+          {isExpressionValid && (
+            <Text c="green" size="xs">
+              Expression is valid.
+            </Text>
+          )}
+          {isExpressionInvalid && (
+            <ErrorCollapse
+              summary="Expression is invalid"
+              details={explainError?.message}
+            />
+          )}
+        </Box>
+      )}
+    </>
+  );
+}
+
 export function LogTableModelForm(props: TableModelProps) {
   const { control } = props;
   const brandName = useBrandDisplayName();
@@ -1133,16 +1235,12 @@ export function LogTableModelForm(props: TableModelProps) {
         <Divider />
         <MaterializedViewsFormSection {...props} />
         <Divider />
-        <FormRow
-          label="Order By"
-          helpText="Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default."
-        >
-          <InputControlled
-            control={control}
-            name="orderByExpression"
-            placeholder="e.g. Timestamp DESC"
-          />
-        </FormRow>
+        <OrderByFormRow
+          control={control}
+          databaseName={databaseName}
+          tableName={tableName}
+          connectionId={connectionId}
+        />
       </Stack>
     </>
   );
@@ -1431,16 +1529,12 @@ export function TraceTableModelForm(props: TableModelProps) {
       <Divider />
       <MaterializedViewsFormSection {...props} />
       <Divider />
-      <FormRow
-        label="Order By"
-        helpText="Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default."
-      >
-        <InputControlled
-          control={control}
-          name="orderByExpression"
-          placeholder="e.g. Timestamp DESC"
-        />
-      </FormRow>
+      <OrderByFormRow
+        control={control}
+        databaseName={databaseName}
+        tableName={tableName}
+        connectionId={connectionId}
+      />
     </Stack>
   );
 }
