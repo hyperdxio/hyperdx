@@ -146,6 +146,14 @@ export function PropertyComparisonChart({
   } | null>(null);
   const [copiedValue, setCopiedValue] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up copy confirmation timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
 
   // Dismiss popover on click outside, scroll, or Escape key
   useEffect(() => {
@@ -337,7 +345,12 @@ export function PropertyComparisonChart({
                   try {
                     await navigator.clipboard.writeText(clickedBar.value);
                     setCopiedValue(true);
-                    setTimeout(() => setCopiedValue(false), 2000);
+                    if (copyTimeoutRef.current)
+                      clearTimeout(copyTimeoutRef.current);
+                    copyTimeoutRef.current = setTimeout(
+                      () => setCopiedValue(false),
+                      2000,
+                    );
                   } catch (err) {
                     console.error('Failed to copy:', err);
                   }
