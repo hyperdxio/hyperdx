@@ -14,6 +14,7 @@ type SQLInlineEditorProps = {
   onChange: (value: string) => void;
   placeholder?: string;
   height?: string;
+  enableLineWrapping?: boolean;
 };
 
 const styleTheme = EditorView.baseTheme({
@@ -33,6 +34,7 @@ export default function SQLEditor({
   placeholder,
   value,
   height,
+  enableLineWrapping = false,
 }: SQLInlineEditorProps) {
   const { colorScheme } = useMantineColorScheme();
   const ref = useRef<ReactCodeMirrorRef>(null);
@@ -67,6 +69,7 @@ export default function SQLEditor({
                 upperCaseKeywords: true,
               }),
             ),
+            ...(enableLineWrapping ? [EditorView.lineWrapping] : []),
           ]}
           onUpdate={update => {
             // Always open completion window as much as possible

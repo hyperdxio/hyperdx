@@ -36,6 +36,7 @@ export default function RawSqlChartEditor({
           control={control}
           name="sqlTemplate"
           height={`${size}vh`}
+          enableLineWrapping
         />
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
