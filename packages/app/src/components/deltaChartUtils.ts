@@ -218,6 +218,10 @@ export function flattenedKeyToSqlExpression(
  * ClickHouse bracket notation for Map columns.
  * This matches the search bar format (WHERE ResourceAttributes['k8s.pod.name'] = ...).
  * For simple (non-Map) columns, returns the key unchanged.
+ *
+ * NOTE: Currently produces the same output as flattenedKeyToSqlExpression for
+ * Map columns. Kept separate because filter keys may diverge in the future
+ * (e.g., sidebar facet format vs SQL WHERE clause format for Array(Map) columns).
  */
 export function flattenedKeyToFilterKey(
   key: string,

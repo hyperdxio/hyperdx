@@ -273,9 +273,20 @@ export function PropertyComparisonChart({
             className={styles.chartTooltip}
             style={{
               position: 'fixed',
-              left: clickedBar.clientX,
-              top: clickedBar.clientY - 8,
-              transform: 'translate(-50%, -100%)',
+              // Clamp horizontally so the popover stays within the viewport
+              left: Math.max(
+                160,
+                Math.min(clickedBar.clientX, window.innerWidth - 160),
+              ),
+              // Render above click point; flip below if near the top
+              top:
+                clickedBar.clientY > 200
+                  ? clickedBar.clientY - 8
+                  : clickedBar.clientY + 16,
+              transform:
+                clickedBar.clientY > 200
+                  ? 'translate(-50%, -100%)'
+                  : 'translate(-50%, 0)',
               zIndex: 1000,
               borderRadius: 4,
               padding: '8px 12px',
