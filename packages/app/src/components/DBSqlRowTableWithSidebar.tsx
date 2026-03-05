@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
@@ -25,7 +25,7 @@ import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
 
 interface Props {
   sourceId: string;
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   onError?: (error: Error | ClickHouseQueryError) => void;
   onScroll?: (scrollTop: number) => void;
   onSidebarOpen?: (rowId: string) => void;

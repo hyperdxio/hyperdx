@@ -1,4 +1,6 @@
+import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  BuilderSavedChartConfig,
   DashboardWithoutIdSchema,
   Tile,
 } from '@hyperdx/common-utils/dist/types';
@@ -17,7 +19,7 @@ import Dashboard from '@/models/dashboard';
 
 function pickAlertsByTile(tiles: Tile[]) {
   return tiles.reduce((acc, tile) => {
-    if (tile.config.alert) {
+    if (isBuilderSavedChartConfig(tile.config) && tile.config.alert) {
       acc[tile.id] = tile.config.alert;
     }
     return acc;
@@ -25,7 +27,9 @@ function pickAlertsByTile(tiles: Tile[]) {
 }
 
 type TileForAlertSync = Pick<Tile, 'id'> & {
-  config?: Pick<Tile['config'], 'alert'> | { alert?: IAlert | AlertDocument };
+  config?:
+    | Pick<BuilderSavedChartConfig, 'alert'>
+    | { alert?: IAlert | AlertDocument };
 };
 
 function extractTileAlertData(tiles: TileForAlertSync[]): {
@@ -48,8 +52,15 @@ async function syncDashboardAlerts(
 ): Promise<void> {
   const { tileIds: oldTileIds, tileIdsWithAlerts: oldTileIdsWithAlerts } =
     extractTileAlertData(oldTiles);
+
+  const newTilesForAlertSync: TileForAlertSync[] = newTiles.map(t => ({
+    id: t.id,
+    config: isBuilderSavedChartConfig(t.config)
+      ? { alert: t.config.alert }
+      : {},
+  }));
   const { tileIds: newTileIds, tileIdsWithAlerts: newTileIdsWithAlerts } =
-    extractTileAlertData(newTiles);
+    extractTileAlertData(newTilesForAlertSync);
 
   // 1. Create/update alerts for tiles that have alerts
   const alertsByTile = pickAlertsByTile(newTiles);

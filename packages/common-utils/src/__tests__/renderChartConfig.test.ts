@@ -1427,4 +1427,21 @@ describe('renderChartConfig', () => {
       expect(actual).toMatchSnapshot();
     });
   });
+
+  it('returns sqlTemplate verbatim for raw sql config', async () => {
+    const rawSqlConfig: ChartConfigWithOptDateRangeEx = {
+      configType: 'sql',
+      sqlTemplate: 'SELECT count() FROM logs WHERE level = {level:String}',
+      connection: 'conn-1',
+    };
+    const result = await renderChartConfig(
+      rawSqlConfig,
+      mockMetadata,
+      undefined,
+    );
+    expect(result.sql).toBe(
+      'SELECT count() FROM logs WHERE level = {level:String}',
+    );
+    expect(result.params).toEqual({});
+  });
 });

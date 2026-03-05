@@ -226,6 +226,7 @@ function DBChartExplorerPage() {
     parseAsJson<SavedChartConfig>().withDefault({
       ...DEFAULT_CHART_CONFIG,
       source: sources?.[0]?.id ?? '',
+      connection: sources?.[0]?.connection,
     }),
   );
 

@@ -49,6 +49,7 @@ jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
 import { getClickhouseClient } from '@hyperdx/app/src/clickhouse';
 import { MVOptimizationExplanation } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 
 import {
   MVOptimizationExplanationResult,
@@ -763,6 +764,57 @@ describe('useOffsetPaginatedQuery', () => {
     });
   });
 
+  describe('RawSqlChartConfig', () => {
+    it('should execute raw SQL query without time windowing and not paginate', async () => {
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        sqlTemplate: 'SELECT status, count() FROM logs GROUP BY status',
+        connection: 'conn-1',
+        displayType: undefined,
+        dateRange: [
+          new Date('2024-01-01T00:00:00Z'),
+          new Date('2024-01-02T00:00:00Z'),
+        ] as [Date, Date],
+      };
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['status', 'count()'] },
+            { json: () => ['String', 'UInt64'] },
+            { json: () => ['error', 42] },
+            { json: () => ['info', 100] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      // Raw SQL config should be passed through to renderChartConfig unchanged
+      expect(renderChartConfig).toHaveBeenCalledTimes(1);
+      expect(jest.mocked(renderChartConfig).mock.calls[0][0]).toMatchObject({
+        configType: 'sql',
+        sqlTemplate: 'SELECT status, count() FROM logs GROUP BY status',
+      });
+
+      // Should have data
+      expect(result.current.data?.data).toHaveLength(2);
+      expect(result.current.data?.data[0]).toEqual({
+        status: 'error',
+        'count()': 42,
+      });
+
+      // Pagination is disabled for raw SQL
+      expect(result.current.hasNextPage).toBe(false);
+    });
+  });
+
   describe('MV Optimization Integration', () => {
     it('should optimize queries using MVs when possible', async () => {
       const config = createMockChartConfig({
@@ -826,7 +878,9 @@ describe('useOffsetPaginatedQuery', () => {
         jest
           .mocked(renderChartConfig)
           .mock.calls.every(
-            call => call[0].from.tableName === 'metrics_rollup_1m',
+            call =>
+              isBuilderChartConfig(call[0]) &&
+              call[0].from.tableName === 'metrics_rollup_1m',
           ),
       ).toBeTruthy();
 
@@ -919,7 +973,9 @@ describe('useOffsetPaginatedQuery', () => {
         jest
           .mocked(renderChartConfig)
           .mock.calls.every(
-            call => call[0].from.tableName === 'metrics_rollup_1m',
+            call =>
+              isBuilderChartConfig(call[0]) &&
+              call[0].from.tableName === 'metrics_rollup_1m',
           ),
       ).toBeTruthy();
 
