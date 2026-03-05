@@ -22,11 +22,11 @@ import { getFirstTimestampValueExpression } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
 import {
+  computeComparisonScore,
   getPropertyStatistics,
   getStableSampleExpression,
   isDenylisted,
   isHighCardinality,
-  mergeValueStatisticsMaps,
   SAMPLE_SIZE,
 } from './deltaChartUtils';
 import {
@@ -242,7 +242,10 @@ export default function DBDeltaChart({
     if (uniqueKeys.size === 0) {
       uniqueKeys = new Set([...inlierValueOccurences.keys()]);
     }
-    // Now process the keys to find the ones with the highest delta between outlier and inlier percentages
+    // Sort by proportional comparison score (normalizes group sizes).
+    // TODO: When #1824 (always-on distribution) merges, use computeEntropyScore
+    // for distribution mode (no selection) and computeComparisonScore only when
+    // a selection is active (hasSelection flag from #1824).
     const sortedProperties = Array.from(uniqueKeys)
       .map(key => {
         const inlierCount =
@@ -250,16 +253,10 @@ export default function DBDeltaChart({
         const outlierCount =
           outlierValueOccurences.get(key) ?? new Map<string, number>();
 
-        const mergedArray = mergeValueStatisticsMaps(outlierCount, inlierCount);
-        let maxValueDelta = 0;
-        mergedArray.forEach(item => {
-          const delta = Math.abs(item.outlierCount - item.inlierCount);
-          if (delta > maxValueDelta) {
-            maxValueDelta = delta;
-          }
-        });
+        // Use proportional comparison scoring which normalizes group sizes
+        const sortScore = computeComparisonScore(outlierCount, inlierCount);
 
-        return [key, maxValueDelta] as const;
+        return [key, sortScore] as const;
       })
       .sort((a, b) => b[1] - a[1])
       .map(a => a[0]);
