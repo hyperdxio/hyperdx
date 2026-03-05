@@ -655,6 +655,7 @@ const SourceBaseSchema = z.object({
     tableName: z.string().min(1, 'Table is required'),
   }),
   querySettings: QuerySettingsSchema.optional(),
+  orderByExpression: z.string().optional(),
 });
 
 const RequiredTimestampColumnSchema = z

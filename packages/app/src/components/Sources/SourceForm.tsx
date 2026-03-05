@@ -1132,6 +1132,17 @@ export function LogTableModelForm(props: TableModelProps) {
         />
         <Divider />
         <MaterializedViewsFormSection {...props} />
+        <Divider />
+        <FormRow
+          label="Order By"
+          helpText="Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default."
+        >
+          <InputControlled
+            control={control}
+            name="orderByExpression"
+            placeholder="e.g. Timestamp DESC"
+          />
+        </FormRow>
       </Stack>
     </>
   );
@@ -1419,6 +1430,17 @@ export function TraceTableModelForm(props: TableModelProps) {
       />
       <Divider />
       <MaterializedViewsFormSection {...props} />
+      <Divider />
+      <FormRow
+        label="Order By"
+        helpText="Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default."
+      >
+        <InputControlled
+          control={control}
+          name="orderByExpression"
+          placeholder="e.g. Timestamp DESC"
+        />
+      </FormRow>
     </Stack>
   );
 }

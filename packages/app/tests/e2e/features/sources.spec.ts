@@ -1,4 +1,5 @@
 import { SearchPage } from '../page-objects/SearchPage';
+import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
@@ -28,6 +29,7 @@ const LOG_FIELDS = [
   'Trace Id Expression',
   'Span Id Expression',
   'Implicit Column Expression',
+  'Order By',
 ];
 
 const TRACE_FIELDS = [
@@ -50,6 +52,7 @@ const TRACE_FIELDS = [
   'Span Events Expression',
   'Implicit Column Expression',
   'Displayed Timestamp Column',
+  'Order By',
 ];
 
 const SESSION_FIELDS = [...COMMON_FIELDS, 'Correlated Trace Source'];
@@ -168,4 +171,57 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     }
     await searchPage.page.keyboard.press('Escape');
   });
+
+  test(
+    'should use custom ORDER BY from source configuration',
+    { tag: ['@full-stack'] },
+    async ({ page }) => {
+      const API_URL = getApiUrl();
+      const logSources = await getSources(page, 'log');
+      expect(logSources.length).toBeGreaterThan(0);
+
+      const source = logSources[0];
+      const sourceId = source._id;
+      const customOrderBy = 'Timestamp ASC';
+
+      await test.step('Set custom orderByExpression on the source', async () => {
+        const updateResponse = await page.request.put(
+          `${API_URL}/sources/${sourceId}`,
+          {
+            data: {
+              ...source,
+              id: sourceId,
+              orderByExpression: customOrderBy,
+            },
+          },
+        );
+        expect(updateResponse.ok()).toBeTruthy();
+      });
+
+      await test.step('Verify the ORDER BY editor shows the custom expression', async () => {
+        await searchPage.goto();
+        await searchPage.selectSource(source.name);
+        await searchPage.submitEmptySearch();
+
+        const orderByEditor = searchPage.getOrderByEditor();
+        await expect(orderByEditor).toBeVisible();
+        const orderByValue = await orderByEditor.textContent();
+        expect(orderByValue).toContain(customOrderBy);
+      });
+
+      await test.step('Clean up: reset orderByExpression', async () => {
+        const resetResponse = await page.request.put(
+          `${API_URL}/sources/${sourceId}`,
+          {
+            data: {
+              ...source,
+              id: sourceId,
+              orderByExpression: '',
+            },
+          },
+        );
+        expect(resetResponse.ok()).toBeTruthy();
+      });
+    },
+  );
 });
