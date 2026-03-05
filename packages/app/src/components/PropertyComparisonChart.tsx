@@ -15,6 +15,7 @@ import { Text } from '@mantine/core';
 import { getChartColorError, getChartColorSuccess } from '@/utils';
 
 import {
+  ALL_SPANS_COLOR,
   applyTopNAggregation,
   mergeValueStatisticsMaps,
   OTHER_BUCKET_COLOR,
@@ -117,10 +118,12 @@ export function PropertyComparisonChart({
   name,
   outlierValueOccurences,
   inlierValueOccurences,
+  hasSelection = true,
 }: {
   name: string;
   outlierValueOccurences: Map<string, number>;
   inlierValueOccurences: Map<string, number>;
+  hasSelection?: boolean;
 }) {
   const mergedValueStatistics = mergeValueStatisticsMaps(
     outlierValueOccurences,
@@ -166,32 +169,40 @@ export function PropertyComparisonChart({
           />
           <Bar
             dataKey="outlierCount"
-            name="Selection"
-            fill={getChartColorError()}
+            name={hasSelection ? 'Selection' : 'All spans'}
+            fill={hasSelection ? getChartColorError() : ALL_SPANS_COLOR}
             isAnimationActive={false}
           >
             {chartData.map((entry, index) => (
               <Cell
                 key={`out-${index}`}
-                fill={entry.isOther ? OTHER_BUCKET_COLOR : getChartColorError()}
-              />
-            ))}
-          </Bar>
-          <Bar
-            dataKey="inlierCount"
-            name="Background"
-            fill={getChartColorSuccess()}
-            isAnimationActive={false}
-          >
-            {chartData.map((entry, index) => (
-              <Cell
-                key={`in-${index}`}
                 fill={
-                  entry.isOther ? OTHER_BUCKET_COLOR : getChartColorSuccess()
+                  entry.isOther
+                    ? OTHER_BUCKET_COLOR
+                    : hasSelection
+                      ? getChartColorError()
+                      : ALL_SPANS_COLOR
                 }
               />
             ))}
           </Bar>
+          {hasSelection && (
+            <Bar
+              dataKey="inlierCount"
+              name="Background"
+              fill={getChartColorSuccess()}
+              isAnimationActive={false}
+            >
+              {chartData.map((entry, index) => (
+                <Cell
+                  key={`in-${index}`}
+                  fill={
+                    entry.isOther ? OTHER_BUCKET_COLOR : getChartColorSuccess()
+                  }
+                />
+              ))}
+            </Bar>
+          )}
         </BarChart>
       </ResponsiveContainer>
     </div>
