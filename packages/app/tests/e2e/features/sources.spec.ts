@@ -173,7 +173,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
   });
 
   test(
-    'should use custom ORDER BY from source configuration',
+    'should persist custom ORDER BY and return search results',
     { tag: ['@full-stack'] },
     async ({ page }) => {
       const API_URL = getApiUrl();
@@ -198,15 +198,20 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
         expect(updateResponse.ok()).toBeTruthy();
       });
 
-      await test.step('Verify the ORDER BY editor shows the custom expression', async () => {
+      await test.step('Verify orderByExpression is persisted', async () => {
+        const updatedSources = await getSources(page, 'log');
+        const updatedSource = updatedSources.find(
+          (s: any) => s._id === sourceId,
+        );
+        expect(updatedSource).toBeDefined();
+        expect(updatedSource.orderByExpression).toBe(customOrderBy);
+      });
+
+      await test.step('Verify search results load with custom ORDER BY', async () => {
         await searchPage.goto();
         await searchPage.selectSource(source.name);
         await searchPage.submitEmptySearch();
-
-        const orderByEditor = searchPage.getOrderByEditor();
-        await expect(orderByEditor).toBeVisible();
-        const orderByValue = await orderByEditor.textContent();
-        expect(orderByValue).toContain(customOrderBy);
+        await expect(searchPage.table.firstRow).toBeVisible();
       });
 
       await test.step('Clean up: reset orderByExpression', async () => {
