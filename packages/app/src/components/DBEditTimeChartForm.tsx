@@ -631,6 +631,10 @@ export default function EditTimeChartForm({
     : undefined;
   const configType = useWatch({ control, name: 'configType' });
 
+  const chartConfigAlert = !isRawSqlSavedChartConfig(chartConfig)
+    ? chartConfig.alert
+    : undefined;
+
   const isRawSqlInput =
     configType === 'sql' && displayType === DisplayType.Table;
 
@@ -769,7 +773,7 @@ export default function EditTimeChartForm({
               ...savedConfig,
               alert: normalizeNoOpAlertScheduleFields(
                 savedConfig.alert,
-                chartConfig.alert,
+                chartConfigAlert,
                 {
                   preserveExplicitScheduleOffsetMinutes:
                     dirtyFields.alert?.scheduleOffsetMinutes === true,
@@ -786,7 +790,7 @@ export default function EditTimeChartForm({
       }
     })();
   }, [
-    chartConfig.alert,
+    chartConfigAlert,
     dirtyFields.alert?.scheduleOffsetMinutes,
     dirtyFields.alert?.scheduleStartAt,
     handleSubmit,
@@ -847,7 +851,7 @@ export default function EditTimeChartForm({
               ...savedChartConfig,
               alert: normalizeNoOpAlertScheduleFields(
                 savedChartConfig.alert,
-                chartConfig.alert,
+                chartConfigAlert,
                 {
                   preserveExplicitScheduleOffsetMinutes:
                     dirtyFields.alert?.scheduleOffsetMinutes === true,
@@ -864,7 +868,7 @@ export default function EditTimeChartForm({
       onSave,
       tableSource,
       setError,
-      chartConfig.alert,
+      chartConfigAlert,
       dirtyFields.alert?.scheduleOffsetMinutes,
       dirtyFields.alert?.scheduleStartAt,
     ],
