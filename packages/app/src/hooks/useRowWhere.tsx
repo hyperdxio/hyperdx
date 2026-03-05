@@ -11,9 +11,6 @@ import { ChartConfig } from '@hyperdx/common-utils/dist/types';
 
 const MAX_STRING_LENGTH = 512;
 
-// Re-export for existing consumers
-export { aliasMapToWithClauses };
-
 // Type for WITH clause entries, derived from ChartConfig's with property
 export type WithClause = NonNullable<ChartConfig['with']>[number];
 
