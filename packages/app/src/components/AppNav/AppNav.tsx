@@ -778,7 +778,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 <div className={styles.subMenu}>
                   <NewDashboardButton />
 
-                  {isDashboardsLoading ? (
+                  {isDashboardsLoading && dashboardsData == null ? (
                     <Loader variant="dots" mx="md" my="xs" size="sm" />
                   ) : (
                     <>

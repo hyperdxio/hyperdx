@@ -187,6 +187,18 @@ export function useDashboard({
   };
 }
 
+export function fetchLocalDashboards(): Dashboard[] {
+  return localDashboards.getAll();
+}
+
+export function getLocalDashboardTags(): string[] {
+  const tagSet = new Set<string>();
+  localDashboards
+    .getAll()
+    .forEach(d => (d.tags ?? []).forEach(t => tagSet.add(t)));
+  return Array.from(tagSet);
+}
+
 export function useDeleteDashboard() {
   const queryClient = useQueryClient();
 
