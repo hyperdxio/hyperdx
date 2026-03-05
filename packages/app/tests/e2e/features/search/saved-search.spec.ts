@@ -7,7 +7,7 @@ import {
 import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
 
-test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
+test.describe('Saved Search Functionality', () => {
   let searchPage: SearchPage;
 
   test.beforeEach(async ({ page }) => {
@@ -21,7 +21,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
   test(
     'should preserve custom SELECT when navigating between saved searches',
-    { tag: '@full-stack' },
+    {},
     async ({ page }) => {
       /**
        * This test verifies the fix for issue where SELECT statement would not
@@ -74,7 +74,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
   test(
     'should restore saved search SELECT after switching sources',
-    { tag: '@full-stack' },
+    {},
     async ({ page }) => {
       /**
        * This test verifies that SELECT properly updates when switching between
@@ -131,7 +131,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
   test(
     'should use default SELECT when switching sources within a saved search',
-    { tag: '@full-stack' },
+    {},
     async ({ page }) => {
       await test.step('Create and navigate to saved search', async () => {
         const customSelect =
@@ -179,7 +179,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
   test(
     'should load saved search when navigating from another page',
-    { tag: '@full-stack' },
+    {},
     async ({ page }) => {
       /**
        * This test verifies the fix for the issue where saved searches would not
@@ -257,7 +257,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
   test(
     'should preserve custom SELECT when loading saved search from another page',
-    { tag: '@full-stack' },
+    {},
     async ({ page }) => {
       /**
        * This test specifically verifies that custom SELECT statements are preserved
@@ -305,7 +305,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
   test(
     'should handle navigation via browser back button',
-    { tag: '@full-stack' },
+    {},
     async ({ page }) => {
       /**
        * This test verifies that using browser back/forward navigation
@@ -345,7 +345,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
   test(
     'should update ORDER BY when switching sources multiple times',
-    { tag: '@full-stack' },
+    {},
     async ({ page }) => {
       /**
        * This test verifies the fix for the issue where ORDER BY does not update
@@ -415,7 +415,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
   test(
     'should save and restore filters with saved searches',
-    { tag: '@full-stack' },
+    {},
     async ({ page }) => {
       /**
        * This test verifies that filters applied in the sidebar are saved
@@ -497,7 +497,7 @@ test.describe('Saved Search Functionality', { tag: '@full-stack' }, () => {
 
   test(
     'should update filters when updating a saved search',
-    { tag: '@full-stack' },
+    {},
     async ({ page }) => {
       /**
        * Verifies that updating a saved search with additional filters
