@@ -13,28 +13,38 @@ If the requirements are empty or unclear, I will ask the user for a detailed des
 
 ## Workflow
 
-1. **Test Description**: The user provides a detailed description of the test they want, including the user interactions, expected outcomes, and any specific scenarios or edge cases to cover.
-2. **Test Generation**: I generate test code based on the provided description. This includes setting up the test environment, defining the test steps, and incorporating assertions to validate the expected outcomes.
-3. **Test Execution**: The generated test code can be executed using Playwright's test runner, which allows me to verify that the test behaves as expected in a real browser environment.
-4. **Iterative Refinement**: If the test does not pass or if there are any issues, I can refine the test code based on feedback and re-run it until it meets the desired criteria.
+Use the agents below to carry out each phase. Do not write test code directly in the main context.
 
-## Test Execution
+### 1. Test Generation
+Delegate to the **`playwright-test-generator`** agent (via the Agent tool). Pass it:
+- A full description of the test scenario including steps, expected outcomes, and edge cases
+- The target spec file path (`packages/app/tests/e2e/features/<feature>.spec.ts`)
+- Any relevant page object files that already exist for this feature
 
-To run the generated Playwright tests, I can use the following command from the root of the project:
+The agent will drive a real browser, execute the steps live, and produce spec code that follows HyperDX conventions. Review the output before proceeding.
+
+### 2. Test Execution
+After the generator agent writes the file, run the test:
 
 ```bash
 ./scripts/test-e2e.sh --quiet <test-file-name> [--grep "\"<test name pattern>\""]
 ```
 
-- Example test file name: `packages/app/tests/e2e/features/<feature>.spec.ts`
-- The `--grep` flag can be used to specify a particular test name to run within the test file, allowing for faster execution. Patterns should be wrapped in escaped quotes to ensure they are passed correctly.
+Always run in full-stack mode (default). Do not ask the user about this.
 
-The output from the script will indicate the success or failure of the tests, along with any relevant logs or error messages to help diagnose issues.
+### 3. Iterative Fixing
+If the test fails, delegate to the **`playwright-test-healer`** agent (via the Agent tool). Pass it:
+- The failing test file path
+- The error output
+- Any relevant context about what the test is supposed to do
 
-ALWAYS EXECUTE THE TESTS AFTER GENERATION TO ENSURE THEY WORK AS EXPECTED, BEFORE SUBMITTING THE CODE TO THE USER. Tests should be run in full-stack mode (with backend) by default, no need to ask the user if they would prefer local mode.
+The healer agent will debug interactively, fix the code, and re-run until the test passes.
 
-## Test File structure
+## HyperDX Project Conventions
 
+These conventions apply to ALL test code produced by any agent. Review generated output to ensure compliance.
+
+### File Structure
 - Specs: `packages/app/tests/e2e/features/`
 - Page objects: `packages/app/tests/e2e/page-objects/`
 - Components: `packages/app/tests/e2e/components/`
@@ -42,26 +52,39 @@ ALWAYS EXECUTE THE TESTS AFTER GENERATION TO ENSURE THEY WORK AS EXPECTED, BEFOR
 - Base test (extends playwright with fixtures): `utils/base-test.ts`
 - Constants (source names): `utils/constants.ts`
 
-## Best Practices
+### Page Object Pattern (REQUIRED)
+- ALL UI interactions in spec files must go through page objects (`page-objects/`) and components (`components/`)
+- No raw `page.getByTestId()`, `page.locator()`, or `page.getByRole()` calls directly in spec files
+- If a needed interaction doesn't exist in a page object, add it to the page object — don't work around it in the spec
 
-- I will follow general Playwright testing best practices, including:
-  - Use locators with chaining and filtering to target specific elements, rather than relying on brittle selectors.
-  - Prefer user-facing attributes to CSS selectors for locating elements
-  - Use web first assertions (eg. `await expect(page.getByText('welcome')).toBeVisible()` instead of `expect(await page.getByText('welcome').isVisible()).toBe(true)`)
-  - Never use hardcoded waits (eg. `await page.waitForTimeout(1000)`) - instead, wait for specific elements or conditions to be met.
-- I will follow the existing code style and patterns used in the current test suite to ensure consistency and maintainability.
-- I will obey `eslint-plugin-playwright` rules, and ensure that all generated code passes linting and formatting checks before submission.
+### Data Isolation (CRITICAL)
+Tests run in parallel and share a database. Use `Date.now()` for **every field the API uniqueness-checks** — not just display names:
 
-### Page objects
+```typescript
+const ts = Date.now();
+const name = `E2E Thing ${ts}`;
+const url = `https://example.com/thing-${ts}`; // URL too, not just name
+```
 
-- Tests should interact with the UI through selectors and functions defined in `packages/app/tests/e2e/page-objects`.
-- Page objects should refer to UI elements using data-testid if possible. Add data-testid values to existing pages when necessary.
+The webhook API enforces uniqueness on `(team, service, url)`. A hardcoded URL will collide between parallel runs or retries.
+
+### Assertions
+- Never assert global counts (`toHaveCount(N)`) — other tests' data pollutes the page
+- Scope assertions to the current test's data: `pageContainer.getByRole('link').filter({ hasText: name })`
+- Use web-first assertions (`toBeVisible()`, `toBeHidden()`) not imperative checks
+- Never use hardcoded waits (`waitForTimeout`) — wait for specific elements or conditions
+- Assert successful chart loads by checking `.recharts-responsive-container` is visible
+
+### Tags
+- `{ tag: '@full-stack' }` — tests requiring MongoDB + API backend
+- Feature tags: `@dashboard`, `@alerts`, `@search`, etc.
+
+### Imports
+Always import from the base test, not directly from `@playwright/test`:
+```typescript
+import { expect, test } from '../utils/base-test';
+```
 
 ### Mock ClickHouse Data
-
-- E2E tests run against a local docker environment, where backend ClickHouse data is mocked
-- Update the `packages/app/tests/e2e/seed-clickhouse.ts` if (and only if) the scenario requires specific data
-
-### Assertions Reference
-
-- **Assert successful chart loads** by checking that `.recharts-responsive-container` is visible.
+- E2E tests run against a local Docker environment with seeded ClickHouse data
+- Update `packages/app/tests/e2e/seed-clickhouse.ts` only if the scenario requires specific data not already seeded
