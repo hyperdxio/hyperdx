@@ -22,7 +22,6 @@ import { getFirstTimestampValueExpression } from '@/source';
 
 import { SQLPreview } from './ChartSQLPreview';
 import {
-  computeEffectiveSampleSize,
   getPropertyStatistics,
   isDenylisted,
   isHighCardinality,

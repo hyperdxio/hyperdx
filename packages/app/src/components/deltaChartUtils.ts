@@ -296,8 +296,11 @@ export function isHighCardinality(
 // Falls back to SAMPLE_SIZE when total count is not yet available.
 //
 // STABLE_SAMPLE_EXPR: ClickHouse expression used for ORDER BY in sample queries.
-// 'cityHash64(SpanId)' gives deterministic ordering — same data always produces
-// the same sample, so hover highlights are stable across re-renders.
+// Deterministic ordering ensures the same data always produces the same sample,
+// so hover highlights are stable across re-renders.
+// Currently trace-specific (SpanId is always present on the traces search page
+// where Event Deltas is rendered). If Event Deltas expands to logs/metrics,
+// this should be parameterized per source.
 // Set to 'rand()' to restore non-deterministic sampling.
 export const SAMPLE_SIZE = 1000;
 export const MIN_SAMPLE_SIZE = 500;
