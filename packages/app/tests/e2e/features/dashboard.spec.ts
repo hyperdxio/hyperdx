@@ -287,6 +287,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
   test('should add and remove alert on Number type chart', async () => {
     test.setTimeout(60000);
+    const ts = Date.now();
+    const tileName = `E2E Alert Number Chart ${ts}`;
+    const webhookUrl = `https://example.com/number-chart-${ts}`;
     const alertsPage = new AlertsPage(dashboardPage.page);
 
     await test.step('Create new dashboard', async () => {
@@ -310,6 +313,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         'k8s.pod.cpu.utilization:::::::gauge',
       );
 
+      await dashboardPage.chartEditor.setChartName(tileName);
+
       await expect(dashboardPage.chartEditor.alertButton).toHaveText(
         'Add Alert',
       );
@@ -318,8 +323,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       await dashboardPage.chartEditor.webhookAlertModal.addWebhook(
         'Generic',
-        'Test Webhook',
-        'https://example.com/webhook',
+        `Test Webhook ${ts}`,
+        webhookUrl,
       );
 
       await dashboardPage.saveTile();
@@ -357,10 +362,11 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
     await test.step('Verify alerts page loads with content', async () => {
       await expect(alertsPage.pageContainer).toBeVisible();
-
-      // Verify there are alert cards using web-first assertion
-      const alertCards = alertsPage.getAlertCards();
-      await expect(alertCards).toHaveCount(1, { timeout: 10000 });
+      await expect(
+        alertsPage.pageContainer
+          .getByRole('link')
+          .filter({ hasText: tileName }),
+      ).toBeVisible({ timeout: 10000 });
     });
 
     await test.step('Navigate back to dashboard page', async () => {
@@ -385,10 +391,11 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
     await test.step('Verify alerts page loads with no alerts', async () => {
       await expect(alertsPage.pageContainer).toBeVisible();
-
-      // Verify there are alert cards using web-first assertion
-      const alertCards = alertsPage.getAlertCards();
-      await expect(alertCards).toHaveCount(0, { timeout: 10000 });
+      await expect(
+        alertsPage.pageContainer
+          .getByRole('link')
+          .filter({ hasText: tileName }),
+      ).toBeHidden({ timeout: 10000 });
     });
   });
 
