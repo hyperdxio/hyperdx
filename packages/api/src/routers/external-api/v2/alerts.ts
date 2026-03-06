@@ -10,7 +10,10 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
-import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
+import {
+  processRequestWithEnhancedErrors as processRequest,
+  validateRequestWithEnhancedErrors as validateRequest,
+} from '@/utils/enhancedErrors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
@@ -106,6 +109,18 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *         interval:
  *           $ref: '#/components/schemas/AlertInterval'
  *           example: "1h"
+ *         scheduleOffsetMinutes:
+ *           type: integer
+ *           minimum: 0
+ *           description: Offset from the interval boundary in minutes. For example, 2 with a 5m interval evaluates windows at :02, :07, :12, etc. (UTC).
+ *           nullable: true
+ *           example: 2
+ *         scheduleStartAt:
+ *           type: string
+ *           format: date-time
+ *           description: Absolute UTC start time anchor. Alert windows start from this timestamp and repeat every interval.
+ *           nullable: true
+ *           example: "2026-02-08T10:00:00.000Z"
  *         source:
  *           $ref: '#/components/schemas/AlertSource'
  *           example: "tile"
@@ -395,7 +410,7 @@ router.get('/', async (req, res, next) => {
  */
 router.post(
   '/',
-  validateRequest({
+  processRequest({
     body: alertSchema,
   }),
   async (req, res, next) => {
@@ -405,7 +420,7 @@ router.post(
       return res.sendStatus(403);
     }
     try {
-      const alertInput = alertSchema.parse(req.body);
+      const alertInput = req.body;
       await validateAlertInput(teamId, alertInput);
 
       const createdAlert = await createAlert(teamId, alertInput, userId);
@@ -484,7 +499,7 @@ router.post(
  */
 router.put(
   '/:id',
-  validateRequest({
+  processRequest({
     body: alertSchema,
     params: z.object({
       id: objectIdSchema,
@@ -499,7 +514,7 @@ router.put(
       }
       const { id } = req.params;
 
-      const alertInput = alertSchema.parse(req.body);
+      const alertInput = req.body;
       await validateAlertInput(teamId, alertInput);
 
       const alert = await updateAlert(id, teamId, alertInput);
