@@ -3,7 +3,6 @@ import {
   Control,
   Controller,
   FieldErrors,
-  FieldPath,
   useFieldArray,
   useForm,
   UseFormClearErrors,
@@ -125,6 +124,8 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
+  getSeriesFieldPath,
+  validateMetricNames,
 } from './ChartEditor/utils';
 import { ErrorBoundary } from './Error/ErrorBoundary';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
@@ -163,40 +164,6 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) => {
 };
 
 const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
-
-// Helper function to safely construct field paths for series
-const getSeriesFieldPath = (
-  namePrefix: string,
-  fieldName: string,
-): FieldPath<ChartEditorFormState> => {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return `${namePrefix}${fieldName}` as FieldPath<ChartEditorFormState>;
-};
-
-// Helper function to validate metric names for metric sources
-const validateMetricNames = (
-  tableSource: TSource | undefined,
-  series: SavedChartConfigWithSelectArray['select'] | undefined,
-  setError: (
-    name: FieldPath<ChartEditorFormState>,
-    error: { type: string; message: string },
-  ) => void,
-): boolean => {
-  if (tableSource?.kind === SourceKind.Metric && Array.isArray(series)) {
-    let hasValidationError = false;
-    series.forEach((s, index) => {
-      if (s.metricType && !s.metricName) {
-        setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
-          type: 'manual',
-          message: 'Please select a metric name',
-        });
-        hasValidationError = true;
-      }
-    });
-    return hasValidationError;
-  }
-  return false;
-};
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -754,7 +721,12 @@ export default function EditTimeChartForm({
 
       if (
         !isRawSqlChart &&
-        validateMetricNames(tableSource, form.series, setError)
+        validateMetricNames(
+          tableSource,
+          form.series,
+          form.displayType,
+          setError,
+        )
       ) {
         return;
       }
@@ -834,7 +806,12 @@ export default function EditTimeChartForm({
       // Validate metric sources have metric names selected
       if (
         !isRawSqlChart &&
-        validateMetricNames(tableSource, form.series, setError)
+        validateMetricNames(
+          tableSource,
+          form.series,
+          form.displayType,
+          setError,
+        )
       ) {
         return;
       }
