@@ -946,10 +946,16 @@ function OrderByFormRow({
       >
         <Flex align="center" gap="sm">
           <Box flex={1}>
-            <InputControlled
+            <SQLInlineEditorControlled
+              tableConnection={{
+                databaseName,
+                tableName,
+                connectionId,
+              }}
               control={control}
               name="orderByExpression"
               placeholder="e.g. Timestamp DESC"
+              disableKeywordAutocomplete
             />
           </Box>
           <Tooltip label="Validate expression">
