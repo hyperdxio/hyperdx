@@ -715,7 +715,6 @@ const SourceBaseSchema = z.object({
     tableName: z.string().min(1, 'Table is required'),
   }),
   querySettings: QuerySettingsSchema.optional(),
-  orderByExpression: z.string().optional(),
 });
 
 const RequiredTimestampColumnSchema = z
@@ -790,6 +789,7 @@ const LogSourceAugmentation = {
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  orderByExpression: z.string().optional(),
 };
 
 // Trace source form schema
@@ -826,6 +826,7 @@ const TraceSourceAugmentation = {
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  orderByExpression: z.string().optional(),
 };
 
 // Session source form schema
