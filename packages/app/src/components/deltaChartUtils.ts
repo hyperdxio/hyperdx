@@ -203,7 +203,7 @@ export function flattenedKeyToSqlExpression(
         );
         const match = key.match(pattern);
         if (match) {
-          const chIndex = parseInt(match[1]) + 1;
+          const chIndex = parseInt(match[1], 10) + 1;
           const mapKey = match[2].replace(/'/g, "''");
           return `${col.name}[${chIndex}]['${mapKey}']`;
         }
@@ -227,22 +227,11 @@ export function flattenedKeyToFilterKey(
   key: string,
   columnMeta: { name: string; type: string }[],
 ): string {
-  for (const col of columnMeta) {
-    const baseType = stripTypeWrappers(col.type);
-
-    if (baseType.startsWith('Map(')) {
-      if (key.startsWith(col.name + '.')) {
-        const mapKey = key.slice(col.name.length + 1).replace(/'/g, "''");
-        return `${col.name}['${mapKey}']`;
-      }
-    } else if (baseType.startsWith('Array(')) {
-      const innerType = stripTypeWrappers(baseType.slice('Array('.length, -1));
-      if (innerType.startsWith('Map(')) {
-        return flattenedKeyToSqlExpression(key, columnMeta);
-      }
-    }
-  }
-  return key;
+  // Delegates to flattenedKeyToSqlExpression for now — both produce bracket
+  // notation for Map columns. Kept as a separate entry point so filter keys
+  // can diverge from SQL expressions in the future (e.g., different format
+  // for sidebar facets vs WHERE clause for Array(Map) columns).
+  return flattenedKeyToSqlExpression(key, columnMeta);
 }
 
 export type AddFilterFn = (
