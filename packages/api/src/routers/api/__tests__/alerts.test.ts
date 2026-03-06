@@ -5,7 +5,7 @@ import {
   makeTile,
   randomMongoId,
 } from '@/fixtures';
-import Alert from '@/models/alert';
+import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_TILES = [makeTile(), makeTile(), makeTile(), makeTile(), makeTile()];
@@ -114,6 +114,245 @@ describe('alerts router', () => {
     const allAlerts = await agent.get(`/alerts`).expect(200);
     expect(allAlerts.body.data.length).toBe(1);
     expect(allAlerts.body.data[0].threshold).toBe(10);
+  });
+
+  it('preserves scheduleStartAt when omitted in updates and clears when null', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const scheduleStartAt = '2024-01-01T00:00:00.000Z';
+    const createdAlert = await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+        scheduleStartAt,
+      })
+      .expect(200);
+
+    const updatePayload = {
+      channel: createdAlert.body.data.channel,
+      interval: createdAlert.body.data.interval,
+      threshold: 10,
+      thresholdType: createdAlert.body.data.thresholdType,
+      source: createdAlert.body.data.source,
+      dashboardId: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+    };
+
+    await agent
+      .put(`/alerts/${createdAlert.body.data._id}`)
+      .send(updatePayload)
+      .expect(200);
+
+    const alertAfterOmittedScheduleStartAt = await Alert.findById(
+      createdAlert.body.data._id,
+    );
+    expect(
+      alertAfterOmittedScheduleStartAt?.scheduleStartAt?.toISOString(),
+    ).toBe(scheduleStartAt);
+
+    await agent
+      .put(`/alerts/${createdAlert.body.data._id}`)
+      .send({
+        ...updatePayload,
+        scheduleStartAt: null,
+      })
+      .expect(200);
+
+    const alertAfterNullScheduleStartAt = await Alert.findById(
+      createdAlert.body.data._id,
+    );
+    expect(alertAfterNullScheduleStartAt?.scheduleStartAt).toBeNull();
+  });
+
+  it('preserves scheduleOffsetMinutes when schedule fields are omitted in updates', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const createdAlert = await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          interval: '15m',
+          webhookId: webhook._id.toString(),
+        }),
+        scheduleOffsetMinutes: 2,
+      })
+      .expect(200);
+
+    await agent
+      .put(`/alerts/${createdAlert.body.data._id}`)
+      .send({
+        channel: createdAlert.body.data.channel,
+        interval: createdAlert.body.data.interval,
+        threshold: 10,
+        thresholdType: createdAlert.body.data.thresholdType,
+        source: createdAlert.body.data.source,
+        dashboardId: dashboard.body.id,
+        tileId: dashboard.body.tiles[0].id,
+      })
+      .expect(200);
+
+    const updatedAlert = await Alert.findById(createdAlert.body.data._id);
+    expect(updatedAlert?.scheduleOffsetMinutes).toBe(2);
+    expect(updatedAlert?.scheduleStartAt).toBeUndefined();
+  });
+
+  it('resets scheduleOffsetMinutes to 0 when scheduleStartAt is set without offset', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const createdAlert = await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+        scheduleOffsetMinutes: 2,
+      })
+      .expect(200);
+
+    expect(createdAlert.body.data.scheduleOffsetMinutes).toBe(2);
+
+    const scheduleStartAt = '2024-01-01T00:00:00.000Z';
+
+    await agent
+      .put(`/alerts/${createdAlert.body.data._id}`)
+      .send({
+        channel: createdAlert.body.data.channel,
+        interval: createdAlert.body.data.interval,
+        threshold: createdAlert.body.data.threshold,
+        thresholdType: createdAlert.body.data.thresholdType,
+        source: createdAlert.body.data.source,
+        dashboardId: dashboard.body.id,
+        tileId: dashboard.body.tiles[0].id,
+        scheduleStartAt,
+      })
+      .expect(200);
+
+    const updatedAlert = await Alert.findById(createdAlert.body.data._id);
+    expect(updatedAlert?.scheduleOffsetMinutes).toBe(0);
+    expect(updatedAlert?.scheduleStartAt?.toISOString()).toBe(scheduleStartAt);
+  });
+
+  it('resets stale scheduleOffsetMinutes when scheduleStartAt is cleared without offset', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const staleAlert = await Alert.create({
+      team: team._id,
+      channel: {
+        type: 'webhook',
+        webhookId: webhook._id.toString(),
+      },
+      interval: '15m',
+      threshold: 8,
+      thresholdType: AlertThresholdType.ABOVE,
+      source: AlertSource.TILE,
+      dashboard: dashboard.body.id,
+      tileId: dashboard.body.tiles[0].id,
+      scheduleOffsetMinutes: 2,
+      scheduleStartAt: new Date('2024-01-01T00:00:00.000Z'),
+    });
+
+    await agent
+      .put(`/alerts/${staleAlert._id.toString()}`)
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          interval: '15m',
+          webhookId: webhook._id.toString(),
+        }),
+        scheduleStartAt: null,
+      })
+      .expect(200);
+
+    const updatedAlert = await Alert.findById(staleAlert._id);
+    expect(updatedAlert?.scheduleOffsetMinutes).toBe(0);
+    expect(updatedAlert?.scheduleStartAt).toBeNull();
+  });
+
+  it('rejects scheduleStartAt values more than 1 year in the future', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const farFutureScheduleStartAt = new Date(
+      Date.now() + 366 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+        scheduleStartAt: farFutureScheduleStartAt,
+      })
+      .expect(400);
+  });
+
+  it('rejects scheduleStartAt values older than 10 years in the past', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const tooOldScheduleStartAt = new Date(
+      Date.now() - 11 * 365 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+        scheduleStartAt: tooOldScheduleStartAt,
+      })
+      .expect(400);
+  });
+
+  it('rejects scheduleOffsetMinutes when scheduleStartAt is provided', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    await agent
+      .post('/alerts')
+      .send({
+        ...makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+        scheduleOffsetMinutes: 2,
+        scheduleStartAt: new Date().toISOString(),
+      })
+      .expect(400);
   });
 
   it('preserves createdBy field during updates', async () => {
