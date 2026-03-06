@@ -33,17 +33,20 @@ describe('computeComparisonScore', () => {
     expect(computeComparisonScore(outlier, inlier)).toBeGreaterThan(70);
   });
 
-  it('normalizes to [0, 100] when one group has no data', () => {
-    // Single-value field: 100% of the present group → max normalized pct = 100
+  it('returns 0 for single-value field when other group is empty', () => {
+    // Single value with no comparison group is uninformative
+    // (e.g., Events.Name[N] = "message" at 100% with no inlier data)
     const outlier = new Map([['error', 50]]);
-    expect(computeComparisonScore(outlier, new Map())).toBe(100);
+    expect(computeComparisonScore(outlier, new Map())).toBe(0);
+  });
 
-    // Two-value field: 80/20 split → max normalized pct = 80
-    const outlier2 = new Map([
+  it('normalizes multi-value field to [0, 100] when other group is empty', () => {
+    // Multi-value with no comparison group IS informative — shows distribution
+    const outlier = new Map([
       ['error', 80],
       ['ok', 20],
     ]);
-    expect(computeComparisonScore(outlier2, new Map())).toBe(80);
+    expect(computeComparisonScore(outlier, new Map())).toBe(80);
   });
 
   it('normalizes by group sum so different sample sizes produce same score', () => {

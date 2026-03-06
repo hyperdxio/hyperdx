@@ -347,9 +347,14 @@ export function computeComparisonScore(
 
   if (outlierSum === 0 && inlierSum === 0) return 0;
   if (outlierSum === 0 || inlierSum === 0) {
-    // One group has data, the other doesn't — normalize the present group
-    // to [0, 100] so the score is scale-consistent with the two-group case.
+    // One group has data, the other doesn't.
     const presentValues = outlierSum > 0 ? outlierValues : inlierValues;
+    // Single value with no comparison group is uninformative — score 0.
+    // (e.g., Events.Name[N] = "message" at 100% with no inlier data)
+    // Multi-value fields with no comparison group ARE informative — they show
+    // that the present group has a distinctive distribution.
+    if (presentValues.size <= 1) return 0;
+    // Normalize to [0, 100] so the score is scale-consistent with the two-group case.
     const presentSum = outlierSum > 0 ? outlierSum : inlierSum;
     let maxNormPct = 0;
     presentValues.forEach(v => {
