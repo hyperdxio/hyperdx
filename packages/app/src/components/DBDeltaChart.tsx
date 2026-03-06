@@ -407,6 +407,10 @@ export default function DBDeltaChart({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
+        // Establishes a stacking context above the heatmap sibling so that
+        // position:fixed popovers inside the chart grid render on top.
+        position: 'relative',
+        zIndex: 1,
       }}
     >
       {/* Primary fields */}
