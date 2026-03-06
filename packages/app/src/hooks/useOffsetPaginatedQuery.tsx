@@ -81,8 +81,6 @@ type QueryMeta = {
   metadata: Metadata;
   optimizedConfig?: ChartConfigWithOptTimestamp;
   source: TSource | undefined;
-  readonly: boolean;
-  maxResultRows?: number;
 };
 
 // Get time window from page param
@@ -160,15 +158,8 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     throw new Error('Query missing client meta');
   }
 
-  const {
-    queryClient,
-    metadata,
-    hasPreviousQueries,
-    optimizedConfig,
-    source,
-    readonly,
-    maxResultRows,
-  } = meta as QueryMeta;
+  const { queryClient, metadata, hasPreviousQueries, optimizedConfig, source } =
+    meta as QueryMeta;
 
   // Only stream incrementally if this is a fresh query with no previous
   // response or if it's a paginated query
@@ -218,15 +209,24 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     setTimeout(() => abortController.abort(), queryTimeout * 1000);
   }
 
-  // Readonly = 2 means the query is readonly but can still specify query settings.
   const clickHouseSettings: ClickHouseSettings = {};
-  if (readonly) {
+  if (isRawSqlChartConfig(config)) {
+    // Readonly = 2 means the query is readonly but can still specify query settings.
     clickHouseSettings.readonly = '2';
-  }
 
-  // result_overflow_mode=break will prevent an error when the result set exceeds max_result_rows,
-  // and instead just return the first max_result_rows rows.
-  if (maxResultRows && maxResultRows > 0) {
+    const existingMaxResultRowsSetting = await metadata.getSetting({
+      settingName: 'max_result_rows',
+      connectionId: config.connection,
+    });
+
+    const maxResultRows =
+      existingMaxResultRowsSetting != null &&
+      Number(existingMaxResultRowsSetting) > 0
+        ? Math.min(Number(existingMaxResultRowsSetting), MAX_TABLE_ROWS)
+        : MAX_TABLE_ROWS;
+
+    // result_overflow_mode=break will prevent an error when the result set exceeds max_result_rows,
+    // and instead just return the first max_result_rows rows.
     clickHouseSettings.max_result_rows = String(maxResultRows);
     clickHouseSettings.result_overflow_mode = 'break';
   }
@@ -451,8 +451,6 @@ export default function useOffsetPaginatedQuery(
     id: builderConfig?.source,
   });
 
-  const isRawSql = isRawSqlChartConfig(config);
-
   const {
     data,
     fetchNextPage,
@@ -486,9 +484,6 @@ export default function useOffsetPaginatedQuery(
       metadata,
       optimizedConfig: mvOptimizationData?.optimizedConfig,
       source,
-      // Additional protection when the user is running a raw SQL query
-      readonly: isRawSql,
-      maxResultRows: isRawSql ? MAX_TABLE_ROWS : undefined,
     } satisfies QueryMeta,
     queryFn,
     gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
