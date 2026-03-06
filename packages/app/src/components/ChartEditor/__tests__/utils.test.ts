@@ -4,15 +4,18 @@ import type {
   RawSqlSavedChartConfig,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
-
-import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
+import {
+  DisplayType,
+  MetricsDataType,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 
 import type { ChartEditorFormState } from '../types';
 import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
+  validateMetricNames,
 } from '../utils';
 
 jest.mock('../../SearchInput', () => ({
@@ -401,5 +404,153 @@ describe('convertSavedChartConfigToFormState', () => {
     expect(result.name).toBe('My Chart');
     expect(result.displayType).toBe(DisplayType.Table);
     expect(result.where).toBe('status = 200');
+  });
+});
+
+describe('validateMetricNames', () => {
+  const metricSeriesItem = {
+    ...seriesItem,
+    metricType: MetricsDataType.Gauge,
+    metricName: 'cpu.usage',
+  };
+
+  it('returns false when tableSource is undefined', () => {
+    const setError = jest.fn();
+    const result = validateMetricNames(
+      undefined,
+      [metricSeriesItem],
+      DisplayType.Line,
+      setError,
+    );
+    expect(result).toBe(false);
+    expect(setError).not.toHaveBeenCalled();
+  });
+
+  it('returns false when tableSource is not a metric source', () => {
+    const setError = jest.fn();
+    const result = validateMetricNames(
+      logSource,
+      [metricSeriesItem],
+      DisplayType.Line,
+      setError,
+    );
+    expect(result).toBe(false);
+    expect(setError).not.toHaveBeenCalled();
+  });
+
+  it('returns false when series is undefined', () => {
+    const setError = jest.fn();
+    const result = validateMetricNames(
+      metricSource,
+      undefined,
+      DisplayType.Line,
+      setError,
+    );
+    expect(result).toBe(false);
+    expect(setError).not.toHaveBeenCalled();
+  });
+
+  it('returns false when displayType is Markdown', () => {
+    const setError = jest.fn();
+    const seriesWithoutName = {
+      ...seriesItem,
+      metricType: MetricsDataType.Gauge,
+    };
+    const result = validateMetricNames(
+      metricSource,
+      [seriesWithoutName],
+      DisplayType.Markdown,
+      setError,
+    );
+    expect(result).toBe(false);
+    expect(setError).not.toHaveBeenCalled();
+  });
+
+  it('returns false when all series items with metricType have a metricName', () => {
+    const setError = jest.fn();
+    const result = validateMetricNames(
+      metricSource,
+      [metricSeriesItem],
+      DisplayType.Line,
+      setError,
+    );
+    expect(result).toBe(false);
+    expect(setError).not.toHaveBeenCalled();
+  });
+
+  it('returns false when series items have no metricType', () => {
+    const setError = jest.fn();
+    const result = validateMetricNames(
+      metricSource,
+      [seriesItem],
+      DisplayType.Line,
+      setError,
+    );
+    expect(result).toBe(false);
+    expect(setError).not.toHaveBeenCalled();
+  });
+
+  it('returns true and calls setError when a series item has metricType but no metricName', () => {
+    const setError = jest.fn();
+    const seriesWithoutName = {
+      ...seriesItem,
+      metricType: MetricsDataType.Gauge,
+    };
+    const result = validateMetricNames(
+      metricSource,
+      [seriesWithoutName],
+      DisplayType.Line,
+      setError,
+    );
+    expect(result).toBe(true);
+    expect(setError).toHaveBeenCalledTimes(1);
+    expect(setError).toHaveBeenCalledWith('series.0.metricName', {
+      type: 'manual',
+      message: 'Please select a metric name',
+    });
+  });
+
+  it('calls setError for each series item missing metricName', () => {
+    const setError = jest.fn();
+    const seriesWithoutName = {
+      ...seriesItem,
+      metricType: MetricsDataType.Gauge,
+    };
+    const result = validateMetricNames(
+      metricSource,
+      [seriesWithoutName, seriesWithoutName],
+      DisplayType.Line,
+      setError,
+    );
+    expect(result).toBe(true);
+    expect(setError).toHaveBeenCalledTimes(2);
+    expect(setError).toHaveBeenCalledWith(
+      'series.0.metricName',
+      expect.any(Object),
+    );
+    expect(setError).toHaveBeenCalledWith(
+      'series.1.metricName',
+      expect.any(Object),
+    );
+  });
+
+  it('only errors on series items that are missing metricName', () => {
+    const setError = jest.fn();
+    const seriesWithoutName = {
+      ...seriesItem,
+      metricType: MetricsDataType.Gauge,
+    };
+    const result = validateMetricNames(
+      metricSource,
+      [metricSeriesItem, seriesWithoutName],
+      DisplayType.Line,
+      setError,
+    );
+    expect(result).toBe(true);
+    expect(setError).toHaveBeenCalledTimes(1);
+    expect(setError).toHaveBeenCalledWith(
+      'series.1.metricName',
+      expect.any(Object),
+    );
   });
 });
