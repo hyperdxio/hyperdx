@@ -1,5 +1,4 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { withErrorBoundary } from 'react-error-boundary';
 import type { TooltipProps } from 'recharts';
 import {
@@ -266,116 +265,113 @@ export function PropertyComparisonChart({
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-      {clickedBar &&
-        createPortal(
-          <div
-            ref={popoverRef}
-            style={{
-              position: 'fixed',
-              // Clamp horizontally so the popover stays within the viewport
-              left: Math.max(
-                160,
-                Math.min(clickedBar.clientX, window.innerWidth - 160),
-              ),
-              // Render above click point; flip below if near the top
-              top:
-                clickedBar.clientY > 200
-                  ? clickedBar.clientY - 8
-                  : clickedBar.clientY + 16,
-              transform:
-                clickedBar.clientY > 200
-                  ? 'translate(-50%, -100%)'
-                  : 'translate(-50%, 0)',
-              zIndex: 10000,
-              borderRadius: 4,
-              padding: '8px 12px',
-              minWidth: 200,
-              maxWidth: 320,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-              backdropFilter: 'blur(8px)',
-              backgroundColor: 'var(--color-bg-surface)',
-              border: '1px solid var(--color-border)',
-              fontSize: 11,
-            }}
+      {clickedBar && (
+        <div
+          ref={popoverRef}
+          style={{
+            position: 'fixed',
+            // Clamp horizontally so the popover stays within the viewport
+            left: Math.max(
+              160,
+              Math.min(clickedBar.clientX, window.innerWidth - 160),
+            ),
+            // Render above click point; flip below if near the top
+            top:
+              clickedBar.clientY > 200
+                ? clickedBar.clientY - 8
+                : clickedBar.clientY + 16,
+            transform:
+              clickedBar.clientY > 200
+                ? 'translate(-50%, -100%)'
+                : 'translate(-50%, 0)',
+            zIndex: 10000,
+            borderRadius: 4,
+            padding: '8px 12px',
+            minWidth: 200,
+            maxWidth: 320,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(8px)',
+            backgroundColor: 'var(--color-bg-surface)',
+            border: '1px solid var(--color-border)',
+            fontSize: 11,
+          }}
+        >
+          <Text
+            size="xs"
+            c="dimmed"
+            fw={600}
+            mb={4}
+            style={{ wordBreak: 'break-all' }}
+            title={name}
           >
-            <Text
-              size="xs"
-              c="dimmed"
-              fw={600}
-              mb={4}
-              style={{ wordBreak: 'break-all' }}
-              title={name}
+            {truncateMiddle(name, 40)}
+          </Text>
+          <Text size="xs" mb={6} style={{ wordBreak: 'break-all' }}>
+            {clickedBar.value.length === 0 ? (
+              <i>Empty String</i>
+            ) : (
+              clickedBar.value
+            )}
+          </Text>
+          <Flex gap={12} mb={8}>
+            <Text size="xs" c={getChartColorError()}>
+              Selection:{' '}
+              {(outlierValueOccurences.get(clickedBar.value) ?? 0).toFixed(1)}%
+            </Text>
+            <Text size="xs" c={getChartColorSuccess()}>
+              Background:{' '}
+              {(inlierValueOccurences.get(clickedBar.value) ?? 0).toFixed(1)}%
+            </Text>
+          </Flex>
+          <Flex gap={4} align="center">
+            {onAddFilter && (
+              <>
+                <DBRowTableIconButton
+                  variant="copy"
+                  title="Filter for this value"
+                  onClick={() => {
+                    onAddFilter(name, clickedBar.value, 'include');
+                    setClickedBar(null);
+                  }}
+                >
+                  <IconFilter size={12} />
+                </DBRowTableIconButton>
+                <DBRowTableIconButton
+                  variant="copy"
+                  title="Exclude this value"
+                  onClick={() => {
+                    onAddFilter(name, clickedBar.value, 'exclude');
+                    setClickedBar(null);
+                  }}
+                >
+                  <IconFilterX size={12} />
+                </DBRowTableIconButton>
+              </>
+            )}
+            <DBRowTableIconButton
+              variant="copy"
+              title={copiedValue ? 'Copied!' : 'Copy value'}
+              isActive={copiedValue}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(clickedBar.value);
+                  setCopiedValue(true);
+                  if (copyTimeoutRef.current)
+                    clearTimeout(copyTimeoutRef.current);
+                  copyTimeoutRef.current = setTimeout(
+                    () => setCopiedValue(false),
+                    2000,
+                  );
+                } catch (err) {
+                  console.error('Failed to copy:', err);
+                }
+              }}
             >
-              {truncateMiddle(name, 40)}
-            </Text>
-            <Text size="xs" mb={6} style={{ wordBreak: 'break-all' }}>
-              {clickedBar.value.length === 0 ? (
-                <i>Empty String</i>
-              ) : (
-                clickedBar.value
-              )}
-            </Text>
-            <Flex gap={12} mb={8}>
-              <Text size="xs" c={getChartColorError()}>
-                Selection:{' '}
-                {(outlierValueOccurences.get(clickedBar.value) ?? 0).toFixed(1)}
-                %
-              </Text>
-              <Text size="xs" c={getChartColorSuccess()}>
-                Background:{' '}
-                {(inlierValueOccurences.get(clickedBar.value) ?? 0).toFixed(1)}%
-              </Text>
-            </Flex>
-            <Flex gap={4} align="center">
-              {onAddFilter && (
-                <>
-                  <DBRowTableIconButton
-                    variant="copy"
-                    title="Filter for this value"
-                    onClick={() => {
-                      onAddFilter(name, clickedBar.value, 'include');
-                      setClickedBar(null);
-                    }}
-                  >
-                    <IconFilter size={12} />
-                  </DBRowTableIconButton>
-                  <DBRowTableIconButton
-                    variant="copy"
-                    title="Exclude this value"
-                    onClick={() => {
-                      onAddFilter(name, clickedBar.value, 'exclude');
-                      setClickedBar(null);
-                    }}
-                  >
-                    <IconFilterX size={12} />
-                  </DBRowTableIconButton>
-                </>
-              )}
-              <DBRowTableIconButton
-                variant="copy"
-                title={copiedValue ? 'Copied!' : 'Copy value'}
-                isActive={copiedValue}
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(clickedBar.value);
-                    setCopiedValue(true);
-                    if (copyTimeoutRef.current)
-                      clearTimeout(copyTimeoutRef.current);
-                    copyTimeoutRef.current = setTimeout(
-                      () => setCopiedValue(false),
-                      2000,
-                    );
-                  } catch (err) {
-                    console.error('Failed to copy:', err);
-                  }
-                }}
-              >
-                <IconCopy size={12} />
-              </DBRowTableIconButton>
-            </Flex>
-          </div>,
-          document.body,
-        )}
+              <IconCopy size={12} />
+            </DBRowTableIconButton>
+          </Flex>
+        </div>
+      )}
     </div>
   );
 }
