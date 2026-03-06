@@ -29,7 +29,7 @@ const LOG_FIELDS = [
   'Trace Id Expression',
   'Span Id Expression',
   'Implicit Column Expression',
-  'Order By',
+  'Default Order By',
 ];
 
 const TRACE_FIELDS = [
@@ -52,7 +52,7 @@ const TRACE_FIELDS = [
   'Span Events Expression',
   'Implicit Column Expression',
   'Displayed Timestamp Column',
-  'Order By',
+  'Default Order By',
 ];
 
 const SESSION_FIELDS = [...COMMON_FIELDS, 'Correlated Trace Source'];

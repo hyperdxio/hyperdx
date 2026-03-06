@@ -971,22 +971,22 @@ function OrderByFormRow({
             </ActionIcon>
           </Tooltip>
         </Flex>
+        {shouldShowResult && (
+          <Box>
+            {isExpressionValid && (
+              <Text c="green" size="xs">
+                Expression is valid.
+              </Text>
+            )}
+            {isExpressionInvalid && (
+              <ErrorCollapse
+                summary="Expression is invalid"
+                details={explainError?.message}
+              />
+            )}
+          </Box>
+        )}
       </FormRow>
-      {shouldShowResult && (
-        <Box>
-          {isExpressionValid && (
-            <Text c="green" size="xs">
-              Expression is valid.
-            </Text>
-          )}
-          {isExpressionInvalid && (
-            <ErrorCollapse
-              summary="Expression is invalid"
-              details={explainError?.message}
-            />
-          )}
-        </Box>
-      )}
     </>
   );
 }
