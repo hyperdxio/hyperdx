@@ -29,7 +29,7 @@ import { formatNumber } from './utils';
 export type TableVariant = 'default' | 'muted';
 
 // Arbitrary limit to prevent OOM crashes for very large result sets. Most result sets should be paginated anyway.
-const MAX_TABLE_ROWS = 10_000;
+export const MAX_TABLE_ROWS = 10_000;
 
 export const Table = ({
   data,

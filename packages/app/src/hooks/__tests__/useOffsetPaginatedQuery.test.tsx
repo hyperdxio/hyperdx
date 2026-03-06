@@ -815,6 +815,74 @@ describe('useOffsetPaginatedQuery', () => {
     });
   });
 
+  describe('ClickHouse Settings (readonly and max_result_rows)', () => {
+    it('should set readonly=2 and max_result_rows for raw SQL configs', async () => {
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        sqlTemplate: 'SELECT status, count() FROM logs GROUP BY status',
+        connection: 'conn-1',
+        displayType: undefined,
+        dateRange: [
+          new Date('2024-01-01T00:00:00Z'),
+          new Date('2024-01-02T00:00:00Z'),
+        ] as [Date, Date],
+      };
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['status', 'count()'] },
+            { json: () => ['String', 'UInt64'] },
+            { json: () => ['error', 42] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.readonly).toBe('2');
+      expect(clickhouseSettings.max_result_rows).toBe('10000');
+      expect(clickhouseSettings.result_overflow_mode).toBe('break');
+    });
+
+    it('should not set readonly or max_result_rows for builder configs', async () => {
+      const config = createMockChartConfig();
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['timestamp', 'message'] },
+            { json: () => ['DateTime', 'String'] },
+            { json: () => ['2024-01-01T01:00:00Z', 'test log'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.readonly).toBeUndefined();
+      expect(clickhouseSettings.max_result_rows).toBeUndefined();
+      expect(clickhouseSettings.result_overflow_mode).toBeUndefined();
+    });
+  });
+
   describe('MV Optimization Integration', () => {
     it('should optimize queries using MVs when possible', async () => {
       const config = createMockChartConfig({

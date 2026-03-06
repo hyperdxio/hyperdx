@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
 import ms from 'ms';
-import type { ResponseJSON, Row } from '@hyperdx/common-utils/dist/clickhouse';
+import type {
+  ClickHouseSettings,
+  ResponseJSON,
+  Row,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChSql,
   ClickHouseQueryError,
@@ -29,6 +33,7 @@ import {
 
 import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
+import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
@@ -77,6 +82,7 @@ type QueryMeta = {
   optimizedConfig?: ChartConfigWithOptTimestamp;
   source: TSource | undefined;
   readonly: boolean;
+  maxResultRows?: number;
 };
 
 // Get time window from page param
@@ -161,6 +167,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     optimizedConfig,
     source,
     readonly,
+    maxResultRows,
   } = meta as QueryMeta;
 
   // Only stream incrementally if this is a fresh query with no previous
@@ -212,7 +219,18 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   }
 
   // Readonly = 2 means the query is readonly but can still specify query settings.
-  const clickHouseSettings = readonly ? { readonly: '2' } : {};
+  const clickHouseSettings: ClickHouseSettings = {};
+  if (readonly) {
+    clickHouseSettings.readonly = '2';
+  }
+
+  // result_overflow_mode=break will prevent an error when the result set exceeds max_result_rows,
+  // and instead just return the first max_result_rows rows.
+  if (maxResultRows && maxResultRows > 0) {
+    clickHouseSettings.max_result_rows = String(maxResultRows);
+    clickHouseSettings.result_overflow_mode = 'break';
+  }
+
   const resultSet =
     await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
       query: query.sql,
@@ -433,6 +451,8 @@ export default function useOffsetPaginatedQuery(
     id: builderConfig?.source,
   });
 
+  const isRawSql = isRawSqlChartConfig(config);
+
   const {
     data,
     fetchNextPage,
@@ -466,8 +486,9 @@ export default function useOffsetPaginatedQuery(
       metadata,
       optimizedConfig: mvOptimizationData?.optimizedConfig,
       source,
-      // Additional readonly protection when the user is running a raw SQL query
-      readonly: isRawSqlChartConfig(config),
+      // Additional protection when the user is running a raw SQL query
+      readonly: isRawSql,
+      maxResultRows: isRawSql ? MAX_TABLE_ROWS : undefined,
     } satisfies QueryMeta,
     queryFn,
     gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
