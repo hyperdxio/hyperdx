@@ -43,9 +43,6 @@ jobs:
       - name: Build dependencies
         run: make ci-build
 
-      - name: Remove project MCP config (not needed in CI)
-        run: rm -f .mcp.json
-
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
