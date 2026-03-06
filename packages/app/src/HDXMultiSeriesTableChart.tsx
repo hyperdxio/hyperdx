@@ -72,7 +72,7 @@ export const Table = ({
     }
     return data;
   }, [data]);
-  const isTruncated = truncatedData.length < data.length;
+  const isTruncated = truncatedData.length === MAX_TABLE_ROWS;
 
   const tableWidth = tableContainerRef.current?.clientWidth;
   const numColumns = columns.filter(c => c.visible !== false).length + 1;
