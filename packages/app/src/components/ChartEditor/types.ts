@@ -3,6 +3,8 @@ import {
   RawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 
+import { AlertWithCreatedBy } from '@/types';
+
 export type SavedChartConfigWithSelectArray = Omit<
   BuilderSavedChartConfig,
   'select'
@@ -24,6 +26,9 @@ export type SavedChartConfigWithSelectArray = Omit<
  **/
 export type ChartEditorFormState = Partial<BuilderSavedChartConfig> &
   Partial<Omit<RawSqlSavedChartConfig, 'configType'>> & {
+    alert?: BuilderSavedChartConfig['alert'] & {
+      createdBy?: AlertWithCreatedBy['createdBy'];
+    };
     series: SavedChartConfigWithSelectArray['select'];
     configType?: 'sql' | 'builder';
   };
