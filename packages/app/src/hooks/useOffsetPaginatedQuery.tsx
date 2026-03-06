@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
 import ms from 'ms';
-import type { ResponseJSON, Row } from '@hyperdx/common-utils/dist/clickhouse';
+import type {
+  ClickHouseSettings,
+  ResponseJSON,
+  Row,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChSql,
   ClickHouseQueryError,
@@ -12,6 +16,10 @@ import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
 } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isBuilderChartConfig,
+  isRawSqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   TSource,
@@ -25,6 +33,7 @@ import {
 
 import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
+import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
@@ -80,9 +89,10 @@ function getTimeWindowFromPageParam(
   pageParam: TPageParam,
 ): TimeWindow {
   const [startDate, endDate] = config.dateRange;
-  const windows = isFirstOrderByAscending(config.orderBy)
-    ? generateTimeWindowsAscending(startDate, endDate)
-    : generateTimeWindowsDescending(startDate, endDate);
+  const windows =
+    isBuilderChartConfig(config) && isFirstOrderByAscending(config.orderBy)
+      ? generateTimeWindowsAscending(startDate, endDate)
+      : generateTimeWindowsDescending(startDate, endDate);
   const window = windows[pageParam.windowIndex];
   if (window == null) {
     throw new Error('Invalid time window for page param');
@@ -96,7 +106,8 @@ function getNextPageParam(
   allPages: TQueryFnData[],
   config: ChartConfigWithOptTimestamp,
 ): TPageParam | undefined {
-  if (lastPage == null) {
+  // Pagination is not supported for raw SQL tables since they may not be ordered at all.
+  if (lastPage == null || isRawSqlChartConfig(config)) {
     return undefined;
   }
 
@@ -124,7 +135,8 @@ function getNextPageParam(
   }
 
   // If no more results in current window, move to next window (if windowing is being used)
-  const shouldUseWindowing = isTimestampExpressionInFirstOrderBy(config);
+  const shouldUseWindowing =
+    isBuilderChartConfig(config) && isTimestampExpressionInFirstOrderBy(config);
   const nextWindowIndex = currentWindow.windowIndex + 1;
   if (shouldUseWindowing && nextWindowIndex < windows.length) {
     return {
@@ -162,7 +174,8 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
   const config = optimizedConfig ?? rawConfig;
 
   // Get the time window for this page
-  const shouldUseWindowing = isTimestampExpressionInFirstOrderBy(config);
+  const shouldUseWindowing =
+    isBuilderChartConfig(config) && isTimestampExpressionInFirstOrderBy(config);
   const timeWindow = shouldUseWindowing
     ? getTimeWindowFromPageParam(config, pageParam)
     : {
@@ -173,14 +186,16 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       };
 
   // Create config with windowed date range
-  const windowedConfig = {
-    ...config,
-    dateRange: [timeWindow.startTime, timeWindow.endTime] as [Date, Date],
-    limit: {
-      limit: config.limit?.limit,
-      offset: pageParam.offset,
-    },
-  };
+  const windowedConfig = isBuilderChartConfig(config)
+    ? {
+        ...config,
+        dateRange: [timeWindow.startTime, timeWindow.endTime] as [Date, Date],
+        limit: {
+          limit: config.limit?.limit,
+          offset: pageParam.offset,
+        },
+      }
+    : config;
 
   const query = await renderChartConfig(
     windowedConfig,
@@ -194,6 +209,28 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     setTimeout(() => abortController.abort(), queryTimeout * 1000);
   }
 
+  const clickHouseSettings: ClickHouseSettings = {};
+  if (isRawSqlChartConfig(config)) {
+    // Readonly = 2 means the query is readonly but can still specify query settings.
+    clickHouseSettings.readonly = '2';
+
+    const existingMaxResultRowsSetting = await metadata.getSetting({
+      settingName: 'max_result_rows',
+      connectionId: config.connection,
+    });
+
+    const maxResultRows =
+      existingMaxResultRowsSetting != null &&
+      Number(existingMaxResultRowsSetting) > 0
+        ? Math.min(Number(existingMaxResultRowsSetting), MAX_TABLE_ROWS)
+        : MAX_TABLE_ROWS;
+
+    // result_overflow_mode=break will prevent an error when the result set exceeds max_result_rows,
+    // and instead just return the first max_result_rows rows.
+    clickHouseSettings.max_result_rows = String(maxResultRows);
+    clickHouseSettings.result_overflow_mode = 'break';
+  }
+
   const resultSet =
     await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
       query: query.sql,
@@ -201,6 +238,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       format: 'JSONCompactEachRowWithNamesAndTypes',
       abort_signal: abortController?.signal || signal,
       connectionId: config.connection,
+      clickhouse_settings: clickHouseSettings,
     });
 
   const stream = resultSet.stream();
@@ -402,14 +440,15 @@ export default function useOffsetPaginatedQuery(
   const hasPreviousQueries =
     matchedQueries.filter(([_, data]) => data != null).length > 0;
 
+  const builderConfig = isBuilderChartConfig(config) ? config : undefined;
   const { data: mvOptimizationData, isLoading: isLoadingMVOptimization } =
-    useMVOptimizationExplanation(config, {
-      enabled: !!enabled,
+    useMVOptimizationExplanation(builderConfig, {
+      enabled: !!enabled && !!builderConfig,
       placeholderData: undefined,
     });
 
   const { data: source, isLoading: isSourceLoading } = useSource({
-    id: config?.source,
+    id: builderConfig?.source,
   });
 
   const {

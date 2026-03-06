@@ -1,8 +1,10 @@
 name: Claude Code Review
 
 on:
-  pull_request_target:
-    types: [opened, synchronize]
+  # Disabled: upstream bug in claude-code-action SDK (https://github.com/anthropics/claude-code-action/issues/1013)
+  # pull_request_target:
+  #   types: [opened, synchronize]
+  workflow_dispatch:
     # Optional: Only run on specific file changes
     # paths:
     #   - "src/**/*.ts"
@@ -41,7 +43,6 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          use_sticky_comment: true
           allowed_bots: cursor,cursor[bot],claude,claude[bot]
           github_token: ${{ secrets.GITHUB_TOKEN }} # Bypasses OIDC auth (required for pull_request_target)
           allowed_non_write_users: '*' # Allows fork contributors to trigger reviews
@@ -70,11 +71,10 @@ jobs:
 
             Note: If the team wants a more thorough review, they can comment on the PR requesting one.
 
-            Return your review as your final response — the action will post it as a sticky comment on the PR.
+            Use `gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none` with your Bash tool to leave your review as a comment on the PR.
+            This will create a new comment if none exists, or edit the last comment if one exists.
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.claude.com/en/docs/claude-code/sdk#command-line for available options
-          claude_args:
-            '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh
-            issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr
-            view:*),Bash(gh pr list:*)"'
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"

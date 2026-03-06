@@ -1,6 +1,7 @@
 import React, {
   memo,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -31,7 +32,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   SelectList,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -105,6 +106,7 @@ import {
 } from './DBTable/TableSearchInput';
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
+import { RowSidePanelContext } from './DBRowSidePanel';
 import {
   createExpandButtonColumn,
   ExpandedLogRow,
@@ -269,7 +271,7 @@ const SqlModal = ({
 }: {
   opened: boolean;
   onClose: () => void;
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
 }) => {
   const { data: sql, isLoading: isLoadingSql } = useRenderedSqlChartConfig(
     config,
@@ -336,6 +338,7 @@ export const RawLogTable = memo(
     showExpandButton = true,
     getRowWhere,
     variant = 'default',
+    onRemoveColumn,
   }: {
     wrapLines?: boolean;
     displayedColumns: string[];
@@ -365,7 +368,7 @@ export const RawLogTable = memo(
     error?: ClickHouseQueryError | Error;
     dateRange?: [Date, Date];
     loadingDate?: Date;
-    config?: ChartConfigWithDateRange;
+    config?: BuilderChartConfigWithDateRange;
     onChildModalOpen?: (open: boolean) => void;
     source?: TSource;
     onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
@@ -381,6 +384,7 @@ export const RawLogTable = memo(
     onSortingChange?: (v: SortingState | null) => void;
     getRowWhere?: (row: Record<string, any>) => RowWhereResult;
     variant?: DBRowTableVariant;
+    onRemoveColumn?: (column: string) => void;
   }) => {
     const dedupedRows = useMemo(() => {
       const lIds = new Set();
@@ -893,6 +897,19 @@ export const RawLogTable = memo(
                             key={header.id}
                             header={header}
                             isLast={isLast}
+                            onRemoveColumn={
+                              onRemoveColumn &&
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                              (header.column.columnDef.meta as any)?.column
+                                ? () => {
+                                    onRemoveColumn(
+                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                      (header.column.columnDef.meta as any)
+                                        ?.column,
+                                    );
+                                  }
+                                : undefined
+                            }
                             lastItemButtons={
                               <Group gap={8} mr={8}>
                                 {tableId &&
@@ -1273,7 +1290,7 @@ function getSelectLength(select: SelectList): number {
 }
 
 export function useConfigWithPrimaryAndPartitionKey(
-  config: ChartConfigWithDateRange,
+  config: BuilderChartConfigWithDateRange,
 ) {
   const { data: tableMetadata } = useTableMetadata({
     databaseName: config.from.databaseName,
@@ -1348,7 +1365,7 @@ function DBSqlRowTableComponent({
   initialSortBy,
   variant = 'default',
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   sourceId?: string;
   onRowDetailsClick?: (rowWhere: RowWhereResult) => void;
   highlightedLineId?: string;
@@ -1372,6 +1389,8 @@ function DBSqlRowTableComponent({
   variant?: DBRowTableVariant;
 }) {
   const { data: me } = api.useMe();
+  const { toggleColumn, displayedColumns: contextDisplayedColumns } =
+    useContext(RowSidePanelContext);
 
   const [orderBy, setOrderBy] = useState<SortingState[number] | null>(
     initialSortBy?.[0] ?? null,
@@ -1449,6 +1468,43 @@ function DBSqlRowTableComponent({
   }, [data, mergedConfig]);
 
   const columns = useMemo(() => Array.from(columnMap.keys()), [columnMap]);
+
+  // CH may rewrite column names in the result set (e.g. expression formatting),
+  // so we cannot rely on string matching between CH column names and SELECT expressions.
+  // Instead, use position-based mapping: columns[i] (CH name) corresponds to
+  // contextDisplayedColumns[i] (the original SELECT expression), since both arrays
+  // are ordered by the user's SELECT list.
+  const onRemoveColumnFromTable = useCallback(
+    (chColumnName: string) => {
+      if (!toggleColumn || !contextDisplayedColumns) return;
+
+      const colIdx = columns.indexOf(chColumnName);
+      if (colIdx >= 0 && colIdx < contextDisplayedColumns.length) {
+        toggleColumn(contextDisplayedColumns[colIdx]);
+        return;
+      }
+
+      // Fallback: direct match
+      if (contextDisplayedColumns.includes(chColumnName)) {
+        toggleColumn(chColumnName);
+        return;
+      }
+
+      // Alias match: find the SELECT expression that ends with "AS chColumnName"
+      const exprWithAlias = contextDisplayedColumns.find(expr =>
+        expr.trim().toLowerCase().endsWith(` as ${chColumnName.toLowerCase()}`),
+      );
+      if (exprWithAlias) {
+        toggleColumn(exprWithAlias);
+      } else {
+        console.warn(
+          'onRemoveColumnFromTable: could not find SELECT expr for',
+          chColumnName,
+        );
+      }
+    },
+    [toggleColumn, contextDisplayedColumns, columns],
+  );
 
   // FIXME: do this on the db side ?
   // Or, the react-table should render object-type cells as JSON.stringify
@@ -1631,6 +1687,7 @@ function DBSqlRowTableComponent({
         sortOrder={orderByArray}
         getRowWhere={getRowWhere}
         variant={variant}
+        onRemoveColumn={toggleColumn ? onRemoveColumnFromTable : undefined}
       />
     </>
   );

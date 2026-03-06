@@ -30,8 +30,10 @@ import { ITeam } from '@/models/team';
 import Webhook, { IWebhook } from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
 import {
+  alertHasGroupBy,
   doesExceedThreshold,
   getPreviousAlertHistories,
+  getScheduledWindowStart,
   processAlert,
 } from '@/tasks/checkAlerts';
 import {
@@ -122,6 +124,129 @@ describe('checkAlerts', () => {
     });
   });
 
+  describe('getScheduledWindowStart', () => {
+    it('should align to the default interval boundary when offset is 0', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 0);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:10:00.000Z'));
+    });
+
+    it('should align to an offset boundary when schedule offset is provided', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 2);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:12:00.000Z'));
+    });
+
+    it('should keep previous offset window until the next offset boundary', () => {
+      const now = new Date('2024-01-01T12:11:59.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 2);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:07:00.000Z'));
+    });
+
+    it('should align windows using scheduleStartAt as an absolute anchor', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const scheduleStartAt = new Date('2024-01-01T12:02:30.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 0, scheduleStartAt);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:12:30.000Z'));
+    });
+
+    it('should prioritize scheduleStartAt over offset alignment', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const scheduleStartAt = new Date('2024-01-01T12:02:30.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 2, scheduleStartAt);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:12:30.000Z'));
+    });
+  });
+
+  describe('alertHasGroupBy', () => {
+    const makeDetails = (
+      overrides: Partial<{
+        alertGroupBy: string;
+        taskType: AlertTaskType;
+        tileGroupBy: string;
+      }> = {},
+    ): AlertDetails => {
+      const base = {
+        alert: { groupBy: overrides.alertGroupBy } as any,
+        source: {} as any,
+        previousMap: new Map(),
+      };
+
+      if (overrides.taskType === AlertTaskType.TILE) {
+        return {
+          ...base,
+          taskType: AlertTaskType.TILE,
+          tile: {
+            config: { groupBy: overrides.tileGroupBy ?? '' },
+          } as any,
+          dashboard: {} as any,
+        };
+      }
+
+      return {
+        ...base,
+        taskType: AlertTaskType.SAVED_SEARCH,
+        savedSearch: {} as any,
+      };
+    };
+
+    it('should return false for saved search alert without groupBy', () => {
+      expect(alertHasGroupBy(makeDetails())).toBe(false);
+    });
+
+    it('should return false for saved search alert with empty groupBy', () => {
+      expect(alertHasGroupBy(makeDetails({ alertGroupBy: '' }))).toBe(false);
+    });
+
+    it('should return true for saved search alert with groupBy', () => {
+      expect(
+        alertHasGroupBy(makeDetails({ alertGroupBy: 'ServiceName' })),
+      ).toBe(true);
+    });
+
+    it('should return false for tile alert without groupBy', () => {
+      expect(
+        alertHasGroupBy(makeDetails({ taskType: AlertTaskType.TILE })),
+      ).toBe(false);
+    });
+
+    it('should return false for tile alert with empty tile groupBy', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({ taskType: AlertTaskType.TILE, tileGroupBy: '' }),
+        ),
+      ).toBe(false);
+    });
+
+    it('should return true for tile alert with tile config groupBy', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({
+            taskType: AlertTaskType.TILE,
+            tileGroupBy: 'ServiceName',
+          }),
+        ),
+      ).toBe(true);
+    });
+
+    it('should return true for tile alert when alert.groupBy is set (even if tile groupBy is empty)', () => {
+      expect(
+        alertHasGroupBy(
+          makeDetails({
+            taskType: AlertTaskType.TILE,
+            alertGroupBy: 'ServiceName',
+            tileGroupBy: '',
+          }),
+        ),
+      ).toBe(true);
+    });
+  });
+
   describe('Alert Templates', () => {
     // Create a mock metadata object with the necessary methods
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -194,6 +319,7 @@ describe('checkAlerts', () => {
       attributes: {},
       granularity: '1m',
       group: 'http',
+      isGroupedAlert: false,
       startTime: new Date('2023-03-17T22:13:03.103Z'),
       endTime: new Date('2023-03-17T22:13:59.103Z'),
       value: 10,
@@ -224,6 +350,7 @@ describe('checkAlerts', () => {
       endTime: new Date('2023-03-17T22:13:59.103Z'),
       attributes: {},
       granularity: '5 minute',
+      isGroupedAlert: false,
       value: 5,
     };
 
@@ -1064,6 +1191,116 @@ describe('checkAlerts', () => {
         teamWebhooksById,
       );
     };
+
+    it('should skip processing before scheduleStartAt', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          scheduleStartAt: '2023-11-16T22:15:00.000Z',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const querySpy = jest.spyOn(clickhouseClient, 'queryChartConfig');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:12:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect(querySpy).not.toHaveBeenCalled();
+      expect(
+        await AlertHistory.countDocuments({ alert: details.alert.id }),
+      ).toBe(0);
+    });
+
+    it('should skip processing until the first anchored window fully elapses', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          scheduleStartAt: '2023-11-16T22:13:30.000Z',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const querySpy = jest.spyOn(clickhouseClient, 'queryChartConfig');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:13:45.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect(querySpy).not.toHaveBeenCalled();
+      expect(
+        await AlertHistory.countDocuments({ alert: details.alert.id }),
+      ).toBe(0);
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:18:31.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect(querySpy).toHaveBeenCalledTimes(1);
+      expect(
+        await AlertHistory.countDocuments({ alert: details.alert.id }),
+      ).toBe(1);
+    });
 
     it('SAVED_SEARCH alert - slack webhook', async () => {
       const {
@@ -2396,6 +2633,186 @@ describe('checkAlerts', () => {
           ],
         },
       );
+    });
+
+    it('TILE alert (metrics) with groupBy - should track per-group alerts', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      // Alert window is [22:05, 22:10), place data within that range
+      const eventMs = now.getTime() - ms('7m'); // 22:05
+
+      // Insert gauge metrics for two different services
+      // Note: ResourceAttributes must differ per service so that
+      // AttributesHash (cityHash64 of mapConcat(ScopeAttributes, ResourceAttributes, Attributes))
+      // produces distinct hashes. Otherwise, the Bucketed CTE collapses all rows into one group.
+      const gaugePoints = [
+        // service-a: high CPU values (should trigger alert)
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-a',
+          Value: 50,
+          TimeUnix: new Date(eventMs),
+          ResourceAttributes: { 'service.name': 'service-a', host: 'host1' },
+        },
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-a',
+          Value: 40,
+          TimeUnix: new Date(eventMs + ms('1m')),
+          ResourceAttributes: { 'service.name': 'service-a', host: 'host1' },
+        },
+        // service-b: high CPU values (should also trigger alert)
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-b',
+          Value: 30,
+          TimeUnix: new Date(eventMs),
+          ResourceAttributes: { 'service.name': 'service-b', host: 'host1' },
+        },
+        {
+          MetricName: 'test.cpu',
+          ServiceName: 'service-b',
+          Value: 20,
+          TimeUnix: new Date(eventMs + ms('1m')),
+          ResourceAttributes: { 'service.name': 'service-b', host: 'host1' },
+        },
+      ];
+
+      await bulkInsertMetricsGauge(gaugePoints);
+
+      const source = await Source.create({
+        kind: 'metric',
+        team: team._id,
+        from: {
+          databaseName: DEFAULT_DATABASE,
+          tableName: '',
+        },
+        metricTables: {
+          gauge: DEFAULT_METRICS_TABLE.GAUGE,
+          histogram: DEFAULT_METRICS_TABLE.HISTOGRAM,
+          sum: DEFAULT_METRICS_TABLE.SUM,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection.id,
+        name: 'Metrics',
+      });
+
+      const dashboard = await new Dashboard({
+        name: 'My Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: '17quud',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: 'CPU by Service',
+              select: [
+                {
+                  aggFn: 'max',
+                  valueExpression: 'Value',
+                  metricType: 'gauge',
+                  metricName: 'test.cpu',
+                },
+              ],
+              where: '',
+              displayType: 'line',
+              source: source.id,
+              groupBy: 'ServiceName',
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === '17quud');
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          dashboardId: dashboard.id,
+          tileId: '17quud',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      // First run: should trigger alerts for both services
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // Check that we have 2 alert histories (one per group)
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1, group: 1 });
+
+      expect(alertHistories.length).toBe(2);
+
+      // Both groups should be in ALERT state with non-empty group names
+      const groups = alertHistories.map(h => h.group);
+      expect(groups.some(g => g?.includes('service-a'))).toBe(true);
+      expect(groups.some(g => g?.includes('service-b'))).toBe(true);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[1].state).toBe('ALERT');
+
+      // Webhook should be called twice (once per group)
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+
+      // Validate webhook messages contain correct group names
+      const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
+      const messages = calls.map((call: any) => ({
+        url: call[0],
+        text: call[1].text,
+        body: call[1].blocks[0].text.text,
+      }));
+
+      // Both calls should target the correct webhook URL
+      expect(messages[0].url).toBe('https://hooks.slack.com/services/123');
+      expect(messages[1].url).toBe('https://hooks.slack.com/services/123');
+
+      // Title should reference the chart name and dashboard
+      for (const msg of messages) {
+        expect(msg.text).toContain('CPU by Service');
+        expect(msg.text).toContain('My Dashboard');
+        expect(msg.text).toContain('exceeds 1');
+      }
+
+      // Body should contain Group: "ServiceName:service-a" or "ServiceName:service-b"
+      const bodies = messages.map((m: any) => m.body);
+      expect(
+        bodies.some(
+          (b: string) => b.includes('Group:') && b.includes('service-a'),
+        ),
+      ).toBe(true);
+      expect(
+        bodies.some(
+          (b: string) => b.includes('Group:') && b.includes('service-b'),
+        ),
+      ).toBe(true);
     });
 
     // TODO: revisit this once the auto-resolve feature is implemented
@@ -3881,6 +4298,317 @@ describe('checkAlerts', () => {
       // Verify webhook WAS called
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
       expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+    });
+
+    it('SAVED_SEARCH alert with alias in select and where should trigger', async () => {
+      const team = await createTeam({ name: 'My Team' });
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+
+      // Saved search uses an alias in select and references it in where (Lucene).
+      // Note: Lucene `field:"value"` on alias columns (unknown type) generates
+      // an exact-match query, so use unquoted syntax for substring matching.
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'Aliased Search',
+        select: 'toString(Body) AS body',
+        where: 'body:wrong',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'info',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      // Without alias WITH clause support, this would fail because
+      // the alert query uses count(*) and the WHERE references `body`
+      // which is only defined by the saved search's SELECT alias
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+    });
+
+    it('SAVED_SEARCH alert with alias in where should not trigger when no rows match', async () => {
+      const team = await createTeam({ name: 'My Team' });
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+
+      // Alias in select, where references alias with a value that won't match
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'Aliased Search No Match',
+        select: 'toString(Body) AS body',
+        where: 'body:"does not exist anywhere"',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Something went wrong!',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // No matching rows, so alert should remain in OK/INSUFFICIENT_DATA state
+      const alertState = (await Alert.findById(details.alert.id))!.state;
+      expect(alertState).not.toBe('ALERT');
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+    });
+
+    it('SAVED_SEARCH alert with multiple aliases in select and where should trigger', async () => {
+      const team = await createTeam({ name: 'My Team' });
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+
+      // Multiple aliases in select, where references one of them
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'Multi Alias Search',
+        select: 'toString(Body) AS body, ServiceName AS svc',
+        where: 'svc:"api"',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from api service',
+        },
+        {
+          ServiceName: 'web',
+          Timestamp: eventMs,
+          SeverityText: 'info',
+          Body: 'Info from web service',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Only 1 log matches svc:"api", which meets threshold > 1
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
     });
   });
 

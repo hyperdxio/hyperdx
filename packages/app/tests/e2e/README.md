@@ -153,24 +153,20 @@ persistence, and real backend features:
 
 ```typescript
 import { expect, test } from '../../utils/base-test';
+import { SearchPage } from '../page-objects/SearchPage';
 
-test.describe('My Feature', () => {
+test.describe('My Feature', { tag: '@full-stack' }, () => {
   test('should allow authenticated user to save search', async ({ page }) => {
-    // User is already authenticated (via global setup in full-stack mode)
-    await page.goto('/search');
+    const ts = Date.now();
+    const searchPage = new SearchPage(page);
 
-    // Query local Docker ClickHouse seeded data
-    await page.fill('[data-testid="search-input"]', 'ServiceName:"frontend"');
-    await page.click('[data-testid="search-submit-button"]');
+    await searchPage.goto();
+    await searchPage.openSaveSearchModal();
+    await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+      `My Saved Search ${ts}`,
+    );
 
-    // Save search (uses real MongoDB for persistence)
-    await page.click('[data-testid="save-search-button"]');
-    await page.fill('[data-testid="search-name-input"]', 'My Saved Search');
-    await page.click('[data-testid="confirm-save"]');
-
-    // Verify saved search persists
-    await page.goto('/saved-searches');
-    await expect(page.getByText('My Saved Search')).toBeVisible();
+    await expect(searchPage.alertsButton).toBeVisible();
   });
 });
 ```
@@ -178,6 +174,73 @@ test.describe('My Feature', () => {
 **Note:** Tests that need to run in full stack mode should be tagged with
 `@full-stack` so that when running with `./scripts/test-e2e.sh --local`, they
 are skipped appropriately.
+
+### Page Object Pattern
+
+All UI interactions in spec files must go through page objects (`page-objects/`) and components (`components/`). Never use raw `page.getByTestId()`, `page.locator()`, or `page.getByRole()` directly in spec files. If a needed interaction doesn't exist in a page object, add it there first.
+
+### Data Isolation
+
+Tests run in parallel and share a database. Use `Date.now()` for **every field the API uniqueness-checks** — not just display names:
+
+```typescript
+const ts = Date.now();
+const name = `E2E Thing ${ts}`;
+const url = `https://example.com/thing-${ts}`; // URL fields too, not just name
+```
+
+The webhook API enforces uniqueness on `(team, service, url)`. A hardcoded URL will collide between parallel runs or retries and cause the form to stay open (API returns 400).
+
+### Scoped Assertions
+
+Never assert global counts — other tests' data is in the shared DB. Scope assertions to the current test's unique data:
+
+```typescript
+// ❌ Brittle — other tests' alerts pollute the count
+await expect(alertsPage.getAlertCards()).toHaveCount(1);
+
+// ✅ Scoped to this test's data
+await expect(
+  alertsPage.pageContainer.getByRole('link').filter({ hasText: name }),
+).toBeVisible();
+```
+
+### AI-Assisted Test Writing
+
+The project ships with AI tooling for generating, fixing, and planning E2E tests using a live browser via the [Playwright MCP server](https://github.com/microsoft/playwright/tree/main/packages/playwright-mcp).
+
+#### Claude Code
+
+Use the `/playwright <description>` skill. It orchestrates three agents:
+
+- **`playwright-test-generator`** — drives a real browser, executes steps live, writes spec code following HyperDX conventions
+- **`playwright-test-healer`** — debugs failing tests interactively using the MCP browser tools
+- **`playwright-test-planner`** — explores the UI and produces a structured test plan before writing code
+
+```
+/playwright write a test that creates an alert from a saved search
+```
+
+The skill automatically runs the test after generation and invokes the healer if it fails. Update `.claude/skills/playwright/SKILL.md` if the output doesn't match project conventions.
+
+#### Cursor
+
+The Playwright MCP server is pre-configured in `.cursor/mcp.json`. Enable it under **Settings → Tools & MCP**.
+
+To write a test, reference the `@playwright` rule in your prompt — it loads all HyperDX conventions automatically:
+
+```
+@playwright write a new E2E test at packages/app/tests/e2e/features/search.spec.ts
+that verifies a user can save a search and see it in the sidebar
+```
+
+To fix a failing test:
+
+```
+@playwright this test is failing with [error]. Debug and fix it using the Playwright MCP tools.
+```
+
+The `@playwright` rule is a thin wrapper that points to `.claude/skills/playwright/SKILL.md` as the single source of truth for conventions — so both Claude Code and Cursor stay in sync automatically.
 
 ## Test Organization
 

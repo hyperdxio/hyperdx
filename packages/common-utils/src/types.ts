@@ -251,6 +251,7 @@ export enum WebhookService {
 }
 
 // Base webhook interface (matches backend IWebhook but with JSON-serialized types)
+// When making changes here, consider if they need to be made to the external API schema as well (packages/api/src/utils/zod.ts).
 export interface IWebhook {
   _id: string;
   createdAt: string;
@@ -300,6 +301,17 @@ export const AlertIntervalSchema = z.union([
 
 export type AlertInterval = z.infer<typeof AlertIntervalSchema>;
 
+export const ALERT_INTERVAL_TO_MINUTES: Record<AlertInterval, number> = {
+  '1m': 1,
+  '5m': 5,
+  '15m': 15,
+  '30m': 30,
+  '1h': 60,
+  '6h': 360,
+  '12h': 720,
+  '1d': 1440,
+};
+
 export const zAlertChannelType = z.literal('webhook');
 
 export type AlertChannelType = z.infer<typeof zAlertChannelType>;
@@ -321,9 +333,69 @@ export const zTileAlert = z.object({
   dashboardId: z.string().min(1),
 });
 
-export const AlertBaseSchema = z.object({
+export const validateAlertScheduleOffsetMinutes = (
+  alert: {
+    interval: AlertInterval;
+    scheduleOffsetMinutes?: number;
+    scheduleStartAt?: string | Date | null;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  const scheduleOffsetMinutes = alert.scheduleOffsetMinutes ?? 0;
+  const intervalMinutes = ALERT_INTERVAL_TO_MINUTES[alert.interval];
+
+  if (alert.scheduleStartAt != null && scheduleOffsetMinutes > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'scheduleOffsetMinutes must be 0 when scheduleStartAt is provided',
+      path: ['scheduleOffsetMinutes'],
+    });
+  }
+
+  if (scheduleOffsetMinutes >= intervalMinutes) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `scheduleOffsetMinutes must be less than ${intervalMinutes} minute${intervalMinutes === 1 ? '' : 's'}`,
+      path: ['scheduleOffsetMinutes'],
+    });
+  }
+};
+
+const MAX_SCHEDULE_START_AT_FUTURE_MS = 1000 * 60 * 60 * 24 * 365;
+const MAX_SCHEDULE_START_AT_PAST_MS = 1000 * 60 * 60 * 24 * 365 * 10;
+const MAX_SCHEDULE_OFFSET_MINUTES = 1439;
+
+export const scheduleStartAtSchema = z
+  .union([z.string().datetime(), z.null()])
+  .optional()
+  .refine(
+    value =>
+      value == null ||
+      new Date(value).getTime() <= Date.now() + MAX_SCHEDULE_START_AT_FUTURE_MS,
+    {
+      message: 'scheduleStartAt must be within 1 year from now',
+    },
+  )
+  .refine(
+    value =>
+      value == null ||
+      new Date(value).getTime() >= Date.now() - MAX_SCHEDULE_START_AT_PAST_MS,
+    {
+      message: 'scheduleStartAt must be within 10 years in the past',
+    },
+  );
+
+export const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
   interval: AlertIntervalSchema,
+  scheduleOffsetMinutes: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_SCHEDULE_OFFSET_MINUTES)
+    .optional(),
+  scheduleStartAt: scheduleStartAtSchema,
   threshold: z.number().int().min(1),
   thresholdType: z.nativeEnum(AlertThresholdType),
   channel: zAlertChannel,
@@ -339,13 +411,25 @@ export const AlertBaseSchema = z.object({
     .optional(),
 });
 
-export const ChartAlertBaseSchema = AlertBaseSchema.extend({
+// Keep AlertBaseSchema as a ZodObject for backwards compatibility with
+// external consumers that call object helpers like .extend()/.pick()/.omit().
+export const AlertBaseSchema = AlertBaseObjectSchema;
+
+const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
+  validateAlertScheduleOffsetMinutes,
+);
+
+export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
   threshold: z.number().positive(),
 });
 
+const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
+  validateAlertScheduleOffsetMinutes,
+);
+
 export const AlertSchema = z.union([
-  z.intersection(AlertBaseSchema, zSavedSearchAlert),
-  z.intersection(ChartAlertBaseSchema, zTileAlert),
+  z.intersection(AlertBaseValidatedSchema, zSavedSearchAlert),
+  z.intersection(ChartAlertBaseValidatedSchema, zTileAlert),
 ]);
 
 export type Alert = z.infer<typeof AlertSchema>;
@@ -415,29 +499,37 @@ export type NumberFormat = z.infer<typeof NumberFormatSchema>;
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
-export const _ChartConfigSchema = z.object({
+
+/**
+ * Schema describing display settings which are shared between Raw SQL
+ * chart configs and Structured ChartBuilder chart configs
+ **/
+const SharedChartDisplaySettingsSchema = z.object({
   displayType: z.nativeEnum(DisplayType).optional(),
   numberFormat: NumberFormatSchema.optional(),
+  granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
+  compareToPreviousPeriod: z.boolean().optional(),
+  fillNulls: z.union([z.number(), z.literal(false)]).optional(),
+  alignDateRangeToGranularity: z.boolean().optional(),
+});
+
+export const _ChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
-  granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
   filters: z.array(FilterSchema).optional(),
   connection: z.string(),
-  fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   selectGroupBy: z.boolean().optional(),
   metricTables: MetricTableSchema.optional(),
   seriesReturnType: z.enum(['ratio', 'column']).optional(),
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
-  compareToPreviousPeriod: z.boolean().optional(),
   source: z.string().optional(),
-  alignDateRangeToGranularity: z.boolean().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.
-// It needs to be a separate, named schema to avoid use ot z.lazy(...),
+// It needs to be a separate, named schema to avoid use of z.lazy(...),
 // use of which allows for type mistakes to make it past linting.
 export const CteChartConfigSchema = z.intersection(
   _ChartConfigSchema.partial({ timestampValueExpression: true }),
@@ -450,7 +542,7 @@ export type CteChartConfig = z.infer<typeof CteChartConfigSchema>;
 // non-recursive chart config so that it can reference a complete chart config
 // schema. This structure does mean that we cannot nest `with` clauses but does
 // ensure the type system can catch more issues in the build pipeline.
-export const ChartConfigSchema = z.intersection(
+const BuilderChartConfigSchema = z.intersection(
   z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
   z
     .object({
@@ -476,6 +568,22 @@ export const ChartConfigSchema = z.intersection(
     .partial(),
 );
 
+export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
+
+/** Schema describing Raw SQL chart configs */
+const RawSqlChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
+  configType: z.literal('sql'),
+  sqlTemplate: z.string(),
+  connection: z.string(),
+});
+
+export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
+
+export const ChartConfigSchema = z.union([
+  BuilderChartConfigSchema,
+  RawSqlChartConfigSchema,
+]);
+
 export type ChartConfig = z.infer<typeof ChartConfigSchema>;
 
 export type DateRange = {
@@ -485,31 +593,38 @@ export type DateRange = {
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
+export type BuilderChartConfigWithDateRange = BuilderChartConfig & DateRange;
+export type RawSqlConfigWithDateRange = RawSqlChartConfig & DateRange;
 
-export type ChartConfigWithOptTimestamp = Omit<
-  ChartConfigWithDateRange,
+export type BuilderChartConfigWithOptTimestamp = Omit<
+  BuilderChartConfigWithDateRange,
   'timestampValueExpression'
 > & {
   timestampValueExpression?: string;
 };
+
+export type ChartConfigWithOptTimestamp =
+  | BuilderChartConfigWithOptTimestamp
+  | RawSqlConfigWithDateRange;
+
 // For non-time-based searches (ex. grab 1 row)
-export type ChartConfigWithOptDateRange = Omit<
-  ChartConfig,
+export type BuilderChartConfigWithOptDateRange = Omit<
+  BuilderChartConfig,
   'timestampValueExpression'
 > & {
   timestampValueExpression?: string;
 } & Partial<DateRange>;
 
+export type ChartConfigWithOptDateRange =
+  | BuilderChartConfigWithOptDateRange
+  | (RawSqlChartConfig & Partial<DateRange>);
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
-export const SavedChartConfigSchema = z
+const BuilderSavedChartConfigWithoutAlertSchema = z
   .object({
     name: z.string().optional(),
     source: z.string(),
-    alert: z.union([
-      AlertBaseSchema.optional(),
-      ChartAlertBaseSchema.optional(),
-    ]),
   })
   .extend(
     _ChartConfigSchema.omit({
@@ -524,6 +639,31 @@ export const SavedChartConfigSchema = z
     }).shape,
   );
 
+const BuilderSavedChartConfigSchema =
+  BuilderSavedChartConfigWithoutAlertSchema.extend({
+    alert: z.union([
+      AlertBaseSchema.optional(),
+      ChartAlertBaseSchema.optional(),
+    ]),
+  });
+
+export type BuilderSavedChartConfig = z.infer<
+  typeof BuilderSavedChartConfigSchema
+>;
+
+const RawSqlSavedChartConfigSchema = RawSqlChartConfigSchema.extend({
+  name: z.string().optional(),
+});
+
+export const SavedChartConfigSchema = z.union([
+  BuilderSavedChartConfigSchema,
+  RawSqlSavedChartConfigSchema,
+]);
+
+export type RawSqlSavedChartConfig = z.infer<
+  typeof RawSqlSavedChartConfigSchema
+>;
+
 export type SavedChartConfig = z.infer<typeof SavedChartConfigSchema>;
 
 export const TileSchema = z.object({
@@ -534,8 +674,12 @@ export const TileSchema = z.object({
   h: z.number(),
   config: SavedChartConfigSchema,
 });
+
 export const TileTemplateSchema = TileSchema.extend({
-  config: TileSchema.shape.config.omit({ alert: true }),
+  config: z.union([
+    BuilderSavedChartConfigWithoutAlertSchema,
+    RawSqlSavedChartConfigSchema,
+  ]),
 });
 
 export type Tile = z.infer<typeof TileSchema>;
@@ -569,6 +713,9 @@ export const DashboardSchema = z.object({
   tiles: z.array(TileSchema),
   tags: z.array(z.string()),
   filters: z.array(DashboardFilterSchema).optional(),
+  savedQuery: z.string().nullable().optional(),
+  savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
+  savedFilterValues: z.array(FilterSchema).optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
 export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;

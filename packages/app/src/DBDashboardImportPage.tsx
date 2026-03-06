@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { filter } from 'lodash';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { StringParam, useQueryParam } from 'use-query-params';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
-import { DashboardTemplateSchema } from '@hyperdx/common-utils/dist/types';
+import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  DashboardTemplateSchema,
+  SavedChartConfig,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Button,
   Collapse,
@@ -33,6 +36,7 @@ import {
 import { PageHeader } from './components/PageHeader';
 import SelectControlled from './components/SelectControlled';
 import { useBrandDisplayName } from './theme/ThemeProvider';
+import { useConnections } from './connection';
 import { useCreateDashboard, useUpdateDashboard } from './dashboard';
 import { withAppNav } from './layout';
 import { useSources } from './source';
@@ -179,43 +183,54 @@ function FileSelection({
   );
 }
 
-const SourceResolutionForm = z.object({
+const MappingForm = z.object({
   dashboardName: z.string().min(1),
   sourceMappings: z.array(z.string()),
+  connectionMappings: z.array(z.string()),
   filterSourceMappings: z.array(z.string()).optional(),
 });
 
-type SourceResolutionFormValues = z.infer<typeof SourceResolutionForm>;
+type MappingFormValues = z.infer<typeof MappingForm>;
 
 function Mapping({ input }: { input: Input }) {
   const router = useRouter();
   const { data: sources } = useSources();
+  const { data: connections } = useConnections();
   const [dashboardId] = useQueryParam('dashboardId', StringParam);
 
   const { handleSubmit, getFieldState, control, setValue } =
-    useForm<SourceResolutionFormValues>({
-      resolver: zodResolver(SourceResolutionForm),
+    useForm<MappingFormValues>({
+      resolver: zodResolver(MappingForm),
       defaultValues: {
         dashboardName: input.name,
-        sourceMappings: input.tiles.map(() => undefined),
+        sourceMappings: input.tiles.map(() => ''),
+        connectionMappings: input.tiles.map(() => ''),
       },
     });
 
-  // When the inputs change, reset the form
+  // When the input changes, reset the form
   useEffect(() => {
-    if (!input || !sources) return;
+    if (!input || !sources || !connections) return;
 
     const sourceMappings = input.tiles.map(tile => {
-      // find matching source name
+      const config = tile.config as SavedChartConfig;
+      if (isRawSqlSavedChartConfig(config)) return '';
       const match = sources.find(
-        source =>
-          source.name.toLowerCase() === tile.config.source.toLowerCase(),
+        source => source.name.toLowerCase() === config.source.toLowerCase(),
+      );
+      return match?.id || '';
+    });
+
+    const connectionMappings = input.tiles.map(tile => {
+      const config = tile.config as SavedChartConfig;
+      if (!isRawSqlSavedChartConfig(config)) return '';
+      const match = connections.find(
+        conn => conn.name.toLowerCase() === config.connection.toLowerCase(),
       );
       return match?.id || '';
     });
 
     const filterSourceMappings = input.filters?.map(filter => {
-      // find matching source name
       const match = sources.find(
         source => source.name.toLowerCase() === filter.source.toLowerCase(),
       );
@@ -223,13 +238,17 @@ function Mapping({ input }: { input: Input }) {
     });
 
     setValue('sourceMappings', sourceMappings);
+    setValue('connectionMappings', connectionMappings);
     setValue('filterSourceMappings', filterSourceMappings);
-  }, [setValue, sources, input]);
+  }, [setValue, sources, connections, input]);
 
   const isUpdatingRef = useRef(false);
   const sourceMappings = useWatch({ control, name: 'sourceMappings' });
+  const connectionMappings = useWatch({ control, name: 'connectionMappings' });
   const prevSourceMappingsRef = useRef(sourceMappings);
+  const prevConnectionMappingsRef = useRef(connectionMappings);
 
+  // Propagate source mapping changes to other tiles/filters with the same input source
   useEffect(() => {
     if (isUpdatingRef.current) return;
     if (!sourceMappings || !input.tiles) return;
@@ -243,44 +262,101 @@ function Mapping({ input }: { input: Input }) {
     prevSourceMappingsRef.current = sourceMappings;
 
     const inputTile = input.tiles[changedIdx];
-    if (!inputTile) return;
+    const inputTileConfig = inputTile?.config;
+    if (!inputTileConfig || isRawSqlSavedChartConfig(inputTileConfig)) return;
+
     const sourceId = sourceMappings[changedIdx] ?? '';
+    const inputTileSource = inputTileConfig.source;
+
     const keysForTilesWithMatchingSource = input.tiles
-      .map((tile, index) => ({ ...tile, index }))
-      .filter(tile => tile.config.source === inputTile.config.source)
+      .map((tile, index) => ({
+        config: tile.config,
+        index,
+      }))
+      .filter(
+        tile =>
+          !isRawSqlSavedChartConfig(tile.config) &&
+          tile.config.source === inputTileSource,
+      )
       .map(({ index }) => `sourceMappings.${index}` as const);
 
     const keysForFiltersWithMatchingSource =
       input.filters
         ?.map((filter, index) => ({ ...filter, index }))
-        .filter(f => f.source === inputTile.config.source)
+        .filter(f => f.source === inputTileSource)
         .map(({ index }) => `filterSourceMappings.${index}` as const) ?? [];
 
     isUpdatingRef.current = true;
-
     for (const key of [
       ...keysForTilesWithMatchingSource,
       ...keysForFiltersWithMatchingSource,
     ]) {
-      const fieldState = getFieldState(key);
-      // Only set if the field has not been modified
-      if (!fieldState.isDirty) {
-        setValue(key, sourceId, {
-          shouldValidate: true,
-        });
+      if (!getFieldState(key).isDirty) {
+        setValue(key, sourceId, { shouldValidate: true });
       }
     }
-
     isUpdatingRef.current = false;
   }, [sourceMappings, input.tiles, input.filters, getFieldState, setValue]);
+
+  // Propagate connection mapping changes to other RawSQL tiles with the same input connection
+  useEffect(() => {
+    if (isUpdatingRef.current) return;
+    if (!connectionMappings || !input.tiles) return;
+
+    const changedIdx = connectionMappings.findIndex(
+      (mapping, idx) => mapping !== prevConnectionMappingsRef.current?.[idx],
+    );
+    if (changedIdx === -1) return;
+
+    prevConnectionMappingsRef.current = connectionMappings;
+
+    const inputTile = input.tiles[changedIdx];
+    const inputTileConfig = inputTile?.config as SavedChartConfig | undefined;
+    if (!inputTileConfig || !isRawSqlSavedChartConfig(inputTileConfig)) return;
+
+    const connectionId = connectionMappings[changedIdx] ?? '';
+    const inputTileConnection = inputTileConfig.connection;
+
+    const keysForTilesWithMatchingConnection = input.tiles
+      .map((tile, index) => ({
+        config: tile.config as SavedChartConfig,
+        index,
+      }))
+      .filter(
+        tile =>
+          isRawSqlSavedChartConfig(tile.config) &&
+          tile.config.connection === inputTileConnection,
+      )
+      .map(({ index }) => `connectionMappings.${index}` as const);
+
+    isUpdatingRef.current = true;
+    for (const key of keysForTilesWithMatchingConnection) {
+      if (!getFieldState(key).isDirty) {
+        setValue(key, connectionId, { shouldValidate: true });
+      }
+    }
+    isUpdatingRef.current = false;
+  }, [connectionMappings, input.tiles, getFieldState, setValue]);
 
   const createDashboard = useCreateDashboard();
   const updateDashboard = useUpdateDashboard();
 
-  const onSubmit = async (data: SourceResolutionFormValues) => {
+  const onSubmit = async (data: MappingFormValues) => {
     try {
-      // Zip the source mappings with the input tiles
+      // Zip the source/connection mappings with the input tiles
       const zippedTiles = input.tiles.map((tile, idx) => {
+        if (isRawSqlSavedChartConfig(tile.config)) {
+          const connection = connections?.find(
+            conn => conn.id === data.connectionMappings[idx],
+          );
+          return {
+            ...tile,
+            config: {
+              ...tile.config,
+              connection: connection!.id,
+            },
+          };
+        }
         const source = sources?.find(
           source => source.id === data.sourceMappings[idx],
         );
@@ -359,23 +435,42 @@ function Mapping({ input }: { input: Input }) {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {input.tiles.map((tile, i) => (
-              <Table.Tr key={tile.id}>
-                <Table.Td>{tile.config.name}</Table.Td>
-                <Table.Td>{tile.config.source}</Table.Td>
-                <Table.Td>
-                  <SelectControlled
-                    control={control}
-                    name={`sourceMappings.${i}`}
-                    data={sources?.map(source => ({
-                      value: source.id,
-                      label: source.name,
-                    }))}
-                    placeholder="Select a source"
-                  />
-                </Table.Td>
-              </Table.Tr>
-            ))}
+            {input.tiles.map((tile, i) => {
+              const config = tile.config;
+              const isRawSql = isRawSqlSavedChartConfig(config);
+              const inputSourceName = isRawSql
+                ? `${config.connection} (Connection)`
+                : `${config.source} (Source)`;
+              return (
+                <Table.Tr key={tile.id}>
+                  <Table.Td>{tile.config.name}</Table.Td>
+                  <Table.Td>{inputSourceName}</Table.Td>
+                  <Table.Td>
+                    {isRawSql ? (
+                      <SelectControlled
+                        control={control}
+                        name={`connectionMappings.${i}`}
+                        data={connections?.map(conn => ({
+                          value: conn.id,
+                          label: conn.name,
+                        }))}
+                        placeholder="Select a connection"
+                      />
+                    ) : (
+                      <SelectControlled
+                        control={control}
+                        name={`sourceMappings.${i}`}
+                        data={sources?.map(source => ({
+                          value: source.id,
+                          label: source.name,
+                        }))}
+                        placeholder="Select a source"
+                      />
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
             {input.filters?.map((filter, i) => (
               <Table.Tr key={filter.id}>
                 <Table.Td>{filter.name} (filter)</Table.Td>

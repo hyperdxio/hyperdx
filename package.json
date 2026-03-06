@@ -75,6 +75,8 @@
     "cookie": "^0.7.0",
     "brace-expansion": "^2.0.2",
     "diff": "^5.2.2",
-    "on-headers": "^1.1.0"
+    "on-headers": "^1.1.0",
+    "fast-xml-parser": "^4.4.0",
+    "systeminformation": "^5.24.0"
   }
 }

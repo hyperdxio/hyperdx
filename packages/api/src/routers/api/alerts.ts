@@ -2,7 +2,7 @@ import express from 'express';
 import _ from 'lodash';
 import { ObjectId } from 'mongodb';
 import { z } from 'zod';
-import { validateRequest } from 'zod-express-middleware';
+import { processRequest, validateRequest } from 'zod-express-middleware';
 
 import { getRecentAlertHistories } from '@/controllers/alertHistory';
 import {
@@ -11,6 +11,7 @@ import {
   getAlertById,
   getAlertsEnhanced,
   updateAlert,
+  validateAlertInput,
 } from '@/controllers/alerts';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
@@ -67,6 +68,8 @@ router.get('/', async (req, res, next) => {
           ..._.pick(alert, [
             '_id',
             'interval',
+            'scheduleOffsetMinutes',
+            'scheduleStartAt',
             'threshold',
             'thresholdType',
             'state',
@@ -88,7 +91,7 @@ router.get('/', async (req, res, next) => {
 
 router.post(
   '/',
-  validateRequest({ body: alertSchema }),
+  processRequest({ body: alertSchema }),
   async (req, res, next) => {
     const teamId = req.user?.team;
     const userId = req.user?._id;
@@ -97,6 +100,7 @@ router.post(
     }
     try {
       const alertInput = req.body;
+      await validateAlertInput(teamId, alertInput);
       return res.json({
         data: await createAlert(teamId, alertInput, userId),
       });
@@ -108,7 +112,7 @@ router.post(
 
 router.put(
   '/:id',
-  validateRequest({
+  processRequest({
     body: alertSchema,
     params: z.object({
       id: objectIdSchema,
@@ -122,6 +126,7 @@ router.put(
       }
       const { id } = req.params;
       const alertInput = req.body;
+      await validateAlertInput(teamId, alertInput);
       res.json({
         data: await updateAlert(id, teamId, alertInput),
       });

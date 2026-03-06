@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import dynamic from 'next/dynamic';
@@ -11,25 +12,28 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { formatRelative } from 'date-fns';
 import produce from 'immer';
-import { parseAsString, useQueryState } from 'nuqs';
+import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
-import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  AlertState,
-  DashboardFilter,
-  SourceKind,
-  TSourceUnion,
-} from '@hyperdx/common-utils/dist/types';
+  isBuilderChartConfig,
+  isBuilderSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
+  AlertState,
   ChartConfigWithDateRange,
+  DashboardFilter,
   DisplayType,
   Filter,
   SearchCondition,
   SearchConditionLanguage,
+  SourceKind,
   SQLInterval,
+  TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -52,6 +56,7 @@ import {
   IconArrowsMaximize,
   IconBell,
   IconCopy,
+  IconDeviceFloppy,
   IconDotsVertical,
   IconDownload,
   IconFilterEdit,
@@ -61,6 +66,7 @@ import {
   IconTags,
   IconTrash,
   IconUpload,
+  IconX,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -69,7 +75,6 @@ import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
@@ -82,20 +87,23 @@ import ChartContainer from './components/charts/ChartContainer';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from './components/SearchInput/SearchWhereInput';
 import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { parseAsStringWithNewLines } from './utils/queryParsers';
+import { parseAsStringEncoded } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
+import { useConnections } from './connection';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
 import DashboardFiltersModal from './DashboardFiltersModal';
 import { GranularityPickerControlled } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
-import SearchInputV2 from './SearchInputV2';
 import {
   getFirstTimestampValueExpression,
   useSource,
@@ -115,6 +123,10 @@ const ReactGridLayout = WidthProvider(RGL);
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
+
+const whereLanguageParser = parseAsString.withDefault(
+  typeof window !== 'undefined' ? (getStoredLanguage() ?? 'lucene') : 'lucene',
+);
 
 const Tile = forwardRef(
   (
@@ -180,11 +192,18 @@ const Tile = forwardRef(
     >(undefined);
 
     const { data: source } = useSource({
-      id: chart.config.source,
+      id: isBuilderSavedChartConfig(chart.config)
+        ? chart.config.source
+        : undefined,
     });
 
     useEffect(() => {
-      if (source != null) {
+      if (isRawSqlSavedChartConfig(chart.config)) {
+        setQueriedConfig({ ...chart.config, dateRange, granularity });
+        return;
+      }
+
+      if (source != null && isBuilderSavedChartConfig(chart.config)) {
         const isMetricSource = source.kind === SourceKind.Metric;
 
         // TODO: will need to update this when we allow for multiple metrics per chart
@@ -215,7 +234,9 @@ const Tile = forwardRef(
 
     const [hovered, setHovered] = useState(false);
 
-    const alert = chart.config.alert;
+    const alert = isBuilderSavedChartConfig(chart.config)
+      ? chart.config.alert
+      : undefined;
     const alertIndicatorColor = useMemo(() => {
       if (!alert) {
         return 'transparent';
@@ -250,7 +271,8 @@ const Tile = forwardRef(
           style={{ visibility: hovered ? 'visible' : 'hidden' }}
         >
           {(chart.config.displayType === DisplayType.Line ||
-            chart.config.displayType === DisplayType.StackedBar) && (
+            chart.config.displayType === DisplayType.StackedBar ||
+            chart.config.displayType === DisplayType.Number) && (
             <Indicator
               size={alert?.state === AlertState.OK ? 6 : 8}
               zIndex={1}
@@ -340,6 +362,9 @@ const Tile = forwardRef(
         const toolbar = hideToolbar ? [] : [hoverToolbar];
         const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
 
+        // Markdown charts may not have queriedConfig, if config.source is not set
+        const effectiveMarkdownConfig = queriedConfig ?? chart.config;
+
         return (
           <ErrorBoundary
             onError={console.error}
@@ -350,26 +375,28 @@ const Tile = forwardRef(
             }
           >
             {(queriedConfig?.displayType === DisplayType.Line ||
-              queriedConfig?.displayType === DisplayType.StackedBar) && (
-              <DBTimeChart
-                key={`${keyPrefix}-${chart.id}`}
-                title={title}
-                toolbarPrefix={toolbar}
-                sourceId={chart.config.source}
-                showDisplaySwitcher={true}
-                config={queriedConfig}
-                onTimeRangeSelect={onTimeRangeSelect}
-                setDisplayType={displayType => {
-                  onUpdateChart?.({
-                    ...chart,
-                    config: {
-                      ...chart.config,
-                      displayType,
-                    },
-                  });
-                }}
-              />
-            )}
+              queriedConfig?.displayType === DisplayType.StackedBar) &&
+              isBuilderChartConfig(queriedConfig) &&
+              isBuilderSavedChartConfig(chart.config) && (
+                <DBTimeChart
+                  key={`${keyPrefix}-${chart.id}`}
+                  title={title}
+                  toolbarPrefix={toolbar}
+                  sourceId={chart.config.source}
+                  showDisplaySwitcher={true}
+                  config={queriedConfig}
+                  onTimeRangeSelect={onTimeRangeSelect}
+                  setDisplayType={displayType => {
+                    onUpdateChart?.({
+                      ...chart,
+                      config: {
+                        ...chart.config,
+                        displayType,
+                      },
+                    });
+                  }}
+                />
+              )}
             {queriedConfig?.displayType === DisplayType.Table && (
               <Box p="xs" h="100%">
                 <DBTableChart
@@ -378,78 +405,83 @@ const Tile = forwardRef(
                   toolbarPrefix={toolbar}
                   config={queriedConfig}
                   variant="muted"
-                  getRowSearchLink={row =>
-                    buildTableRowSearchUrl({
-                      row,
-                      source,
-                      config: queriedConfig,
-                      dateRange: dateRange,
-                    })
+                  getRowSearchLink={
+                    isBuilderChartConfig(queriedConfig)
+                      ? row =>
+                          buildTableRowSearchUrl({
+                            row,
+                            source,
+                            config: queriedConfig,
+                            dateRange: dateRange,
+                          })
+                      : undefined
                   }
                 />
               </Box>
             )}
-            {queriedConfig?.displayType === DisplayType.Number && (
-              <DBNumberChart
-                key={`${keyPrefix}-${chart.id}`}
-                title={title}
-                toolbarPrefix={toolbar}
-                config={queriedConfig}
-              />
-            )}
-            {queriedConfig?.displayType === DisplayType.Pie && (
-              <DBPieChart
-                key={`${keyPrefix}-${chart.id}`}
-                title={title}
-                toolbarPrefix={toolbar}
-                config={queriedConfig}
-              />
-            )}
-            {/* Markdown charts may not have queriedConfig, if source is not set */}
-            {(queriedConfig?.displayType === DisplayType.Markdown ||
-              (!queriedConfig &&
-                chart.config.displayType === DisplayType.Markdown)) && (
-              <HDXMarkdownChart
-                key={`${keyPrefix}-${chart.id}`}
-                title={title}
-                toolbarItems={toolbar}
-                config={queriedConfig ?? chart.config}
-              />
-            )}
-            {queriedConfig?.displayType === DisplayType.Search && (
-              <ChartContainer
-                title={title}
-                toolbarItems={toolbar}
-                disableReactiveContainer
-              >
-                <DBSqlRowTableWithSideBar
+            {queriedConfig?.displayType === DisplayType.Number &&
+              isBuilderChartConfig(queriedConfig) && (
+                <DBNumberChart
                   key={`${keyPrefix}-${chart.id}`}
-                  enabled
-                  sourceId={chart.config.source}
-                  config={{
-                    ...queriedConfig,
-                    orderBy: [
-                      {
-                        ordering: 'DESC',
-                        valueExpression: getFirstTimestampValueExpression(
-                          queriedConfig.timestampValueExpression,
-                        ),
-                      },
-                    ],
-                    dateRange,
-                    select:
-                      queriedConfig.select ||
-                      source?.defaultTableSelectExpression ||
-                      '',
-                    groupBy: undefined,
-                    granularity: undefined,
-                  }}
-                  isLive={false}
-                  queryKeyPrefix={'search'}
-                  variant="muted"
+                  title={title}
+                  toolbarPrefix={toolbar}
+                  config={queriedConfig}
                 />
-              </ChartContainer>
-            )}
+              )}
+            {queriedConfig?.displayType === DisplayType.Pie &&
+              isBuilderChartConfig(queriedConfig) && (
+                <DBPieChart
+                  key={`${keyPrefix}-${chart.id}`}
+                  title={title}
+                  toolbarPrefix={toolbar}
+                  config={queriedConfig}
+                />
+              )}
+            {effectiveMarkdownConfig?.displayType === DisplayType.Markdown &&
+              'markdown' in effectiveMarkdownConfig && (
+                <HDXMarkdownChart
+                  key={`${keyPrefix}-${chart.id}`}
+                  title={title}
+                  toolbarItems={toolbar}
+                  config={effectiveMarkdownConfig}
+                />
+              )}
+            {queriedConfig?.displayType === DisplayType.Search &&
+              isBuilderChartConfig(queriedConfig) &&
+              isBuilderSavedChartConfig(chart.config) && (
+                <ChartContainer
+                  title={title}
+                  toolbarItems={toolbar}
+                  disableReactiveContainer
+                >
+                  <DBSqlRowTableWithSideBar
+                    key={`${keyPrefix}-${chart.id}`}
+                    enabled
+                    sourceId={chart.config.source}
+                    config={{
+                      ...queriedConfig,
+                      orderBy: [
+                        {
+                          ordering: 'DESC',
+                          valueExpression: getFirstTimestampValueExpression(
+                            queriedConfig.timestampValueExpression,
+                          ),
+                        },
+                      ],
+                      dateRange,
+                      select:
+                        queriedConfig.select ||
+                        source?.defaultTableSelectExpression ||
+                        '',
+                      groupBy: undefined,
+                      granularity: undefined,
+                    }}
+                    isLive={false}
+                    queryKeyPrefix={'search'}
+                    variant="muted"
+                  />
+                </ChartContainer>
+              )}
           </ErrorBoundary>
         );
       },
@@ -547,7 +579,13 @@ const EditTileModal = ({
         'You have unsaved changes. Discard them and close the editor?',
         'Discard',
       ).then(ok => {
-        if (ok) onClose();
+        if (ok) {
+          // Reset dirty state before closing so any re-invocation of
+          // handleClose (e.g. from Mantine focus management after the
+          // confirm modal closes) doesn't re-show the confirm dialog.
+          setHasUnsavedChanges(false);
+          onClose();
+        }
       });
     } else {
       onClose();
@@ -695,6 +733,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   });
 
   const { data: sources } = useSources();
+  const { data: connections } = useConnections();
 
   const [highlightedTileId] = useQueryState('highlightedTileId');
   const tableConnections = useMemo(() => {
@@ -702,6 +741,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     const tc: TableConnection[] = [];
 
     for (const { config } of dashboard.tiles) {
+      if (!isBuilderSavedChartConfig(config)) continue;
       const source = sources?.find(v => v.id === config.source);
       if (!source) continue;
       // TODO: will need to update this when we allow for multiple metrics per chart
@@ -727,17 +767,22 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   ) as [SQLInterval | undefined, (value: SQLInterval | undefined) => void];
   const [where, setWhere] = useQueryState(
     'where',
-    parseAsStringWithNewLines.withDefault(''),
+    parseAsStringEncoded.withDefault(''),
   );
   const [whereLanguage, setWhereLanguage] = useQueryState(
     'whereLanguage',
-    parseAsString.withDefault('lucene'),
+    whereLanguageParser,
   );
+  // Get raw filter queries from URL (not processed by hook)
+  const [rawFilterQueries] = useQueryState('filters', parseAsJson<Filter[]>());
+
+  // Track if we've initialized query for this dashboard
+  const initializedDashboard = useRef<string>(undefined);
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
-  const { filterValues, setFilterValue, filterQueries } =
+  const { filterValues, setFilterValue, filterQueries, setFilterQueries } =
     useDashboardFilters(filters);
 
   const handleSaveFilter = (filter: DashboardFilter) => {
@@ -767,7 +812,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [isLive, setIsLive] = useState(false);
 
-  const { control, setValue, handleSubmit } = useForm<{
+  const { control, setValue, getValues, handleSubmit } = useForm<{
     granularity: SQLInterval | 'auto';
     where: SearchCondition;
     whereLanguage: SearchConditionLanguage;
@@ -775,7 +820,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     defaultValues: {
       granularity: granularity ?? 'auto',
       where: where ?? '',
-      whereLanguage: (whereLanguage as SearchConditionLanguage) ?? 'lucene',
+      whereLanguage:
+        (whereLanguage as SearchConditionLanguage) ??
+        getStoredLanguage() ??
+        'lucene',
     },
   });
 
@@ -807,13 +855,134 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     isLive,
   });
 
-  const onSubmit = () => {
+  const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(data => {
       setWhere(data.where as SearchCondition);
       setWhereLanguage((data.whereLanguage as SearchConditionLanguage) ?? null);
     })();
-  };
+  }, [
+    displayedTimeInputValue,
+    handleSubmit,
+    onSearch,
+    setWhere,
+    setWhereLanguage,
+  ]);
+
+  // Initialize query/filter state once when dashboard changes.
+  useEffect(() => {
+    if (!dashboard?.id || !router.isReady) return;
+    if (!isLocalDashboard && isFetchingDashboard) return;
+    if (initializedDashboard.current === dashboard.id) return;
+    const isSwitchingDashboards =
+      initializedDashboard.current != null &&
+      initializedDashboard.current !== dashboard.id;
+
+    const hasWhereInUrl = 'where' in router.query;
+    const hasFiltersInUrl = 'filters' in router.query;
+
+    // Query defaults: URL query overrides saved defaults. If switching to a
+    // dashboard without defaults, clear query. On first load/reload, keep current state.
+    if (!hasWhereInUrl) {
+      if (dashboard.savedQuery) {
+        setValue('where', dashboard.savedQuery);
+        setWhere(dashboard.savedQuery);
+        const savedLanguage = dashboard.savedQueryLanguage ?? 'lucene';
+        setValue('whereLanguage', savedLanguage);
+        setWhereLanguage(savedLanguage);
+      } else if (isSwitchingDashboards) {
+        setValue('where', '');
+        setWhere('');
+        setValue('whereLanguage', 'lucene');
+        setWhereLanguage('lucene');
+      }
+    }
+
+    // Filter defaults: URL filters override saved defaults. If switching to a
+    // dashboard without defaults, clear selected filters.
+    if (!hasFiltersInUrl) {
+      if (dashboard.savedFilterValues) {
+        setFilterQueries(dashboard.savedFilterValues);
+      } else if (isSwitchingDashboards) {
+        setFilterQueries(null);
+      }
+    }
+
+    initializedDashboard.current = dashboard.id;
+  }, [
+    dashboard?.id,
+    dashboard?.savedQuery,
+    dashboard?.savedQueryLanguage,
+    dashboard?.savedFilterValues,
+    isLocalDashboard,
+    isFetchingDashboard,
+    router.isReady,
+    router.query,
+    setValue,
+    setWhere,
+    setWhereLanguage,
+    setFilterQueries,
+  ]);
+
+  const handleSaveQuery = useCallback(() => {
+    if (!dashboard || isLocalDashboard) return;
+
+    // Execute the query first (updates URL)
+    onSubmit();
+
+    // Then save to database (reads from form values which were just submitted to URL)
+    const formValues = getValues();
+    const currentWhere = formValues.where || null;
+    const currentWhereLanguage = currentWhere
+      ? formValues.whereLanguage || 'lucene'
+      : null;
+    const currentFilterValues = rawFilterQueries?.length
+      ? rawFilterQueries
+      : [];
+
+    setDashboard(
+      produce(dashboard, draft => {
+        draft.savedQuery = currentWhere;
+        draft.savedQueryLanguage = currentWhereLanguage;
+        draft.savedFilterValues = currentFilterValues;
+      }),
+      () => {
+        notifications.show({
+          color: 'green',
+          title: 'Query saved and executed',
+          message:
+            'Filter query and dropdown values have been saved with the dashboard',
+          autoClose: 3000,
+        });
+      },
+    );
+  }, [
+    dashboard,
+    isLocalDashboard,
+    setDashboard,
+    getValues,
+    rawFilterQueries,
+    onSubmit,
+  ]);
+  const handleRemoveSavedQuery = useCallback(() => {
+    if (!dashboard || isLocalDashboard) return;
+
+    setDashboard(
+      produce(dashboard, draft => {
+        draft.savedQuery = null;
+        draft.savedQueryLanguage = null;
+        draft.savedFilterValues = [];
+      }),
+      () => {
+        notifications.show({
+          color: 'green',
+          title: 'Default query and filters removed',
+          message: 'Dashboard will no longer auto-apply saved defaults',
+          autoClose: 3000,
+        });
+      },
+    );
+  }, [dashboard, isLocalDashboard, setDashboard]);
 
   const [editedTile, setEditedTile] = useState<undefined | Tile>();
 
@@ -1008,6 +1177,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [isSaving, setIsSaving] = useState(false);
 
   const hasTiles = dashboard && dashboard.tiles.length > 0;
+  const hasSavedQueryAndFilterDefaults = Boolean(
+    dashboard?.savedQuery || dashboard?.savedFilterValues?.length,
+  );
 
   return (
     <Box p="sm" data-testid="dashboard-page">
@@ -1050,7 +1222,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           );
         }}
       />
-      {IS_LOCAL_MODE === false && isLocalDashboard && (
+      {isLocalDashboard && (
         <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
           <Flex justify="space-between" align="center">
             <Text size="sm">
@@ -1097,7 +1269,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
             <Menu width={250}>
               <Menu.Target>
-                <ActionIcon variant="secondary" size="input-xs">
+                <ActionIcon
+                  variant="secondary"
+                  size="input-xs"
+                  data-testid="dashboard-menu-button"
+                >
                   <IconDotsVertical size={14} />
                 </ActionIcon>
               </Menu.Target>
@@ -1119,6 +1295,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                           dashboard,
                           // TODO: fix this type issue
                           sources as TSourceUnion[],
+                          connections,
                         ),
                         dashboard?.name,
                       );
@@ -1141,6 +1318,27 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 >
                   {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
                 </Menu.Item>
+                <Menu.Divider />
+                <Menu.Item
+                  data-testid="save-default-query-filters-menu-item"
+                  leftSection={<IconDeviceFloppy size={16} />}
+                  onClick={handleSaveQuery}
+                >
+                  {hasSavedQueryAndFilterDefaults
+                    ? 'Update Default Query & Filters'
+                    : 'Save Query & Filters as Default'}
+                </Menu.Item>
+                {hasSavedQueryAndFilterDefaults && (
+                  <Menu.Item
+                    data-testid="remove-default-query-filters-menu-item"
+                    leftSection={<IconX size={16} />}
+                    color="red"
+                    onClick={handleRemoveSavedQuery}
+                  >
+                    Remove Default Query & Filters
+                  </Menu.Item>
+                )}
+                <Menu.Divider />
                 <Menu.Item
                   leftSection={<IconTrash size={16} />}
                   color="red"
@@ -1165,43 +1363,26 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       <Flex
         gap="sm"
         mt="sm"
+        wrap="wrap"
         component="form"
         onSubmit={e => {
           e.preventDefault();
           onSubmit();
         }}
       >
-        <Controller
+        <SearchWhereInput
+          tableConnections={tableConnections}
           control={control}
-          name="whereLanguage"
-          render={({ field }) =>
-            field.value === 'sql' ? (
-              <SQLInlineEditorControlled
-                tableConnections={tableConnections}
-                control={control}
-                name="where"
-                placeholder="SQL WHERE clause (ex. column = 'foo')"
-                onLanguageChange={lang => setValue('whereLanguage', lang)}
-                language="sql"
-                onSubmit={onSubmit}
-                label="GLOBAL WHERE"
-                enableHotkey
-                allowMultiline={true}
-              />
-            ) : (
-              <SearchInputV2
-                tableConnections={tableConnections}
-                control={control}
-                name="where"
-                onLanguageChange={lang => setValue('whereLanguage', lang)}
-                language="lucene"
-                placeholder="Search your events w/ Lucene ex. column:foo"
-                enableHotkey
-                data-testid="search-input"
-                onSubmit={onSubmit}
-              />
-            )
+          name="where"
+          onSubmit={onSubmit}
+          onLanguageChange={(lang: 'sql' | 'lucene') =>
+            setValue('whereLanguage', lang)
           }
+          label="WHERE"
+          enableHotkey
+          allowMultiline
+          minWidth={300}
+          data-testid="search-input"
         />
         <TimePicker
           inputValue={displayedTimeInputValue}
@@ -1242,18 +1423,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <IconRefresh size={18} />
           </ActionIcon>
         </Tooltip>
-        {!IS_LOCAL_MODE && (
-          <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-            <ActionIcon
-              variant="secondary"
-              onClick={() => setShowFiltersModal(true)}
-              data-testid="edit-filters-button"
-              size="input-sm"
-            >
-              <IconFilterEdit size={18} />
-            </ActionIcon>
-          </Tooltip>
-        )}
+        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+          <ActionIcon
+            variant="secondary"
+            onClick={() => setShowFiltersModal(true)}
+            data-testid="edit-filters-button"
+            size="input-sm"
+          >
+            <IconFilterEdit size={18} />
+          </ActionIcon>
+        </Tooltip>
         <Button
           data-testid="search-submit-button"
           variant="primary"

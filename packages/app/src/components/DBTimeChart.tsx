@@ -4,6 +4,7 @@ import { add, differenceInSeconds } from 'date-fns';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
@@ -199,7 +200,7 @@ function ActiveTimeTooltip({
 }
 
 type DBTimeChartComponentProps = {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   disableQueryChunking?: boolean;
   disableDrillDown?: boolean;
   enableParallelQueries?: boolean;

@@ -1,22 +1,23 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 import { sq } from 'date-fns/locale';
 import ms from 'ms';
-import { parseAsString, useQueryState } from 'nuqs';
+import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
-import WhereLanguageControlled from '@/components/WhereLanguageControlled';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
-import SearchInputV2 from '@/SearchInputV2';
 import { useSource } from '@/source';
 import { formatAttributeClause } from '@/utils';
+import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import { ROW_DATA_ALIASES } from './DBRowDataPanel';
 import DBRowSidePanel, { RowSidePanelContext } from './DBRowSidePanel';
@@ -37,7 +38,7 @@ enum ContextBy {
 
 interface ContextSubpanelProps {
   source: TSource;
-  dbSqlRowTableConfig: ChartConfigWithDateRange | undefined;
+  dbSqlRowTableConfig: BuilderChartConfigWithDateRange | undefined;
   rowData: Record<string, any>;
   rowId: string | undefined;
   breadcrumbPath?: BreadcrumbPath;
@@ -48,8 +49,10 @@ interface ContextSubpanelProps {
 export function useNestedPanelState(isNested?: boolean) {
   // Query state (URL-based) for root level
   const queryState = {
-    contextRowId: useQueryState('contextRowId', parseAsString),
-    contextRowSource: useQueryState('contextRowSource', parseAsString),
+    contextRowId: useQueryState('contextRowId', parseAsStringEncoded),
+    // Source IDs are MongoDB ObjectIDs (hex strings) and contain no special
+    // characters, so no encoding is needed here.
+    contextRowSource: useQueryState('contextRowSource'),
   };
 
   // Local state for nested levels
@@ -86,7 +89,10 @@ export default function ContextSubpanel({
   const { control } = useForm({
     defaultValues: {
       where: '',
-      whereLanguage: originalLanguage ?? ('lucene' as 'lucene' | 'sql'),
+      whereLanguage:
+        originalLanguage ??
+        getStoredLanguage() ??
+        ('lucene' as 'lucene' | 'sql'),
     },
   });
 
@@ -261,35 +267,12 @@ export default function ContextSubpanel({
               onChange={v => setContextBy(v as ContextBy)}
             />
             {contextBy === ContextBy.Custom && (
-              <WhereLanguageControlled
-                name="whereLanguage"
+              <SearchWhereInput
+                tableConnection={tcFromSource(source)}
                 control={control}
-                sqlInput={
-                  originalLanguage === 'lucene' ? null : (
-                    <SQLInlineEditorControlled
-                      tableConnection={tcFromSource(source)}
-                      control={control}
-                      name="where"
-                      placeholder="SQL WHERE clause (ex. column = 'foo')"
-                      language="sql"
-                      enableHotkey
-                      size="sm"
-                    />
-                  )
-                }
-                luceneInput={
-                  originalLanguage === 'sql' ? null : (
-                    <SearchInputV2
-                      tableConnection={tcFromSource(source)}
-                      control={control}
-                      name="where"
-                      language="lucene"
-                      placeholder="Lucene where clause (ex. column:value)"
-                      enableHotkey
-                      size="sm"
-                    />
-                  )
-                }
+                name="where"
+                enableHotkey
+                size="xs"
               />
             )}
             <SegmentedControl

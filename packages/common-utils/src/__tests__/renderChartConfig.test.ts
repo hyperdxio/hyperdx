@@ -1427,4 +1427,48 @@ describe('renderChartConfig', () => {
       expect(actual).toMatchSnapshot();
     });
   });
+
+  it('returns sqlTemplate verbatim for raw sql config', async () => {
+    const rawSqlConfig: ChartConfigWithOptDateRangeEx = {
+      configType: 'sql',
+      sqlTemplate: 'SELECT count() FROM logs WHERE level = {level:String}',
+      connection: 'conn-1',
+    };
+    const result = await renderChartConfig(
+      rawSqlConfig,
+      mockMetadata,
+      undefined,
+    );
+    expect(result.sql).toBe(
+      'SELECT count() FROM logs WHERE level = {level:String}',
+    );
+    expect(result.params).toEqual({
+      startDateMilliseconds: undefined,
+      endDateMilliseconds: undefined,
+    });
+  });
+
+  it('injects startDateMilliseconds and endDateMilliseconds params for raw sql config with dateRange', async () => {
+    const start = new Date('2024-01-01T00:00:00.000Z');
+    const end = new Date('2024-01-02T00:00:00.000Z');
+    const rawSqlConfig: ChartConfigWithOptDateRangeEx = {
+      configType: 'sql',
+      sqlTemplate:
+        'SELECT count() FROM logs WHERE ts BETWEEN {startDateMilliseconds:Int64} AND {endDateMilliseconds:Int64}',
+      connection: 'conn-1',
+      dateRange: [start, end],
+    };
+    const result = await renderChartConfig(
+      rawSqlConfig,
+      mockMetadata,
+      undefined,
+    );
+    expect(result.sql).toBe(
+      'SELECT count() FROM logs WHERE ts BETWEEN {startDateMilliseconds:Int64} AND {endDateMilliseconds:Int64}',
+    );
+    expect(result.params).toEqual({
+      startDateMilliseconds: start.getTime(),
+      endDateMilliseconds: end.getTime(),
+    });
+  });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { parseAsJson, useQueryState } from 'nuqs';
+import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -16,14 +16,21 @@ import {
 import { IconPencil } from '@tabler/icons-react';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
+import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { SourceSelectControlled } from './SourceSelect';
-import { SQLInlineEditorControlled } from './SQLInlineEditor';
+
+const eventRowWhereParser = parseAsJsonEncoded<{
+  id: string;
+  type: string;
+  aliasWith: WithClause[];
+}>();
 
 enum Tab {
   Overview = 'overview',
@@ -96,7 +103,7 @@ export default function DBTracePanel({
 
   const [eventRowWhere, setEventRowWhere] = useQueryState(
     'eventRowWhere',
-    parseAsJson<{ id: string; type: string; aliasWith: WithClause[] }>(),
+    eventRowWhereParser,
   );
 
   const {
@@ -155,13 +162,14 @@ export default function DBTracePanel({
       {(showTraceIdInput || !traceId) && parentSourceId != null && (
         <Stack gap="xs">
           <Text size="xs">Trace ID Expression</Text>
-          <Flex>
+          <Flex align="center">
             <SQLInlineEditorControlled
               tableConnection={tcFromSource(parentSourceData)}
               name="traceIdExpression"
               placeholder="Log Trace ID Column (ex. trace_id)"
               control={traceIdControl}
               size="xs"
+              parentRef={typeof document !== 'undefined' ? document.body : null}
             />
             <Button
               ms="sm"

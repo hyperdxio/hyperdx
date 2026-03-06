@@ -2,7 +2,7 @@ import { z } from 'zod';
 import {
   Alert,
   AlertHistory,
-  ChartConfig,
+  BuilderChartConfig,
   DashboardSchema,
   Filter,
   NumberFormat as _NumberFormat,
@@ -63,8 +63,8 @@ export type SavedSearchWithEnhancedAlerts = Omit<SavedSearch, 'alerts'> & {
 export type SearchConfig = {
   select?: string | null;
   source?: string | null;
-  where?: ChartConfig['where'] | null;
-  whereLanguage?: ChartConfig['whereLanguage'] | null;
+  where?: BuilderChartConfig['where'] | null;
+  whereLanguage?: BuilderChartConfig['whereLanguage'] | null;
   filters?: Filter[] | null;
   orderBy?: string | null;
 };

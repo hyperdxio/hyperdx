@@ -1,4 +1,5 @@
 import React from 'react';
+import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertInterval,
   SearchCondition,
@@ -9,7 +10,6 @@ import { Paper } from '@mantine/core';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
-import { aliasMapToWithClauses } from '@/hooks/useRowWhere';
 import { intervalToDateRange, intervalToGranularity } from '@/utils/alerts';
 
 import { getAlertReferenceLines } from './Alerts';

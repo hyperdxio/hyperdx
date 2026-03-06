@@ -7,6 +7,7 @@ import { Locator, Page } from '@playwright/test';
 import { FilterComponent } from '../components/FilterComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
 import { SavedSearchModalComponent } from '../components/SavedSearchModalComponent';
+import { SearchPageAlertModalComponent } from '../components/SearchPageAlertModalComponent';
 import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
@@ -22,14 +23,18 @@ export class SearchPage {
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
+  readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
   readonly editSourceMenuItem: Locator;
+
+  private readonly alertsButtonLocator: Locator;
 
   // Page-specific locators
   private readonly searchForm: Locator;
   private readonly searchInput: Locator;
   private readonly searchButton: Locator;
   private readonly saveSearchButton: Locator;
+  private readonly languageSelect: Locator;
   private readonly updateSearchButton: Locator;
   private readonly luceneTab: Locator;
   private readonly sqlTab: Locator;
@@ -50,6 +55,8 @@ export class SearchPage {
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
+    this.alertModal = new SearchPageAlertModalComponent(page);
+    this.alertsButtonLocator = page.getByTestId('alerts-button');
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');
@@ -57,8 +64,12 @@ export class SearchPage {
     this.searchButton = page.getByTestId('search-submit-button');
     this.saveSearchButton = page.getByTestId('save-search-button');
     this.updateSearchButton = page.getByTestId('update-search-button');
-    this.luceneTab = page.getByRole('button', { name: 'Lucene', exact: true });
-    this.sqlTab = page.getByRole('button', { name: 'SQL', exact: true });
+    const whereLanguageSwitch = page.getByTestId('where-language-switch');
+    this.languageSelect = whereLanguageSwitch.getByRole('textbox', {
+      name: 'Query language',
+    });
+    this.sqlTab = page.getByRole('option', { name: 'SQL', exact: true });
+    this.luceneTab = page.getByRole('option', { name: 'Lucene', exact: true });
     this.sourceSelector = page.getByTestId('source-selector');
     this.sourceSettingsMenu = page.getByTestId('source-settings-menu');
     this.editSourceMenuItem = page.getByTestId('edit-sources-menu-item');
@@ -127,6 +138,7 @@ export class SearchPage {
    * Switch to SQL mode
    */
   async switchToSQLMode() {
+    await this.languageSelect.click();
     await this.sqlTab.click();
   }
 
@@ -134,6 +146,7 @@ export class SearchPage {
    * Switch to Lucene mode
    */
   async switchToLuceneMode() {
+    await this.languageSelect.click();
     await this.luceneTab.click();
   }
 
@@ -180,6 +193,17 @@ export class SearchPage {
       : this.saveSearchButton;
     await button.scrollIntoViewIfNeeded();
     await button.click();
+  }
+
+  /**
+   * Open the alerts creation modal for the current saved search
+   */
+  async openAlertsModal() {
+    await this.alertsButtonLocator.click();
+  }
+
+  get alertsButton() {
+    return this.alertsButtonLocator;
   }
 
   /**

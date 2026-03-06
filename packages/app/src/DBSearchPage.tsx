@@ -16,7 +16,6 @@ import router from 'next/router';
 import {
   parseAsBoolean,
   parseAsInteger,
-  parseAsJson,
   parseAsString,
   parseAsStringEnum,
   useQueryState,
@@ -28,10 +27,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  aliasMapToWithClauses,
   isBrowser,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
@@ -81,18 +82,19 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
-import WhereLanguageControlled from '@/components/WhereLanguageControlled';
 import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
-import { aliasMapToWithClauses } from '@/hooks/useRowWhere';
 import { withAppNav } from '@/layout';
 import {
   useCreateSavedSearch,
@@ -101,7 +103,6 @@ import {
   useUpdateSavedSearch,
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
-import SearchInputV2 from '@/SearchInputV2';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
@@ -128,8 +129,9 @@ import {
 import { useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import {
+  parseAsJsonEncoded,
   parseAsSortingStateString,
-  parseAsStringWithNewLines,
+  parseAsStringEncoded,
 } from './utils/queryParsers';
 import api from './api';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
@@ -414,7 +416,8 @@ function SaveSearchModalComponent({
             name,
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
-            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+            whereLanguage:
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -432,7 +435,8 @@ function SaveSearchModalComponent({
             name,
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
-            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+            whereLanguage:
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -798,11 +802,11 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
-  where: parseAsStringWithNewLines,
-  select: parseAsStringWithNewLines,
+  where: parseAsStringEncoded,
+  select: parseAsStringEncoded,
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
-  filters: parseAsJson<Filter[]>(),
-  orderBy: parseAsStringWithNewLines,
+  filters: parseAsJsonEncoded<Filter[]>(),
+  orderBy: parseAsStringEncoded,
 };
 
 function DBSearchPage() {
@@ -881,7 +885,8 @@ function DBSearchPage() {
     values: {
       select: searchedConfig.select || '',
       where: searchedConfig.where || '',
-      whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+      whereLanguage:
+        searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
       source: searchedConfig.source || defaultSourceId,
       filters: searchedConfig.filters ?? [],
       orderBy: searchedConfig.orderBy ?? '',
@@ -944,7 +949,8 @@ function DBSearchPage() {
       reset({
         select: searchedConfig?.select ?? '',
         where: searchedConfig?.where ?? '',
-        whereLanguage: searchedConfig?.whereLanguage ?? 'lucene',
+        whereLanguage:
+          searchedConfig?.whereLanguage ?? getStoredLanguage() ?? 'lucene',
         source: searchedConfig?.source ?? undefined,
         filters: searchedConfig?.filters ?? [],
         orderBy: searchedConfig?.orderBy ?? '',
@@ -982,7 +988,7 @@ function DBSearchPage() {
         source: defaultSourceId,
         where: '',
         select: '',
-        whereLanguage: 'lucene',
+        whereLanguage: getStoredLanguage() ?? 'lucene',
         filters: [],
         orderBy: '',
       });
@@ -1173,7 +1179,8 @@ function DBSearchPage() {
             name: savedSearch.name,
             select: searchedConfig.select ?? '',
             where: searchedConfig.where ?? '',
-            whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+            whereLanguage:
+              searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
@@ -1459,7 +1466,7 @@ function DBSearchPage() {
     [onTimeRangeSelect, setIsLive],
   );
 
-  const filtersChartConfig = useMemo<ChartConfigWithDateRange>(() => {
+  const filtersChartConfig = useMemo<BuilderChartConfigWithDateRange>(() => {
     const overrides = {
       orderBy: undefined,
       dateRange: searchedTimeRange,
@@ -1544,14 +1551,6 @@ function DBSearchPage() {
     [setSaveSearchModalState],
   );
 
-  const onLanguageChange = useCallback(
-    (lang: 'sql' | 'lucene') =>
-      setValue('whereLanguage', lang, {
-        shouldDirty: true,
-      }),
-    [setValue],
-  );
-
   const onModelFormExpandClose = useCallback(() => {
     setModelFormExpanded(false);
   }, [setModelFormExpanded]);
@@ -1613,7 +1612,7 @@ function DBSearchPage() {
               setModelFormExpanded={setModelFormExpanded}
             />
           </Group>
-          <Box style={{ minWidth: 100, flexGrow: 1 }}>
+          <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
             <SQLInlineEditorControlled
               tableConnection={inputSourceTableConnection}
               control={control}
@@ -1623,6 +1622,7 @@ function DBSearchPage() {
               onSubmit={onSubmit}
               label="SELECT"
               size="xs"
+              allowMultiline
             />
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
@@ -1636,77 +1636,75 @@ function DBSearchPage() {
               size="xs"
             />
           </Box>
-          {!IS_LOCAL_MODE && (
-            <>
-              {!savedSearchId ? (
-                <Button
-                  data-testid="save-search-button"
-                  variant="secondary"
-                  size="xs"
-                  onClick={onSaveSearch}
-                  style={{ flexShrink: 0 }}
+          <>
+            {!savedSearchId ? (
+              <Button
+                data-testid="save-search-button"
+                variant="secondary"
+                size="xs"
+                onClick={onSaveSearch}
+                style={{ flexShrink: 0 }}
+              >
+                Save
+              </Button>
+            ) : (
+              <Button
+                data-testid="update-search-button"
+                variant="secondary"
+                size="xs"
+                onClick={() => {
+                  setSaveSearchModalState('update');
+                }}
+                style={{ flexShrink: 0 }}
+              >
+                Update
+              </Button>
+            )}
+            {!IS_LOCAL_MODE && (
+              <Button
+                data-testid="alerts-button"
+                variant="secondary"
+                size="xs"
+                onClick={openAlertModal}
+                style={{ flexShrink: 0 }}
+              >
+                Alerts
+              </Button>
+            )}
+            {!!savedSearch && (
+              <>
+                <Tags
+                  allowCreate
+                  values={savedSearch.tags || []}
+                  onChange={handleUpdateTags}
                 >
-                  Save
-                </Button>
-              ) : (
-                <Button
-                  data-testid="update-search-button"
-                  variant="secondary"
-                  size="xs"
-                  onClick={() => {
+                  <Button
+                    data-testid="tags-button"
+                    variant="secondary"
+                    px="xs"
+                    size="xs"
+                    style={{ flexShrink: 0 }}
+                  >
+                    <IconTags size={14} className="me-1" />
+                    {savedSearch.tags?.length || 0}
+                  </Button>
+                </Tags>
+
+                <SearchPageActionBar
+                  onClickDeleteSavedSearch={() => {
+                    deleteSavedSearch.mutate(savedSearch?.id ?? '', {
+                      onSuccess: () => {
+                        router.push('/search');
+                      },
+                    });
+                  }}
+                  onClickRenameSavedSearch={() => {
                     setSaveSearchModalState('update');
                   }}
-                  style={{ flexShrink: 0 }}
-                >
-                  Update
-                </Button>
-              )}
-              {!IS_LOCAL_MODE && (
-                <Button
-                  data-testid="alerts-button"
-                  variant="secondary"
-                  size="xs"
-                  onClick={openAlertModal}
-                  style={{ flexShrink: 0 }}
-                >
-                  Alerts
-                </Button>
-              )}
-              {!!savedSearch && (
-                <>
-                  <Tags
-                    allowCreate
-                    values={savedSearch.tags || []}
-                    onChange={handleUpdateTags}
-                  >
-                    <Button
-                      data-testid="tags-button"
-                      variant="secondary"
-                      px="xs"
-                      size="xs"
-                      style={{ flexShrink: 0 }}
-                    >
-                      <IconTags size={14} className="me-1" />
-                      {savedSearch.tags?.length || 0}
-                    </Button>
-                  </Tags>
-
-                  <SearchPageActionBar
-                    onClickDeleteSavedSearch={() => {
-                      deleteSavedSearch.mutate(savedSearch?.id ?? '', {
-                        onSuccess: () => {
-                          router.push('/search');
-                        },
-                      });
-                    }}
-                    onClickRenameSavedSearch={() => {
-                      setSaveSearchModalState('update');
-                    }}
-                  />
-                </>
-              )}
-            </>
-          )}
+                />
+              </>
+            )}
+          </>
         </Flex>
         <SourceEditModal
           opened={modelFormExpanded}
@@ -1719,44 +1717,15 @@ function DBSearchPage() {
           onCreate={onNewSourceCreate}
         />
         <Flex gap="sm" mt="sm" px="sm">
-          <WhereLanguageControlled
-            name="whereLanguage"
+          <SearchWhereInput
+            tableConnection={inputSourceTableConnection}
             control={control}
-            sqlInput={
-              <Box style={{ width: '75%', flexGrow: 1 }}>
-                <SQLInlineEditorControlled
-                  tableConnection={inputSourceTableConnection}
-                  control={control}
-                  name="where"
-                  placeholder="SQL WHERE clause (ex. column = 'foo')"
-                  onLanguageChange={onLanguageChange}
-                  language="sql"
-                  onSubmit={onSubmit}
-                  label="WHERE"
-                  queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
-                  enableHotkey
-                  allowMultiline={true}
-                />
-              </Box>
-            }
-            luceneInput={
-              <SearchInputV2
-                tableConnection={tcFromSource(inputSourceObj)}
-                control={control}
-                name="where"
-                onLanguageChange={lang =>
-                  setValue('whereLanguage', lang, {
-                    shouldDirty: true,
-                  })
-                }
-                onSubmit={onSubmit}
-                language="lucene"
-                placeholder="Search your events w/ Lucene ex. column:foo"
-                queryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
-                enableHotkey
-                data-testid="search-input"
-              />
-            }
+            name="where"
+            onSubmit={onSubmit}
+            sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
+            luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
+            enableHotkey
+            data-testid="search-input"
           />
           <TimePicker
             data-testid="time-picker"
@@ -1773,20 +1742,22 @@ function DBSearchPage() {
           />
           {isLive && (
             <Tooltip label="Live tail refresh interval">
-              <Select
-                size="sm"
-                w={80}
-                data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
-                value={String(refreshFrequency)}
-                onChange={value =>
-                  setRefreshFrequency(value ? parseInt(value, 10) : null)
-                }
-                allowDeselect={false}
-                comboboxProps={{
-                  withinPortal: true,
-                  zIndex: 1000,
-                }}
-              />
+              <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
+                <Select
+                  size="sm"
+                  w="100%"
+                  data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
+                  value={String(refreshFrequency)}
+                  onChange={value =>
+                    setRefreshFrequency(value ? parseInt(value, 10) : null)
+                  }
+                  allowDeselect={false}
+                  comboboxProps={{
+                    withinPortal: true,
+                    zIndex: 1000,
+                  }}
+                />
+              </Box>
             </Tooltip>
           )}
           <SearchSubmitButton isFormStateDirty={formState.isDirty} />

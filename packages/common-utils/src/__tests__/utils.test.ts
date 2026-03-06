@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
+import { isBuilderSavedChartConfig } from '@/guards';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
+  Connection,
   DashboardSchema,
   MetricsDataType,
   SourceKind,
@@ -9,6 +11,7 @@ import {
 } from '@/types';
 
 import {
+  aliasMapToWithClauses,
   convertToDashboardTemplate,
   extractSettingsClauseFromEnd,
   findJsonExpressions,
@@ -271,7 +274,10 @@ describe('utils', () => {
     });
 
     it('should return the first column name for an array of objects input', () => {
-      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+      const orderBy: Exclude<
+        BuilderChartConfigWithDateRange['orderBy'],
+        string
+      > = [
         { valueExpression: 'column1', ordering: 'ASC' },
         { valueExpression: 'column2', ordering: 'ASC' },
       ];
@@ -287,7 +293,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: undefined,
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -296,7 +302,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: '',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -305,7 +311,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'ServiceName',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -314,7 +320,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'ServiceName ASC, Timestamp',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(false);
     });
@@ -323,7 +329,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'Timestamp',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -332,7 +338,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'Timestamp DESC, ServiceName',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -341,7 +347,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'Timestamp',
         orderBy: 'Timestamp desc, ServiceName',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -353,7 +359,7 @@ describe('utils', () => {
           { valueExpression: 'Timestamp', ordering: 'ASC' },
           { valueExpression: 'ServiceName', ordering: 'ASC' },
         ],
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -362,7 +368,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'toStartOfDay(Timestamp), Timestamp',
         orderBy: '(toStartOfDay(Timestamp)) DESC, Timestamp',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -371,7 +377,7 @@ describe('utils', () => {
       const config = {
         timestampValueExpression: 'toStartOfDay(Timestamp), Timestamp',
         orderBy: '(toStartOfHour(TimestampTime), TimestampTime) DESC',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -381,7 +387,7 @@ describe('utils', () => {
         timestampValueExpression:
           'toStartOfInterval(TimestampTime, INTERVAL 1 DAY)',
         orderBy: 'toStartOfInterval(TimestampTime, INTERVAL 1 DAY) DESC',
-      } as ChartConfigWithDateRange;
+      } as BuilderChartConfigWithDateRange;
 
       expect(isTimestampExpressionInFirstOrderBy(config)).toBe(true);
     });
@@ -411,7 +417,10 @@ describe('utils', () => {
     });
 
     it('should return true for ascending order in object input', () => {
-      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+      const orderBy: Exclude<
+        BuilderChartConfigWithDateRange['orderBy'],
+        string
+      > = [
         { valueExpression: 'column1', ordering: 'ASC' },
         { valueExpression: 'column2', ordering: 'DESC' },
       ];
@@ -419,7 +428,10 @@ describe('utils', () => {
     });
 
     it('should return false for descending order in object input', () => {
-      const orderBy: Exclude<ChartConfigWithDateRange['orderBy'], string> = [
+      const orderBy: Exclude<
+        BuilderChartConfigWithDateRange['orderBy'],
+        string
+      > = [
         { valueExpression: 'column1', ordering: 'DESC' },
         { valueExpression: 'column2', ordering: 'ASC' },
       ];
@@ -730,11 +742,104 @@ describe('utils', () => {
       ];
 
       const template = convertToDashboardTemplate(dashboard, sources);
-      const selectList = template.tiles[0].config.select;
+      const tileConfig = template.tiles[0].config;
+      if (!isBuilderSavedChartConfig(tileConfig))
+        throw new Error('Expected builder config');
+      const selectList = tileConfig.select;
       expect(Array.isArray(selectList)).toBe(true);
       expect((selectList as any[])[0]).toMatchObject({
         aggFn: 'quantile',
         level: 0.95,
+      });
+    });
+
+    it('should convert connection IDs to names for RawSQL tiles', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'SQL Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'SQL Tile',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 1',
+              connection: 'conn1',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+          {
+            id: 'tile2',
+            config: {
+              name: 'Another SQL Tile',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 2',
+              connection: 'conn2',
+            },
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const connections: Connection[] = [
+        {
+          id: 'conn1',
+          name: 'Production DB',
+          host: 'http://localhost:8123',
+          username: 'default',
+        },
+        {
+          id: 'conn2',
+          name: 'Staging DB',
+          host: 'http://localhost:8124',
+          username: 'default',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(dashboard, [], connections);
+      expect(template.tiles[0].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Production DB',
+      });
+      expect(template.tiles[1].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Staging DB',
+      });
+    });
+
+    it('should fall back to empty string for unknown connection IDs in RawSQL tiles', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'SQL Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'SQL Tile',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 1',
+              connection: 'unknown-conn',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, [], []);
+      expect(template.tiles[0].config).toMatchObject({
+        configType: 'sql',
+        connection: '',
       });
     });
   });
@@ -1724,6 +1829,73 @@ describe('utils', () => {
         granularity: 1000,
       });
       expect(result).toEqual(expected);
+    });
+  });
+
+  describe('aliasMapToWithClauses', () => {
+    it('should return undefined for undefined input', () => {
+      expect(aliasMapToWithClauses(undefined)).toBeUndefined();
+    });
+
+    it('should return undefined for empty alias map', () => {
+      expect(aliasMapToWithClauses({})).toBeUndefined();
+    });
+
+    it('should return undefined when all values are undefined', () => {
+      expect(
+        aliasMapToWithClauses({ body: undefined, service: undefined }),
+      ).toBeUndefined();
+    });
+
+    it('should return undefined when all values are empty strings', () => {
+      expect(
+        aliasMapToWithClauses({ body: '', service: '  ' }),
+      ).toBeUndefined();
+    });
+
+    it('should convert a single alias to a WITH clause', () => {
+      expect(aliasMapToWithClauses({ body: 'toString(Body)' })).toEqual([
+        {
+          name: 'body',
+          sql: { sql: 'toString(Body)', params: {} },
+          isSubquery: false,
+        },
+      ]);
+    });
+
+    it('should convert multiple aliases to WITH clauses', () => {
+      const result = aliasMapToWithClauses({
+        body: 'toString(Body)',
+        service: "ResourceAttributes['service.name']",
+      });
+      expect(result).toEqual([
+        {
+          name: 'body',
+          sql: { sql: 'toString(Body)', params: {} },
+          isSubquery: false,
+        },
+        {
+          name: 'service',
+          sql: {
+            sql: "ResourceAttributes['service.name']",
+            params: {},
+          },
+          isSubquery: false,
+        },
+      ]);
+    });
+
+    it('should skip entries with undefined or empty values', () => {
+      const result = aliasMapToWithClauses({
+        body: 'toString(Body)',
+        empty: '',
+        blank: '  ',
+        missing: undefined,
+        service: "ResourceAttributes['service.name']",
+      });
+      expect(result).toHaveLength(2);
+      expect(result![0].name).toBe('body');
+      expect(result![1].name).toBe('service');
     });
   });
 });

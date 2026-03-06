@@ -5,7 +5,7 @@ import {
   optimizeGetKeyValuesCalls,
 } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   DashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -57,53 +57,54 @@ function useOptimizedKeyValuesCalls({
     return filtersBySourceIdAndMetric;
   }, [filters]);
 
-  const results: UseQueryResult<GetKeyValueCall<ChartConfigWithDateRange>[]>[] =
-    useQueries({
-      queries: Array.from(filtersBySourceIdAndMetric.entries())
-        .filter(([key]) =>
-          sources?.some(s => s.id === filterFromKey(key).sourceId),
-        )
-        .map(([key, filters]) => {
-          const { sourceId, metricType } = filterFromKey(key);
-          const source = sources!.find(s => s.id === sourceId)!;
-          const keys = filters.map(f => f.expression);
-          const tableName = getMetricTableName(source, metricType) ?? '';
+  const results: UseQueryResult<
+    GetKeyValueCall<BuilderChartConfigWithDateRange>[]
+  >[] = useQueries({
+    queries: Array.from(filtersBySourceIdAndMetric.entries())
+      .filter(([key]) =>
+        sources?.some(s => s.id === filterFromKey(key).sourceId),
+      )
+      .map(([key, filters]) => {
+        const { sourceId, metricType } = filterFromKey(key);
+        const source = sources!.find(s => s.id === sourceId)!;
+        const keys = filters.map(f => f.expression);
+        const tableName = getMetricTableName(source, metricType) ?? '';
 
-          const chartConfig: ChartConfigWithDateRange = {
-            ...pick(source, ['timestampValueExpression', 'connection']),
-            from: {
-              databaseName: source.from.databaseName,
-              tableName,
-            },
+        const chartConfig: BuilderChartConfigWithDateRange = {
+          ...pick(source, ['timestampValueExpression', 'connection']),
+          from: {
+            databaseName: source.from.databaseName,
+            tableName,
+          },
+          dateRange,
+          source: source.id,
+          where: '',
+          whereLanguage: 'sql',
+          select: '',
+        };
+
+        return {
+          queryKey: [
+            'dashboard-filters-key-value-calls',
+            sourceId,
+            metricType,
             dateRange,
-            source: source.id,
-            where: '',
-            whereLanguage: 'sql',
-            select: '',
-          };
-
-          return {
-            queryKey: [
-              'dashboard-filters-key-value-calls',
-              sourceId,
-              metricType,
-              dateRange,
+            keys,
+          ],
+          enabled: !isLoadingSources,
+          staleTime: 1000 * 60 * 5, // Cache every 5 min
+          queryFn: async ({ signal }) =>
+            await optimizeGetKeyValuesCalls({
+              chartConfig,
+              source,
+              clickhouseClient,
+              metadata,
               keys,
-            ],
-            enabled: !isLoadingSources,
-            staleTime: 1000 * 60 * 5, // Cache every 5 min
-            queryFn: async ({ signal }) =>
-              await optimizeGetKeyValuesCalls({
-                chartConfig,
-                source,
-                clickhouseClient,
-                metadata,
-                keys,
-                signal,
-              }),
-          };
-        }),
-    });
+              signal,
+            }),
+        };
+      }),
+  });
 
   return {
     data: results.map(r => r.data ?? []).flat(),

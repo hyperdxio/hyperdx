@@ -5,9 +5,12 @@ import { z } from 'zod';
 
 export { default as objectHash } from 'object-hash';
 
+import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
 import {
-  ChartConfigWithDateRange,
-  ChartConfigWithOptTimestamp,
+  BuilderChartConfig,
+  BuilderChartConfigWithDateRange,
+  BuilderChartConfigWithOptTimestamp,
+  Connection,
   DashboardFilter,
   DashboardFilterSchema,
   DashboardSchema,
@@ -458,6 +461,7 @@ type TileTemplate = z.infer<typeof TileTemplateSchema>;
 export function convertToDashboardTemplate(
   input: Dashboard,
   sources: TSourceUnion[],
+  connections: Connection[] = [],
 ): DashboardTemplate {
   const output: DashboardTemplate = {
     version: '0.1.0',
@@ -468,12 +472,22 @@ export function convertToDashboardTemplate(
   const convertToTileTemplate = (
     input: Dashboard['tiles'][0],
     sources: TSourceUnion[],
+    connections: Connection[],
   ): TileTemplate => {
     const tile = TileTemplateSchema.strip().parse(structuredClone(input));
-    // Extract name from source or default to '' if not found
-    tile.config.source = (
-      sources.find(source => source.id === tile.config.source) ?? { name: '' }
-    ).name;
+    // Extract name from source/connection or default to '' if not found
+    const tileConfig = tile.config;
+    if (isBuilderSavedChartConfig(tileConfig)) {
+      tileConfig.source = (
+        sources.find(source => source.id === tileConfig.source) ?? { name: '' }
+      ).name;
+    } else if (isRawSqlSavedChartConfig(tileConfig)) {
+      tileConfig.connection = (
+        connections.find(conn => conn.id === tileConfig.connection) ?? {
+          name: '',
+        }
+      ).name;
+    }
     return tile;
   };
 
@@ -489,7 +503,7 @@ export function convertToDashboardTemplate(
   };
 
   for (const tile of input.tiles) {
-    output.tiles.push(convertToTileTemplate(tile, sources));
+    output.tiles.push(convertToTileTemplate(tile, sources, connections));
   }
 
   if (input.filters) {
@@ -538,7 +552,7 @@ export function convertToDashboardDocument(
 }
 
 export const getFirstOrderingItem = (
-  orderBy: ChartConfigWithDateRange['orderBy'],
+  orderBy: BuilderChartConfigWithDateRange['orderBy'],
 ) => {
   if (!orderBy || orderBy.length === 0) return undefined;
 
@@ -559,7 +573,7 @@ export const removeTrailingDirection = (s: string) => {
 };
 
 export const isTimestampExpressionInFirstOrderBy = (
-  config: ChartConfigWithOptTimestamp,
+  config: BuilderChartConfigWithOptTimestamp,
 ) => {
   const firstOrderingItem = getFirstOrderingItem(config.orderBy);
   if (!firstOrderingItem || config.timestampValueExpression == null)
@@ -580,7 +594,7 @@ export const isTimestampExpressionInFirstOrderBy = (
 };
 
 export const isFirstOrderByAscending = (
-  orderBy: ChartConfigWithDateRange['orderBy'],
+  orderBy: BuilderChartConfigWithDateRange['orderBy'],
 ): boolean => {
   const primaryOrderingItem = getFirstOrderingItem(orderBy);
 
@@ -926,4 +940,33 @@ export function parseTokenizerFromTextIndex({
       console.error(`Unknown tokenizer ${tokenizerName} in type ${typeFull}.`);
       return undefined;
   }
+}
+
+/**
+ * Converts an aliasMap (e.g. from chSqlToAliasMap) to an array of WITH clause entries.
+ * These WITH clauses define aliases as expressions (isSubquery: false),
+ * making them available in WHERE and other clauses.
+ */
+export function aliasMapToWithClauses(
+  aliasMap: Record<string, string | undefined> | undefined,
+): BuilderChartConfig['with'] {
+  if (!aliasMap) {
+    return undefined;
+  }
+
+  const withClauses = Object.entries(aliasMap)
+    .filter(
+      (entry): entry is [string, string] =>
+        entry[1] != null && entry[1].trim() !== '',
+    )
+    .map(([name, value]) => ({
+      name,
+      sql: {
+        sql: value,
+        params: {},
+      },
+      isSubquery: false,
+    }));
+
+  return withClauses.length > 0 ? withClauses : undefined;
 }

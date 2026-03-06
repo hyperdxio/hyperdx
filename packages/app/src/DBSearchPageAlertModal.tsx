@@ -10,8 +10,10 @@ import {
   AlertIntervalSchema,
   AlertSource,
   AlertThresholdType,
+  scheduleStartAtSchema,
   SearchCondition,
   SearchConditionLanguage,
+  validateAlertScheduleOffsetMinutes,
   zAlertChannel,
 } from '@hyperdx/common-utils/dist/types';
 import { Alert as MantineAlert, TextInput } from '@mantine/core';
@@ -29,7 +31,6 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
-  IconBrandSlack,
   IconChartLine,
   IconInfoCircleFilled,
   IconPlus,
@@ -44,11 +45,15 @@ import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,
   ALERT_THRESHOLD_TYPE_OPTIONS,
+  intervalToMinutes,
+  normalizeNoOpAlertScheduleFields,
 } from '@/utils/alerts';
 
 import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
-import { SQLInlineEditorControlled } from './components/SQLInlineEditor';
+import { AlertScheduleFields } from './components/AlertScheduleFields';
+import { getStoredLanguage } from './components/SearchInput/SearchWhereInput';
+import { SQLInlineEditorControlled } from './components/SearchInput/SQLInlineEditor';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { AlertWithCreatedBy, SearchConfig } from './types';
@@ -58,10 +63,13 @@ const SavedSearchAlertFormSchema = z
   .object({
     interval: AlertIntervalSchema,
     threshold: z.number().int().min(1),
+    scheduleOffsetMinutes: z.number().int().min(0).default(0),
+    scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
   })
-  .passthrough();
+  .passthrough()
+  .superRefine(validateAlertScheduleOffsetMinutes);
 
 const AlertForm = ({
   sourceId,
@@ -90,17 +98,30 @@ const AlertForm = ({
 }) => {
   const { data: source } = useSource({ id: sourceId });
 
-  const { control, handleSubmit } = useForm<Alert>({
-    defaultValues: defaultValues || {
-      interval: '5m',
-      threshold: 1,
-      thresholdType: AlertThresholdType.ABOVE,
-      source: AlertSource.SAVED_SEARCH,
-      channel: {
-        type: 'webhook',
-        webhookId: '',
-      },
-    },
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    formState: { dirtyFields },
+  } = useForm<Alert>({
+    defaultValues: defaultValues
+      ? {
+          ...defaultValues,
+          scheduleOffsetMinutes: defaultValues.scheduleOffsetMinutes ?? 0,
+          scheduleStartAt: defaultValues.scheduleStartAt ?? null,
+        }
+      : {
+          interval: '5m',
+          threshold: 1,
+          scheduleOffsetMinutes: 0,
+          scheduleStartAt: null,
+          thresholdType: AlertThresholdType.ABOVE,
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: '',
+          },
+        },
     resolver: zodResolver(SavedSearchAlertFormSchema),
   });
 
@@ -108,11 +129,31 @@ const AlertForm = ({
   const thresholdType = useWatch({ control, name: 'thresholdType' });
   const channelType = useWatch({ control, name: 'channel.type' });
   const interval = useWatch({ control, name: 'interval' });
+  const scheduleOffsetMinutes = useWatch({
+    control,
+    name: 'scheduleOffsetMinutes',
+  });
   const groupByValue = useWatch({ control, name: 'groupBy' });
   const threshold = useWatch({ control, name: 'threshold' });
+  const maxScheduleOffsetMinutes = Math.max(
+    intervalToMinutes(interval ?? '5m') - 1,
+    0,
+  );
+  const intervalLabel = ALERT_INTERVAL_OPTIONS[interval ?? '5m'];
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
+    <form
+      onSubmit={handleSubmit(data =>
+        onSubmit(
+          normalizeNoOpAlertScheduleFields(data, defaultValues, {
+            preserveExplicitScheduleOffsetMinutes:
+              dirtyFields.scheduleOffsetMinutes === true,
+            preserveExplicitScheduleStartAt:
+              dirtyFields.scheduleStartAt === true,
+          }),
+        ),
+      )}
+    >
       <Stack gap="xs">
         <Paper px="md" py="sm" radius="xs">
           <Text size="xxs" opacity={0.5}>
@@ -154,6 +195,15 @@ const AlertForm = ({
               control={control}
             />
           </Group>
+          <AlertScheduleFields
+            control={control}
+            setValue={setValue}
+            scheduleOffsetName="scheduleOffsetMinutes"
+            scheduleStartAtName="scheduleStartAt"
+            scheduleOffsetMinutes={scheduleOffsetMinutes}
+            maxScheduleOffsetMinutes={maxScheduleOffsetMinutes}
+            offsetWindowLabel={`from each ${intervalLabel} window`}
+          />
           <Text size="xxs" opacity={0.5} mb={4} mt="xs">
             grouped by
           </Text>
@@ -311,7 +361,8 @@ export const DBSearchPageAlertModal = ({
           name,
           select: searchedConfig.select ?? '',
           where: searchedConfig.where ?? '',
-          whereLanguage: searchedConfig.whereLanguage ?? 'lucene',
+          whereLanguage:
+            searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
           source: searchedConfig.source ?? '',
           orderBy: searchedConfig.orderBy ?? '',
           filters: searchedConfig.filters ?? [],

@@ -37,3 +37,5 @@ export const IS_K8S_DASHBOARD_ENABLED = true;
 export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
+export const IS_SQL_CHARTS_ENABLED =
+  process.env.NEXT_PUBLIC_IS_SQL_CHARTS_ENABLED === 'true';

@@ -1,5 +1,7 @@
+import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunctionSchema,
+  BuilderSavedChartConfig,
   DisplayType,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
@@ -47,6 +49,9 @@ export type ExternalDashboard = {
   tiles: ExternalDashboardTileWithId[];
   tags?: string[];
   filters?: ExternalDashboardFilterWithId[];
+  savedQuery?: string | null;
+  savedQueryLanguage?: string | null;
+  savedFilterValues?: DashboardDocument['savedFilterValues'];
 };
 
 // --------------------------------------------------------------------------------
@@ -59,7 +64,7 @@ const DEFAULT_SELECT_ITEM: ExternalDashboardSelectItem = {
 };
 
 const convertToExternalSelectItem = (
-  item: Exclude<SavedChartConfig['select'][number], string>,
+  item: Exclude<BuilderSavedChartConfig['select'][number], string>,
 ): ExternalDashboardSelectItem => {
   const parsedAggFn = AggregateFunctionSchema.safeParse(item.aggFn);
   const aggFn = parsedAggFn.success ? parsedAggFn.data : 'none';
@@ -81,6 +86,9 @@ const convertToExternalSelectItem = (
 const convertToExternalTileChartConfig = (
   config: SavedChartConfig,
 ): ExternalDashboardTileConfig | undefined => {
+  // HDX-3582: Implement this for Raw SQL charts
+  if (isRawSqlSavedChartConfig(config)) return undefined;
+
   const sourceId = config.source?.toString() ?? '';
 
   const stringValueOrDefault = <D>(
@@ -172,7 +180,10 @@ const convertToExternalTileChartConfig = (
 
 function convertTileToExternalChart(
   tile: DashboardDocument['tiles'][number],
-): ExternalDashboardTileWithId {
+): ExternalDashboardTileWithId | undefined {
+  // HDX-3582: Implement this for Raw SQL charts
+  if (isRawSqlSavedChartConfig(tile.config)) return undefined;
+
   // Returned in case of a failure converting the saved chart config
   const defaultTileConfig: ExternalDashboardTileConfig = {
     displayType: 'line',
@@ -193,9 +204,14 @@ export function convertToExternalDashboard(
   return {
     id: dashboard._id.toString(),
     name: dashboard.name,
-    tiles: dashboard.tiles.map(convertTileToExternalChart),
+    tiles: dashboard.tiles
+      .map(convertTileToExternalChart)
+      .filter(t => t !== undefined),
     tags: dashboard.tags || [],
     filters: dashboard.filters?.map(translateFilterToExternalFilter) || [],
+    savedQuery: dashboard.savedQuery ?? null,
+    savedQueryLanguage: dashboard.savedQueryLanguage ?? null,
+    savedFilterValues: dashboard.savedFilterValues ?? [],
   };
 }
 
@@ -205,7 +221,7 @@ export function convertToExternalDashboard(
 
 const convertToInternalSelectItem = (
   item: ExternalDashboardSelectItem,
-): Exclude<SavedChartConfig['select'][number], string> => {
+): Exclude<BuilderSavedChartConfig['select'][number], string> => {
   return {
     ...pick(item, ['alias', 'metricType', 'metricName', 'aggFn', 'level']),
     aggCondition: item.where,

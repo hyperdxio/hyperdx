@@ -1,0 +1,44 @@
+.searchingHeader {
+  color: var(--color-text-muted);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 700;
+  margin-right: 0.25rem;
+}
+
+.searchingDescription {
+  color: var(--color-text-muted);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.examplesLabel {
+  margin-right: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+}
+
+.exampleRow {
+  margin-bottom: 0.5rem;
+  margin-right: 0.5rem;
+}
+
+.exampleLabel {
+  margin-right: 0.25rem;
+}
+
+.exampleCode {
+  color: var(--color-text-muted);
+  background-color: var(--color-bg-highlighted);
+  padding: 0.25rem;
+  border-radius: var(--mantine-radius-default);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.9;
+  }
+}
+
+.docsLink {
+  color: var(--color-text-muted);
+  margin-bottom: 0.5rem;
+}

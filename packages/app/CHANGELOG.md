@@ -1,5 +1,30 @@
 # @hyperdx/app
 
+## 2.20.0
+
+### Minor Changes
+
+- cd2b7a76: fix: revert use_top_k_dynamic_filtering setting for issues with ORDER BY rand()
+- 3e8cc729: feat: add alerts to number chart
+
+### Patch Changes
+
+- 8772f5e2: chore: update clickhouse versions for compose files
+- a6edb0dd: fix: the banner for the clickhouse build can now be collapsed
+- 5162acb4: fix: apply correct color-scheme for light and dark modes so scrollbars match the active theme
+- 1eede5ed: fix: align event patterns table headers to the left
+  fix: remove empty wrapper div on Event Deltas and Event Patterns tabs
+  fix: add consistent padding to Results Table, Event Deltas, and Event Patterns tabs
+- 3797e657: fix: guard formatNumber against non-numeric values
+- 247896e4: fix: Prevent crash when only one metric name exists
+- 578b1eea: fix: localmode stops prematurely fetching data
+  fix: users do not have to keep defining sources during onboarding modal if they already have sources
+- 875f78d4: fix: connections will automatically connect in clickstack build if default credentials test succeeds
+- Updated dependencies [cd2b7a76]
+- Updated dependencies [d760d2db]
+- Updated dependencies [34c9afeb]
+  - @hyperdx/common-utils@0.15.0
+
 ## 2.19.0
 
 ### Minor Changes

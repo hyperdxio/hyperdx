@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Group, Select } from '@mantine/core';
+import { Box, Group, Select } from '@mantine/core';
 
+import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
 import { useGetKeyValues } from '@/hooks/useMetadata';
-import SearchInputV2 from '@/SearchInputV2';
 
 type KubernetesFiltersProps = {
   dateRange: [Date, Date];
@@ -23,7 +23,7 @@ type FilterSelectProps = {
   fieldName: string;
   value: string | null;
   onChange: (value: string | null) => void;
-  chartConfig: ChartConfigWithDateRange;
+  chartConfig: BuilderChartConfigWithDateRange;
   dataTestId?: string;
 };
 
@@ -157,7 +157,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
   }, [searchQuery, metricSource.resourceAttributesExpression]);
 
   // Create chart config for fetching key values
-  const chartConfig: ChartConfigWithDateRange = {
+  const chartConfig: BuilderChartConfigWithDateRange = {
     from: {
       databaseName: metricSource.from.databaseName,
       tableName: metricSource.metricTables?.gauge || '',
@@ -253,16 +253,18 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         chartConfig={chartConfig}
         dataTestId="cluster-filter-select"
       />
-      <SearchInputV2
-        tableConnection={tcFromSource(metricSource)}
-        placeholder="Search query"
-        language="lucene"
-        name="searchQuery"
-        control={control}
-        size="xs"
-        enableHotkey
-        data-testid="k8s-search-input"
-      />
+      <Box style={{ flex: 1, minWidth: 200 }}>
+        <SearchInputV2
+          tableConnection={tcFromSource(metricSource)}
+          placeholder="Search your events w/ Lucene ex. column:foo"
+          language="lucene"
+          name="searchQuery"
+          control={control}
+          size="xs"
+          enableHotkey
+          data-testid="k8s-search-input"
+        />
+      </Box>
     </Group>
   );
 };

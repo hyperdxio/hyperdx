@@ -1,10 +1,8 @@
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  AggregateFunctionSchema,
+  BuilderSavedChartConfig,
   DashboardFilter,
   DisplayType,
   SavedChartConfig,
-  SelectList,
 } from '@hyperdx/common-utils/dist/types';
 import { omit } from 'lodash';
 import { FlattenMaps, LeanDocument } from 'mongoose';
@@ -18,42 +16,7 @@ import {
 } from '@/models/alert';
 import type { DashboardDocument } from '@/models/dashboard';
 import { SeriesTile } from '@/routers/external-api/v2/utils/dashboards';
-import {
-  ChartSeries,
-  ExternalDashboardFilterWithId,
-  MarkdownChartSeries,
-  NumberChartSeries,
-  SearchChartSeries,
-  TableChartSeries,
-  TimeChartSeries,
-} from '@/utils/zod';
-
-import logger from './logger';
-
-type NonStringSelectItem = Exclude<SelectList[number], string>;
-type NonStringSelectWithLevel = NonStringSelectItem & { level: number };
-
-function hasLevel(
-  series: NonStringSelectItem,
-): series is NonStringSelectWithLevel {
-  return 'level' in series && typeof series.level === 'number';
-}
-
-function isSortOrderDesc(config: SavedChartConfig): boolean {
-  if (!config.orderBy) {
-    return false;
-  }
-
-  if (typeof config.orderBy === 'string') {
-    return config.orderBy.toLowerCase().endsWith(' desc');
-  }
-
-  if (Array.isArray(config.orderBy) && config.orderBy.length === 0) {
-    return false;
-  }
-
-  return Array.isArray(config.orderBy) && config.orderBy[0].ordering === 'DESC';
-}
+import { ExternalDashboardFilterWithId } from '@/utils/zod';
 
 /** Returns a new object containing only the truthy, requested keys from the original object */
 const pickIfTruthy = <T, K extends keyof T>(obj: T, keys: K[]): Partial<T> => {
@@ -64,143 +27,6 @@ const pickIfTruthy = <T, K extends keyof T>(obj: T, keys: K[]): Partial<T> => {
     }
   }
   return result;
-};
-
-const convertChartConfigToExternalChartSeries = (
-  config: SavedChartConfig,
-): ChartSeries[] => {
-  const {
-    displayType,
-    source: sourceId,
-    select,
-    groupBy,
-    numberFormat,
-  } = config;
-  const isSelectArray = Array.isArray(select);
-  const convertedGroupBy = Array.isArray(groupBy)
-    ? groupBy.map(g => g.valueExpression)
-    : splitAndTrimWithBracket(groupBy ?? '');
-
-  switch (displayType) {
-    case 'line':
-    case 'stacked_bar':
-      if (!isSelectArray) {
-        logger.error(`Expected array select for displayType ${displayType}`);
-        return [];
-      }
-
-      return select.map(s => {
-        const aggFnSanitized = AggregateFunctionSchema.safeParse(
-          s.aggFn ?? 'none',
-        );
-        return {
-          aggFn: aggFnSanitized.success ? aggFnSanitized.data : 'none',
-          alias: s.alias ?? undefined,
-          type: 'time',
-          sourceId,
-          displayType,
-          level: hasLevel(s) ? s.level : undefined,
-          field: s.valueExpression,
-          where: s.aggCondition ?? '',
-          whereLanguage: s.aggConditionLanguage ?? 'lucene',
-          groupBy: convertedGroupBy,
-          metricName: s.metricName ?? undefined,
-          metricDataType: s.metricType ?? undefined,
-          numberFormat: numberFormat ?? undefined,
-        } satisfies TimeChartSeries;
-      });
-
-    case 'table':
-      if (!isSelectArray) {
-        logger.error(`Expected array select for displayType ${displayType}`);
-        return [];
-      }
-
-      return select.map(s => {
-        const aggFnSanitized = AggregateFunctionSchema.safeParse(
-          s.aggFn ?? 'none',
-        );
-        return {
-          aggFn: aggFnSanitized.success ? aggFnSanitized.data : 'none',
-          alias: s.alias ?? undefined,
-          type: 'table',
-          sourceId,
-          level: hasLevel(s) ? s.level : undefined,
-          field: s.valueExpression,
-          where: s.aggCondition ?? '',
-          whereLanguage: s.aggConditionLanguage ?? 'lucene',
-          groupBy: convertedGroupBy,
-          metricName: s.metricName ?? undefined,
-          metricDataType: s.metricType ?? undefined,
-          sortOrder: isSortOrderDesc(config) ? 'desc' : 'asc',
-          numberFormat: numberFormat ?? undefined,
-        } satisfies TableChartSeries;
-      });
-
-    case 'number': {
-      if (!isSelectArray || select.length === 0) {
-        logger.error(
-          `Expected non-empty array select for displayType ${displayType}`,
-        );
-        return [];
-      }
-
-      const firstSelect = select[0];
-      const aggFnSanitized = AggregateFunctionSchema.safeParse(
-        firstSelect.aggFn ?? 'none',
-      );
-
-      return [
-        {
-          alias: firstSelect.alias ?? undefined,
-          aggFn: aggFnSanitized.success ? aggFnSanitized.data : 'none',
-          type: 'number',
-          sourceId,
-          level: hasLevel(firstSelect) ? firstSelect.level : undefined,
-          field: firstSelect.valueExpression,
-          where: firstSelect.aggCondition ?? '',
-          whereLanguage: firstSelect.aggConditionLanguage ?? 'lucene',
-          metricName: firstSelect.metricName ?? undefined,
-          metricDataType: firstSelect.metricType ?? undefined,
-          numberFormat: numberFormat ?? undefined,
-        },
-      ] satisfies [NumberChartSeries];
-    }
-
-    case 'search': {
-      if (isSelectArray) {
-        logger.error(
-          `Expected non-array select for displayType ${displayType}`,
-        );
-        return [];
-      }
-
-      return [
-        {
-          type: 'search',
-          sourceId,
-          fields: splitAndTrimWithBracket(select ?? ''),
-          where: config.where ?? '',
-          whereLanguage: config.whereLanguage ?? 'lucene',
-        },
-      ] satisfies [SearchChartSeries];
-    }
-
-    case 'markdown':
-      return [
-        {
-          type: 'markdown',
-          content: config.markdown || '',
-        },
-      ] satisfies [MarkdownChartSeries];
-
-    case 'heatmap': // Heatmap is not supported in external API, and should not be present in dashboards
-    default:
-      logger.error(
-        `DisplayType ${displayType} is not supported in external API`,
-      );
-      return [];
-  }
 };
 
 export function translateExternalChartToTileConfig(
@@ -218,14 +44,14 @@ export function translateExternalChartToTileConfig(
   // Determine the sourceId and displayType based on series type
   let sourceId: string =
     firstSeries.type === 'markdown' ? '' : firstSeries.sourceId;
-  let select: SavedChartConfig['select'] = '';
-  let displayType: SavedChartConfig['displayType'];
-  let groupBy: SavedChartConfig['groupBy'] = '';
-  let where: SavedChartConfig['where'] = '';
-  let whereLanguage: SavedChartConfig['whereLanguage'] = 'lucene';
-  let orderBy: SavedChartConfig['orderBy'] = '';
-  let markdown: SavedChartConfig['markdown'] = '';
-  let numberFormat: SavedChartConfig['numberFormat'] = undefined;
+  let select: BuilderSavedChartConfig['select'] = '';
+  let displayType: BuilderSavedChartConfig['displayType'];
+  let groupBy: BuilderSavedChartConfig['groupBy'] = '';
+  let where: BuilderSavedChartConfig['where'] = '';
+  let whereLanguage: BuilderSavedChartConfig['whereLanguage'] = 'lucene';
+  let orderBy: BuilderSavedChartConfig['orderBy'] = '';
+  let markdown: BuilderSavedChartConfig['markdown'] = '';
+  let numberFormat: BuilderSavedChartConfig['numberFormat'] = undefined;
 
   switch (firstSeries.type) {
     case 'time': {
@@ -403,6 +229,8 @@ export type ExternalAlert = {
   message?: string | null;
   threshold: number;
   interval: AlertInterval;
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: string | null;
   thresholdType: AlertThresholdType;
   source?: string;
   state: AlertState;
@@ -437,6 +265,24 @@ function hasUpdatedAt(
   return 'updatedAt' in alert && alert.updatedAt instanceof Date;
 }
 
+function transformScheduleStartAt(
+  scheduleStartAt: unknown,
+): ExternalAlert['scheduleStartAt'] {
+  if (scheduleStartAt === null) {
+    return null;
+  }
+
+  if (scheduleStartAt === undefined) {
+    return undefined;
+  }
+
+  if (scheduleStartAt instanceof Date) {
+    return scheduleStartAt.toISOString();
+  }
+
+  return typeof scheduleStartAt === 'string' ? scheduleStartAt : undefined;
+}
+
 function transformSilencedToExternalSilenced(
   silenced: AlertDocumentObject['silenced'],
 ): ExternalAlert['silenced'] {
@@ -464,6 +310,10 @@ export function translateAlertDocumentToExternalAlert(
     message: alertObj.message,
     threshold: alertObj.threshold,
     interval: alertObj.interval,
+    ...(alertObj.scheduleOffsetMinutes != null && {
+      scheduleOffsetMinutes: alertObj.scheduleOffsetMinutes,
+    }),
+    scheduleStartAt: transformScheduleStartAt(alertObj.scheduleStartAt),
     thresholdType: alertObj.thresholdType,
     source: alertObj.source,
     state: alertObj.state,

@@ -29,9 +29,15 @@
   --mantine-webkit-font-smoothing: inherit;
   --mantine-moz-font-smoothing: inherit;
 
-  color-scheme: dark;
-
   --app-font-family: var(--font-inter);
+}
+
+[data-mantine-color-scheme='dark'] {
+  color-scheme: dark;
+}
+
+[data-mantine-color-scheme='light'] {
+  color-scheme: light;
 }
 
 body {
@@ -291,6 +297,12 @@ a,
   border: 1px solid #50fa7b;
   background: #50fa7a0d !important;
   color: #2e224788;
+}
+
+// Heatmap selection uses red to match the outlier/selection color in delta charts.
+.heatmap-selection-container .u-select {
+  border-color: rgba(255, 99, 71, 0.8);
+  background: rgba(255, 99, 71, 0.05) !important;
 }
 
 .hdx-markdown {

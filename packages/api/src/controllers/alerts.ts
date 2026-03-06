@@ -14,14 +14,18 @@ import Alert, {
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { IUser } from '@/models/user';
+import Webhook from '@/models/webhook';
+import { Api400Error } from '@/utils/errors';
 import logger from '@/utils/logger';
-import { alertSchema } from '@/utils/zod';
+import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 export type AlertInput = {
   id?: string;
   source?: AlertSource;
   channel: AlertChannel;
   interval: AlertInterval;
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: string | null;
   thresholdType: AlertThresholdType;
   threshold: number;
 
@@ -45,10 +49,88 @@ export type AlertInput = {
   };
 };
 
+const validateObjectId = (id: string | undefined, message: string) => {
+  if (objectIdSchema.safeParse(id).success === false) {
+    throw new Api400Error(message);
+  }
+};
+
+export const validateAlertInput = async (
+  teamId: ObjectId,
+  alertInput: Pick<
+    AlertInput,
+    'source' | 'dashboardId' | 'tileId' | 'savedSearchId' | 'channel'
+  >,
+) => {
+  if (alertInput.source === AlertSource.TILE) {
+    validateObjectId(alertInput.dashboardId, 'Invalid dashboard ID');
+
+    const dashboard = await Dashboard.findOne({
+      _id: alertInput.dashboardId,
+      team: teamId,
+    });
+
+    if (dashboard == null) {
+      throw new Api400Error('Dashboard not found');
+    }
+
+    if (dashboard.tiles.find(tile => tile.id === alertInput.tileId) == null) {
+      throw new Api400Error('Tile not found');
+    }
+  }
+
+  if (alertInput.source === AlertSource.SAVED_SEARCH) {
+    validateObjectId(alertInput.savedSearchId, 'Invalid saved search ID');
+
+    const savedSearch = await SavedSearch.findOne({
+      _id: alertInput.savedSearchId,
+      team: teamId,
+    });
+
+    if (savedSearch == null) {
+      throw new Api400Error('Saved search not found');
+    }
+  }
+
+  if (alertInput.channel.type === 'webhook') {
+    validateObjectId(alertInput.channel.webhookId, 'Invalid webhook ID');
+
+    if (
+      (await Webhook.findOne({
+        _id: alertInput.channel.webhookId,
+        team: teamId,
+      })) == null
+    ) {
+      throw new Api400Error('Webhook not found');
+    }
+  }
+};
+
 const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
+  // Preserve existing DB value when scheduleStartAt is omitted from updates
+  // (undefined), while still allowing explicit clears via null.
+  const hasScheduleStartAt = alert.scheduleStartAt !== undefined;
+  // If scheduleStartAt is explicitly provided, offset-based alignment is ignored.
+  // Force persisted offset to 0 so updates can't leave stale non-zero offsets.
+  // If scheduleStartAt is explicitly cleared and offset is omitted, also reset
+  // to 0 to avoid preserving stale values from older documents.
+  const normalizedScheduleOffsetMinutes =
+    hasScheduleStartAt && alert.scheduleStartAt != null
+      ? 0
+      : hasScheduleStartAt && alert.scheduleOffsetMinutes == null
+        ? 0
+        : alert.scheduleOffsetMinutes;
+
   return {
     channel: alert.channel,
     interval: alert.interval,
+    ...(normalizedScheduleOffsetMinutes != null && {
+      scheduleOffsetMinutes: normalizedScheduleOffsetMinutes,
+    }),
+    ...(hasScheduleStartAt && {
+      scheduleStartAt:
+        alert.scheduleStartAt == null ? null : new Date(alert.scheduleStartAt),
+    }),
     source: alert.source,
     threshold: alert.threshold,
     thresholdType: alert.thresholdType,
@@ -75,18 +157,6 @@ export const createAlert = async (
   alertInput: z.infer<typeof alertSchema>,
   userId: ObjectId,
 ) => {
-  if (alertInput.source === AlertSource.TILE) {
-    if ((await Dashboard.findById(alertInput.dashboardId)) == null) {
-      throw new Error('Dashboard ID not found');
-    }
-  }
-
-  if (alertInput.source === AlertSource.SAVED_SEARCH) {
-    if ((await SavedSearch.findById(alertInput.savedSearchId)) == null) {
-      throw new Error('Saved Search ID not found');
-    }
-  }
-
   return new Alert({
     ...makeAlert(alertInput, userId),
     team: teamId,

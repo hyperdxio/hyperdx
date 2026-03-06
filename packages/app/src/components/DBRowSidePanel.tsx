@@ -13,7 +13,7 @@ import { parseAsStringEnum, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Drawer, Flex, Stack } from '@mantine/core';
 
 import DBRowSidePanelHeader, {
@@ -63,7 +63,7 @@ export type RowSidePanelContextProps = {
   displayedColumns?: string[];
   toggleColumn?: (column: string) => void;
   shareUrl?: string;
-  dbSqlRowTableConfig?: ChartConfigWithDateRange;
+  dbSqlRowTableConfig?: BuilderChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
   source?: TSource;

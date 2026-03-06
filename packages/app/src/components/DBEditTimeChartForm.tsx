@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { omit } from 'lodash';
 import {
   Control,
   Controller,
   FieldErrors,
-  FieldPath,
   useFieldArray,
   useForm,
   UseFormClearErrors,
@@ -15,6 +13,11 @@ import { NativeSelect, NumberInput } from 'react-hook-form-mantine';
 import z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  isBuilderChartConfig,
+  isRawSqlChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
@@ -27,6 +30,7 @@ import {
   SelectList,
   SourceKind,
   TSource,
+  validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -39,6 +43,7 @@ import {
   Group,
   Menu,
   Paper,
+  SegmentedControl,
   Stack,
   Switch,
   Tabs,
@@ -78,16 +83,18 @@ import { AlertChannelForm, getAlertReferenceLines } from '@/components/Alerts';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import { SQLInlineEditorControlled } from '@/components/SQLInlineEditor';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
+import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_LOCAL_MODE, IS_SQL_CHARTS_ENABLED } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
 import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
-import SearchInputV2 from '@/SearchInputV2';
 import { getFirstTimestampValueExpression, useSource } from '@/source';
 import {
   getMetricTableName,
@@ -100,15 +107,30 @@ import {
   DEFAULT_TILE_ALERT,
   extendDateRangeToInterval,
   intervalToGranularity,
+  intervalToMinutes,
+  normalizeNoOpAlertScheduleFields,
   TILE_ALERT_INTERVAL_OPTIONS,
   TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
 } from '@/utils/alerts';
 
 import HDXMarkdownChart from '../HDXMarkdownChart';
 
+import RawSqlChartEditor from './ChartEditor/RawSqlChartEditor';
+import {
+  ChartEditorFormState,
+  SavedChartConfigWithSelectArray,
+} from './ChartEditor/types';
+import {
+  convertFormStateToChartConfig,
+  convertFormStateToSavedChartConfig,
+  convertSavedChartConfigToFormState,
+  getSeriesFieldPath,
+  validateMetricNames,
+} from './ChartEditor/utils';
 import { ErrorBoundary } from './Error/ErrorBoundary';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { AggFnSelectControlled } from './AggFnSelect';
+import { AlertScheduleFields } from './AlertScheduleFields';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from './ChartDisplaySettingsDrawer';
@@ -126,71 +148,22 @@ import SaveToDashboardModal from './SaveToDashboardModal';
 import SourceSchemaPreview from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
-const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) =>
-  ((queriedConfig?.select?.length ?? 0) > 0 ||
-    typeof queriedConfig?.select === 'string') &&
-  queriedConfig?.from?.databaseName &&
-  // tableName is empty for metric sources
-  (queriedConfig?.from?.tableName || queriedConfig?.metricTables) &&
-  queriedConfig?.timestampValueExpression;
+const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) => {
+  if (!queriedConfig) return false;
+  if (isRawSqlChartConfig(queriedConfig)) {
+    return !!(queriedConfig.sqlTemplate && queriedConfig.connection);
+  }
+  return (
+    ((queriedConfig.select?.length ?? 0) > 0 ||
+      typeof queriedConfig.select === 'string') &&
+    queriedConfig.from?.databaseName &&
+    // tableName is empty for metric sources
+    (queriedConfig.from?.tableName || queriedConfig.metricTables) &&
+    queriedConfig.timestampValueExpression
+  );
+};
 
 const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
-
-// Helper function to safely construct field paths for series
-const getSeriesFieldPath = (
-  namePrefix: string,
-  fieldName: string,
-): FieldPath<SavedChartConfigWithSeries> => {
-  return `${namePrefix}${fieldName}` as FieldPath<SavedChartConfigWithSeries>;
-};
-
-export function normalizeChartConfig<
-  C extends Pick<
-    SavedChartConfig,
-    'select' | 'having' | 'orderBy' | 'displayType' | 'metricTables'
-  >,
->(config: C, source: TSource): C {
-  const isMetricSource = source.kind === SourceKind.Metric;
-  return {
-    ...config,
-    // Strip out metric-specific fields for non-metric sources
-    select:
-      !isMetricSource && Array.isArray(config.select)
-        ? config.select.map(s => omit(s, ['metricName', 'metricType']))
-        : config.select,
-    metricTables: isMetricSource ? config.metricTables : undefined,
-    // Order By and Having can only be set by the user for table charts
-    having:
-      config.displayType === DisplayType.Table ? config.having : undefined,
-    orderBy:
-      config.displayType === DisplayType.Table ? config.orderBy : undefined,
-  };
-}
-
-// Helper function to validate metric names for metric sources
-const validateMetricNames = (
-  tableSource: TSource | undefined,
-  series: SavedChartConfigWithSelectArray['select'] | undefined,
-  setError: (
-    name: FieldPath<SavedChartConfigWithSeries>,
-    error: { type: string; message: string },
-  ) => void,
-): boolean => {
-  if (tableSource?.kind === SourceKind.Metric && Array.isArray(series)) {
-    let hasValidationError = false;
-    series.forEach((s, index) => {
-      if (s.metricType && !s.metricName) {
-        setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
-          type: 'manual',
-          message: 'Please select a metric name',
-        });
-        hasValidationError = true;
-      }
-    });
-    return hasValidationError;
-  }
-  return false;
-};
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -233,7 +206,7 @@ function ChartSeriesEditorComponent({
   length: number;
   tableSource?: TSource;
   errors?: FieldErrors<SeriesItem>;
-  clearErrors: UseFormClearErrors<SavedChartConfigWithSeries>;
+  clearErrors: UseFormClearErrors<ChartEditorFormState>;
 }) {
   const aggFn = useWatch({ control, name: `${namePrefix}aggFn` });
   const aggConditionLanguage = useWatch({
@@ -383,7 +356,7 @@ function ChartSeriesEditorComponent({
           <AggFnSelectControlled
             aggFnName={`${namePrefix}aggFn`}
             quantileLevelName={`${namePrefix}level`}
-            defaultValue={AGG_FNS[0].value}
+            defaultValue={AGG_FNS[0]?.value ?? 'avg'}
             control={control}
           />
         </div>
@@ -453,33 +426,14 @@ function ChartSeriesEditorComponent({
                       showHaving === showGroupBy ? 'span 3' : undefined,
                   }}
                 >
-                  {aggConditionLanguage === 'sql' ? (
-                    <SQLInlineEditorControlled
-                      tableConnection={tableConnection}
-                      control={control}
-                      name={`${namePrefix}aggCondition`}
-                      placeholder="SQL WHERE clause (ex. column = 'foo')"
-                      onLanguageChange={lang =>
-                        setValue(`${namePrefix}aggConditionLanguage`, lang)
-                      }
-                      additionalSuggestions={attributeSuggestions}
-                      language="sql"
-                      onSubmit={onSubmit}
-                    />
-                  ) : (
-                    <SearchInputV2
-                      tableConnection={tableConnection}
-                      control={control}
-                      name={`${namePrefix}aggCondition`}
-                      onLanguageChange={lang =>
-                        setValue(`${namePrefix}aggConditionLanguage`, lang)
-                      }
-                      language="lucene"
-                      placeholder="Search your events w/ Lucene ex. column:foo"
-                      onSubmit={onSubmit}
-                      additionalSuggestions={attributeSuggestions}
-                    />
-                  )}
+                  <SearchWhereInput
+                    tableConnection={tableConnection}
+                    control={control}
+                    name={`${namePrefix}aggCondition`}
+                    onSubmit={onSubmit}
+                    showLabel={false}
+                    additionalSuggestions={attributeSuggestions}
+                  />
                 </div>
               </>
             )}
@@ -550,20 +504,11 @@ const ChartSeriesEditor = ChartSeriesEditorComponent;
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
-    alert: ChartAlertBaseSchema.optional(),
+    alert: ChartAlertBaseSchema.superRefine(
+      validateAlertScheduleOffsetMinutes,
+    ).optional(),
   })
   .passthrough();
-
-export type SavedChartConfigWithSelectArray = Omit<
-  SavedChartConfig,
-  'select'
-> & {
-  select: Exclude<SavedChartConfig['select'], string>;
-};
-
-type SavedChartConfigWithSeries = SavedChartConfig & {
-  series: SavedChartConfigWithSelectArray['select'];
-};
 
 export default function EditTimeChartForm({
   dashboardId,
@@ -596,13 +541,8 @@ export default function EditTimeChartForm({
   'data-testid'?: string;
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
 }) {
-  // useFieldArray only supports array type fields, and select can be either a string or array.
-  // To solve for this, we maintain an extra form field called 'series' which is always an array.
-  const configWithSeries: SavedChartConfigWithSeries = useMemo(
-    () => ({
-      ...chartConfig,
-      series: Array.isArray(chartConfig.select) ? chartConfig.select : [],
-    }),
+  const formValue: ChartEditorFormState = useMemo(
+    () => convertSavedChartConfigToFormState(chartConfig),
     [chartConfig],
   );
 
@@ -613,10 +553,10 @@ export default function EditTimeChartForm({
     register,
     setError,
     clearErrors,
-    formState: { errors, isDirty },
-  } = useForm<SavedChartConfigWithSeries>({
-    defaultValues: configWithSeries,
-    values: configWithSeries,
+    formState: { errors, isDirty, dirtyFields },
+  } = useForm<ChartEditorFormState>({
+    defaultValues: formValue,
+    values: formValue,
     resolver: zodResolver(zSavedChartConfig),
   });
 
@@ -626,7 +566,7 @@ export default function EditTimeChartForm({
     remove: removeSeries,
     swap: swapSeries,
   } = useFieldArray({
-    control: control as Control<SavedChartConfigWithSeries>,
+    control,
     name: 'series',
   });
 
@@ -638,7 +578,6 @@ export default function EditTimeChartForm({
 
   const select = useWatch({ control, name: 'select' });
   const sourceId = useWatch({ control, name: 'source' });
-  const whereLanguage = useWatch({ control, name: 'whereLanguage' });
   const alert = useWatch({ control, name: 'alert' });
   const seriesReturnType = useWatch({ control, name: 'seriesReturnType' });
   const groupBy = useWatch({ control, name: 'groupBy' });
@@ -646,7 +585,25 @@ export default function EditTimeChartForm({
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
   const markdown = useWatch({ control, name: 'markdown' });
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
+  const alertScheduleOffsetMinutes = useWatch({
+    control,
+    name: 'alert.scheduleOffsetMinutes',
+  });
   const granularity = useWatch({ control, name: 'granularity' });
+  const maxAlertScheduleOffsetMinutes = alert?.interval
+    ? Math.max(intervalToMinutes(alert.interval) - 1, 0)
+    : 0;
+  const alertIntervalLabel = alert?.interval
+    ? TILE_ALERT_INTERVAL_OPTIONS[alert.interval]
+    : undefined;
+  const configType = useWatch({ control, name: 'configType' });
+
+  const chartConfigAlert = !isRawSqlSavedChartConfig(chartConfig)
+    ? chartConfig.alert
+    : undefined;
+
+  const isRawSqlInput =
+    configType === 'sql' && displayType === DisplayType.Table;
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -670,15 +627,20 @@ export default function EditTimeChartForm({
   }, [displayType]);
 
   useEffect(() => {
-    if (displayType !== DisplayType.Line) {
+    if (
+      displayType !== DisplayType.Line &&
+      displayType !== DisplayType.Number
+    ) {
       setValue('alert', undefined);
     }
   }, [displayType, setValue]);
 
   const showGeneratedSql = ['table', 'time', 'number', 'pie'].includes(
     activeTab,
-  ); // Whether to show the generated SQL preview
-  const showSampleEvents = tableSource?.kind !== SourceKind.Metric;
+  );
+
+  const showSampleEvents =
+    tableSource?.kind !== SourceKind.Metric && !isRawSqlInput;
 
   const [
     alignDateRangeToGranularity,
@@ -726,7 +688,7 @@ export default function EditTimeChartForm({
   );
 
   const setQueriedConfigAndSource = useCallback(
-    (config: ChartConfigWithDateRange, source: TSource) => {
+    (config: ChartConfigWithDateRange, source: TSource | undefined) => {
       setQueriedConfig(config);
       setQueriedSource(source);
     },
@@ -734,7 +696,7 @@ export default function EditTimeChartForm({
   );
 
   const dbTimeChartConfig = useMemo(() => {
-    if (!queriedConfig) {
+    if (!queriedConfig || !isBuilderChartConfig(queriedConfig)) {
       return undefined;
     }
 
@@ -754,44 +716,55 @@ export default function EditTimeChartForm({
 
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
-      // Validate metric sources have metric names selected
-      if (validateMetricNames(tableSource, form.series, setError)) {
+      const isRawSqlChart =
+        form.configType === 'sql' && form.displayType === DisplayType.Table;
+
+      if (
+        !isRawSqlChart &&
+        validateMetricNames(
+          tableSource,
+          form.series,
+          form.displayType,
+          setError,
+        )
+      ) {
         return;
       }
 
-      // Merge the series and select fields back together, and prevent the series field from being submitted
-      const config = {
-        ...omit(form, ['series']),
-        select:
-          form.displayType === DisplayType.Search ? form.select : form.series,
-      };
+      const savedConfig = convertFormStateToSavedChartConfig(form, tableSource);
+      const queriedConfig = convertFormStateToChartConfig(
+        form,
+        dateRange,
+        tableSource,
+      );
 
-      setChartConfig?.(config);
-      if (tableSource != null) {
-        const isSelectEmpty = !config.select || config.select.length === 0; // select is string or array
-        const newConfig = {
-          ...config,
-          from: tableSource.from,
-          timestampValueExpression: tableSource.timestampValueExpression,
-          dateRange,
-          connection: tableSource.connection,
-          implicitColumnExpression: tableSource.implicitColumnExpression,
-          metricTables: tableSource.metricTables,
-          select: isSelectEmpty
-            ? tableSource.defaultTableSelectExpression || ''
-            : config.select,
-        };
+      if (savedConfig && queriedConfig) {
+        const normalizedSavedConfig = isRawSqlSavedChartConfig(savedConfig)
+          ? savedConfig
+          : {
+              ...savedConfig,
+              alert: normalizeNoOpAlertScheduleFields(
+                savedConfig.alert,
+                chartConfigAlert,
+                {
+                  preserveExplicitScheduleOffsetMinutes:
+                    dirtyFields.alert?.scheduleOffsetMinutes === true,
+                  preserveExplicitScheduleStartAt:
+                    dirtyFields.alert?.scheduleStartAt === true,
+                },
+              ),
+            };
+        setChartConfig?.(normalizedSavedConfig);
         setQueriedConfigAndSource(
-          // WARNING: DON'T JUST ASSIGN OBJECTS OR DO SPREAD OPERATOR STUFF WHEN
-          // YOUR STATE IS AN OBJECT. YOU'RE COPYING BY REFERENCE WHICH MIGHT
-          // ACCIDENTALLY CAUSE A useQuery SOMEWHERE TO FIRE A REQUEST EVERY TIME
-          // AN INPUT CHANGES. USE structuredClone TO PERFORM A DEEP COPY INSTEAD
-          structuredClone(normalizeChartConfig(newConfig, tableSource)),
-          tableSource,
+          queriedConfig,
+          isRawSqlChart ? undefined : tableSource,
         );
       }
     })();
   }, [
+    chartConfigAlert,
+    dirtyFields.alert?.scheduleOffsetMinutes,
+    dirtyFields.alert?.scheduleStartAt,
     handleSubmit,
     setChartConfig,
     setQueriedConfigAndSource,
@@ -810,7 +783,10 @@ export default function EditTimeChartForm({
 
   const tableSortState = useMemo(
     () =>
-      queriedConfig?.orderBy && typeof queriedConfig.orderBy === 'string'
+      queriedConfig != null &&
+      isBuilderChartConfig(queriedConfig) &&
+      queriedConfig.orderBy &&
+      typeof queriedConfig.orderBy === 'string'
         ? orderByStringToSortingState(queriedConfig.orderBy)
         : undefined,
     [queriedConfig],
@@ -823,38 +799,62 @@ export default function EditTimeChartForm({
   }, [onSubmit, submitRef]);
 
   const handleSave = useCallback(
-    (v: SavedChartConfigWithSeries) => {
-      if (tableSource != null) {
-        // Validate metric sources have metric names selected
-        if (validateMetricNames(tableSource, v.series, setError)) {
-          return;
-        }
+    (form: ChartEditorFormState) => {
+      const isRawSqlChart =
+        form.configType === 'sql' && form.displayType === DisplayType.Table;
 
-        // If the chart type is search, we need to ensure the select is a string
-        if (
-          displayType === DisplayType.Search &&
-          typeof v.select !== 'string'
-        ) {
-          v.select = '';
-        } else if (displayType !== DisplayType.Search) {
-          v.select = v.series;
-        }
-
-        const normalizedChartConfig = normalizeChartConfig(
-          // Avoid saving the series field. Series should be persisted in the select field.
-          omit(v, ['series']),
+      // Validate metric sources have metric names selected
+      if (
+        !isRawSqlChart &&
+        validateMetricNames(
           tableSource,
-        );
+          form.series,
+          form.displayType,
+          setError,
+        )
+      ) {
+        return;
+      }
 
-        onSave?.(normalizedChartConfig);
+      const savedChartConfig = convertFormStateToSavedChartConfig(
+        form,
+        tableSource,
+      );
+
+      if (savedChartConfig) {
+        const normalizedSavedConfig = isRawSqlSavedChartConfig(savedChartConfig)
+          ? savedChartConfig
+          : {
+              ...savedChartConfig,
+              alert: normalizeNoOpAlertScheduleFields(
+                savedChartConfig.alert,
+                chartConfigAlert,
+                {
+                  preserveExplicitScheduleOffsetMinutes:
+                    dirtyFields.alert?.scheduleOffsetMinutes === true,
+                  preserveExplicitScheduleStartAt:
+                    dirtyFields.alert?.scheduleStartAt === true,
+                },
+              ),
+            };
+
+        onSave?.(normalizedSavedConfig);
       }
     },
-    [onSave, displayType, tableSource, setError],
+    [
+      onSave,
+      tableSource,
+      setError,
+      chartConfigAlert,
+      dirtyFields.alert?.scheduleOffsetMinutes,
+      dirtyFields.alert?.scheduleStartAt,
+    ],
   );
 
   // Track previous values for detecting changes
   const prevGranularityRef = useRef(granularity);
   const prevDisplayTypeRef = useRef(displayType);
+  const prevConfigTypeRef = useRef(configType);
 
   useEffect(() => {
     // Emulate the granularity picker auto-searching similar to dashboards
@@ -865,19 +865,24 @@ export default function EditTimeChartForm({
   }, [granularity, onSubmit]);
 
   useEffect(() => {
-    if (displayType !== prevDisplayTypeRef.current) {
+    const displayTypeChanged = displayType !== prevDisplayTypeRef.current;
+    const configTypeChanged = configType !== prevConfigTypeRef.current;
+
+    if (displayTypeChanged || configTypeChanged) {
       prevDisplayTypeRef.current = displayType;
+      prevConfigTypeRef.current = configType;
 
       if (displayType === DisplayType.Search && typeof select !== 'string') {
         setValue('select', '');
         setValue('series', []);
       }
-      if (displayType !== DisplayType.Search && typeof select === 'string') {
+
+      if (displayType !== DisplayType.Search && !Array.isArray(select)) {
         const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
           {
             aggFn: 'count',
             aggCondition: '',
-            aggConditionLanguage: 'lucene',
+            aggConditionLanguage: getStoredLanguage() ?? 'lucene',
             valueExpression: '',
           },
         ];
@@ -885,9 +890,13 @@ export default function EditTimeChartForm({
         setValue('select', defaultSeries);
         setValue('series', defaultSeries);
       }
-      onSubmit();
+
+      // Don't auto-submit when config type changes, to avoid clearing form state (like source)
+      if (displayTypeChanged) {
+        onSubmit();
+      }
     }
-  }, [displayType, select, setValue, onSubmit]);
+  }, [displayType, select, setValue, onSubmit, configType]);
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
@@ -909,11 +918,17 @@ export default function EditTimeChartForm({
   // and explaining whether a MV can be used.
   const chartConfigForExplanations: ChartConfigWithOptTimestamp | undefined =
     useMemo(() => {
+      if (queriedConfig && isRawSqlChartConfig(queriedConfig))
+        return { ...queriedConfig, dateRange };
+
+      if (chartConfig && isRawSqlSavedChartConfig(chartConfig))
+        return { ...chartConfig, dateRange };
+
       const userHasSubmittedQuery = !!queriedConfig;
       const queriedSourceMatchesSelectedSource =
         queriedSource?.id === tableSource?.id;
       const urlParamsSourceMatchesSelectedSource =
-        chartConfig?.source === tableSource?.id;
+        chartConfig.source === tableSource?.id;
 
       const effectiveQueriedConfig =
         activeTab === 'time' ? dbTimeChartConfig : queriedConfig;
@@ -921,7 +936,7 @@ export default function EditTimeChartForm({
       const config =
         userHasSubmittedQuery && queriedSourceMatchesSelectedSource
           ? effectiveQueriedConfig
-          : chartConfig && urlParamsSourceMatchesSelectedSource
+          : chartConfig && urlParamsSourceMatchesSelectedSource && tableSource
             ? {
                 ...chartConfig,
                 dateRange,
@@ -931,7 +946,7 @@ export default function EditTimeChartForm({
               }
             : undefined;
 
-      if (!config) {
+      if (!config || isRawSqlChartConfig(config)) {
         return undefined;
       }
 
@@ -963,7 +978,10 @@ export default function EditTimeChartForm({
 
   const sampleEventsConfig = useMemo(
     () =>
-      tableSource != null && queriedConfig != null && queryReady
+      tableSource != null &&
+      queriedConfig != null &&
+      isBuilderChartConfig(queriedConfig) &&
+      queryReady
         ? {
             ...queriedConfig,
             orderBy: [
@@ -1021,7 +1039,13 @@ export default function EditTimeChartForm({
           control={control}
           name="displayType"
           render={({ field: { onChange, value } }) => (
-            <Tabs value={value} onChange={onChange} radius={'xs'} mb="md">
+            <Tabs
+              value={value}
+              onChange={onChange}
+              radius={'xs'}
+              mb="md"
+              data-testid="chart-type-input"
+            >
               <Tabs.List>
                 <Tabs.Tab
                   value={DisplayType.Line}
@@ -1070,11 +1094,27 @@ export default function EditTimeChartForm({
           <InputControlled
             name="name"
             control={control}
-            w="100%"
+            flex={1}
             type="text"
             placeholder="My Chart Name"
             data-testid="chart-name-input"
           />
+          {IS_SQL_CHARTS_ENABLED && displayType === DisplayType.Table && (
+            <Controller
+              control={control}
+              name="configType"
+              render={({ field: { onChange, value } }) => (
+                <SegmentedControl
+                  value={value ?? 'builder'}
+                  onChange={onChange}
+                  data={[
+                    { label: 'Builder', value: 'builder' },
+                    { label: 'SQL', value: 'sql' },
+                  ]}
+                />
+              )}
+            />
+          )}
         </Flex>
         <Divider my="md" />
         {activeTab === 'markdown' ? (
@@ -1098,9 +1138,15 @@ export default function EditTimeChartForm({
               />
             </Box>
           </div>
+        ) : isRawSqlInput ? (
+          <RawSqlChartEditor
+            control={control}
+            setValue={setValue}
+            onOpenDisplaySettings={openDisplaySettings}
+          />
         ) : (
           <>
-            <Flex mb="md" align="center" gap="sm" justify="space-between">
+            <Flex mb="md" align="center" justify="space-between">
               <Group>
                 <Text pe="md" size="sm">
                   Data Source
@@ -1115,14 +1161,18 @@ export default function EditTimeChartForm({
                   }
                 />
               </Group>
-              {tableSource && activeTab !== 'search' && (
-                <MVOptimizationIndicator
-                  source={tableSource}
-                  config={chartConfigForExplanations}
-                />
-              )}
+              <Group>
+                {tableSource &&
+                  activeTab !== 'search' &&
+                  chartConfigForExplanations &&
+                  isBuilderChartConfig(chartConfigForExplanations) && (
+                    <MVOptimizationIndicator
+                      source={tableSource}
+                      config={chartConfigForExplanations}
+                    />
+                  )}
+              </Group>
             </Flex>
-
             {displayType !== DisplayType.Search && Array.isArray(select) ? (
               <>
                 {fields.map((field, index) => (
@@ -1253,11 +1303,13 @@ export default function EditTimeChartForm({
                           checked={seriesReturnType === 'ratio'}
                         />
                       )}
-                    {displayType === DisplayType.Line &&
+                    {(displayType === DisplayType.Line ||
+                      displayType === DisplayType.Number) &&
                       dashboardId &&
                       !IS_LOCAL_MODE && (
                         <Button
                           variant="subtle"
+                          data-testid="alert-button"
                           size="sm"
                           color={alert ? 'red' : 'gray'}
                           onClick={() =>
@@ -1295,81 +1347,84 @@ export default function EditTimeChartForm({
                   onSubmit={onSubmit}
                   label="SELECT"
                 />
-                {whereLanguage === 'sql' ? (
-                  <SQLInlineEditorControlled
-                    tableConnection={tableConnection}
-                    control={control}
-                    name={`where`}
-                    placeholder="SQL WHERE clause (ex. column = 'foo')"
-                    onLanguageChange={lang => setValue('whereLanguage', lang)}
-                    language="sql"
-                    onSubmit={onSubmit}
-                  />
-                ) : (
-                  <SearchInputV2
-                    tableConnection={tableConnection}
-                    control={control}
-                    name="where"
-                    onLanguageChange={lang => setValue('whereLanguage', lang)}
-                    language="lucene"
-                    placeholder="Search your events w/ Lucene ex. column:foo"
-                    onSubmit={onSubmit}
-                  />
-                )}
+                <SearchWhereInput
+                  tableConnection={tableConnection}
+                  control={control}
+                  name="where"
+                  onSubmit={onSubmit}
+                  onLanguageChange={(lang: 'sql' | 'lucene') =>
+                    setValue('whereLanguage', lang)
+                  }
+                  showLabel={false}
+                />
               </Flex>
             )}
           </>
         )}
         {alert && (
           <Paper my="sm">
-            <Stack gap="xs">
+            <Stack gap="xs" data-testid="alert-details">
               <Paper px="md" py="sm" radius="xs">
-                <Group gap="xs" justify="space-between">
-                  <Group gap="xs">
-                    <Text size="sm" opacity={0.7}>
-                      Alert when the value
-                    </Text>
-                    <NativeSelect
-                      data={optionsToSelectData(
-                        TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
-                      )}
-                      size="xs"
-                      name={`alert.thresholdType`}
-                      control={control}
-                    />
-                    <NumberInput
-                      min={MINIMUM_THRESHOLD_VALUE}
-                      size="xs"
-                      w={80}
-                      control={control}
-                      name={`alert.threshold`}
-                    />
-                    over
-                    <NativeSelect
-                      data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
-                      size="xs"
-                      name={`alert.interval`}
-                      control={control}
-                    />
-                    <Text size="sm" opacity={0.7}>
-                      window via
-                    </Text>
-                    <NativeSelect
-                      data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-                      size="xs"
-                      name={`alert.channel.type`}
-                      control={control}
-                    />
-                  </Group>
-                  {(alert as any)?.createdBy && (
-                    <Text size="xs" opacity={0.6}>
-                      Created by{' '}
-                      {(alert as any).createdBy?.name ||
-                        (alert as any).createdBy?.email}
-                    </Text>
-                  )}
+                <Text size="xxs" opacity={0.5} mb={4}>
+                  Trigger
+                </Text>
+                <Group gap="xs">
+                  <Text size="sm" opacity={0.7}>
+                    Alert when the value
+                  </Text>
+                  <NativeSelect
+                    data={optionsToSelectData(
+                      TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
+                    )}
+                    size="xs"
+                    name={`alert.thresholdType`}
+                    control={control}
+                  />
+                  <NumberInput
+                    min={MINIMUM_THRESHOLD_VALUE}
+                    size="xs"
+                    w={80}
+                    control={control}
+                    name={`alert.threshold`}
+                  />
+                  over
+                  <NativeSelect
+                    data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
+                    size="xs"
+                    name={`alert.interval`}
+                    control={control}
+                  />
+                  <Text size="sm" opacity={0.7}>
+                    window via
+                  </Text>
+                  <NativeSelect
+                    data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                    size="xs"
+                    name={`alert.channel.type`}
+                    control={control}
+                  />
                 </Group>
-                <Text size="xxs" opacity={0.5} mb={4} mt="xs">
+                {alert?.createdBy && (
+                  <Text size="xs" opacity={0.6} mt="xs">
+                    Created by {alert.createdBy.name || alert.createdBy.email}
+                  </Text>
+                )}
+                <AlertScheduleFields
+                  control={control}
+                  setValue={setValue}
+                  scheduleOffsetName="alert.scheduleOffsetMinutes"
+                  scheduleStartAtName="alert.scheduleStartAt"
+                  scheduleOffsetMinutes={alertScheduleOffsetMinutes}
+                  maxScheduleOffsetMinutes={maxAlertScheduleOffsetMinutes}
+                  offsetWindowLabel={
+                    alertIntervalLabel
+                      ? `from each ${alertIntervalLabel} window`
+                      : 'from each alert window'
+                  }
+                />
+              </Paper>
+              <Paper px="md" py="sm" radius="xs">
+                <Text size="xxs" opacity={0.5} mb={4}>
                   Send to
                 </Text>
                 <AlertChannelForm
@@ -1405,7 +1460,7 @@ export default function EditTimeChartForm({
             )}
           </Flex>
           <Flex gap="sm" mb="sm" align="center" justify="end">
-            {activeTab === 'table' && (
+            {activeTab === 'table' && !isRawSqlInput && (
               <div style={{ width: 400 }}>
                 <SQLInlineEditorControlled
                   parentRef={parentRef}
@@ -1487,13 +1542,16 @@ export default function EditTimeChartForm({
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBTableChart
             config={queriedConfig}
-            getRowSearchLink={row =>
-              buildTableRowSearchUrl({
-                row,
-                source: tableSource,
-                config: queriedConfig,
-                dateRange: queriedConfig.dateRange,
-              })
+            getRowSearchLink={
+              isBuilderChartConfig(queriedConfig)
+                ? row =>
+                    buildTableRowSearchUrl({
+                      row,
+                      source: tableSource,
+                      config: queriedConfig,
+                      dateRange: queriedConfig.dateRange,
+                    })
+                : undefined
             }
             onSortingChange={onTableSortingChange}
             sort={tableSortState}
@@ -1526,24 +1584,31 @@ export default function EditTimeChartForm({
           />
         </div>
       )}
-      {queryReady && queriedConfig != null && activeTab === 'number' && (
-        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
-          <DBNumberChart
-            config={queriedConfig}
-            showMVOptimizationIndicator={false}
-          />
-        </div>
-      )}
+      {queryReady &&
+        queriedConfig != null &&
+        isBuilderChartConfig(queriedConfig) &&
+        activeTab === 'number' && (
+          <div
+            className="flex-grow-1 d-flex flex-column"
+            style={{ height: 400 }}
+          >
+            <DBNumberChart
+              config={queriedConfig}
+              showMVOptimizationIndicator={false}
+            />
+          </div>
+        )}
       {queryReady &&
         tableSource &&
         queriedConfig != null &&
+        isBuilderChartConfig(queriedConfig) &&
         activeTab === 'search' && (
           <div
             className="flex-grow-1 d-flex flex-column"
             style={{ height: 400 }}
           >
             <DBSqlRowTableWithSideBar
-              sourceId={sourceId}
+              sourceId={tableSource.id}
               config={{
                 ...queriedConfig,
                 orderBy: [
@@ -1590,13 +1655,13 @@ export default function EditTimeChartForm({
                   </Text>
                 </Accordion.Control>
                 <Accordion.Panel>
-                  {sampleEventsConfig != null && (
+                  {sampleEventsConfig != null && tableSource && (
                     <div
                       className="flex-grow-1 d-flex flex-column"
                       style={{ height: 400 }}
                     >
                       <DBSqlRowTableWithSideBar
-                        sourceId={sourceId}
+                        sourceId={tableSource.id}
                         config={sampleEventsConfig}
                         enabled={isSampleEventsOpen}
                         isLive={false}
