@@ -21,7 +21,6 @@ import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/util
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
-  isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -98,6 +97,7 @@ import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsStringEncoded } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { IS_LOCAL_MODE } from './config';
+import { useConnections } from './connection';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
 import DashboardFiltersModal from './DashboardFiltersModal';
@@ -733,6 +733,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   });
 
   const { data: sources } = useSources();
+  const { data: connections } = useConnections();
 
   const [highlightedTileId] = useQueryState('highlightedTileId');
   const tableConnections = useMemo(() => {
@@ -1294,6 +1295,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                           dashboard,
                           // TODO: fix this type issue
                           sources as TSourceUnion[],
+                          connections,
                         ),
                         dashboard?.name,
                       );
