@@ -270,7 +270,6 @@ export function PropertyComparisonChart({
         createPortal(
           <div
             ref={popoverRef}
-            className={styles.chartTooltip}
             style={{
               position: 'fixed',
               // Clamp horizontally so the popover stays within the viewport
@@ -293,6 +292,10 @@ export function PropertyComparisonChart({
               minWidth: 200,
               maxWidth: 320,
               boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+              backdropFilter: 'blur(8px)',
+              backgroundColor: 'var(--color-bg-surface)',
+              border: '1px solid var(--color-border)',
+              fontSize: 11,
             }}
           >
             <Text
