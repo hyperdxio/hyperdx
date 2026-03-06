@@ -287,7 +287,7 @@ export function PropertyComparisonChart({
                 clickedBar.clientY > 200
                   ? 'translate(-50%, -100%)'
                   : 'translate(-50%, 0)',
-              zIndex: 1000,
+              zIndex: 10000,
               borderRadius: 4,
               padding: '8px 12px',
               minWidth: 200,
