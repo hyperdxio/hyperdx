@@ -3,7 +3,6 @@ import {
   Control,
   Controller,
   FieldErrors,
-  FieldPath,
   useFieldArray,
   useForm,
   UseFormClearErrors,
@@ -31,6 +30,7 @@ import {
   SelectList,
   SourceKind,
   TSource,
+  validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Accordion,
@@ -107,6 +107,8 @@ import {
   DEFAULT_TILE_ALERT,
   extendDateRangeToInterval,
   intervalToGranularity,
+  intervalToMinutes,
+  normalizeNoOpAlertScheduleFields,
   TILE_ALERT_INTERVAL_OPTIONS,
   TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
 } from '@/utils/alerts';
@@ -122,10 +124,13 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
+  getSeriesFieldPath,
+  validateMetricNames,
 } from './ChartEditor/utils';
 import { ErrorBoundary } from './Error/ErrorBoundary';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 import { AggFnSelectControlled } from './AggFnSelect';
+import { AlertScheduleFields } from './AlertScheduleFields';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from './ChartDisplaySettingsDrawer';
@@ -159,40 +164,6 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) => {
 };
 
 const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
-
-// Helper function to safely construct field paths for series
-const getSeriesFieldPath = (
-  namePrefix: string,
-  fieldName: string,
-): FieldPath<ChartEditorFormState> => {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return `${namePrefix}${fieldName}` as FieldPath<ChartEditorFormState>;
-};
-
-// Helper function to validate metric names for metric sources
-const validateMetricNames = (
-  tableSource: TSource | undefined,
-  series: SavedChartConfigWithSelectArray['select'] | undefined,
-  setError: (
-    name: FieldPath<ChartEditorFormState>,
-    error: { type: string; message: string },
-  ) => void,
-): boolean => {
-  if (tableSource?.kind === SourceKind.Metric && Array.isArray(series)) {
-    let hasValidationError = false;
-    series.forEach((s, index) => {
-      if (s.metricType && !s.metricName) {
-        setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
-          type: 'manual',
-          message: 'Please select a metric name',
-        });
-        hasValidationError = true;
-      }
-    });
-    return hasValidationError;
-  }
-  return false;
-};
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -385,7 +356,7 @@ function ChartSeriesEditorComponent({
           <AggFnSelectControlled
             aggFnName={`${namePrefix}aggFn`}
             quantileLevelName={`${namePrefix}level`}
-            defaultValue={AGG_FNS[0].value}
+            defaultValue={AGG_FNS[0]?.value ?? 'avg'}
             control={control}
           />
         </div>
@@ -533,7 +504,9 @@ const ChartSeriesEditor = ChartSeriesEditorComponent;
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
-    alert: ChartAlertBaseSchema.optional(),
+    alert: ChartAlertBaseSchema.superRefine(
+      validateAlertScheduleOffsetMinutes,
+    ).optional(),
   })
   .passthrough();
 
@@ -580,7 +553,7 @@ export default function EditTimeChartForm({
     register,
     setError,
     clearErrors,
-    formState: { errors, isDirty },
+    formState: { errors, isDirty, dirtyFields },
   } = useForm<ChartEditorFormState>({
     defaultValues: formValue,
     values: formValue,
@@ -612,8 +585,22 @@ export default function EditTimeChartForm({
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
   const markdown = useWatch({ control, name: 'markdown' });
   const alertChannelType = useWatch({ control, name: 'alert.channel.type' });
+  const alertScheduleOffsetMinutes = useWatch({
+    control,
+    name: 'alert.scheduleOffsetMinutes',
+  });
   const granularity = useWatch({ control, name: 'granularity' });
+  const maxAlertScheduleOffsetMinutes = alert?.interval
+    ? Math.max(intervalToMinutes(alert.interval) - 1, 0)
+    : 0;
+  const alertIntervalLabel = alert?.interval
+    ? TILE_ALERT_INTERVAL_OPTIONS[alert.interval]
+    : undefined;
   const configType = useWatch({ control, name: 'configType' });
+
+  const chartConfigAlert = !isRawSqlSavedChartConfig(chartConfig)
+    ? chartConfig.alert
+    : undefined;
 
   const isRawSqlInput =
     configType === 'sql' && displayType === DisplayType.Table;
@@ -734,7 +721,12 @@ export default function EditTimeChartForm({
 
       if (
         !isRawSqlChart &&
-        validateMetricNames(tableSource, form.series, setError)
+        validateMetricNames(
+          tableSource,
+          form.series,
+          form.displayType,
+          setError,
+        )
       ) {
         return;
       }
@@ -747,7 +739,22 @@ export default function EditTimeChartForm({
       );
 
       if (savedConfig && queriedConfig) {
-        setChartConfig?.(savedConfig);
+        const normalizedSavedConfig = isRawSqlSavedChartConfig(savedConfig)
+          ? savedConfig
+          : {
+              ...savedConfig,
+              alert: normalizeNoOpAlertScheduleFields(
+                savedConfig.alert,
+                chartConfigAlert,
+                {
+                  preserveExplicitScheduleOffsetMinutes:
+                    dirtyFields.alert?.scheduleOffsetMinutes === true,
+                  preserveExplicitScheduleStartAt:
+                    dirtyFields.alert?.scheduleStartAt === true,
+                },
+              ),
+            };
+        setChartConfig?.(normalizedSavedConfig);
         setQueriedConfigAndSource(
           queriedConfig,
           isRawSqlChart ? undefined : tableSource,
@@ -755,6 +762,9 @@ export default function EditTimeChartForm({
       }
     })();
   }, [
+    chartConfigAlert,
+    dirtyFields.alert?.scheduleOffsetMinutes,
+    dirtyFields.alert?.scheduleStartAt,
     handleSubmit,
     setChartConfig,
     setQueriedConfigAndSource,
@@ -796,7 +806,12 @@ export default function EditTimeChartForm({
       // Validate metric sources have metric names selected
       if (
         !isRawSqlChart &&
-        validateMetricNames(tableSource, form.series, setError)
+        validateMetricNames(
+          tableSource,
+          form.series,
+          form.displayType,
+          setError,
+        )
       ) {
         return;
       }
@@ -806,9 +821,34 @@ export default function EditTimeChartForm({
         tableSource,
       );
 
-      if (savedChartConfig) onSave?.(savedChartConfig);
+      if (savedChartConfig) {
+        const normalizedSavedConfig = isRawSqlSavedChartConfig(savedChartConfig)
+          ? savedChartConfig
+          : {
+              ...savedChartConfig,
+              alert: normalizeNoOpAlertScheduleFields(
+                savedChartConfig.alert,
+                chartConfigAlert,
+                {
+                  preserveExplicitScheduleOffsetMinutes:
+                    dirtyFields.alert?.scheduleOffsetMinutes === true,
+                  preserveExplicitScheduleStartAt:
+                    dirtyFields.alert?.scheduleStartAt === true,
+                },
+              ),
+            };
+
+        onSave?.(normalizedSavedConfig);
+      }
     },
-    [onSave, tableSource, setError],
+    [
+      onSave,
+      tableSource,
+      setError,
+      chartConfigAlert,
+      dirtyFields.alert?.scheduleOffsetMinutes,
+      dirtyFields.alert?.scheduleStartAt,
+    ],
   );
 
   // Track previous values for detecting changes
@@ -825,10 +865,10 @@ export default function EditTimeChartForm({
   }, [granularity, onSubmit]);
 
   useEffect(() => {
-    if (
-      displayType !== prevDisplayTypeRef.current ||
-      configType !== prevConfigTypeRef.current
-    ) {
+    const displayTypeChanged = displayType !== prevDisplayTypeRef.current;
+    const configTypeChanged = configType !== prevConfigTypeRef.current;
+
+    if (displayTypeChanged || configTypeChanged) {
       prevDisplayTypeRef.current = displayType;
       prevConfigTypeRef.current = configType;
 
@@ -836,6 +876,7 @@ export default function EditTimeChartForm({
         setValue('select', '');
         setValue('series', []);
       }
+
       if (displayType !== DisplayType.Search && !Array.isArray(select)) {
         const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
           {
@@ -849,7 +890,11 @@ export default function EditTimeChartForm({
         setValue('select', defaultSeries);
         setValue('series', defaultSeries);
       }
-      onSubmit();
+
+      // Don't auto-submit when config type changes, to avoid clearing form state (like source)
+      if (displayTypeChanged) {
+        onSubmit();
+      }
     }
   }, [displayType, select, setValue, onSubmit, configType]);
 
@@ -1096,6 +1141,7 @@ export default function EditTimeChartForm({
         ) : isRawSqlInput ? (
           <RawSqlChartEditor
             control={control}
+            setValue={setValue}
             onOpenDisplaySettings={openDisplaySettings}
           />
         ) : (
@@ -1317,54 +1363,68 @@ export default function EditTimeChartForm({
         )}
         {alert && (
           <Paper my="sm">
-            <Stack gap="xs">
-              <Paper px="md" py="sm" radius="xs" data-testid="alert-details">
-                <Group gap="xs" justify="space-between">
-                  <Group gap="xs">
-                    <Text size="sm" opacity={0.7}>
-                      Alert when the value
-                    </Text>
-                    <NativeSelect
-                      data={optionsToSelectData(
-                        TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
-                      )}
-                      size="xs"
-                      name={`alert.thresholdType`}
-                      control={control}
-                    />
-                    <NumberInput
-                      min={MINIMUM_THRESHOLD_VALUE}
-                      size="xs"
-                      w={80}
-                      control={control}
-                      name={`alert.threshold`}
-                    />
-                    over
-                    <NativeSelect
-                      data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
-                      size="xs"
-                      name={`alert.interval`}
-                      control={control}
-                    />
-                    <Text size="sm" opacity={0.7}>
-                      window via
-                    </Text>
-                    <NativeSelect
-                      data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
-                      size="xs"
-                      name={`alert.channel.type`}
-                      control={control}
-                    />
-                  </Group>
-                  {(alert as any)?.createdBy && (
-                    <Text size="xs" opacity={0.6}>
-                      Created by{' '}
-                      {(alert as any).createdBy?.name ||
-                        (alert as any).createdBy?.email}
-                    </Text>
-                  )}
+            <Stack gap="xs" data-testid="alert-details">
+              <Paper px="md" py="sm" radius="xs">
+                <Text size="xxs" opacity={0.5} mb={4}>
+                  Trigger
+                </Text>
+                <Group gap="xs">
+                  <Text size="sm" opacity={0.7}>
+                    Alert when the value
+                  </Text>
+                  <NativeSelect
+                    data={optionsToSelectData(
+                      TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
+                    )}
+                    size="xs"
+                    name={`alert.thresholdType`}
+                    control={control}
+                  />
+                  <NumberInput
+                    min={MINIMUM_THRESHOLD_VALUE}
+                    size="xs"
+                    w={80}
+                    control={control}
+                    name={`alert.threshold`}
+                  />
+                  over
+                  <NativeSelect
+                    data={optionsToSelectData(TILE_ALERT_INTERVAL_OPTIONS)}
+                    size="xs"
+                    name={`alert.interval`}
+                    control={control}
+                  />
+                  <Text size="sm" opacity={0.7}>
+                    window via
+                  </Text>
+                  <NativeSelect
+                    data={optionsToSelectData(ALERT_CHANNEL_OPTIONS)}
+                    size="xs"
+                    name={`alert.channel.type`}
+                    control={control}
+                  />
                 </Group>
-                <Text size="xxs" opacity={0.5} mb={4} mt="xs">
+                {alert?.createdBy && (
+                  <Text size="xs" opacity={0.6} mt="xs">
+                    Created by {alert.createdBy.name || alert.createdBy.email}
+                  </Text>
+                )}
+                <AlertScheduleFields
+                  control={control}
+                  setValue={setValue}
+                  scheduleOffsetName="alert.scheduleOffsetMinutes"
+                  scheduleStartAtName="alert.scheduleStartAt"
+                  scheduleOffsetMinutes={alertScheduleOffsetMinutes}
+                  maxScheduleOffsetMinutes={maxAlertScheduleOffsetMinutes}
+                  offsetWindowLabel={
+                    alertIntervalLabel
+                      ? `from each ${alertIntervalLabel} window`
+                      : 'from each alert window'
+                  }
+                />
+              </Paper>
+              <Paper px="md" py="sm" radius="xs">
+                <Text size="xxs" opacity={0.5} mb={4}>
                   Send to
                 </Text>
                 <AlertChannelForm

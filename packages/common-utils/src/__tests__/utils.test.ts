@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { isBuilderSavedChartConfig } from '@/guards';
 import {
   BuilderChartConfigWithDateRange,
+  Connection,
   DashboardSchema,
   MetricsDataType,
   SourceKind,
@@ -749,6 +750,96 @@ describe('utils', () => {
       expect((selectList as any[])[0]).toMatchObject({
         aggFn: 'quantile',
         level: 0.95,
+      });
+    });
+
+    it('should convert connection IDs to names for RawSQL tiles', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'SQL Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'SQL Tile',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 1',
+              connection: 'conn1',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+          {
+            id: 'tile2',
+            config: {
+              name: 'Another SQL Tile',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 2',
+              connection: 'conn2',
+            },
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const connections: Connection[] = [
+        {
+          id: 'conn1',
+          name: 'Production DB',
+          host: 'http://localhost:8123',
+          username: 'default',
+        },
+        {
+          id: 'conn2',
+          name: 'Staging DB',
+          host: 'http://localhost:8124',
+          username: 'default',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(dashboard, [], connections);
+      expect(template.tiles[0].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Production DB',
+      });
+      expect(template.tiles[1].config).toMatchObject({
+        configType: 'sql',
+        connection: 'Staging DB',
+      });
+    });
+
+    it('should fall back to empty string for unknown connection IDs in RawSQL tiles', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'SQL Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'SQL Tile',
+              configType: 'sql',
+              sqlTemplate: 'SELECT 1',
+              connection: 'unknown-conn',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, [], []);
+      expect(template.tiles[0].config).toMatchObject({
+        configType: 'sql',
+        connection: '',
       });
     });
   });

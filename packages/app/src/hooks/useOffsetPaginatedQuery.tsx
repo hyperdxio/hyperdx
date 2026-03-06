@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
 import ms from 'ms';
-import type { ResponseJSON, Row } from '@hyperdx/common-utils/dist/clickhouse';
+import type {
+  ClickHouseSettings,
+  ResponseJSON,
+  Row,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChSql,
   ClickHouseQueryError,
@@ -29,6 +33,7 @@ import {
 
 import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
+import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
@@ -76,7 +81,6 @@ type QueryMeta = {
   metadata: Metadata;
   optimizedConfig?: ChartConfigWithOptTimestamp;
   source: TSource | undefined;
-  readonly: boolean;
 };
 
 // Get time window from page param
@@ -154,14 +158,8 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     throw new Error('Query missing client meta');
   }
 
-  const {
-    queryClient,
-    metadata,
-    hasPreviousQueries,
-    optimizedConfig,
-    source,
-    readonly,
-  } = meta as QueryMeta;
+  const { queryClient, metadata, hasPreviousQueries, optimizedConfig, source } =
+    meta as QueryMeta;
 
   // Only stream incrementally if this is a fresh query with no previous
   // response or if it's a paginated query
@@ -211,8 +209,28 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     setTimeout(() => abortController.abort(), queryTimeout * 1000);
   }
 
-  // Readonly = 2 means the query is readonly but can still specify query settings.
-  const clickHouseSettings = readonly ? { readonly: '2' } : {};
+  const clickHouseSettings: ClickHouseSettings = {};
+  if (isRawSqlChartConfig(config)) {
+    // Readonly = 2 means the query is readonly but can still specify query settings.
+    clickHouseSettings.readonly = '2';
+
+    const existingMaxResultRowsSetting = await metadata.getSetting({
+      settingName: 'max_result_rows',
+      connectionId: config.connection,
+    });
+
+    const maxResultRows =
+      existingMaxResultRowsSetting != null &&
+      Number(existingMaxResultRowsSetting) > 0
+        ? Math.min(Number(existingMaxResultRowsSetting), MAX_TABLE_ROWS)
+        : MAX_TABLE_ROWS;
+
+    // result_overflow_mode=break will prevent an error when the result set exceeds max_result_rows,
+    // and instead just return the first max_result_rows rows.
+    clickHouseSettings.max_result_rows = String(maxResultRows);
+    clickHouseSettings.result_overflow_mode = 'break';
+  }
+
   const resultSet =
     await clickhouseClient.query<'JSONCompactEachRowWithNamesAndTypes'>({
       query: query.sql,
@@ -466,8 +484,6 @@ export default function useOffsetPaginatedQuery(
       metadata,
       optimizedConfig: mvOptimizationData?.optimizedConfig,
       source,
-      // Additional readonly protection when the user is running a raw SQL query
-      readonly: isRawSqlChartConfig(config),
     } satisfies QueryMeta,
     queryFn,
     gcTime: isLive ? ms('30s') : ms('5m'), // more aggressive gc for live data, since it can end up holding lots of data
