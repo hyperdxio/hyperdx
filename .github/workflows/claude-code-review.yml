@@ -36,6 +36,9 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
+      - name: Remove project MCP config (not available in CI)
+        run: rm -f .mcp.json
+
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1.0.66
