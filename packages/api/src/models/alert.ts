@@ -1,3 +1,4 @@
+import { ALERT_INTERVAL_TO_MINUTES } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 
 import type { ObjectId } from '.';
@@ -44,6 +45,8 @@ export interface IAlert {
   id: string;
   channel: AlertChannel;
   interval: AlertInterval;
+  scheduleOffsetMinutes?: number;
+  scheduleStartAt?: Date | null;
   source?: AlertSource;
   state: AlertState;
   team: ObjectId;
@@ -87,6 +90,29 @@ const AlertSchema = new Schema<IAlert>(
     interval: {
       type: String,
       required: true,
+    },
+    scheduleOffsetMinutes: {
+      type: Number,
+      min: 0,
+      // Maximum offset for daily windows (24h - 1 minute).
+      max: 1439,
+      validate: {
+        validator: function (this: IAlert, value: number | undefined) {
+          if (value == null) {
+            return true;
+          }
+
+          const intervalMinutes = ALERT_INTERVAL_TO_MINUTES[this.interval];
+          return intervalMinutes == null || value < intervalMinutes;
+        },
+        message:
+          'scheduleOffsetMinutes must be less than the alert interval in minutes',
+      },
+      required: false,
+    },
+    scheduleStartAt: {
+      type: Date,
+      required: false,
     },
     channel: Schema.Types.Mixed, // slack, email, etc
     state: {
