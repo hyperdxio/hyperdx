@@ -941,8 +941,8 @@ function OrderByFormRow({
   return (
     <>
       <FormRow
-        label="Order By"
-        helpText="Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default."
+        label="Default Order By"
+        helpText="Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default. (This can be customized per search later)"
       >
         <Flex align="center" gap="sm">
           <Box flex={1}>
