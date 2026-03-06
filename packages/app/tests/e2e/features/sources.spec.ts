@@ -178,55 +178,53 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     async ({ page }) => {
       const API_URL = getApiUrl();
       const logSources = await getSources(page, 'log');
-      expect(logSources.length).toBeGreaterThan(0);
+      const source = logSources.find(
+        (s: any) => s.name === DEFAULT_LOGS_SOURCE_NAME,
+      );
+      expect(source).toBeDefined();
 
-      const source = logSources[0];
       const sourceId = source._id;
       const customOrderBy = 'Timestamp ASC';
 
-      await test.step('Set custom orderByExpression on the source', async () => {
-        const updateResponse = await page.request.put(
-          `${API_URL}/sources/${sourceId}`,
-          {
-            data: {
-              ...source,
-              id: sourceId,
-              orderByExpression: customOrderBy,
+      try {
+        await test.step('Set custom orderByExpression on the source', async () => {
+          const updateResponse = await page.request.put(
+            `${API_URL}/sources/${sourceId}`,
+            {
+              data: {
+                ...source,
+                id: sourceId,
+                orderByExpression: customOrderBy,
+              },
             },
+          );
+          expect(updateResponse.ok()).toBeTruthy();
+        });
+
+        await test.step('Verify orderByExpression is persisted', async () => {
+          const updatedSources = await getSources(page, 'log');
+          const updatedSource = updatedSources.find(
+            (s: any) => s._id === sourceId,
+          );
+          expect(updatedSource).toBeDefined();
+          expect(updatedSource.orderByExpression).toBe(customOrderBy);
+        });
+
+        await test.step('Verify search results load with custom ORDER BY', async () => {
+          await searchPage.goto();
+          await searchPage.selectSource(source.name);
+          await searchPage.submitEmptySearch();
+          await expect(searchPage.table.firstRow).toBeVisible();
+        });
+      } finally {
+        await page.request.put(`${API_URL}/sources/${sourceId}`, {
+          data: {
+            ...source,
+            id: sourceId,
+            orderByExpression: '',
           },
-        );
-        expect(updateResponse.ok()).toBeTruthy();
-      });
-
-      await test.step('Verify orderByExpression is persisted', async () => {
-        const updatedSources = await getSources(page, 'log');
-        const updatedSource = updatedSources.find(
-          (s: any) => s._id === sourceId,
-        );
-        expect(updatedSource).toBeDefined();
-        expect(updatedSource.orderByExpression).toBe(customOrderBy);
-      });
-
-      await test.step('Verify search results load with custom ORDER BY', async () => {
-        await searchPage.goto();
-        await searchPage.selectSource(source.name);
-        await searchPage.submitEmptySearch();
-        await expect(searchPage.table.firstRow).toBeVisible();
-      });
-
-      await test.step('Clean up: reset orderByExpression', async () => {
-        const resetResponse = await page.request.put(
-          `${API_URL}/sources/${sourceId}`,
-          {
-            data: {
-              ...source,
-              id: sourceId,
-              orderByExpression: '',
-            },
-          },
-        );
-        expect(resetResponse.ok()).toBeTruthy();
-      });
+        });
+      }
     },
   );
 });
