@@ -1,4 +1,5 @@
 import { omit, pick } from 'lodash';
+import { FieldPath } from 'react-hook-form';
 import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -16,7 +17,7 @@ import {
 
 import { getStoredLanguage } from '../SearchInput';
 
-import { ChartEditorFormState } from './types';
+import { ChartEditorFormState, SavedChartConfigWithSelectArray } from './types';
 
 function normalizeChartConfig<
   C extends Pick<
@@ -146,3 +147,42 @@ export function convertSavedChartConfigToFormState(
         : [],
   };
 }
+
+// Helper function to safely construct field paths for series
+export const getSeriesFieldPath = (
+  namePrefix: string,
+  fieldName: string,
+): FieldPath<ChartEditorFormState> => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return `${namePrefix}${fieldName}` as FieldPath<ChartEditorFormState>;
+};
+
+// Helper function to validate metric names for metric sources
+export const validateMetricNames = (
+  tableSource: TSource | undefined,
+  series: SavedChartConfigWithSelectArray['select'] | undefined,
+  displayType: DisplayType | undefined,
+  setError: (
+    name: FieldPath<ChartEditorFormState>,
+    error: { type: string; message: string },
+  ) => void,
+): boolean => {
+  if (
+    tableSource?.kind === SourceKind.Metric &&
+    Array.isArray(series) &&
+    displayType !== DisplayType.Markdown
+  ) {
+    let hasValidationError = false;
+    series.forEach((s, index) => {
+      if (s.metricType && !s.metricName) {
+        setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
+          type: 'manual',
+          message: 'Please select a metric name',
+        });
+        hasValidationError = true;
+      }
+    });
+    return hasValidationError;
+  }
+  return false;
+};

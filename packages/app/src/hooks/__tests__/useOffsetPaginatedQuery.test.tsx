@@ -31,6 +31,19 @@ jest.mock('@hyperdx/app/src/metadata', () => ({
   getMetadata: jest.fn(),
 }));
 
+// Mock useMetadataWithSettings
+jest.mock('@/hooks/useMetadata', () => ({
+  useMetadataWithSettings: jest.fn(),
+}));
+
+// Mock useSource
+jest.mock('@/source', () => ({
+  useSource: jest.fn().mockReturnValue({
+    data: undefined,
+    isLoading: false,
+  }),
+}));
+
 // Mock the useMVOptimizationExplanation hook
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
   useMVOptimizationExplanation: jest.fn().mockReturnValue({
@@ -51,6 +64,7 @@ import { MVOptimizationExplanation } from '@hyperdx/common-utils/dist/core/mater
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 
+import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import {
   MVOptimizationExplanationResult,
   useMVOptimizationExplanation,
@@ -88,6 +102,7 @@ describe('useOffsetPaginatedQuery', () => {
   let mockClickhouseClient: any;
   let mockStream: any;
   let mockReader: any;
+  let mockMetadata: { getSetting: jest.Mock };
 
   beforeEach(() => {
     // Reset mocks
@@ -135,6 +150,12 @@ describe('useOffsetPaginatedQuery', () => {
       sql: 'SELECT * FROM traces',
       params: {},
     });
+
+    // Mock metadata with getSetting returning null by default
+    mockMetadata = {
+      getSetting: jest.fn().mockResolvedValue(null),
+    };
+    jest.mocked(useMetadataWithSettings).mockReturnValue(mockMetadata as any);
   });
 
   describe('Time Window Generation', () => {
@@ -812,6 +833,146 @@ describe('useOffsetPaginatedQuery', () => {
 
       // Pagination is disabled for raw SQL
       expect(result.current.hasNextPage).toBe(false);
+    });
+  });
+
+  describe('ClickHouse Settings (readonly and max_result_rows)', () => {
+    const rawSqlConfig = {
+      configType: 'sql' as const,
+      sqlTemplate: 'SELECT status, count() FROM logs GROUP BY status',
+      connection: 'conn-1',
+      displayType: undefined,
+      dateRange: [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-02T00:00:00Z'),
+      ] as [Date, Date],
+    };
+
+    const mockRawSqlRead = () => {
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['status', 'count()'] },
+            { json: () => ['String', 'UInt64'] },
+            { json: () => ['error', 42] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+    };
+
+    it('should set readonly=2, result_overflow_mode=break, and max_result_rows=MAX_TABLE_ROWS when no existing setting', async () => {
+      mockMetadata.getSetting.mockResolvedValue(null);
+      mockRawSqlRead();
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.readonly).toBe('2');
+      expect(clickhouseSettings.max_result_rows).toBe('10000');
+      expect(clickhouseSettings.result_overflow_mode).toBe('break');
+    });
+
+    it('should use MAX_TABLE_ROWS when existingMaxResultRowsSetting is 0', async () => {
+      mockMetadata.getSetting.mockResolvedValue('0');
+      mockRawSqlRead();
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.max_result_rows).toBe('10000');
+    });
+
+    it('should use existingMaxResultRowsSetting when it is less than MAX_TABLE_ROWS', async () => {
+      mockMetadata.getSetting.mockResolvedValue('5000');
+      mockRawSqlRead();
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.max_result_rows).toBe('5000');
+    });
+
+    it('should cap max_result_rows at MAX_TABLE_ROWS when existingMaxResultRowsSetting exceeds it', async () => {
+      mockMetadata.getSetting.mockResolvedValue('50000');
+      mockRawSqlRead();
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.max_result_rows).toBe('10000');
+    });
+
+    it('should query getSetting with the correct settingName and connectionId', async () => {
+      mockRawSqlRead();
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(rawSqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockMetadata.getSetting).toHaveBeenCalledWith({
+        settingName: 'max_result_rows',
+        connectionId: 'conn-1',
+      });
+    });
+
+    it('should not set readonly or max_result_rows for builder configs', async () => {
+      const config = createMockChartConfig();
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['timestamp', 'message'] },
+            { json: () => ['DateTime', 'String'] },
+            { json: () => ['2024-01-01T01:00:00Z', 'test log'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+      const clickhouseSettings =
+        mockClickhouseClient.query.mock.calls[0][0].clickhouse_settings;
+      expect(clickhouseSettings.readonly).toBeUndefined();
+      expect(clickhouseSettings.max_result_rows).toBeUndefined();
+      expect(clickhouseSettings.result_overflow_mode).toBeUndefined();
+
+      // getSetting should not be called for builder configs
+      expect(mockMetadata.getSetting).not.toHaveBeenCalled();
     });
   });
 

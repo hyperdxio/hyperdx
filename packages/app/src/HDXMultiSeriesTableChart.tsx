@@ -6,10 +6,13 @@ import { IconDownload, IconTextWrap } from '@tabler/icons-react';
 import {
   flexRender,
   getCoreRowModel,
+  getSortedRowModel,
   Getter,
   Row,
   Row as TableRow,
+  SortingFnOption,
   SortingState,
+  TableOptions,
   useReactTable,
 } from '@tanstack/react-table';
 import { ColumnDef } from '@tanstack/react-table';
@@ -25,12 +28,16 @@ import { formatNumber } from './utils';
 
 export type TableVariant = 'default' | 'muted';
 
+// Arbitrary limit to prevent OOM crashes for very large result sets. Most result sets should be paginated anyway.
+export const MAX_TABLE_ROWS = 10_000;
+
 export const Table = ({
   data,
   groupColumnName,
   columns,
   getRowSearchLink,
   tableBottom,
+  enableClientSideSorting = false,
   sorting,
   onSortingChange,
   variant = 'default',
@@ -44,10 +51,12 @@ export const Table = ({
     numberFormat?: NumberFormat;
     columnWidthPercent?: number;
     visible?: boolean;
+    sortingFn?: SortingFnOption<any>;
   }[];
   groupColumnName?: string;
   getRowSearchLink?: (row: any) => string | null;
   tableBottom?: React.ReactNode;
+  enableClientSideSorting?: boolean;
   sorting: SortingState;
   onSortingChange: (sorting: SortingState) => void;
   variant?: TableVariant;
@@ -56,6 +65,14 @@ export const Table = ({
   const MIN_COLUMN_WIDTH_PX = 100;
   //we need a reference to the scrolling element for logic down below
   const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  const truncatedData = useMemo(() => {
+    if (data.length > MAX_TABLE_ROWS) {
+      return data.slice(0, MAX_TABLE_ROWS);
+    }
+    return data;
+  }, [data]);
+  const isTruncated = truncatedData.length === MAX_TABLE_ROWS;
 
   const tableWidth = tableContainerRef.current?.clientWidth;
   const numColumns = columns.filter(c => c.visible !== false).length + 1;
@@ -92,95 +109,120 @@ export const Table = ({
       .filter(c => c.visible !== false)
       .map(
         (
-          { id, dataKey, displayName, numberFormat, columnWidthPercent },
+          {
+            id,
+            dataKey,
+            displayName,
+            numberFormat,
+            columnWidthPercent,
+            sortingFn,
+          },
           i,
-        ) => ({
-          id: id,
-          accessorKey: dataKey,
-          header: displayName,
-          accessorFn: (row: any) => row[dataKey],
-          cell: ({
-            getValue,
-            row,
-          }: {
-            getValue: Getter<number>;
-            row: Row<any>;
-          }) => {
-            const value = getValue();
-            let formattedValue: string | number | null = value ?? null;
-            if (numberFormat) {
-              formattedValue = formatNumber(value, numberFormat);
-            }
-            if (getRowSearchLink == null) {
-              return formattedValue;
-            }
-            const link = getRowSearchLink(row.original);
+        ) =>
+          ({
+            id: id,
+            accessorKey: dataKey,
+            header: displayName,
+            accessorFn: (row: any) => row[dataKey],
+            sortingFn,
+            cell: ({
+              getValue,
+              row,
+            }: {
+              getValue: Getter<number>;
+              row: Row<any>;
+            }) => {
+              const value = getValue();
+              let formattedValue: string | number | null = value ?? null;
 
-            if (!link) {
+              // Table cannot accept values which are objects or arrays, so we need to stringify them
+              if (typeof value !== 'string' && typeof value !== 'number') {
+                formattedValue = JSON.stringify(value);
+              } else if (numberFormat) {
+                formattedValue = formatNumber(value, numberFormat);
+              }
+
+              if (getRowSearchLink == null) {
+                return formattedValue;
+              }
+              const link = getRowSearchLink(row.original);
+
+              if (!link) {
+                return (
+                  <div
+                    className={cx('align-top overflow-hidden py-1 pe-3', {
+                      'text-break': wrapLinesEnabled,
+                      'text-truncate': !wrapLinesEnabled,
+                    })}
+                  >
+                    {formattedValue}
+                  </div>
+                );
+              }
+
               return (
-                <div
+                <Link
+                  href={link}
                   className={cx('align-top overflow-hidden py-1 pe-3', {
                     'text-break': wrapLinesEnabled,
                     'text-truncate': !wrapLinesEnabled,
                   })}
+                  style={{
+                    display: 'block',
+                    color: 'inherit',
+                    textDecoration: 'none',
+                  }}
                 >
                   {formattedValue}
-                </div>
+                </Link>
               );
-            }
-
-            return (
-              <Link
-                href={link}
-                className={cx('align-top overflow-hidden py-1 pe-3', {
-                  'text-break': wrapLinesEnabled,
-                  'text-truncate': !wrapLinesEnabled,
-                })}
-                style={{
-                  display: 'block',
-                  color: 'inherit',
-                  textDecoration: 'none',
-                }}
-              >
-                {formattedValue}
-              </Link>
-            );
-          },
-          size:
-            i === numColumns - 2
-              ? UNDEFINED_WIDTH
-              : tableWidth != null && columnWidthPercent != null
-                ? Math.max(
-                    tableWidth * (columnWidthPercent / 100),
-                    MIN_COLUMN_WIDTH_PX,
-                  )
-                : tableWidth != null
-                  ? tableWidth / numColumns
-                  : 200,
-          enableResizing: i !== numColumns - 2,
-        }),
+            },
+            size:
+              i === numColumns - 2
+                ? UNDEFINED_WIDTH
+                : tableWidth != null && columnWidthPercent != null
+                  ? Math.max(
+                      tableWidth * (columnWidthPercent / 100),
+                      MIN_COLUMN_WIDTH_PX,
+                    )
+                  : tableWidth != null
+                    ? tableWidth / numColumns
+                    : 200,
+            enableResizing: i !== numColumns - 2,
+          }) satisfies ColumnDef<any>,
       ),
   ];
 
+  const sortingParams: Partial<TableOptions<any>> = useMemo(() => {
+    return enableClientSideSorting
+      ? {
+          enableSorting: true,
+          getSortedRowModel: getSortedRowModel(),
+        }
+      : {
+          enableSorting: true,
+          manualSorting: true,
+          onSortingChange: v => {
+            if (typeof v === 'function') {
+              const newSortVal = v(sorting);
+              onSortingChange?.(newSortVal ?? null);
+            } else {
+              onSortingChange?.(v ?? null);
+            }
+          },
+          state: {
+            sorting,
+          },
+        };
+  }, [enableClientSideSorting, onSortingChange, sorting]);
+
   const table = useReactTable({
-    data,
+    data: truncatedData,
     columns: reactTableColumns,
     getCoreRowModel: getCoreRowModel(),
     enableColumnResizing: true,
     columnResizeMode: 'onChange',
-    enableSorting: true,
-    manualSorting: true,
-    onSortingChange: v => {
-      if (typeof v === 'function') {
-        const newSortVal = v(sorting);
-        onSortingChange?.(newSortVal ?? null);
-      } else {
-        onSortingChange?.(v ?? null);
-      }
-    },
-    state: {
-      sorting,
-    },
+    ...sortingParams,
   });
 
   const { rows } = table.getRowModel();
@@ -209,7 +251,7 @@ export const Table = ({
   const [wrapLinesEnabled, setWrapLinesEnabled] = useState(false);
 
   const { csvData } = useCsvExport(
-    data,
+    truncatedData,
     columns.map(col => ({
       dataKey: col.dataKey,
       displayName: col.displayName,
@@ -307,6 +349,11 @@ export const Table = ({
           )}
         </tbody>
       </table>
+      {isTruncated && (
+        <div className="p-2 text-center">
+          Showing the first {MAX_TABLE_ROWS} rows.
+        </div>
+      )}
       {tableBottom}
     </div>
   );

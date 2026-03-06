@@ -5,11 +5,12 @@ import { z } from 'zod';
 
 export { default as objectHash } from 'object-hash';
 
-import { isBuilderSavedChartConfig } from '@/guards';
+import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
 import {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
   BuilderChartConfigWithOptTimestamp,
+  Connection,
   DashboardFilter,
   DashboardFilterSchema,
   DashboardSchema,
@@ -460,6 +461,7 @@ type TileTemplate = z.infer<typeof TileTemplateSchema>;
 export function convertToDashboardTemplate(
   input: Dashboard,
   sources: TSourceUnion[],
+  connections: Connection[] = [],
 ): DashboardTemplate {
   const output: DashboardTemplate = {
     version: '0.1.0',
@@ -470,14 +472,20 @@ export function convertToDashboardTemplate(
   const convertToTileTemplate = (
     input: Dashboard['tiles'][0],
     sources: TSourceUnion[],
+    connections: Connection[],
   ): TileTemplate => {
     const tile = TileTemplateSchema.strip().parse(structuredClone(input));
-    // Extract name from source or default to '' if not found
-    // Raw SQL configs don't have a source field, so only update builder configs
+    // Extract name from source/connection or default to '' if not found
     const tileConfig = tile.config;
     if (isBuilderSavedChartConfig(tileConfig)) {
       tileConfig.source = (
         sources.find(source => source.id === tileConfig.source) ?? { name: '' }
+      ).name;
+    } else if (isRawSqlSavedChartConfig(tileConfig)) {
+      tileConfig.connection = (
+        connections.find(conn => conn.id === tileConfig.connection) ?? {
+          name: '',
+        }
       ).name;
     }
     return tile;
@@ -495,7 +503,7 @@ export function convertToDashboardTemplate(
   };
 
   for (const tile of input.tiles) {
-    output.tiles.push(convertToTileTemplate(tile, sources));
+    output.tiles.push(convertToTileTemplate(tile, sources, connections));
   }
 
   if (input.filters) {
