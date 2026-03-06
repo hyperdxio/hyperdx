@@ -1,5 +1,4 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { withErrorBoundary } from 'react-error-boundary';
 import type { TooltipProps } from 'recharts';
 import {
@@ -11,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Flex, Text } from '@mantine/core';
+import { Flex, Portal, Text } from '@mantine/core';
 import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
 import {
@@ -266,8 +265,8 @@ export function PropertyComparisonChart({
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-      {clickedBar &&
-        createPortal(
+      {clickedBar && (
+        <Portal>
           <div
             ref={popoverRef}
             className={styles.chartTooltip}
@@ -370,9 +369,9 @@ export function PropertyComparisonChart({
                 <IconCopy size={12} />
               </DBRowTableIconButton>
             </Flex>
-          </div>,
-          document.body,
-        )}
+          </div>
+        </Portal>
+      )}
     </div>
   );
 }
