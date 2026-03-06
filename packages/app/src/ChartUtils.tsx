@@ -18,13 +18,13 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AggregateFunction as AggFnV2,
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
+  BuilderChartConfigWithOptTimestamp,
+  BuilderSavedChartConfig,
   ChartConfigWithOptDateRange,
-  ChartConfigWithOptTimestamp,
   DisplayType,
   Filter,
   MetricsDataType as MetricsDataTypeV2,
-  SavedChartConfig,
   SourceKind,
   SQLInterval,
   TSource,
@@ -109,7 +109,7 @@ export const getMetricAggFns = (
 };
 
 export const DEFAULT_CHART_CONFIG: Omit<
-  SavedChartConfig,
+  BuilderSavedChartConfig,
   'source' | 'connection'
 > = {
   name: '',
@@ -132,7 +132,9 @@ export const isGranularity = (value: string): value is Granularity => {
   return Object.values(Granularity).includes(value as Granularity);
 };
 
-export function convertToTimeChartConfig(config: ChartConfigWithDateRange) {
+export function convertToTimeChartConfig(
+  config: BuilderChartConfigWithDateRange,
+) {
   const granularity =
     config.granularity === 'auto' || config.granularity == null
       ? convertDateRangeToGranularityString(config.dateRange, 80)
@@ -152,7 +154,9 @@ export function convertToTimeChartConfig(config: ChartConfigWithDateRange) {
   };
 }
 
-export function useTimeChartSettings(chartConfig: ChartConfigWithDateRange) {
+export function useTimeChartSettings(
+  chartConfig: BuilderChartConfigWithDateRange,
+) {
   return useMemo(() => {
     const convertedConfig = convertToTimeChartConfig(chartConfig);
 
@@ -884,7 +888,7 @@ export const convertV1ChartConfigToV2 = (
     metric?: TSource;
     trace?: TSource;
   },
-): ChartConfigWithDateRange => {
+): BuilderChartConfigWithDateRange => {
   const {
     series,
     granularity,
@@ -959,7 +963,7 @@ export function buildEventsSearchUrl({
   valueRangeFilter,
 }: {
   source: TSource;
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   dateRange: [Date, Date];
   groupFilters?: Array<{ column: string; value: any }>;
   valueRangeFilter?: { expression: string; value: number; threshold?: number };
@@ -1056,7 +1060,7 @@ export function buildEventsSearchUrl({
  * Handles both string format ("col1, col2") and array format ([{ valueExpression: "col1" }, ...])
  */
 function extractGroupColumns(
-  groupBy: ChartConfigWithDateRange['groupBy'],
+  groupBy: BuilderChartConfigWithDateRange['groupBy'],
 ): string[] {
   if (!groupBy) return [];
 
@@ -1081,7 +1085,7 @@ export function buildTableRowSearchUrl({
 }: {
   row: Record<string, any>;
   source: TSource | undefined;
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   dateRange: [Date, Date];
 }): string | null {
   if (!source?.id) {
@@ -1143,20 +1147,20 @@ export function buildTableRowSearchUrl({
 }
 
 export function convertToNumberChartConfig(
-  config: ChartConfigWithDateRange,
-): ChartConfigWithOptTimestamp {
+  config: BuilderChartConfigWithDateRange,
+): BuilderChartConfigWithOptTimestamp {
   return omit(config, ['granularity', 'groupBy']);
 }
 
 export function convertToPieChartConfig(
-  config: ChartConfigWithOptTimestamp,
-): ChartConfigWithOptTimestamp {
+  config: BuilderChartConfigWithOptTimestamp,
+): BuilderChartConfigWithOptTimestamp {
   return omit(config, ['granularity']);
 }
 
 export function convertToTableChartConfig(
-  config: ChartConfigWithOptTimestamp,
-): ChartConfigWithOptTimestamp {
+  config: BuilderChartConfigWithOptTimestamp,
+): BuilderChartConfigWithOptTimestamp {
   const convertedConfig = structuredClone(omit(config, ['granularity']));
 
   // Set a default limit if not already set

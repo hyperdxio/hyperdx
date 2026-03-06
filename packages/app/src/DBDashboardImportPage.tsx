@@ -8,6 +8,7 @@ import { StringParam, useQueryParam } from 'use-query-params';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
+import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { DashboardTemplateSchema } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
@@ -207,9 +208,13 @@ function Mapping({ input }: { input: Input }) {
 
     const sourceMappings = input.tiles.map(tile => {
       // find matching source name
+      const configSource = !isRawSqlSavedChartConfig(tile.config)
+        ? tile.config.source
+        : undefined;
       const match = sources.find(
         source =>
-          source.name.toLowerCase() === tile.config.source.toLowerCase(),
+          configSource &&
+          source.name.toLowerCase() === configSource.toLowerCase(),
       );
       return match?.id || '';
     });
@@ -230,6 +235,7 @@ function Mapping({ input }: { input: Input }) {
   const sourceMappings = useWatch({ control, name: 'sourceMappings' });
   const prevSourceMappingsRef = useRef(sourceMappings);
 
+  // HDX-3583: Extend this to support connection matching for Raw SQL-based charts.
   useEffect(() => {
     if (isUpdatingRef.current) return;
     if (!sourceMappings || !input.tiles) return;
@@ -245,15 +251,22 @@ function Mapping({ input }: { input: Input }) {
     const inputTile = input.tiles[changedIdx];
     if (!inputTile) return;
     const sourceId = sourceMappings[changedIdx] ?? '';
+    const inputTileSource = !isRawSqlSavedChartConfig(inputTile.config)
+      ? inputTile.config.source
+      : undefined;
     const keysForTilesWithMatchingSource = input.tiles
       .map((tile, index) => ({ ...tile, index }))
-      .filter(tile => tile.config.source === inputTile.config.source)
+      .filter(
+        tile =>
+          !isRawSqlSavedChartConfig(tile.config) &&
+          tile.config.source === inputTileSource,
+      )
       .map(({ index }) => `sourceMappings.${index}` as const);
 
     const keysForFiltersWithMatchingSource =
       input.filters
         ?.map((filter, index) => ({ ...filter, index }))
-        .filter(f => f.source === inputTile.config.source)
+        .filter(f => f.source === inputTileSource)
         .map(({ index }) => `filterSourceMappings.${index}` as const) ?? [];
 
     isUpdatingRef.current = true;
@@ -362,7 +375,11 @@ function Mapping({ input }: { input: Input }) {
             {input.tiles.map((tile, i) => (
               <Table.Tr key={tile.id}>
                 <Table.Td>{tile.config.name}</Table.Td>
-                <Table.Td>{tile.config.source}</Table.Td>
+                <Table.Td>
+                  {!isRawSqlSavedChartConfig(tile.config)
+                    ? tile.config.source
+                    : ''}
+                </Table.Td>
                 <Table.Td>
                   <SelectControlled
                     control={control}

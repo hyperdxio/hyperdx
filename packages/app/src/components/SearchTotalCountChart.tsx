@@ -4,7 +4,7 @@ import {
   JSDataType,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 import { keepPreviousData } from '@tanstack/react-query';
 
@@ -25,7 +25,7 @@ function inferCountColumn(meta: ResponseJSON['meta'] | undefined): string {
 }
 
 export function useSearchTotalCount(
-  config: ChartConfigWithDateRange,
+  config: BuilderChartConfigWithDateRange,
   queryKeyPrefix: string,
   {
     disableQueryChunking,
@@ -88,7 +88,7 @@ export default function SearchTotalCountChart({
   disableQueryChunking,
   enableParallelQueries,
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   queryKeyPrefix: string;
   disableQueryChunking?: boolean;
   enableParallelQueries?: boolean;

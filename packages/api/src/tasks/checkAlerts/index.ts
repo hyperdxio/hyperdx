@@ -3,16 +3,25 @@
 // --------------------------------------------------------
 import PQueue from '@esm2cjs/p-queue';
 import * as clickhouse from '@hyperdx/common-utils/dist/clickhouse';
-import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  chSqlToAliasMap,
+  ResponseJSON,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
   getMetadata,
   Metadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  ChartConfigWithOptDateRange,
+  isBuilderSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
+  BuilderChartConfigWithOptDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import * as fns from 'date-fns';
@@ -62,6 +71,7 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
   }
   if (
     details.taskType === AlertTaskType.TILE &&
+    isBuilderSavedChartConfig(details.tile.config) &&
     details.tile.config.groupBy &&
     details.tile.config.groupBy.length > 0
   ) {
@@ -69,6 +79,33 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
   }
   return false;
 };
+
+/**
+ * Render a saved search's SELECT to discover column aliases (e.g. `toString(Body) AS body`)
+ * and return them as WITH clauses that can be injected into alert/sample-log queries
+ * whose own SELECT doesn't include those aliases.
+ */
+export async function computeAliasWithClauses(
+  savedSearch: Pick<ISavedSearch, 'select' | 'where' | 'whereLanguage'>,
+  source: ISource,
+  metadata: Metadata,
+): Promise<BuilderChartConfigWithOptDateRange['with']> {
+  const resolvedSelect =
+    savedSearch.select || source.defaultTableSelectExpression || '';
+  const config: BuilderChartConfigWithOptDateRange = {
+    connection: '',
+    displayType: DisplayType.Search,
+    from: source.from,
+    select: resolvedSelect,
+    where: savedSearch.where,
+    whereLanguage: savedSearch.whereLanguage,
+    implicitColumnExpression: source.implicitColumnExpression,
+    timestampValueExpression: source.timestampValueExpression,
+  };
+  const query = await renderChartConfig(config, metadata, source.querySettings);
+  const aliasMap = chSqlToAliasMap(query);
+  return aliasMapToWithClauses(aliasMap);
+}
 
 export const doesExceedThreshold = (
   thresholdType: AlertThresholdType,
@@ -82,6 +119,90 @@ export const doesExceedThreshold = (
     return true;
   }
   return false;
+};
+
+const normalizeScheduleOffsetMinutes = ({
+  alertId,
+  scheduleOffsetMinutes,
+  windowSizeInMins,
+}: {
+  alertId: string;
+  scheduleOffsetMinutes: number | undefined;
+  windowSizeInMins: number;
+}) => {
+  if (scheduleOffsetMinutes == null) {
+    return 0;
+  }
+
+  if (!Number.isFinite(scheduleOffsetMinutes)) {
+    return 0;
+  }
+
+  const normalized = Math.max(0, Math.floor(scheduleOffsetMinutes));
+  if (normalized < windowSizeInMins) {
+    return normalized;
+  }
+
+  const scheduleOffsetInMins = normalized % windowSizeInMins;
+  logger.warn(
+    {
+      alertId,
+      scheduleOffsetMinutes,
+      normalizedScheduleOffsetMinutes: scheduleOffsetInMins,
+      windowSizeInMins,
+    },
+    'scheduleOffsetMinutes is greater than or equal to the interval and was normalized',
+  );
+  return scheduleOffsetInMins;
+};
+
+const normalizeScheduleStartAt = ({
+  alertId,
+  scheduleStartAt,
+}: {
+  alertId: string;
+  scheduleStartAt: IAlert['scheduleStartAt'];
+}) => {
+  if (scheduleStartAt == null) {
+    return undefined;
+  }
+
+  if (fns.isValid(scheduleStartAt)) {
+    return scheduleStartAt;
+  }
+
+  logger.warn(
+    {
+      alertId,
+      scheduleStartAt,
+    },
+    'Invalid scheduleStartAt value detected, ignoring start time schedule',
+  );
+  return undefined;
+};
+
+export const getScheduledWindowStart = (
+  now: Date,
+  windowSizeInMins: number,
+  scheduleOffsetMinutes = 0,
+  scheduleStartAt?: Date,
+) => {
+  if (scheduleStartAt != null) {
+    const windowSizeMs = windowSizeInMins * 60 * 1000;
+    const elapsedMs = Math.max(0, now.getTime() - scheduleStartAt.getTime());
+    const windowCountSinceStart = Math.floor(elapsedMs / windowSizeMs);
+    return new Date(
+      scheduleStartAt.getTime() + windowCountSinceStart * windowSizeMs,
+    );
+  }
+
+  if (scheduleOffsetMinutes <= 0) {
+    return roundDownToXMinutes(windowSizeInMins)(now);
+  }
+
+  const shiftedNow = fns.subMinutes(now, scheduleOffsetMinutes);
+  const roundedShiftedNow = roundDownToXMinutes(windowSizeInMins)(shiftedNow);
+  return fns.addMinutes(roundedShiftedNow, scheduleOffsetMinutes);
 };
 
 const fireChannelEvent = async ({
@@ -148,6 +269,12 @@ const fireChannelEvent = async ({
       dashboardId: dashboard?.id,
       groupBy: alert.groupBy,
       interval: alert.interval,
+      ...(alert.scheduleOffsetMinutes != null && {
+        scheduleOffsetMinutes: alert.scheduleOffsetMinutes,
+      }),
+      ...(alert.scheduleStartAt != null && {
+        scheduleStartAt: alert.scheduleStartAt.toISOString(),
+      }),
       message: alert.message,
       name: alert.name,
       savedSearchId: savedSearch?.id,
@@ -250,6 +377,7 @@ const getAlertEvaluationDateRange = (
   hasGroupBy: boolean,
   nowInMinsRoundDown: Date,
   windowSizeInMins: number,
+  scheduleStartAt?: Date,
 ) => {
   // Calculate date range for the query
   // Find the latest createdAt among all histories for this alert
@@ -271,10 +399,16 @@ const getAlertEvaluationDateRange = (
     previousCreatedAt = previous?.createdAt;
   }
 
+  const rawStartTime = previousCreatedAt
+    ? previousCreatedAt.getTime()
+    : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins).getTime();
+  const clampedStartTime =
+    scheduleStartAt == null
+      ? rawStartTime
+      : Math.max(rawStartTime, scheduleStartAt.getTime());
+
   return calcAlertDateRange(
-    previousCreatedAt
-      ? previousCreatedAt.getTime()
-      : fns.subMinutes(nowInMinsRoundDown, windowSizeInMins).getTime(),
+    clampedStartTime,
     nowInMinsRoundDown.getTime(),
     windowSizeInMins,
   );
@@ -285,7 +419,7 @@ const getChartConfigFromAlert = (
   connection: string,
   dateRange: [Date, Date],
   windowSizeInMins: number,
-): ChartConfigWithOptDateRange | undefined => {
+): BuilderChartConfigWithOptDateRange | undefined => {
   const { alert, source } = details;
   if (details.taskType === AlertTaskType.SAVED_SEARCH) {
     const savedSearch = details.savedSearch;
@@ -312,6 +446,10 @@ const getChartConfigFromAlert = (
     };
   } else if (details.taskType === AlertTaskType.TILE) {
     const tile = details.tile;
+
+    // Alerts are not supported for raw sql based charts
+    if (isRawSqlSavedChartConfig(tile.config)) return undefined;
+
     // Doesn't work for metric alerts yet
     if (
       tile.config.displayType === DisplayType.Line ||
@@ -413,7 +551,43 @@ export const processAlert = async (
   const { alert, source, previousMap } = details;
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
-    const nowInMinsRoundDown = roundDownToXMinutes(windowSizeInMins)(now);
+    const scheduleStartAt = normalizeScheduleStartAt({
+      alertId: alert.id,
+      scheduleStartAt: alert.scheduleStartAt,
+    });
+    if (scheduleStartAt != null && now < scheduleStartAt) {
+      logger.info(
+        {
+          alertId: alert.id,
+          now,
+          scheduleStartAt,
+        },
+        'Skipped alert check because scheduleStartAt is in the future',
+      );
+      return;
+    }
+
+    const scheduleOffsetMinutes = normalizeScheduleOffsetMinutes({
+      alertId: alert.id,
+      scheduleOffsetMinutes: alert.scheduleOffsetMinutes,
+      windowSizeInMins,
+    });
+    if (scheduleStartAt != null && scheduleOffsetMinutes > 0) {
+      logger.info(
+        {
+          alertId: alert.id,
+          scheduleStartAt,
+          scheduleOffsetMinutes,
+        },
+        'scheduleStartAt is set; scheduleOffsetMinutes is ignored for window alignment',
+      );
+    }
+    const nowInMinsRoundDown = getScheduledWindowStart(
+      now,
+      windowSizeInMins,
+      scheduleOffsetMinutes,
+      scheduleStartAt,
+    );
     const hasGroupBy = alertHasGroupBy(details);
 
     // Check if we should skip this alert check based on last evaluation time
@@ -425,6 +599,8 @@ export const processAlert = async (
           now,
           alertId: alert.id,
           hasGroupBy,
+          scheduleOffsetMinutes,
+          scheduleStartAt,
         },
         `Skipped to check alert since the time diff is still less than 1 window size`,
       );
@@ -436,7 +612,20 @@ export const processAlert = async (
       hasGroupBy,
       nowInMinsRoundDown,
       windowSizeInMins,
+      scheduleStartAt,
     );
+    if (dateRange[0].getTime() >= dateRange[1].getTime()) {
+      logger.info(
+        {
+          alertId: alert.id,
+          dateRange,
+          nowInMinsRoundDown,
+          scheduleStartAt,
+        },
+        'Skipped alert check because the anchored window has not fully elapsed yet',
+      );
+      return;
+    }
 
     const chartConfig = getChartConfigFromAlert(
       details,
@@ -457,6 +646,29 @@ export const processAlert = async (
     }
 
     const metadata = getMetadata(clickhouseClient);
+
+    // For saved search alerts, the WHERE clause may reference aliased columns
+    // from the saved search's select expression (e.g. `toString(Body) AS body`).
+    // The alert query itself uses count(*), not the saved search's select,
+    // so we render the saved search's select separately to discover aliases
+    // and inject them as WITH clauses into the alert query.
+    if (details.taskType === AlertTaskType.SAVED_SEARCH) {
+      try {
+        const withClauses = await computeAliasWithClauses(
+          details.savedSearch,
+          source,
+          metadata,
+        );
+        if (withClauses) {
+          chartConfig.with = withClauses;
+        }
+      } catch (e) {
+        logger.warn(
+          { error: serializeError(e), alertId: alert.id },
+          'Failed to compute alias WITH clauses for alert check',
+        );
+      }
+    }
 
     // Optimize chart config with materialized views, if available
     const optimizedChartConfig = source?.materializedViews?.length

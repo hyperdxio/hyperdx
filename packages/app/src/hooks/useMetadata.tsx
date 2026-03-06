@@ -10,10 +10,7 @@ import {
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  ChartConfigWithDateRange,
-  TSource,
-} from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
   useQuery,
@@ -204,7 +201,9 @@ export function useMultipleGetKeyValues(
     limit,
     disableRowLimit,
   }: {
-    chartConfigs: ChartConfigWithDateRange | ChartConfigWithDateRange[];
+    chartConfigs:
+      | BuilderChartConfigWithDateRange
+      | BuilderChartConfigWithDateRange[];
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
@@ -261,7 +260,7 @@ export function useGetValuesDistribution(
     key,
     limit,
   }: {
-    chartConfig: ChartConfigWithDateRange;
+    chartConfig: BuilderChartConfigWithDateRange;
     key: string;
     limit: number;
   },
@@ -297,7 +296,7 @@ export function useGetKeyValues(
     limit,
     disableRowLimit,
   }: {
-    chartConfig?: ChartConfigWithDateRange;
+    chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;

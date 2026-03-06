@@ -27,10 +27,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  aliasMapToWithClauses,
   isBrowser,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
@@ -93,7 +95,6 @@ import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
-import { aliasMapToWithClauses } from '@/hooks/useRowWhere';
 import { withAppNav } from '@/layout';
 import {
   useCreateSavedSearch,
@@ -1465,7 +1466,7 @@ function DBSearchPage() {
     [onTimeRangeSelect, setIsLive],
   );
 
-  const filtersChartConfig = useMemo<ChartConfigWithDateRange>(() => {
+  const filtersChartConfig = useMemo<BuilderChartConfigWithDateRange>(() => {
     const overrides = {
       orderBy: undefined,
       dateRange: searchedTimeRange,

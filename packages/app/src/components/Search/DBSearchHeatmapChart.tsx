@@ -8,7 +8,7 @@ import {
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  ChartConfigWithDateRange,
+  BuilderChartConfigWithDateRange,
   DisplayType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -36,7 +36,7 @@ export function DBSearchHeatmapChart({
   isReady,
   onAddFilter,
 }: {
-  chartConfig: ChartConfigWithDateRange;
+  chartConfig: BuilderChartConfigWithDateRange;
   source: TSource;
   isReady: boolean;
   onAddFilter?: AddFilterFn;

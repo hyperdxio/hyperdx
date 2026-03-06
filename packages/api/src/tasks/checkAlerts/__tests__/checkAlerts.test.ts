@@ -33,6 +33,7 @@ import {
   alertHasGroupBy,
   doesExceedThreshold,
   getPreviousAlertHistories,
+  getScheduledWindowStart,
   processAlert,
 } from '@/tasks/checkAlerts';
 import {
@@ -120,6 +121,45 @@ describe('checkAlerts', () => {
       expect(doesExceedThreshold(AlertThresholdType.BELOW, 10.5, 11.0)).toBe(
         false,
       );
+    });
+  });
+
+  describe('getScheduledWindowStart', () => {
+    it('should align to the default interval boundary when offset is 0', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 0);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:10:00.000Z'));
+    });
+
+    it('should align to an offset boundary when schedule offset is provided', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 2);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:12:00.000Z'));
+    });
+
+    it('should keep previous offset window until the next offset boundary', () => {
+      const now = new Date('2024-01-01T12:11:59.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 2);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:07:00.000Z'));
+    });
+
+    it('should align windows using scheduleStartAt as an absolute anchor', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const scheduleStartAt = new Date('2024-01-01T12:02:30.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 0, scheduleStartAt);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:12:30.000Z'));
+    });
+
+    it('should prioritize scheduleStartAt over offset alignment', () => {
+      const now = new Date('2024-01-01T12:13:45.000Z');
+      const scheduleStartAt = new Date('2024-01-01T12:02:30.000Z');
+      const windowStart = getScheduledWindowStart(now, 5, 2, scheduleStartAt);
+
+      expect(windowStart).toEqual(new Date('2024-01-01T12:12:30.000Z'));
     });
   });
 
@@ -1151,6 +1191,116 @@ describe('checkAlerts', () => {
         teamWebhooksById,
       );
     };
+
+    it('should skip processing before scheduleStartAt', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          scheduleStartAt: '2023-11-16T22:15:00.000Z',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const querySpy = jest.spyOn(clickhouseClient, 'queryChartConfig');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:12:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect(querySpy).not.toHaveBeenCalled();
+      expect(
+        await AlertHistory.countDocuments({ alert: details.alert.id }),
+      ).toBe(0);
+    });
+
+    it('should skip processing until the first anchored window fully elapses', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          scheduleStartAt: '2023-11-16T22:13:30.000Z',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const querySpy = jest.spyOn(clickhouseClient, 'queryChartConfig');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:13:45.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect(querySpy).not.toHaveBeenCalled();
+      expect(
+        await AlertHistory.countDocuments({ alert: details.alert.id }),
+      ).toBe(0);
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:18:31.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect(querySpy).toHaveBeenCalledTimes(1);
+      expect(
+        await AlertHistory.countDocuments({ alert: details.alert.id }),
+      ).toBe(1);
+    });
 
     it('SAVED_SEARCH alert - slack webhook', async () => {
       const {
@@ -4148,6 +4298,317 @@ describe('checkAlerts', () => {
       // Verify webhook WAS called
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
       expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+    });
+
+    it('SAVED_SEARCH alert with alias in select and where should trigger', async () => {
+      const team = await createTeam({ name: 'My Team' });
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+
+      // Saved search uses an alias in select and references it in where (Lucene).
+      // Note: Lucene `field:"value"` on alias columns (unknown type) generates
+      // an exact-match query, so use unquoted syntax for substring matching.
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'Aliased Search',
+        select: 'toString(Body) AS body',
+        where: 'body:wrong',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'info',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      // Without alias WITH clause support, this would fail because
+      // the alert query uses count(*) and the WHERE references `body`
+      // which is only defined by the saved search's SELECT alias
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+    });
+
+    it('SAVED_SEARCH alert with alias in where should not trigger when no rows match', async () => {
+      const team = await createTeam({ name: 'My Team' });
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+
+      // Alias in select, where references alias with a value that won't match
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'Aliased Search No Match',
+        select: 'toString(Body) AS body',
+        where: 'body:"does not exist anywhere"',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Something went wrong!',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // No matching rows, so alert should remain in OK/INSUFFICIENT_DATA state
+      const alertState = (await Alert.findById(details.alert.id))!.state;
+      expect(alertState).not.toBe('ALERT');
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+    });
+
+    it('SAVED_SEARCH alert with multiple aliases in select and where should trigger', async () => {
+      const team = await createTeam({ name: 'My Team' });
+
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My Webhook',
+      }).save();
+
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+      ]);
+
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Default',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+
+      const source = await Source.create({
+        kind: 'log',
+        team: team._id,
+        from: {
+          databaseName: 'default',
+          tableName: 'otel_logs',
+        },
+        timestampValueExpression: 'Timestamp',
+        connection: connection.id,
+        name: 'Logs',
+      });
+
+      // Multiple aliases in select, where references one of them
+      const savedSearch = await new SavedSearch({
+        team: team._id,
+        name: 'Multi Alias Search',
+        select: 'toString(Body) AS body, ServiceName AS svc',
+        where: 'svc:"api"',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp',
+        source: source.id,
+        tags: ['test'],
+      }).save();
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from api service',
+        },
+        {
+          ServiceName: 'web',
+          Timestamp: eventMs,
+          SeverityText: 'info',
+          Body: 'Info from web service',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      // Only 1 log matches svc:"api", which meets threshold > 1
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
     });
   });
 

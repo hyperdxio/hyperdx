@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Box, Code, Flex, Text } from '@mantine/core';
 
 import {
@@ -25,7 +25,7 @@ export default function DBNumberChart({
   toolbarSuffix,
   showMVOptimizationIndicator = true,
 }: {
-  config: ChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange;
   queryKeyPrefix?: string;
   enabled?: boolean;
   title?: React.ReactNode;

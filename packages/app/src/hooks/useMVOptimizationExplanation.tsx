@@ -2,7 +2,7 @@ import {
   MVOptimizationExplanation,
   tryOptimizeConfigWithMaterializedViewWithExplanations,
 } from '@hyperdx/common-utils/dist/core/materializedViews';
-import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
+import { BuilderChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
   useQuery,
@@ -15,14 +15,15 @@ import { useSource } from '@/source';
 import { useMetadataWithSettings } from './useMetadata';
 
 export interface MVOptimizationExplanationResult<
-  C extends ChartConfigWithOptDateRange = ChartConfigWithOptDateRange,
+  C extends
+    BuilderChartConfigWithOptDateRange = BuilderChartConfigWithOptDateRange,
 > {
   optimizedConfig?: C;
   explanations: MVOptimizationExplanation[];
 }
 
 export function useMVOptimizationExplanation<
-  C extends ChartConfigWithOptDateRange,
+  C extends BuilderChartConfigWithOptDateRange,
 >(
   config: C | undefined,
   options?: Partial<UseQueryOptions<MVOptimizationExplanationResult<C>>>,
