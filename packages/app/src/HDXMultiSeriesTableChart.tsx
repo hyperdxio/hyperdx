@@ -138,11 +138,10 @@ export const Table = ({
               // Table cannot accept values which are objects or arrays, so we need to stringify them
               if (typeof value !== 'string' && typeof value !== 'number') {
                 formattedValue = JSON.stringify(value);
-              }
-
-              if (numberFormat) {
+              } else if (numberFormat) {
                 formattedValue = formatNumber(value, numberFormat);
               }
+
               if (getRowSearchLink == null) {
                 return formattedValue;
               }
