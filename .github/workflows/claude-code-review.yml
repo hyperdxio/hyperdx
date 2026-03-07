@@ -1,8 +1,10 @@
 name: Claude Code Review
 
 on:
-  pull_request_target:
-    types: [opened, synchronize]
+  # Disabled: upstream bug in claude-code-action SDK (https://github.com/anthropics/claude-code-action/issues/1013)
+  # pull_request_target:
+  #   types: [opened, synchronize]
+  workflow_dispatch:
     # Optional: Only run on specific file changes
     # paths:
     #   - "src/**/*.ts"
@@ -36,15 +38,11 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
-      - name: Remove project MCP config (not available in CI)
-        run: rm -f .mcp.json
-
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@v1.0.66
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          track_progress: true
           allowed_bots: cursor,cursor[bot],claude,claude[bot]
           github_token: ${{ secrets.GITHUB_TOKEN }} # Bypasses OIDC auth (required for pull_request_target)
           allowed_non_write_users: '*' # Allows fork contributors to trigger reviews
@@ -73,7 +71,8 @@ jobs:
 
             Note: If the team wants a more thorough review, they can comment on the PR requesting one.
 
-            Return your review as your final response.
+            Use `gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none` with your Bash tool to leave your review as a comment on the PR.
+            This will create a new comment if none exists, or edit the last comment if one exists.
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.claude.com/en/docs/claude-code/sdk#command-line for available options
