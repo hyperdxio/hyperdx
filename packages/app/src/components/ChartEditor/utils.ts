@@ -42,11 +42,21 @@ function normalizeChartConfig<
   };
 }
 
+export const isRawSqlDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is
+  | DisplayType.Table
+  | DisplayType.Line
+  | DisplayType.StackedBar =>
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Line ||
+  displayType === DisplayType.StackedBar;
+
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
   source: TSource | undefined,
 ): SavedChartConfig | undefined {
-  if (form.configType === 'sql' && form.displayType === DisplayType.Table) {
+  if (form.configType === 'sql' && isRawSqlDisplayType(form.displayType)) {
     const rawSqlConfig: RawSqlSavedChartConfig = {
       configType: 'sql',
       ...pick(form, [
@@ -88,7 +98,7 @@ export function convertFormStateToChartConfig(
   dateRange: ChartConfigWithDateRange['dateRange'],
   source: TSource | undefined,
 ): ChartConfigWithDateRange | undefined {
-  if (form.configType === 'sql' && form.displayType === DisplayType.Table) {
+  if (form.configType === 'sql' && isRawSqlDisplayType(form.displayType)) {
     const rawSqlConfig: RawSqlChartConfig = {
       configType: 'sql',
       ...pick(form, [

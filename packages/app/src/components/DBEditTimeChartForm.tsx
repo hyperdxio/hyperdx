@@ -125,6 +125,7 @@ import {
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
   getSeriesFieldPath,
+  isRawSqlDisplayType,
   validateMetricNames,
 } from './ChartEditor/utils';
 import { ErrorBoundary } from './Error/ErrorBoundary';
@@ -603,7 +604,7 @@ export default function EditTimeChartForm({
     : undefined;
 
   const isRawSqlInput =
-    configType === 'sql' && displayType === DisplayType.Table;
+    configType === 'sql' && isRawSqlDisplayType(displayType);
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -696,7 +697,7 @@ export default function EditTimeChartForm({
   );
 
   const dbTimeChartConfig = useMemo(() => {
-    if (!queriedConfig || !isBuilderChartConfig(queriedConfig)) {
+    if (!queriedConfig) {
       return undefined;
     }
 
@@ -717,7 +718,7 @@ export default function EditTimeChartForm({
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
       const isRawSqlChart =
-        form.configType === 'sql' && form.displayType === DisplayType.Table;
+        form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
 
       if (
         !isRawSqlChart &&
@@ -801,7 +802,7 @@ export default function EditTimeChartForm({
   const handleSave = useCallback(
     (form: ChartEditorFormState) => {
       const isRawSqlChart =
-        form.configType === 'sql' && form.displayType === DisplayType.Table;
+        form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
 
       // Validate metric sources have metric names selected
       if (
@@ -900,6 +901,7 @@ export default function EditTimeChartForm({
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
       if (config == null) {
         return config;
@@ -1099,7 +1101,7 @@ export default function EditTimeChartForm({
             placeholder="My Chart Name"
             data-testid="chart-name-input"
           />
-          {displayType === DisplayType.Table && (
+          {isRawSqlDisplayType(displayType) && (
             <Controller
               control={control}
               name="configType"
@@ -1361,7 +1363,7 @@ export default function EditTimeChartForm({
             )}
           </>
         )}
-        {alert && (
+        {alert && !isRawSqlInput && (
           <Paper my="sm">
             <Stack gap="xs" data-testid="alert-details">
               <Paper px="md" py="sm" radius="xs">
@@ -1576,14 +1578,20 @@ export default function EditTimeChartForm({
           />
         </div>
       )}
-      {queryReady && dbTimeChartConfig != null && activeTab === 'pie' && (
-        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
-          <DBPieChart
-            config={dbTimeChartConfig}
-            showMVOptimizationIndicator={false}
-          />
-        </div>
-      )}
+      {queryReady &&
+        queriedConfig != null &&
+        isBuilderChartConfig(queriedConfig) &&
+        activeTab === 'pie' && (
+          <div
+            className="flex-grow-1 d-flex flex-column"
+            style={{ height: 400 }}
+          >
+            <DBPieChart
+              config={queriedConfig}
+              showMVOptimizationIndicator={false}
+            />
+          </div>
+        )}
       {queryReady &&
         queriedConfig != null &&
         isBuilderChartConfig(queriedConfig) &&
@@ -1682,7 +1690,10 @@ export default function EditTimeChartForm({
               </Accordion.Control>
               <Accordion.Panel>
                 {queryReady && chartConfigForExplanations != null && (
-                  <ChartSQLPreview config={chartConfigForExplanations} />
+                  <ChartSQLPreview
+                    config={chartConfigForExplanations}
+                    enableCopy
+                  />
                 )}
               </Accordion.Panel>
             </Accordion.Item>
