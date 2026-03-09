@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { atom, useAtom } from 'jotai';
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
@@ -15,7 +16,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { useClipboard, useDisclosure } from '@mantine/hooks';
+import { useClipboard } from '@mantine/hooks';
 import {
   IconCheck,
   IconChevronDown,
@@ -63,8 +64,11 @@ function ParamSnippet({
   );
 }
 
+const helpOpenedAtom = atom(true);
+
 function AvailableParameters({ displayType }: { displayType: DisplayType }) {
-  const [helpOpened, { toggle: toggleHelp }] = useDisclosure(false);
+  const [helpOpened, setHelpOpened] = useAtom(helpOpenedAtom);
+  const toggleHelp = () => setHelpOpened(v => !v);
   const availableParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
 
   return (
