@@ -88,7 +88,7 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
-import { IS_LOCAL_MODE, IS_SQL_CHARTS_ENABLED } from '@/config';
+import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
 import {
@@ -1099,7 +1099,7 @@ export default function EditTimeChartForm({
             placeholder="My Chart Name"
             data-testid="chart-name-input"
           />
-          {IS_SQL_CHARTS_ENABLED && displayType === DisplayType.Table && (
+          {displayType === DisplayType.Table && (
             <Controller
               control={control}
               name="configType"
