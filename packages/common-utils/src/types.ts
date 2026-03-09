@@ -872,6 +872,7 @@ const LogSourceAugmentation = {
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  orderByExpression: z.string().optional(),
 };
 
 // Trace source form schema
@@ -908,6 +909,7 @@ const TraceSourceAugmentation = {
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  orderByExpression: z.string().optional(),
 };
 
 // Session source form schema
