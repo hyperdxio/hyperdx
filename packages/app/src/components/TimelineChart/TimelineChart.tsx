@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import cx from 'classnames';
+import { Flex, Kbd, Text } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { useDrag } from '@/hooks/useDrag';
@@ -97,18 +98,11 @@ export const TimelineChart = memo(function ({
     }
   }, [scale, prevScale, cursorXPerc]);
 
-  const onDragMove = useStableCallback(
-    ({ movementX, movementY }: PointerEvent) => {
-      setOffset(v =>
-        Math.min(
-          Math.max(v - movementX * (0.125 / scale), 0),
-          100 - 100 / scale,
-        ),
-      );
-
-      setScale(v => Math.max(v + movementY * 0.01, 1));
-    },
-  );
+  const onDragMove = useStableCallback(({ movementX }: PointerEvent) => {
+    setOffset(v =>
+      Math.min(Math.max(v - movementX * (0.125 / scale), 0), 100 - 100 / scale),
+    );
+  });
 
   const dragHandlers = useMemo(
     () => ({
@@ -132,8 +126,15 @@ export const TimelineChart = memo(function ({
   const onPointerDown = useDrag(dragHandlers);
 
   const onWheel = useStableCallback((e: WheelEvent) => {
+    const { deltaX, deltaY, metaKey, ctrlKey } = e;
+
+    if (metaKey || ctrlKey) {
+      e.preventDefault();
+      setScale(v => Math.max(v + -deltaY * 0.01, 1));
+    }
+
     setOffset(v =>
-      Math.min(Math.max(v + e.deltaX * (0.125 / scale), 0), 100 - 100 / scale),
+      Math.min(Math.max(v + deltaX * (0.1 / scale), 0), 100 - 100 / scale),
     );
   });
 
@@ -141,7 +142,7 @@ export const TimelineChart = memo(function ({
     const element = timelineRef.current;
 
     if (element != null) {
-      element.addEventListener('wheel', onWheel);
+      element.addEventListener('wheel', onWheel, { passive: false });
 
       return () => {
         element.removeEventListener('wheel', onWheel);
@@ -184,106 +185,119 @@ export const TimelineChart = memo(function ({
   }, [initialScrollRowIndex, initialScrolled, rowVirtualizer]);
 
   return (
-    <div
-      style={{ position: 'relative', overscrollBehaviorX: 'contain', ...style }}
-      className={className}
-      ref={timelineRef}
-      onPointerDown={onPointerDown}
-    >
-      {(cursors ?? ([] as const)).map(cursor => {
-        const xPerc = (cursor.start / maxVal - offset / 100) * scale;
-        return (
-          <TimelineCursor
-            key={cursor.id}
-            xPerc={xPerc}
-            height={timelineRef.current?.getBoundingClientRect().height ?? 300}
-            labelWidth={labelWidth}
-            color={cursor.color}
-          />
-        );
-      })}
-      <TimelineMouseCursor
-        containerRef={timelineRef}
-        maxVal={maxVal}
-        height={timelineRef.current?.getBoundingClientRect().height ?? 300}
-        labelWidth={labelWidth}
-        scale={scale}
-        offset={offset}
-        xPerc={cursorXPerc}
-        setXPerc={setCursorXPerc}
-      />
-      <TimelineXAxis
-        maxVal={maxVal}
-        height={timelineRef.current?.getBoundingClientRect().height ?? 300}
-        labelWidth={labelWidth}
-        scale={scale}
-        offset={offset}
-      />
-
+    <>
+      <Flex justify="end" mb="sm">
+        <Text>
+          <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
+        </Text>
+      </Flex>
       <div
         style={{
-          height: `${rowVirtualizer.getTotalSize() + TIMELINE_AXIS_HEIGHT}px`,
-          width: '100%',
           position: 'relative',
+          overscrollBehaviorX: 'contain',
+          ...style,
         }}
+        className={className}
+        ref={timelineRef}
+        onPointerDown={onPointerDown}
       >
+        {(cursors ?? ([] as const)).map(cursor => {
+          const xPerc = (cursor.start / maxVal - offset / 100) * scale;
+          return (
+            <TimelineCursor
+              key={cursor.id}
+              xPerc={xPerc}
+              height={
+                timelineRef.current?.getBoundingClientRect().height ?? 300
+              }
+              labelWidth={labelWidth}
+              color={cursor.color}
+            />
+          );
+        })}
+        <TimelineMouseCursor
+          containerRef={timelineRef}
+          maxVal={maxVal}
+          height={timelineRef.current?.getBoundingClientRect().height ?? 300}
+          labelWidth={labelWidth}
+          scale={scale}
+          offset={offset}
+          xPerc={cursorXPerc}
+          setXPerc={setCursorXPerc}
+        />
+        <TimelineXAxis
+          maxVal={maxVal}
+          height={timelineRef.current?.getBoundingClientRect().height ?? 300}
+          labelWidth={labelWidth}
+          scale={scale}
+          offset={offset}
+        />
+
         <div
           style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
+            height: `${rowVirtualizer.getTotalSize() + TIMELINE_AXIS_HEIGHT}px`,
             width: '100%',
-            transform: `translateY(${items?.[0]?.start ?? 0}px)`,
+            position: 'relative',
           }}
         >
-          {rowVirtualizer.getVirtualItems().map(virtualRow => {
-            const row = rows[virtualRow.index];
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              transform: `translateY(${items?.[0]?.start ?? 0}px)`,
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map(virtualRow => {
+              const row = rows[virtualRow.index];
 
-            return (
-              <div
-                onClick={() => onEventClick?.(row)}
-                key={virtualRow.index}
-                data-index={virtualRow.index}
-                ref={rowVirtualizer.measureElement}
-                className={`${cx(
-                  'd-flex align-items-center overflow-hidden',
-                  row.className,
-                  styles.timelineRow,
-                  row.isActive && styles.timelineRowActive,
-                )}`}
-                style={row.style}
-              >
+              return (
                 <div
-                  className={styles.labelContainer}
-                  style={{
-                    width: labelWidth,
-                    minWidth: labelWidth,
-                  }}
+                  onClick={() => onEventClick?.(row)}
+                  key={virtualRow.index}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
+                  className={`${cx(
+                    'd-flex align-items-center overflow-hidden',
+                    row.className,
+                    styles.timelineRow,
+                    row.isActive && styles.timelineRowActive,
+                  )}`}
+                  style={row.style}
                 >
-                  {row.label}
                   <div
-                    className={resizeStyles.resizeHandle}
-                    onMouseDown={startResize}
-                    onPointerDown={e => {
-                      // so it doesn't trigger drag start in useDrag
-                      e.stopPropagation();
+                    className={styles.labelContainer}
+                    style={{
+                      width: labelWidth,
+                      minWidth: labelWidth,
                     }}
-                    style={{ backgroundColor: 'var(--color-bg-neutral)' }}
+                  >
+                    {row.label}
+                    <div
+                      className={resizeStyles.resizeHandle}
+                      onMouseDown={startResize}
+                      onPointerDown={e => {
+                        // so it doesn't trigger drag start in useDrag
+                        e.stopPropagation();
+                      }}
+                      style={{ backgroundColor: 'var(--color-bg-neutral)' }}
+                    />
+                  </div>
+                  <TimelineChartRowEvents
+                    events={row.events}
+                    height={rowHeight}
+                    maxVal={maxVal}
+                    scale={scale}
+                    offset={offset}
                   />
                 </div>
-                <TimelineChartRowEvents
-                  events={row.events}
-                  height={rowHeight}
-                  maxVal={maxVal}
-                  scale={scale}
-                  offset={offset}
-                />
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 });
 

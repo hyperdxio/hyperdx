@@ -28,14 +28,18 @@ export const useDrag = ({
         signal: abortController.signal,
       });
 
-      document.addEventListener(
-        'pointerup',
-        e => {
-          abortController.abort();
-          onDragEnd?.(e);
-        },
-        { signal: abortController.signal },
-      );
+      const handleEnd = (e: PointerEvent) => {
+        abortController.abort();
+        onDragEnd?.(e);
+      };
+
+      document.addEventListener('pointerup', handleEnd, {
+        signal: abortController.signal,
+      });
+
+      document.addEventListener('pointercancel', handleEnd, {
+        signal: abortController.signal,
+      });
 
       onDragStart?.(e);
     },

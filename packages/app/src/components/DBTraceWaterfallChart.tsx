@@ -913,7 +913,7 @@ export function DBTraceWaterfallChartContainer({
           )}
         </span>
       </Group>
-      {!isFetching && !error && (
+      {!isFetching && !error && highlightedAttributeValues?.length > 0 && (
         <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
       )}
       <div
