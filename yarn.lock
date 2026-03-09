@@ -3125,28 +3125,28 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clickhouse/client-common@npm:1.12.1, @clickhouse/client-common@npm:^1.12.1":
-  version: 1.12.1
-  resolution: "@clickhouse/client-common@npm:1.12.1"
-  checksum: 10c0/9f475c8517b164c3676a969b60c8165a4b0558906917dbe97ae35f69f2702a6fc198cbdb2e6d2ec3543c627ec04a7e2fccb41f3114452bf7f4818152c0f98a5d
+"@clickhouse/client-common@npm:1.18.2, @clickhouse/client-common@npm:beta":
+  version: 1.18.2
+  resolution: "@clickhouse/client-common@npm:1.18.2"
+  checksum: 10c0/543078c7255a8e335df55f88d6121a299a67d9b8c2377c4a8afbd68fd7aacd05d056fe1c8380d7d87329f02229a4920ec9a04896ce6cf115bf9a0fe3c07333d4
   languageName: node
   linkType: hard
 
-"@clickhouse/client-web@npm:^1.12.1":
-  version: 1.12.1
-  resolution: "@clickhouse/client-web@npm:1.12.1"
+"@clickhouse/client-web@npm:beta":
+  version: 1.18.2
+  resolution: "@clickhouse/client-web@npm:1.18.2"
   dependencies:
-    "@clickhouse/client-common": "npm:1.12.1"
-  checksum: 10c0/3e374288a2e0e4ced37220638629612dc8d6ced66490c2bdac136ddb887d5e108b9992b26d57911d6007bd47eaf7a754caa48e3afdfdb44cbd4f07bec7900995
+    "@clickhouse/client-common": "npm:1.18.2"
+  checksum: 10c0/a2220e92e23325e532e6de729e56e874b66150e31d7c7444f66f7f551aeabcd5513fb30c48258468d14b226dc46fb428388575e18f40635f8d533e7a559468ac
   languageName: node
   linkType: hard
 
-"@clickhouse/client@npm:^1.12.1":
-  version: 1.12.1
-  resolution: "@clickhouse/client@npm:1.12.1"
+"@clickhouse/client@npm:beta":
+  version: 1.18.2
+  resolution: "@clickhouse/client@npm:1.18.2"
   dependencies:
-    "@clickhouse/client-common": "npm:1.12.1"
-  checksum: 10c0/4d715accad5ba74248c63fab83469ebeffc16d7cc5050ee7e5f9e7dd48d0e7c4b79517bf5917f2a60599960aee997e5d8341c480d056286f5d9a86530623211f
+    "@clickhouse/client-common": "npm:1.18.2"
+  checksum: 10c0/46782987e44da9759e9b7b43957df210bdcc8affed9d0ea367ab5252ee566e7e69d395bae4eb3960a2780430f57e805d37ffe9d720f49a7361c59811b717d3b9
   languageName: node
   linkType: hard
 
@@ -4445,9 +4445,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
-    "@clickhouse/client": "npm:^1.12.1"
-    "@clickhouse/client-common": "npm:^1.12.1"
-    "@clickhouse/client-web": "npm:^1.12.1"
+    "@clickhouse/client": "npm:beta"
+    "@clickhouse/client-common": "npm:beta"
+    "@clickhouse/client-web": "npm:beta"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@types/hyperdx__lucene": "npm:@types/lucene@*"
     "@types/jest": "npm:^28.1.1"
