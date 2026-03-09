@@ -163,8 +163,6 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) => {
   );
 };
 
-const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
-
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
 >[number];
@@ -1381,7 +1379,6 @@ export default function EditTimeChartForm({
                     control={control}
                   />
                   <NumberInput
-                    min={MINIMUM_THRESHOLD_VALUE}
                     size="xs"
                     w={80}
                     control={control}
