@@ -224,6 +224,86 @@ describe('useDefaultOrderBy', () => {
       expect(result.current).toBe(undefined);
     });
 
+    it('should return orderByExpression when set on the source', () => {
+      const mockSource = {
+        timestampValueExpression: 'Timestamp',
+        orderByExpression: 'Timestamp ASC',
+      };
+
+      const mockTableMetadata = {
+        sorting_key: 'toStartOfMinute(Timestamp), Timestamp',
+      };
+
+      jest.spyOn(sourceModule, 'useSource').mockReturnValue({
+        data: mockSource,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
+        data: mockTableMetadata,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useDefaultOrderBy('source-id'));
+
+      expect(result.current).toBe('Timestamp ASC');
+    });
+
+    it('should fall back to optimized order when orderByExpression is empty', () => {
+      const mockSource = {
+        timestampValueExpression: 'Timestamp',
+        orderByExpression: '',
+      };
+
+      const mockTableMetadata = {
+        sorting_key: 'toStartOfHour(Timestamp), Timestamp',
+      };
+
+      jest.spyOn(sourceModule, 'useSource').mockReturnValue({
+        data: mockSource,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
+        data: mockTableMetadata,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useDefaultOrderBy('source-id'));
+
+      expect(result.current).toBe('(toStartOfHour(Timestamp), Timestamp) DESC');
+    });
+
+    it('should fall back to optimized order when orderByExpression is undefined', () => {
+      const mockSource = {
+        timestampValueExpression: 'Timestamp',
+      };
+
+      const mockTableMetadata = {
+        sorting_key: 'toStartOfHour(Timestamp), Timestamp',
+      };
+
+      jest.spyOn(sourceModule, 'useSource').mockReturnValue({
+        data: mockSource,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      jest.spyOn(metadataModule, 'useTableMetadata').mockReturnValue({
+        data: mockTableMetadata,
+        isLoading: false,
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useDefaultOrderBy('source-id'));
+
+      expect(result.current).toBe('(toStartOfHour(Timestamp), Timestamp) DESC');
+    });
+
     it('should handle complex Timestamp expressions', () => {
       const mockSource = {
         timestampValueExpression: 'toDateTime(timestamp_ms / 1000)',

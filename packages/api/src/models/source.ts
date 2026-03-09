@@ -40,6 +40,7 @@ export const Source = mongoose.model<ISource>(
       },
 
       name: String,
+      orderByExpression: String,
       displayedTimestampValueExpression: String,
       implicitColumnExpression: String,
       serviceNameExpression: String,
