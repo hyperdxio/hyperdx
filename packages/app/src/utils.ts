@@ -420,6 +420,7 @@ export const CHART_PALETTE = {
   brown: '#9c6b4e',
   gray: '#9498a0',
   // Highlighted variants (lighter shades for hover/selection states)
+  greenHighlight: '#80d9b3',
   redHighlight: '#ffa090',
   orangeHighlight: '#f5c94d',
 } as const;
@@ -438,6 +439,7 @@ export const CLICKSTACK_CHART_PALETTE = {
   brown: '#9c6b4e',
   gray: '#9498a0',
   // Highlighted variants (lighter shades for hover/selection states)
+  greenHighlight: '#80d9b3',
   redHighlight: '#ffa090',
   orangeHighlight: '#f5c94d',
 } as const;
@@ -588,6 +590,14 @@ export function getChartColorError(): string {
 }
 
 // Highlighted variants (theme-aware)
+export function getChartColorSuccessHighlight(): string {
+  return getSemanticChartColor(
+    '--color-chart-success-highlight',
+    CHART_PALETTE.greenHighlight,
+    CLICKSTACK_CHART_PALETTE.greenHighlight,
+  );
+}
+
 export function getChartColorErrorHighlight(): string {
   return getSemanticChartColor(
     '--color-chart-error-highlight',
