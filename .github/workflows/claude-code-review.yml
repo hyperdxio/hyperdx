@@ -3,7 +3,12 @@ name: Claude Code Review
 on:
   pull_request_target:
     types: [opened, synchronize]
-  # workflow_dispatch:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: string
   # Optional: Only run on specific file changes
   # paths:
   #   - "src/**/*.ts"
@@ -28,13 +33,33 @@ jobs:
       actions: read
 
     steps:
-      # Checkout the fork's branch so Claude can read the actual PR code.
-      # Using head.repo.full_name + head.ref works for both fork and non-fork PRs.
+      - name: Resolve PR metadata
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber =
+              context.eventName === 'workflow_dispatch'
+                ? Number('${{ inputs.pr_number }}')
+                : context.payload.pull_request.number;
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            core.setOutput('number', String(pr.number));
+            core.setOutput('head_repo', pr.head.repo.full_name);
+            core.setOutput('head_ref', pr.head.ref);
+
+      # Checkout the PR head branch so Claude can review the actual proposed code.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ steps.pr.outputs.head_repo }}
+          ref: ${{ steps.pr.outputs.head_ref }}
           fetch-depth: 0
 
       - name: Run Claude Code Review
@@ -47,7 +72,7 @@ jobs:
           allowed_non_write_users: '*' # Allows fork contributors to trigger reviews
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
 
             Please review this pull request. Use the repository's CLAUDE.md for guidance on style and conventions.
 
@@ -70,11 +95,36 @@ jobs:
 
             Note: If the team wants a more thorough review, they can comment on the PR requesting one.
 
-            Use `gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none` with your Bash tool to leave your review as a comment on the PR.
-            This will create a new comment if none exists, or edit the last comment if one exists.
+            CRITICAL OUTPUT REQUIREMENTS:
+            1. Return a JSON object with a single "review" field containing your full markdown review.
+            2. The review markdown must start with EXACTLY these two lines:
+               <!-- claude-code-review -->
+               ## PR Review
+            3. Do not post the review yourself using GitHub CLI or any comment tool.
+            4. The workflow will create or update the PR comment using your structured output.
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.claude.com/en/docs/claude-code/sdk#command-line for available options
           claude_args: |
             --setting-sources user
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
+            --allowedTools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
+            --json-schema '{"type":"object","properties":{"review":{"type":"string","description":"Complete markdown review starting with <!-- claude-code-review --> on the first line and ## PR Review on the second line"}},"required":["review"]}'
+
+      - name: Find existing Claude review
+        uses: peter-evans/find-comment@v4
+        id: find-claude-comment
+        with:
+          issue-number: ${{ steps.pr.outputs.number }}
+          comment-author: github-actions[bot]
+          body-includes: '<!-- claude-code-review -->'
+          direction: last
+
+      - name: Post or update Claude review
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          comment-id: ${{ steps.find-claude-comment.outputs.comment-id }}
+          issue-number: ${{ steps.pr.outputs.number }}
+          body:
+            ${{ fromJSON(steps.claude-review.outputs.structured_output).review
+            }}
+          edit-mode: replace
