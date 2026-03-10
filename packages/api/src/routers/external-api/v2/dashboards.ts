@@ -515,13 +515,13 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           enum: [delta]
  *           description: Optional period aggregation function for Gauge metrics (e.g., compute the delta over the period).
  *
- *     LineChartConfig:
+ *     LineBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a line time-series chart.
+ *       description: Builder configuration for a line time-series chart.
  *       properties:
  *         displayType:
  *           type: string
@@ -564,13 +564,13 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           description: Overlay the equivalent previous time period for comparison.
  *           default: false
  *
- *     BarChartConfig:
+ *     BarBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a stacked-bar time-series chart.
+ *       description: Builder configuration for a stacked-bar time-series chart.
  *       properties:
  *         displayType:
  *           type: string
@@ -609,13 +609,13 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *
- *     TableChartConfig:
+ *     TableBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a table aggregation chart.
+ *       description: Builder configuration for a table aggregation chart.
  *       properties:
  *         displayType:
  *           type: string
@@ -656,13 +656,13 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *
- *     NumberChartConfig:
+ *     NumberBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a single big-number chart.
+ *       description: Builder configuration for a single big-number chart.
  *       properties:
  *         displayType:
  *           type: string
@@ -682,13 +682,13 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *
- *     PieChartConfig:
+ *     PieBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a pie chart tile. Each slice represents one group value.
+ *       description: Builder configuration for a pie chart tile. Each slice represents one group value.
  *       properties:
  *         displayType:
  *           type: string
@@ -869,25 +869,97 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *               enum: [pie]
  *               example: "pie"
  *
+ *     LineChartConfig:
+ *       description: >
+ *         Line chart. Omit configType for the builder variant (requires sourceId
+ *         and select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/LineBuilderChartConfig'
+ *         - $ref: '#/components/schemas/LineRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/LineRawSqlChartConfig'
+ *
+ *     BarChartConfig:
+ *       description: >
+ *         Stacked-bar chart. Omit configType for the builder variant (requires
+ *         sourceId and select). Set configType to "sql" for the Raw SQL variant
+ *         (requires connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/BarBuilderChartConfig'
+ *         - $ref: '#/components/schemas/BarRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/BarRawSqlChartConfig'
+ *
+ *     TableChartConfig:
+ *       description: >
+ *         Table chart. Omit configType for the builder variant (requires sourceId
+ *         and select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/TableBuilderChartConfig'
+ *         - $ref: '#/components/schemas/TableRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/TableRawSqlChartConfig'
+ *
+ *     NumberChartConfig:
+ *       description: >
+ *         Single big-number chart. Omit configType for the builder variant
+ *         (requires sourceId and select). Set configType to "sql" for the Raw
+ *         SQL variant (requires connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/NumberBuilderChartConfig'
+ *         - $ref: '#/components/schemas/NumberRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/NumberRawSqlChartConfig'
+ *
+ *     PieChartConfig:
+ *       description: >
+ *         Pie chart. Omit configType for the builder variant (requires sourceId
+ *         and select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/PieBuilderChartConfig'
+ *         - $ref: '#/components/schemas/PieRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/PieRawSqlChartConfig'
+ *
  *     TileConfig:
  *       description: >
- *         Tile chart configuration. The displayType field controls the visual
- *         type. Builder configs omit configType and require sourceId + select.
- *         Raw SQL configs set configType to "sql" and require connectionId +
- *         sqlTemplate instead.
+ *         Tile chart configuration. displayType is the primary discriminant and
+ *         determines which variant group applies. For displayTypes that support
+ *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie),
+ *         configType is the secondary discriminant: omit it for the builder
+ *         variant or set it to "sql" for the Raw SQL variant. The search and
+ *         markdown displayTypes only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
- *         - $ref: '#/components/schemas/LineRawSqlChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
- *         - $ref: '#/components/schemas/BarRawSqlChartConfig'
  *         - $ref: '#/components/schemas/TableChartConfig'
- *         - $ref: '#/components/schemas/TableRawSqlChartConfig'
  *         - $ref: '#/components/schemas/NumberChartConfig'
- *         - $ref: '#/components/schemas/NumberRawSqlChartConfig'
  *         - $ref: '#/components/schemas/PieChartConfig'
- *         - $ref: '#/components/schemas/PieRawSqlChartConfig'
  *         - $ref: '#/components/schemas/SearchChartConfig'
  *         - $ref: '#/components/schemas/MarkdownChartConfig'
+ *       discriminator:
+ *         propertyName: displayType
+ *         mapping:
+ *           line: '#/components/schemas/LineChartConfig'
+ *           stacked_bar: '#/components/schemas/BarChartConfig'
+ *           table: '#/components/schemas/TableChartConfig'
+ *           number: '#/components/schemas/NumberChartConfig'
+ *           pie: '#/components/schemas/PieChartConfig'
+ *           search: '#/components/schemas/SearchChartConfig'
+ *           markdown: '#/components/schemas/MarkdownChartConfig'
  *
  *     TileBase:
  *       type: object
