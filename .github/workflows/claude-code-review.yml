@@ -4,12 +4,12 @@ on:
   pull_request_target:
     types: [opened, synchronize]
   # workflow_dispatch:
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+  # Optional: Only run on specific file changes
+  # paths:
+  #   - "src/**/*.ts"
+  #   - "src/**/*.tsx"
+  #   - "src/**/*.js"
+  #   - "src/**/*.jsx"
 
 jobs:
   claude-review:
@@ -39,12 +39,13 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@01e756b34ef7a1447e9508f674143b07d20c2631
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           allowed_bots: cursor,cursor[bot],claude,claude[bot]
           github_token: ${{ secrets.GITHUB_TOKEN }} # Bypasses OIDC auth (required for pull_request_target)
           allowed_non_write_users: '*' # Allows fork contributors to trigger reviews
+          show_full_output: 'true' # Temporary: expose underlying Claude failure for debugging
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
@@ -76,4 +77,5 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.claude.com/en/docs/claude-code/sdk#command-line for available options
           claude_args: |
+            --setting-sources user
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
