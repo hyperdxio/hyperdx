@@ -678,6 +678,19 @@ export const RawLogTable = memo(
 
     const table = useReactTable(reactTableProps);
 
+    // Sum actual column widths to derive a pixel min-width for the table.
+    // This enables horizontal scrolling when the viewport is narrower than
+    // the total column widths, while width: '100%' on the table ensures the
+    // last column's percentage width resolves correctly against the container.
+    const tableMinWidth = useMemo(() => {
+      const MIN_FLEX_COLUMN_WIDTH = 200;
+      return table.getAllColumns().reduce((total, col) => {
+        const size = col.getSize();
+        // The last column uses UNDEFINED_WIDTH (flex) — substitute a minimum
+        return total + (size >= UNDEFINED_WIDTH ? MIN_FLEX_COLUMN_WIDTH : size);
+      }, 0);
+    }, [table]);
+
     const { rows: _rows } = table.getRowModel();
 
     const rowVirtualizer = useVirtualizer({
@@ -884,7 +897,11 @@ export const RawLogTable = memo(
                 config={config}
               />
             )}
-            <table className={cx('w-100', styles.table)} id={tableId}>
+            <table
+              className={styles.table}
+              style={{ minWidth: tableMinWidth }}
+              id={tableId}
+            >
               <thead className={styles.tableHead}>
                 {displayedColumns.length > 0 &&
                   table.getHeaderGroups().map(headerGroup => (

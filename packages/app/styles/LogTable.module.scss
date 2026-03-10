@@ -16,14 +16,14 @@ $button-height: 18px;
 }
 
 .table {
+  /* !important is required so table-layout: fixed resolves column percentages
+     correctly — without it, the width gets overridden and the last column collapses */
+  width: 100% !important;
   table-layout: fixed;
   border-spacing: 0;
   border-collapse: separate;
   background: var(--log-table-bg);
   font-family: var(--font-ibm-plex-mono);
-
-  /* Set a minimum width to force the scroll on small screens */
-  min-width: 1000px;
 }
 
 .tableHead {
