@@ -1375,6 +1375,14 @@ describe('utils', () => {
         expr: 'toStartOfDay(',
         expected: undefined,
       },
+      {
+        expr: '-toInt64(toStartOfInterval(timestamp, toIntervalMinute(15)))',
+        expected: undefined,
+      },
+      {
+        expr: 'negate(toStartOfMinute(timestamp))',
+        expected: undefined,
+      },
     ])('Should parse $expr', ({ expr, expected }) => {
       expect(parseToStartOfFunction(expr)).toEqual(expected);
     });
@@ -1465,6 +1473,12 @@ describe('utils', () => {
         timestampValueExpression: '`Time stamp`',
         primaryKey: 'toStartOfMinute(`Time stamp`), other_column, `Time stamp`',
         expected: '`Time stamp`, toStartOfMinute(`Time stamp`)',
+      },
+      {
+        timestampValueExpression: 'Timestamp',
+        primaryKey:
+          '-toInt64(toStartOfInterval(Timestamp, toIntervalMinute(15))), service_id, Timestamp',
+        expected: 'Timestamp',
       },
     ] as const;
 
