@@ -39,7 +39,7 @@ export type ConfigTile = ExternalDashboardTileWithId & {
   config: Exclude<ExternalDashboardTileWithId['config'], undefined>;
 };
 
-function isRawSqlExternalTileConfig(
+export function isRawSqlExternalTileConfig(
   config: ExternalDashboardTileConfig,
 ): config is RawSqlExternalDashboardTileConfig {
   return 'configType' in config && config.configType === 'sql';

@@ -2418,6 +2418,43 @@ describe('External API v2 Dashboards - new format', () => {
       });
     });
 
+    it('should return 400 when connection ID does not belong to the team', async () => {
+      const otherTeamConnection = await Connection.create({
+        team: new ObjectId(),
+        name: 'Other Team Connection',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const otherConnectionId = otherTeamConnection._id.toString();
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Foreign Connection',
+          tiles: [
+            {
+              name: 'Raw SQL Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                configType: 'sql',
+                displayType: 'line',
+                connectionId: otherConnectionId,
+                sqlTemplate: 'SELECT count() FROM otel_logs WHERE {timeFilter}',
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following connection IDs: ${otherConnectionId}`,
+      });
+    });
+
     it('should create a dashboard with filters', async () => {
       const dashboardPayload = {
         name: 'Dashboard with Filters',
@@ -3190,6 +3227,45 @@ describe('External API v2 Dashboards - new format', () => {
 
       expect(response.body).toEqual({
         message: `Could not find the following source IDs: ${nonExistentSourceId}`,
+      });
+    });
+
+    it('should return 400 when connection ID does not belong to the team', async () => {
+      const dashboard = await createTestDashboard();
+      const otherTeamConnection = await Connection.create({
+        team: new ObjectId(),
+        name: 'Other Team Connection',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const otherConnectionId = otherTeamConnection._id.toString();
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard with Foreign Connection',
+          tiles: [
+            {
+              id: new ObjectId().toString(),
+              name: 'Raw SQL Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                configType: 'sql',
+                displayType: 'line',
+                connectionId: otherConnectionId,
+                sqlTemplate: 'SELECT count() FROM otel_logs WHERE {timeFilter}',
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following connection IDs: ${otherConnectionId}`,
       });
     });
   });

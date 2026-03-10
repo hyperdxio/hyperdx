@@ -5,6 +5,7 @@ import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
+import { getConnectionsByTeam } from '@/controllers/connection';
 import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
@@ -29,6 +30,7 @@ import {
   convertToExternalDashboard,
   convertToInternalTileConfig,
   isConfigTile,
+  isRawSqlExternalTileConfig,
   isSeriesTile,
 } from './utils/dashboards';
 
@@ -67,6 +69,31 @@ async function getMissingSources(
     existingSources.map(source => source._id.toString()),
   );
   return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
+}
+
+/** Returns an array of connection IDs that are referenced in the tiles but do not belong to the team */
+async function getMissingConnections(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const connectionIds = new Set<string>();
+
+  for (const tile of tiles) {
+    if (isConfigTile(tile) && isRawSqlExternalTileConfig(tile.config)) {
+      connectionIds.add(tile.config.connectionId);
+    }
+  }
+
+  if (connectionIds.size === 0) return [];
+
+  const existingConnections = await getConnectionsByTeam(team.toString());
+  const existingConnectionIds = new Set(
+    existingConnections.map(connection => connection._id.toString()),
+  );
+
+  return [...connectionIds].filter(
+    connectionId => !existingConnectionIds.has(connectionId),
+  );
 }
 
 type SavedQueryLanguage = z.infer<typeof whereLanguageSchema>;
@@ -1513,10 +1540,20 @@ router.post(
         savedFilterValues,
       } = req.body;
 
-      const missingSources = await getMissingSources(teamId, tiles, filters);
+      const [missingSources, missingConnections] = await Promise.all([
+        getMissingSources(teamId, tiles, filters),
+        getMissingConnections(teamId, tiles),
+      ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (missingConnections.length > 0) {
+        return res.status(400).json({
+          message: `Could not find the following connection IDs: ${missingConnections.join(
             ', ',
           )}`,
         });
@@ -1736,10 +1773,20 @@ router.put(
         savedFilterValues,
       } = req.body ?? {};
 
-      const missingSources = await getMissingSources(teamId, tiles, filters);
+      const [missingSources, missingConnections] = await Promise.all([
+        getMissingSources(teamId, tiles, filters),
+        getMissingConnections(teamId, tiles),
+      ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (missingConnections.length > 0) {
+        return res.status(400).json({
+          message: `Could not find the following connection IDs: ${missingConnections.join(
             ', ',
           )}`,
         });
