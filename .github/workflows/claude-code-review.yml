@@ -2,9 +2,9 @@ name: Claude Code Review
 
 on:
   # Disabled: upstream bug in claude-code-action SDK (https://github.com/anthropics/claude-code-action/issues/1013)
-  # pull_request_target:
-  #   types: [opened, synchronize]
-  workflow_dispatch:
+  pull_request_target:
+    types: [opened, synchronize]
+  # workflow_dispatch:
     # Optional: Only run on specific file changes
     # paths:
     #   - "src/**/*.ts"
