@@ -37,6 +37,7 @@ ci-lint:
 
 .PHONY: dev-int-build
 dev-int-build:
+	npx nx run-many -t ci:build
 	docker compose -p int -f ./docker-compose.ci.yml build
 
 .PHONY: dev-int

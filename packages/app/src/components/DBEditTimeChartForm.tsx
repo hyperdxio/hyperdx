@@ -88,7 +88,7 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
-import { IS_LOCAL_MODE, IS_SQL_CHARTS_ENABLED } from '@/config';
+import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
 import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
 import {
@@ -162,8 +162,6 @@ const isQueryReady = (queriedConfig: ChartConfigWithDateRange | undefined) => {
     queriedConfig.timestampValueExpression
   );
 };
-
-const MINIMUM_THRESHOLD_VALUE = 0.0000000001; // to make alert input > 0
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -1099,7 +1097,7 @@ export default function EditTimeChartForm({
             placeholder="My Chart Name"
             data-testid="chart-name-input"
           />
-          {IS_SQL_CHARTS_ENABLED && displayType === DisplayType.Table && (
+          {displayType === DisplayType.Table && (
             <Controller
               control={control}
               name="configType"
@@ -1381,7 +1379,6 @@ export default function EditTimeChartForm({
                     control={control}
                   />
                   <NumberInput
-                    min={MINIMUM_THRESHOLD_VALUE}
                     size="xs"
                     w={80}
                     control={control}
