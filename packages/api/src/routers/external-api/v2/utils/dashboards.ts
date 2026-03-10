@@ -14,11 +14,11 @@ import { translateFilterToExternalFilter } from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import {
   ExternalDashboardFilterWithId,
+  ExternalDashboardRawSqlTileConfig,
   ExternalDashboardSelectItem,
   ExternalDashboardTileConfig,
   ExternalDashboardTileWithId,
   externalQuantileLevelSchema,
-  RawSqlExternalDashboardTileConfig,
 } from '@/utils/zod';
 
 // --------------------------------------------------------------------------------
@@ -41,7 +41,7 @@ export type ConfigTile = ExternalDashboardTileWithId & {
 
 export function isRawSqlExternalTileConfig(
   config: ExternalDashboardTileConfig,
-): config is RawSqlExternalDashboardTileConfig {
+): config is ExternalDashboardRawSqlTileConfig {
   return 'configType' in config && config.configType === 'sql';
 }
 
@@ -118,11 +118,25 @@ const convertToExternalTileChartConfig = (
           numberFormat: config.numberFormat,
         };
       case DisplayType.Table:
+        return {
+          configType: 'sql',
+          displayType: DisplayType.Table,
+          connectionId: config.connection,
+          sqlTemplate: config.sqlTemplate,
+          numberFormat: config.numberFormat,
+        };
       case DisplayType.Number:
+        return {
+          configType: 'sql',
+          displayType: DisplayType.Number,
+          connectionId: config.connection,
+          sqlTemplate: config.sqlTemplate,
+          numberFormat: config.numberFormat,
+        };
       case DisplayType.Pie:
         return {
           configType: 'sql',
-          displayType: config.displayType,
+          displayType: DisplayType.Pie,
           connectionId: config.connection,
           sqlTemplate: config.sqlTemplate,
           numberFormat: config.numberFormat,
@@ -132,7 +146,7 @@ const convertToExternalTileChartConfig = (
       case DisplayType.Heatmap:
         logger.error(
           { config },
-          'Error converting chart config to external chart - raw SQL charts should have display type "sql"',
+          'Error converting chart config to external chart - unsupported display type for raw SQL config',
         );
         return undefined;
     }
