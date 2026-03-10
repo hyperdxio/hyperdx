@@ -45,7 +45,6 @@ jobs:
           allowed_bots: cursor,cursor[bot],claude,claude[bot]
           github_token: ${{ secrets.GITHUB_TOKEN }} # Bypasses OIDC auth (required for pull_request_target)
           allowed_non_write_users: '*' # Allows fork contributors to trigger reviews
-          show_full_output: 'true' # Temporary: expose underlying Claude failure for debugging
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
