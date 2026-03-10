@@ -16,9 +16,7 @@ $button-height: 18px;
 }
 
 .table {
-  /* !important is required so table-layout: fixed resolves column percentages
-     correctly — without it, the width gets overridden and the last column collapses */
-  width: 100% !important;
+  width: 100%;
   table-layout: fixed;
   border-spacing: 0;
   border-collapse: separate;

@@ -680,16 +680,33 @@ export const RawLogTable = memo(
 
     // Sum actual column widths to derive a pixel min-width for the table.
     // This enables horizontal scrolling when the viewport is narrower than
-    // the total column widths, while width: '100%' on the table ensures the
+    // the total column widths, while width: 100% on the table ensures the
     // last column's percentage width resolves correctly against the container.
     const tableMinWidth = useMemo(() => {
       const MIN_FLEX_COLUMN_WIDTH = 200;
-      return table.getAllColumns().reduce((total, col) => {
-        const size = col.getSize();
-        // The last column uses UNDEFINED_WIDTH (flex) — substitute a minimum
-        return total + (size >= UNDEFINED_WIDTH ? MIN_FLEX_COLUMN_WIDTH : size);
-      }, 0);
-    }, [table]);
+      const EXPAND_COLUMN_SIZE = 32;
+      const expandWidth = showExpandButton ? EXPAND_COLUMN_SIZE : 0;
+      return (
+        expandWidth +
+        displayedColumns.reduce((total, column, i) => {
+          if (i === displayedColumns.length - 1)
+            return total + MIN_FLEX_COLUMN_WIDTH;
+          const jsColumnType = columnTypeMap.get(column)?._type;
+          const isDate = jsColumnType === JSDataType.Date;
+          const isMaybeSeverityText = column === logLevelColumn;
+          const size =
+            columnSizeStorage[column] ??
+            (isDate ? 170 : isMaybeSeverityText ? 115 : 160);
+          return total + size;
+        }, 0)
+      );
+    }, [
+      displayedColumns,
+      columnSizeStorage,
+      columnTypeMap,
+      logLevelColumn,
+      showExpandButton,
+    ]);
 
     const { rows: _rows } = table.getRowModel();
 
