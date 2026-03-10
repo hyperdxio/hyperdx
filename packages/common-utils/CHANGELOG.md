@@ -1,5 +1,21 @@
 # @hyperdx/common-utils
 
+## 0.16.0
+
+### Minor Changes
+
+- 902b8ebd: feat(alerts): add anchored alert scheduling with `scheduleStartAt` and `scheduleOffsetMinutes`
+
+### Patch Changes
+
+- 1bae972e: fix: allow any numeric value for alert thresholds
+- fd9f290e: feat: Add query params, sorting, and placeholders to Raw-SQL tables
+- dda0f9a4: feat: Add custom ORDER BY expression for Log and Trace sources
+- 32f1189a: feat: Add RawSqlChartConfig types for SQL-based Table
+- 3bc5abbf: fix: Reject wrapped toStartOf expressions in parseToStartOfFunction to prevent invalid SQL generation
+- 1e6fcf1c: feat: Add raw sql line charts
+- a13b60d0: feat: Support Raw SQL Chart Configs in Dashboard import/export
+
 ## 0.15.0
 
 ### Minor Changes
