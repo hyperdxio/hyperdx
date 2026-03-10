@@ -1,10 +1,11 @@
 'use client';
 
 import React from 'react';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  convertDateRangeToGranularityString,
+  convertGranularityToSeconds,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { useDocumentVisibility } from '@mantine/hooks';
-
-import { convertGranularityToSeconds } from '@/ChartUtils';
 
 export const useDashboardRefresh = ({
   searchedTimeRange,

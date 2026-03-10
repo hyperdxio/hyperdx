@@ -12,6 +12,7 @@ export type TTimelineEvent = {
   end: number;
   tooltip: string;
   color: string;
+  backgroundColor: string;
   body: React.ReactNode;
   minWidthPerc?: number;
   isError?: boolean;
@@ -19,14 +20,11 @@ export type TTimelineEvent = {
 };
 
 type TimelineChartRowProps = {
-  events: TTimelineEvent[] | undefined;
+  events: TTimelineEvent[];
   maxVal: number;
   height: number;
   scale: number;
   offset: number;
-  eventStyles?:
-    | React.CSSProperties
-    | ((event: TTimelineEvent) => React.CSSProperties);
   onEventHover?: (eventId: string) => void;
   onEventClick?: (event: TTimelineEvent) => void;
 };
@@ -35,7 +33,6 @@ export const TimelineChartRowEvents = memo(function ({
   events,
   maxVal,
   height,
-  eventStyles,
   onEventHover,
   scale,
   offset,
@@ -48,7 +45,7 @@ export const TimelineChartRowEvents = memo(function ({
       <div
         style={{ marginRight: `${(-1 * offset * scale).toFixed(6)}%` }}
       ></div>
-      {(events ?? []).map((e: TTimelineEvent, i, arr) => {
+      {events.map((e: TTimelineEvent, i, arr) => {
         const minWidth = (e.minWidthPerc ?? 0) / 100;
         const lastEvent = arr[i - 1];
         const lastEventMinEnd =
@@ -79,14 +76,14 @@ export const TimelineChartRowEvents = memo(function ({
               className="d-flex align-items-center h-100 cursor-pointer text-truncate hover-opacity"
               style={{
                 userSelect: 'none',
-                backgroundColor: e.color,
                 minWidth: `${percWidth.toFixed(6)}%`,
                 width: `${percWidth.toFixed(6)}%`,
                 marginLeft: `${percMarginLeft.toFixed(6)}%`,
                 position: 'relative',
-                ...(typeof eventStyles === 'function'
-                  ? eventStyles(e)
-                  : eventStyles),
+                borderRadius: 2,
+                fontSize: height * 0.5,
+                color: e.color,
+                backgroundColor: e.backgroundColor,
               }}
             >
               <div style={{ margin: 'auto' }} className="px-2">

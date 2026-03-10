@@ -275,14 +275,6 @@ export const TimelineChart = memo(function ({
                   events={row.events}
                   height={rowHeight}
                   maxVal={maxVal}
-                  eventStyles={(event: TTimelineEvent) => ({
-                    borderRadius: 2,
-                    fontSize: rowHeight * 0.5,
-                    backgroundColor: event.isError
-                      ? 'var(--color-bg-danger)'
-                      : 'var(--color-bg-inverted)',
-                    color: 'var(--color-text-inverted)',
-                  })}
                   scale={scale}
                   offset={offset}
                 />
