@@ -33,6 +33,8 @@ jobs:
       actions: read
 
     steps:
+      # Resolve the PR head repo/ref first so both pull_request_target and
+      # workflow_dispatch runs can checkout forked branches correctly.
       - name: Resolve PR metadata
         id: pr
         uses: actions/github-script@v7
@@ -54,7 +56,8 @@ jobs:
             core.setOutput('head_repo', pr.head.repo.full_name);
             core.setOutput('head_ref', pr.head.ref);
 
-      # Checkout the PR head branch so Claude can review the actual proposed code.
+      # Checkout the fork's branch so Claude can read the actual PR code.
+      # Using the PR head repo/ref works for both fork and non-fork PRs.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
