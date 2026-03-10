@@ -30,9 +30,6 @@ import {
   mergeValueStatisticsMaps,
   SAMPLE_SIZE,
 } from './deltaChartUtils';
-
-// Re-export types so callers importing from DBDeltaChart don't need to change.
-export type { AddFilterFn } from './deltaChartUtils';
 import {
   CHART_GAP,
   CHART_HEIGHT,
@@ -40,6 +37,9 @@ import {
   PAGINATION_HEIGHT,
   PropertyComparisonChart,
 } from './PropertyComparisonChart';
+
+// Re-export types so callers importing from DBDeltaChart don't need to change.
+export type { AddFilterFn } from './deltaChartUtils';
 
 export default function DBDeltaChart({
   config,
@@ -407,10 +407,6 @@ export default function DBDeltaChart({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        // Establishes a stacking context above the heatmap sibling so that
-        // position:fixed popovers inside the chart grid render on top.
-        position: 'relative',
-        zIndex: 1,
       }}
     >
       {/* Primary fields */}

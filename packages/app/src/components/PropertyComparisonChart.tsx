@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useState } from 'react';
 import { withErrorBoundary } from 'react-error-boundary';
 import type { TooltipProps } from 'recharts';
 import {
@@ -10,7 +10,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Flex, Text } from '@mantine/core';
+import { Flex, Popover, Text } from '@mantine/core';
+import { useClipboard } from '@mantine/hooks';
 import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
 import {
@@ -138,240 +139,169 @@ export function PropertyComparisonChart({
   );
   const chartData = applyTopNAggregation(mergedValueStatistics);
 
-  const [clickedBar, setClickedBar] = useState<{
-    value: string;
-    clientX: number;
-    clientY: number;
-  } | null>(null);
-  const [copiedValue, setCopiedValue] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [clickedValue, setClickedValue] = useState<string | null>(null);
+  const clipboard = useClipboard({ timeout: 2000 });
 
-  // Clean up copy confirmation timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-    };
-  }, []);
-
-  // Dismiss popover on click outside, scroll, or Escape key
-  useEffect(() => {
-    if (!clickedBar) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        popoverRef.current &&
-        !popoverRef.current.contains(e.target as Node)
-      ) {
-        setClickedBar(null);
-      }
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setClickedBar(null);
-    };
-    const handleScroll = () => setClickedBar(null);
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('scroll', handleScroll, true);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('scroll', handleScroll, true);
-    };
-  }, [clickedBar]);
-
-  const handleChartClick = (data: any, event: any) => {
+  const handleChartClick = (data: any) => {
     if (!data?.activePayload?.length) {
-      setClickedBar(null);
+      setClickedValue(null);
       return;
     }
     if (data.activePayload[0]?.payload?.isOther) {
-      setClickedBar(null);
+      setClickedValue(null);
       return;
     }
-    // Reset copy confirmation so it doesn't carry over to the new bar's popover
-    setCopiedValue(false);
-    setClickedBar({
-      value: String(data.activeLabel ?? ''),
-      clientX: event.clientX,
-      clientY: event.clientY,
-    });
+    clipboard.reset();
+    setClickedValue(String(data.activeLabel ?? ''));
   };
 
   return (
-    <div style={{ width: '100%', height: CHART_HEIGHT }}>
-      <Text
-        size="xs"
-        ta="center"
-        title={name}
-        style={{
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {name}
-      </Text>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          barGap={2}
-          width={500}
-          height={300}
-          data={chartData}
-          margin={{
-            top: 0,
-            right: 0,
-            left: 0,
-            bottom: 0,
-          }}
-          onClick={handleChartClick}
-          style={{ cursor: 'pointer' }}
-        >
-          <XAxis dataKey="name" tick={<TruncatedTick />} />
-          <YAxis
-            tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
-          />
-          <Tooltip
-            content={<HDXBarChartTooltip title={name} />}
-            allowEscapeViewBox={{ x: false, y: true }}
-            wrapperStyle={{ zIndex: 1000 }}
-          />
-          <Bar
-            dataKey="outlierCount"
-            name="Selection"
-            fill={getChartColorError()}
-            isAnimationActive={false}
-          >
-            {chartData.map((entry, index) => (
-              <Cell
-                key={`out-${index}`}
-                fill={entry.isOther ? OTHER_BUCKET_COLOR : getChartColorError()}
-              />
-            ))}
-          </Bar>
-          <Bar
-            dataKey="inlierCount"
-            name="Background"
-            fill={getChartColorSuccess()}
-            isAnimationActive={false}
-          >
-            {chartData.map((entry, index) => (
-              <Cell
-                key={`in-${index}`}
-                fill={
-                  entry.isOther ? OTHER_BUCKET_COLOR : getChartColorSuccess()
-                }
-              />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-      {clickedBar && (
-        <div
-          ref={popoverRef}
-          style={{
-            position: 'fixed',
-            // Clamp horizontally so the popover stays within the viewport
-            left: Math.max(
-              160,
-              Math.min(clickedBar.clientX, window.innerWidth - 160),
-            ),
-            // Render above click point; flip below if near the top
-            top:
-              clickedBar.clientY > 200
-                ? clickedBar.clientY - 8
-                : clickedBar.clientY + 16,
-            transform:
-              clickedBar.clientY > 200
-                ? 'translate(-50%, -100%)'
-                : 'translate(-50%, 0)',
-            zIndex: 10000,
-            borderRadius: 4,
-            padding: '8px 12px',
-            minWidth: 200,
-            maxWidth: 320,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-            backdropFilter: 'blur(8px)',
-            backgroundColor: 'var(--color-bg-surface)',
-            border: '1px solid var(--color-border)',
-            fontSize: 11,
-          }}
-        >
+    <Popover
+      opened={clickedValue !== null}
+      onChange={opened => {
+        if (!opened) setClickedValue(null);
+      }}
+      position="top"
+      withArrow
+      shadow="md"
+    >
+      <Popover.Target>
+        <div style={{ width: '100%', height: CHART_HEIGHT }}>
           <Text
             size="xs"
-            c="dimmed"
-            fw={600}
-            mb={4}
-            style={{ wordBreak: 'break-all' }}
+            ta="center"
             title={name}
+            style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
           >
-            {truncateMiddle(name, 40)}
+            {name}
           </Text>
-          <Text size="xs" mb={6} style={{ wordBreak: 'break-all' }}>
-            {clickedBar.value.length === 0 ? (
-              <i>Empty String</i>
-            ) : (
-              clickedBar.value
-            )}
-          </Text>
-          <Flex gap={12} mb={8}>
-            <Text size="xs" c={getChartColorError()}>
-              Selection:{' '}
-              {(outlierValueOccurences.get(clickedBar.value) ?? 0).toFixed(1)}%
-            </Text>
-            <Text size="xs" c={getChartColorSuccess()}>
-              Background:{' '}
-              {(inlierValueOccurences.get(clickedBar.value) ?? 0).toFixed(1)}%
-            </Text>
-          </Flex>
-          <Flex gap={4} align="center">
-            {onAddFilter && (
-              <>
-                <DBRowTableIconButton
-                  variant="copy"
-                  title="Filter for this value"
-                  onClick={() => {
-                    onAddFilter(name, clickedBar.value, 'include');
-                    setClickedBar(null);
-                  }}
-                >
-                  <IconFilter size={12} />
-                </DBRowTableIconButton>
-                <DBRowTableIconButton
-                  variant="copy"
-                  title="Exclude this value"
-                  onClick={() => {
-                    onAddFilter(name, clickedBar.value, 'exclude');
-                    setClickedBar(null);
-                  }}
-                >
-                  <IconFilterX size={12} />
-                </DBRowTableIconButton>
-              </>
-            )}
-            <DBRowTableIconButton
-              variant="copy"
-              title={copiedValue ? 'Copied!' : 'Copy value'}
-              isActive={copiedValue}
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(clickedBar.value);
-                  setCopiedValue(true);
-                  if (copyTimeoutRef.current)
-                    clearTimeout(copyTimeoutRef.current);
-                  copyTimeoutRef.current = setTimeout(
-                    () => setCopiedValue(false),
-                    2000,
-                  );
-                } catch (err) {
-                  console.error('Failed to copy:', err);
-                }
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              barGap={2}
+              width={500}
+              height={300}
+              data={chartData}
+              margin={{
+                top: 0,
+                right: 0,
+                left: 0,
+                bottom: 0,
               }}
+              onClick={handleChartClick}
+              style={{ cursor: 'pointer' }}
             >
-              <IconCopy size={12} />
-            </DBRowTableIconButton>
-          </Flex>
+              <XAxis dataKey="name" tick={<TruncatedTick />} />
+              <YAxis
+                tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
+              />
+              <Tooltip
+                content={<HDXBarChartTooltip title={name} />}
+                allowEscapeViewBox={{ x: false, y: true }}
+                wrapperStyle={{ zIndex: 1000 }}
+              />
+              <Bar
+                dataKey="outlierCount"
+                name="Selection"
+                fill={getChartColorError()}
+                isAnimationActive={false}
+              >
+                {chartData.map((entry, index) => (
+                  <Cell
+                    key={`out-${index}`}
+                    fill={
+                      entry.isOther ? OTHER_BUCKET_COLOR : getChartColorError()
+                    }
+                  />
+                ))}
+              </Bar>
+              <Bar
+                dataKey="inlierCount"
+                name="Background"
+                fill={getChartColorSuccess()}
+                isAnimationActive={false}
+              >
+                {chartData.map((entry, index) => (
+                  <Cell
+                    key={`in-${index}`}
+                    fill={
+                      entry.isOther
+                        ? OTHER_BUCKET_COLOR
+                        : getChartColorSuccess()
+                    }
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
-      )}
-    </div>
+      </Popover.Target>
+      <Popover.Dropdown p="xs" style={{ fontSize: 11 }}>
+        {clickedValue !== null && (
+          <>
+            <Text
+              size="xs"
+              c="dimmed"
+              fw={600}
+              mb={4}
+              style={{ wordBreak: 'break-all' }}
+              title={name}
+            >
+              {truncateMiddle(name, 40)}
+            </Text>
+            <Text size="xs" mb={6} style={{ wordBreak: 'break-all' }}>
+              {clickedValue.length === 0 ? <i>Empty String</i> : clickedValue}
+            </Text>
+            <Flex gap={12} mb={8}>
+              <Text size="xs" c={getChartColorError()}>
+                Selection:{' '}
+                {(outlierValueOccurences.get(clickedValue) ?? 0).toFixed(1)}%
+              </Text>
+              <Text size="xs" c={getChartColorSuccess()}>
+                Background:{' '}
+                {(inlierValueOccurences.get(clickedValue) ?? 0).toFixed(1)}%
+              </Text>
+            </Flex>
+            <Flex gap={4} align="center">
+              {onAddFilter && (
+                <>
+                  <DBRowTableIconButton
+                    variant="copy"
+                    title="Filter for this value"
+                    onClick={() => {
+                      onAddFilter(name, clickedValue, 'include');
+                      setClickedValue(null);
+                    }}
+                  >
+                    <IconFilter size={12} />
+                  </DBRowTableIconButton>
+                  <DBRowTableIconButton
+                    variant="copy"
+                    title="Exclude this value"
+                    onClick={() => {
+                      onAddFilter(name, clickedValue, 'exclude');
+                      setClickedValue(null);
+                    }}
+                  >
+                    <IconFilterX size={12} />
+                  </DBRowTableIconButton>
+                </>
+              )}
+              <DBRowTableIconButton
+                variant="copy"
+                title={clipboard.copied ? 'Copied!' : 'Copy value'}
+                isActive={clipboard.copied}
+                onClick={() => clipboard.copy(clickedValue)}
+              >
+                <IconCopy size={12} />
+              </DBRowTableIconButton>
+            </Flex>
+          </>
+        )}
+      </Popover.Dropdown>
+    </Popover>
   );
 }
