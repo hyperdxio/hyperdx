@@ -1802,7 +1802,7 @@ describe('External API v2 Dashboards - new format', () => {
   });
 
   const server = getServer();
-  let agent, team, user, traceSource, metricSource;
+  let agent, team, user, traceSource, metricSource, connection;
 
   beforeAll(async () => {
     await server.start();
@@ -1815,7 +1815,7 @@ describe('External API v2 Dashboards - new format', () => {
     team = result.team;
     user = result.user;
 
-    const connection = await Connection.create({
+    connection = await Connection.create({
       team: team._id,
       name: 'Default',
       host: config.CLICKHOUSE_HOST,
@@ -2305,6 +2305,104 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberChart);
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(markdownChart);
       expect(omit(response.body.data.tiles[5], ['id'])).toEqual(pieChart);
+    });
+
+    it('can round-trip all raw SQL chart config types', async () => {
+      const connectionId = connection._id.toString();
+      const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
+
+      const lineRawSql: ExternalDashboardTile = {
+        name: 'Line Raw SQL',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'line',
+          connectionId,
+          sqlTemplate,
+          compareToPreviousPeriod: true,
+          fillNulls: true,
+          alignDateRangeToGranularity: true,
+          numberFormat: { output: 'number', mantissa: 2 },
+        },
+      };
+
+      const barRawSql: ExternalDashboardTile = {
+        name: 'Bar Raw SQL',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'stacked_bar',
+          connectionId,
+          sqlTemplate,
+          fillNulls: false,
+          alignDateRangeToGranularity: false,
+          numberFormat: { output: 'byte', decimalBytes: true },
+        },
+      };
+
+      const tableRawSql: ExternalDashboardTile = {
+        name: 'Table Raw SQL',
+        x: 0,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          numberFormat: { output: 'percent', mantissa: 1 },
+        },
+      };
+
+      const numberRawSql: ExternalDashboardTile = {
+        name: 'Number Raw SQL',
+        x: 6,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'number',
+          connectionId,
+          sqlTemplate,
+          numberFormat: { output: 'currency', currencySymbol: '$' },
+        },
+      };
+
+      const pieRawSql: ExternalDashboardTile = {
+        name: 'Pie Raw SQL',
+        x: 12,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'pie',
+          connectionId,
+          sqlTemplate,
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Raw SQL Chart Types',
+          tiles: [lineRawSql, barRawSql, tableRawSql, numberRawSql, pieRawSql],
+          tags: ['raw-sql-test'],
+        })
+        .expect(200);
+
+      expect(omit(response.body.data.tiles[0], ['id'])).toEqual(lineRawSql);
+      expect(omit(response.body.data.tiles[1], ['id'])).toEqual(barRawSql);
+      expect(omit(response.body.data.tiles[2], ['id'])).toEqual(tableRawSql);
+      expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberRawSql);
+      expect(omit(response.body.data.tiles[4], ['id'])).toEqual(pieRawSql);
     });
 
     it('should return 400 when source IDs do not exist', async () => {
@@ -2958,6 +3056,124 @@ describe('External API v2 Dashboards - new format', () => {
       );
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(
         omit(markdownChart, ['id']),
+      );
+    });
+
+    it('can round-trip all raw SQL chart config types', async () => {
+      const connectionId = connection._id.toString();
+      const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
+
+      const lineRawSql: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Line Raw SQL',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'line',
+          connectionId,
+          sqlTemplate,
+          compareToPreviousPeriod: true,
+          fillNulls: true,
+          alignDateRangeToGranularity: true,
+          numberFormat: { output: 'number', mantissa: 2 },
+        },
+      };
+
+      const barRawSql: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Bar Raw SQL',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'stacked_bar',
+          connectionId,
+          sqlTemplate,
+          fillNulls: false,
+          alignDateRangeToGranularity: false,
+          numberFormat: { output: 'byte', decimalBytes: true },
+        },
+      };
+
+      const tableRawSql: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Table Raw SQL',
+        x: 0,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          numberFormat: { output: 'percent', mantissa: 1 },
+        },
+      };
+
+      const numberRawSql: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Number Raw SQL',
+        x: 6,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'number',
+          connectionId,
+          sqlTemplate,
+          numberFormat: { output: 'currency', currencySymbol: '$' },
+        },
+      };
+
+      const pieRawSql: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Pie Raw SQL',
+        x: 12,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'pie',
+          connectionId,
+          sqlTemplate,
+        },
+      };
+
+      const initialDashboard = await createTestDashboard();
+
+      const response = await authRequest(
+        'put',
+        `${BASE_URL}/${initialDashboard._id}`,
+      )
+        .send({
+          name: 'Dashboard with Raw SQL Chart Types',
+          tiles: [lineRawSql, barRawSql, tableRawSql, numberRawSql, pieRawSql],
+          tags: ['raw-sql-test'],
+        })
+        .expect(200);
+
+      expect(omit(response.body.data.tiles[0], ['id'])).toEqual(
+        omit(lineRawSql, ['id']),
+      );
+      expect(omit(response.body.data.tiles[1], ['id'])).toEqual(
+        omit(barRawSql, ['id']),
+      );
+      expect(omit(response.body.data.tiles[2], ['id'])).toEqual(
+        omit(tableRawSql, ['id']),
+      );
+      expect(omit(response.body.data.tiles[3], ['id'])).toEqual(
+        omit(numberRawSql, ['id']),
+      );
+      expect(omit(response.body.data.tiles[4], ['id'])).toEqual(
+        omit(pieRawSql, ['id']),
       );
     });
 

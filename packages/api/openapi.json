@@ -1315,23 +1315,210 @@
           }
         }
       },
+      "RawSqlChartConfigBase": {
+        "type": "object",
+        "required": [
+          "configType",
+          "connectionId",
+          "sqlTemplate"
+        ],
+        "description": "Shared fields for Raw SQL chart configs. Set configType to \"sql\" and provide connectionId + sqlTemplate instead of sourceId + select.",
+        "properties": {
+          "configType": {
+            "type": "string",
+            "enum": [
+              "sql"
+            ],
+            "example": "sql"
+          },
+          "connectionId": {
+            "type": "string",
+            "description": "ID of the ClickHouse connection to execute the query against.",
+            "example": "65f5e4a3b9e77c001a567890"
+          },
+          "sqlTemplate": {
+            "type": "string",
+            "maxLength": 100000,
+            "description": "SQL query template to execute. Supports HyperDX template variables.",
+            "example": "SELECT count() FROM otel_logs WHERE timestamp > now() - INTERVAL 1 HOUR"
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat"
+          }
+        }
+      },
+      "LineRawSqlChartConfig": {
+        "description": "Raw SQL configuration for a line time-series chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RawSqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "line"
+                ],
+                "example": "line"
+              },
+              "compareToPreviousPeriod": {
+                "type": "boolean",
+                "description": "Overlay the equivalent previous time period for comparison.",
+                "default": false
+              },
+              "fillNulls": {
+                "type": "boolean",
+                "description": "Fill missing time buckets with zero instead of leaving gaps.",
+                "default": true
+              },
+              "alignDateRangeToGranularity": {
+                "type": "boolean",
+                "description": "Expand date range boundaries to the query granularity interval.",
+                "default": true
+              }
+            }
+          }
+        ]
+      },
+      "BarRawSqlChartConfig": {
+        "description": "Raw SQL configuration for a stacked-bar time-series chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RawSqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "stacked_bar"
+                ],
+                "example": "stacked_bar"
+              },
+              "fillNulls": {
+                "type": "boolean",
+                "description": "Fill missing time buckets with zero instead of leaving gaps.",
+                "default": true
+              },
+              "alignDateRangeToGranularity": {
+                "type": "boolean",
+                "description": "Expand date range boundaries to the query granularity interval.",
+                "default": true
+              }
+            }
+          }
+        ]
+      },
+      "TableRawSqlChartConfig": {
+        "description": "Raw SQL configuration for a table chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RawSqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "table"
+                ],
+                "example": "table"
+              }
+            }
+          }
+        ]
+      },
+      "NumberRawSqlChartConfig": {
+        "description": "Raw SQL configuration for a single big-number chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RawSqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "number"
+                ],
+                "example": "number"
+              }
+            }
+          }
+        ]
+      },
+      "PieRawSqlChartConfig": {
+        "description": "Raw SQL configuration for a pie chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RawSqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "pie"
+                ],
+                "example": "pie"
+              }
+            }
+          }
+        ]
+      },
       "TileConfig": {
-        "description": "Tile chart configuration. The displayType field determines which variant is used.\n",
+        "description": "Tile chart configuration. The displayType field controls the visual type. Builder configs omit configType and require sourceId + select. Raw SQL configs set configType to \"sql\" and require connectionId + sqlTemplate instead.\n",
         "oneOf": [
           {
             "$ref": "#/components/schemas/LineChartConfig"
           },
           {
+            "$ref": "#/components/schemas/LineRawSqlChartConfig"
+          },
+          {
             "$ref": "#/components/schemas/BarChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/BarRawSqlChartConfig"
           },
           {
             "$ref": "#/components/schemas/TableChartConfig"
           },
           {
+            "$ref": "#/components/schemas/TableRawSqlChartConfig"
+          },
+          {
             "$ref": "#/components/schemas/NumberChartConfig"
           },
           {
+            "$ref": "#/components/schemas/NumberRawSqlChartConfig"
+          },
+          {
             "$ref": "#/components/schemas/PieChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/PieRawSqlChartConfig"
           },
           {
             "$ref": "#/components/schemas/SearchChartConfig"
@@ -1339,19 +1526,7 @@
           {
             "$ref": "#/components/schemas/MarkdownChartConfig"
           }
-        ],
-        "discriminator": {
-          "propertyName": "displayType",
-          "mapping": {
-            "line": "#/components/schemas/LineChartConfig",
-            "stacked_bar": "#/components/schemas/BarChartConfig",
-            "table": "#/components/schemas/TableChartConfig",
-            "number": "#/components/schemas/NumberChartConfig",
-            "pie": "#/components/schemas/PieChartConfig",
-            "search": "#/components/schemas/SearchChartConfig",
-            "markdown": "#/components/schemas/MarkdownChartConfig"
-          }
-        }
+        ]
       },
       "TileBase": {
         "type": "object",

@@ -207,6 +207,13 @@ export type ExternalDashboardSelectItem = z.infer<
   typeof externalDashboardSelectItemSchema
 >;
 
+const externalDashboardRawSqlChartConfigBaseSchema = z.object({
+  configType: z.literal('sql'),
+  connectionId: objectIdSchema,
+  sqlTemplate: z.string().max(100000),
+  numberFormat: NumberFormatSchema.optional(),
+});
+
 const externalDashboardTimeChartConfigSchema = z.object({
   sourceId: objectIdSchema,
   select: z.array(externalDashboardSelectItemSchema).min(1).max(20),
@@ -223,9 +230,24 @@ const externalDashboardLineChartConfigSchema =
     compareToPreviousPeriod: z.boolean().optional(),
   });
 
+const externalDashboardLineRawSqlChartConfigSchema =
+  externalDashboardRawSqlChartConfigBaseSchema.extend({
+    displayType: z.literal('line'),
+    compareToPreviousPeriod: z.boolean().optional(),
+    fillNulls: z.boolean().optional(),
+    alignDateRangeToGranularity: z.boolean().optional(),
+  });
+
 const externalDashboardBarChartConfigSchema =
   externalDashboardTimeChartConfigSchema.extend({
     displayType: z.literal('stacked_bar'),
+  });
+
+const externalDashboardBarRawSqlChartConfigSchema =
+  externalDashboardRawSqlChartConfigBaseSchema.extend({
+    displayType: z.literal('stacked_bar'),
+    fillNulls: z.boolean().optional(),
+    alignDateRangeToGranularity: z.boolean().optional(),
   });
 
 const externalDashboardTableChartConfigSchema = z.object({
@@ -238,6 +260,15 @@ const externalDashboardTableChartConfigSchema = z.object({
   asRatio: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
 });
+
+const externalDashboardOtherRawSqlChartConfigSchema =
+  externalDashboardRawSqlChartConfigBaseSchema.extend({
+    displayType: z.union([
+      z.literal('table'),
+      z.literal('pie'),
+      z.literal('number'),
+    ]),
+  });
 
 const externalDashboardNumberChartConfigSchema = z.object({
   displayType: z.literal('number'),
@@ -268,7 +299,8 @@ const externalDashboardMarkdownChartConfigSchema = z.object({
 });
 
 export const externalDashboardTileConfigSchema = z
-  .discriminatedUnion('displayType', [
+  .union([
+    // Builder configs
     externalDashboardLineChartConfigSchema,
     externalDashboardBarChartConfigSchema,
     externalDashboardTableChartConfigSchema,
@@ -276,6 +308,11 @@ export const externalDashboardTileConfigSchema = z
     externalDashboardPieChartConfigSchema,
     externalDashboardMarkdownChartConfigSchema,
     externalDashboardSearchChartConfigSchema,
+
+    // Raw SQL Configs
+    externalDashboardLineRawSqlChartConfigSchema,
+    externalDashboardBarRawSqlChartConfigSchema,
+    externalDashboardOtherRawSqlChartConfigSchema, // (Table, Number, and Pie)
   ])
   .superRefine((data, ctx) => {
     if (
@@ -292,6 +329,11 @@ export const externalDashboardTileConfigSchema = z
 
 export type ExternalDashboardTileConfig = z.infer<
   typeof externalDashboardTileConfigSchema
+>;
+
+export type RawSqlExternalDashboardTileConfig = Extract<
+  ExternalDashboardTileConfig,
+  { configType: 'sql' }
 >;
 
 // ================================
