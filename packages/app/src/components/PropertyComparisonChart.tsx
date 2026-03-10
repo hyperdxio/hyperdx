@@ -151,8 +151,14 @@ export function PropertyComparisonChart({
       setClickedValue(null);
       return;
     }
+    const newValue = String(data.activeLabel ?? '');
+    // Toggle off if clicking the same bar
+    if (newValue === clickedValue) {
+      setClickedValue(null);
+      return;
+    }
     clipboard.reset();
-    setClickedValue(String(data.activeLabel ?? ''));
+    setClickedValue(newValue);
   };
 
   return (
