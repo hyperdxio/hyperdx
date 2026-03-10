@@ -1176,6 +1176,18 @@ describe('renderChartConfig', () => {
           "toStartOfMinute(timestamp), ServiceName, ResourceAttributes['timestamp'], timestamp",
         expected: `(toStartOfMinute(timestamp) >= toStartOfMinute(fromUnixTimestamp64Milli(1739319154000)) AND toStartOfMinute(timestamp) <= toStartOfMinute(fromUnixTimestamp64Milli(1739491954000)))`,
       },
+      {
+        description:
+          'with wrapped toStartOfInterval in primary key (should not optimize)',
+        timestampValueExpression: `timestamp`,
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        primaryKey:
+          '-toInt64(toStartOfInterval(timestamp, toIntervalMinute(15))), service_id, timestamp',
+        expected: `(timestamp >= fromUnixTimestamp64Milli(1739319154000) AND timestamp <= fromUnixTimestamp64Milli(1739491954000))`,
+      },
     ];
 
     beforeEach(() => {
@@ -1221,6 +1233,40 @@ describe('renderChartConfig', () => {
         expect(actualSql).toBe(expected);
       },
     );
+  });
+
+  it('should not generate invalid SQL when primary key wraps toStartOfInterval', async () => {
+    mockMetadata.getTableMetadata.mockResolvedValue({
+      primary_key:
+        'proxy_tier, status, is_customer_content, -toInt64(toStartOfInterval(timestamp, toIntervalMinute(15))), service_id',
+    } as any);
+
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: {
+        databaseName: 'default',
+        tableName: 'http_request_logs',
+      },
+      select: 'timestamp, cluster_id, service_id',
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'timestamp',
+      dateRange: [
+        new Date('2025-02-12 00:12:34Z'),
+        new Date('2025-02-14 00:12:34Z'),
+      ],
+      limit: { limit: 200, offset: 0 },
+    };
+
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      querySettings,
+    );
+    const actual = parameterizedQueryToSql(generatedSql);
+    expect(actual).not.toContain('toStartOfInterval(fromUnixTimestamp64Milli');
+    expect(actual).toMatchSnapshot();
   });
 
   describe('Aggregate Merge Functions', () => {

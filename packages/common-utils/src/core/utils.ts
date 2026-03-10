@@ -624,6 +624,9 @@ export function parseToStartOfFunction(
   const toStartOfMatches = expr.match(/(toStartOf\w+)\s*\(/);
 
   if (toStartOfMatches) {
+    const prefix = expr.substring(0, toStartOfMatches.index!);
+    if (prefix.trim() !== '') return undefined;
+
     const [toStartOfSubstring, toStartOfFunction] = toStartOfMatches;
 
     const argsStartIndex =
