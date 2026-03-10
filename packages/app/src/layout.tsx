@@ -60,8 +60,14 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
       <div className="d-flex" style={{ height: '100%', overflow: 'hidden' }}>
         <AppNav />
         <div
+          id="app-content-scroll-container"
           className="w-100 min-w-0"
-          style={{ minWidth: 0, overflow: 'auto' }}
+          style={{
+            minWidth: 0,
+            overflowX: 'auto',
+            overflowY: 'scroll',
+            scrollbarGutter: 'stable',
+          }}
         >
           {children}
         </div>
