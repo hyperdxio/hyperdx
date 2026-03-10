@@ -75,11 +75,9 @@ yarn test:e2e:ci       # Run end-to-end tests in CI
 **packages/api** (integration tests only):
 
 ```bash
-docker compose -f ./docker-compose.ci.yml up -d # Start the integration test docker services
-cd packages/api
-yarn ci:int            # Run integration tests
-yarn dev:int           # Watch mode for integration tests
-cd ../.. && docker compose -f ./docker-compose.ci.yml down # Stop the integration test docker services
+make dev-int-build                  # Build dependencies (run once before tests)
+make dev-int FILE=<TEST_FILE_NAME>  # Spins up Docker services and runs tests.
+                                    # Ctrl-C to stop and wait for all services to tear down.
 ```
 
 **packages/common-utils** (both unit and integration tests):
