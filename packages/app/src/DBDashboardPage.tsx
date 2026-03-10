@@ -96,7 +96,6 @@ import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { parseAsStringEncoded } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
-import { IS_LOCAL_MODE } from './config';
 import { useConnections } from './connection';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
@@ -375,28 +374,30 @@ const Tile = forwardRef(
             }
           >
             {(queriedConfig?.displayType === DisplayType.Line ||
-              queriedConfig?.displayType === DisplayType.StackedBar) &&
-              isBuilderChartConfig(queriedConfig) &&
-              isBuilderSavedChartConfig(chart.config) && (
-                <DBTimeChart
-                  key={`${keyPrefix}-${chart.id}`}
-                  title={title}
-                  toolbarPrefix={toolbar}
-                  sourceId={chart.config.source}
-                  showDisplaySwitcher={true}
-                  config={queriedConfig}
-                  onTimeRangeSelect={onTimeRangeSelect}
-                  setDisplayType={displayType => {
-                    onUpdateChart?.({
-                      ...chart,
-                      config: {
-                        ...chart.config,
-                        displayType,
-                      },
-                    });
-                  }}
-                />
-              )}
+              queriedConfig?.displayType === DisplayType.StackedBar) && (
+              <DBTimeChart
+                key={`${keyPrefix}-${chart.id}`}
+                title={title}
+                toolbarPrefix={toolbar}
+                sourceId={
+                  isBuilderSavedChartConfig(chart.config)
+                    ? chart.config.source
+                    : undefined
+                }
+                showDisplaySwitcher={true}
+                config={queriedConfig}
+                onTimeRangeSelect={onTimeRangeSelect}
+                setDisplayType={displayType => {
+                  onUpdateChart?.({
+                    ...chart,
+                    config: {
+                      ...chart.config,
+                      displayType,
+                    },
+                  });
+                }}
+              />
+            )}
             {queriedConfig?.displayType === DisplayType.Table && (
               <Box p="xs" h="100%">
                 <DBTableChart

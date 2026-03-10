@@ -5,7 +5,7 @@ import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { Button, Paper } from '@mantine/core';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
-import CodeMirror from '@uiw/react-codemirror';
+import CodeMirror, { EditorView } from '@uiw/react-codemirror';
 
 import { useRenderedSqlChartConfig } from '@/hooks/useChartConfig';
 
@@ -55,11 +55,13 @@ export function SQLPreview({
   formatData = true,
   enableCopy = false,
   copyButtonSize = 'md',
+  enableLineWrapping = false,
 }: {
   data?: string;
   formatData?: boolean;
   enableCopy?: boolean;
   copyButtonSize?: 'xs' | 'md';
+  enableLineWrapping?: boolean;
 }) {
   const displayed = formatData ? tryFormat(data) : data;
 
@@ -75,7 +77,10 @@ export function SQLPreview({
           highlightActiveLine: false,
           highlightActiveLineGutter: false,
         }}
-        extensions={[sql()]}
+        extensions={[
+          sql(),
+          ...(enableLineWrapping ? [EditorView.lineWrapping] : []),
+        ]}
         editable={false}
       />
       {enableCopy && <CopyButton text={displayed} size={copyButtonSize} />}
@@ -86,14 +91,22 @@ export function SQLPreview({
 // TODO: Support clicking in to view matched events
 export default function ChartSQLPreview({
   config,
+  enableCopy,
 }: {
   config: ChartConfigWithOptDateRange;
+  enableCopy?: boolean;
 }) {
   const { data } = useRenderedSqlChartConfig(config);
 
   return (
-    <Paper flex="auto" shadow="none" radius="sm" style={{ overflow: 'hidden' }}>
-      <SQLPreview data={data} formatData={false} />
+    <Paper
+      flex="auto"
+      shadow="none"
+      radius="sm"
+      style={{ overflow: 'hidden' }}
+      p="xs"
+    >
+      <SQLPreview data={data} formatData={false} enableCopy={enableCopy} />
     </Paper>
   );
 }
