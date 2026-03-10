@@ -36,6 +36,15 @@ interface ClickhouseSettingFormProps {
   displayValue?: (value: any, defaultValue?: any) => string;
 }
 
+function getFieldErrorMessage(error: unknown): string | undefined {
+  return typeof error === 'object' &&
+    error != null &&
+    'message' in error &&
+    typeof error.message === 'string'
+    ? error.message
+    : undefined;
+}
+
 function ClickhouseSettingForm({
   settingKey,
   label,
@@ -92,7 +101,7 @@ function ClickhouseSettingForm({
       } catch (e) {
         notifications.show({
           color: 'red',
-          message: e.message,
+          message: e instanceof Error ? e.message : `Failed to update ${label}`,
         });
       }
     },
@@ -147,7 +156,7 @@ function ClickhouseSettingForm({
                 }
                 required
                 readOnly={!isEditing}
-                error={form.formState.errors.value?.message}
+                error={getFieldErrorMessage(form.formState.errors.value)}
                 {...form.register('value', {
                   required: true,
                 })}

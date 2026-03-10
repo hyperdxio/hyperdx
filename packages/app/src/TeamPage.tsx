@@ -1,7 +1,7 @@
 import { ReactNode, useCallback, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { Box, Center, Container, Stack, Tabs } from '@mantine/core';
+import { Box, Center, Container, Loader, Stack, Tabs } from '@mantine/core';
 
 import { PageHeader } from './components/PageHeader';
 import ApiKeysSection from './components/TeamSettings/ApiKeysSection';
