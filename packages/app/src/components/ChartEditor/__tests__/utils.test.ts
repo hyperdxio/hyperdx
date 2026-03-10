@@ -84,10 +84,27 @@ describe('convertFormStateToSavedChartConfig', () => {
     });
   });
 
-  it('returns undefined for sql config without Table displayType', () => {
+  it('returns a raw SQL config for Line displayType', () => {
     const form: ChartEditorFormState = {
       configType: 'sql',
       displayType: DisplayType.Line,
+      sqlTemplate: 'SELECT 1',
+      connection: 'conn-1',
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(form, undefined);
+    expect(result).toEqual({
+      configType: 'sql',
+      displayType: DisplayType.Line,
+      sqlTemplate: 'SELECT 1',
+      connection: 'conn-1',
+    });
+  });
+
+  it('returns undefined for sql config with an unsupported displayType', () => {
+    const form: ChartEditorFormState = {
+      configType: 'sql',
+      displayType: DisplayType.Pie,
       sqlTemplate: 'SELECT 1',
       connection: 'conn-1',
       series: [],

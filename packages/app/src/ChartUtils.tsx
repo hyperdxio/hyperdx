@@ -11,16 +11,19 @@ import {
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
 import {
   convertDateRangeToGranularityString,
+  convertGranularityToSeconds,
+  getAlignedDateRange,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunction as AggFnV2,
   BuilderChartConfigWithDateRange,
   BuilderChartConfigWithOptTimestamp,
   BuilderSavedChartConfig,
+  ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   DisplayType,
   Filter,
@@ -132,41 +135,84 @@ export const isGranularity = (value: string): value is Granularity => {
   return Object.values(Granularity).includes(value as Granularity);
 };
 
-export function convertToTimeChartConfig(
-  config: BuilderChartConfigWithDateRange,
+function getTimeChartGranularity(
+  granularity: string | undefined,
+  dateRange: [Date, Date],
 ) {
-  const granularity =
-    config.granularity === 'auto' || config.granularity == null
-      ? convertDateRangeToGranularityString(config.dateRange, 80)
-      : config.granularity;
+  return granularity === 'auto' || granularity == null
+    ? convertDateRangeToGranularityString(dateRange, 80)
+    : granularity;
+}
 
-  const dateRange =
-    config.alignDateRangeToGranularity === false
-      ? config.dateRange
-      : getAlignedDateRange(config.dateRange, granularity);
+function getTimeChartDateRange(
+  dateRange: [Date, Date],
+  alignDateRangeToGranularity: boolean | undefined,
+  granularity: string,
+) {
+  return alignDateRangeToGranularity === false
+    ? dateRange
+    : getAlignedDateRange(dateRange, granularity);
+}
 
-  return {
-    ...config,
-    dateRange,
-    dateRangeEndInclusive: false,
+export function convertToTimeChartConfig(
+  config: ChartConfigWithDateRange,
+): ChartConfigWithDateRange {
+  const granularity = getTimeChartGranularity(
+    config.granularity,
+    config.dateRange,
+  );
+
+  const dateRange = getTimeChartDateRange(
+    config.dateRange,
+    config.alignDateRangeToGranularity,
     granularity,
-    limit: { limit: 100000 },
-  };
+  );
+
+  return isBuilderChartConfig(config)
+    ? {
+        ...config,
+        dateRange,
+        dateRangeEndInclusive: false,
+        granularity,
+        limit: { limit: 100000 },
+      }
+    : {
+        ...config,
+        dateRangeEndInclusive: false,
+        dateRange,
+        granularity,
+      };
 }
 
 export function useTimeChartSettings(
-  chartConfig: BuilderChartConfigWithDateRange,
+  config: Pick<
+    ChartConfigWithDateRange,
+    | 'displayType'
+    | 'dateRange'
+    | 'fillNulls'
+    | 'granularity'
+    | 'alignDateRangeToGranularity'
+  >,
 ) {
   return useMemo(() => {
-    const convertedConfig = convertToTimeChartConfig(chartConfig);
+    const granularity = getTimeChartGranularity(
+      config.granularity,
+      config.dateRange,
+    );
+
+    const dateRange = getTimeChartDateRange(
+      config.dateRange,
+      config.alignDateRangeToGranularity,
+      granularity,
+    );
 
     return {
-      displayType: convertedConfig.displayType,
-      dateRange: convertedConfig.dateRange,
-      fillNulls: convertedConfig.fillNulls,
-      granularity: convertedConfig.granularity,
+      displayType: config.displayType,
+      fillNulls: config.fillNulls,
+      dateRange,
+      granularity,
     };
-  }, [chartConfig]);
+  }, [config]);
 }
 
 export function seriesToSearchQuery({
@@ -247,23 +293,6 @@ export function TableToggle({
 
 export const ChartKeyJoiner = ' · ';
 export const PreviousPeriodSuffix = ' (previous)';
-
-export function convertGranularityToSeconds(granularity: SQLInterval): number {
-  const [num, unit] = granularity.split(' ');
-  const numInt = Number.parseInt(num);
-  switch (unit) {
-    case 'second':
-      return numInt;
-    case 'minute':
-      return numInt * 60;
-    case 'hour':
-      return numInt * 60 * 60;
-    case 'day':
-      return numInt * 60 * 60 * 24;
-    default:
-      return 0;
-  }
-}
 
 // Note: roundToNearestMinutes is broken in date-fns currently
 // additionally it doesn't support seconds or > 30min
@@ -621,13 +650,13 @@ function addResponseToFormattedData({
 }) {
   const { meta, data } = response;
   if (meta == null) {
-    throw new Error('No meta data found in response');
+    throw new Error('No metadata found in response');
   }
 
   const timestampColumn = inferTimestampColumn(meta);
   if (timestampColumn == null) {
     throw new Error(
-      `No timestamp column found with meta: ${JSON.stringify(meta)}`,
+      `No timestamp column found in result column metadata: ${JSON.stringify(meta)}`,
     );
   }
 
@@ -653,7 +682,10 @@ function addResponseToFormattedData({
       const currentPeriodKey = [
         // Simplify the display name if there's only one series and a group by
         ...(isSingleValueColumn && hasGroupColumns ? [] : [valueColumn.name]),
-        ...groupColumns.map(g => row[g.name]),
+        ...groupColumns.map(g => {
+          const v = row[g.name];
+          return typeof v === 'object' && v !== null ? JSON.stringify(v) : v;
+        }),
       ].join(ChartKeyJoiner);
       const previousPeriodKey = `${currentPeriodKey}${PreviousPeriodSuffix}`;
       const keyName = isPreviousPeriod ? previousPeriodKey : currentPeriodKey;
@@ -719,7 +751,13 @@ export function formatResponseForTimeChart({
 
   if (timestampColumn == null) {
     throw new Error(
-      `No timestamp column found with meta: ${JSON.stringify(meta)}`,
+      `No timestamp column found in result column metadata. Make sure a Date/DateTime column exists in the result set.\n\nResult column metadata: ${JSON.stringify(meta)}`,
+    );
+  }
+
+  if (valueColumns.length === 0) {
+    throw new Error(
+      `No value columns found in result column metadata. Make sure a numeric column exists in the result set.\n\nResult column metadata: ${JSON.stringify(meta)}`,
     );
   }
 
