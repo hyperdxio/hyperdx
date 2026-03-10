@@ -265,6 +265,111 @@ describe('DBTimeChart', () => {
     expect(dateRangeIndicatorCall.mvGranularity).toBeUndefined();
   });
 
+  describe('raw SQL line chart', () => {
+    const rawSqlConfig = {
+      configType: 'sql' as const,
+      sqlTemplate:
+        'SELECT toStartOfInterval(ts, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM logs GROUP BY ts ORDER BY ts ASC',
+      connection: 'test-connection',
+      displayType: 'line' as any,
+      dateRange: [new Date('2024-01-01'), new Date('2024-01-02')] as [
+        Date,
+        Date,
+      ],
+    };
+
+    it('passes the raw SQL config directly to useQueriedChartConfig without converting it', () => {
+      renderWithMantine(<DBTimeChart config={rawSqlConfig} />);
+
+      const firstCallConfig = mockUseQueriedChartConfig.mock.calls[0][0];
+      // The config should be passed as-is, not wrapped by convertToTimeChartConfig
+      // (which would add `limit`, `dateRangeEndInclusive`, etc.)
+      expect(firstCallConfig.configType).toBe('sql');
+      expect(firstCallConfig.sqlTemplate).toBe(rawSqlConfig.sqlTemplate);
+      expect(firstCallConfig).not.toHaveProperty('limit');
+    });
+
+    it('does not pass the raw SQL config to useMVOptimizationExplanation', () => {
+      renderWithMantine(<DBTimeChart config={rawSqlConfig} />);
+
+      // useMVOptimizationExplanation should be called with undefined for raw SQL configs
+      expect(
+        jest.mocked(useMVOptimizationExplanation).mock.calls[0][0],
+      ).toBeUndefined();
+    });
+
+    it('renders without crashing when query returns timestamp and value columns', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: {
+          data: [
+            { ts: 1704067200, count: 42 },
+            { ts: 1704067260, count: 17 },
+          ],
+          meta: [
+            { name: 'ts', type: 'DateTime' },
+            { name: 'count', type: 'UInt64' },
+          ],
+          rows: 2,
+          isComplete: true,
+        },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+      });
+
+      // Should render without throwing
+      expect(() =>
+        renderWithMantine(<DBTimeChart config={rawSqlConfig} />),
+      ).not.toThrow();
+    });
+
+    it('renders without crashing when query returns no data', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: {
+          data: [],
+          meta: [],
+          rows: 0,
+          isComplete: true,
+        },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+      });
+
+      expect(() =>
+        renderWithMantine(<DBTimeChart config={rawSqlConfig} />),
+      ).not.toThrow();
+    });
+
+    it('renders without crashing when query returns multiple value columns', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: {
+          data: [
+            { ts: 1704067200, errors: 5, warnings: 12 },
+            { ts: 1704067260, errors: 3, warnings: 8 },
+          ],
+          meta: [
+            { name: 'ts', type: 'DateTime' },
+            { name: 'errors', type: 'UInt64' },
+            { name: 'warnings', type: 'UInt64' },
+          ],
+          rows: 2,
+          isComplete: true,
+        },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+      });
+
+      expect(() =>
+        renderWithMantine(<DBTimeChart config={rawSqlConfig} />),
+      ).not.toThrow();
+    });
+  });
+
   it('does not render DateRangeIndicator when MV optimization has no optimized date range and showDateRangeIndicator is false', () => {
     // Mock useMVOptimizationExplanation to return data without an optimized config
     jest.mocked(useMVOptimizationExplanation).mockReturnValue({
