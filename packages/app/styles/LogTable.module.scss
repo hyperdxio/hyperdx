@@ -1,6 +1,10 @@
 $button-height: 18px;
 
 .tableWrapper {
+  overflow: auto;
+  height: 100%;
+  font-size: var(--mantine-font-size-xs);
+
   /* CSS custom properties for variant support */
   --log-table-bg: var(--color-bg-body);
   --log-table-muted-bg: var(--color-bg-muted);
@@ -17,6 +21,9 @@ $button-height: 18px;
   border-collapse: separate;
   background: var(--log-table-bg);
   font-family: var(--font-ibm-plex-mono);
+
+  /* Set a minimum width to force the scroll on small screens */
+  min-width: 1000px;
 }
 
 .tableHead {

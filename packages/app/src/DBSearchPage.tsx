@@ -1874,7 +1874,7 @@ function DBSearchPage() {
                 />
               )}
               {analysisMode === 'results' && (
-                <Flex direction="column" mih="0">
+                <Flex direction="column" mih="0" miw={0}>
                   {chartConfig && histogramTimeChartConfig && (
                     <>
                       <Box className={searchPageStyles.searchStatsContainer}>
