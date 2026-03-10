@@ -1,7 +1,6 @@
 name: Claude Code Review
 
 on:
-  # Disabled: upstream bug in claude-code-action SDK (https://github.com/anthropics/claude-code-action/issues/1013)
   pull_request_target:
     types: [opened, synchronize]
   # workflow_dispatch:
@@ -40,7 +39,7 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@01e756b34ef7a1447e9508f674143b07d20c2631
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           allowed_bots: cursor,cursor[bot],claude,claude[bot]
