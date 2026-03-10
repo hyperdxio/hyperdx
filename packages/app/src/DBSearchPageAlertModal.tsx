@@ -62,7 +62,7 @@ import { optionsToSelectData } from './utils';
 const SavedSearchAlertFormSchema = z
   .object({
     interval: AlertIntervalSchema,
-    threshold: z.number().int().min(1),
+    threshold: z.number(),
     scheduleOffsetMinutes: z.number().int().min(0).default(0),
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
@@ -170,7 +170,6 @@ const AlertForm = ({
               control={control}
             />
             <NumberInput
-              min={1}
               size="xs"
               w={80}
               control={control}

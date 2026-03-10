@@ -396,7 +396,7 @@ export const AlertBaseObjectSchema = z.object({
     .max(MAX_SCHEDULE_OFFSET_MINUTES)
     .optional(),
   scheduleStartAt: scheduleStartAtSchema,
-  threshold: z.number().int().min(1),
+  threshold: z.number(),
   thresholdType: z.nativeEnum(AlertThresholdType),
   channel: zAlertChannel,
   state: z.nativeEnum(AlertState).optional(),
@@ -420,7 +420,7 @@ const AlertBaseValidatedSchema = AlertBaseObjectSchema.superRefine(
 );
 
 export const ChartAlertBaseSchema = AlertBaseObjectSchema.extend({
-  threshold: z.number().positive(),
+  threshold: z.number(),
 });
 
 const ChartAlertBaseValidatedSchema = ChartAlertBaseSchema.superRefine(
@@ -872,6 +872,7 @@ const LogSourceAugmentation = {
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  orderByExpression: z.string().optional(),
 };
 
 // Trace source form schema
@@ -908,6 +909,7 @@ const TraceSourceAugmentation = {
   highlightedRowAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
+  orderByExpression: z.string().optional(),
 };
 
 // Session source form schema
