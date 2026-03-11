@@ -16,6 +16,7 @@ import {
   getLoggedInAgent,
   getServer,
   makeAlertInput,
+  makeRawSqlTile,
   makeTile,
 } from '../../../fixtures';
 import Alert from '../../../models/alert';
@@ -248,6 +249,38 @@ describe('dashboard router', () => {
         tileId: dashboard.body.tiles[0].id,
       },
     ]);
+  });
+
+  it('deletes alert when tile is updated from builder to raw SQL config', async () => {
+    const builderTile = makeTile();
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({ name: 'Test Dashboard', tiles: [builderTile], tags: [] })
+      .expect(200);
+
+    // Create a standalone alert for the builder tile
+    await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: builderTile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    expect((await agent.get('/alerts').expect(200)).body.data.length).toBe(1);
+
+    // Update the tile to a raw SQL config (same tile ID)
+    const rawSqlTile = makeRawSqlTile({ id: builderTile.id });
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({ tiles: [rawSqlTile] })
+      .expect(200);
+
+    const alertsAfter = await agent.get('/alerts').expect(200);
+    expect(alertsAfter.body.data).toEqual([]);
   });
 
   it('deletes attached alerts when deleting tiles', async () => {

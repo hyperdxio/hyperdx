@@ -21,9 +21,11 @@ import {
   makeExternalChart,
   makeExternalTile,
 } from '../../../fixtures';
+import Alert, { AlertSource, AlertThresholdType } from '../../../models/alert';
 import Connection from '../../../models/connection';
 import Dashboard from '../../../models/dashboard';
 import { Source } from '../../../models/source';
+import Webhook, { WebhookService } from '../../../models/webhook';
 
 // Constants
 const BASE_URL = '/api/v2/dashboards';
@@ -3267,6 +3269,190 @@ describe('External API v2 Dashboards - new format', () => {
       expect(response.body).toEqual({
         message: `Could not find the following connection IDs: ${otherConnectionId}`,
       });
+    });
+
+    it('should delete alert when tile is updated from builder to raw SQL config', async () => {
+      const tileId = new ObjectId().toString();
+      const dashboard = await createTestDashboard({
+        tiles: [
+          {
+            id: tileId,
+            name: 'Builder Tile',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              displayType: 'line',
+              source: traceSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: '',
+                },
+              ],
+              where: '',
+              whereLanguage: 'lucene',
+              granularity: 'auto',
+              implicitColumnExpression: 'Body',
+              filters: [],
+            },
+          },
+        ],
+      });
+
+      const webhook = await Webhook.create({
+        name: 'Test Webhook',
+        service: WebhookService.Slack,
+        url: 'https://hooks.slack.com/test',
+        team: team._id,
+      });
+
+      // Create a standalone alert for the builder tile
+      const alert = await Alert.create({
+        team: team._id,
+        dashboard: dashboard._id,
+        tileId,
+        source: AlertSource.TILE,
+        threshold: 100,
+        interval: '1h',
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+      });
+
+      expect(await Alert.findById(alert._id)).not.toBeNull();
+
+      // Update the tile to raw SQL config (same tile ID)
+      await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard',
+          tags: [],
+          tiles: [
+            {
+              id: tileId,
+              name: 'Raw SQL Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                configType: 'sql',
+                displayType: 'line',
+                connectionId: connection._id.toString(),
+                sqlTemplate: 'SELECT count() FROM otel_logs WHERE {timeFilter}',
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(await Alert.findById(alert._id)).toBeNull();
+    });
+
+    it('should delete alert when a tile with an alert is removed from the dashboard', async () => {
+      const keepTileId = new ObjectId().toString();
+      const removeTileId = new ObjectId().toString();
+      const dashboard = await createTestDashboard({
+        tiles: [
+          {
+            id: keepTileId,
+            name: 'Keep Tile',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              displayType: 'line',
+              source: traceSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: '',
+                },
+              ],
+              where: '',
+              whereLanguage: 'lucene',
+              granularity: 'auto',
+              implicitColumnExpression: 'Body',
+              filters: [],
+            },
+          },
+          {
+            id: removeTileId,
+            name: 'Remove Tile',
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              displayType: 'line',
+              source: traceSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: '',
+                },
+              ],
+              where: '',
+              whereLanguage: 'lucene',
+              granularity: 'auto',
+              implicitColumnExpression: 'Body',
+              filters: [],
+            },
+          },
+        ],
+      });
+
+      const webhook = await Webhook.create({
+        name: 'Test Webhook',
+        service: WebhookService.Slack,
+        url: 'https://hooks.slack.com/test',
+        team: team._id,
+      });
+
+      const alert = await Alert.create({
+        team: team._id,
+        dashboard: dashboard._id,
+        tileId: removeTileId,
+        source: AlertSource.TILE,
+        threshold: 100,
+        interval: '1h',
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+      });
+
+      expect(await Alert.findById(alert._id)).not.toBeNull();
+
+      // Update the dashboard, omitting the tile that had an alert
+      await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard',
+          tags: [],
+          tiles: [
+            {
+              id: keepTileId,
+              name: 'Keep Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count', where: '' }],
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(await Alert.findById(alert._id)).toBeNull();
     });
   });
 

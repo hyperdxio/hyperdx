@@ -1,3 +1,4 @@
+import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { uniq } from 'lodash';
@@ -5,6 +6,7 @@ import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
+import { deleteDashboardAlerts } from '@/controllers/alerts';
 import { getConnectionsByTeam } from '@/controllers/connection';
 import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
@@ -14,6 +16,7 @@ import {
   translateExternalChartToTileConfig,
   translateExternalFilterToFilter,
 } from '@/utils/externalApi';
+import logger from '@/utils/logger';
 import {
   ExternalDashboardFilter,
   externalDashboardFilterSchema,
@@ -1925,6 +1928,22 @@ router.put(
 
       if (updatedDashboard == null) {
         return res.sendStatus(404);
+      }
+
+      // Delete alerts for tiles that are now raw SQL (unsupported) or were removed
+      const newTileIdSet = new Set(internalTiles.map(t => t.id));
+      const tileIdsToDeleteAlerts = [
+        ...internalTiles
+          .filter(tile => isRawSqlSavedChartConfig(tile.config))
+          .map(tile => tile.id),
+        ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
+      ];
+      if (tileIdsToDeleteAlerts.length > 0) {
+        logger.info(
+          { dashboardId, teamId, tileIds: tileIdsToDeleteAlerts },
+          `Deleting alerts for tiles with unsupported config or removed tiles`,
+        );
+        await deleteDashboardAlerts(dashboardId, teamId, tileIdsToDeleteAlerts);
       }
 
       res.json({

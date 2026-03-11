@@ -345,7 +345,10 @@ export const externalDashboardTileConfigSchema = z
     // discriminatedUnion can produce targeted field-level errors rather
     // than a generic union failure.
     const schema =
-      'configType' in data && data.configType === 'sql'
+      data !== null &&
+      typeof data === 'object' &&
+      'configType' in data &&
+      data.configType === 'sql'
         ? externalDashboardRawSqlTileConfigSchema
         : externalDashboardBuilderTileConfigSchema;
 
@@ -373,7 +376,10 @@ export const externalDashboardTileConfigSchema = z
     // Safe to call .parse() here — superRefine already validated the data,
     // so this is guaranteed to succeed.
     const schema =
-      'configType' in data && data.configType === 'sql'
+      data !== null &&
+      typeof data === 'object' &&
+      'configType' in data &&
+      data.configType === 'sql'
         ? externalDashboardRawSqlTileConfigSchema
         : externalDashboardBuilderTileConfigSchema;
     return schema.parse(data);
