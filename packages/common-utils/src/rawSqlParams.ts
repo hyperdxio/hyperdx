@@ -74,8 +74,14 @@ export const QUERY_PARAMS_BY_DISPLAY_TYPE: Record<
     QUERY_PARAMS.startDateMilliseconds,
     QUERY_PARAMS.endDateMilliseconds,
   ],
-  [DisplayType.Pie]: [],
-  [DisplayType.Number]: [],
+  [DisplayType.Pie]: [
+    QUERY_PARAMS.startDateMilliseconds,
+    QUERY_PARAMS.endDateMilliseconds,
+  ],
+  [DisplayType.Number]: [
+    QUERY_PARAMS.startDateMilliseconds,
+    QUERY_PARAMS.endDateMilliseconds,
+  ],
   [DisplayType.Search]: [],
   [DisplayType.Heatmap]: [],
   [DisplayType.Markdown]: [],
@@ -90,13 +96,15 @@ WHERE TimestampTime >= fromUnixTimestamp64Milli ({startDateMilliseconds:Int64})
   AND TimestampTime < fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})
 GROUP BY ServiceName, ts`;
 
+export const DATE_RANGE_WHERE_EXAMPLE_SQL = `WHERE TimestampTime >= fromUnixTimestamp64Milli ({startDateMilliseconds:Int64})
+  AND TimestampTime <= fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})`;
+
 export const QUERY_PARAM_EXAMPLES: Record<DisplayType, string> = {
   [DisplayType.Line]: TIME_CHART_EXAMPLE_SQL,
   [DisplayType.StackedBar]: TIME_CHART_EXAMPLE_SQL,
-  [DisplayType.Table]: `WHERE Timestamp >= fromUnixTimestamp64Milli ({startDateMilliseconds:Int64})
-  AND Timestamp <= fromUnixTimestamp64Milli ({endDateMilliseconds:Int64})`,
-  [DisplayType.Pie]: '',
-  [DisplayType.Number]: '',
+  [DisplayType.Table]: DATE_RANGE_WHERE_EXAMPLE_SQL,
+  [DisplayType.Pie]: DATE_RANGE_WHERE_EXAMPLE_SQL,
+  [DisplayType.Number]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Search]: '',
   [DisplayType.Heatmap]: '',
   [DisplayType.Markdown]: '',
