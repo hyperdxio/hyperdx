@@ -1,5 +1,11 @@
 # @hyperdx/otel-collector
 
+## 2.21.0
+
+### Patch Changes
+
+- 53a4b672: chore: update otel collector base image to 0.147.0
+
 ## 2.20.0
 
 ## 2.19.0
