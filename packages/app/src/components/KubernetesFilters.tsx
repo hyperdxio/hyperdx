@@ -3,7 +3,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
-  TSource,
+  TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Group, Select } from '@mantine/core';
 
@@ -12,13 +12,13 @@ import { useGetKeyValues } from '@/hooks/useMetadata';
 
 type KubernetesFiltersProps = {
   dateRange: [Date, Date];
-  metricSource: TSource;
+  metricSource: TMetricSource;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
 };
 
 type FilterSelectProps = {
-  metricSource: TSource;
+  metricSource: TMetricSource;
   placeholder: string;
   fieldName: string;
   value: string | null;

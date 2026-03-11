@@ -4,7 +4,13 @@ import {
   convertDateRangeToGranularityString,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  isLogSource,
+  isTraceSource,
+  SourceKind,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import {
   Box,
   Card,
@@ -35,7 +41,7 @@ const InfraSubpanelGroup = ({
   where,
 }: {
   fieldPrefix: string;
-  metricSource: TSource;
+  metricSource: TMetricSource;
   timestamp: any;
   title: string;
   where: string;
@@ -204,7 +210,12 @@ export default ({
   rowId: string | undefined | null;
   source: TSource;
 }) => {
-  const { data: metricSource } = useSource({ id: source.metricSourceId });
+  const metricSourceId =
+    isLogSource(source) || isTraceSource(source)
+      ? source.metricSourceId
+      : undefined;
+  // TODO(AVK): pass kind to this hook
+  const { data: metricSource } = useSource({ id: metricSourceId });
 
   const podUid = rowData?.__hdx_resource_attributes['k8s.pod.uid'];
   const nodeName = rowData?.__hdx_resource_attributes['k8s.node.name'];
@@ -215,7 +226,7 @@ export default ({
     <Stack my="md" gap={40}>
       {podUid && (
         <div>
-          {metricSource && (
+          {metricSource && metricSource.kind === SourceKind.Metric && (
             <InfraSubpanelGroup
               title="Pod"
               where={`${metricSource.resourceAttributesExpression}.k8s.pod.uid:"${podUid}"`}
@@ -224,7 +235,7 @@ export default ({
               metricSource={metricSource}
             />
           )}
-          {source && (
+          {source && source.kind === SourceKind.Log && (
             <Card p="md" mt="xl">
               <Card.Section p="md" py="xs">
                 Pod Timeline
@@ -255,7 +266,7 @@ export default ({
           )}
         </div>
       )}
-      {nodeName && metricSource && (
+      {nodeName && metricSource && metricSource.kind === SourceKind.Metric && (
         <InfraSubpanelGroup
           metricSource={metricSource}
           title="Node"

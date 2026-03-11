@@ -1,6 +1,7 @@
 import {
+  SourceKind,
   SourceSchema,
-  sourceSchemaWithout,
+  SourceSchemaNoId,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { z } from 'zod';
@@ -23,13 +24,26 @@ router.get('/', async (req, res, next) => {
 
     const sources = await getSources(teamId.toString());
 
-    return res.json(sources.map(s => s.toJSON({ getters: true })));
+    return res.json(
+      sources.map(source => {
+        switch (source.kind) {
+          case SourceKind.Log:
+            return source.toJSON({ getters: true });
+          case SourceKind.Trace:
+            return source.toJSON({ getters: true });
+          case SourceKind.Metric:
+            return source.toJSON({ getters: true });
+          case SourceKind.Session:
+            return source.toJSON({ getters: true });
+          default:
+            source satisfies never;
+        }
+      }),
+    );
   } catch (e) {
     next(e);
   }
 });
-
-const SourceSchemaNoId = sourceSchemaWithout({ id: true });
 
 router.post(
   '/',
@@ -40,7 +54,6 @@ router.post(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
-      // TODO: HDX-1768 Eliminate type assertion
       const source = await createSource(teamId.toString(), {
         ...req.body,
         team: teamId,
@@ -65,7 +78,6 @@ router.put(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
-      // TODO: HDX-1768 Eliminate type assertion
       const source = await updateSource(teamId.toString(), req.params.id, {
         ...req.body,
         team: teamId,

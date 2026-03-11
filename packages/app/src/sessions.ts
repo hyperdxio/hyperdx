@@ -7,6 +7,7 @@ import {
   DateRange,
   SearchCondition,
   SearchConditionLanguage,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
@@ -81,7 +82,8 @@ export function useSessions(
         !traceSource ||
         !sessionSource ||
         !getTraceSourceFieldExpression ||
-        !getSessionsSourceFieldExpression
+        !getSessionsSourceFieldExpression ||
+        traceSource.kind !== SourceKind.Trace
       ) {
         return [];
       }
@@ -171,16 +173,30 @@ export function useSessions(
           {
             select: [
               {
-                valueExpression: `DISTINCT ${getSessionsSourceFieldExpression(sessionSource.resourceAttributesExpression ?? 'ResourceAttributes', 'rum.sessionId')}`,
+                valueExpression: `DISTINCT ${getSessionsSourceFieldExpression(
+                  ('resourceAttributesExpression' in sessionSource
+                    ? sessionSource.resourceAttributesExpression
+                    : undefined) ?? 'ResourceAttributes',
+                  'rum.sessionId',
+                )}`,
                 alias: 'sessionId',
               },
             ],
             from: sessionSource.from,
             dateRange,
-            where: `${getSessionsSourceFieldExpression(sessionSource.resourceAttributesExpression ?? 'ResourceAttributes', 'rum.sessionId')} IN (SELECT sessions.sessionId FROM ${SESSIONS_CTE_NAME})`,
+            where: `${getSessionsSourceFieldExpression(
+              ('resourceAttributesExpression' in sessionSource
+                ? sessionSource.resourceAttributesExpression
+                : undefined) ?? 'ResourceAttributes',
+              'rum.sessionId',
+            )} IN (SELECT sessions.sessionId FROM ${SESSIONS_CTE_NAME})`,
             whereLanguage: 'sql',
             timestampValueExpression: sessionSource.timestampValueExpression,
-            implicitColumnExpression: sessionSource.implicitColumnExpression,
+            implicitColumnExpression:
+              sessionSource.kind === SourceKind.Log ||
+              sessionSource.kind === SourceKind.Trace
+                ? sessionSource.implicitColumnExpression
+                : undefined,
             connection: sessionSource.connection,
           },
           metadata,

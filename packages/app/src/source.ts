@@ -1,5 +1,3 @@
-// TODO: HDX-1768 Change TSource here to TSourceUnion and adjust as needed. Then, go to
-// SourceForm.tsx and remove type assertions for TSource and TSourceUnion
 import pick from 'lodash/pick';
 import objectHash from 'object-hash';
 import {
@@ -14,7 +12,9 @@ import {
   MetricsDataType,
   SourceKind,
   TSource,
-  TSourceUnion,
+  TSource,
+  TSourceNoId,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -41,36 +41,43 @@ export function getFirstTimestampValueExpression(valueExpression: string) {
   return splitAndTrimWithBracket(valueExpression)[0];
 }
 
-export function getSpanEventBody(eventModel: TSource) {
+export function getSpanEventBody(eventModel: TTraceSource) {
   return eventModel.spanNameExpression;
 }
 
 export function getDisplayedTimestampValueExpression(eventModel: TSource) {
+  const displayed =
+    eventModel.kind === SourceKind.Log || eventModel.kind === SourceKind.Trace
+      ? eventModel.displayedTimestampValueExpression
+      : undefined;
   return (
-    eventModel.displayedTimestampValueExpression ??
+    displayed ??
     getFirstTimestampValueExpression(eventModel.timestampValueExpression)
   );
 }
 
 export function getEventBody(eventModel: TSource) {
-  const expression =
-    eventModel.kind === SourceKind.Trace
-      ? (eventModel.spanNameExpression ?? undefined)
-      : (eventModel.bodyExpression ?? eventModel.implicitColumnExpression);
+  let expression: string | undefined;
+  if (eventModel.kind === SourceKind.Trace) {
+    expression = eventModel.spanNameExpression ?? undefined;
+  } else if (eventModel.kind === SourceKind.Log) {
+    expression =
+      eventModel.bodyExpression ?? eventModel.implicitColumnExpression;
+  }
   const multiExpr = splitAndTrimWithBracket(expression ?? '');
   return multiExpr.length === 1 ? expression : multiExpr[0];
 }
 
-function addDefaultsToSource(source: TSourceUnion): TSource {
-  return {
-    ...source,
-    // Session sources have optional timestampValueExpressions, with default
-    timestampValueExpression:
-      source.kind === SourceKind.Session
-        ? source.timestampValueExpression ||
-          SESSION_TABLE_EXPRESSIONS.timestampValueExpression
-        : source.timestampValueExpression,
-  };
+function addDefaultsToSource(source: TSource): TSource {
+  if (source.kind === SourceKind.Session) {
+    return {
+      ...source,
+      timestampValueExpression:
+        source.timestampValueExpression ||
+        SESSION_TABLE_EXPRESSIONS.timestampValueExpression,
+    };
+  }
+  return source;
 }
 
 export function useSources() {
@@ -80,7 +87,7 @@ export function useSources() {
       if (IS_LOCAL_MODE) {
         return localSources.getAll();
       }
-      const rawSources = await hdxServer('sources').json<TSourceUnion[]>();
+      const rawSources = await hdxServer('sources').json<TSource[]>();
       return rawSources.map(addDefaultsToSource);
     },
   });
@@ -93,11 +100,11 @@ export function useSource({ id }: { id?: string | null }) {
       if (IS_LOCAL_MODE) {
         return localSources.getAll();
       }
-      const rawSources = await hdxServer('sources').json<TSourceUnion[]>();
+      const rawSources = await hdxServer('sources').json<TSource[]>();
       return rawSources.map(addDefaultsToSource);
     },
     select: (data: TSource[]): TSource => {
-      return data.filter((s: any) => s.id === id)[0];
+      return data.filter(s => s.id === id)[0];
     },
     enabled: id != null,
   });
@@ -127,7 +134,7 @@ export function useCreateSource() {
   const queryClient = useQueryClient();
 
   const mut = useMutation({
-    mutationFn: async ({ source }: { source: Omit<TSource, 'id'> }) => {
+    mutationFn: async ({ source }: { source: TSourceNoId }) => {
       if (IS_LOCAL_MODE) {
         const existing = localSources
           .getAll()
@@ -139,7 +146,7 @@ export function useCreateSource() {
         if (existing) {
           // Replace the existing source in-place rather than duplicating
           localSources.update(existing.id, source);
-          return { ...source, id: existing.id } as TSource;
+          return { ...source, id: existing.id };
         }
         return localSources.create(source);
       }
@@ -183,19 +190,45 @@ function hasAllColumns(columns: ColumnMeta[], requiredColumns: string[]) {
   return missingColumns.length === 0;
 }
 
+// TODO(AVK) - is this right????
+// Inferred source configuration fields that can be auto-detected from table schema.
+// This is intentionally a flat partial type (not a union) because it returns a bag of
+// fields that the caller spreads onto whatever source kind they're creating.
+type InferredSourceConfig = Partial<{
+  timestampValueExpression: string;
+  defaultTableSelectExpression: string;
+  serviceNameExpression: string;
+  bodyExpression: string;
+  displayedTimestampValueExpression: string;
+  eventAttributesExpression: string;
+  implicitColumnExpression: string;
+  resourceAttributesExpression: string;
+  spanIdExpression: string;
+  traceIdExpression: string;
+  severityTextExpression: string;
+  durationExpression: string;
+  durationPrecision: number;
+  parentSpanIdExpression: string;
+  spanKindExpression: string;
+  spanNameExpression: string;
+  statusCodeExpression: string;
+  statusMessageExpression: string;
+  spanEventsValueExpression: string;
+}>;
+
 export async function inferTableSourceConfig({
   databaseName,
   tableName,
   connectionId,
+  kind,
   metadata,
 }: {
   databaseName: string;
   tableName: string;
   connectionId: string;
+  kind: SourceKind;
   metadata: Metadata;
-}): Promise<
-  Partial<Omit<TSource, 'id' | 'name' | 'from' | 'connection' | 'kind'>>
-> {
+}): Promise<InferredSourceConfig> {
   const columns = await metadata.getColumns({
     databaseName,
     tableName,
@@ -212,6 +245,32 @@ export async function inferTableSourceConfig({
   const primaryKeyColumns = new Set(
     extractColumnReferencesFromKey(primaryKeys),
   );
+
+  const timestampColumns = filterColumnMetaByType(columns, [JSDataType.Date]);
+  const primaryKeyTimestampColumn = timestampColumns?.find(c =>
+    primaryKeyColumns.has(c.name),
+  );
+
+  const baseConfig: InferredSourceConfig = {
+    ...(primaryKeyTimestampColumn != null
+      ? { timestampValueExpression: primaryKeyTimestampColumn.name }
+      : {}),
+  };
+
+  if (kind === SourceKind.Session) {
+    const isSessionSchema =
+      hasAllColumns(columns, Object.values(SESSION_TABLE_EXPRESSIONS)) ||
+      hasAllColumns(columns, Object.values(JSON_SESSION_TABLE_EXPRESSIONS));
+
+    if (isSessionSchema) {
+      return {
+        ...baseConfig,
+        resourceAttributesExpression:
+          SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression,
+      };
+    }
+    return baseConfig;
+  }
 
   const isOtelLogSchema = hasAllColumns(columns, [
     'Timestamp',
@@ -242,17 +301,8 @@ export async function inferTableSourceConfig({
   // Check if SpanEvents column is available
   const hasSpanEvents = columns.some(col => col.name === 'Events.Timestamp');
 
-  const timestampColumns = filterColumnMetaByType(columns, [JSDataType.Date]);
-  const primaryKeyTimestampColumn = timestampColumns?.find(c =>
-    primaryKeyColumns.has(c.name),
-  );
-
   return {
-    ...(primaryKeyTimestampColumn != null
-      ? {
-          timestampValueExpression: primaryKeyTimestampColumn.name,
-        }
-      : {}),
+    ...baseConfig,
     ...(isOtelLogSchema
       ? {
           defaultTableSelectExpression:
@@ -295,11 +345,11 @@ export async function inferTableSourceConfig({
   };
 }
 
-export function getDurationMsExpression(source: TSource) {
+export function getDurationMsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${(source.durationPrecision ?? 9) - 3}`;
 }
 
-export function getDurationSecondsExpression(source: TSource) {
+export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
 }
 

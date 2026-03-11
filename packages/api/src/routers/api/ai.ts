@@ -60,16 +60,28 @@ Here are some guidelines:
 
 The user is looking to do a query on their data source named: ${source.name} of type ${source.kind}.
 
-The ${source.kind === SourceKind.Log ? 'log level' : 'span status code'} is stored in ${source.severityTextExpression}.
-You can identify services via ${source.serviceNameExpression}
+${
+  source.kind === SourceKind.Log
+    ? `The log level is stored in ${source.severityTextExpression}.`
+    : source.kind === SourceKind.Trace
+      ? `The span status code is stored in ${source.statusCodeExpression}.`
+      : ''
+}
+${'serviceNameExpression' in source && `You can identify services via ${source.serviceNameExpression}`}
 ${
   source.kind === SourceKind.Trace
     ? `Duration of spans can be queried via ${source.durationExpression} which is expressed in 10^-${source.durationPrecision} seconds of precision.
 Span names under ${source.spanNameExpression} and span kinds under ${source.spanKindExpression}`
-    : `The log body can be queried via ${source.bodyExpression}`
+    : 'bodyExpression' in source
+      ? `The log body can be queried via ${source.bodyExpression}`
+      : ''
 }
-Various log/span-specific attributes as a Map can be found under ${source.eventAttributesExpression} while resource attributes that follow the OpenTelemetry semantic convention can be found under ${source.resourceAttributesExpression}
-You must use the full field name ex. "column['key']" or "column.key" as it appears.
+${
+  source.kind === SourceKind.Trace || source.kind === SourceKind.Log
+    ? `Various log/span-specific attributes as a Map can be found under ${source.eventAttributesExpression} while resource attributes that follow the OpenTelemetry semantic convention can be found under ${source.resourceAttributesExpression}
+You must use the full field name ex. "column['key']" or "column.key" as it appears.`
+    : ''
+}
 
 The following is a list of properties and example values that exist in the source:
 ${JSON.stringify(keyValues)}

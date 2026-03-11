@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Box, Group, Slider, Text } from '@mantine/core';
 
 import { withAppNav } from '@/layout';
@@ -57,13 +57,15 @@ function DBServiceMapPage() {
     setDisplayedTimeInputValue,
   });
 
+  // TODO(AVK): Follow up with useSource and kind here
   const defaultSource = sources?.find(
-    source => source.kind === SourceKind.Trace,
+    (source): source is TTraceSource => source.kind === SourceKind.Trace,
   );
   const source =
     sourceId && sources
       ? (sources.find(
-          source => source.id === sourceId && source.kind === SourceKind.Trace,
+          (source): source is TTraceSource =>
+            source.id === sourceId && source.kind === SourceKind.Trace,
         ) ?? defaultSource)
       : defaultSource;
 

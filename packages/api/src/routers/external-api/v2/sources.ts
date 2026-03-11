@@ -1,6 +1,7 @@
 import {
+  SourceKind,
   SourceSchema,
-  type TSourceUnion,
+  type TSource,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 
@@ -27,7 +28,7 @@ export function mapGranularityToExternalFormat(granularity: string): string {
   }
 }
 
-function mapSourceToExternalSource(source: TSourceUnion): TSourceUnion {
+function mapSourceToExternalSource(source: TSource): TSource {
   if (!('materializedViews' in source)) return source;
   if (!Array.isArray(source.materializedViews)) return source;
 
@@ -44,7 +45,23 @@ function mapSourceToExternalSource(source: TSourceUnion): TSourceUnion {
 
 function formatExternalSource(source: SourceDocument) {
   // Convert to JSON so that any ObjectIds are converted to strings
-  const json = JSON.stringify(source.toJSON({ getters: true }));
+  const json = JSON.stringify(
+    (() => {
+      switch (source.kind) {
+        case SourceKind.Log:
+          return source.toJSON({ getters: true });
+        case SourceKind.Trace:
+          return source.toJSON({ getters: true });
+        case SourceKind.Metric:
+          return source.toJSON({ getters: true });
+        case SourceKind.Session:
+          return source.toJSON({ getters: true });
+        default:
+          source satisfies never;
+          return {};
+      }
+    })(),
+  );
 
   // Parse using the SourceSchema to strip out any fields not defined in the schema
   const parseResult = SourceSchema.safeParse(JSON.parse(json));

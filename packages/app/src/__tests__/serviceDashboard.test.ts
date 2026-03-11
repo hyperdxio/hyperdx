@@ -1,5 +1,5 @@
 import type { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
-import type { TSource } from '@hyperdx/common-utils/dist/types';
+import type { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
@@ -15,7 +15,7 @@ function removeAllWhitespace(str: string) {
 }
 
 describe('Service Dashboard', () => {
-  const mockSource: TSource = {
+  const mockSource: TTraceSource = {
     id: 'test-source',
     name: 'Test Source',
     kind: SourceKind.Trace,
@@ -28,10 +28,12 @@ describe('Service Dashboard', () => {
     durationExpression: 'Duration',
     durationPrecision: 9,
     traceIdExpression: 'TraceId',
+    spanIdExpression: 'SpanId',
+    parentSpanIdExpression: 'ParentSpanId',
     serviceNameExpression: 'ServiceName',
     spanNameExpression: 'SpanName',
     spanKindExpression: 'SpanKind',
-    severityTextExpression: 'StatusCode',
+    statusCodeExpression: 'StatusCode',
   };
 
   describe('getExpressions', () => {

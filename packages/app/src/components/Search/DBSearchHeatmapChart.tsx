@@ -10,7 +10,7 @@ import {
 import {
   BuilderChartConfigWithDateRange,
   DisplayType,
-  TSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Flex } from '@mantine/core';
 import { Button } from '@mantine/core';
@@ -37,7 +37,7 @@ export function DBSearchHeatmapChart({
   onAddFilter,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
-  source: TSource;
+  source: TTraceSource;
   isReady: boolean;
   onAddFilter?: AddFilterFn;
 }) {

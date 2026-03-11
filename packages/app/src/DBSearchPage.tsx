@@ -36,6 +36,8 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
   Filter,
+  isLogSource,
+  isTraceSource,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -672,11 +674,13 @@ function useSearchedConfigToChartConfig(
           select:
             select ||
             defaultSearchConfig?.select ||
-            sourceObj.defaultTableSelectExpression ||
+            (isLogSource(sourceObj) || isTraceSource(sourceObj)
+              ? sourceObj.defaultTableSelectExpression
+              : '') ||
             '',
           from: sourceObj.from,
           source: sourceObj.id,
-          ...(sourceObj.tableFilterExpression != null
+          ...(isLogSource(sourceObj) && sourceObj.tableFilterExpression != null
             ? {
                 filters: [
                   {
@@ -691,7 +695,10 @@ function useSearchedConfigToChartConfig(
           where: where ?? '',
           whereLanguage: whereLanguage ?? 'sql',
           timestampValueExpression: sourceObj.timestampValueExpression,
-          implicitColumnExpression: sourceObj.implicitColumnExpression,
+          implicitColumnExpression:
+            isLogSource(sourceObj) || isTraceSource(sourceObj)
+              ? sourceObj.implicitColumnExpression
+              : undefined,
           connection: sourceObj.connection,
           displayType: DisplayType.Search,
           orderBy: orderBy || defaultSearchConfig?.orderBy || defaultOrderBy,
@@ -791,11 +798,16 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
   return useMemo(() => {
     // If no source, return undefined so that the orderBy is not set incorrectly
     if (!source) return undefined;
-    const trimmedOrderBy = source.orderByExpression?.trim();
+    const trimmedOrderBy =
+      isLogSource(source) || isTraceSource(source)
+        ? source.orderByExpression?.trim()
+        : undefined;
     if (trimmedOrderBy) return trimmedOrderBy;
     return optimizeDefaultOrderBy(
       source?.timestampValueExpression ?? '',
-      source?.displayedTimestampValueExpression,
+      isLogSource(source) || isTraceSource(source)
+        ? source.displayedTimestampValueExpression
+        : undefined,
       tableMetadata?.sorting_key,
     );
   }, [source, tableMetadata]);
@@ -917,7 +929,11 @@ function DBSearchPage() {
     }
     return {
       select:
-        _savedSearch?.select ?? searchedSource?.defaultTableSelectExpression,
+        _savedSearch?.select ??
+        (searchedSource?.kind === SourceKind.Log ||
+        searchedSource?.kind === SourceKind.Trace
+          ? searchedSource.defaultTableSelectExpression
+          : undefined),
       where: _savedSearch?.where ?? '',
       whereLanguage: _savedSearch?.whereLanguage ?? 'lucene',
       source: _savedSearch?.source,
@@ -1806,7 +1822,11 @@ function DBSearchPage() {
                   setAnalysisMode={setAnalysisMode}
                   chartConfig={filtersChartConfig}
                   sourceId={inputSourceObj?.id}
-                  showDelta={!!searchedSource?.durationExpression}
+                  showDelta={
+                    !!(searchedSource?.kind === SourceKind.Trace
+                      ? searchedSource.durationExpression
+                      : undefined)
+                  }
                   {...searchFilters}
                 />
               </ErrorBoundary>
@@ -1864,18 +1884,20 @@ function DBSearchPage() {
                     </Box>
                   </Flex>
                 )}
-              {analysisMode === 'delta' && searchedSource != null && (
-                <DBSearchHeatmapChart
-                  chartConfig={{
-                    ...chartConfig,
-                    dateRange: searchedTimeRange,
-                    with: aliasWith,
-                  }}
-                  isReady={isReady}
-                  source={searchedSource}
-                  onAddFilter={searchFilters.setFilterValue}
-                />
-              )}
+              {analysisMode === 'delta' &&
+                searchedSource != null &&
+                isTraceSource(searchedSource) && (
+                  <DBSearchHeatmapChart
+                    chartConfig={{
+                      ...chartConfig,
+                      dateRange: searchedTimeRange,
+                      with: aliasWith,
+                    }}
+                    isReady={isReady}
+                    source={searchedSource}
+                    onAddFilter={searchFilters.setFilterValue}
+                  />
+                )}
               {analysisMode === 'results' && (
                 <Flex direction="column" mih="0">
                   {chartConfig && histogramTimeChartConfig && (

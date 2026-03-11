@@ -1,10 +1,13 @@
 import { memo, useCallback, useEffect, useState } from 'react';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import {
+  isLogSource,
   MetricsDataType,
   MetricTable,
   SourceKind,
+  TLogSource,
   TSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Flex, Loader, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -68,16 +71,16 @@ async function addOtelDemoSources({
   traceSourceDatabaseName: string;
   traceSourceName: string;
   traceSourceTableName: string;
-  traceSourceHighlightedTraceAttributes?: TSource['highlightedTraceAttributeExpressions'];
-  traceSourceMaterializedViews?: TSource['materializedViews'];
+  traceSourceHighlightedTraceAttributes?: TTraceSource['highlightedTraceAttributeExpressions'];
+  traceSourceMaterializedViews?: TTraceSource['materializedViews'];
 }) {
   const hasLogSource =
     logSourceDatabaseName && logSourceName && logSourceTableName;
   const hasMetricsSource = metricsSourceDatabaseName && metricsSourceName;
 
-  let logSource: TSource | undefined;
+  let logSource: TLogSource | undefined;
   if (hasLogSource) {
-    logSource = await createSourceMutation.mutateAsync({
+    const newSource = await createSourceMutation.mutateAsync({
       source: {
         kind: SourceKind.Log,
         name: logSourceName,
@@ -99,8 +102,12 @@ async function addOtelDemoSources({
         displayedTimestampValueExpression: 'Timestamp',
       },
     });
+    if (isLogSource(newSource)) {
+      logSource = newSource;
+    }
   }
-  const traceSource = await createSourceMutation.mutateAsync({
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const traceSource = (await createSourceMutation.mutateAsync({
     source: {
       kind: SourceKind.Trace,
       name: traceSourceName,
@@ -131,7 +138,7 @@ async function addOtelDemoSources({
         traceSourceHighlightedTraceAttributes,
       materializedViews: traceSourceMaterializedViews,
     },
-  });
+  })) as TTraceSource;
   let metricsSource: TSource | undefined;
   if (hasMetricsSource) {
     metricsSource = await createSourceMutation.mutateAsync({
@@ -168,15 +175,8 @@ async function addOtelDemoSources({
         tableName: sessionSourceTableName,
       },
       timestampValueExpression: 'TimestampTime',
-      defaultTableSelectExpression: 'Timestamp, ServiceName, Body',
-      serviceNameExpression: 'ServiceName',
-      severityTextExpression: 'SeverityText',
-      eventAttributesExpression: 'LogAttributes',
       resourceAttributesExpression: 'ResourceAttributes',
       traceSourceId: traceSource.id,
-      traceIdExpression: 'TraceId',
-      spanIdExpression: 'SpanId',
-      implicitColumnExpression: 'Body',
     },
   });
   await Promise.all([
@@ -185,7 +185,6 @@ async function addOtelDemoSources({
           updateSourceMutation.mutateAsync({
             source: {
               ...logSource,
-              sessionSourceId: sessionSource.id,
               traceSourceId: traceSource.id,
               ...(hasMetricsSource && metricsSource
                 ? { metricSourceId: metricsSource.id }
@@ -319,6 +318,7 @@ function OnboardingModalComponent({
         // Create Log Source if available
         if (otelTables.tables.logs) {
           const inferredConfig = await inferTableSourceConfig({
+            kind: SourceKind.Log,
             databaseName: otelTables.database,
             tableName: otelTables.tables.logs,
             connectionId,
@@ -338,6 +338,8 @@ function OnboardingModalComponent({
                 ...inferredConfig,
                 timestampValueExpression:
                   inferredConfig.timestampValueExpression,
+                defaultTableSelectExpression:
+                  inferredConfig.defaultTableSelectExpression ?? '',
               },
             });
             createdSources.push(logSource);
@@ -352,6 +354,7 @@ function OnboardingModalComponent({
         // Create Trace Source if available
         if (otelTables.tables.traces) {
           const inferredConfig = await inferTableSourceConfig({
+            kind: SourceKind.Trace,
             databaseName: otelTables.database,
             tableName: otelTables.tables.traces,
             connectionId,
@@ -361,7 +364,7 @@ function OnboardingModalComponent({
           if (inferredConfig.timestampValueExpression != null) {
             const traceSource = await createSourceMutation.mutateAsync({
               source: {
-                kind: SourceKind.Trace,
+                kind: SourceKind.Trace as const,
                 name: 'Traces',
                 connection: connectionId,
                 from: {
@@ -372,7 +375,15 @@ function OnboardingModalComponent({
                 // Help typescript understand it's not null
                 timestampValueExpression:
                   inferredConfig.timestampValueExpression,
-              },
+                durationExpression: inferredConfig.durationExpression ?? '',
+                durationPrecision: inferredConfig.durationPrecision ?? 9,
+                traceIdExpression: inferredConfig.traceIdExpression ?? '',
+                spanIdExpression: inferredConfig.spanIdExpression ?? '',
+                parentSpanIdExpression:
+                  inferredConfig.parentSpanIdExpression ?? '',
+                spanNameExpression: inferredConfig.spanNameExpression ?? '',
+                spanKindExpression: inferredConfig.spanKindExpression ?? '',
+              } as Omit<TTraceSource, 'id'>,
             });
             createdSources.push(traceSource);
           } else {
@@ -425,7 +436,6 @@ function OnboardingModalComponent({
                 tableName: '',
               },
               timestampValueExpression: 'TimeUnix',
-              serviceNameExpression: 'ServiceName',
               metricTables,
               resourceAttributesExpression: 'ResourceAttributes',
             },
@@ -436,6 +446,7 @@ function OnboardingModalComponent({
         // Create Session Source if available
         if (otelTables.tables.sessions) {
           const inferredConfig = await inferTableSourceConfig({
+            kind: SourceKind.Session,
             databaseName: otelTables.database,
             tableName: otelTables.tables.sessions,
             connectionId,
@@ -501,7 +512,6 @@ function OnboardingModalComponent({
                 ...logSource,
                 ...(traceSource ? { traceSourceId: traceSource.id } : {}),
                 ...(metricsSource ? { metricSourceId: metricsSource.id } : {}),
-                ...(sessionSource ? { sessionSourceId: sessionSource.id } : {}),
               },
             }),
           );

@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { MetricsDataType, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  MetricsDataType,
+  TLogSource,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Modal, Paper, Tabs, Text, TextProps, Tooltip } from '@mantine/core';
 import { IconCode, IconRefresh } from '@tabler/icons-react';
 
@@ -91,9 +96,17 @@ const TableSchemaPreview = ({
   );
 };
 
+export interface SourceSchemaPreviewSource {
+  connection: TSource['connection'];
+  from: TSource['from'];
+  metricTables?: TMetricSource['metricTables'];
+  kind?: TSource['kind'];
+  name: TSource['name'];
+  materializedViews?: TLogSource['materializedViews'];
+}
+
 export interface SourceSchemaPreviewProps {
-  source?: Pick<TSource, 'connection' | 'from' | 'metricTables'> &
-    Partial<Pick<TSource, 'kind' | 'name' | 'materializedViews'>>;
+  source?: SourceSchemaPreviewSource;
   iconStyles?: Pick<TextProps, 'size' | 'color'>;
   variant?: 'icon' | 'text';
 }

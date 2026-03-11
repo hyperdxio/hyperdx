@@ -787,8 +787,12 @@ const QuerySettingsSchema = z.array(
 
 export type QuerySettings = z.infer<typeof QuerySettingsSchema>;
 
+const RequiredTimestampColumnSchema = z
+  .string()
+  .min(1, 'Timestamp Column is required');
+
 // Base schema with fields common to all source types
-const SourceBaseSchema = z.object({
+export const SourceBaseSchema = z.object({
   id: z.string(),
   name: z.string().min(1, 'Name is required'),
   kind: z.nativeEnum(SourceKind),
@@ -798,11 +802,8 @@ const SourceBaseSchema = z.object({
     tableName: z.string().min(1, 'Table is required'),
   }),
   querySettings: QuerySettingsSchema.optional(),
+  timestampValueExpression: RequiredTimestampColumnSchema,
 });
-
-const RequiredTimestampColumnSchema = z
-  .string()
-  .min(1, 'Timestamp Column is required');
 
 const HighlightedAttributeExpressionsSchema = z.array(
   z.object({
@@ -846,12 +847,11 @@ export type MaterializedViewConfiguration = z.infer<
 >;
 
 // Log source form schema
-const LogSourceAugmentation = {
+export const LogSourceSchema = SourceBaseSchema.extend({
   kind: z.literal(SourceKind.Log),
   defaultTableSelectExpression: z.string({
     message: 'Default Table Select Expression is required',
   }),
-  timestampValueExpression: RequiredTimestampColumnSchema,
 
   // Optional fields for logs
   serviceNameExpression: z.string().optional(),
@@ -873,13 +873,12 @@ const LogSourceAugmentation = {
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
   orderByExpression: z.string().optional(),
-};
+});
 
 // Trace source form schema
-const TraceSourceAugmentation = {
+export const TraceSourceSchema = SourceBaseSchema.extend({
   kind: z.literal(SourceKind.Trace),
   defaultTableSelectExpression: z.string().optional(),
-  timestampValueExpression: RequiredTimestampColumnSchema,
 
   // Required fields for traces
   durationExpression: z.string().min(1, 'Duration Expression is required'),
@@ -910,24 +909,23 @@ const TraceSourceAugmentation = {
     HighlightedAttributeExpressionsSchema.optional(),
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
   orderByExpression: z.string().optional(),
-};
+});
 
 // Session source form schema
-const SessionSourceAugmentation = {
+export const SessionSourceSchema = SourceBaseSchema.extend({
   kind: z.literal(SourceKind.Session),
-
-  // Optional to support legacy sources, which did not require this field.
-  // Will be defaulted to `TimestampTime` when queried, if undefined.
-  timestampValueExpression: z.string().optional(),
 
   // Required fields for sessions
   traceSourceId: z
     .string({ message: 'Correlated Trace Source is required' })
     .min(1, 'Correlated Trace Source is required'),
-};
+
+  // Optional fields for sessions
+  resourceAttributesExpression: z.string().optional(),
+});
 
 // Metric source form schema
-const MetricSourceAugmentation = {
+export const MetricSourceSchema = SourceBaseSchema.extend({
   kind: z.literal(SourceKind.Metric),
   // override from SourceBaseSchema
   from: z.object({
@@ -937,87 +935,51 @@ const MetricSourceAugmentation = {
 
   // Metric tables - at least one should be provided
   metricTables: MetricTableSchema,
-  timestampValueExpression: RequiredTimestampColumnSchema,
   resourceAttributesExpression: z
     .string()
     .min(1, 'Resource Attributes is required'),
 
   // Optional fields for metrics
+  serviceNameExpression: z.string().optional(),
   logSourceId: z.string().optional(),
-};
+});
 
 // Union of all source form schemas for validation
 export const SourceSchema = z.discriminatedUnion('kind', [
-  SourceBaseSchema.extend(LogSourceAugmentation),
-  SourceBaseSchema.extend(TraceSourceAugmentation),
-  SourceBaseSchema.extend(SessionSourceAugmentation),
-  SourceBaseSchema.extend(MetricSourceAugmentation),
+  LogSourceSchema,
+  TraceSourceSchema,
+  SessionSourceSchema,
+  MetricSourceSchema,
 ]);
-export type TSourceUnion = z.infer<typeof SourceSchema>;
+export type TSource = z.infer<typeof SourceSchema>;
 
-// This function exists to perform schema validation with omission of a certain
-// value. It is not possible to do on the discriminatedUnion directly
-export function sourceSchemaWithout(
-  omissions: { [k in keyof z.infer<typeof SourceBaseSchema>]?: true } = {},
-) {
-  // TODO: Make these types work better if possible
-  return z.discriminatedUnion('kind', [
-    SourceBaseSchema.omit(omissions).extend(LogSourceAugmentation),
-    SourceBaseSchema.omit(omissions).extend(TraceSourceAugmentation),
-    SourceBaseSchema.omit(omissions).extend(SessionSourceAugmentation),
-    SourceBaseSchema.omit(omissions).extend(MetricSourceAugmentation),
-  ]);
+export const SourceSchemaNoId = z.discriminatedUnion('kind', [
+  LogSourceSchema.omit({ id: true }),
+  TraceSourceSchema.omit({ id: true }),
+  SessionSourceSchema.omit({ id: true }),
+  MetricSourceSchema.omit({ id: true }),
+]);
+export type TSourceNoId = z.infer<typeof SourceSchemaNoId>;
+
+// Per-kind source types extracted from the Zod discriminated union
+export type TLogSource = Extract<TSource, { kind: SourceKind.Log }>;
+export type TTraceSource = Extract<TSource, { kind: SourceKind.Trace }>;
+export type TSessionSource = Extract<TSource, { kind: SourceKind.Session }>;
+export type TMetricSource = Extract<TSource, { kind: SourceKind.Metric }>;
+
+// Type guards for narrowing TSource by kind
+export function isLogSource(source: TSource): source is TLogSource {
+  return source.kind === SourceKind.Log;
 }
-
-// Helper types for better union flattening
-type AllKeys<T> = T extends any ? keyof T : never;
-// This is Claude Opus's explanation of this type magic to extract the required
-// parameters:
-//
-// 1. [K in keyof T]-?:
-//   Maps over all keys in T. The -? removes the optional modifier, making all
-//   properties required in this mapped type
-// 2. {} extends Pick<T, K> ? never : K
-//   Pick<T, K> creates a type with just property K from T.
-//   {} extends Pick<T, K> checks if an empty object can satisfy the picked property.
-//   If the property is optional, {} can extend it (returns never)
-//   If the property is required, {} cannot extend it (returns K)
-// 3. [keyof T]
-//    Indexes into the mapped type to get the union of all non-never values
-type NonOptionalKeysPresentInEveryUnionBranch<T> = {
-  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-  [K in keyof T]-?: {} extends Pick<T, K> ? never : K;
-}[keyof T];
-
-// Helper to check if a key is required in ALL branches of the union
-type RequiredInAllBranches<T, K extends AllKeys<T>> = T extends any
-  ? K extends NonOptionalKeysPresentInEveryUnionBranch<T>
-    ? true
-    : false
-  : never;
-
-// This type gathers the Required Keys across the discriminated union TSourceUnion
-// and keeps them as required in a non-unionized type, and also gathers all possible
-// optional keys from the union branches and brings them into one unified flattened type.
-// This is done to maintain compatibility with the legacy zod schema.
-type FlattenUnion<T> = {
-  // If a key is required in all branches of a union, make it a required key
-  [K in AllKeys<T> as RequiredInAllBranches<T, K> extends true
-    ? K
-    : never]: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
-} & {
-  // If a key is not required in all branches of a union, make it an optional
-  // key and join the possible types
-  [K in AllKeys<T> as RequiredInAllBranches<T, K> extends true
-    ? never
-    : K]?: T extends infer U ? (K extends keyof U ? U[K] : never) : never;
-};
-type TSourceWithoutDefaults = FlattenUnion<z.infer<typeof SourceSchema>>;
-
-// Type representing a TSourceWithoutDefaults object which has been augmented with default values
-export type TSource = TSourceWithoutDefaults & {
-  timestampValueExpression: string;
-};
+export function isTraceSource(source: TSource): source is TTraceSource {
+  return source.kind === SourceKind.Trace;
+}
+export function isSessionSource(source: TSource): source is TSessionSource {
+  return source.kind === SourceKind.Session;
+}
+export function isMetricSource(source: TSource): source is TMetricSource {
+  return source.kind === SourceKind.Metric;
+}
 
 export const AssistantLineTableConfigSchema = z.object({
   displayType: z.enum([DisplayType.Line, DisplayType.Table]),

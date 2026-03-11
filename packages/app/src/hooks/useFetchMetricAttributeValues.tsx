@@ -3,7 +3,7 @@ import {
   ResponseJSON,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
 import { getClickhouseClient } from '@/clickhouse';
@@ -19,7 +19,7 @@ interface MetricAttributeValuesProps {
   attributeName: string;
   attributeCategory: AttributeCategory;
   searchTerm?: string;
-  tableSource: TSource | undefined;
+  tableSource: TMetricSource | undefined;
   metricType: string;
   enabled?: boolean;
 }

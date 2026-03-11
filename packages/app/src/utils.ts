@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { MutableRefObject, SetStateAction } from 'react';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
 import { dateRangeToString } from './timeQuery';
@@ -887,11 +887,15 @@ export function getMetricTableName(
   source: TSource,
   metricType?: string,
 ): string | undefined {
-  return metricType == null
-    ? source.from.tableName
-    : source.metricTables?.[
-        metricType.toLowerCase() as keyof typeof source.metricTables
-      ];
+  if (metricType == null) {
+    return source.from.tableName;
+  }
+  if (source.kind === SourceKind.Metric) {
+    return source.metricTables?.[
+      metricType.toLowerCase() as keyof typeof source.metricTables
+    ];
+  }
+  return undefined;
 }
 
 /**

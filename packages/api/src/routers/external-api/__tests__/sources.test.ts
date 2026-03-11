@@ -13,7 +13,12 @@ import {
   getServer,
 } from '../../../fixtures';
 import Connection, { IConnection } from '../../../models/connection';
-import { Source } from '../../../models/source';
+import {
+  ISource,
+  SessionSource,
+  Source,
+  TraceSource,
+} from '../../../models/source';
 import { mapGranularityToExternalFormat } from '../v2/sources';
 
 describe('External API v2 Sources', () => {
@@ -289,7 +294,7 @@ describe('External API v2 Sources', () => {
     });
 
     it('should return a single session source', async () => {
-      const traceSource = await Source.create({
+      const traceSource = await TraceSource.create({
         kind: SourceKind.Trace,
         team: team._id,
         name: 'Trace Source for Session',
@@ -308,17 +313,18 @@ describe('External API v2 Sources', () => {
         connection: connection._id,
       });
 
-      const sessionSource = await Source.create({
+      const sessionSource = await SessionSource.create({
         kind: SourceKind.Session,
-        team: team._id,
+        team: team._id.toString(),
         name: 'Test Session Source',
         from: {
           databaseName: DEFAULT_DATABASE,
           tableName: 'rrweb_events',
         },
+        timestampValueExpression: 'Timestamp',
         traceSourceId: traceSource._id.toString(),
-        connection: connection._id,
-      });
+        connection: connection._id.toString(),
+      } satisfies Omit<Extract<ISource, { kind: SourceKind.Session }>, 'id'>);
 
       const response = await authRequest('get', BASE_URL).expect(200);
 
@@ -338,6 +344,7 @@ describe('External API v2 Sources', () => {
         },
         traceSourceId: traceSource._id.toString(),
         querySettings: [],
+        timestampValueExpression: 'Timestamp',
       });
     });
 

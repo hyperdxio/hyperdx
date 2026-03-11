@@ -1,5 +1,9 @@
 import React from 'react';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TLogSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 
@@ -49,30 +53,33 @@ const MockTimelineChart = TimelineChart as any;
 
 describe('DBTraceWaterfallChartContainer', () => {
   // Common test data
-  const mockTraceTableSource: TSource = {
+  const mockTraceTableSource: TTraceSource = {
     id: 'trace-source-id',
     kind: SourceKind.Trace,
     name: 'trace-source',
     from: { databaseName: 'test_db', tableName: 'trace_table' },
     timestampValueExpression: 'Timestamp',
     durationExpression: 'Duration',
+    durationPrecision: 9,
     traceIdExpression: 'TraceId',
     spanIdExpression: 'SpanId',
     parentSpanIdExpression: 'ParentSpanId',
     statusCodeExpression: 'StatusCode',
     serviceNameExpression: 'ServiceName',
-    severityTextExpression: 'SeverityText',
+    spanNameExpression: 'SpanName',
+    spanKindExpression: 'SpanKind',
     eventAttributesExpression: 'SpanAttributes',
     implicitColumnExpression: 'Body',
     connection: 'conn1',
   };
 
-  const mockLogTableSource: TSource = {
+  const mockLogTableSource: TLogSource = {
     id: 'log-source-id',
     kind: SourceKind.Log,
     name: 'log-source',
     from: { databaseName: 'test_db', tableName: 'log_table' },
     timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: 'Timestamp',
     implicitColumnExpression: 'Body',
     connection: 'conn2',
   };
@@ -267,19 +274,21 @@ describe('DBTraceWaterfallChartContainer', () => {
 
 describe('useEventsAroundFocus', () => {
   // Test data
-  const mockTableSource: TSource = {
+  const mockTableSource: TTraceSource = {
     id: 'test-table-source-id',
     kind: SourceKind.Trace,
     name: 'trace-source',
     from: { databaseName: 'test_db', tableName: 'trace_table' },
     timestampValueExpression: 'Timestamp',
     durationExpression: 'Duration',
+    durationPrecision: 9,
     traceIdExpression: 'TraceId',
     spanIdExpression: 'SpanId',
     parentSpanIdExpression: 'ParentSpanId',
     statusCodeExpression: 'StatusCode',
     serviceNameExpression: 'ServiceName',
-    severityTextExpression: 'SeverityText',
+    spanNameExpression: 'SpanName',
+    spanKindExpression: 'SpanKind',
     eventAttributesExpression: 'SpanAttributes',
     implicitColumnExpression: 'Body',
     connection: 'conn1',

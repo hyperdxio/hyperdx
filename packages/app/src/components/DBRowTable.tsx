@@ -34,6 +34,7 @@ import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
   SelectList,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -899,11 +900,9 @@ export const RawLogTable = memo(
                             isLast={isLast}
                             onRemoveColumn={
                               onRemoveColumn &&
-                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
                               (header.column.columnDef.meta as any)?.column
                                 ? () => {
                                     onRemoveColumn(
-                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                       (header.column.columnDef.meta as any)
                                         ?.column,
                                     );
@@ -1558,7 +1557,10 @@ function DBSqlRowTableComponent({
     config,
     samples: 10_000,
     bodyValueExpression: patternColumn ?? '',
-    severityTextExpression: source?.severityTextExpression ?? '',
+    severityTextExpression:
+      (source?.kind === SourceKind.Log
+        ? source.severityTextExpression
+        : undefined) ?? '',
     totalCount: undefined,
     enabled: denoiseResults,
   });
