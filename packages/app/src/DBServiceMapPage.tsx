@@ -3,11 +3,22 @@ import dynamic from 'next/dynamic';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { Box, Group, Slider, Text } from '@mantine/core';
+import {
+  Box,
+  Button,
+  Flex,
+  Group,
+  Modal,
+  Slider,
+  Text,
+  Title,
+} from '@mantine/core';
 
+import { IS_LOCAL_MODE } from '@/config';
 import { withAppNav } from '@/layout';
 
 import ServiceMap from './components/ServiceMap/ServiceMap';
+import { TableSourceForm } from './components/Sources/SourceForm';
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { TimePicker } from './components/TimePicker';
@@ -47,6 +58,7 @@ const defaultTimeRange = parseTimeQuery(DEFAULT_INTERVAL, false) as [
 function DBServiceMapPage() {
   const { data: sources } = useSources();
   const [sourceId, setSourceId] = useQueryState('source');
+  const [isCreateSourceModalOpen, setIsCreateSourceModalOpen] = useState(false);
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
@@ -87,6 +99,72 @@ function DBServiceMapPage() {
   );
   const { label: samplingLabel = '' } =
     SAMPLING_FACTORS.find(factor => factor.value === samplingFactor) ?? {};
+
+  const hasTraceSources = sources != null && defaultSource != null;
+  const isLoading = sources == null;
+
+  if (!isLoading && !hasTraceSources) {
+    return (
+      <Box
+        p="sm"
+        className="bg-body"
+        style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
+      >
+        <Text size="xl" mb="md">
+          Service Map
+        </Text>
+        {IS_LOCAL_MODE && (
+          <Modal
+            size="xl"
+            opened={isCreateSourceModalOpen}
+            onClose={() => setIsCreateSourceModalOpen(false)}
+            title="Configure New Trace Source"
+          >
+            <TableSourceForm
+              isNew
+              defaultName="My Trace Source"
+              onCreate={() => setIsCreateSourceModalOpen(false)}
+            />
+          </Modal>
+        )}
+        <Flex
+          direction="column"
+          align="center"
+          justify="center"
+          gap="sm"
+          style={{ flex: 1 }}
+        >
+          <Title size="sm" ta="center" c="var(--color-text-muted)">
+            No trace sources configured
+          </Title>
+          <Text size="xs" ta="center" c="var(--color-text-muted)" maw={400}>
+            The Service Map visualizes relationships between your services using
+            trace data. Configure a trace source to get started.
+          </Text>
+          {IS_LOCAL_MODE ? (
+            <Button
+              variant="default"
+              size="sm"
+              mt="sm"
+              onClick={() => setIsCreateSourceModalOpen(true)}
+            >
+              Create Trace Source
+            </Button>
+          ) : (
+            <Button
+              component="a"
+              href="/team"
+              variant="default"
+              size="sm"
+              mt="sm"
+            >
+              Go to Team Settings
+            </Button>
+          )}
+        </Flex>
+      </Box>
+    );
+  }
 
   return source ? (
     <Box
