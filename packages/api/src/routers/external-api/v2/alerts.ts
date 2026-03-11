@@ -89,7 +89,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "65f5e4a3b9e77c001a567890"
  *         tileId:
  *           type: string
- *           description: Tile ID for tile-based alerts.
+ *           description: Tile ID for tile-based alerts. May not be a Raw-SQL-based tile.
  *           nullable: true
  *           example: "65f5e4a3b9e77c001a901234"
  *         savedSearchId:

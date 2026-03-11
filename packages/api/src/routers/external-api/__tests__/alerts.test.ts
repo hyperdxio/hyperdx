@@ -82,6 +82,37 @@ describe('External API Alerts', () => {
     }).save();
   };
 
+  // Helper to create a dashboard with a raw SQL tile for testing
+  const createTestDashboardWithRawSqlTile = async (
+    options: { teamId?: any } = {},
+  ) => {
+    const tileId = new ObjectId().toString();
+    const tiles = [
+      {
+        id: tileId,
+        name: 'Raw SQL Chart',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'line',
+          sqlTemplate: 'SELECT 1',
+          connection: 'test-connection',
+        },
+      },
+    ];
+
+    const dashboard = await new Dashboard({
+      name: 'Raw SQL Dashboard',
+      tiles,
+      team: options.teamId ?? team._id,
+    }).save();
+
+    return { dashboard, tileId };
+  };
+
   // Helper to create a saved search for testing
   const createTestSavedSearch = async (options: { teamId?: any } = {}) => {
     return new SavedSearch({
@@ -674,6 +705,49 @@ describe('External API Alerts', () => {
           source: AlertSource.TILE,
           dashboardId: otherTeamDashboard._id.toString(),
           tileId: otherTeamDashboard.tiles[0].id,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        };
+
+        await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+          .send(updatePayload)
+          .expect(400);
+      });
+
+      it('should reject creating an alert on a raw SQL tile', async () => {
+        const webhook = await createTestWebhook();
+        const { dashboard, tileId } = await createTestDashboardWithRawSqlTile();
+
+        const alertInput = {
+          dashboardId: dashboard._id.toString(),
+          tileId,
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+        };
+
+        await authRequest('post', ALERTS_BASE_URL).send(alertInput).expect(400);
+      });
+
+      it('should reject updating an alert to reference a raw SQL tile', async () => {
+        const { alert, webhook } = await createTestAlert();
+        const { dashboard: rawSqlDashboard, tileId: rawSqlTileId } =
+          await createTestDashboardWithRawSqlTile();
+
+        const updatePayload = {
+          threshold: 200,
+          interval: '1h',
+          thresholdType: AlertThresholdType.ABOVE,
+          source: AlertSource.TILE,
+          dashboardId: rawSqlDashboard._id.toString(),
+          tileId: rawSqlTileId,
           channel: {
             type: 'webhook',
             webhookId: webhook._id.toString(),
