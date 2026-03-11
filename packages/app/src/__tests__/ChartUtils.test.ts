@@ -862,15 +862,27 @@ describe('ChartUtils', () => {
       expect(result).toEqual([]);
     });
 
-    it('returns empty array when there are no numeric value columns', () => {
-      const result = formatResponseForPieChart(
-        {
-          data: [{ ServiceName: 'checkout' }],
-          meta: [{ name: 'ServiceName', type: 'LowCardinality(String)' }],
-        },
-        getColor,
+    it('throws when meta is missing', () => {
+      expect(() =>
+        formatResponseForPieChart(
+          { data: [{ 'count()': 10 }] } as any,
+          getColor,
+        ),
+      ).toThrow('No meta data found in response');
+    });
+
+    it('throws when there are no numeric value columns', () => {
+      expect(() =>
+        formatResponseForPieChart(
+          {
+            data: [{ ServiceName: 'checkout' }],
+            meta: [{ name: 'ServiceName', type: 'LowCardinality(String)' }],
+          },
+          getColor,
+        ),
+      ).toThrow(
+        'No value columns found in result column metadata. Make sure a numeric column exists in the result set.\n\nResult column metadata: [{"name":"ServiceName","type":"LowCardinality(String)"}]',
       );
-      expect(result).toEqual([]);
     });
 
     it('uses the value column name as label when there are no group-by columns', () => {

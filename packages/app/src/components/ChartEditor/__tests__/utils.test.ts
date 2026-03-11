@@ -104,7 +104,7 @@ describe('convertFormStateToSavedChartConfig', () => {
   it('returns undefined for sql config with an unsupported displayType', () => {
     const form: ChartEditorFormState = {
       configType: 'sql',
-      displayType: DisplayType.Pie,
+      displayType: DisplayType.Markdown,
       sqlTemplate: 'SELECT 1',
       connection: 'conn-1',
       series: [],

@@ -1571,38 +1571,29 @@ export default function EditTimeChartForm({
                 thresholdType: alert.thresholdType,
               })
             }
+            errorVariant="inline"
             showMVOptimizationIndicator={false}
           />
         </div>
       )}
-      {queryReady &&
-        queriedConfig != null &&
-        isBuilderChartConfig(queriedConfig) &&
-        activeTab === 'pie' && (
-          <div
-            className="flex-grow-1 d-flex flex-column"
-            style={{ height: 400 }}
-          >
-            <DBPieChart
-              config={queriedConfig}
-              showMVOptimizationIndicator={false}
-            />
-          </div>
-        )}
-      {queryReady &&
-        queriedConfig != null &&
-        isBuilderChartConfig(queriedConfig) &&
-        activeTab === 'number' && (
-          <div
-            className="flex-grow-1 d-flex flex-column"
-            style={{ height: 400 }}
-          >
-            <DBNumberChart
-              config={queriedConfig}
-              showMVOptimizationIndicator={false}
-            />
-          </div>
-        )}
+      {queryReady && queriedConfig != null && activeTab === 'pie' && (
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBPieChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+            errorVariant="inline"
+          />
+        </div>
+      )}
+      {queryReady && queriedConfig != null && activeTab === 'number' && (
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBNumberChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+            errorVariant="inline"
+          />
+        </div>
+      )}
       {queryReady &&
         tableSource &&
         queriedConfig != null &&
