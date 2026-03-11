@@ -128,10 +128,13 @@ export const TimelineChart = memo(function ({
   const onWheel = useStableCallback((e: WheelEvent) => {
     const { deltaX, deltaY, metaKey, ctrlKey } = e;
 
-    e.preventDefault();
-
     if (metaKey || ctrlKey) {
+      e.preventDefault();
       setScale(v => Math.max(v + -deltaY * 0.01, 1));
+    }
+
+    if (deltaX !== 0) {
+      e.preventDefault();
     }
 
     setOffset(v =>
