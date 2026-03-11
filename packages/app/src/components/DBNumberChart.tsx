@@ -1,7 +1,17 @@
 import { useMemo } from 'react';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box, Code, Flex, Text } from '@mantine/core';
+import {
+  filterColumnMetaByType,
+  JSDataType,
+} from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  isBuilderChartConfig,
+  isRawSqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
+  BuilderChartConfigWithDateRange,
+  RawSqlConfigWithDateRange,
+} from '@hyperdx/common-utils/dist/types';
+import { Flex, Text } from '@mantine/core';
 
 import {
   buildMVDateRangeIndicator,
@@ -13,8 +23,10 @@ import { useSource } from '@/source';
 import { formatNumber } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-import { SQLPreview } from './ChartSQLPreview';
 
 export default function DBNumberChart({
   config,
@@ -24,22 +36,30 @@ export default function DBNumberChart({
   toolbarPrefix,
   toolbarSuffix,
   showMVOptimizationIndicator = true,
+  errorVariant,
 }: {
-  config: BuilderChartConfigWithDateRange;
+  config: BuilderChartConfigWithDateRange | RawSqlConfigWithDateRange;
   queryKeyPrefix?: string;
   enabled?: boolean;
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
   showMVOptimizationIndicator?: boolean;
+  errorVariant?: ChartErrorStateVariant;
 }) {
   const queriedConfig = useMemo(
-    () => convertToNumberChartConfig(config),
+    () =>
+      isBuilderChartConfig(config)
+        ? convertToNumberChartConfig(config)
+        : config,
     [config],
   );
 
+  const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
+    ? queriedConfig
+    : undefined;
   const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(queriedConfig);
+    useMVOptimizationExplanation(builderQueriedConfig);
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     queriedConfig,
@@ -50,12 +70,25 @@ export default function DBNumberChart({
     },
   );
 
-  const number = formatNumber(
-    (Object.values(data?.data?.[0] ?? {})?.[0] ?? Number.NaN) as number,
-    config.numberFormat,
-  );
+  // The value is the first numeric value in the first row of the result
+  const valueColumn = data?.meta
+    ? filterColumnMetaByType(data?.meta, [JSDataType.Number])?.[0]
+    : undefined;
+  const resultError =
+    data && !valueColumn && isRawSqlChartConfig(queriedConfig)
+      ? new Error(
+          `No numeric columns found in result column metadata. Make sure a numeric column exists in the result set.\n\nResult Metadata: ${JSON.stringify(data.meta)}`,
+        )
+      : error;
 
-  const { data: source } = useSource({ id: config.source });
+  const value = valueColumn
+    ? data?.data?.[0]?.[valueColumn.name]
+    : (Object.values(data?.data?.[0] ?? {})?.[0] ?? Number.NaN);
+  const formattedValue = formatNumber(value as number, config.numberFormat);
+
+  const { data: source } = useSource({
+    id: isBuilderChartConfig(config) ? config.source : undefined,
+  });
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
@@ -64,11 +97,11 @@ export default function DBNumberChart({
       allToolbarItems.push(...toolbarPrefix);
     }
 
-    if (source && showMVOptimizationIndicator) {
+    if (source && showMVOptimizationIndicator && builderQueriedConfig) {
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-number-chart-mv-indicator"
-          config={queriedConfig}
+          config={builderQueriedConfig}
           source={source}
           variant="icon"
         />,
@@ -96,6 +129,7 @@ export default function DBNumberChart({
     showMVOptimizationIndicator,
     mvOptimizationData,
     queriedConfig,
+    builderQueriedConfig,
   ]);
 
   return (
@@ -105,39 +139,16 @@ export default function DBNumberChart({
           Loading Chart Data...
         </div>
       ) : isError ? (
-        <div className="h-100 w-100 align-items-center justify-content-center text-muted">
-          <Text ta="center" size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
-          </Text>
-          <Box mt="sm">
-            <Text my="sm" size="sm" ta="center">
-              Error Message:
-            </Text>
-            <Code
-              block
-              style={{
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {error.message}
-            </Code>
-            {error instanceof ClickHouseQueryError && (
-              <>
-                <Text my="sm" size="sm" ta="center">
-                  Sent Query:
-                </Text>
-                <SQLPreview data={error?.query} />
-              </>
-            )}
-          </Box>
-        </div>
+        <ChartErrorState error={error} variant={errorVariant} />
+      ) : resultError ? (
+        <ChartErrorState error={resultError} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           No data found within time range.
         </div>
       ) : (
         <Flex align="center" justify="center" h="100%" style={{ flexGrow: 1 }}>
-          <Text size="4rem">{number ?? 'N/A'}</Text>
+          <Text size="4rem">{formattedValue ?? 'N/A'}</Text>
         </Flex>
       )}
     </ChartContainer>

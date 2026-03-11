@@ -3,6 +3,7 @@ import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
   DisplayType,
+  RawSqlSavedChartConfig,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import { pick } from 'lodash';
@@ -13,6 +14,7 @@ import { translateFilterToExternalFilter } from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import {
   ExternalDashboardFilterWithId,
+  ExternalDashboardRawSqlTileConfig,
   ExternalDashboardSelectItem,
   ExternalDashboardTileConfig,
   ExternalDashboardTileWithId,
@@ -36,6 +38,12 @@ export function isSeriesTile(
 export type ConfigTile = ExternalDashboardTileWithId & {
   config: Exclude<ExternalDashboardTileWithId['config'], undefined>;
 };
+
+export function isRawSqlExternalTileConfig(
+  config: ExternalDashboardTileConfig,
+): config is ExternalDashboardRawSqlTileConfig {
+  return 'configType' in config && config.configType === 'sql';
+}
 
 export function isConfigTile(
   tile: ExternalDashboardTileWithId,
@@ -86,8 +94,66 @@ const convertToExternalSelectItem = (
 const convertToExternalTileChartConfig = (
   config: SavedChartConfig,
 ): ExternalDashboardTileConfig | undefined => {
-  // HDX-3582: Implement this for Raw SQL charts
-  if (isRawSqlSavedChartConfig(config)) return undefined;
+  if (isRawSqlSavedChartConfig(config)) {
+    switch (config.displayType) {
+      case DisplayType.Line:
+        return {
+          configType: 'sql',
+          displayType: DisplayType.Line,
+          connectionId: config.connection,
+          sqlTemplate: config.sqlTemplate,
+          alignDateRangeToGranularity: config.alignDateRangeToGranularity,
+          fillNulls: config.fillNulls !== false,
+          numberFormat: config.numberFormat,
+          compareToPreviousPeriod: config.compareToPreviousPeriod,
+        };
+      case DisplayType.StackedBar:
+        return {
+          configType: 'sql',
+          displayType: config.displayType,
+          connectionId: config.connection,
+          sqlTemplate: config.sqlTemplate,
+          alignDateRangeToGranularity: config.alignDateRangeToGranularity,
+          fillNulls: config.fillNulls !== false,
+          numberFormat: config.numberFormat,
+        };
+      case DisplayType.Table:
+        return {
+          configType: 'sql',
+          displayType: DisplayType.Table,
+          connectionId: config.connection,
+          sqlTemplate: config.sqlTemplate,
+          numberFormat: config.numberFormat,
+        };
+      case DisplayType.Number:
+        return {
+          configType: 'sql',
+          displayType: DisplayType.Number,
+          connectionId: config.connection,
+          sqlTemplate: config.sqlTemplate,
+          numberFormat: config.numberFormat,
+        };
+      case DisplayType.Pie:
+        return {
+          configType: 'sql',
+          displayType: DisplayType.Pie,
+          connectionId: config.connection,
+          sqlTemplate: config.sqlTemplate,
+          numberFormat: config.numberFormat,
+        };
+      case DisplayType.Search:
+      case DisplayType.Markdown:
+      case DisplayType.Heatmap:
+        logger.error(
+          { config },
+          'Error converting chart config to external chart - unsupported display type for raw SQL config',
+        );
+        return undefined;
+    }
+
+    config.displayType satisfies never | undefined;
+    return undefined;
+  }
 
   const sourceId = config.source?.toString() ?? '';
 
@@ -100,9 +166,8 @@ const convertToExternalTileChartConfig = (
 
   switch (config.displayType) {
     case DisplayType.Line:
-    case DisplayType.StackedBar:
       return {
-        displayType: config.displayType,
+        displayType: DisplayType.Line,
         sourceId,
         asRatio:
           config.seriesReturnType === 'ratio' &&
@@ -114,9 +179,23 @@ const convertToExternalTileChartConfig = (
         select: Array.isArray(config.select)
           ? config.select.map(convertToExternalSelectItem)
           : [DEFAULT_SELECT_ITEM],
-        ...(config.displayType === DisplayType.Line
-          ? { compareToPreviousPeriod: config.compareToPreviousPeriod }
-          : {}),
+        compareToPreviousPeriod: config.compareToPreviousPeriod,
+        numberFormat: config.numberFormat,
+      };
+    case DisplayType.StackedBar:
+      return {
+        displayType: DisplayType.StackedBar,
+        sourceId,
+        asRatio:
+          config.seriesReturnType === 'ratio' &&
+          Array.isArray(config.select) &&
+          config.select.length == 2,
+        alignDateRangeToGranularity: config.alignDateRangeToGranularity,
+        fillNulls: config.fillNulls !== false,
+        groupBy: stringValueOrDefault(config.groupBy, undefined),
+        select: Array.isArray(config.select)
+          ? config.select.map(convertToExternalSelectItem)
+          : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
       };
     case DisplayType.Number:
@@ -181,15 +260,20 @@ const convertToExternalTileChartConfig = (
 function convertTileToExternalChart(
   tile: DashboardDocument['tiles'][number],
 ): ExternalDashboardTileWithId | undefined {
-  // HDX-3582: Implement this for Raw SQL charts
-  if (isRawSqlSavedChartConfig(tile.config)) return undefined;
-
   // Returned in case of a failure converting the saved chart config
-  const defaultTileConfig: ExternalDashboardTileConfig = {
-    displayType: 'line',
-    sourceId: tile.config.source?.toString() ?? '',
-    select: [DEFAULT_SELECT_ITEM],
-  };
+  const defaultTileConfig: ExternalDashboardTileConfig =
+    isRawSqlSavedChartConfig(tile.config)
+      ? {
+          configType: 'sql',
+          displayType: 'line',
+          connectionId: tile.config.connection,
+          sqlTemplate: tile.config.sqlTemplate,
+        }
+      : {
+          displayType: 'line',
+          sourceId: tile.config.source?.toString() ?? '',
+          select: [DEFAULT_SELECT_ITEM],
+        };
 
   return {
     ...pick(tile, ['id', 'x', 'y', 'w', 'h']),
@@ -238,90 +322,139 @@ export function convertToInternalTileConfig(
   const name = externalTile.name || '';
 
   let internalConfig: SavedChartConfig;
-  switch (externalConfig.displayType) {
-    case 'line':
-    case 'stacked_bar':
-      internalConfig = {
-        ...pick(externalConfig, [
-          'groupBy',
-          'numberFormat',
-          'alignDateRangeToGranularity',
-          'compareToPreviousPeriod',
-        ]),
-        displayType:
-          externalConfig.displayType === 'stacked_bar'
-            ? DisplayType.StackedBar
-            : DisplayType.Line,
-        select: externalConfig.select.map(convertToInternalSelectItem),
-        source: externalConfig.sourceId,
-        where: '',
-        fillNulls: externalConfig.fillNulls === false ? false : undefined,
-        seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
-        name,
-      };
-      break;
-    case 'table':
-      internalConfig = {
-        ...pick(externalConfig, [
-          'groupBy',
-          'numberFormat',
-          'having',
-          'orderBy',
-        ]),
-        displayType: DisplayType.Table,
-        select: externalConfig.select.map(convertToInternalSelectItem),
-        source: externalConfig.sourceId,
-        where: '',
-        seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
-        name,
-      };
-      break;
-    case 'number':
-      internalConfig = {
-        displayType: DisplayType.Number,
-        select: [convertToInternalSelectItem(externalConfig.select[0])],
-        source: externalConfig.sourceId,
-        where: '',
-        numberFormat: externalConfig.numberFormat,
-        name,
-      };
-      break;
-    case 'pie':
-      internalConfig = {
-        ...pick(externalConfig, ['groupBy', 'numberFormat']),
-        displayType: DisplayType.Pie,
-        select: [convertToInternalSelectItem(externalConfig.select[0])],
-        source: externalConfig.sourceId,
-        where: '',
-        name,
-      };
-      break;
-    case 'search':
-      internalConfig = {
-        ...pick(externalConfig, ['select', 'where']),
-        displayType: DisplayType.Search,
-        source: externalConfig.sourceId,
-        name,
-        whereLanguage: externalConfig.whereLanguage ?? 'lucene',
-      };
-      break;
-    case 'markdown':
-      internalConfig = {
-        displayType: DisplayType.Markdown,
-        markdown: externalConfig.markdown,
-        source: '',
-        where: '',
-        select: [],
-        name,
-      };
-      break;
-    default:
-      // Typecheck to ensure all display types are handled
-      externalConfig satisfies never;
 
-      // We should never hit this due to the typecheck above.
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      internalConfig = {} as SavedChartConfig;
+  if (isRawSqlExternalTileConfig(externalConfig)) {
+    switch (externalConfig.displayType) {
+      case 'line':
+      case 'stacked_bar':
+        internalConfig = {
+          configType: 'sql',
+          ...pick(externalConfig, [
+            'numberFormat',
+            'alignDateRangeToGranularity',
+            'compareToPreviousPeriod',
+          ]),
+          displayType:
+            externalConfig.displayType === 'stacked_bar'
+              ? DisplayType.StackedBar
+              : DisplayType.Line,
+          fillNulls: externalConfig.fillNulls === false ? false : undefined,
+          name,
+          connection: externalConfig.connectionId,
+          sqlTemplate: externalConfig.sqlTemplate,
+        } satisfies RawSqlSavedChartConfig;
+        break;
+      case 'table':
+      case 'number':
+      case 'pie':
+        internalConfig = {
+          configType: 'sql',
+          displayType:
+            externalConfig.displayType === 'table'
+              ? DisplayType.Table
+              : externalConfig.displayType === 'number'
+                ? DisplayType.Number
+                : DisplayType.Pie,
+          name,
+          connection: externalConfig.connectionId,
+          sqlTemplate: externalConfig.sqlTemplate,
+          numberFormat: externalConfig.numberFormat,
+        } satisfies RawSqlSavedChartConfig;
+        break;
+      default:
+        // Typecheck to ensure all display types are handled
+        externalConfig satisfies never;
+
+        // We should never hit this due to the typecheck above.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        internalConfig = {} as SavedChartConfig;
+    }
+  } else {
+    switch (externalConfig.displayType) {
+      case 'line':
+      case 'stacked_bar':
+        internalConfig = {
+          ...pick(externalConfig, [
+            'groupBy',
+            'numberFormat',
+            'alignDateRangeToGranularity',
+            'compareToPreviousPeriod',
+          ]),
+          displayType:
+            externalConfig.displayType === 'stacked_bar'
+              ? DisplayType.StackedBar
+              : DisplayType.Line,
+          select: externalConfig.select.map(convertToInternalSelectItem),
+          source: externalConfig.sourceId,
+          where: '',
+          fillNulls: externalConfig.fillNulls === false ? false : undefined,
+          seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
+          name,
+        } satisfies BuilderSavedChartConfig;
+        break;
+      case 'table':
+        internalConfig = {
+          ...pick(externalConfig, [
+            'groupBy',
+            'numberFormat',
+            'having',
+            'orderBy',
+          ]),
+          displayType: DisplayType.Table,
+          select: externalConfig.select.map(convertToInternalSelectItem),
+          source: externalConfig.sourceId,
+          where: '',
+          seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
+          name,
+        } satisfies BuilderSavedChartConfig;
+        break;
+      case 'number':
+        internalConfig = {
+          displayType: DisplayType.Number,
+          select: [convertToInternalSelectItem(externalConfig.select[0])],
+          source: externalConfig.sourceId,
+          where: '',
+          numberFormat: externalConfig.numberFormat,
+          name,
+        } satisfies BuilderSavedChartConfig;
+        break;
+      case 'pie':
+        internalConfig = {
+          ...pick(externalConfig, ['groupBy', 'numberFormat']),
+          displayType: DisplayType.Pie,
+          select: [convertToInternalSelectItem(externalConfig.select[0])],
+          source: externalConfig.sourceId,
+          where: '',
+          name,
+        } satisfies BuilderSavedChartConfig;
+        break;
+      case 'search':
+        internalConfig = {
+          ...pick(externalConfig, ['select', 'where']),
+          displayType: DisplayType.Search,
+          source: externalConfig.sourceId,
+          name,
+          whereLanguage: externalConfig.whereLanguage ?? 'lucene',
+        } satisfies BuilderSavedChartConfig;
+        break;
+      case 'markdown':
+        internalConfig = {
+          displayType: DisplayType.Markdown,
+          markdown: externalConfig.markdown,
+          source: '',
+          where: '',
+          select: [],
+          name,
+        } satisfies BuilderSavedChartConfig;
+        break;
+      default:
+        // Typecheck to ensure all display types are handled
+        externalConfig satisfies never;
+
+        // We should never hit this due to the typecheck above.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        internalConfig = {} as SavedChartConfig;
+    }
   }
 
   // Omit keys that are null/undefined, so that they're not saved as null in Mongo.

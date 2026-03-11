@@ -6,6 +6,10 @@ export function getConnections() {
   return Connection.find({});
 }
 
+export function getConnectionsByTeam(team: string) {
+  return Connection.find({ team });
+}
+
 export function getConnectionById(
   team: string,
   connectionId: string,

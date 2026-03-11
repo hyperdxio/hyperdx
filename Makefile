@@ -55,7 +55,7 @@ dev-int-common-utils:
 
 .PHONY: ci-int
 ci-int:
-	docker compose -p int -f ./docker-compose.ci.yml up -d
+	docker compose -p int -f ./docker-compose.ci.yml up -d --quiet-pull
 	npx nx run-many -t ci:int --parallel=false
 	docker compose -p int -f ./docker-compose.ci.yml down
 
