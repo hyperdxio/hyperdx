@@ -157,3 +157,17 @@ jobs:
   #               tag: TAG
   #             }
   #           });
+
+  otel-cicd-action:
+    if: always()
+    name: OpenTelemetry Export Trace
+    runs-on: ubuntu-latest
+    needs: [release, slack-notify-failure]
+    steps:
+      - name: Export workflow
+        uses: corentinmusard/otel-cicd-action@v4
+        with:
+          otlpEndpoint: ${{ secrets.OTLP_ENDPOINT }}/v1/traces
+          otlpHeaders: ${{ secrets.OTLP_HEADERS }}
+          otelServiceName: 'release-nightly-hyperdx-oss-workflow'
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
