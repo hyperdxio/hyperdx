@@ -440,6 +440,7 @@ const getChartConfigFromAlert = (
       ],
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
+      filters: savedSearch.filters,
       groupBy: alert.groupBy,
       implicitColumnExpression: source.implicitColumnExpression,
       timestampValueExpression: source.timestampValueExpression,
