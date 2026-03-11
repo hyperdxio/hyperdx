@@ -85,7 +85,7 @@ import useRowWhere, {
 } from '@/hooks/useRowWhere';
 import { useTableSearch } from '@/hooks/useTableSearch';
 import { useSource } from '@/source';
-import { UNDEFINED_WIDTH } from '@/tableUtils';
+import { MIN_LAST_COLUMN_WIDTH, UNDEFINED_WIDTH } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import {
@@ -442,6 +442,19 @@ export const RawLogTable = memo(
       [],
     );
 
+    const [containerWidth, setContainerWidth] = useState(0);
+    useEffect(() => {
+      if (!tableContainerRef) return;
+      setContainerWidth(tableContainerRef.clientWidth);
+      const observer = new ResizeObserver(entries => {
+        for (const entry of entries) {
+          setContainerWidth(entry.contentRect.width);
+        }
+      });
+      observer.observe(tableContainerRef);
+      return () => observer.disconnect();
+    }, [tableContainerRef]);
+
     // Get the alias map from the config so we resolve correct column ids
     const { data: aliasMap } = useAliasMapFromChartConfig(config);
 
@@ -485,6 +498,36 @@ export const RawLogTable = memo(
       searchableColumns: displayedColumns,
       debounceMs: 300,
     });
+
+    const lastColumnWidth = useMemo(() => {
+      if (displayedColumns.length === 0) return MIN_LAST_COLUMN_WIDTH;
+      const expandWidth = showExpandButton ? 32 : 0;
+      const nonLastSum = displayedColumns
+        .slice(0, -1)
+        .reduce((total, column) => {
+          const columnId = aliasMap?.[column] ? `"${column}"` : column;
+          const jsColumnType = columnTypeMap.get(column)?._type;
+          const isDate = jsColumnType === JSDataType.Date;
+          const isMaybeSeverityText = column === logLevelColumn;
+          return (
+            total +
+            (columnSizeStorage[columnId] ??
+              (isDate ? 170 : isMaybeSeverityText ? 115 : 160))
+          );
+        }, 0);
+      return Math.max(
+        MIN_LAST_COLUMN_WIDTH,
+        containerWidth - nonLastSum - expandWidth,
+      );
+    }, [
+      displayedColumns,
+      columnSizeStorage,
+      columnTypeMap,
+      logLevelColumn,
+      showExpandButton,
+      containerWidth,
+      aliasMap,
+    ]);
 
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
@@ -576,7 +619,7 @@ export const RawLogTable = memo(
             },
             size:
               i === displayedColumns.length - 1
-                ? UNDEFINED_WIDTH // last column is always whatever is left
+                ? lastColumnWidth
                 : (columnSizeStorage[column] ??
                   (isDate ? 170 : isMaybeSeverityText ? 115 : 160)),
           };
@@ -594,6 +637,7 @@ export const RawLogTable = memo(
         toggleRowExpansion,
         showExpandButton,
         aliasMap,
+        lastColumnWidth,
         tableSearch.searchQuery,
         tableSearch.matchIndices,
         tableSearch.currentMatchIndex,
@@ -680,22 +724,21 @@ export const RawLogTable = memo(
 
     // Sum actual column widths to derive a pixel min-width for the table.
     // This enables horizontal scrolling when the viewport is narrower than
-    // the total column widths, while width: 100% on the table ensures the
-    // last column's percentage width resolves correctly against the container.
+    // the total column widths.
     const tableMinWidth = useMemo(() => {
-      const MIN_FLEX_COLUMN_WIDTH = 200;
       const EXPAND_COLUMN_SIZE = 32;
       const expandWidth = showExpandButton ? EXPAND_COLUMN_SIZE : 0;
       return (
         expandWidth +
         displayedColumns.reduce((total, column, i) => {
           if (i === displayedColumns.length - 1)
-            return total + MIN_FLEX_COLUMN_WIDTH;
+            return total + MIN_LAST_COLUMN_WIDTH;
+          const columnId = aliasMap?.[column] ? `"${column}"` : column;
           const jsColumnType = columnTypeMap.get(column)?._type;
           const isDate = jsColumnType === JSDataType.Date;
           const isMaybeSeverityText = column === logLevelColumn;
           const size =
-            columnSizeStorage[column] ??
+            columnSizeStorage[columnId] ??
             (isDate ? 170 : isMaybeSeverityText ? 115 : 160);
           return total + size;
         }, 0)
@@ -706,6 +749,7 @@ export const RawLogTable = memo(
       columnTypeMap,
       logLevelColumn,
       showExpandButton,
+      aliasMap,
     ]);
 
     const { rows: _rows } = table.getRowModel();
@@ -943,7 +987,7 @@ export const RawLogTable = memo(
                                 : undefined
                             }
                             lastItemButtons={
-                              <Group gap={8} mr={8}>
+                              <Group gap={8} mr={8} wrap="nowrap">
                                 {tableId &&
                                   Object.keys(columnSizeStorage).length > 0 && (
                                     <UnstyledButton
@@ -1083,12 +1127,16 @@ export const RawLogTable = memo(
                                     style={{
                                       width:
                                         columnSize === UNDEFINED_WIDTH
-                                          ? 'auto'
+                                          ? 0
                                           : `${columnSize}px`,
                                       flex:
                                         columnSize === UNDEFINED_WIDTH
-                                          ? '1'
+                                          ? '1 1 0'
                                           : 'none',
+                                      minWidth:
+                                        columnSize === UNDEFINED_WIDTH
+                                          ? MIN_LAST_COLUMN_WIDTH
+                                          : undefined,
                                     }}
                                   >
                                     <div className={styles.fieldTextContainer}>

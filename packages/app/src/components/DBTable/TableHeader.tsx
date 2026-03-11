@@ -36,7 +36,6 @@ export default function TableHeader({
       colSpan={header.colSpan}
       style={{
         width: header.getSize() === UNDEFINED_WIDTH ? '100%' : header.getSize(),
-        // Allow unknown width columns to shrink to 0
         minWidth: header.getSize() === UNDEFINED_WIDTH ? 0 : header.getSize(),
         textAlign: 'left',
       }}
