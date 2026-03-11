@@ -791,6 +791,8 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
   return useMemo(() => {
     // If no source, return undefined so that the orderBy is not set incorrectly
     if (!source) return undefined;
+    const trimmedOrderBy = source.orderByExpression?.trim();
+    if (trimmedOrderBy) return trimmedOrderBy;
     return optimizeDefaultOrderBy(
       source?.timestampValueExpression ?? '',
       source?.displayedTimestampValueExpression,
@@ -1871,6 +1873,7 @@ function DBSearchPage() {
                   }}
                   isReady={isReady}
                   source={searchedSource}
+                  onAddFilter={searchFilters.setFilterValue}
                 />
               )}
               {analysisMode === 'results' && (

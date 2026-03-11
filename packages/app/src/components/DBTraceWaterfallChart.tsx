@@ -43,6 +43,8 @@ import { useFormatTime } from '@/useFormatTime';
 import {
   getChartColorError,
   getChartColorErrorHighlight,
+  getChartColorSuccess,
+  getChartColorSuccessHighlight,
   getChartColorWarning,
   getChartColorWarningHighlight,
 } from '@/utils';
@@ -87,14 +89,24 @@ function barColor(condition: {
   isError: boolean;
   isWarn: boolean;
   isHighlighted: boolean;
+  type: string | undefined;
 }) {
-  const { isError, isWarn, isHighlighted } = condition;
+  const { isError, isWarn, isHighlighted, type } = condition;
+
   if (isError)
     return isHighlighted ? getChartColorErrorHighlight() : getChartColorError();
+
   if (isWarn)
     return isHighlighted
       ? getChartColorWarningHighlight()
       : getChartColorWarning();
+
+  if (type === SourceKind.Log) {
+    return isHighlighted
+      ? getChartColorSuccessHighlight()
+      : getChartColorSuccess();
+  }
+
   return isHighlighted ? '#A9AFB7' : '#6A7077';
 }
 
@@ -802,7 +814,8 @@ export function DBTraceWaterfallChartContainer({
           start,
           end,
           tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
-          color: barColor({ isError, isWarn, isHighlighted }),
+          color: 'var(--color-text-inverted)',
+          backgroundColor: barColor({ isError, isWarn, isHighlighted, type }),
           body: <span>{displayText}</span>,
           minWidthPerc: 1,
           isError,

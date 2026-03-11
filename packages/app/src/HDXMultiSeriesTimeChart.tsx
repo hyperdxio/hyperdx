@@ -18,6 +18,7 @@ import {
   YAxis,
 } from 'recharts';
 import { AxisDomain } from 'recharts/types/util/types';
+import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
 
@@ -28,11 +29,7 @@ import {
   ChartTooltipContainer,
   ChartTooltipItem,
 } from './components/charts/ChartTooltip';
-import {
-  convertGranularityToSeconds,
-  LineData,
-  toStartOfInterval,
-} from './ChartUtils';
+import { LineData, toStartOfInterval } from './ChartUtils';
 import { FormatTime, useFormatTime } from './useFormatTime';
 
 import styles from '../styles/HDXLineChart.module.scss';
