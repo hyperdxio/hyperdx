@@ -18,6 +18,7 @@ export default [
       '**/*.config.js',
       '**/*.config.mjs',
       'jest.config.js',
+      'jest.setup.ts',
     ],
   },
   {
