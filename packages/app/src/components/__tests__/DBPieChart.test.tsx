@@ -47,7 +47,13 @@ describe('DBPieChart', () => {
     jest.clearAllMocks();
 
     mockUseQueriedChartConfig.mockReturnValue({
-      data: { data: [{ test1: 1234, test2: 5678 }] },
+      data: {
+        data: [{ test1: 1234, test2: 5678 }],
+        meta: [
+          { name: 'test1', type: 'UInt64' },
+          { name: 'test2', type: 'UInt64' },
+        ],
+      },
       isLoading: false,
       isError: false,
     });
@@ -77,7 +83,9 @@ describe('DBPieChart', () => {
   });
 
   it('should render pie chart correctly', () => {
-    renderWithMantine(<DBPieChart config={baseTestConfig} />);
+    renderWithMantine(
+      <DBPieChart config={baseTestConfig} errorVariant="inline" />,
+    );
     expect(screen.getByTestId('pie-chart-container')).toBeInTheDocument();
   });
 

@@ -420,24 +420,22 @@ const Tile = forwardRef(
                 />
               </Box>
             )}
-            {queriedConfig?.displayType === DisplayType.Number &&
-              isBuilderChartConfig(queriedConfig) && (
-                <DBNumberChart
-                  key={`${keyPrefix}-${chart.id}`}
-                  title={title}
-                  toolbarPrefix={toolbar}
-                  config={queriedConfig}
-                />
-              )}
-            {queriedConfig?.displayType === DisplayType.Pie &&
-              isBuilderChartConfig(queriedConfig) && (
-                <DBPieChart
-                  key={`${keyPrefix}-${chart.id}`}
-                  title={title}
-                  toolbarPrefix={toolbar}
-                  config={queriedConfig}
-                />
-              )}
+            {queriedConfig?.displayType === DisplayType.Number && (
+              <DBNumberChart
+                key={`${keyPrefix}-${chart.id}`}
+                title={title}
+                toolbarPrefix={toolbar}
+                config={queriedConfig}
+              />
+            )}
+            {queriedConfig?.displayType === DisplayType.Pie && (
+              <DBPieChart
+                key={`${keyPrefix}-${chart.id}`}
+                title={title}
+                toolbarPrefix={toolbar}
+                config={queriedConfig}
+              />
+            )}
             {effectiveMarkdownConfig?.displayType === DisplayType.Markdown &&
               'markdown' in effectiveMarkdownConfig && (
                 <HDXMarkdownChart

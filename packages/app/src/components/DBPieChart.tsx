@@ -1,8 +1,11 @@
 import { memo, useMemo } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { BuilderChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
-import { Box, Code, Flex, Text } from '@mantine/core';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  BuilderChartConfigWithOptTimestamp,
+  RawSqlConfigWithDateRange,
+} from '@hyperdx/common-utils/dist/types';
+import { Flex } from '@mantine/core';
 
 import {
   buildMVDateRangeIndicator,
@@ -16,9 +19,11 @@ import type { NumberFormat } from '@/types';
 import { getColorProps } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-import { SQLPreview } from './ChartSQLPreview';
 
 const PieChartTooltip = memo(
   ({
@@ -54,23 +59,32 @@ export const DBPieChart = ({
   showMVOptimizationIndicator = true,
   toolbarPrefix,
   toolbarSuffix,
+  errorVariant,
 }: {
-  config: BuilderChartConfigWithOptTimestamp;
+  config: BuilderChartConfigWithOptTimestamp | RawSqlConfigWithDateRange;
   title?: React.ReactNode;
   enabled?: boolean;
   queryKeyPrefix?: string;
   showMVOptimizationIndicator?: boolean;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
+  errorVariant?: ChartErrorStateVariant;
 }) => {
-  const { data: source } = useSource({ id: config.source });
+  const { data: source } = useSource({
+    id: isBuilderChartConfig(config) ? config.source : undefined,
+  });
 
   const queriedConfig = useMemo(() => {
-    return convertToPieChartConfig(config);
+    return isBuilderChartConfig(config)
+      ? convertToPieChartConfig(config)
+      : config;
   }, [config]);
 
+  const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
+    ? queriedConfig
+    : undefined;
   const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(queriedConfig);
+    useMVOptimizationExplanation(builderQueriedConfig);
 
   const { data, isLoading, isError, error } = useQueriedChartConfig(
     queriedConfig,
@@ -88,11 +102,11 @@ export const DBPieChart = ({
       allToolbarItems.push(...toolbarPrefix);
     }
 
-    if (source && showMVOptimizationIndicator) {
+    if (source && showMVOptimizationIndicator && builderQueriedConfig) {
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-table-chart-mv-indicator"
-          config={queriedConfig}
+          config={builderQueriedConfig}
           source={source}
           variant="icon"
         />,
@@ -120,11 +134,16 @@ export const DBPieChart = ({
     showMVOptimizationIndicator,
     mvOptimizationData,
     queriedConfig,
+    builderQueriedConfig,
   ]);
 
-  const pieChartData = useMemo(() => {
-    if (!data) return [];
-    return formatResponseForPieChart(data, getColorProps);
+  const [pieChartData, responseFormatError] = useMemo(() => {
+    if (!data) return [[], null];
+    try {
+      return [formatResponseForPieChart(data, getColorProps), null];
+    } catch (error) {
+      return [[], error instanceof Error ? error : new Error(String(error))];
+    }
   }, [data]);
 
   return (
@@ -134,32 +153,9 @@ export const DBPieChart = ({
           Loading Chart Data...
         </div>
       ) : isError && error ? (
-        <div className="h-100 w-100 align-items-center justify-content-center text-muted overflow-scroll">
-          <Text ta="center" size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
-          </Text>
-          <Box mt="sm">
-            <Text my="sm" size="sm" ta="center">
-              Error Message:
-            </Text>
-            <Code
-              block
-              style={{
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {error.message}
-            </Code>
-            {error instanceof ClickHouseQueryError && (
-              <>
-                <Text my="sm" size="sm" ta="center">
-                  Sent Query:
-                </Text>
-                <SQLPreview data={error?.query} />
-              </>
-            )}
-          </Box>
-        </div>
+        <ChartErrorState error={error} variant={errorVariant} />
+      ) : responseFormatError ? (
+        <ChartErrorState error={responseFormatError} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           No data found within time range.
