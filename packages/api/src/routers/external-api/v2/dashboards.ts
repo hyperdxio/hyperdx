@@ -1,3 +1,4 @@
+import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { uniq } from 'lodash';
@@ -5,6 +6,8 @@ import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
+import { deleteDashboardAlerts } from '@/controllers/alerts';
+import { getConnectionsByTeam } from '@/controllers/connection';
 import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
@@ -13,6 +16,7 @@ import {
   translateExternalChartToTileConfig,
   translateExternalFilterToFilter,
 } from '@/utils/externalApi';
+import logger from '@/utils/logger';
 import {
   ExternalDashboardFilter,
   externalDashboardFilterSchema,
@@ -29,6 +33,7 @@ import {
   convertToExternalDashboard,
   convertToInternalTileConfig,
   isConfigTile,
+  isRawSqlExternalTileConfig,
   isSeriesTile,
 } from './utils/dashboards';
 
@@ -67,6 +72,31 @@ async function getMissingSources(
     existingSources.map(source => source._id.toString()),
   );
   return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
+}
+
+/** Returns an array of connection IDs that are referenced in the tiles but do not belong to the team */
+async function getMissingConnections(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const connectionIds = new Set<string>();
+
+  for (const tile of tiles) {
+    if (isConfigTile(tile) && isRawSqlExternalTileConfig(tile.config)) {
+      connectionIds.add(tile.config.connectionId);
+    }
+  }
+
+  if (connectionIds.size === 0) return [];
+
+  const existingConnections = await getConnectionsByTeam(team.toString());
+  const existingConnectionIds = new Set(
+    existingConnections.map(connection => connection._id.toString()),
+  );
+
+  return [...connectionIds].filter(
+    connectionId => !existingConnectionIds.has(connectionId),
+  );
 }
 
 type SavedQueryLanguage = z.infer<typeof whereLanguageSchema>;
@@ -488,13 +518,13 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           enum: [delta]
  *           description: Optional period aggregation function for Gauge metrics (e.g., compute the delta over the period).
  *
- *     LineChartConfig:
+ *     LineBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a line time-series chart.
+ *       description: Builder configuration for a line time-series chart.
  *       properties:
  *         displayType:
  *           type: string
@@ -537,13 +567,13 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           description: Overlay the equivalent previous time period for comparison.
  *           default: false
  *
- *     BarChartConfig:
+ *     BarBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a stacked-bar time-series chart.
+ *       description: Builder configuration for a stacked-bar time-series chart.
  *       properties:
  *         displayType:
  *           type: string
@@ -582,13 +612,13 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *
- *     TableChartConfig:
+ *     TableBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a table aggregation chart.
+ *       description: Builder configuration for a table aggregation chart.
  *       properties:
  *         displayType:
  *           type: string
@@ -629,13 +659,13 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *
- *     NumberChartConfig:
+ *     NumberBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a single big-number chart.
+ *       description: Builder configuration for a single big-number chart.
  *       properties:
  *         displayType:
  *           type: string
@@ -655,13 +685,13 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *
- *     PieChartConfig:
+ *     PieBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a pie chart tile. Each slice represents one group value.
+ *       description: Builder configuration for a pie chart tile. Each slice represents one group value.
  *       properties:
  *         displayType:
  *           type: string
@@ -733,10 +763,188 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           description: Markdown content to render inside the tile.
  *           example: "# Dashboard Title\n\nThis is a markdown widget."
  *
+ *     RawSqlChartConfigBase:
+ *       type: object
+ *       required:
+ *         - configType
+ *         - connectionId
+ *         - sqlTemplate
+ *       description: Shared fields for Raw SQL chart configs. Set configType to "sql" and provide connectionId + sqlTemplate instead of sourceId + select.
+ *       properties:
+ *         configType:
+ *           type: string
+ *           enum: [sql]
+ *           example: "sql"
+ *         connectionId:
+ *           type: string
+ *           description: ID of the ClickHouse connection to execute the query against.
+ *           example: "65f5e4a3b9e77c001a567890"
+ *         sqlTemplate:
+ *           type: string
+ *           maxLength: 100000
+ *           description: SQL query template to execute. Supports HyperDX template variables.
+ *           example: "SELECT count() FROM otel_logs WHERE timestamp > now() - INTERVAL 1 HOUR"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *
+ *     LineRawSqlChartConfig:
+ *       description: Raw SQL configuration for a line time-series chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [line]
+ *               example: "line"
+ *             compareToPreviousPeriod:
+ *               type: boolean
+ *               description: Overlay the equivalent previous time period for comparison.
+ *               default: false
+ *             fillNulls:
+ *               type: boolean
+ *               description: Fill missing time buckets with zero instead of leaving gaps.
+ *               default: true
+ *             alignDateRangeToGranularity:
+ *               type: boolean
+ *               description: Expand date range boundaries to the query granularity interval.
+ *               default: true
+ *
+ *     BarRawSqlChartConfig:
+ *       description: Raw SQL configuration for a stacked-bar time-series chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [stacked_bar]
+ *               example: "stacked_bar"
+ *             fillNulls:
+ *               type: boolean
+ *               description: Fill missing time buckets with zero instead of leaving gaps.
+ *               default: true
+ *             alignDateRangeToGranularity:
+ *               type: boolean
+ *               description: Expand date range boundaries to the query granularity interval.
+ *               default: true
+ *
+ *     TableRawSqlChartConfig:
+ *       description: Raw SQL configuration for a table chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [table]
+ *               example: "table"
+ *
+ *     NumberRawSqlChartConfig:
+ *       description: Raw SQL configuration for a single big-number chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [number]
+ *               example: "number"
+ *
+ *     PieRawSqlChartConfig:
+ *       description: Raw SQL configuration for a pie chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [pie]
+ *               example: "pie"
+ *
+ *     LineChartConfig:
+ *       description: >
+ *         Line chart. Omit configType for the builder variant (requires sourceId
+ *         and select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/LineBuilderChartConfig'
+ *         - $ref: '#/components/schemas/LineRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/LineRawSqlChartConfig'
+ *
+ *     BarChartConfig:
+ *       description: >
+ *         Stacked-bar chart. Omit configType for the builder variant (requires
+ *         sourceId and select). Set configType to "sql" for the Raw SQL variant
+ *         (requires connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/BarBuilderChartConfig'
+ *         - $ref: '#/components/schemas/BarRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/BarRawSqlChartConfig'
+ *
+ *     TableChartConfig:
+ *       description: >
+ *         Table chart. Omit configType for the builder variant (requires sourceId
+ *         and select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/TableBuilderChartConfig'
+ *         - $ref: '#/components/schemas/TableRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/TableRawSqlChartConfig'
+ *
+ *     NumberChartConfig:
+ *       description: >
+ *         Single big-number chart. Omit configType for the builder variant
+ *         (requires sourceId and select). Set configType to "sql" for the Raw
+ *         SQL variant (requires connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/NumberBuilderChartConfig'
+ *         - $ref: '#/components/schemas/NumberRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/NumberRawSqlChartConfig'
+ *
+ *     PieChartConfig:
+ *       description: >
+ *         Pie chart. Omit configType for the builder variant (requires sourceId
+ *         and select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/PieBuilderChartConfig'
+ *         - $ref: '#/components/schemas/PieRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/PieRawSqlChartConfig'
+ *
  *     TileConfig:
  *       description: >
- *         Tile chart configuration. The displayType field determines which
- *         variant is used.
+ *         Tile chart configuration. displayType is the primary discriminant and
+ *         determines which variant group applies. For displayTypes that support
+ *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie),
+ *         configType is the secondary discriminant: omit it for the builder
+ *         variant or set it to "sql" for the Raw SQL variant. The search and
+ *         markdown displayTypes only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
@@ -1407,10 +1615,20 @@ router.post(
         savedFilterValues,
       } = req.body;
 
-      const missingSources = await getMissingSources(teamId, tiles, filters);
+      const [missingSources, missingConnections] = await Promise.all([
+        getMissingSources(teamId, tiles, filters),
+        getMissingConnections(teamId, tiles),
+      ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (missingConnections.length > 0) {
+        return res.status(400).json({
+          message: `Could not find the following connection IDs: ${missingConnections.join(
             ', ',
           )}`,
         });
@@ -1630,10 +1848,20 @@ router.put(
         savedFilterValues,
       } = req.body ?? {};
 
-      const missingSources = await getMissingSources(teamId, tiles, filters);
+      const [missingSources, missingConnections] = await Promise.all([
+        getMissingSources(teamId, tiles, filters),
+        getMissingConnections(teamId, tiles),
+      ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (missingConnections.length > 0) {
+        return res.status(400).json({
+          message: `Could not find the following connection IDs: ${missingConnections.join(
             ', ',
           )}`,
         });
@@ -1700,6 +1928,22 @@ router.put(
 
       if (updatedDashboard == null) {
         return res.sendStatus(404);
+      }
+
+      // Delete alerts for tiles that are now raw SQL (unsupported) or were removed
+      const newTileIdSet = new Set(internalTiles.map(t => t.id));
+      const tileIdsToDeleteAlerts = [
+        ...internalTiles
+          .filter(tile => isRawSqlSavedChartConfig(tile.config))
+          .map(tile => tile.id),
+        ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
+      ];
+      if (tileIdsToDeleteAlerts.length > 0) {
+        logger.info(
+          { dashboardId, teamId, tileIds: tileIdsToDeleteAlerts },
+          `Deleting alerts for tiles with unsupported config or removed tiles`,
+        );
+        await deleteDashboardAlerts(dashboardId, teamId, tileIdsToDeleteAlerts);
       }
 
       res.json({
