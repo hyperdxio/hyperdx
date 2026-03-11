@@ -143,7 +143,7 @@ function DBServiceMapPage() {
           </Text>
           {IS_LOCAL_MODE ? (
             <Button
-              variant="default"
+              variant="primary"
               size="sm"
               mt="sm"
               onClick={() => setIsCreateSourceModalOpen(true)}
@@ -154,7 +154,7 @@ function DBServiceMapPage() {
             <Button
               component="a"
               href="/team"
-              variant="default"
+              variant="primary"
               size="sm"
               mt="sm"
             >
