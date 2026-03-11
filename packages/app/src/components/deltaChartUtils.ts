@@ -503,12 +503,14 @@ const BOOSTED_ATTRIBUTE_SUFFIXES = [
 
 /**
  * Returns 1 for well-known OTel attributes, 0 otherwise.
+ * Uses dot-segment boundary matching to avoid false positives
+ * (e.g., 'SpanAttributes.myerror' won't match the 'error' entry).
  * Callers scale this as a tiebreaker (e.g., * 0.1) and only apply when baseScore > 0.
  */
 export function semanticBoost(key: string): number {
   const lowerKey = key.toLowerCase();
   for (const suffix of BOOSTED_ATTRIBUTE_SUFFIXES) {
-    if (lowerKey.endsWith(suffix)) return 1;
+    if (lowerKey.endsWith('.' + suffix) || lowerKey === suffix) return 1;
   }
   return 0;
 }
