@@ -1,0 +1,36 @@
+.sortButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+
+  &:hover {
+    color: var(--color-text);
+  }
+}
+
+.cursorColResize {
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+}
+
+.headerCellWithAction {
+  transition: background-color 0.15s ease-in-out;
+  border-radius: var(--mantine-radius-sm);
+
+  &:hover {
+    background-color: var(--log-table-muted-bg);
+  }
+
+  &:hover .headerRemoveButton {
+    opacity: 1;
+  }
+}
+
+.headerRemoveButton {
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}

@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { Button, Group, Text } from '@mantine/core';
+import { Group, Text, UnstyledButton } from '@mantine/core';
 import {
   IconArrowDown,
   IconArrowUp,
@@ -12,8 +12,7 @@ import { UNDEFINED_WIDTH } from '@/tableUtils';
 
 import { DBRowTableIconButton } from './DBRowTableIconButton';
 
-import logTableStyles from '../../../styles/LogTable.module.scss';
-import styles from '../Table.module.scss';
+import headerStyles from './TableHeader.module.scss';
 
 export default function TableHeader({
   isLast,
@@ -30,7 +29,7 @@ export default function TableHeader({
   return (
     <th
       className={cx('overflow-hidden', {
-        [logTableStyles.headerCellWithAction]: !!onRemoveColumn,
+        [headerStyles.headerCellWithAction]: !!onRemoveColumn,
       })}
       key={header.id}
       colSpan={header.colSpan}
@@ -46,14 +45,10 @@ export default function TableHeader({
             {flexRender(header.column.columnDef.header, header.getContext())}
           </Text>
         ) : (
-          <Button
-            size="xxs"
-            p={1}
-            variant="subtle"
-            color="gray"
+          <UnstyledButton
+            className={headerStyles.sortButton}
             onClick={header.column.getToggleSortingHandler()}
             flex="1"
-            justify="space-between"
             data-testid="raw-log-table-sort-button"
           >
             <>
@@ -85,12 +80,12 @@ export default function TableHeader({
                 </div>
               )}
             </>
-          </Button>
+          </UnstyledButton>
         )}
 
         <Group gap={0} wrap="nowrap" align="center">
           {onRemoveColumn && (
-            <div className={logTableStyles.headerRemoveButton}>
+            <div className={headerStyles.headerRemoveButton}>
               <DBRowTableIconButton
                 onClick={onRemoveColumn}
                 title="Remove column"
@@ -106,7 +101,7 @@ export default function TableHeader({
               onMouseDown={header.getResizeHandler()}
               onTouchStart={header.getResizeHandler()}
               className={cx(
-                `resizer ${styles.cursorColResize}`,
+                `resizer ${headerStyles.cursorColResize}`,
                 header.column.getIsResizing() && 'isResizing',
               )}
             >
