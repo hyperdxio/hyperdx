@@ -2,3 +2,5 @@
 export const UNDEFINED_WIDTH = 99999;
 
 export const MIN_LAST_COLUMN_WIDTH = 200;
+
+export const MIN_COLUMN_WIDTH = 50;

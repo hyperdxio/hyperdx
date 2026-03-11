@@ -5,6 +5,8 @@
   padding: 1px;
   cursor: pointer;
   color: var(--color-text-muted);
+  overflow: hidden;
+  min-width: 0;
 
   &:hover {
     color: var(--color-text);

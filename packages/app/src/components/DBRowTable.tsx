@@ -85,7 +85,11 @@ import useRowWhere, {
 } from '@/hooks/useRowWhere';
 import { useTableSearch } from '@/hooks/useTableSearch';
 import { useSource } from '@/source';
-import { MIN_LAST_COLUMN_WIDTH, UNDEFINED_WIDTH } from '@/tableUtils';
+import {
+  MIN_COLUMN_WIDTH,
+  MIN_LAST_COLUMN_WIDTH,
+  UNDEFINED_WIDTH,
+} from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import {
@@ -694,6 +698,9 @@ export const RawLogTable = memo(
         },
         state: {
           sorting: sortOrder ?? [],
+        },
+        defaultColumn: {
+          minSize: MIN_COLUMN_WIDTH,
         },
         enableColumnResizing: true,
         columnResizeMode: 'onChange' as ColumnResizeMode,
