@@ -3,8 +3,9 @@ jest.retryTimes(1, { logErrorsBeforeRetry: true });
 
 global.console = {
   ...console,
-  // Turn off console.debug logs in tests (useful since we log db queries aggressively)
+  // Turn off noisy console logs in tests
   debug: jest.fn(),
+  info: jest.fn(),
 };
 
 // Mock alert notification functions to prevent HTTP calls during tests
