@@ -1,5 +1,39 @@
 # @hyperdx/app
 
+## 2.21.0
+
+### Minor Changes
+
+- 902b8ebd: feat(alerts): add anchored alert scheduling with `scheduleStartAt` and `scheduleOffsetMinutes`
+
+### Patch Changes
+
+- 1bae972e: fix: allow any numeric value for alert thresholds
+- fd9f290e: feat: Add query params, sorting, and placeholders to Raw-SQL tables
+- f5828d1b: feat: field filtering and priority classification for Event Deltas
+- 2491c2a6: fix: Prevent metric name validation on markdown chart
+- dda0f9a4: feat: Add custom ORDER BY expression for Log and Trace sources
+- 32f1189a: feat: Add RawSqlChartConfig types for SQL-based Table
+- 2efb8fdc: feat: filter/exclude/copy actions on Event Deltas attribute values
+- c5173ba2: fix: tile alerts with groupBy now correctly track and display group names
+- 705dd1b7: fix: Allow implicit column lucene search on services dashboard
+- f889c349: chore: separate timeline components to own modules, fix lint issues
+- 1e6fcf1c: feat: Add raw sql line charts
+- b4f05587: feat: localStorage for dashboards/saved searches in LOCAL mode
+- bbb1f1f0: feat: chart UX polish & heatmap fixes
+- 68ef3d6f: feat: deterministic sampling with adaptive sample size for Event Deltas
+- d661c809: fix: Add better URL encoding for query params with special characters
+- a13b60d0: feat: Support Raw SQL Chart Configs in Dashboard import/export
+- Updated dependencies [1bae972e]
+- Updated dependencies [fd9f290e]
+- Updated dependencies [dda0f9a4]
+- Updated dependencies [32f1189a]
+- Updated dependencies [3bc5abbf]
+- Updated dependencies [1e6fcf1c]
+- Updated dependencies [902b8ebd]
+- Updated dependencies [a13b60d0]
+  - @hyperdx/common-utils@0.16.0
+
 ## 2.20.0
 
 ### Minor Changes
