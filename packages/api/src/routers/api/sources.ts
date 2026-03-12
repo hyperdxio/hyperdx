@@ -25,20 +25,10 @@ router.get('/', async (req, res, next) => {
     const sources = await getSources(teamId.toString());
 
     return res.json(
-      sources.map(source => {
-        switch (source.kind) {
-          case SourceKind.Log:
-            return source.toJSON({ getters: true });
-          case SourceKind.Trace:
-            return source.toJSON({ getters: true });
-          case SourceKind.Metric:
-            return source.toJSON({ getters: true });
-          case SourceKind.Session:
-            return source.toJSON({ getters: true });
-          default:
-            source satisfies never;
-        }
-      }),
+      sources.map(
+        // @ts-expect-error source.toJSON has incompatible type signatures but is actually a safe operation
+        source => source.toJSON({ getters: true }),
+      ),
     );
   } catch (e) {
     next(e);

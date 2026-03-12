@@ -67,7 +67,7 @@ ${
       ? `The span status code is stored in ${source.statusCodeExpression}.`
       : ''
 }
-${'serviceNameExpression' in source && `You can identify services via ${source.serviceNameExpression}`}
+${'serviceNameExpression' in source ? `You can identify services via ${source.serviceNameExpression}` : ''}
 ${
   source.kind === SourceKind.Trace
     ? `Duration of spans can be queried via ${source.durationExpression} which is expressed in 10^-${source.durationPrecision} seconds of precision.

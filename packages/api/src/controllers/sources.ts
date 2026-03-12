@@ -22,6 +22,8 @@ function getModelForKind(kind: SourceKind) {
       return SessionSource;
     case SourceKind.Metric:
       return MetricSource;
+    default:
+      kind satisfies never;
   }
 }
 
@@ -42,7 +44,7 @@ export function createSource(
   source: DistributiveOmit<ISource, 'id'>,
 ) {
   // @ts-expect-error The create method has incompatible type signatures but is actually safe
-  return getModelForKind(source.kind).create({ ...source, team });
+  return getModelForKind(source.kind)?.create({ ...source, team });
 }
 
 export async function updateSource(
@@ -56,7 +58,7 @@ export async function updateSource(
   // Same kind: simple update through the discriminator model
   if (existing.kind === source.kind) {
     // @ts-expect-error The findOneAndUpdate method has incompatible type signatures but is actually safe
-    return getModelForKind(source.kind).findOneAndUpdate(
+    return getModelForKind(source.kind)?.findOneAndUpdate(
       { _id: sourceId, team },
       source,
       { new: true },
@@ -82,7 +84,7 @@ export async function updateSource(
     updatedAt: new Date(),
   };
   await Source.collection.replaceOne({ _id: existing._id }, replacement);
-  return Source.hydrate(replacement);
+  return getModelForKind(replacement.kind)?.hydrate(replacement);
 }
 
 export function deleteSource(team: string, sourceId: string) {
