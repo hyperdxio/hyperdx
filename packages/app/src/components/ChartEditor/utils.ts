@@ -162,15 +162,6 @@ export function convertSavedChartConfigToFormState(
   };
 }
 
-// Helper function to safely construct field paths for series
-export const getSeriesFieldPath = (
-  namePrefix: string,
-  fieldName: string,
-): FieldPath<ChartEditorFormState> => {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return `${namePrefix}${fieldName}` as FieldPath<ChartEditorFormState>;
-};
-
 // Helper function to validate metric names for metric sources
 export const validateMetricNames = (
   tableSource: TSource | undefined,
@@ -189,7 +180,7 @@ export const validateMetricNames = (
     let hasValidationError = false;
     series.forEach((s, index) => {
       if (s.metricType && !s.metricName) {
-        setError(getSeriesFieldPath(`series.${index}.`, 'metricName'), {
+        setError(`series.${index}.metricName`, {
           type: 'manual',
           message: 'Please select a metric name',
         });

@@ -124,7 +124,6 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
-  getSeriesFieldPath,
   isRawSqlDisplayType,
   validateMetricNames,
 } from './ChartEditor/utils';
@@ -188,17 +187,17 @@ function ChartSeriesEditorComponent({
   errors,
   clearErrors,
 }: {
-  control: Control<any>;
+  control: Control<ChartEditorFormState>;
   databaseName: string;
   dateRange?: DateRange['dateRange'];
   connectionId?: string;
   index: number;
-  namePrefix: string;
+  namePrefix: `series.${number}.`;
   parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
   onSwapSeries: (from: number, to: number) => void;
   onSubmit: () => void;
-  setValue: UseFormSetValue<any>;
+  setValue: UseFormSetValue<ChartEditorFormState>;
   showGroupBy: boolean;
   showHaving: boolean;
   tableName: string;
@@ -375,9 +374,7 @@ function ChartSeriesEditorComponent({
               metricSource={tableSource}
               data-testid="metric-name-selector"
               error={errors?.metricName?.message}
-              onFocus={() =>
-                clearErrors(getSeriesFieldPath(namePrefix, 'metricName'))
-              }
+              onFocus={() => clearErrors(`${namePrefix}metricName`)}
             />
             {metricType === 'gauge' && (
               <Flex justify="end">
@@ -481,7 +478,7 @@ function ChartSeriesEditorComponent({
           </div>
         )}
       </Flex>
-      {tableSource?.kind === SourceKind.Metric && metricName && (
+      {tableSource?.kind === SourceKind.Metric && metricName && metricType && (
         <MetricAttributeHelperPanel
           databaseName={databaseName}
           metricType={metricType}
@@ -1722,7 +1719,7 @@ function seriesToFilters(select: SelectList): Filter[] {
         return null;
       }
     })
-    .filter(Boolean) as Filter[];
+    .filter(f => f != null);
 
   return filters;
 }
