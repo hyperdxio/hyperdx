@@ -23,6 +23,8 @@ import {
   IconCopy,
 } from '@tabler/icons-react';
 
+import { DISPLAY_TYPE_INSTRUCTIONS } from './constants';
+
 const helpOpenedAtom = atom(true);
 
 function ParamSnippet({
@@ -89,49 +91,7 @@ export function RawSqlChartInstructions({
         </Group>
         <Collapse in={helpOpened}>
           <Stack gap={6} pl="xs" pt="md">
-            {(displayType === DisplayType.Line ||
-              displayType === DisplayType.StackedBar) && (
-              <>
-                <Text size="xs" fw="bold">
-                  Result columns are plotted as follows:
-                </Text>
-                <List size="xs" withPadding spacing={3} mb="xs">
-                  <List.Item>
-                    <Text span size="xs" fw={600}>
-                      Timestamp
-                    </Text>
-                    <Text span size="xs">
-                      {' '}
-                      — The first <Code fz="xs">Date</Code> or{' '}
-                      <Code fz="xs">DateTime</Code> column.
-                    </Text>
-                  </List.Item>
-                  <List.Item>
-                    <Text span size="xs" fw={600}>
-                      Series Value
-                    </Text>
-                    <Text span size="xs">
-                      {' '}
-                      — Each numeric column will be plotted as a separate
-                      series. These columns are generally aggregate function
-                      values.
-                    </Text>
-                  </List.Item>
-                  <List.Item>
-                    <Text span size="xs" fw={600}>
-                      Group Names
-                    </Text>
-                    <Text span size="xs">
-                      {' '}
-                      (optional) — Any string, map, or array type result column
-                      will be treated as a group column. Result rows with
-                      different group column values will be plotted as separate
-                      series.
-                    </Text>
-                  </List.Item>
-                </List>
-              </>
-            )}
+            {DISPLAY_TYPE_INSTRUCTIONS[displayType]}
 
             <Text size="xs" fw="bold">
               The following parameters can be referenced in this chart's SQL:

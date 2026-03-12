@@ -50,10 +50,14 @@ export const isRawSqlDisplayType = (
 ): displayType is
   | DisplayType.Table
   | DisplayType.Line
-  | DisplayType.StackedBar =>
+  | DisplayType.StackedBar
+  | DisplayType.Pie
+  | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
-  displayType === DisplayType.StackedBar;
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.Pie ||
+  displayType === DisplayType.Number;
 
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,

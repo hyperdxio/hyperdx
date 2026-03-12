@@ -541,12 +541,21 @@ export function formatResponseForPieChart(
   data: ResponseJSON<Record<string, unknown>>,
   getColor: (index: number, label: string) => string,
 ): Array<{ label: string; value: number; color: string }> {
-  if (!data.meta || data.data.length === 0) return [];
+  if (data.meta == null) {
+    throw new Error('No meta data found in response');
+  }
 
-  const valueColumns = inferValueColumns(data.meta, new Set());
-  const groupByColumns = inferGroupColumns(data.meta);
-  if (!valueColumns?.length) return [];
+  if (data.data.length === 0) return [];
+
+  const valueColumns = inferValueColumns(data.meta, new Set()) ?? [];
+  if (valueColumns.length === 0) {
+    throw new Error(
+      `No value columns found in result column metadata. Make sure a numeric column exists in the result set.\n\nResult column metadata: ${JSON.stringify(data.meta)}`,
+    );
+  }
   const valueColumn = valueColumns[0].name;
+
+  const groupByColumns = inferGroupColumns(data.meta);
 
   return (
     data.data

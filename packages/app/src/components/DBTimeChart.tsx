@@ -1,7 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { add, differenceInSeconds } from 'date-fns';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   convertGranularityToSeconds,
   getAlignedDateRange,
@@ -16,24 +15,15 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import {
-  Button,
-  Code,
   Divider,
   Group,
-  Modal,
   Popover,
   Portal,
   Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import {
-  IconArrowsDiagonal,
-  IconChartBar,
-  IconChartLine,
-  IconSearch,
-} from '@tabler/icons-react';
+import { IconChartBar, IconChartLine, IconSearch } from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -53,10 +43,12 @@ import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanati
 import { useSource } from '@/source';
 
 import ChartContainer from './charts/ChartContainer';
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-import { SQLPreview } from './ChartSQLPreview';
 
 type ActiveClickPayload = {
   x: number;
@@ -205,57 +197,6 @@ function ActiveTimeTooltip({
   );
 }
 
-function ErrorView({ error }: { error: Error | ClickHouseQueryError }) {
-  const [isErrorExpanded, errorExpansion] = useDisclosure(false);
-
-  return (
-    <div className="h-100 w-100 d-flex g-1 flex-column align-items-center justify-content-center text-muted overflow-auto">
-      <Text ta="center" size="sm" mt="sm">
-        Error loading chart, please check your query or try again later.
-      </Text>
-      <Button
-        className="mx-auto"
-        variant="danger"
-        onClick={() => errorExpansion.open()}
-      >
-        <Group gap="xxs">
-          <IconArrowsDiagonal size={16} />
-          See Error Details
-        </Group>
-      </Button>
-      <Modal
-        opened={isErrorExpanded}
-        onClose={() => errorExpansion.close()}
-        title="Error Details"
-        size="lg"
-      >
-        <Stack align="start">
-          <Text size="sm" mt={10}>
-            Error Message:
-          </Text>
-          <Code
-            flex={1}
-            block
-            style={{
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {error.message}
-          </Code>
-          {error instanceof ClickHouseQueryError && (
-            <>
-              <Text size="sm" ta="center">
-                Sent Query:
-              </Text>
-              <SQLPreview data={error?.query} enableLineWrapping />
-            </>
-          )}
-        </Stack>
-      </Modal>
-    </div>
-  );
-}
-
 type DBTimeChartComponentProps = {
   config: ChartConfigWithDateRange;
   disableQueryChunking?: boolean;
@@ -278,6 +219,7 @@ type DBTimeChartComponentProps = {
   toolbarSuffix?: React.ReactNode[];
   showMVOptimizationIndicator?: boolean;
   showDateRangeIndicator?: boolean;
+  errorVariant?: ChartErrorStateVariant;
 };
 
 function DBTimeChartComponent({
@@ -300,6 +242,7 @@ function DBTimeChartComponent({
   toolbarSuffix,
   showMVOptimizationIndicator = true,
   showDateRangeIndicator = true,
+  errorVariant,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -750,9 +693,10 @@ function DBTimeChartComponent({
           Loading Chart Data...
         </div>
       ) : isError ? (
-        <ErrorView error={error} />
+        <ChartErrorState error={error} variant={errorVariant} />
       ) : resultFormattingError ? (
-        <ErrorView
+        <ChartErrorState
+          variant={errorVariant}
           error={
             resultFormattingError instanceof Error
               ? resultFormattingError
