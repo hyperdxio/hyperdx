@@ -16,5 +16,6 @@ export default function handler(
     apiKey: HDX_EXPORTER_ENABLED ? HDX_API_KEY : undefined,
     collectorUrl: HDX_COLLECTOR_URL,
     serviceName: HDX_SERVICE_NAME,
+    appVersion: process.env.NEXT_PUBLIC_APP_VERSION,
   });
 }
