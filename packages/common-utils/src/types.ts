@@ -673,6 +673,7 @@ export const TileSchema = z.object({
   w: z.number(),
   h: z.number(),
   config: SavedChartConfigSchema,
+  sectionId: z.string().optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -683,6 +684,14 @@ export const TileTemplateSchema = TileSchema.extend({
 });
 
 export type Tile = z.infer<typeof TileSchema>;
+
+export const DashboardSectionSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  collapsed: z.boolean(),
+});
+
+export type DashboardSection = z.infer<typeof DashboardSectionSchema>;
 
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
@@ -716,6 +725,7 @@ export const DashboardSchema = z.object({
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
   savedFilterValues: z.array(FilterSchema).optional(),
+  sections: z.array(DashboardSectionSchema).optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
 export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;
