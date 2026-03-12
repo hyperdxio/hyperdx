@@ -518,7 +518,7 @@ export default function DBDeltaChart({
             </Flex>
             <Text size="xs" c="dimmed" fs="italic">
               {isLoading
-                ? 'Loading...'
+                ? 'Loading\u2026'
                 : 'Select an area on the chart above to enable comparisons'}
             </Text>
           </>
@@ -528,7 +528,7 @@ export default function DBDeltaChart({
       {isLoading && visibleOnPage.length === 0 && hiddenOnPage.length === 0 && (
         <Flex align="center" justify="center" style={{ flex: 1 }}>
           <Text size="sm" c="dimmed">
-            Loading attribute distributions...
+            Loading attribute distributions\u2026
           </Text>
         </Flex>
       )}
@@ -570,7 +570,7 @@ export default function DBDeltaChart({
           labelPosition="left"
         />
       )}
-      {/* Lower-priority fields — separate grid so rows align independently */}
+      {/* Lower-priority fields - separate grid so rows align independently */}
       {hiddenOnPage.length > 0 && (
         <div
           style={{

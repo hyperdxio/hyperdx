@@ -104,7 +104,7 @@ function TruncatedTick({ x = 0, y = 0, payload }: TickProps) {
   const value = String(payload?.value ?? '');
   const MAX_CHARS = 12;
   const displayValue =
-    value.length > MAX_CHARS ? value.slice(0, MAX_CHARS) + '...' : value;
+    value.length > MAX_CHARS ? value.slice(0, MAX_CHARS) + '\u2026' : value;
   return (
     <g transform={`translate(${x},${y})`}>
       <title>{value}</title>
