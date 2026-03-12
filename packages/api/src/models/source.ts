@@ -1,9 +1,9 @@
 import {
+  BaseSourceSchema,
   LogSourceSchema,
   MetricsDataType,
   MetricSourceSchema,
   SessionSourceSchema,
-  SourceBaseSchema,
   SourceKind,
   TraceSourceSchema,
 } from '@hyperdx/common-utils/dist/types';
@@ -42,7 +42,7 @@ export type SourceDocument = mongoose.HydratedDocument<ISource>;
 // --------------------------
 
 type MongooseSourceBase = Omit<
-  z.infer<typeof SourceBaseSchema>,
+  z.infer<typeof BaseSourceSchema>,
   'connection'
 > & {
   team: mongoose.Types.ObjectId;
@@ -96,7 +96,9 @@ export const Source = SourceModel as unknown as mongoose.Model<ISource>;
 // --------------------------
 // Log discriminator
 // --------------------------
-export const LogSource = Source.discriminator(
+export const LogSource = Source.discriminator<
+  Extract<ISource, { kind: SourceKind.Log }>
+>(
   SourceKind.Log,
   new Schema({
     defaultTableSelectExpression: String,
@@ -129,7 +131,9 @@ export const LogSource = Source.discriminator(
 // --------------------------
 // Trace discriminator
 // --------------------------
-export const TraceSource = Source.discriminator(
+export const TraceSource = Source.discriminator<
+  Extract<ISource, { kind: SourceKind.Trace }>
+>(
   SourceKind.Trace,
   new Schema({
     defaultTableSelectExpression: String,
@@ -167,7 +171,9 @@ export const TraceSource = Source.discriminator(
 // --------------------------
 // Session discriminator
 // --------------------------
-export const SessionSource = Source.discriminator(
+export const SessionSource = Source.discriminator<
+  Extract<ISource, { kind: SourceKind.Session }>
+>(
   SourceKind.Session,
   new Schema({
     traceSourceId: String,
@@ -178,7 +184,9 @@ export const SessionSource = Source.discriminator(
 // --------------------------
 // Metric discriminator
 // --------------------------
-export const MetricSource = Source.discriminator(
+export const MetricSource = Source.discriminator<
+  Extract<ISource, { kind: SourceKind.Metric }>
+>(
   SourceKind.Metric,
   new Schema({
     metricTables: {

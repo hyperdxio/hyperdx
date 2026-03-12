@@ -792,7 +792,7 @@ const RequiredTimestampColumnSchema = z
   .min(1, 'Timestamp Column is required');
 
 // Base schema with fields common to all source types
-export const SourceBaseSchema = z.object({
+export const BaseSourceSchema = z.object({
   id: z.string(),
   name: z.string().min(1, 'Name is required'),
   kind: z.nativeEnum(SourceKind),
@@ -847,12 +847,11 @@ export type MaterializedViewConfiguration = z.infer<
 >;
 
 // Log source form schema
-export const LogSourceSchema = SourceBaseSchema.extend({
+export const LogSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Log),
-  defaultTableSelectExpression: z.string({
-    message: 'Default Table Select Expression is required',
-  }),
-
+  defaultTableSelectExpression: z
+    .string()
+    .min(1, 'Default Select Expression is required'),
   // Optional fields for logs
   serviceNameExpression: z.string().optional(),
   severityTextExpression: z.string().optional(),
@@ -876,9 +875,11 @@ export const LogSourceSchema = SourceBaseSchema.extend({
 });
 
 // Trace source form schema
-export const TraceSourceSchema = SourceBaseSchema.extend({
+export const TraceSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Trace),
-  defaultTableSelectExpression: z.string().optional(),
+  defaultTableSelectExpression: z
+    .string()
+    .min(1, 'Default Select Expression is required'),
 
   // Required fields for traces
   durationExpression: z.string().min(1, 'Duration Expression is required'),
@@ -912,7 +913,7 @@ export const TraceSourceSchema = SourceBaseSchema.extend({
 });
 
 // Session source form schema
-export const SessionSourceSchema = SourceBaseSchema.extend({
+export const SessionSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Session),
 
   // Required fields for sessions
@@ -925,9 +926,9 @@ export const SessionSourceSchema = SourceBaseSchema.extend({
 });
 
 // Metric source form schema
-export const MetricSourceSchema = SourceBaseSchema.extend({
+export const MetricSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Metric),
-  // override from SourceBaseSchema
+  // override from BaseSourceSchema
   from: z.object({
     databaseName: z.string().min(1, 'Database is required'),
     tableName: z.string(),
