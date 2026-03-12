@@ -14,8 +14,6 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Flex } from '@mantine/core';
 import { Button } from '@mantine/core';
-import { Center } from '@mantine/core';
-import { Text } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
@@ -120,33 +118,21 @@ export function DBSearchHeatmapChart({
           }}
         />
       </div>
-      {fields.xMin != null &&
-      fields.xMax != null &&
-      fields.yMin != null &&
-      fields.yMax != null ? (
-        <DBDeltaChart
-          config={{
-            ...chartConfig,
-            with: undefined,
-          }}
-          valueExpr={fields.value}
-          xMin={fields.xMin}
-          xMax={fields.xMax}
-          yMin={fields.yMin}
-          yMax={fields.yMax}
-          onAddFilter={
-            onAddFilter ? handleAddFilterAndClearSelection : undefined
-          }
-          spanIdExpression={source.spanIdExpression}
-        />
-      ) : (
-        <Center mih={100} h="100%">
-          <Text size="sm">
-            Please highlight an outlier range in the heatmap to view the delta
-            chart.
-          </Text>
-        </Center>
-      )}
+      <DBDeltaChart
+        config={{
+          ...chartConfig,
+          with: undefined,
+        }}
+        valueExpr={fields.value}
+        xMin={fields.xMin}
+        xMax={fields.xMax}
+        yMin={fields.yMin}
+        yMax={fields.yMax}
+        onAddFilter={
+          onAddFilter ? handleAddFilterAndClearSelection : undefined
+        }
+        spanIdExpression={source.spanIdExpression}
+      />
     </Flex>
   );
 }

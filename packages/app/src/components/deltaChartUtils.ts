@@ -94,6 +94,9 @@ export const MAX_CHART_VALUES_UPPER = 8;
 // Color for the "Other (N)" aggregated bucket — neutral gray.
 export const OTHER_BUCKET_COLOR = 'var(--mantine-color-gray-5)';
 
+// Color for the "All spans" distribution bar (no selection / comparison mode off).
+export const ALL_SPANS_COLOR = 'var(--mantine-color-blue-6)';
+
 export function mergeValueStatisticsMaps(
   outlierValues: Map<string, number>, // value -> count
   inlierValues: Map<string, number>,
