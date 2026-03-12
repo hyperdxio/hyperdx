@@ -241,4 +241,5 @@ export type NextApiConfigResponseData = {
   apiKey?: string;
   collectorUrl: string;
   serviceName: string;
+  appVersion?: string;
 };
