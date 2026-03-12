@@ -271,7 +271,10 @@ export function PropertyComparisonChart({
               {clickedValue.length === 0 ? <i>Empty String</i> : clickedValue}
             </Text>
             <Flex gap={12} mb={8}>
-              <Text size="xs" c={hasSelection ? getChartColorError() : ALL_SPANS_COLOR}>
+              <Text
+                size="xs"
+                c={hasSelection ? getChartColorError() : ALL_SPANS_COLOR}
+              >
                 {hasSelection ? 'Selection' : 'All spans'}:{' '}
                 {(outlierValueOccurences.get(clickedValue) ?? 0).toFixed(1)}%
               </Text>

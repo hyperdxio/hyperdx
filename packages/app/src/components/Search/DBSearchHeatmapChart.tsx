@@ -128,9 +128,7 @@ export function DBSearchHeatmapChart({
         xMax={fields.xMax}
         yMin={fields.yMin}
         yMax={fields.yMax}
-        onAddFilter={
-          onAddFilter ? handleAddFilterAndClearSelection : undefined
-        }
+        onAddFilter={onAddFilter ? handleAddFilterAndClearSelection : undefined}
         spanIdExpression={source.spanIdExpression}
       />
     </Flex>
