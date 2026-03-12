@@ -43,6 +43,7 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
 ARG CODE_VERSION
 
 ENV CODE_VERSION=$CODE_VERSION
+ENV OTEL_RESOURCE_ATTRIBUTES="service.version=$CODE_VERSION"
 ENV NODE_ENV production
 
 ARG PORT
