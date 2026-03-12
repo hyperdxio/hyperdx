@@ -14,6 +14,11 @@ export interface ISource extends Omit<TSource, 'connection'> {
 
 export type SourceDocument = mongoose.HydratedDocument<ISource>;
 
+const maxLength =
+  (max: number) =>
+  <T>({ length }: Array<T>) =>
+    length <= max;
+
 export const Source = mongoose.model<ISource>(
   'Source',
   new Schema<ISource>(
@@ -95,7 +100,10 @@ export const Source = mongoose.model<ISource>(
             value: { type: String, required: true, minlength: 1 },
           },
         ],
-        maxlength: 10,
+        validate: {
+          validator: maxLength(10),
+          message: '{PATH} exceeds the limit of 10',
+        },
       },
     },
     {
