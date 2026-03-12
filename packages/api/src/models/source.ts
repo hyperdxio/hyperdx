@@ -1,5 +1,6 @@
 import {
   MetricsDataType,
+  QuerySettings,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -18,6 +19,22 @@ const maxLength =
   (max: number) =>
   <T>({ length }: Array<T>) =>
     length <= max;
+
+const QuerySetting = new Schema<QuerySettings[number]>(
+  {
+    setting: {
+      type: String,
+      required: true,
+      minlength: 1,
+    },
+    value: {
+      type: String,
+      required: true,
+      minlength: 1,
+    },
+  },
+  { _id: false },
+);
 
 export const Source = mongoose.model<ISource>(
   'Source',
@@ -94,12 +111,7 @@ export const Source = mongoose.model<ISource>(
       },
 
       querySettings: {
-        type: [
-          {
-            setting: { type: String, required: true, minlength: 1 },
-            value: { type: String, required: true, minlength: 1 },
-          },
-        ],
+        type: [QuerySetting],
         validate: {
           validator: maxLength(10),
           message: '{PATH} exceeds the limit of 10',

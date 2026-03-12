@@ -210,7 +210,7 @@ describe('sources router', () => {
 
       expect(response.status).toBe(400);
       const updated = await Source.findById(source._id).lean();
-      expect(updated?.querySettings).toBeUndefined();
+      expect(updated?.querySettings).toEqual([]); // defaults to [] when source created
     });
   });
 
