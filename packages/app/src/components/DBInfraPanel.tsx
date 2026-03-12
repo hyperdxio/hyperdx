@@ -214,8 +214,10 @@ export default ({
     isLogSource(source) || isTraceSource(source)
       ? source.metricSourceId
       : undefined;
-  // TODO(AVK): pass kind to this hook
-  const { data: metricSource } = useSource({ id: metricSourceId });
+  const { data: metricSource } = useSource({
+    id: metricSourceId,
+    kind: SourceKind.Metric,
+  });
 
   const podUid = rowData?.__hdx_resource_attributes['k8s.pod.uid'];
   const nodeName = rowData?.__hdx_resource_attributes['k8s.node.name'];
@@ -226,7 +228,7 @@ export default ({
     <Stack my="md" gap={40}>
       {podUid && (
         <div>
-          {metricSource && metricSource.kind === SourceKind.Metric && (
+          {metricSource && (
             <InfraSubpanelGroup
               title="Pod"
               where={`${metricSource.resourceAttributesExpression}.k8s.pod.uid:"${podUid}"`}
@@ -266,7 +268,7 @@ export default ({
           )}
         </div>
       )}
-      {nodeName && metricSource && metricSource.kind === SourceKind.Metric && (
+      {nodeName && metricSource && (
         <InfraSubpanelGroup
           metricSource={metricSource}
           title="Node"

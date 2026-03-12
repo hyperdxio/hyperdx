@@ -41,7 +41,15 @@ export type SourceDocument = mongoose.HydratedDocument<ISource>;
 // Base schema (common fields shared by all source kinds)
 // --------------------------
 
-const sourceBaseSchema = new Schema<z.infer<typeof SourceBaseSchema>>(
+type MongooseSourceBase = Omit<
+  z.infer<typeof SourceBaseSchema>,
+  'connection'
+> & {
+  team: mongoose.Types.ObjectId;
+  connection: mongoose.Types.ObjectId;
+};
+
+const sourceBaseSchema = new Schema<MongooseSourceBase>(
   {
     team: {
       type: mongoose.Schema.Types.ObjectId,
@@ -76,7 +84,14 @@ const sourceBaseSchema = new Schema<z.infer<typeof SourceBaseSchema>>(
   },
 );
 
-export const Source = mongoose.model<ISource>('Source', sourceBaseSchema);
+// Model is typed with the base schema type internally. Consumers use ISource
+// (the discriminated union) via the exported type and discriminator models.
+const SourceModel = mongoose.model<MongooseSourceBase>(
+  'Source',
+  sourceBaseSchema,
+);
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+export const Source = SourceModel as unknown as mongoose.Model<ISource>;
 
 // --------------------------
 // Log discriminator

@@ -1974,9 +1974,8 @@ export function TableSourceForm({
         name: fieldName,
         value: newTargetSourceId,
       } of changedFields) {
-        if (!(fieldName in correlationFields)) continue;
-
         const targetConfigs = correlationFields[fieldName];
+        if (!targetConfigs) continue;
 
         for (const { targetKind, targetField } of targetConfigs) {
           // Find the previously linked source if any

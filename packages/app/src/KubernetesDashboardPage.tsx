@@ -59,7 +59,7 @@ import { withAppNav } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
-import { useSources } from './source';
+import { useSource, useSources } from './source';
 import { parseTimeQuery, useTimeQuery } from './timeQuery';
 import { KubePhase } from './types';
 import { formatNumber, formatUptime } from './utils';
@@ -1047,14 +1047,14 @@ function KubernetesDashboardPage() {
     [_logSourceId, _metricSourceId, sources],
   );
 
-  // TODO(AVK): Circle back and useSource with an id and kind
-  const logSource = sources?.find(
-    (s): s is TLogSource => s.id === logSourceId && s.kind === SourceKind.Log,
-  );
-  const metricSource = sources?.find(
-    (s): s is TMetricSource =>
-      s.id === metricSourceId && s.kind === SourceKind.Metric,
-  );
+  const { data: logSource } = useSource({
+    id: logSourceId,
+    kind: SourceKind.Log,
+  });
+  const { data: metricSource } = useSource({
+    id: logSourceId,
+    kind: SourceKind.Metric,
+  });
 
   const { control } = useForm({
     values: {

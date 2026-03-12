@@ -101,7 +101,7 @@ export interface SourceSchemaPreviewSource {
   from: TSource['from'];
   metricTables?: TMetricSource['metricTables'];
   kind?: TSource['kind'];
-  name: TSource['name'];
+  name?: TSource['name'];
   materializedViews?: TLogSource['materializedViews'];
 }
 

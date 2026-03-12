@@ -11,12 +11,19 @@ import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   MetricsDataType,
   SourceKind,
-  TSource,
+  TLogSource,
+  TMetricSource,
+  TSessionSource,
   TSource,
   TSourceNoId,
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  UseQueryResult,
+} from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
@@ -93,7 +100,20 @@ export function useSources() {
   });
 }
 
-export function useSource({ id }: { id?: string | null }) {
+export function useSource<K extends SourceKind>(opts: {
+  id?: string | null;
+  kind: K;
+}): UseQueryResult<Extract<TSource, { kind: K }> | undefined>;
+export function useSource(opts: {
+  id?: string | null;
+}): UseQueryResult<TSource | undefined>;
+export function useSource({
+  id,
+  kind,
+}: {
+  id?: string | null;
+  kind?: SourceKind;
+}) {
   return useQuery({
     queryKey: ['sources'],
     queryFn: async () => {
@@ -103,8 +123,10 @@ export function useSource({ id }: { id?: string | null }) {
       const rawSources = await hdxServer('sources').json<TSource[]>();
       return rawSources.map(addDefaultsToSource);
     },
-    select: (data: TSource[]): TSource => {
-      return data.filter(s => s.id === id)[0];
+    select: (data: TSource[]) => {
+      const source = data.find(s => s.id === id);
+      if (source && kind && source.kind !== kind) return undefined;
+      return source;
     },
     enabled: id != null,
   });
@@ -190,31 +212,14 @@ function hasAllColumns(columns: ColumnMeta[], requiredColumns: string[]) {
   return missingColumns.length === 0;
 }
 
-// TODO(AVK) - is this right????
-// Inferred source configuration fields that can be auto-detected from table schema.
-// This is intentionally a flat partial type (not a union) because it returns a bag of
-// fields that the caller spreads onto whatever source kind they're creating.
-type InferredSourceConfig = Partial<{
-  timestampValueExpression: string;
-  defaultTableSelectExpression: string;
-  serviceNameExpression: string;
-  bodyExpression: string;
-  displayedTimestampValueExpression: string;
-  eventAttributesExpression: string;
-  implicitColumnExpression: string;
-  resourceAttributesExpression: string;
-  spanIdExpression: string;
-  traceIdExpression: string;
-  severityTextExpression: string;
-  durationExpression: string;
-  durationPrecision: number;
-  parentSpanIdExpression: string;
-  spanKindExpression: string;
-  spanNameExpression: string;
-  statusCodeExpression: string;
-  statusMessageExpression: string;
-  spanEventsValueExpression: string;
-}>;
+type TStrippedSource<T extends TSource> = Partial<
+  Omit<T, 'id' | 'name' | 'from' | 'connection'>
+> & { kind: T['kind'] };
+type InferredSourceConfig =
+  | TStrippedSource<TLogSource>
+  | TStrippedSource<TTraceSource>
+  | TStrippedSource<TMetricSource>
+  | TStrippedSource<TSessionSource>;
 
 export async function inferTableSourceConfig({
   databaseName,
@@ -251,10 +256,11 @@ export async function inferTableSourceConfig({
     primaryKeyColumns.has(c.name),
   );
 
-  const baseConfig: InferredSourceConfig = {
+  const baseConfig = {
     ...(primaryKeyTimestampColumn != null
       ? { timestampValueExpression: primaryKeyTimestampColumn.name }
       : {}),
+    kind,
   };
 
   if (kind === SourceKind.Session) {

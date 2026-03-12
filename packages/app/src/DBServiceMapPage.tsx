@@ -57,7 +57,6 @@ function DBServiceMapPage() {
     setDisplayedTimeInputValue,
   });
 
-  // TODO(AVK): Follow up with useSource and kind here
   const defaultSource = sources?.find(
     (source): source is TTraceSource => source.kind === SourceKind.Trace,
   );

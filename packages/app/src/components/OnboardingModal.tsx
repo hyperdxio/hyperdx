@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useState } from 'react';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import {
   isLogSource,
+  isTraceSource,
   MetricsDataType,
   MetricTable,
   SourceKind,
@@ -106,8 +107,7 @@ async function addOtelDemoSources({
       logSource = newSource;
     }
   }
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const traceSource = (await createSourceMutation.mutateAsync({
+  const traceSource = await createSourceMutation.mutateAsync({
     source: {
       kind: SourceKind.Trace,
       name: traceSourceName,
@@ -138,7 +138,11 @@ async function addOtelDemoSources({
         traceSourceHighlightedTraceAttributes,
       materializedViews: traceSourceMaterializedViews,
     },
-  })) as TTraceSource;
+  });
+  if (!isTraceSource(traceSource)) {
+    // Should be impossible
+    throw new Error('Source that is not trace was somehow created');
+  }
   let metricsSource: TSource | undefined;
   if (hasMetricsSource) {
     metricsSource = await createSourceMutation.mutateAsync({
@@ -325,10 +329,12 @@ function OnboardingModalComponent({
             metadata,
           });
 
-          if (inferredConfig.timestampValueExpression != null) {
+          if (
+            inferredConfig.kind === SourceKind.Log &&
+            inferredConfig.timestampValueExpression != null
+          ) {
             const logSource = await createSourceMutation.mutateAsync({
               source: {
-                kind: SourceKind.Log,
                 name: 'Logs',
                 connection: connectionId,
                 from: {
@@ -361,10 +367,12 @@ function OnboardingModalComponent({
             metadata,
           });
 
-          if (inferredConfig.timestampValueExpression != null) {
+          if (
+            inferredConfig.kind === SourceKind.Trace &&
+            inferredConfig.timestampValueExpression != null
+          ) {
             const traceSource = await createSourceMutation.mutateAsync({
               source: {
-                kind: SourceKind.Trace as const,
                 name: 'Traces',
                 connection: connectionId,
                 from: {
@@ -383,7 +391,7 @@ function OnboardingModalComponent({
                   inferredConfig.parentSpanIdExpression ?? '',
                 spanNameExpression: inferredConfig.spanNameExpression ?? '',
                 spanKindExpression: inferredConfig.spanKindExpression ?? '',
-              } as Omit<TTraceSource, 'id'>,
+              },
             });
             createdSources.push(traceSource);
           } else {
@@ -457,12 +465,12 @@ function OnboardingModalComponent({
           );
 
           if (
+            inferredConfig.kind === SourceKind.Session &&
             inferredConfig.timestampValueExpression != null &&
             traceSource != null
           ) {
             const sessionSource = await createSourceMutation.mutateAsync({
               source: {
-                kind: SourceKind.Session,
                 name: 'Sessions',
                 connection: connectionId,
                 from: {

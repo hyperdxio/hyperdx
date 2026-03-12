@@ -20,13 +20,12 @@ export const useSessionId = ({
   dateRange: [Date, Date];
   enabled?: boolean;
 }) => {
-  // trace source
-  const { data: source } = useSource({ id: sourceId });
+  const { data: source } = useSource({ id: sourceId, kind: SourceKind.Trace });
 
   const { getFieldExpression } = useFieldExpressionGenerator(source);
 
   const config = useMemo(() => {
-    if (!source || !isTraceSource(source) || !traceId || !getFieldExpression) {
+    if (!source || !traceId || !getFieldExpression) {
       return;
     }
     return {
@@ -100,13 +99,16 @@ export const DBSessionPanel = ({
   serviceName: string;
   setSubDrawerOpen: (open: boolean) => void;
 }) => {
-  // TODO(AVK): add kind to this hook
-  const { data: traceSource } = useSource({ id: traceSourceId });
+  const { data: traceSource } = useSource({
+    id: traceSourceId,
+    kind: SourceKind.Trace,
+  });
   const { data: sessionSource, isLoading: isSessionSourceLoading } = useSource({
     id:
       traceSource && isTraceSource(traceSource)
         ? traceSource.sessionSourceId
         : undefined,
+    kind: SourceKind.Session,
   });
 
   if (!traceSource || (!sessionSource && isSessionSourceLoading)) {
@@ -125,7 +127,6 @@ export const DBSessionPanel = ({
         </div>
       ) : rumSessionId &&
         traceSource &&
-        traceSource.kind === SourceKind.Trace &&
         sessionSource.kind === SourceKind.Session ? (
         <SessionSubpanel
           start={dateRange[0]}
