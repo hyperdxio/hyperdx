@@ -7,6 +7,7 @@ import * as utils from '../utils';
 import {
   formatAttributeClause,
   formatNumber,
+  getAllMetricTables,
   getMetricTableName,
   mapKeyBy,
   orderByStringToSortingState,
@@ -117,6 +118,117 @@ describe('getMetricTableName', () => {
     expect(
       getMetricTableName(source, 'gauge' as MetricsDataType),
     ).toBeUndefined();
+  });
+});
+
+describe('getAllMetricTables', () => {
+  const createMetricSource = (metricTables: Record<string, string>): TSource =>
+    ({
+      kind: 'metric' as const,
+      from: { databaseName: 'test_db', tableName: '' },
+      connection: 'test-conn',
+      id: 'test-id',
+      name: 'test',
+      timestampValueExpression: 'timestamp',
+      metricTables,
+    }) as unknown as TSource;
+
+  it('returns empty array for non-metric source', () => {
+    const source = {
+      kind: 'log' as const,
+      from: { databaseName: 'test_db', tableName: 'logs' },
+      connection: 'test-conn',
+      id: 'test-id',
+      name: 'test',
+      timestampValueExpression: 'timestamp',
+    } as unknown as TSource;
+
+    expect(getAllMetricTables(source)).toEqual([]);
+  });
+
+  it('returns empty array when metricTables is undefined', () => {
+    const source = {
+      kind: 'metric' as const,
+      from: { databaseName: 'test_db', tableName: '' },
+      connection: 'test-conn',
+      id: 'test-id',
+      name: 'test',
+      timestampValueExpression: 'timestamp',
+    } as unknown as TSource;
+
+    expect(getAllMetricTables(source)).toEqual([]);
+  });
+
+  it('returns TableConnection for each populated metric table', () => {
+    const source = createMetricSource({
+      Gauge: 'gauge_table',
+      Sum: 'sum_table',
+    });
+
+    const result = getAllMetricTables(source);
+    expect(result).toEqual(
+      expect.arrayContaining([
+        {
+          tableName: 'gauge_table',
+          databaseName: 'test_db',
+          connectionId: 'test-conn',
+        },
+        {
+          tableName: 'sum_table',
+          databaseName: 'test_db',
+          connectionId: 'test-conn',
+        },
+      ]),
+    );
+    expect(result).toHaveLength(2);
+  });
+
+  it('filters out metric types with no table name', () => {
+    const source = createMetricSource({
+      Gauge: 'gauge_table',
+      Histogram: '',
+    });
+
+    const result = getAllMetricTables(source);
+    expect(result).toEqual([
+      {
+        tableName: 'gauge_table',
+        databaseName: 'test_db',
+        connectionId: 'test-conn',
+      },
+    ]);
+  });
+
+  it('returns all four metric types when all are populated', () => {
+    const source = createMetricSource({
+      Gauge: 'gauge_t',
+      Histogram: 'histogram_t',
+      Sum: 'sum_t',
+      Summary: 'summary_t',
+    });
+
+    const result = getAllMetricTables(source);
+    expect(result).toHaveLength(4);
+    expect(result.map(t => t.tableName).sort()).toEqual([
+      'gauge_t',
+      'histogram_t',
+      'sum_t',
+      'summary_t',
+    ]);
+    // All should share the same database and connection
+    for (const tc of result) {
+      expect(tc.databaseName).toBe('test_db');
+      expect(tc.connectionId).toBe('test-conn');
+    }
+  });
+
+  it('returns empty array when all metric table values are falsy', () => {
+    const source = createMetricSource({
+      Gauge: '',
+      Histogram: '',
+    });
+
+    expect(getAllMetricTables(source)).toEqual([]);
   });
 });
 
