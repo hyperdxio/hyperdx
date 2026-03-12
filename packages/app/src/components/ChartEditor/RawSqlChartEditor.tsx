@@ -3,11 +3,11 @@ import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Group, Stack, Text } from '@mantine/core';
 
+import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
 import useResizable from '@/hooks/useResizable';
 import { useSources } from '@/source';
 
 import { ConnectionSelectControlled } from '../ConnectionSelect';
-import { SQLEditorControlled } from '../SQLEditor';
 
 import { SQL_PLACEHOLDERS } from './constants';
 import { RawSqlChartInstructions } from './RawSqlChartInstructions';

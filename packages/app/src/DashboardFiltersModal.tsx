@@ -31,7 +31,8 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
-import { SQLInlineEditorControlled } from './components/SearchInput/SQLInlineEditor';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+
 import SourceSchemaPreview from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { useSource, useSources } from './source';

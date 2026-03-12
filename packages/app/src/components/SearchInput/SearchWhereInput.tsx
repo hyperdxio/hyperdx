@@ -2,9 +2,10 @@ import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
 import { Box, Flex, Kbd } from '@mantine/core';
 
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+
 import InputLanguageSwitch from './InputLanguageSwitch';
 import SearchInputV2 from './SearchInputV2';
-import { SQLInlineEditorControlled } from './SQLInlineEditor';
 
 import styles from './SearchWhereInput.module.scss';
 

@@ -31,10 +31,9 @@ import CodeMirror, {
   tooltips,
 } from '@uiw/react-codemirror';
 
+import InputLanguageSwitch from '@/components/SearchInput/InputLanguageSwitch';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
 import { useQueryHistory } from '@/utils';
-
-import InputLanguageSwitch from './InputLanguageSwitch';
 
 import styles from './SQLInlineEditor.module.scss';
 
