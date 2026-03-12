@@ -74,6 +74,7 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
 ARG CODE_VERSION
 
 ENV CODE_VERSION=$CODE_VERSION
+ENV OTEL_RESOURCE_ATTRIBUTES="service.version=$CODE_VERSION"
 ENV NODE_ENV=production
 
 # Remove package managers from production image (not needed at runtime)
@@ -110,6 +111,7 @@ ARG USER_UID=10001
 ARG USER_GID=10001
 
 ENV CODE_VERSION=$CODE_VERSION
+ENV OTEL_RESOURCE_ATTRIBUTES="service.version=$CODE_VERSION"
 # Copy from otel collector bases
 COPY --from=otel_collector_base --chmod=755 /otelcol-contrib /otelcontribcol
 COPY --from=otel_collector_opampsupervisor_base --chmod=755 /usr/local/bin/opampsupervisor /usr/local/bin/opampsupervisor
