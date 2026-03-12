@@ -1,4 +1,7 @@
-import type { MeApiResponse } from '@hyperdx/common-utils/dist/types';
+import {
+  type MeApiResponse,
+  MeApiResponseSchema,
+} from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 
 import { AI_API_KEY, ANTHROPIC_API_KEY, USAGE_STATS_ENABLED } from '@/config';
@@ -33,7 +36,7 @@ router.get('/', async (req, res: express.Response<MeApiResponse>, next) => {
       email,
       id: id.toString(),
       name,
-      team: team.toJSON(),
+      team: MeApiResponseSchema.shape.team.parse(team.toJSON()),
       usageStatsEnabled: USAGE_STATS_ENABLED,
       aiAssistantEnabled: !!(AI_API_KEY || ANTHROPIC_API_KEY),
     });

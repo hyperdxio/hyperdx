@@ -1309,7 +1309,12 @@ export const MeApiResponseSchema = z.object({
   email: z.string(),
   id: z.string(),
   name: z.string(),
-  team: TeamSchema,
+  team: TeamSchema.pick({
+    id: true,
+    name: true,
+    allowedAuthMethods: true,
+    apiKey: true,
+  }).merge(TeamClickHouseSettingsSchema),
   usageStatsEnabled: z.boolean(),
   aiAssistantEnabled: z.boolean(),
 });
