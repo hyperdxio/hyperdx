@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import {
   Alert,
-  AlertHistory,
+  AlertsPageItem as _AlertsPageItem,
   BuilderChartConfig,
   DashboardSchema,
   Filter,
@@ -36,16 +36,7 @@ export type LogStreamModel = KeyValuePairs & {
   trace_id?: string;
 };
 
-export type AlertsPageItem = Alert & {
-  _id: string;
-  history: AlertHistory[];
-  dashboard?: ServerDashboard;
-  savedSearch?: SavedSearch;
-  createdBy?: {
-    email: string;
-    name?: string;
-  };
-};
+export type AlertsPageItem = _AlertsPageItem;
 
 export type AlertWithCreatedBy = Alert & {
   createdBy?: {
