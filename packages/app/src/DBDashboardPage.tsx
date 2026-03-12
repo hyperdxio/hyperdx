@@ -138,6 +138,16 @@ function SectionHeader({
       px="sm"
       py={4}
       onClick={onToggle}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-expanded={!section.collapsed}
+      aria-label={`${section.title} section`}
       style={{
         cursor: 'pointer',
         borderBottom: '1px solid var(--mantine-color-dark-4)',
@@ -165,6 +175,16 @@ function SectionHeader({
     </Flex>
   );
 }
+
+const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
+  i: chart.id,
+  x: chart.x,
+  y: chart.y,
+  w: chart.w,
+  h: chart.h,
+  minH: 1,
+  minW: 1,
+});
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
@@ -1154,17 +1174,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     ],
   );
 
-  const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
-    i: chart.id,
-    x: chart.x,
-    y: chart.y,
-    w: chart.w,
-    h: chart.h,
-    minH: 1,
-    minW: 1,
-  });
-
-  const makeOnLayoutChange =
+  const makeOnLayoutChange = useCallback(
     (gridTiles: Tile[]) => (newLayout: RGL.Layout[]) => {
       if (!dashboard) return;
       const currentLayout = gridTiles.map(tileToLayoutItem);
@@ -1188,7 +1198,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       if (hasDiff) {
         setDashboard(produce(dashboard, updateLayout(newLayout)));
       }
-    };
+    },
+    [dashboard, setDashboard],
+  );
 
   const handleToggleSection = useCallback(
     (sectionId: string) => {
@@ -1203,11 +1215,8 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard, setDashboard],
   );
 
-  // Group tiles: ungrouped (no sectionId) vs. per-section
-  const ungroupedTiles = hasSections
-    ? allTiles.filter(t => !t.sectionId)
-    : allTiles;
-
+  // Group tiles by section; orphaned tiles (sectionId not matching any
+  // section) fall back to ungrouped to avoid silently hiding them.
   const tilesBySectionId = useMemo(() => {
     const map = new Map<string, Tile[]>();
     for (const section of sections) {
@@ -1218,6 +1227,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     }
     return map;
   }, [sections, allTiles]);
+
+  const ungroupedTiles = useMemo(
+    () =>
+      hasSections
+        ? allTiles.filter(
+            t => !t.sectionId || !tilesBySectionId.has(t.sectionId),
+          )
+        : allTiles,
+    [hasSections, allTiles, tilesBySectionId],
+  );
 
   const deleteDashboard = useDeleteDashboard();
 

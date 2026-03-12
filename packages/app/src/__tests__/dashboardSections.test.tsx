@@ -30,6 +30,23 @@ describe('DashboardSection schema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('rejects a section with empty id or title', () => {
+    expect(
+      DashboardSectionSchema.safeParse({
+        id: '',
+        title: 'Valid',
+        collapsed: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      DashboardSectionSchema.safeParse({
+        id: 'valid',
+        title: '',
+        collapsed: false,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('Tile schema with sectionId', () => {
@@ -157,7 +174,6 @@ describe('section tile grouping logic', () => {
   type SimpleSection = { id: string; title: string; collapsed: boolean };
 
   function groupTilesBySection(tiles: SimpleTile[], sections: SimpleSection[]) {
-    const ungrouped = tiles.filter(t => !t.sectionId);
     const bySectionId = new Map<string, SimpleTile[]>();
     for (const section of sections) {
       bySectionId.set(
@@ -165,6 +181,10 @@ describe('section tile grouping logic', () => {
         tiles.filter(t => t.sectionId === section.id),
       );
     }
+    // Orphaned tiles (sectionId not matching any section) fall back to ungrouped
+    const ungrouped = tiles.filter(
+      t => !t.sectionId || !bySectionId.has(t.sectionId),
+    );
     return { ungrouped, bySectionId };
   }
 
@@ -225,5 +245,21 @@ describe('section tile grouping logic', () => {
     expect(visibleTiles).toHaveLength(2);
     expect(visibleTiles.map(t => t.id)).toEqual(['a', 'c']);
     // Tile 'b' is in collapsed section s2 and should not be rendered
+  });
+
+  it('treats tiles with non-existent sectionId as ungrouped', () => {
+    const tiles: SimpleTile[] = [
+      { id: 'a', sectionId: 's1' },
+      { id: 'b', sectionId: 'deleted-section' },
+      { id: 'c' },
+    ];
+    const sections: SimpleSection[] = [
+      { id: 's1', title: 'Existing', collapsed: false },
+    ];
+    const { ungrouped, bySectionId } = groupTilesBySection(tiles, sections);
+    // Tile 'b' references a non-existent section, should be ungrouped
+    expect(ungrouped).toHaveLength(2);
+    expect(ungrouped.map(t => t.id)).toEqual(['b', 'c']);
+    expect(bySectionId.get('s1')).toHaveLength(1);
   });
 });

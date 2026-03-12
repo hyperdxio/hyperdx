@@ -686,8 +686,8 @@ export const TileTemplateSchema = TileSchema.extend({
 export type Tile = z.infer<typeof TileSchema>;
 
 export const DashboardSectionSchema = z.object({
-  id: z.string(),
-  title: z.string(),
+  id: z.string().min(1),
+  title: z.string().min(1),
   collapsed: z.boolean(),
 });
 
