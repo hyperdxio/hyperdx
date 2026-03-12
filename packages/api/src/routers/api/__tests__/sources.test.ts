@@ -141,7 +141,7 @@ describe('sources router', () => {
         .post('/sources')
         .send({ ...MOCK_SOURCE, querySettings });
 
-      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.status).toBe(400);
       const sources = await Source.find({}).lean();
       expect(sources).toHaveLength(0);
     });
@@ -208,7 +208,7 @@ describe('sources router', () => {
         querySettings,
       });
 
-      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.status).toBe(400);
       const updated = await Source.findById(source._id).lean();
       expect(updated?.querySettings).toBeUndefined();
     });
