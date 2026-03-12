@@ -3,6 +3,7 @@ import {
   Control,
   Controller,
   FieldErrors,
+  Path,
   useFieldArray,
   useForm,
   UseFormClearErrors,
@@ -41,6 +42,7 @@ import {
   Divider,
   Flex,
   Group,
+  List,
   Menu,
   Paper,
   SegmentedControl,
@@ -51,6 +53,7 @@ import {
   Textarea,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import {
   IconArrowDown,
   IconArrowUp,
@@ -67,6 +70,7 @@ import {
   IconPlayerPlay,
   IconTable,
   IconTrash,
+  IconX,
 } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
@@ -125,7 +129,7 @@ import {
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
   isRawSqlDisplayType,
-  validateMetricNames,
+  validateChartForm,
 } from './ChartEditor/utils';
 import { ErrorBoundary } from './Error/ErrorBoundary';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
@@ -497,6 +501,23 @@ function ChartSeriesEditorComponent({
 }
 const ChartSeriesEditor = ChartSeriesEditorComponent;
 
+export const ErrorNotificationMessage = ({
+  errors,
+}: {
+  errors: { path: Path<ChartEditorFormState>; message: string }[];
+}) => {
+  return (
+    <List
+      size="sm"
+      icon={<IconX size={14} style={{ verticalAlign: 'middle' }} />}
+    >
+      {errors.map(({ message }, index) => (
+        <List.Item key={index}>{message}</List.Item>
+      ))}
+    </List>
+  );
+};
+
 const zSavedChartConfig = z
   .object({
     // TODO: Chart
@@ -715,15 +736,14 @@ export default function EditTimeChartForm({
       const isRawSqlChart =
         form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
 
-      if (
-        !isRawSqlChart &&
-        validateMetricNames(
-          tableSource,
-          form.series,
-          form.displayType,
-          setError,
-        )
-      ) {
+      const errors = validateChartForm(form, tableSource, setError);
+      if (errors.length > 0) {
+        notifications.show({
+          id: 'chart-error',
+          title: 'Invalid Chart',
+          message: <ErrorNotificationMessage errors={errors} />,
+          color: 'red',
+        });
         return;
       }
 
@@ -796,19 +816,14 @@ export default function EditTimeChartForm({
 
   const handleSave = useCallback(
     (form: ChartEditorFormState) => {
-      const isRawSqlChart =
-        form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
-
-      // Validate metric sources have metric names selected
-      if (
-        !isRawSqlChart &&
-        validateMetricNames(
-          tableSource,
-          form.series,
-          form.displayType,
-          setError,
-        )
-      ) {
+      const errors = validateChartForm(form, tableSource, setError);
+      if (errors.length > 0) {
+        notifications.show({
+          id: 'chart-error',
+          title: 'Invalid Chart',
+          message: <ErrorNotificationMessage errors={errors} />,
+          color: 'red',
+        });
         return;
       }
 

@@ -15,7 +15,7 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
-  validateMetricNames,
+  validateChartForm,
 } from '../utils';
 
 jest.mock('../../SearchInput', () => ({
@@ -424,43 +424,37 @@ describe('convertSavedChartConfigToFormState', () => {
   });
 });
 
-describe('validateMetricNames', () => {
+describe('validateChartForm', () => {
   const metricSeriesItem = {
     ...seriesItem,
     metricType: MetricsDataType.Gauge,
     metricName: 'cpu.usage',
   };
 
-  it('returns false when tableSource is undefined', () => {
+  const makeForm = (
+    overrides: Partial<ChartEditorFormState>,
+  ): ChartEditorFormState => ({
+    displayType: DisplayType.Line,
+    series: [seriesItem],
+    ...overrides,
+  });
+
+  it('returns false when source is undefined', () => {
     const setError = jest.fn();
-    const result = validateMetricNames(
+    const result = validateChartForm(
+      makeForm({ series: [metricSeriesItem] }),
       undefined,
-      [metricSeriesItem],
-      DisplayType.Line,
       setError,
     );
     expect(result).toBe(false);
     expect(setError).not.toHaveBeenCalled();
   });
 
-  it('returns false when tableSource is not a metric source', () => {
+  it('returns false when source is not a metric source', () => {
     const setError = jest.fn();
-    const result = validateMetricNames(
+    const result = validateChartForm(
+      makeForm({ series: [metricSeriesItem] }),
       logSource,
-      [metricSeriesItem],
-      DisplayType.Line,
-      setError,
-    );
-    expect(result).toBe(false);
-    expect(setError).not.toHaveBeenCalled();
-  });
-
-  it('returns false when series is undefined', () => {
-    const setError = jest.fn();
-    const result = validateMetricNames(
-      metricSource,
-      undefined,
-      DisplayType.Line,
       setError,
     );
     expect(result).toBe(false);
@@ -473,10 +467,31 @@ describe('validateMetricNames', () => {
       ...seriesItem,
       metricType: MetricsDataType.Gauge,
     };
-    const result = validateMetricNames(
+    const result = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Markdown,
+        series: [seriesWithoutName],
+      }),
       metricSource,
-      [seriesWithoutName],
-      DisplayType.Markdown,
+      setError,
+    );
+    expect(result).toBe(false);
+    expect(setError).not.toHaveBeenCalled();
+  });
+
+  it('returns false when configType is sql', () => {
+    const setError = jest.fn();
+    const seriesWithoutName = {
+      ...seriesItem,
+      metricType: MetricsDataType.Gauge,
+    };
+    const result = validateChartForm(
+      makeForm({
+        configType: 'sql',
+        displayType: DisplayType.Line,
+        series: [seriesWithoutName],
+      }),
+      metricSource,
       setError,
     );
     expect(result).toBe(false);
@@ -485,10 +500,9 @@ describe('validateMetricNames', () => {
 
   it('returns false when all series items with metricType have a metricName', () => {
     const setError = jest.fn();
-    const result = validateMetricNames(
+    const result = validateChartForm(
+      makeForm({ series: [metricSeriesItem] }),
       metricSource,
-      [metricSeriesItem],
-      DisplayType.Line,
       setError,
     );
     expect(result).toBe(false);
@@ -497,10 +511,9 @@ describe('validateMetricNames', () => {
 
   it('returns false when series items have no metricType', () => {
     const setError = jest.fn();
-    const result = validateMetricNames(
+    const result = validateChartForm(
+      makeForm({ series: [seriesItem] }),
       metricSource,
-      [seriesItem],
-      DisplayType.Line,
       setError,
     );
     expect(result).toBe(false);
@@ -513,10 +526,9 @@ describe('validateMetricNames', () => {
       ...seriesItem,
       metricType: MetricsDataType.Gauge,
     };
-    const result = validateMetricNames(
+    const result = validateChartForm(
+      makeForm({ series: [seriesWithoutName] }),
       metricSource,
-      [seriesWithoutName],
-      DisplayType.Line,
       setError,
     );
     expect(result).toBe(true);
@@ -533,10 +545,9 @@ describe('validateMetricNames', () => {
       ...seriesItem,
       metricType: MetricsDataType.Gauge,
     };
-    const result = validateMetricNames(
+    const result = validateChartForm(
+      makeForm({ series: [seriesWithoutName, seriesWithoutName] }),
       metricSource,
-      [seriesWithoutName, seriesWithoutName],
-      DisplayType.Line,
       setError,
     );
     expect(result).toBe(true);
@@ -557,10 +568,9 @@ describe('validateMetricNames', () => {
       ...seriesItem,
       metricType: MetricsDataType.Gauge,
     };
-    const result = validateMetricNames(
+    const result = validateChartForm(
+      makeForm({ series: [metricSeriesItem, seriesWithoutName] }),
       metricSource,
-      [metricSeriesItem, seriesWithoutName],
-      DisplayType.Line,
       setError,
     );
     expect(result).toBe(true);

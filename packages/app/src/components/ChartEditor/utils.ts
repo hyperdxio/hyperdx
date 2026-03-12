@@ -1,5 +1,5 @@
 import { omit, pick } from 'lodash';
-import { FieldPath } from 'react-hook-form';
+import { FieldPath, Path, UseFormSetError } from 'react-hook-form';
 import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -162,32 +162,99 @@ export function convertSavedChartConfigToFormState(
   };
 }
 
-// Helper function to validate metric names for metric sources
-export const validateMetricNames = (
-  tableSource: TSource | undefined,
-  series: SavedChartConfigWithSelectArray['select'] | undefined,
-  displayType: DisplayType | undefined,
-  setError: (
-    name: FieldPath<ChartEditorFormState>,
-    error: { type: string; message: string },
-  ) => void,
-): boolean => {
+export const validateChartForm = (
+  form: ChartEditorFormState,
+  source: TSource | undefined,
+  setError: UseFormSetError<ChartEditorFormState>,
+) => {
+  const errors: { path: Path<ChartEditorFormState>; message: string }[] = [];
+
+  const isRawSqlChart =
+    form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
+
+  // Validate connection is selected for raw SQL charts
+  if (isRawSqlChart && !form.connection) {
+    setError(`connection`, {
+      type: 'required',
+      message: 'Connection is required',
+    });
+    errors.push({ path: `connection`, message: 'Connection is required' });
+  }
+
+  // Validate SQL is provided for raw SQL charts
+  if (isRawSqlChart && !form.sqlTemplate) {
+    setError(`sqlTemplate`, {
+      type: 'required',
+      message: 'SQL is required',
+    });
+    errors.push({ path: `sqlTemplate`, message: 'SQL query is required' });
+  }
+
+  // Validate source is selected for builder charts
   if (
-    tableSource?.kind === SourceKind.Metric &&
-    Array.isArray(series) &&
-    displayType !== DisplayType.Markdown
+    !isRawSqlChart &&
+    form.displayType !== DisplayType.Markdown &&
+    !form.source
   ) {
-    let hasValidationError = false;
-    series.forEach((s, index) => {
-      if (s.metricType && !s.metricName) {
-        setError(`series.${index}.metricName`, {
-          type: 'manual',
-          message: 'Please select a metric name',
+    errors.push({ path: `source`, message: 'Source is required' });
+  }
+
+  // Validate that valueExpressions are specified for each series
+  if (
+    !isRawSqlChart &&
+    Array.isArray(form.series) &&
+    form.displayType !== DisplayType.Markdown &&
+    form.displayType !== DisplayType.Search
+  ) {
+    form.series.forEach((s, index) => {
+      if (s.aggFn && s.aggFn !== 'count' && !s.valueExpression) {
+        errors.push({
+          path: `series.${index}.valueExpression`,
+          message: `Expression is required for series ${index + 1}`,
         });
-        hasValidationError = true;
       }
     });
-    return hasValidationError;
   }
-  return false;
+
+  // Validate metric names for metric sources
+  if (
+    source?.kind === SourceKind.Metric &&
+    Array.isArray(form.series) &&
+    form.displayType !== DisplayType.Markdown &&
+    form.displayType !== DisplayType.Search &&
+    !isRawSqlChart
+  ) {
+    form.series.forEach((s, index) => {
+      if (s.metricType && !s.metricName) {
+        errors.push({
+          path: `series.${index}.metricName`,
+          message: `Metric is required for series ${index + 1}`,
+        });
+      }
+    });
+  }
+
+  // Validate number and pie charts only have one series
+  if (
+    !isRawSqlChart &&
+    Array.isArray(form.series) &&
+    (form.displayType === DisplayType.Number ||
+      form.displayType === DisplayType.Pie) &&
+    form.series.length > 1
+  ) {
+    errors.push({
+      path: `series`,
+      message: `Only one series is allowed for ${form.displayType} charts`,
+    });
+  }
+
+  for (const error of errors) {
+    console.error(`Validation error in field ${error.path}: ${error.message}`);
+    setError(error.path, {
+      type: 'manual',
+      message: error.message,
+    });
+  }
+
+  return errors;
 };
