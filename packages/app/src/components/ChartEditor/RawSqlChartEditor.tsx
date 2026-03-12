@@ -1,6 +1,9 @@
 import { useEffect, useMemo } from 'react';
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  TableConnection,
+  tcFromSource,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Group, Stack, Text } from '@mantine/core';
 
@@ -53,14 +56,10 @@ export default function RawSqlChartEditor({
     return sources
       .filter(s => s.connection === connection)
       .flatMap(source => {
-        const tables: TableConnection[] = [...getAllMetricTables(source)];
+        const tables: TableConnection[] = getAllMetricTables(source);
 
         if (source.kind !== SourceKind.Metric) {
-          tables.push({
-            databaseName: source.from.databaseName,
-            tableName: source.from.tableName,
-            connectionId: source.connection,
-          });
+          tables.push(tcFromSource(source));
         }
 
         if (source.materializedViews) {
