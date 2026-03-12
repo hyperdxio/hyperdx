@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
@@ -21,14 +21,17 @@ import { getFirstTimestampValueExpression } from '@/source';
 import { getChartColorError, getChartColorSuccess } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
+import type { AddFilterFn } from './deltaChartUtils';
 import {
   ALL_SPANS_COLOR,
+  computeComparisonScore,
+  flattenedKeyToFilterKey,
   getPropertyStatistics,
   getStableSampleExpression,
   isDenylisted,
   isHighCardinality,
-  mergeValueStatisticsMaps,
   SAMPLE_SIZE,
+  semanticBoost,
 } from './deltaChartUtils';
 import {
   CHART_GAP,
@@ -38,6 +41,9 @@ import {
   PropertyComparisonChart,
 } from './PropertyComparisonChart';
 
+// Re-export types so callers importing from DBDeltaChart don't need to change.
+export type { AddFilterFn } from './deltaChartUtils';
+
 export default function DBDeltaChart({
   config,
   valueExpr,
@@ -45,6 +51,7 @@ export default function DBDeltaChart({
   xMax: rawXMax,
   yMin: rawYMin,
   yMax: rawYMax,
+  onAddFilter,
   spanIdExpression,
 }: {
   config: BuilderChartConfigWithDateRange;
@@ -53,6 +60,7 @@ export default function DBDeltaChart({
   xMax?: number | null;
   yMin?: number | null;
   yMax?: number | null;
+  onAddFilter?: AddFilterFn;
   spanIdExpression?: string;
 }) {
   // Derive whether a heatmap selection exists from nullable props
@@ -260,6 +268,15 @@ export default function DBDeltaChart({
     [outlierData?.meta, inlierData?.meta, allSpansData?.meta],
   );
 
+  // Wrap onAddFilter to convert flattened dot-notation keys into ClickHouse bracket notation
+  const handleAddFilter = useCallback<NonNullable<AddFilterFn>>(
+    (property, value, action) => {
+      if (!onAddFilter) return;
+      onAddFilter(flattenedKeyToFilterKey(property, columnMeta), value, action);
+    },
+    [onAddFilter, columnMeta],
+  );
+
   const {
     visibleProperties,
     hiddenProperties,
@@ -291,7 +308,10 @@ export default function DBDeltaChart({
     if (uniqueKeys.size === 0) {
       uniqueKeys = new Set([...inlierValueOccurences.keys()]);
     }
-    // Now process the keys to find the ones with the highest delta between outlier and inlier percentages
+    // Sort by proportional comparison score (normalizes group sizes).
+    // TODO: When #1824 (always-on distribution) merges, use computeEntropyScore
+    // for distribution mode (no selection) and computeComparisonScore only when
+    // a selection is active (hasSelection flag from #1824).
     const sortedProperties = Array.from(uniqueKeys)
       .map(key => {
         const inlierCount =
@@ -299,16 +319,14 @@ export default function DBDeltaChart({
         const outlierCount =
           outlierValueOccurences.get(key) ?? new Map<string, number>();
 
-        const mergedArray = mergeValueStatisticsMaps(outlierCount, inlierCount);
-        let maxValueDelta = 0;
-        mergedArray.forEach(item => {
-          const delta = Math.abs(item.outlierCount - item.inlierCount);
-          if (delta > maxValueDelta) {
-            maxValueDelta = delta;
-          }
-        });
+        // Use proportional comparison scoring which normalizes group sizes.
+        // Semantic boost acts as a tiebreaker for well-known OTel attributes
+        // (only applied when the field has actual variance).
+        const baseScore = computeComparisonScore(outlierCount, inlierCount);
+        const boost = baseScore > 0 ? semanticBoost(key) * 0.1 : 0;
+        const sortScore = baseScore + boost;
 
-        return [key, maxValueDelta] as const;
+        return [key, sortScore] as const;
       })
       .sort((a, b) => b[1] - a[1])
       .map(a => a[0]);
@@ -510,7 +528,7 @@ export default function DBDeltaChart({
       {isLoading && visibleOnPage.length === 0 && hiddenOnPage.length === 0 && (
         <Flex align="center" justify="center" style={{ flex: 1 }}>
           <Text size="sm" c="dimmed">
-            Loading attribute distributions&hellip;
+            Loading attribute distributions\u2026
           </Text>
         </Flex>
       )}
@@ -532,6 +550,7 @@ export default function DBDeltaChart({
               inlierValueOccurences={
                 inlierValueOccurences.get(property) ?? new Map()
               }
+              onAddFilter={onAddFilter ? handleAddFilter : undefined}
               key={property}
               hasSelection={hasSelection}
             />
@@ -569,6 +588,7 @@ export default function DBDeltaChart({
               inlierValueOccurences={
                 inlierValueOccurences.get(key) ?? new Map()
               }
+              onAddFilter={onAddFilter ? handleAddFilter : undefined}
               key={key}
               hasSelection={hasSelection}
             />
