@@ -381,6 +381,8 @@ function OnboardingModalComponent({
                 },
                 ...inferredConfig,
                 // Help typescript understand it's not null
+                defaultTableSelectExpression:
+                  inferredConfig.defaultTableSelectExpression ?? '',
                 timestampValueExpression:
                   inferredConfig.timestampValueExpression,
                 durationExpression: inferredConfig.durationExpression ?? '',

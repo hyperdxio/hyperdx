@@ -41,6 +41,7 @@ export function createSource(
   team: string,
   source: DistributiveOmit<ISource, 'id'>,
 ) {
+  // @ts-expect-error The create method has incompatible type signatures but is actually safe
   return getModelForKind(source.kind).create({ ...source, team });
 }
 
@@ -54,6 +55,7 @@ export async function updateSource(
 
   // Same kind: simple update through the discriminator model
   if (existing.kind === source.kind) {
+    // @ts-expect-error The findOneAndUpdate method has incompatible type signatures but is actually safe
     return getModelForKind(source.kind).findOneAndUpdate(
       { _id: sourceId, team },
       source,

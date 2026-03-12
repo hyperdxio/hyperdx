@@ -24,6 +24,7 @@ describe('navigateToTraceSearch', () => {
       databaseName: 'test_db',
     },
     timestampValueExpression: 'timestamp',
+    defaultTableSelectExpression: 'timestamp',
     connection: 'test-connection',
     kind: SourceKind.Trace,
     durationExpression: 'Duration',

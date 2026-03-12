@@ -25,6 +25,7 @@ describe('Service Dashboard', () => {
     },
     connection: 'test-connection',
     timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: 'Timestamp',
     durationExpression: 'Duration',
     durationPrecision: 9,
     traceIdExpression: 'TraceId',

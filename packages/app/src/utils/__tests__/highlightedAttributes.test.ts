@@ -19,6 +19,7 @@ describe('getHighlightedAttributesFromData', () => {
       tableName: 'otel_traces',
     },
     timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: 'Timestamp',
     connection: 'test-connection',
     name: 'Traces',
     highlightedTraceAttributeExpressions,
