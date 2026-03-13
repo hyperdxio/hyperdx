@@ -22,13 +22,14 @@ import { getFirstTimestampValueExpression } from '@/source';
 import { SQLPreview } from './ChartSQLPreview';
 import type { AddFilterFn } from './deltaChartUtils';
 import {
+  computeComparisonScore,
   flattenedKeyToFilterKey,
   getPropertyStatistics,
   getStableSampleExpression,
   isDenylisted,
   isHighCardinality,
-  mergeValueStatisticsMaps,
   SAMPLE_SIZE,
+  semanticBoost,
 } from './deltaChartUtils';
 import {
   CHART_GAP,
@@ -257,7 +258,10 @@ export default function DBDeltaChart({
     if (uniqueKeys.size === 0) {
       uniqueKeys = new Set([...inlierValueOccurences.keys()]);
     }
-    // Now process the keys to find the ones with the highest delta between outlier and inlier percentages
+    // Sort by proportional comparison score (normalizes group sizes).
+    // TODO: When #1824 (always-on distribution) merges, use computeEntropyScore
+    // for distribution mode (no selection) and computeComparisonScore only when
+    // a selection is active (hasSelection flag from #1824).
     const sortedProperties = Array.from(uniqueKeys)
       .map(key => {
         const inlierCount =
@@ -265,16 +269,14 @@ export default function DBDeltaChart({
         const outlierCount =
           outlierValueOccurences.get(key) ?? new Map<string, number>();
 
-        const mergedArray = mergeValueStatisticsMaps(outlierCount, inlierCount);
-        let maxValueDelta = 0;
-        mergedArray.forEach(item => {
-          const delta = Math.abs(item.outlierCount - item.inlierCount);
-          if (delta > maxValueDelta) {
-            maxValueDelta = delta;
-          }
-        });
+        // Use proportional comparison scoring which normalizes group sizes.
+        // Semantic boost acts as a tiebreaker for well-known OTel attributes
+        // (only applied when the field has actual variance).
+        const baseScore = computeComparisonScore(outlierCount, inlierCount);
+        const boost = baseScore > 0 ? semanticBoost(key) * 0.1 : 0;
+        const sortScore = baseScore + boost;
 
-        return [key, maxValueDelta] as const;
+        return [key, sortScore] as const;
       })
       .sort((a, b) => b[1] - a[1])
       .map(a => a[0]);

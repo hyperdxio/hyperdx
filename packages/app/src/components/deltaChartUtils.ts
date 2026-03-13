@@ -400,3 +400,117 @@ export function computeEffectiveSampleSize(totalCount: number): number {
     Math.max(MIN_SAMPLE_SIZE, Math.ceil(totalCount * SAMPLE_RATIO)),
   );
 }
+
+// ---------------------------------------------------------------------------
+// Attribute sorting and scoring
+// ---------------------------------------------------------------------------
+
+/**
+ * Comparison mode scoring: normalizes each group's percentages to sum to 100%
+ * before computing max delta. Fields with identical proportional distributions
+ * score 0 regardless of coverage rate differences.
+ */
+export function computeComparisonScore(
+  outlierValues: Map<string, number>,
+  inlierValues: Map<string, number>,
+): number {
+  const allValues = new Set([...outlierValues.keys(), ...inlierValues.keys()]);
+  if (allValues.size === 0) return 0;
+
+  let outlierSum = 0;
+  let inlierSum = 0;
+  outlierValues.forEach(v => (outlierSum += v));
+  inlierValues.forEach(v => (inlierSum += v));
+
+  if (outlierSum === 0 && inlierSum === 0) return 0;
+  if (outlierSum === 0 || inlierSum === 0) {
+    // One group has data, the other doesn't.
+    const presentValues = outlierSum > 0 ? outlierValues : inlierValues;
+    // Single value with no comparison group is uninformative — score 0.
+    // (e.g., Events.Name[N] = "message" at 100% with no inlier data)
+    // Multi-value fields with no comparison group ARE informative — they show
+    // that the present group has a distinctive distribution.
+    if (presentValues.size <= 1) return 0;
+    // Normalize to [0, 100] so the score is scale-consistent with the two-group case.
+    const presentSum = outlierSum > 0 ? outlierSum : inlierSum;
+    let maxNormPct = 0;
+    presentValues.forEach(v => {
+      const pct = (v / presentSum) * 100;
+      if (pct > maxNormPct) maxNormPct = pct;
+    });
+    return maxNormPct;
+  }
+
+  let maxDelta = 0;
+  allValues.forEach(value => {
+    const outlierNorm = ((outlierValues.get(value) ?? 0) / outlierSum) * 100;
+    const inlierNorm = ((inlierValues.get(value) ?? 0) / inlierSum) * 100;
+    const delta = Math.abs(outlierNorm - inlierNorm);
+    if (delta > maxDelta) maxDelta = delta;
+  });
+  return maxDelta;
+}
+
+/**
+ * Shannon entropy-based distribution score for sorting properties.
+ * Returns [0, 1]: 1 = maximally useful (low entropy, dominant value among several),
+ * 0 = not useful (single value, empty, or perfectly uniform).
+ */
+export function computeEntropyScore(
+  valuePercentages: Map<string, number>,
+): number {
+  const nValues = valuePercentages.size;
+  if (nValues <= 1) return 0;
+
+  let totalPct = 0;
+  valuePercentages.forEach(pct => {
+    totalPct += pct;
+  });
+  if (totalPct === 0) return 0;
+
+  let entropy = 0;
+  valuePercentages.forEach(pct => {
+    const p = pct / totalPct;
+    if (p > 0) {
+      entropy -= p * Math.log2(p);
+    }
+  });
+
+  const maxEntropy = Math.log2(nValues);
+  if (maxEntropy === 0) return 0;
+
+  return 1 - entropy / maxEntropy;
+}
+
+/** Well-known OTel attribute suffixes that get a score boost */
+const BOOSTED_ATTRIBUTE_SUFFIXES = [
+  'service.name',
+  'http.method',
+  'http.request.method',
+  'http.status_code',
+  'http.response.status_code',
+  'error',
+  'error.type',
+  'deployment.environment',
+  'deployment.environment.name',
+  'rpc.method',
+  'rpc.service',
+  'db.system',
+  'db.operation',
+  'messaging.system',
+  'messaging.operation',
+];
+
+/**
+ * Returns 1 for well-known OTel attributes, 0 otherwise.
+ * Uses dot-segment boundary matching to avoid false positives
+ * (e.g., 'SpanAttributes.myerror' won't match the 'error' entry).
+ * Callers scale this as a tiebreaker (e.g., * 0.1) and only apply when baseScore > 0.
+ */
+export function semanticBoost(key: string): number {
+  const lowerKey = key.toLowerCase();
+  for (const suffix of BOOSTED_ATTRIBUTE_SUFFIXES) {
+    if (lowerKey.endsWith('.' + suffix) || lowerKey === suffix) return 1;
+  }
+  return 0;
+}

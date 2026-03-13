@@ -3,7 +3,8 @@ import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { MutableRefObject, SetStateAction } from 'react';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
 import { dateRangeToString } from './timeQuery';
@@ -833,6 +834,27 @@ export function getMetricTableName(
     : source.metricTables?.[
         metricType.toLowerCase() as keyof typeof source.metricTables
       ];
+}
+
+export function getAllMetricTables(source: TSource): TableConnection[] {
+  if (source.kind !== SourceKind.Metric || !source.metricTables) return [];
+
+  return Object.values(MetricsDataType)
+    .filter(
+      metricType =>
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        !!source.metricTables![metricType as keyof TSource['metricTables']],
+    )
+    .map(
+      metricType =>
+        ({
+          tableName:
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            source.metricTables![metricType as keyof TSource['metricTables']],
+          databaseName: source.from.databaseName,
+          connectionId: source.connection,
+        }) satisfies TableConnection,
+    );
 }
 
 /**
