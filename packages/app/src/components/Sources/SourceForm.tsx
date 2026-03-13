@@ -49,8 +49,8 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
-import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import { SourceSelectControlled } from '@/components/SourceSelect';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
 import { useConnections } from '@/connection';
 import { useExplainQuery } from '@/hooks/useExplainQuery';

@@ -86,7 +86,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
-import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';

@@ -18,7 +18,7 @@ import { Center } from '@mantine/core';
 import { Text } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
-import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { getDurationMsExpression } from '@/source';
 
 import type { AddFilterFn } from '../DBDeltaChart';

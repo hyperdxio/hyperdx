@@ -20,7 +20,7 @@ import {
 import { IconPencil } from '@tabler/icons-react';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
-import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
