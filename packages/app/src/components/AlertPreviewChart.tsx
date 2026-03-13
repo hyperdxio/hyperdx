@@ -2,6 +2,7 @@ import React from 'react';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertInterval,
+  Filter,
   SearchCondition,
   SearchConditionLanguage,
 } from '@hyperdx/common-utils/dist/types';
@@ -18,6 +19,7 @@ export type AlertPreviewChartProps = {
   source: TSource;
   where?: SearchCondition | null;
   whereLanguage?: SearchConditionLanguage | null;
+  filters?: Filter[] | null;
   interval: AlertInterval;
   groupBy?: string;
   thresholdType: 'above' | 'below';
@@ -29,6 +31,7 @@ export const AlertPreviewChart = ({
   source,
   where,
   whereLanguage,
+  filters,
   interval,
   groupBy,
   threshold,
@@ -62,6 +65,7 @@ export const AlertPreviewChart = ({
           whereLanguage: whereLanguage || undefined,
           dateRange: intervalToDateRange(interval),
           granularity: intervalToGranularity(interval),
+          filters: filters || undefined,
           implicitColumnExpression: source.implicitColumnExpression,
           groupBy,
           with: aliasWith,
