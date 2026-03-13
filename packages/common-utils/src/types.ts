@@ -673,6 +673,7 @@ export const TileSchema = z.object({
   w: z.number(),
   h: z.number(),
   config: SavedChartConfigSchema,
+  sectionId: z.string().optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -683,6 +684,14 @@ export const TileTemplateSchema = TileSchema.extend({
 });
 
 export type Tile = z.infer<typeof TileSchema>;
+
+export const DashboardSectionSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  collapsed: z.boolean(),
+});
+
+export type DashboardSection = z.infer<typeof DashboardSectionSchema>;
 
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
@@ -716,6 +725,16 @@ export const DashboardSchema = z.object({
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
   savedFilterValues: z.array(FilterSchema).optional(),
+  sections: z
+    .array(DashboardSectionSchema)
+    .refine(
+      sections => {
+        const ids = sections.map(s => s.id);
+        return new Set(ids).size === ids.length;
+      },
+      { message: 'Section IDs must be unique' },
+    )
+    .optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
 export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;
