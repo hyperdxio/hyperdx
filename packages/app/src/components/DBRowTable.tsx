@@ -994,12 +994,18 @@ export const RawLogTable = memo(
                                 : undefined
                             }
                             lastItemButtons={
-                              <Group gap={8} mr={8} wrap="nowrap">
+                              <Group
+                                gap={8}
+                                mr={8}
+                                wrap="nowrap"
+                                align="center"
+                              >
                                 {tableId &&
                                   Object.keys(columnSizeStorage).length > 0 && (
                                     <UnstyledButton
                                       onClick={() => setColumnSizeStorage({})}
                                       title="Reset Column Widths"
+                                      display="flex"
                                     >
                                       <MantineTooltip label="Reset Column Widths">
                                         <IconRotateClockwise size={16} />
@@ -1011,6 +1017,7 @@ export const RawLogTable = memo(
                                     onClick={() => handleSqlModalOpen(true)}
                                     title="Show Generated SQL"
                                     tabIndex={0}
+                                    display="flex"
                                   >
                                     <MantineTooltip label="Show Generated SQL">
                                       <IconCode size={16} />
@@ -1022,6 +1029,7 @@ export const RawLogTable = memo(
                                     setWrapLinesEnabled(prev => !prev)
                                   }
                                   title={`${wrapLinesEnabled ? 'Disable' : 'Enable'}  Wrap Lines`}
+                                  display="flex"
                                 >
                                   <MantineTooltip
                                     label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} Wrap Lines`}
@@ -1049,6 +1057,7 @@ export const RawLogTable = memo(
                                   <UnstyledButton
                                     onClick={() => onSettingsClick()}
                                     title="Settings"
+                                    display="flex"
                                   >
                                     <MantineTooltip label="Settings">
                                       <IconSettings size={16} />

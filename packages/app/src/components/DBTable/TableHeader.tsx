@@ -109,7 +109,7 @@ export default function TableHeader({
             </div>
           )}
           {isLast && (
-            <Group gap={2} wrap="nowrap">
+            <Group gap={2} wrap="nowrap" align="center">
               {lastItemButtons}
             </Group>
           )}
