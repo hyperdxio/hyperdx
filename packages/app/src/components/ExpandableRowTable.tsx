@@ -198,6 +198,7 @@ export const createExpandButtonColumn = (
     );
   },
   size: 32,
+  minSize: 32,
   enableResizing: false,
   enableSorting: false,
   meta: {
