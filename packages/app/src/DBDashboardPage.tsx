@@ -1202,6 +1202,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard, setDashboard],
   );
 
+  // Intentionally persists collapsed state to the server via setDashboard
+  // (same pattern as tile drag/resize). This matches Grafana and Kibana
+  // behavior where collapsed state is saved with the dashboard for all viewers.
   const handleToggleSection = useCallback(
     (sectionId: string) => {
       if (!dashboard) return;
