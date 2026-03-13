@@ -899,11 +899,9 @@ export const RawLogTable = memo(
                             isLast={isLast}
                             onRemoveColumn={
                               onRemoveColumn &&
-                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
                               (header.column.columnDef.meta as any)?.column
                                 ? () => {
                                     onRemoveColumn(
-                                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                       (header.column.columnDef.meta as any)
                                         ?.column,
                                     );
