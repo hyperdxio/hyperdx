@@ -1,5 +1,19 @@
 # @hyperdx/api
 
+## 2.22.0
+
+### Patch Changes
+
+- f410e6dc: Bump AI SDK to v6
+- e05bd6b6: Include saved search filters in alert ClickHouse queries
+- 1381782b: feat: Support raw sql number charts and pie charts
+- e2a82c6b: feat: Add Raw SQL Chart support to external dashboard APIs
+- 359b5874: fix: add explicit api typing to all api routes and frontend hooks
+- 25a3291f: feat: Attach service version to all internal telemetry
+- Updated dependencies [1381782b]
+- Updated dependencies [359b5874]
+  - @hyperdx/common-utils@0.16.1
+
 ## 2.21.0
 
 ### Minor Changes

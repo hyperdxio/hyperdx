@@ -1,5 +1,12 @@
 # @hyperdx/common-utils
 
+## 0.16.1
+
+### Patch Changes
+
+- 1381782b: feat: Support raw sql number charts and pie charts
+- 359b5874: fix: add explicit api typing to all api routes and frontend hooks
+
 ## 0.16.0
 
 ### Minor Changes
