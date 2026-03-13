@@ -704,65 +704,6 @@ export const usePrevious = <T>(value: T): T | undefined => {
   return ref.current;
 };
 
-// From https://javascript.plainenglish.io/how-to-make-a-simple-custom-usedrag-react-hook-6b606d45d353
-export const useDrag = (
-  ref: MutableRefObject<HTMLDivElement | null>,
-  options: {
-    onDrag?: (e: PointerEvent) => any;
-    onPointerDown?: (e: PointerEvent) => any;
-    onPointerUp?: (e: PointerEvent) => any;
-    onPointerMove?: (e: PointerEvent) => any;
-  },
-) => {
-  const {
-    onPointerDown = () => {},
-    onPointerUp = () => {},
-    onPointerMove = () => {},
-    onDrag = () => {},
-  } = options;
-
-  const [isDragging, setIsDragging] = useState(false);
-
-  const handlePointerDown = (e: PointerEvent) => {
-    setIsDragging(true);
-
-    onPointerDown(e);
-  };
-
-  const handlePointerUp = (e: PointerEvent) => {
-    setIsDragging(false);
-
-    onPointerUp(e);
-  };
-
-  const handlePointerMove = (e: PointerEvent) => {
-    onPointerMove(e);
-
-    if (isDragging) {
-      onDrag(e);
-    }
-  };
-
-  useEffect(() => {
-    const element = ref.current;
-    if (element) {
-      element.addEventListener('pointerdown', handlePointerDown);
-      element.addEventListener('pointerup', handlePointerUp);
-      element.addEventListener('pointermove', handlePointerMove);
-
-      return () => {
-        element.removeEventListener('pointerdown', handlePointerDown);
-        element.removeEventListener('pointerup', handlePointerUp);
-        element.removeEventListener('pointermove', handlePointerMove);
-      };
-    }
-    // disable dependency array as this doesn't fit nicely with react
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return { isDragging };
-};
-
 export const formatNumber = (
   value?: number,
   options?: NumberFormat,
