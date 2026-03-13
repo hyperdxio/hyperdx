@@ -1,3 +1,9 @@
+import type {
+  WebhookCreateApiResponse,
+  WebhooksApiResponse,
+  WebhookTestApiResponse,
+  WebhookUpdateApiResponse,
+} from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
@@ -23,7 +29,7 @@ router.get(
       ]),
     }),
   }),
-  async (req, res, next) => {
+  async (req, res: express.Response<WebhooksApiResponse>, next) => {
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
@@ -35,7 +41,7 @@ router.get(
         { __v: 0, team: 0 },
       );
       res.json({
-        data: webhooks,
+        data: webhooks.map(w => w.toJSON({ flattenMaps: true })),
       });
     } catch (err) {
       next(err);
@@ -75,7 +81,11 @@ router.post(
       url: z.string().url(),
     }),
   }),
-  async (req, res, next) => {
+  async (
+    req,
+    res: express.Response<WebhookCreateApiResponse | { message: string }>,
+    next,
+  ) => {
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
@@ -100,7 +110,7 @@ router.post(
       });
       await webhook.save();
       res.json({
-        data: webhook,
+        data: webhook.toJSON({ flattenMaps: true }),
       });
     } catch (err) {
       next(err);
@@ -128,7 +138,11 @@ router.put(
       url: z.string().url(),
     }),
   }),
-  async (req, res, next) => {
+  async (
+    req,
+    res: express.Response<WebhookUpdateApiResponse | { message: string }>,
+    next,
+  ) => {
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
@@ -177,8 +191,14 @@ router.put(
         { new: true, select: { __v: 0, team: 0 } },
       );
 
+      if (!updatedWebhook) {
+        return res.status(404).json({
+          message: 'Webhook not found after update',
+        });
+      }
+
       res.json({
-        data: updatedWebhook,
+        data: updatedWebhook.toJSON({ flattenMaps: true }),
       });
     } catch (err) {
       next(err);
@@ -222,7 +242,7 @@ router.post(
       url: z.string().url(),
     }),
   }),
-  async (req, res, next) => {
+  async (req, res: express.Response<WebhookTestApiResponse>, next) => {
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
