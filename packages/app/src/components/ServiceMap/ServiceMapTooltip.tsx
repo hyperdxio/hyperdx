@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import SqlString from 'sqlstring';
-import { TSource } from '@hyperdx/common-utils/dist/types';
-import { Button, Group, Stack, UnstyledButton } from '@mantine/core';
+import { TTraceSource } from '@hyperdx/common-utils/dist/types';
+import { Button, Stack } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
 
 import { formatApproximateNumber, navigateToTraceSearch } from './utils';
@@ -18,7 +18,7 @@ export default function ServiceMapTooltip({
 }: {
   totalRequests: number;
   errorPercentage: number;
-  source: TSource;
+  source: TTraceSource;
   dateRange: [Date, Date];
   serviceName: string;
   isSingleTrace?: boolean;

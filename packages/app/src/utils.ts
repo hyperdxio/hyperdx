@@ -4,7 +4,11 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { MutableRefObject, SetStateAction } from 'react';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
 import { dateRangeToString } from './timeQuery';
@@ -888,11 +892,15 @@ export function getMetricTableName(
   source: TSource,
   metricType?: string,
 ): string | undefined {
-  return metricType == null
-    ? source.from.tableName
-    : source.metricTables?.[
-        metricType.toLowerCase() as keyof typeof source.metricTables
-      ];
+  if (metricType == null) {
+    return source.from.tableName;
+  }
+  if (source.kind === SourceKind.Metric) {
+    return source.metricTables?.[
+      metricType.toLowerCase() as keyof typeof source.metricTables
+    ];
+  }
+  return undefined;
 }
 
 export function getAllMetricTables(source: TSource): TableConnection[] {
@@ -901,15 +909,17 @@ export function getAllMetricTables(source: TSource): TableConnection[] {
   return Object.values(MetricsDataType)
     .filter(
       metricType =>
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        !!source.metricTables![metricType as keyof TSource['metricTables']],
+        !!source.metricTables[
+          metricType as unknown as keyof TMetricSource['metricTables']
+        ],
     )
     .map(
       metricType =>
         ({
           tableName:
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            source.metricTables![metricType as keyof TSource['metricTables']],
+            source.metricTables[
+              metricType as unknown as keyof TMetricSource['metricTables']
+            ],
           databaseName: source.from.databaseName,
           connectionId: source.connection,
         }) satisfies TableConnection,

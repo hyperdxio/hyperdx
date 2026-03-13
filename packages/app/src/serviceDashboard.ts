@@ -1,7 +1,11 @@
 import { useMemo } from 'react';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 
 import { useColumns, useJsonColumns } from './hooks/useMetadata';
 
@@ -139,7 +143,7 @@ function getDefaults({
 const ENDPOINT_MATERIALIZED_COLUMN_NAME = 'endpoint';
 
 export function getExpressions(
-  source: TSource,
+  source: TTraceSource,
   columns: ColumnMeta[],
   jsonColumns: string[],
 ) {
@@ -160,7 +164,7 @@ export function getExpressions(
     service: source.serviceNameExpression || defaults.service,
     spanName: source.spanNameExpression || defaults.spanName,
     spanKind: source.spanKindExpression || defaults.spanKind,
-    severityText: source.severityTextExpression || defaults.severityText,
+    severityText: source.statusCodeExpression || defaults.severityText,
 
     // HTTP
     httpHost: defaults.httpHost,
@@ -214,6 +218,7 @@ export function useServiceDashboardExpressions({
 
   const expressions = useMemo(() => {
     if (isLoading || !jsonColumns || !columns) return undefined;
+    if (source?.kind !== SourceKind.Trace) return undefined;
 
     return getExpressions(source, columns, jsonColumns);
   }, [source, columns, jsonColumns, isLoading]);

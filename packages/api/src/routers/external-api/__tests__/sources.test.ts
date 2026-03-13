@@ -13,7 +13,14 @@ import {
   getServer,
 } from '../../../fixtures';
 import Connection, { IConnection } from '../../../models/connection';
-import { Source } from '../../../models/source';
+import {
+  ISource,
+  LogSource,
+  MetricSource,
+  SessionSource,
+  Source,
+  TraceSource,
+} from '../../../models/source';
 import { mapGranularityToExternalFormat } from '../v2/sources';
 
 describe('External API v2 Sources', () => {
@@ -73,7 +80,7 @@ describe('External API v2 Sources', () => {
     });
 
     it('should return a single log source', async () => {
-      const logSource = await Source.create({
+      const logSource = await LogSource.create({
         kind: SourceKind.Log,
         team: team._id,
         name: 'Test Log Source',
@@ -108,7 +115,7 @@ describe('External API v2 Sources', () => {
     });
 
     it('should return a single trace source', async () => {
-      const traceSource = await Source.create({
+      const traceSource = await TraceSource.create({
         kind: SourceKind.Trace,
         team: team._id,
         name: 'Test Trace Source',
@@ -117,6 +124,7 @@ describe('External API v2 Sources', () => {
           tableName: 'otel_traces',
         },
         timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: '*',
         durationExpression: 'Duration',
         durationPrecision: 3,
         traceIdExpression: 'TraceId',
@@ -188,6 +196,7 @@ describe('External API v2 Sources', () => {
         kind: SourceKind.Trace,
         connection: connection._id.toString(),
         timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: '*',
         durationExpression: 'Duration',
         durationPrecision: 3,
         traceIdExpression: 'TraceId',
@@ -247,7 +256,7 @@ describe('External API v2 Sources', () => {
     });
 
     it('should return a single metric source', async () => {
-      const metricSource = await Source.create({
+      const metricSource = await MetricSource.create({
         kind: SourceKind.Metric,
         team: team._id,
         name: 'Test Metric Source',
@@ -289,7 +298,7 @@ describe('External API v2 Sources', () => {
     });
 
     it('should return a single session source', async () => {
-      const traceSource = await Source.create({
+      const traceSource = await TraceSource.create({
         kind: SourceKind.Trace,
         team: team._id,
         name: 'Trace Source for Session',
@@ -298,6 +307,7 @@ describe('External API v2 Sources', () => {
           tableName: 'otel_traces',
         },
         timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: '*',
         durationExpression: 'Duration',
         durationPrecision: 3,
         traceIdExpression: 'TraceId',
@@ -308,17 +318,18 @@ describe('External API v2 Sources', () => {
         connection: connection._id,
       });
 
-      const sessionSource = await Source.create({
+      const sessionSource = await SessionSource.create({
         kind: SourceKind.Session,
-        team: team._id,
+        team: team._id.toString(),
         name: 'Test Session Source',
         from: {
           databaseName: DEFAULT_DATABASE,
           tableName: 'rrweb_events',
         },
+        timestampValueExpression: 'Timestamp',
         traceSourceId: traceSource._id.toString(),
-        connection: connection._id,
-      });
+        connection: connection._id.toString(),
+      } satisfies Omit<Extract<ISource, { kind: SourceKind.Session }>, 'id'>);
 
       const response = await authRequest('get', BASE_URL).expect(200);
 
@@ -338,11 +349,12 @@ describe('External API v2 Sources', () => {
         },
         traceSourceId: traceSource._id.toString(),
         querySettings: [],
+        timestampValueExpression: 'Timestamp',
       });
     });
 
     it('should return multiple sources of different kinds', async () => {
-      const logSource = await Source.create({
+      const logSource = await LogSource.create({
         kind: SourceKind.Log,
         team: team._id,
         name: 'Logs',
@@ -355,7 +367,7 @@ describe('External API v2 Sources', () => {
         connection: connection._id,
       });
 
-      const traceSource = await Source.create({
+      const traceSource = await TraceSource.create({
         kind: SourceKind.Trace,
         team: team._id,
         name: 'Traces',
@@ -364,6 +376,7 @@ describe('External API v2 Sources', () => {
           tableName: 'otel_traces',
         },
         timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: '*',
         durationExpression: 'Duration',
         durationPrecision: 3,
         traceIdExpression: 'TraceId',
@@ -374,7 +387,7 @@ describe('External API v2 Sources', () => {
         connection: connection._id,
       });
 
-      const metricSource = await Source.create({
+      const metricSource = await MetricSource.create({
         kind: SourceKind.Metric,
         team: team._id,
         name: 'Metrics',
@@ -407,7 +420,7 @@ describe('External API v2 Sources', () => {
 
     it("should only return sources for the authenticated user's team", async () => {
       // Create a source for the current team
-      const currentTeamSource = await Source.create({
+      const currentTeamSource = await LogSource.create({
         kind: SourceKind.Log,
         team: team._id,
         name: 'Current Team Source',
@@ -430,7 +443,7 @@ describe('External API v2 Sources', () => {
         password: config.CLICKHOUSE_PASSWORD,
       });
 
-      await Source.create({
+      await LogSource.create({
         kind: SourceKind.Log,
         team: otherTeamId,
         name: 'Other Team Source',
@@ -452,7 +465,7 @@ describe('External API v2 Sources', () => {
     });
 
     it('should format sources according to SourceSchema', async () => {
-      await Source.create({
+      await LogSource.create({
         kind: SourceKind.Log,
         team: team._id,
         name: 'Test Source',
@@ -483,7 +496,7 @@ describe('External API v2 Sources', () => {
 
     it('should filter out sources that fail schema validation', async () => {
       // Create a valid source
-      const validSource = await Source.create({
+      const validSource = await LogSource.create({
         kind: SourceKind.Log,
         team: team._id,
         name: 'Valid Source',

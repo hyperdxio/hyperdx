@@ -252,7 +252,10 @@ export default function SessionsPage() {
   });
 
   const { data: traceTrace } = useSource({
-    id: sessionSource?.traceSourceId,
+    id:
+      sessionSource?.kind === SourceKind.Session
+        ? sessionSource.traceSourceId
+        : undefined,
   });
 
   // Get all sources and select the first session type source by default
@@ -393,7 +396,9 @@ export default function SessionsPage() {
       </Head>
       {selectedSession != null &&
         traceTrace != null &&
+        traceTrace.kind === SourceKind.Trace &&
         sessionSource != null &&
+        sessionSource.kind === SourceKind.Session &&
         targetSession && (
           <SessionSidePanel
             key={`session-page-session-side-panel-${selectedSession.id}`}

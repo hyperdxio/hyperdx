@@ -10,6 +10,7 @@ import {
   AlertChannelType,
   ChartConfigWithOptDateRange,
   DisplayType,
+  SourceKind,
   WebhookService,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
@@ -578,6 +579,11 @@ ${targetTemplate}`;
     }
     if (source == null) {
       throw new Error(`Source ID is ${alert.source} but source is null`);
+    }
+    if (source.kind !== SourceKind.Log && source.kind !== SourceKind.Trace) {
+      throw new Error(
+        `Expecting SourceKind 'trace' or 'log', got ${source.kind}`,
+      );
     }
     // TODO: show group + total count for group-by alerts
     // fetch sample logs

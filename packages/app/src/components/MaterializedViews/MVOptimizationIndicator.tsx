@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   BuilderChartConfigWithOptDateRange,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Badge, Tooltip } from '@mantine/core';
@@ -65,7 +66,10 @@ export default function MVOptimizationIndicator({
   const [modalOpen, setModalOpen] = useState(false);
   const { data } = useMVOptimizationExplanation(config);
 
-  const mvConfigs = source.materializedViews ?? [];
+  const mvConfigs =
+    ((source.kind === SourceKind.Log || source.kind === SourceKind.Trace) &&
+      source.materializedViews) ||
+    [];
   if (!mvConfigs?.length) {
     return null;
   }

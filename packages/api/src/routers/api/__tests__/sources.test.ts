@@ -1,10 +1,10 @@
-import { SourceKind, TSourceUnion } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import { Source } from '@/models/source';
 
-const MOCK_SOURCE: Omit<Extract<TSourceUnion, { kind: 'log' }>, 'id'> = {
+const MOCK_SOURCE: Omit<Extract<TSource, { kind: 'log' }>, 'id'> = {
   kind: SourceKind.Log,
   name: 'Test Source',
   connection: new Types.ObjectId().toString(),
@@ -148,7 +148,7 @@ describe('sources router', () => {
 
     // Verify the metric source has metricTables
     const createdSource = await Source.findById(metricSource._id).lean();
-    expect(createdSource?.metricTables).toBeDefined();
+    expect(createdSource).toHaveProperty('metricTables');
 
     // Update the source to a trace source
     const traceSource = {
@@ -178,9 +178,13 @@ describe('sources router', () => {
 
     // Verify the trace source does NOT have metricTables property
     const updatedSource = await Source.findById(metricSource._id).lean();
-    expect(updatedSource?.kind).toBe(SourceKind.Trace);
-    expect(updatedSource?.metricTables).toBeNull();
-    expect(updatedSource?.durationExpression).toBe('Duration');
+    if (updatedSource?.kind !== SourceKind.Trace) {
+      expect(updatedSource?.kind).toBe(SourceKind.Trace);
+      throw new Error('Source did not update to trace');
+    }
+    expect(updatedSource.kind).toBe(SourceKind.Trace);
+    expect(updatedSource).not.toHaveProperty('metricTables');
+    expect(updatedSource.durationExpression).toBe('Duration');
   });
 
   it('PUT /:id - preserves metricTables when source remains Metric, removes when changed to another type', async () => {
@@ -227,8 +231,11 @@ describe('sources router', () => {
     let updatedSource = await Source.findById(metricSource._id).lean();
 
     // Verify the metric source still has metricTables with updated values
-    expect(updatedSource?.kind).toBe(SourceKind.Metric);
-    expect(updatedSource?.metricTables).toMatchObject({
+    if (updatedSource?.kind !== SourceKind.Metric) {
+      expect(updatedSource?.kind).toBe(SourceKind.Metric);
+      throw new Error('Source is not a metric');
+    }
+    expect(updatedSource.metricTables).toMatchObject({
       gauge: 'otel_metrics_gauge_v2',
       sum: 'otel_metrics_sum_v2',
     });
@@ -253,9 +260,12 @@ describe('sources router', () => {
     updatedSource = await Source.findById(metricSource._id).lean();
 
     // Verify the source is now a Log and metricTables is removed
-    expect(updatedSource?.kind).toBe(SourceKind.Log);
-    expect(updatedSource?.metricTables).toBeNull();
-    expect(updatedSource?.severityTextExpression).toBe('SeverityText');
+    if (updatedSource?.kind !== SourceKind.Log) {
+      expect(updatedSource?.kind).toBe(SourceKind.Log);
+      throw new Error('Source did not update to log');
+    }
+    expect(updatedSource).not.toHaveProperty('metricTables');
+    expect(updatedSource.severityTextExpression).toBe('SeverityText');
   });
 
   it('DELETE /:id - deletes a source', async () => {

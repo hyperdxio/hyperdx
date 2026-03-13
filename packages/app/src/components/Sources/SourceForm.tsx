@@ -18,14 +18,12 @@ import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   MetricsDataType,
   SourceKind,
-  sourceSchemaWithout,
+  SourceSchemaNoId,
   TSource,
-  TSourceUnion,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,
-  Badge,
   Box,
   Button,
   Center,
@@ -60,7 +58,6 @@ import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import {
   inferTableSourceConfig,
   isValidMetricTable,
-  isValidSessionsTable,
   useCreateSource,
   useDeleteSource,
   useSource,
@@ -82,6 +79,74 @@ import { ErrorCollapse } from '../Error/ErrorCollapse';
 import { InputControlled } from '../InputControlled';
 import SelectControlled from '../SelectControlled';
 
+type CorrelationField =
+  | 'logSourceId'
+  | 'traceSourceId'
+  | 'sessionSourceId'
+  | 'metricSourceId';
+
+function getCorrelationFieldValue(
+  source: TSource,
+  field: CorrelationField,
+): string | undefined {
+  switch (field) {
+    case 'logSourceId':
+      if (source.kind === SourceKind.Trace)
+        return source.logSourceId ?? undefined;
+      if (source.kind === SourceKind.Metric)
+        return source.logSourceId ?? undefined;
+      return undefined;
+    case 'traceSourceId':
+      if (source.kind === SourceKind.Log)
+        return source.traceSourceId ?? undefined;
+      if (source.kind === SourceKind.Session) return source.traceSourceId;
+      return undefined;
+    case 'sessionSourceId':
+      if (source.kind === SourceKind.Trace)
+        return source.sessionSourceId ?? undefined;
+      return undefined;
+    case 'metricSourceId':
+      if (source.kind === SourceKind.Log)
+        return source.metricSourceId ?? undefined;
+      if (source.kind === SourceKind.Trace)
+        return source.metricSourceId ?? undefined;
+      return undefined;
+  }
+}
+
+function setCorrelationFieldValue(
+  source: TSource,
+  field: CorrelationField,
+  value: string | undefined,
+): TSource {
+  switch (source.kind) {
+    case SourceKind.Log:
+      if (field === 'traceSourceId' || field === 'metricSourceId') {
+        return { ...source, [field]: value };
+      }
+      return source;
+    case SourceKind.Trace:
+      if (
+        field === 'logSourceId' ||
+        field === 'sessionSourceId' ||
+        field === 'metricSourceId'
+      ) {
+        return { ...source, [field]: value };
+      }
+      return source;
+    case SourceKind.Session:
+      if (field === 'traceSourceId') {
+        return { ...source, traceSourceId: value ?? '' };
+      }
+      return source;
+    case SourceKind.Metric:
+      if (field === 'logSourceId') {
+        return { ...source, [field]: value };
+      }
+      return source;
+  }
+}
+
 const DEFAULT_DATABASE = 'default';
 
 const MV_AGGREGATE_FUNCTION_OPTIONS = MV_AGGREGATE_FUNCTIONS.map(fn => ({
@@ -97,7 +162,12 @@ const OTEL_CLICKHOUSE_EXPRESSIONS = {
 
 const CORRELATION_FIELD_MAP: Record<
   SourceKind,
-  Record<string, { targetKind: SourceKind; targetField: keyof TSource }[]>
+  Partial<
+    Record<
+      CorrelationField,
+      { targetKind: SourceKind; targetField: CorrelationField }[]
+    >
+  >
 > = {
   [SourceKind.Log]: {
     metricSourceId: [
@@ -889,7 +959,7 @@ function OrderByFormRow({
   tableName,
   connectionId,
 }: {
-  control: Control<TSourceUnion>;
+  control: Control<TSource>;
   databaseName: string;
   tableName: string;
   connectionId: string;
@@ -1554,38 +1624,8 @@ export function SessionTableModelForm({ control }: TableModelProps) {
   });
   const connectionId = useWatch({ control, name: 'connection' });
   const tableName = useWatch({ control, name: 'from.tableName' });
-  const prevTableNameRef = useRef(tableName);
-  const metadata = useMetadataWithSettings();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        if (tableName && tableName !== prevTableNameRef.current) {
-          prevTableNameRef.current = tableName;
-          const isValid = await isValidSessionsTable({
-            databaseName,
-            tableName,
-            connectionId,
-            metadata,
-          });
-
-          if (!isValid) {
-            notifications.show({
-              color: 'red',
-              message: `${tableName} is not a valid Sessions schema.`,
-            });
-          }
-        }
-      } catch (e) {
-        console.error(e);
-        notifications.show({
-          color: 'red',
-          message: e.message,
-        });
-      }
-    })();
-  }, [tableName, databaseName, connectionId, metadata]);
-
+  // TODO(AVK): Figure out table validation
   return (
     <>
       <Stack gap="sm">
@@ -1610,14 +1650,26 @@ export function SessionTableModelForm({ control }: TableModelProps) {
             disableKeywordAutocomplete
           />
         </FormRow>
+        <FormRow label={'Resource Attributes Expression'}>
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name="resourceAttributesExpression"
+            placeholder="ResourceAttributes"
+          />
+        </FormRow>
       </Stack>
     </>
   );
 }
 
 interface TableModelProps {
-  control: Control<TSourceUnion>;
-  setValue: UseFormSetValue<TSourceUnion>;
+  control: Control<TSource>;
+  setValue: UseFormSetValue<TSource>;
 }
 
 export function MetricTableModelForm({ control, setValue }: TableModelProps) {
@@ -1718,8 +1770,8 @@ function TableModelForm({
   setValue,
   kind,
 }: {
-  control: Control<TSourceUnion>;
-  setValue: UseFormSetValue<TSourceUnion>;
+  control: Control<TSource>;
+  setValue: UseFormSetValue<TSource>;
   kind: SourceKind;
 }) {
   switch (kind) {
@@ -1753,7 +1805,7 @@ export function TableSourceForm({
   const { data: connections } = useConnections();
 
   const { control, setValue, handleSubmit, resetField, setError, clearErrors } =
-    useForm<TSourceUnion>({
+    useForm<TSource>({
       defaultValues: {
         kind: SourceKind.Log,
         name: defaultName,
@@ -1764,8 +1816,7 @@ export function TableSourceForm({
         },
         querySettings: source?.querySettings,
       },
-      // TODO: HDX-1768 remove type assertion
-      values: source as TSourceUnion,
+      values: source,
       resetOptions: {
         keepDirtyValues: true,
         keepErrors: true,
@@ -1812,6 +1863,7 @@ export function TableSourceForm({
               tableName:
                 watchedKind !== SourceKind.Metric ? watchedTableName : '',
               connectionId: watchedConnection,
+              kind: watchedKind,
               metadata,
             });
             if (Object.keys(config).length > 0) {
@@ -1882,28 +1934,28 @@ export function TableSourceForm({
 
       // Check each field for changes
       const changedFields: Array<{
-        name: keyof TSourceUnion;
+        name: CorrelationField;
         value: string | undefined;
       }> = [];
 
       if (logSourceId !== prevLogSourceIdRef.current) {
         prevLogSourceIdRef.current = logSourceId;
         changedFields.push({
-          name: 'logSourceId' as keyof TSourceUnion,
+          name: 'logSourceId',
           value: logSourceId ?? undefined,
         });
       }
       if (traceSourceId !== prevTraceSourceIdRef.current) {
         prevTraceSourceIdRef.current = traceSourceId;
         changedFields.push({
-          name: 'traceSourceId' as keyof TSourceUnion,
+          name: 'traceSourceId',
           value: traceSourceId ?? undefined,
         });
       }
       if (metricSourceId !== prevMetricSourceIdRef.current) {
         prevMetricSourceIdRef.current = metricSourceId;
         changedFields.push({
-          name: 'metricSourceId' as keyof TSourceUnion,
+          name: 'metricSourceId',
           value: metricSourceId ?? undefined,
         });
       }
@@ -1913,7 +1965,7 @@ export function TableSourceForm({
       ) {
         prevSessionTraceSourceIdRef.current = sessionTraceSourceId;
         changedFields.push({
-          name: 'traceSourceId' as keyof TSourceUnion,
+          name: 'traceSourceId',
           value: sessionTraceSourceId ?? undefined,
         });
       }
@@ -1922,14 +1974,15 @@ export function TableSourceForm({
         name: fieldName,
         value: newTargetSourceId,
       } of changedFields) {
-        if (!(fieldName in correlationFields)) continue;
-
         const targetConfigs = correlationFields[fieldName];
+        if (!targetConfigs) continue;
 
         for (const { targetKind, targetField } of targetConfigs) {
           // Find the previously linked source if any
           const previouslyLinkedSource = sources.find(
-            s => s.kind === targetKind && s[targetField] === currentSourceId,
+            s =>
+              s.kind === targetKind &&
+              getCorrelationFieldValue(s, targetField) === currentSourceId,
           );
 
           // If there was a previously linked source and it's different from the new one, unlink it
@@ -1938,10 +1991,11 @@ export function TableSourceForm({
             previouslyLinkedSource.id !== newTargetSourceId
           ) {
             await updateSource.mutateAsync({
-              source: {
-                ...previouslyLinkedSource,
-                [targetField]: undefined,
-              } as TSource,
+              source: setCorrelationFieldValue(
+                previouslyLinkedSource,
+                targetField,
+                undefined,
+              ),
             });
           }
 
@@ -1950,12 +2004,13 @@ export function TableSourceForm({
             const targetSource = sources.find(s => s.id === newTargetSourceId);
             if (targetSource && targetSource.kind === targetKind) {
               // Only update if the target field is empty to avoid overwriting existing correlations
-              if (!targetSource[targetField]) {
+              if (!getCorrelationFieldValue(targetSource, targetField)) {
                 await updateSource.mutateAsync({
-                  source: {
-                    ...targetSource,
-                    [targetField]: currentSourceId,
-                  } as TSource,
+                  source: setCorrelationFieldValue(
+                    targetSource,
+                    targetField,
+                    currentSourceId,
+                  ),
                 });
               }
             }
@@ -1974,9 +2029,8 @@ export function TableSourceForm({
     updateSource,
   ]);
 
-  const sourceFormSchema = sourceSchemaWithout({ id: true });
   const handleError = useCallback(
-    ({ errors }: z.ZodError<TSourceUnion>, eventName: 'create' | 'save') => {
+    ({ errors }: z.ZodError<TSource>, eventName: 'create' | 'save') => {
       const notificationMsgs: string[] = [];
 
       // eslint-disable-next-line no-console
@@ -1988,7 +2042,7 @@ export function TableSourceForm({
 
       for (const err of errors) {
         const errorPath: string = err.path.join('.');
-        // TODO: HDX-1768 get rid of this type assertion if possible
+        // react-hook-form requires a static path type; dynamic errorPath needs assertion
         setError(errorPath as any, { ...err });
 
         const message =
@@ -2022,15 +2076,14 @@ export function TableSourceForm({
   const _onCreate = useCallback(() => {
     clearErrors();
     handleSubmit(async data => {
-      const parseResult = sourceFormSchema.safeParse(data);
+      const parseResult = SourceSchemaNoId.safeParse(data);
       if (parseResult.error) {
         handleError(parseResult.error, 'create');
         return;
       }
 
       createSource.mutate(
-        // TODO: HDX-1768 get rid of this type assertion
-        { source: data as TSource },
+        { source: data },
         {
           onSuccess: async newSource => {
             // Handle bidirectional linking for new sources
@@ -2039,7 +2092,10 @@ export function TableSourceForm({
               for (const [fieldName, targetConfigs] of Object.entries(
                 correlationFields,
               )) {
-                const targetSourceId = (newSource as any)[fieldName];
+                const targetSourceId = getCorrelationFieldValue(
+                  newSource,
+                  fieldName as CorrelationField,
+                );
                 if (targetSourceId) {
                   for (const { targetKind, targetField } of targetConfigs) {
                     const targetSource = sources.find(
@@ -2047,12 +2103,15 @@ export function TableSourceForm({
                     );
                     if (targetSource && targetSource.kind === targetKind) {
                       // Only update if the target field is empty to avoid overwriting existing correlations
-                      if (!targetSource[targetField]) {
+                      if (
+                        !getCorrelationFieldValue(targetSource, targetField)
+                      ) {
                         await updateSource.mutateAsync({
-                          source: {
-                            ...targetSource,
-                            [targetField]: newSource.id,
-                          } as TSource,
+                          source: setCorrelationFieldValue(
+                            targetSource,
+                            targetField,
+                            newSource.id,
+                          ),
                         });
                       }
                     }
@@ -2079,7 +2138,6 @@ export function TableSourceForm({
   }, [
     clearErrors,
     handleError,
-    sourceFormSchema,
     handleSubmit,
     createSource,
     onCreate,
@@ -2090,14 +2148,13 @@ export function TableSourceForm({
   const _onSave = useCallback(() => {
     clearErrors();
     handleSubmit(data => {
-      const parseResult = sourceFormSchema.safeParse(data);
+      const parseResult = SourceSchemaNoId.safeParse(data);
       if (parseResult.error) {
         handleError(parseResult.error, 'save');
         return;
       }
       updateSource.mutate(
-        // TODO: HDX-1768 get rid of this type assertion
-        { source: data as TSource },
+        { source: data },
         {
           onSuccess: () => {
             onSave?.();
@@ -2115,14 +2172,7 @@ export function TableSourceForm({
         },
       );
     })();
-  }, [
-    handleSubmit,
-    updateSource,
-    onSave,
-    clearErrors,
-    handleError,
-    sourceFormSchema,
-  ]);
+  }, [handleSubmit, updateSource, onSave, clearErrors, handleError]);
 
   const databaseName = useWatch({
     control,

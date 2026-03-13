@@ -5,6 +5,7 @@ import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   DashboardFilter,
   MetricsDataType,
+  SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -34,6 +35,7 @@ describe('useDashboardFilterValues', () => {
   const mockSources: Partial<TSource>[] = [
     {
       id: 'logs-source',
+      kind: SourceKind.Log,
       name: 'Logs',
       timestampValueExpression: 'timestamp',
       connection: 'clickhouse-conn',
@@ -44,6 +46,7 @@ describe('useDashboardFilterValues', () => {
     },
     {
       id: 'traces-source',
+      kind: SourceKind.Trace,
       name: 'Traces',
       timestampValueExpression: 'timestamp',
       connection: 'clickhouse-conn',
@@ -54,6 +57,7 @@ describe('useDashboardFilterValues', () => {
     },
     {
       id: 'metric-source',
+      kind: SourceKind.Metric,
       name: 'Metrics',
       timestampValueExpression: 'timestamp',
       connection: 'clickhouse-conn',
@@ -235,6 +239,7 @@ describe('useDashboardFilterValues', () => {
       ]),
     );
 
+    // Only Log and Trace sources use optimizeGetKeyValuesCalls (Metric uses direct fetch)
     expect(optimizeGetKeyValuesCalls).toHaveBeenCalledTimes(3);
     expect(optimizeGetKeyValuesCalls).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -495,6 +500,7 @@ describe('useDashboardFilterValues', () => {
           tableName: 'logs',
         },
         id: 'logs-source',
+        kind: SourceKind.Log,
         name: 'Logs',
         timestampValueExpression: 'timestamp',
       },

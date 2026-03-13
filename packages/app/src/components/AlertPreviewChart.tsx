@@ -2,10 +2,12 @@ import React from 'react';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertInterval,
+  isLogSource,
+  isTraceSource,
   SearchCondition,
   SearchConditionLanguage,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Paper } from '@mantine/core';
 
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -38,7 +40,9 @@ export const AlertPreviewChart = ({
   const resolvedSelect =
     (select && select.trim().length > 0
       ? select
-      : source.defaultTableSelectExpression) ?? '';
+      : isLogSource(source) || isTraceSource(source)
+        ? source.defaultTableSelectExpression
+        : undefined) ?? '';
 
   const { data: aliasMap } = useAliasMapFromChartConfig({
     select: resolvedSelect,
@@ -62,7 +66,10 @@ export const AlertPreviewChart = ({
           whereLanguage: whereLanguage || undefined,
           dateRange: intervalToDateRange(interval),
           granularity: intervalToGranularity(interval),
-          implicitColumnExpression: source.implicitColumnExpression,
+          implicitColumnExpression:
+            isLogSource(source) || isTraceSource(source)
+              ? source.implicitColumnExpression
+              : undefined,
           groupBy,
           with: aliasWith,
           select: [

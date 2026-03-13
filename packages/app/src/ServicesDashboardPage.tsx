@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { pick } from 'lodash';
 import {
   parseAsString,
   parseAsStringEnum,
@@ -10,15 +9,31 @@ import {
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
+import type { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   BuilderChartConfigWithDateRange,
   CteChartConfig,
   DisplayType,
   Filter,
+  isLogSource,
+  isTraceSource,
   PresetDashboard,
   SourceKind,
-  TSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
+
+// Extract common chart config fields from a source.
+// This avoids union type issues with lodash `pick` on discriminated unions.
+function pickSourceConfigFields(source: TSource) {
+  return {
+    timestampValueExpression: source.timestampValueExpression,
+    connection: source.connection,
+    from: source.from,
+    ...(isLogSource(source) || isTraceSource(source)
+      ? { implicitColumnExpression: source.implicitColumnExpression }
+      : {}),
+  };
+}
 import {
   ActionIcon,
   Box,
@@ -202,7 +217,7 @@ export function EndpointLatencyChart({
   appliedConfig = {},
   extraFilters = [],
 }: {
-  source: TSource;
+  source: TTraceSource;
   dateRange: [Date, Date];
   appliedConfig?: AppliedConfig;
   extraFilters?: Filter[];
@@ -249,12 +264,7 @@ export function EndpointLatencyChart({
             ]}
             config={{
               source: source.id,
-              ...pick(source, [
-                'timestampValueExpression',
-                'implicitColumnExpression',
-                'connection',
-                'from',
-              ]),
+              ...pickSourceConfigFields(source),
               where: appliedConfig.where || '',
               whereLanguage:
                 (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
@@ -307,12 +317,7 @@ export function EndpointLatencyChart({
             toolbarSuffix={[displaySwitcher]}
             config={{
               source: source.id,
-              ...pick(source, [
-                'timestampValueExpression',
-                'implicitColumnExpression',
-                'connection',
-                'from',
-              ]),
+              ...pickSourceConfigFields(source),
               where: appliedConfig.where || '',
               whereLanguage:
                 (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
@@ -374,12 +379,7 @@ function HttpTab({
       if (reqChartType === 'overall') {
         return {
           source: source.id,
-          ...pick(source, [
-            'timestampValueExpression',
-            'implicitColumnExpression',
-            'connection',
-            'from',
-          ]),
+          ...pickSourceConfigFields(source),
           where: appliedConfig.where || '',
           whereLanguage:
             (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
@@ -410,7 +410,10 @@ function HttpTab({
       }
       return {
         timestampValueExpression: 'series_time_bucket',
-        implicitColumnExpression: source.implicitColumnExpression,
+        implicitColumnExpression:
+          isLogSource(source) || isTraceSource(source)
+            ? source.implicitColumnExpression
+            : undefined,
         connection: source.connection,
         source: source.id,
         with: [
@@ -418,7 +421,10 @@ function HttpTab({
             name: 'error_series',
             chartConfig: {
               timestampValueExpression: source?.timestampValueExpression || '',
-              implicitColumnExpression: source?.implicitColumnExpression || '',
+              implicitColumnExpression:
+                isLogSource(source) || isTraceSource(source)
+                  ? source?.implicitColumnExpression || ''
+                  : '',
               connection: source?.connection ?? '',
               from: source?.from ?? {
                 databaseName: '',
@@ -584,12 +590,7 @@ function HttpTab({
               sourceId={source.id}
               config={{
                 source: source.id,
-                ...pick(source, [
-                  'timestampValueExpression',
-                  'implicitColumnExpression',
-                  'connection',
-                  'from',
-                ]),
+                ...pickSourceConfigFields(source),
                 where: appliedConfig.where || '',
                 whereLanguage:
                   (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
@@ -628,12 +629,7 @@ function HttpTab({
               ]}
               config={{
                 source: source.id,
-                ...pick(source, [
-                  'timestampValueExpression',
-                  'implicitColumnExpression',
-                  'connection',
-                  'from',
-                ]),
+                ...pickSourceConfigFields(source),
                 where: appliedConfig.where || '',
                 whereLanguage:
                   (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
@@ -713,7 +709,7 @@ function HttpTab({
         </ChartBox>
       </Grid.Col>
       <Grid.Col span={6}>
-        {source && (
+        {source && isTraceSource(source) && (
           <EndpointLatencyChart
             appliedConfig={appliedConfig}
             dateRange={searchedTimeRange}
@@ -762,12 +758,7 @@ function HttpTab({
               ]}
               config={{
                 source: source.id,
-                ...pick(source, [
-                  'timestampValueExpression',
-                  'implicitColumnExpression',
-                  'connection',
-                  'from',
-                ]),
+                ...pickSourceConfigFields(source),
                 where: appliedConfig.where || '',
                 whereLanguage:
                   (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
@@ -880,12 +871,7 @@ function DatabaseTab({
             name: 'queries_by_total_time',
             isSubquery: true,
             chartConfig: {
-              ...pick(source, [
-                'timestampValueExpression',
-                'implicitColumnExpression',
-                'connection',
-                'from',
-              ]),
+              ...pickSourceConfigFields(source),
               where: appliedConfig.where || '',
               whereLanguage:
                 (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
@@ -1003,12 +989,7 @@ function DatabaseTab({
             name: 'queries_by_total_count',
             isSubquery: true,
             chartConfig: {
-              ...pick(source, [
-                'timestampValueExpression',
-                'implicitColumnExpression',
-                'connection',
-                'from',
-              ]),
+              ...pickSourceConfigFields(source),
               where: appliedConfig.where || '',
               whereLanguage:
                 (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
@@ -1182,12 +1163,7 @@ function DatabaseTab({
                 ]}
                 config={{
                   source: source.id,
-                  ...pick(source, [
-                    'timestampValueExpression',
-                    'implicitColumnExpression',
-                    'connection',
-                    'from',
-                  ]),
+                  ...pickSourceConfigFields(source),
                   where: appliedConfig.where || '',
                   whereLanguage:
                     (appliedConfig.whereLanguage ?? getStoredLanguage()) ||
@@ -1268,12 +1244,7 @@ function DatabaseTab({
                 ]}
                 config={{
                   source: source.id,
-                  ...pick(source, [
-                    'timestampValueExpression',
-                    'implicitColumnExpression',
-                    'connection',
-                    'from',
-                  ]),
+                  ...pickSourceConfigFields(source),
                   where: appliedConfig.where || '',
                   whereLanguage:
                     (appliedConfig.whereLanguage ?? getStoredLanguage()) ||
@@ -1368,12 +1339,7 @@ function ErrorsTab({
               sourceId={source.id}
               config={{
                 source: source.id,
-                ...pick(source, [
-                  'timestampValueExpression',
-                  'implicitColumnExpression',
-                  'connection',
-                  'from',
-                ]),
+                ...pickSourceConfigFields(source),
                 where: appliedConfig.where || '',
                 whereLanguage:
                   (appliedConfig.whereLanguage ?? getStoredLanguage()) || 'sql',
@@ -1392,7 +1358,10 @@ function ErrorsTab({
                   },
                   ...getScopedFilters({ appliedConfig, expressions }),
                 ],
-                groupBy: source.serviceNameExpression || expressions.service,
+                groupBy:
+                  (isLogSource(source) || isTraceSource(source)
+                    ? source.serviceNameExpression
+                    : undefined) || expressions.service,
                 dateRange: searchedTimeRange,
               }}
             />

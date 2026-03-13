@@ -4,7 +4,12 @@ import {
   TableConnection,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  isLogSource,
+  isMetricSource,
+  isTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Group, Stack, Text } from '@mantine/core';
 
 import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
@@ -58,11 +63,14 @@ export default function RawSqlChartEditor({
       .flatMap(source => {
         const tables: TableConnection[] = getAllMetricTables(source);
 
-        if (source.kind !== SourceKind.Metric) {
+        if (isMetricSource(source)) {
           tables.push(tcFromSource(source));
         }
 
-        if (source.materializedViews) {
+        if (
+          (isLogSource(source) || isTraceSource(source)) &&
+          source.materializedViews
+        ) {
           tables.push(
             ...source.materializedViews.map(mv => ({
               databaseName: mv.databaseName,

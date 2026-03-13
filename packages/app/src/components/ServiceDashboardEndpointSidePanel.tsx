@@ -1,7 +1,11 @@
 import { useCallback, useMemo } from 'react';
 import { pick } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
-import { DisplayType, type Filter } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  type Filter,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import { Drawer, Grid, Text } from '@mantine/core';
 import { IconServer } from '@tabler/icons-react';
 
@@ -30,7 +34,8 @@ export default function ServiceDashboardEndpointSidePanel({
   service?: string;
   searchedTimeRange: [Date, Date];
 }) {
-  const { data: source } = useSource({ id: sourceId });
+  const { data: _source } = useSource({ id: sourceId });
+  const source = _source?.kind === SourceKind.Trace ? _source : undefined;
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const [endpoint, setEndpoint] = useQueryState('endpoint', parseAsString);
