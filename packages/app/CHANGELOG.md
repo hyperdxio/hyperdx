@@ -1,5 +1,27 @@
 # @hyperdx/app
 
+## 2.22.0
+
+### Minor Changes
+
+- a8216d7e: feat: allow scroll to zoom and panning to trace timeline viewer
+- b5c371e9: Add careers page (/careers) with Greenhouse job listings filtered to HyperDX/ClickStack roles, GitHub commit activity feed, and a CTA in the AppNav sidebar for local mode
+
+### Patch Changes
+
+- 60d1bbaf: feat: always-on attribute distribution mode for Event Deltas
+- 26759f79: feat: improved attribute sorting with entropy scoring and proportional comparison
+- 068f72c7: fix: Add zero state to service map if no trace source is defined
+- 1381782b: feat: Support raw sql number charts and pie charts
+- 2e30c0e0: feat: Improve chart editor validations
+- 33edc7e5: feat: Improve auto-completion for SQLEditor\
+- 359b5874: fix: add explicit api typing to all api routes and frontend hooks
+- 9682eb4d: fix: Fix filter value saving
+- 25a3291f: feat: Attach service version to all internal telemetry
+- Updated dependencies [1381782b]
+- Updated dependencies [359b5874]
+  - @hyperdx/common-utils@0.16.1
+
 ## 2.21.0
 
 ### Minor Changes
