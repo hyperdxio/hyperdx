@@ -9,7 +9,7 @@ import {
   Completion,
   startCompletion,
 } from '@codemirror/autocomplete';
-import { sql, SQLDialect } from '@codemirror/lang-sql';
+import { sql } from '@codemirror/lang-sql';
 import {
   Field,
   TableConnectionChoice,
@@ -31,86 +31,20 @@ import CodeMirror, {
   tooltips,
 } from '@uiw/react-codemirror';
 
+import InputLanguageSwitch from '@/components/SearchInput/InputLanguageSwitch';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
 import { useQueryHistory } from '@/utils';
 
-import InputLanguageSwitch from './InputLanguageSwitch';
+import { KEYWORDS_FOR_WHERE_OR_ORDER_BY } from './constants';
+import {
+  createCodeMirrorSqlDialect,
+  createCodeMirrorStyleTheme,
+  DEFAULT_CODE_MIRROR_BASIC_SETUP,
+} from './utils';
 
 import styles from './SQLInlineEditor.module.scss';
 
-const AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS = [
-  // used with WHERE
-  'AND',
-  'OR',
-  'NOT',
-  'IN',
-  'LIKE',
-  'ILIKE',
-  'BETWEEN',
-  'ASC',
-  'DESC',
-  // regular functions - arithmetic
-  'intDiv',
-  'intDivOrZero',
-  'isNaN',
-  'moduloOrZero',
-  'abs',
-  // regular functions - array
-  'empty',
-  'notEmpty',
-  'length',
-  'arrayConcat',
-  'has',
-  'hasAll',
-  'hasAny',
-  'indexOf',
-  'arrayCount',
-  'countEqual',
-  'arrayUnion',
-  'arrayIntersect',
-  'arrayMap',
-  'arrayFilter',
-  'arraySort',
-  'flatten',
-  'arrayCompact',
-  'arrayMin',
-  'arrayMax',
-  'arraySum',
-  'arrayAvg',
-  // regular functions - conditional
-  'if',
-  'multiIf',
-  // regular functions - rounding
-  'floor',
-  'ceiling',
-  'truncate',
-  'round',
-  // regular functions - dates and times
-  'timestamp',
-  'toTimeZone',
-  'toYear',
-  'toMonth',
-  'toWeek',
-  'toDayOfYear',
-  'toDayOfMonth',
-  'toDayOfWeek',
-  'toUnixTimestamp',
-  'toTime',
-  // regular functions - string
-  'lower',
-  'upper',
-  'substring',
-  'trim',
-  // regular functions - dictionaries
-  'dictGet',
-  'dictGetOrDefault',
-  'dictGetOrNull',
-];
-
-const AUTOCOMPLETE_LIST_STRING = ` ${AUTOCOMPLETE_LIST_FOR_SQL_FUNCTIONS.join(' ')}`;
-
 type SQLInlineEditorProps = {
-  autoCompleteFields?: Field[];
   filterField?: (field: Field) => boolean;
   value: string;
   onChange: (value: string) => void;
@@ -132,78 +66,6 @@ type SQLInlineEditorProps = {
 
 const MAX_EDITOR_HEIGHT = '150px';
 
-const createStyleTheme = () =>
-  EditorView.baseTheme({
-    '&.cm-editor.cm-focused': {
-      outline: '0px solid transparent',
-    },
-    '&.cm-editor': {
-      background: 'transparent !important',
-    },
-    '.cm-editor-multiline &.cm-editor': {
-      maxHeight: MAX_EDITOR_HEIGHT,
-    },
-    '& .cm-tooltip-autocomplete': {
-      whiteSpace: 'nowrap',
-      wordWrap: 'break-word',
-      maxWidth: '100%',
-      backgroundColor: 'var(--color-bg-surface) !important',
-      border: '1px solid var(--color-border) !important',
-      borderRadius: '8px',
-      boxShadow:
-        '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-      padding: '4px',
-    },
-    '& .cm-tooltip-autocomplete > ul': {
-      fontFamily: 'inherit',
-      maxHeight: '300px',
-    },
-    '& .cm-tooltip-autocomplete > ul > li': {
-      padding: '4px 8px',
-      borderRadius: '4px',
-      cursor: 'pointer',
-      color: 'var(--color-text)',
-    },
-    '& .cm-tooltip-autocomplete > ul > li[aria-selected]': {
-      backgroundColor: 'var(--color-bg-highlighted) !important',
-      color: 'var(--color-text-muted) !important',
-    },
-    '& .cm-tooltip-autocomplete .cm-completionLabel': {
-      color: 'var(--color-text)',
-    },
-    '& .cm-tooltip-autocomplete .cm-completionDetail': {
-      color: 'var(--color-text-muted)',
-      fontStyle: 'normal',
-      marginLeft: '8px',
-    },
-    '& .cm-tooltip-autocomplete .cm-completionInfo': {
-      backgroundColor: 'var(--color-bg-field)',
-      border: '1px solid var(--color-border)',
-      borderRadius: '4px',
-      padding: '8px',
-      color: 'var(--color-text)',
-    },
-    '& .cm-completionIcon': {
-      width: '16px',
-      marginRight: '6px',
-      opacity: 0.7,
-    },
-    '& .cm-scroller': {
-      overflowX: 'hidden',
-    },
-    '.cm-editor-multiline & .cm-scroller': {
-      maxHeight: MAX_EDITOR_HEIGHT,
-      overflowY: 'auto',
-    },
-  });
-
-const cmBasicSetup = {
-  lineNumbers: false,
-  foldGutter: false,
-  highlightActiveLine: false,
-  highlightActiveLineGutter: false,
-};
-
 export default function SQLInlineEditor({
   tableConnection,
   tableConnections,
@@ -220,7 +82,7 @@ export default function SQLInlineEditor({
   disableKeywordAutocomplete,
   enableHotkey,
   tooltipText,
-  additionalSuggestions = [],
+  additionalSuggestions,
   queryHistoryType,
   parentRef,
   allowMultiline = true,
@@ -285,23 +147,22 @@ export default function SQLInlineEditor({
   const updateAutocompleteColumns = useCallback(
     (viewRef: EditorView) => {
       const currentText = viewRef.state.doc.toString();
-      const keywords = [
+      const identifiers = [
         ...(filteredFields?.map(column => {
           if (column.path.length > 1) {
             return `${column.path[0]}['${column.path[1]}']`;
           }
           return column.path[0];
         }) ?? []),
-        ...additionalSuggestions,
+        ...(additionalSuggestions ?? []),
       ];
 
-      const auto = sql({
-        dialect: SQLDialect.define({
-          keywords:
-            keywords.join(' ') +
-            (disableKeywordAutocomplete ? '' : AUTOCOMPLETE_LIST_STRING),
-        }),
+      const auto = createCodeMirrorSqlDialect({
+        identifiers,
+        keywords: KEYWORDS_FOR_WHERE_OR_ORDER_BY,
+        includeRegularFunctions: !disableKeywordAutocomplete,
       });
+
       const queryHistoryList = autocompletion({
         compareCompletions: (a: any, b: any) => {
           return 0;
@@ -374,20 +235,24 @@ export default function SQLInlineEditor({
   const cmExtensions = useMemo(
     () => [
       ...tooltipExt,
-      createStyleTheme(),
+      createCodeMirrorStyleTheme(MAX_EDITOR_HEIGHT),
+
       // Enable line wrapping when multiline is allowed (regardless of focus)
       ...(allowMultiline ? [EditorView.lineWrapping] : []),
+
       // eslint-disable-next-line react-hooks/refs
       compartmentRef.current.of(
         sql({
           upperCaseKeywords: true,
         }),
       ),
+
+      // Configure Enter key to submit search, and Shift + Enter to insert new line when multiline is allowed
       Prec.highest(
         keymap.of([
           {
             key: 'Enter',
-            run: view => {
+            run: () => {
               if (onSubmit == null) {
                 return false;
               }
@@ -490,7 +355,7 @@ export default function SQLInlineEditor({
             }, [setIsFocused])}
             extensions={cmExtensions}
             onCreateEditor={updateAutocompleteColumns}
-            basicSetup={cmBasicSetup}
+            basicSetup={DEFAULT_CODE_MIRROR_BASIC_SETUP}
             placeholder={placeholder}
             onClick={onClickCodeMirror}
           />

@@ -130,7 +130,7 @@ jest.mock('../MaterializedViews/MVOptimizationIndicator', () => ({
   default: () => <div>MV Indicator</div>,
 }));
 
-jest.mock('../SearchInput/SQLInlineEditor', () => ({
+jest.mock('../SQLEditor/SQLInlineEditor', () => ({
   SQLInlineEditorControlled: () => <div>SQL Editor</div>,
 }));
 
