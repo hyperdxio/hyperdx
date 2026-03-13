@@ -147,7 +147,7 @@ function SectionHeader({
       role="button"
       tabIndex={0}
       aria-expanded={!section.collapsed}
-      aria-label={`${section.title} section`}
+      aria-label={`Toggle ${section.title} section`}
       style={{
         cursor: 'pointer',
         borderBottom: '1px solid var(--mantine-color-dark-4)',
@@ -1238,6 +1238,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [hasSections, allTiles, tilesBySectionId],
   );
 
+  const onUngroupedLayoutChange = useMemo(
+    () => makeOnLayoutChange(ungroupedTiles),
+    [makeOnLayoutChange, ungroupedTiles],
+  );
+
+  const sectionLayoutChangeHandlers = useMemo(() => {
+    const map = new Map<string, (newLayout: RGL.Layout[]) => void>();
+    for (const section of sections) {
+      const tiles = tilesBySectionId.get(section.id) ?? [];
+      map.set(section.id, makeOnLayoutChange(tiles));
+    }
+    return map;
+  }, [sections, tilesBySectionId, makeOnLayoutChange]);
+
   const deleteDashboard = useDeleteDashboard();
 
   const handleUpdateTags = useCallback(
@@ -1577,7 +1591,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   <ReactGridLayout
                     layout={ungroupedTiles.map(tileToLayoutItem)}
                     containerPadding={[0, 0]}
-                    onLayoutChange={makeOnLayoutChange(ungroupedTiles)}
+                    onLayoutChange={onUngroupedLayoutChange}
                     cols={24}
                     rowHeight={32}
                   >
@@ -1597,7 +1611,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                         <ReactGridLayout
                           layout={sectionTiles.map(tileToLayoutItem)}
                           containerPadding={[0, 0]}
-                          onLayoutChange={makeOnLayoutChange(sectionTiles)}
+                          onLayoutChange={sectionLayoutChangeHandlers.get(
+                            section.id,
+                          )}
                           cols={24}
                           rowHeight={32}
                         >
@@ -1612,7 +1628,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               <ReactGridLayout
                 layout={ungroupedTiles.map(tileToLayoutItem)}
                 containerPadding={[0, 0]}
-                onLayoutChange={makeOnLayoutChange(ungroupedTiles)}
+                onLayoutChange={onUngroupedLayoutChange}
                 cols={24}
                 rowHeight={32}
               >
