@@ -1,13 +1,18 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
+  TableConnection,
+  tcFromSource,
+} from '@hyperdx/common-utils/dist/core/metadata';
+import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Group, Stack, Text } from '@mantine/core';
 
+import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
 import useResizable from '@/hooks/useResizable';
 import { useSources } from '@/source';
+import { getAllMetricTables } from '@/utils';
 
 import { ConnectionSelectControlled } from '../ConnectionSelect';
-import { SQLEditorControlled } from '../SQLEditor';
 
 import { SQL_PLACEHOLDERS } from './constants';
 import { RawSqlChartInstructions } from './RawSqlChartInstructions';
@@ -46,6 +51,31 @@ export default function RawSqlChartEditor({
 
   const placeholderSQl = SQL_PLACEHOLDERS[displayType ?? DisplayType.Table];
 
+  const tableConnections: TableConnection[] = useMemo(() => {
+    if (!sources) return [];
+    return sources
+      .filter(s => s.connection === connection)
+      .flatMap(source => {
+        const tables: TableConnection[] = getAllMetricTables(source);
+
+        if (source.kind !== SourceKind.Metric) {
+          tables.push(tcFromSource(source));
+        }
+
+        if (source.materializedViews) {
+          tables.push(
+            ...source.materializedViews.map(mv => ({
+              databaseName: mv.databaseName,
+              tableName: mv.tableName,
+              connectionId: source.connection,
+            })),
+          );
+        }
+
+        return tables;
+      });
+  }, [sources, connection]);
+
   return (
     <Stack>
       <Group align="center">
@@ -66,6 +96,7 @@ export default function RawSqlChartEditor({
           height={`${size}vh`}
           enableLineWrapping
           placeholder={placeholderSQl}
+          tableConnections={tableConnections}
         />
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
