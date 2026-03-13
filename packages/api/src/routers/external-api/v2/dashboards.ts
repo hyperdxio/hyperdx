@@ -179,6 +179,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           type: string
  *           enum: [sql]
  *           default: sql
+ *           description: Filter type. Currently only "sql" is supported.
  *         condition:
  *           type: string
  *           description: SQL filter condition. For example use expressions in the form "column IN ('value')".
@@ -186,7 +187,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *     MetricDataType:
  *       type: string
  *       enum: [sum, gauge, histogram, summary, exponential histogram]
- *       description: Metric data type for metrics data sources.
+ *       description: Metric data type, only for metrics data sources.
  *     TimeSeriesDisplayType:
  *       type: string
  *       enum: [stacked_bar, line]
@@ -204,6 +205,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *       properties:
  *         output:
  *           $ref: '#/components/schemas/NumberFormatOutput'
+ *           description: Output format applied to the number.
  *           example: "number"
  *         mantissa:
  *           type: integer
@@ -247,6 +249,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [time]
+ *           description: Series type discriminator. Must be "time" for time-series charts.
  *           example: "time"
  *         sourceId:
  *           type: string
@@ -264,7 +267,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: 0.95
  *         field:
  *           type: string
- *           description: Field/property name to aggregate (required for most aggregation functions except count)
+ *           description: Column or expression to aggregate (required for most aggregation functions except count)
  *           example: "duration"
  *         alias:
  *           type: string
@@ -287,8 +290,10 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: ["host"]
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *         metricDataType:
  *           $ref: '#/components/schemas/MetricDataType'
+ *           description: Metric data type, only for metrics data sources.
  *           example: "sum"
  *         metricName:
  *           type: string
@@ -312,6 +317,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [table]
+ *           description: Series type discriminator. Must be "table" for table charts.
  *           example: "table"
  *         sourceId:
  *           type: string
@@ -329,21 +335,26 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: 0.95
  *         field:
  *           type: string
+ *           description: Column or expression to aggregate (required for most aggregation functions except count)
  *           example: "duration"
  *         alias:
  *           type: string
+ *           description: Display name for the series
  *           example: "Total Count"
  *         where:
  *           type: string
+ *           description: Filter query for the data (syntax depends on whereLanguage)
  *           example: "level:error"
  *         whereLanguage:
  *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause
  *           example: "lucene"
  *         groupBy:
  *           type: array
  *           items:
  *             type: string
  *           maxItems: 10
+ *           description: Fields to group results by (creates separate rows for each group)
  *           example: ["errorType"]
  *         sortOrder:
  *           $ref: '#/components/schemas/SortOrder'
@@ -351,9 +362,10 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: "desc"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *         metricDataType:
  *           $ref: '#/components/schemas/MetricDataType'
- *           description: Metric data type for metrics data sources
+ *           description: Metric data type, only for metrics data sources.
  *           example: "sum"
  *         metricName:
  *           type: string
@@ -372,6 +384,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [number]
+ *           description: Series type discriminator. Must be "number" for single-value number charts.
  *           example: "number"
  *         sourceId:
  *           type: string
@@ -389,23 +402,30 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: 0.95
  *         field:
  *           type: string
+ *           description: Column or expression to aggregate (required for most aggregation functions except count)
  *           example: "duration"
  *         alias:
  *           type: string
+ *           description: Display name for the series in the chart
  *           example: "Total Requests"
  *         where:
  *           type: string
+ *           description: Filter query for the data (syntax depends on whereLanguage)
  *           example: "service:api"
  *         whereLanguage:
  *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause
  *           example: "lucene"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *         metricDataType:
  *           $ref: '#/components/schemas/MetricDataType'
+ *           description: Metric data type, only for metrics data sources.
  *           example: "sum"
  *         metricName:
  *           type: string
+ *           description: Metric name for metrics data sources.
  *           example: "http.server.duration"
  *
  *     SearchChartSeries:
@@ -420,6 +440,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [search]
+ *           description: Series type discriminator. Must be "search" for search/log viewer charts.
  *           example: "search"
  *         sourceId:
  *           type: string
@@ -449,9 +470,11 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [markdown]
+ *           description: Series type discriminator. Must be "markdown" for markdown text widgets.
  *           example: "markdown"
  *         content:
  *           type: string
+ *           description: Markdown content to render inside the widget.
  *           example: "# Dashboard Title\n\nThis is a markdown widget."
  *           maxLength: 100000
  *
@@ -499,6 +522,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: "Request Duration"
  *         level:
  *           $ref: '#/components/schemas/QuantileLevel'
+ *           description: Percentile level; only valid when aggFn is "quantile".
  *         where:
  *           type: string
  *           maxLength: 10000
@@ -507,6 +531,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: "service:api"
  *         whereLanguage:
  *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
  *         metricName:
  *           type: string
  *           description: Name of the metric to aggregate; only applicable when the source is a metrics source.
@@ -529,6 +554,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         displayType:
  *           type: string
  *           enum: [line]
+ *           description: Display type discriminator. Must be "line" for line charts.
  *           example: "line"
  *         sourceId:
  *           type: string
@@ -562,6 +588,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           default: true
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *         compareToPreviousPeriod:
  *           type: boolean
  *           description: Overlay the equivalent previous time period for comparison.
@@ -578,6 +605,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         displayType:
  *           type: string
  *           enum: [stacked_bar]
+ *           description: Display type discriminator. Must be "stacked_bar" for stacked-bar charts.
  *           example: "stacked_bar"
  *         sourceId:
  *           type: string
@@ -611,6 +639,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           default: true
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *
  *     TableBuilderChartConfig:
  *       type: object
@@ -623,6 +652,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         displayType:
  *           type: string
  *           enum: [table]
+ *           description: Display type discriminator. Must be "table" for table charts.
  *           example: "table"
  *         sourceId:
  *           type: string
@@ -658,6 +688,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: false
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *
  *     NumberBuilderChartConfig:
  *       type: object
@@ -670,6 +701,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         displayType:
  *           type: string
  *           enum: [number]
+ *           description: Display type discriminator. Must be "number" for single big-number charts.
  *           example: "number"
  *         sourceId:
  *           type: string
@@ -684,6 +716,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *             $ref: '#/components/schemas/SelectItem'
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *
  *     PieBuilderChartConfig:
  *       type: object
@@ -696,6 +729,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         displayType:
  *           type: string
  *           enum: [pie]
+ *           description: Display type discriminator. Must be "pie" for pie charts.
  *           example: "pie"
  *         sourceId:
  *           type: string
@@ -715,6 +749,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: "service"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *
  *     SearchChartConfig:
  *       type: object
@@ -728,6 +763,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         displayType:
  *           type: string
  *           enum: [search]
+ *           description: Display type discriminator. Must be "search" for search/log viewer tiles.
  *           example: "search"
  *         sourceId:
  *           type: string
@@ -746,6 +782,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: "level:error"
  *         whereLanguage:
  *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
  *
  *     MarkdownChartConfig:
  *       type: object
@@ -756,6 +793,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         displayType:
  *           type: string
  *           enum: [markdown]
+ *           description: Display type discriminator. Must be "markdown" for markdown text tiles.
  *           example: "markdown"
  *         markdown:
  *           type: string
@@ -774,6 +812,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         configType:
  *           type: string
  *           enum: [sql]
+ *           description: Must be "sql" to use the Raw SQL chart config variant.
  *           example: "sql"
  *         connectionId:
  *           type: string
@@ -786,6 +825,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: "SELECT count() FROM otel_logs WHERE timestamp > now() - INTERVAL 1 HOUR"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *
  *     LineRawSqlChartConfig:
  *       description: Raw SQL configuration for a line time-series chart.
@@ -798,6 +838,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *             displayType:
  *               type: string
  *               enum: [line]
+ *               description: Display as a line time-series chart.
  *               example: "line"
  *             compareToPreviousPeriod:
  *               type: boolean
@@ -823,6 +864,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *             displayType:
  *               type: string
  *               enum: [stacked_bar]
+ *               description: Display as a stacked-bar time-series chart.
  *               example: "stacked_bar"
  *             fillNulls:
  *               type: boolean
@@ -844,6 +886,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *             displayType:
  *               type: string
  *               enum: [table]
+ *               description: Display as a table chart.
  *               example: "table"
  *
  *     NumberRawSqlChartConfig:
@@ -857,6 +900,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *             displayType:
  *               type: string
  *               enum: [number]
+ *               description: Display as a single big-number chart.
  *               example: "number"
  *
  *     PieRawSqlChartConfig:
@@ -870,6 +914,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *             displayType:
  *               type: string
  *               enum: [pie]
+ *               description: Display as a pie chart.
  *               example: "pie"
  *
  *     LineChartConfig:
@@ -1015,6 +1060,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *             id:
  *               type: string
  *               maxLength: 36
+ *               description: Unique tile ID assigned by the server.
  *               example: "65f5e4a3b9e77c001a901234"
  *
  *     TileInput:
@@ -1058,6 +1104,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [QUERY_EXPRESSION]
+ *           description: Filter type. Must be "QUERY_EXPRESSION".
  *         name:
  *           type: string
  *           minLength: 1
@@ -1142,13 +1189,16 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         name:
  *           type: string
  *           maxLength: 1024
+ *           description: Dashboard name.
  *           example: "New Dashboard"
  *         tiles:
  *           type: array
+ *           description: List of tiles/charts to include in the dashboard.
  *           items:
  *             $ref: '#/components/schemas/TileInput'
  *         tags:
  *           type: array
+ *           description: Tags for organizing and filtering dashboards.
  *           items:
  *             type: string
  *             maxLength: 32
@@ -1185,6 +1235,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         name:
  *           type: string
  *           maxLength: 1024
+ *           description: Dashboard name.
  *           example: "Updated Dashboard Name"
  *         tiles:
  *           type: array
@@ -1193,6 +1244,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           description: Full list of tiles for the dashboard. Existing tiles are matched by ID; tiles with an ID that does not match an existing tile will be assigned a new generated ID.
  *         tags:
  *           type: array
+ *           description: Tags for organizing and filtering dashboards.
  *           items:
  *             type: string
  *             maxLength: 32
@@ -1229,12 +1281,14 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *       properties:
  *         data:
  *           $ref: '#/components/schemas/DashboardResponse'
+ *           description: The dashboard object.
  *
  *     DashboardsListResponse:
  *       type: object
  *       properties:
  *         data:
  *           type: array
+ *           description: List of dashboard objects.
  *           items:
  *             $ref: '#/components/schemas/DashboardResponse'
  */
