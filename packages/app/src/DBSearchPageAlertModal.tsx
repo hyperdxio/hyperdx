@@ -37,6 +37,7 @@ import {
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useCreateSavedSearch } from '@/savedSearch';
 import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
@@ -53,7 +54,6 @@ import { AlertPreviewChart } from './components/AlertPreviewChart';
 import { AlertChannelForm } from './components/Alerts';
 import { AlertScheduleFields } from './components/AlertScheduleFields';
 import { getStoredLanguage } from './components/SearchInput/SearchWhereInput';
-import { SQLInlineEditorControlled } from './components/SearchInput/SQLInlineEditor';
 import { getWebhookChannelIcon } from './utils/webhookIcons';
 import api from './api';
 import { AlertWithCreatedBy, SearchConfig } from './types';

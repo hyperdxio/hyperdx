@@ -64,6 +64,7 @@ export function RawSqlChartInstructions({
   const [helpOpened, setHelpOpened] = useAtom(helpOpenedAtom);
   const toggleHelp = () => setHelpOpened(v => !v);
   const availableParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
+  const exampleClipboard = useClipboard({ timeout: 1500 });
 
   return (
     <Paper
@@ -110,9 +111,36 @@ export function RawSqlChartInstructions({
             <Text size="xs" fw="bold">
               Example:
             </Text>
-            <Code fz="xs" block>
-              {QUERY_PARAM_EXAMPLES[displayType]}
-            </Code>
+            <div style={{ position: 'relative' }}>
+              <Tooltip
+                label={exampleClipboard.copied ? 'Copied!' : 'Copy'}
+                withArrow
+              >
+                <ActionIcon
+                  variant="subtle"
+                  size="xs"
+                  color={exampleClipboard.copied ? 'green' : 'gray'}
+                  onClick={() =>
+                    exampleClipboard.copy(QUERY_PARAM_EXAMPLES[displayType])
+                  }
+                  style={{
+                    position: 'absolute',
+                    top: 4,
+                    right: 4,
+                    zIndex: 1,
+                  }}
+                >
+                  {exampleClipboard.copied ? (
+                    <IconCheck size={10} />
+                  ) : (
+                    <IconCopy size={10} />
+                  )}
+                </ActionIcon>
+              </Tooltip>
+              <Code fz="xs" block>
+                {QUERY_PARAM_EXAMPLES[displayType]}
+              </Code>
+            </div>
           </Stack>
         </Collapse>
       </Stack>
