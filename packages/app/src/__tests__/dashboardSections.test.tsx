@@ -117,6 +117,17 @@ describe('Dashboard schema with sections', () => {
     }
   });
 
+  it('rejects duplicate section IDs', () => {
+    const result = DashboardSchema.safeParse({
+      ...baseDashboard,
+      sections: [
+        { id: 's1', title: 'Section A', collapsed: false },
+        { id: 's1', title: 'Section B', collapsed: true },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('validates a dashboard with sections', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,

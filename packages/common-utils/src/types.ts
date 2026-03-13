@@ -725,7 +725,16 @@ export const DashboardSchema = z.object({
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
   savedFilterValues: z.array(FilterSchema).optional(),
-  sections: z.array(DashboardSectionSchema).optional(),
+  sections: z
+    .array(DashboardSectionSchema)
+    .refine(
+      sections => {
+        const ids = sections.map(s => s.id);
+        return new Set(ids).size === ids.length;
+      },
+      { message: 'Section IDs must be unique' },
+    )
+    .optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
 export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;

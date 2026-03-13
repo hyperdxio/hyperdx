@@ -27,7 +27,6 @@ import {
   AlertState,
   ChartConfigWithDateRange,
   DashboardFilter,
-  DashboardSection,
   DisplayType,
   Filter,
   SearchCondition,
@@ -56,7 +55,6 @@ import { notifications } from '@mantine/notifications';
 import {
   IconArrowsMaximize,
   IconBell,
-  IconChevronRight,
   IconCopy,
   IconDeviceFloppy,
   IconDotsVertical,
@@ -77,6 +75,7 @@ import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
+import SectionHeader from '@/components/SectionHeader';
 import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
@@ -121,60 +120,6 @@ import 'react-resizable/css/styles.css';
 const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
 const ReactGridLayout = WidthProvider(RGL);
-
-function SectionHeader({
-  section,
-  tileCount,
-  onToggle,
-}: {
-  section: DashboardSection;
-  tileCount: number;
-  onToggle: () => void;
-}) {
-  return (
-    <Flex
-      align="center"
-      gap="xs"
-      px="sm"
-      py={4}
-      onClick={onToggle}
-      onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onToggle();
-        }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-expanded={!section.collapsed}
-      aria-label={`Toggle ${section.title} section`}
-      style={{
-        cursor: 'pointer',
-        borderBottom: '1px solid var(--mantine-color-dark-4)',
-        userSelect: 'none',
-      }}
-      data-testid={`section-header-${section.id}`}
-    >
-      <IconChevronRight
-        size={16}
-        style={{
-          transform: section.collapsed ? 'rotate(0deg)' : 'rotate(90deg)',
-          transition: 'transform 150ms ease',
-          flexShrink: 0,
-          color: 'var(--mantine-color-dimmed)',
-        }}
-      />
-      <Text size="sm" fw={500}>
-        {section.title}
-      </Text>
-      {section.collapsed && tileCount > 0 && (
-        <Text size="xs" c="dimmed">
-          ({tileCount} {tileCount === 1 ? 'tile' : 'tiles'})
-        </Text>
-      )}
-    </Flex>
-  );
-}
 
 const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
   i: chart.id,
