@@ -567,7 +567,7 @@ describe('validateChartForm', () => {
       expect.objectContaining({ path: 'connection' }),
     );
     expect(setError).toHaveBeenCalledWith('connection', {
-      type: 'required',
+      type: 'manual',
       message: 'Connection is required',
     });
   });
@@ -588,8 +588,8 @@ describe('validateChartForm', () => {
       expect.objectContaining({ path: 'sqlTemplate' }),
     );
     expect(setError).toHaveBeenCalledWith('sqlTemplate', {
-      type: 'required',
-      message: 'SQL is required',
+      type: 'manual',
+      message: 'SQL query is required',
     });
   });
 
@@ -745,25 +745,6 @@ describe('validateChartForm', () => {
   });
 
   // ── Metric name validation ───────────────────────────────────────────
-
-  it('errors when a metric series item has metricType but no metricName', () => {
-    const setError = jest.fn();
-    const seriesWithoutName = {
-      ...seriesItem,
-      metricType: MetricsDataType.Gauge,
-    };
-    const errors = validateChartForm(
-      makeForm({ source: 'source-metric', series: [seriesWithoutName] }),
-      metricSource,
-      setError,
-    );
-    expect(errors).toContainEqual(
-      expect.objectContaining({
-        path: 'series.0.metricName',
-        message: 'Metric is required for series 1',
-      }),
-    );
-  });
 
   it('errors for each metric series item missing metricName', () => {
     const setError = jest.fn();
@@ -975,11 +956,11 @@ describe('validateChartForm', () => {
     // Each error in the array triggers setError in the final loop
     expect(setError).toHaveBeenCalledWith(
       'connection',
-      expect.objectContaining({ type: 'required' }),
+      expect.objectContaining({ type: 'manual' }),
     );
     expect(setError).toHaveBeenCalledWith(
       'sqlTemplate',
-      expect.objectContaining({ type: 'required' }),
+      expect.objectContaining({ type: 'manual' }),
     );
   });
 });

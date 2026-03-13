@@ -1,5 +1,5 @@
 import { omit, pick } from 'lodash';
-import { FieldPath, Path, UseFormSetError } from 'react-hook-form';
+import { Path, UseFormSetError } from 'react-hook-form';
 import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -17,7 +17,7 @@ import {
 
 import { getStoredLanguage } from '../SearchInput';
 
-import { ChartEditorFormState, SavedChartConfigWithSelectArray } from './types';
+import { ChartEditorFormState } from './types';
 
 function normalizeChartConfig<
   C extends Pick<
@@ -174,19 +174,11 @@ export const validateChartForm = (
 
   // Validate connection is selected for raw SQL charts
   if (isRawSqlChart && !form.connection) {
-    setError(`connection`, {
-      type: 'required',
-      message: 'Connection is required',
-    });
     errors.push({ path: `connection`, message: 'Connection is required' });
   }
 
   // Validate SQL is provided for raw SQL charts
   if (isRawSqlChart && !form.sqlTemplate) {
-    setError(`sqlTemplate`, {
-      type: 'required',
-      message: 'SQL is required',
-    });
     errors.push({ path: `sqlTemplate`, message: 'SQL query is required' });
   }
 
@@ -228,7 +220,7 @@ export const validateChartForm = (
       if (s.metricType && !s.metricName) {
         errors.push({
           path: `series.${index}.metricName`,
-          message: `Metric is required for series ${index + 1}`,
+          message: `Metric is required`,
         });
       }
     });
@@ -249,7 +241,7 @@ export const validateChartForm = (
   }
 
   for (const error of errors) {
-    console.error(`Validation error in field ${error.path}: ${error.message}`);
+    console.warn(`Validation error in field ${error.path}: ${error.message}`);
     setError(error.path, {
       type: 'manual',
       message: error.message,
