@@ -94,7 +94,7 @@ import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { parseAsStringEncoded } from './utils/queryParsers';
+import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { useConnections } from './connection';
 import { useDashboard } from './dashboard';
@@ -773,7 +773,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     whereLanguageParser,
   );
   // Get raw filter queries from URL (not processed by hook)
-  const [rawFilterQueries] = useQueryState('filters', parseAsJson<Filter[]>());
+  const [rawFilterQueries] = useQueryState(
+    'filters',
+    parseAsJsonEncoded<Filter[]>(),
+  );
 
   // Track if we've initialized query for this dashboard
   const initializedDashboard = useRef<string>(undefined);
