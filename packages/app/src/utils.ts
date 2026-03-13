@@ -4,7 +4,11 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { MutableRefObject, SetStateAction } from 'react';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
 import { dateRangeToString } from './timeQuery';
@@ -905,16 +909,16 @@ export function getAllMetricTables(source: TSource): TableConnection[] {
   return Object.values(MetricsDataType)
     .filter(
       metricType =>
-        !!source.metricTables![
-          metricType as keyof TMetricSource['metricTables']
+        !!source.metricTables[
+          metricType as unknown as keyof TMetricSource['metricTables']
         ],
     )
     .map(
       metricType =>
         ({
           tableName:
-            source.metricTables![
-              metricType as keyof TMetricSource['metricTables']
+            source.metricTables[
+              metricType as unknown as keyof TMetricSource['metricTables']
             ],
           databaseName: source.from.databaseName,
           connectionId: source.connection,

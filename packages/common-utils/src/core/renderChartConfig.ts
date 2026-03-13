@@ -1112,7 +1112,12 @@ async function translateMetricChartConfig(
   }
 
   const { metricType, metricName, metricNameSql, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
-  if (metricType === MetricsDataType.Gauge && metricName) {
+  if (
+    metricType === MetricsDataType.Gauge &&
+    metricName &&
+    MetricsDataType.Gauge in metricTables &&
+    metricTables[MetricsDataType.Gauge]
+  ) {
     const timeBucketCol = '__hdx_time_bucket2';
     const timeExpr = timeBucketExpr({
       interval: chartConfig.granularity || 'auto',
@@ -1199,7 +1204,12 @@ async function translateMetricChartConfig(
       timestampValueExpression: timeBucketCol,
       settings: chSql`short_circuit_function_evaluation = 'force_enable'`,
     };
-  } else if (metricType === MetricsDataType.Sum && metricName) {
+  } else if (
+    metricType === MetricsDataType.Sum &&
+    metricName &&
+    MetricsDataType.Sum in metricTables &&
+    metricTables[MetricsDataType.Sum]
+  ) {
     const timeBucketCol = '__hdx_time_bucket2';
     const valueHighCol = '`__hdx_value_high`';
     const valueHighPrevCol = '`__hdx_value_high_prev`';
@@ -1321,7 +1331,12 @@ async function translateMetricChartConfig(
       where: '', // clear up the condition since the where clause is already applied at the upstream CTE
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
-  } else if (metricType === MetricsDataType.Histogram && metricName) {
+  } else if (
+    metricType === MetricsDataType.Histogram &&
+    metricName &&
+    MetricsDataType.Histogram in metricTables &&
+    metricTables[MetricsDataType.Histogram]
+  ) {
     const { alias } = _select;
     // Use the alias from the select, defaulting to 'Value' for backwards compatibility
     const valueAlias = alias || 'Value';
@@ -1348,7 +1363,7 @@ async function translateMetricChartConfig(
         Array.isArray(chartConfig.dateRange)
           ? convertDateRangeToGranularityString(chartConfig.dateRange)
           : chartConfig.granularity,
-    } as BuilderChartConfigWithOptDateRangeEx;
+    } satisfies BuilderChartConfigWithOptDateRangeEx;
 
     const timeBucketSelect = isUsingGranularity(cteChartConfig)
       ? timeBucketExpr({

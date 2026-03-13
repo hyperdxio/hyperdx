@@ -24,6 +24,7 @@ function getModelForKind(kind: SourceKind) {
       return MetricSource;
     default:
       kind satisfies never;
+      throw new Error(`${kind} is not a valid SourceKind`);
   }
 }
 
