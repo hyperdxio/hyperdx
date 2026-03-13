@@ -38,6 +38,7 @@
 
   /* Borders & Dividers */
   --color-border: var(--mantine-color-dark-5);
+  --color-border-emphasis: var(--mantine-color-dark-4);
   --color-border-muted: rgb(255 255 255 / 8%);
 
   /* Text */
@@ -145,6 +146,7 @@
 
   /* Borders & Dividers - inverted */
   --color-border: var(--mantine-color-gray-1);
+  --color-border-emphasis: var(--mantine-color-gray-2);
   --color-border-muted: rgb(0 0 0 / 5%);
 
   /* Text - inverted */

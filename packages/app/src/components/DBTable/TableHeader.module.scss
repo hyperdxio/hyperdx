@@ -13,10 +13,23 @@
   }
 }
 
-.cursorColResize {
+.resizer {
+  position: relative;
+  width: 8px;
+  align-self: stretch;
   cursor: col-resize;
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  &::after {
+    content: '';
+    width: 2px;
+    height: 14px;
+    background-color: var(--color-border-emphasis);
+    border-radius: 2px;
+  }
 }
 
 .headerCellWithAction {

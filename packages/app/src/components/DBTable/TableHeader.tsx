@@ -1,11 +1,6 @@
 import cx from 'classnames';
 import { Group, Text, UnstyledButton } from '@mantine/core';
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconGripVertical,
-  IconX,
-} from '@tabler/icons-react';
+import { IconArrowDown, IconArrowUp, IconX } from '@tabler/icons-react';
 import { flexRender, Header } from '@tanstack/react-table';
 
 import { UNDEFINED_WIDTH } from '@/tableUtils';
@@ -96,22 +91,17 @@ export default function TableHeader({
               </DBRowTableIconButton>
             </div>
           )}
-          {header.column.getCanResize() && !isLast && (
-            <div
-              onMouseDown={header.getResizeHandler()}
-              onTouchStart={header.getResizeHandler()}
-              className={cx(
-                `resizer ${headerStyles.cursorColResize}`,
-                header.column.getIsResizing() && 'isResizing',
-              )}
-            >
-              <IconGripVertical size={12} />
-            </div>
-          )}
           {isLast && (
             <Group gap={2} wrap="nowrap" align="center">
               {lastItemButtons}
             </Group>
+          )}
+          {header.column.getCanResize() && (
+            <div
+              onMouseDown={header.getResizeHandler()}
+              onTouchStart={header.getResizeHandler()}
+              className={headerStyles.resizer}
+            />
           )}
         </Group>
       </Group>
