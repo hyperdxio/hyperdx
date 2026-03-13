@@ -18,10 +18,12 @@ import { useElementSize } from '@mantine/hooks';
 import { isAggregateFunction } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
+import { getChartColorError, getChartColorSuccess } from '@/utils';
 
 import { SQLPreview } from './ChartSQLPreview';
 import type { AddFilterFn } from './deltaChartUtils';
 import {
+  ALL_SPANS_COLOR,
   computeComparisonScore,
   flattenedKeyToFilterKey,
   getPropertyStatistics,
@@ -45,22 +47,32 @@ export type { AddFilterFn } from './deltaChartUtils';
 export default function DBDeltaChart({
   config,
   valueExpr,
-  xMin,
-  xMax,
-  yMin,
-  yMax,
+  xMin: rawXMin,
+  xMax: rawXMax,
+  yMin: rawYMin,
+  yMax: rawYMax,
   onAddFilter,
   spanIdExpression,
 }: {
   config: BuilderChartConfigWithDateRange;
   valueExpr: string;
-  xMin: number;
-  xMax: number;
-  yMin: number;
-  yMax: number;
+  xMin?: number | null;
+  xMax?: number | null;
+  yMin?: number | null;
+  yMax?: number | null;
   onAddFilter?: AddFilterFn;
   spanIdExpression?: string;
 }) {
+  // Derive whether a heatmap selection exists from nullable props
+  const hasSelection =
+    rawXMin != null && rawXMax != null && rawYMin != null && rawYMax != null;
+  // Safe numeric defaults so query builders always get valid values
+  // (outlier/inlier queries are gated by enabled:hasSelection)
+  const xMin = rawXMin ?? 0;
+  const xMax = rawXMax ?? 0;
+  const yMin = rawYMin ?? 0;
+  const yMax = rawYMax ?? 0;
+
   // Determine if the value expression uses aggregate functions
   const isAggregate = isAggregateFunction(valueExpr);
 
@@ -200,28 +212,60 @@ export default function DBDeltaChart({
     ];
   };
 
-  const { data: outlierData, error } = useQueriedChartConfig({
-    ...config,
-    with: buildWithClauses(true),
-    select: '*',
-    filters: buildFilters(true),
-    orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
-    limit: { limit: SAMPLE_SIZE },
-  });
+  const {
+    data: outlierData,
+    error: outlierError,
+    isLoading: isOutlierLoading,
+  } = useQueriedChartConfig(
+    {
+      ...config,
+      with: buildWithClauses(true),
+      select: '*',
+      filters: buildFilters(true),
+      orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
+      limit: { limit: SAMPLE_SIZE },
+    },
+    { enabled: hasSelection },
+  );
 
-  const { data: inlierData } = useQueriedChartConfig({
-    ...config,
-    with: buildWithClauses(false),
-    select: '*',
-    filters: buildFilters(false),
-    orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
-    limit: { limit: SAMPLE_SIZE },
-  });
+  const { data: inlierData, isLoading: isInlierLoading } =
+    useQueriedChartConfig(
+      {
+        ...config,
+        with: buildWithClauses(false),
+        select: '*',
+        filters: buildFilters(false),
+        orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
+        limit: { limit: SAMPLE_SIZE },
+      },
+      { enabled: hasSelection },
+    );
+
+  // When no selection exists, fetch all spans without any range filter
+  const {
+    data: allSpansData,
+    error: allSpansError,
+    isLoading: isAllSpansLoading,
+  } = useQueriedChartConfig(
+    {
+      ...config,
+      select: '*',
+      orderBy: [{ ordering: 'DESC', valueExpression: stableSampleExpr }],
+      limit: { limit: SAMPLE_SIZE },
+    },
+    { enabled: !hasSelection },
+  );
+
+  const isLoading = hasSelection
+    ? isOutlierLoading || isInlierLoading
+    : isAllSpansLoading;
+
+  const error = outlierError ?? allSpansError;
 
   // Column metadata for field classification (from ClickHouse response)
   const columnMeta = useMemo<{ name: string; type: string }[]>(
-    () => outlierData?.meta ?? inlierData?.meta ?? [],
-    [outlierData?.meta, inlierData?.meta],
+    () => outlierData?.meta ?? inlierData?.meta ?? allSpansData?.meta ?? [],
+    [outlierData?.meta, inlierData?.meta, allSpansData?.meta],
   );
 
   // Wrap onAddFilter to convert flattened dot-notation keys into ClickHouse bracket notation
@@ -233,24 +277,30 @@ export default function DBDeltaChart({
     [onAddFilter, columnMeta],
   );
 
-  // TODO: Is loading state
   const {
     visibleProperties,
     hiddenProperties,
     outlierValueOccurences,
     inlierValueOccurences,
   } = useMemo(() => {
+    // When no selection: use allSpans as "outlier" data and empty for inliers.
+    // The sort will rank by frequency (delta = count - 0 = count).
+    const actualOutlierData = hasSelection
+      ? (outlierData?.data ?? [])
+      : (allSpansData?.data ?? []);
+    const actualInlierData = hasSelection ? (inlierData?.data ?? []) : [];
+
     const {
       percentageOccurences: outlierValueOccurences,
       propertyOccurences: outlierPropertyOccurences,
       valueOccurences: outlierRawValueOccurences,
-    } = getPropertyStatistics(outlierData?.data ?? []);
+    } = getPropertyStatistics(actualOutlierData);
 
     const {
       percentageOccurences: inlierValueOccurences,
       propertyOccurences: inlierPropertyOccurences,
       valueOccurences: inlierRawValueOccurences,
-    } = getPropertyStatistics(inlierData?.data ?? []);
+    } = getPropertyStatistics(actualInlierData);
 
     // Get all the unique keys from the outliers
     let uniqueKeys = new Set([...outlierValueOccurences.keys()]);
@@ -308,7 +358,13 @@ export default function DBDeltaChart({
       outlierValueOccurences,
       inlierValueOccurences,
     };
-  }, [outlierData?.data, inlierData?.data, columnMeta]);
+  }, [
+    outlierData?.data,
+    inlierData?.data,
+    allSpansData?.data,
+    hasSelection,
+    columnMeta,
+  ]);
 
   const [activePage, setPage] = useState(1);
 
@@ -411,6 +467,71 @@ export default function DBDeltaChart({
         flexDirection: 'column',
       }}
     >
+      {/* Legend */}
+      <Flex gap="md" align="center" mb="xs" wrap="wrap">
+        {hasSelection ? (
+          <>
+            <Flex align="center" gap={4}>
+              <Box
+                w={10}
+                h={10}
+                style={{
+                  background: getChartColorError(),
+                  borderRadius: 2,
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="xs" c="dimmed">
+                Selection
+              </Text>
+            </Flex>
+            <Flex align="center" gap={4}>
+              <Box
+                w={10}
+                h={10}
+                style={{
+                  background: getChartColorSuccess(),
+                  borderRadius: 2,
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="xs" c="dimmed">
+                Background
+              </Text>
+            </Flex>
+          </>
+        ) : (
+          <>
+            <Flex align="center" gap={4}>
+              <Box
+                w={10}
+                h={10}
+                style={{
+                  background: ALL_SPANS_COLOR,
+                  borderRadius: 2,
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="xs" c="dimmed">
+                All spans
+              </Text>
+            </Flex>
+            <Text size="xs" c="dimmed" fs="italic">
+              {isLoading
+                ? 'Loading\u2026'
+                : 'Select an area on the chart above to enable comparisons'}
+            </Text>
+          </>
+        )}
+      </Flex>
+      {/* Loading state */}
+      {isLoading && visibleOnPage.length === 0 && hiddenOnPage.length === 0 && (
+        <Flex align="center" justify="center" style={{ flex: 1 }}>
+          <Text size="sm" c="dimmed">
+            Loading attribute distributions\u2026
+          </Text>
+        </Flex>
+      )}
       {/* Primary fields */}
       {visibleOnPage.length > 0 && (
         <div
@@ -431,6 +552,7 @@ export default function DBDeltaChart({
               }
               onAddFilter={onAddFilter ? handleAddFilter : undefined}
               key={property}
+              hasSelection={hasSelection}
             />
           ))}
         </div>
@@ -448,7 +570,7 @@ export default function DBDeltaChart({
           labelPosition="left"
         />
       )}
-      {/* Lower-priority fields — separate grid so rows align independently */}
+      {/* Lower-priority fields - separate grid so rows align independently */}
       {hiddenOnPage.length > 0 && (
         <div
           style={{
@@ -468,6 +590,7 @@ export default function DBDeltaChart({
               }
               onAddFilter={onAddFilter ? handleAddFilter : undefined}
               key={key}
+              hasSelection={hasSelection}
             />
           ))}
         </div>

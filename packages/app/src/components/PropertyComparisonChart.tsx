@@ -23,6 +23,7 @@ import {
 import { DBRowTableIconButton } from './DBTable/DBRowTableIconButton';
 import type { AddFilterFn } from './deltaChartUtils';
 import {
+  ALL_SPANS_COLOR,
   applyTopNAggregation,
   mergeValueStatisticsMaps,
   OTHER_BUCKET_COLOR,
@@ -127,11 +128,13 @@ export function PropertyComparisonChart({
   outlierValueOccurences,
   inlierValueOccurences,
   onAddFilter,
+  hasSelection = true,
 }: {
   name: string;
   outlierValueOccurences: Map<string, number>;
   inlierValueOccurences: Map<string, number>;
   onAddFilter?: AddFilterFn;
+  hasSelection?: boolean;
 }) {
   const mergedValueStatistics = mergeValueStatisticsMaps(
     outlierValueOccurences,
@@ -206,41 +209,47 @@ export function PropertyComparisonChart({
               />
               <Tooltip
                 content={<HDXBarChartTooltip title={name} />}
-                allowEscapeViewBox={{ x: false, y: true }}
+                allowEscapeViewBox={{ x: true, y: true }}
                 wrapperStyle={{ zIndex: 1000 }}
               />
               <Bar
                 dataKey="outlierCount"
-                name="Selection"
-                fill={getChartColorError()}
+                name={hasSelection ? 'Selection' : 'All spans'}
+                fill={hasSelection ? getChartColorError() : ALL_SPANS_COLOR}
                 isAnimationActive={false}
               >
                 {chartData.map((entry, index) => (
                   <Cell
                     key={`out-${index}`}
                     fill={
-                      entry.isOther ? OTHER_BUCKET_COLOR : getChartColorError()
-                    }
-                  />
-                ))}
-              </Bar>
-              <Bar
-                dataKey="inlierCount"
-                name="Background"
-                fill={getChartColorSuccess()}
-                isAnimationActive={false}
-              >
-                {chartData.map((entry, index) => (
-                  <Cell
-                    key={`in-${index}`}
-                    fill={
                       entry.isOther
                         ? OTHER_BUCKET_COLOR
-                        : getChartColorSuccess()
+                        : hasSelection
+                          ? getChartColorError()
+                          : ALL_SPANS_COLOR
                     }
                   />
                 ))}
               </Bar>
+              {hasSelection && (
+                <Bar
+                  dataKey="inlierCount"
+                  name="Background"
+                  fill={getChartColorSuccess()}
+                  isAnimationActive={false}
+                >
+                  {chartData.map((entry, index) => (
+                    <Cell
+                      key={`in-${index}`}
+                      fill={
+                        entry.isOther
+                          ? OTHER_BUCKET_COLOR
+                          : getChartColorSuccess()
+                      }
+                    />
+                  ))}
+                </Bar>
+              )}
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -262,14 +271,19 @@ export function PropertyComparisonChart({
               {clickedValue.length === 0 ? <i>Empty String</i> : clickedValue}
             </Text>
             <Flex gap={12} mb={8}>
-              <Text size="xs" c={getChartColorError()}>
-                Selection:{' '}
+              <Text
+                size="xs"
+                c={hasSelection ? getChartColorError() : ALL_SPANS_COLOR}
+              >
+                {hasSelection ? 'Selection' : 'All spans'}:{' '}
                 {(outlierValueOccurences.get(clickedValue) ?? 0).toFixed(1)}%
               </Text>
-              <Text size="xs" c={getChartColorSuccess()}>
-                Background:{' '}
-                {(inlierValueOccurences.get(clickedValue) ?? 0).toFixed(1)}%
-              </Text>
+              {hasSelection && (
+                <Text size="xs" c={getChartColorSuccess()}>
+                  Background:{' '}
+                  {(inlierValueOccurences.get(clickedValue) ?? 0).toFixed(1)}%
+                </Text>
+              )}
             </Flex>
             <Flex gap={4} align="center">
               {onAddFilter && (
