@@ -3,7 +3,8 @@ import { useRouter } from 'next/router';
 import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { MutableRefObject, SetStateAction } from 'react';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
 import { dateRangeToString } from './timeQuery';
@@ -420,6 +421,7 @@ export const CHART_PALETTE = {
   brown: '#9c6b4e',
   gray: '#9498a0',
   // Highlighted variants (lighter shades for hover/selection states)
+  greenHighlight: '#80d9b3',
   redHighlight: '#ffa090',
   orangeHighlight: '#f5c94d',
 } as const;
@@ -438,6 +440,7 @@ export const CLICKSTACK_CHART_PALETTE = {
   brown: '#9c6b4e',
   gray: '#9498a0',
   // Highlighted variants (lighter shades for hover/selection states)
+  greenHighlight: '#80d9b3',
   redHighlight: '#ffa090',
   orangeHighlight: '#f5c94d',
 } as const;
@@ -588,6 +591,14 @@ export function getChartColorError(): string {
 }
 
 // Highlighted variants (theme-aware)
+export function getChartColorSuccessHighlight(): string {
+  return getSemanticChartColor(
+    '--color-chart-success-highlight',
+    CHART_PALETTE.greenHighlight,
+    CLICKSTACK_CHART_PALETTE.greenHighlight,
+  );
+}
+
 export function getChartColorErrorHighlight(): string {
   return getSemanticChartColor(
     '--color-chart-error-highlight',
@@ -691,65 +702,6 @@ export const usePrevious = <T>(value: T): T | undefined => {
   });
   // eslint-disable-next-line react-hooks/refs
   return ref.current;
-};
-
-// From https://javascript.plainenglish.io/how-to-make-a-simple-custom-usedrag-react-hook-6b606d45d353
-export const useDrag = (
-  ref: MutableRefObject<HTMLDivElement | null>,
-  options: {
-    onDrag?: (e: PointerEvent) => any;
-    onPointerDown?: (e: PointerEvent) => any;
-    onPointerUp?: (e: PointerEvent) => any;
-    onPointerMove?: (e: PointerEvent) => any;
-  },
-) => {
-  const {
-    onPointerDown = () => {},
-    onPointerUp = () => {},
-    onPointerMove = () => {},
-    onDrag = () => {},
-  } = options;
-
-  const [isDragging, setIsDragging] = useState(false);
-
-  const handlePointerDown = (e: PointerEvent) => {
-    setIsDragging(true);
-
-    onPointerDown(e);
-  };
-
-  const handlePointerUp = (e: PointerEvent) => {
-    setIsDragging(false);
-
-    onPointerUp(e);
-  };
-
-  const handlePointerMove = (e: PointerEvent) => {
-    onPointerMove(e);
-
-    if (isDragging) {
-      onDrag(e);
-    }
-  };
-
-  useEffect(() => {
-    const element = ref.current;
-    if (element) {
-      element.addEventListener('pointerdown', handlePointerDown);
-      element.addEventListener('pointerup', handlePointerUp);
-      element.addEventListener('pointermove', handlePointerMove);
-
-      return () => {
-        element.removeEventListener('pointerdown', handlePointerDown);
-        element.removeEventListener('pointerup', handlePointerUp);
-        element.removeEventListener('pointermove', handlePointerMove);
-      };
-    }
-    // disable dependency array as this doesn't fit nicely with react
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return { isDragging };
 };
 
 export const formatNumber = (
@@ -882,6 +834,27 @@ export function getMetricTableName(
     : source.metricTables?.[
         metricType.toLowerCase() as keyof typeof source.metricTables
       ];
+}
+
+export function getAllMetricTables(source: TSource): TableConnection[] {
+  if (source.kind !== SourceKind.Metric || !source.metricTables) return [];
+
+  return Object.values(MetricsDataType)
+    .filter(
+      metricType =>
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        !!source.metricTables![metricType as keyof TSource['metricTables']],
+    )
+    .map(
+      metricType =>
+        ({
+          tableName:
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            source.metricTables![metricType as keyof TSource['metricTables']],
+          databaseName: source.from.databaseName,
+          connectionId: source.connection,
+        }) satisfies TableConnection,
+    );
 }
 
 /**

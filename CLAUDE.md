@@ -112,15 +112,26 @@ When working on issues or PRs through the GitHub Action:
 
 1. **Before writing any code**, post a comment outlining your implementation
    plan — which files you'll change, what approach you'll take, and any
-   trade-offs or risks. Use `gh issue comment` for issues or `gh pr comment`
-   for PRs.
+   trade-offs or risks. Use `gh issue comment` for issues or `gh pr comment` for
+   PRs.
 
 2. **After making any code changes**, always run these in order and fix any
    failures before opening a PR:
+
    - `make ci-lint` — lint + TypeScript type check
    - `make ci-unit` — unit tests
 
 3. Write a clear PR description explaining what changed and why.
+
+## Git Commits
+
+When committing code, use the git author's default profile (name and email from
+git config). Do not add `Co-Authored-By` trailers.
+
+**Pre-commit hooks must pass before committing.** Do not use `--no-verify` to
+skip hooks. If the pre-commit hook fails (e.g. due to husky not being set up in
+a worktree), run `npx lint-staged` manually before committing to ensure lint and
+formatting checks pass. Fix any issues before creating the commit.
 
 ---
 

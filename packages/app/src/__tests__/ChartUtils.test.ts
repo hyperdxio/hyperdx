@@ -41,7 +41,7 @@ describe('ChartUtils', () => {
           generateEmptyBuckets: false,
         }),
       ).toThrow(
-        'No timestamp column found with meta: [{"name":"AVG(toFloat64OrDefault(toString(Duration)))","type":"Float64"}]',
+        'No timestamp column found in result column metadata. Make sure a Date/DateTime column exists in the result set.\n\nResult column metadata: [{"name":"AVG(toFloat64OrDefault(toString(Duration)))","type":"Float64"}]',
       );
     });
 
@@ -533,6 +533,113 @@ describe('ChartUtils', () => {
       ]);
     });
 
+    it('should use only the first timestamp column when multiple are present', () => {
+      const res = {
+        data: [
+          {
+            'count()': 10,
+            first_timestamp: '2025-11-26T11:12:00Z',
+            other_timestamp: '2025-11-26T11:13:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'count()',
+            type: 'UInt64',
+          },
+          {
+            name: 'first_timestamp',
+            type: 'DateTime',
+          },
+          {
+            name: 'other_timestamp',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(), new Date()],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+
+      expect(actual.timestampColumn).toEqual({
+        name: 'first_timestamp',
+        type: 'DateTime',
+      });
+      expect(actual.graphResults).toEqual([
+        {
+          first_timestamp: 1764155520,
+          'count()': 10,
+        },
+      ]);
+    });
+
+    it('should treat Map, String, and Array type columns as group columns', () => {
+      const res = {
+        data: [
+          {
+            'count()': 5,
+            string_col: 'foo',
+            map_col: { key: 'val' },
+            array_col: [1, 2, 3],
+            __hdx_time_bucket: '2025-11-26T11:12:00Z',
+          },
+        ],
+        meta: [
+          {
+            name: 'count()',
+            type: 'UInt64',
+          },
+          {
+            name: 'string_col',
+            type: 'String',
+          },
+          {
+            name: 'map_col',
+            type: 'Map(String, String)',
+          },
+          {
+            name: 'array_col',
+            type: 'Array(UInt64)',
+          },
+          {
+            name: '__hdx_time_bucket',
+            type: 'DateTime',
+          },
+        ],
+      };
+
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: res,
+        dateRange: [new Date(), new Date()],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+
+      // All three non-numeric, non-timestamp columns form the group key.
+      // With a single value column, the value column name is omitted from the key.
+      // Map and Array values are serialized as JSON strings.
+      expect(actual.graphResults).toEqual([
+        {
+          __hdx_time_bucket: 1764155520,
+          'foo · {"key":"val"} · [1,2,3]': 5,
+        },
+      ]);
+      expect(actual.lineData).toEqual([
+        {
+          color: COLORS[0],
+          dataKey: 'foo · {"key":"val"} · [1,2,3]',
+          currentPeriodKey: 'foo · {"key":"val"} · [1,2,3]',
+          previousPeriodKey: 'foo · {"key":"val"} · [1,2,3] (previous)',
+          displayName: 'foo · {"key":"val"} · [1,2,3]',
+          isDashed: false,
+        },
+      ]);
+    });
+
     it('should plot previous period data when provided, shifted to align with current period', () => {
       const currentPeriodResponse = {
         data: [
@@ -755,15 +862,27 @@ describe('ChartUtils', () => {
       expect(result).toEqual([]);
     });
 
-    it('returns empty array when there are no numeric value columns', () => {
-      const result = formatResponseForPieChart(
-        {
-          data: [{ ServiceName: 'checkout' }],
-          meta: [{ name: 'ServiceName', type: 'LowCardinality(String)' }],
-        },
-        getColor,
+    it('throws when meta is missing', () => {
+      expect(() =>
+        formatResponseForPieChart(
+          { data: [{ 'count()': 10 }] } as any,
+          getColor,
+        ),
+      ).toThrow('No meta data found in response');
+    });
+
+    it('throws when there are no numeric value columns', () => {
+      expect(() =>
+        formatResponseForPieChart(
+          {
+            data: [{ ServiceName: 'checkout' }],
+            meta: [{ name: 'ServiceName', type: 'LowCardinality(String)' }],
+          },
+          getColor,
+        ),
+      ).toThrow(
+        'No value columns found in result column metadata. Make sure a numeric column exists in the result set.\n\nResult column metadata: [{"name":"ServiceName","type":"LowCardinality(String)"}]',
       );
-      expect(result).toEqual([]);
     });
 
     it('uses the value column name as label when there are no group-by columns', () => {

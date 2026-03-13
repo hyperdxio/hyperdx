@@ -21,9 +21,11 @@ import {
   makeExternalChart,
   makeExternalTile,
 } from '../../../fixtures';
+import Alert, { AlertSource, AlertThresholdType } from '../../../models/alert';
 import Connection from '../../../models/connection';
 import Dashboard from '../../../models/dashboard';
 import { Source } from '../../../models/source';
+import Webhook, { WebhookService } from '../../../models/webhook';
 
 // Constants
 const BASE_URL = '/api/v2/dashboards';
@@ -1802,7 +1804,7 @@ describe('External API v2 Dashboards - new format', () => {
   });
 
   const server = getServer();
-  let agent, team, user, traceSource, metricSource;
+  let agent, team, user, traceSource, metricSource, connection;
 
   beforeAll(async () => {
     await server.start();
@@ -1815,7 +1817,7 @@ describe('External API v2 Dashboards - new format', () => {
     team = result.team;
     user = result.user;
 
-    const connection = await Connection.create({
+    connection = await Connection.create({
       team: team._id,
       name: 'Default',
       host: config.CLICKHOUSE_HOST,
@@ -2307,6 +2309,104 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[5], ['id'])).toEqual(pieChart);
     });
 
+    it('can round-trip all raw SQL chart config types', async () => {
+      const connectionId = connection._id.toString();
+      const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
+
+      const lineRawSql: ExternalDashboardTile = {
+        name: 'Line Raw SQL',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'line',
+          connectionId,
+          sqlTemplate,
+          compareToPreviousPeriod: true,
+          fillNulls: true,
+          alignDateRangeToGranularity: true,
+          numberFormat: { output: 'number', mantissa: 2 },
+        },
+      };
+
+      const barRawSql: ExternalDashboardTile = {
+        name: 'Bar Raw SQL',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'stacked_bar',
+          connectionId,
+          sqlTemplate,
+          fillNulls: false,
+          alignDateRangeToGranularity: false,
+          numberFormat: { output: 'byte', decimalBytes: true },
+        },
+      };
+
+      const tableRawSql: ExternalDashboardTile = {
+        name: 'Table Raw SQL',
+        x: 0,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          numberFormat: { output: 'percent', mantissa: 1 },
+        },
+      };
+
+      const numberRawSql: ExternalDashboardTile = {
+        name: 'Number Raw SQL',
+        x: 6,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'number',
+          connectionId,
+          sqlTemplate,
+          numberFormat: { output: 'currency', currencySymbol: '$' },
+        },
+      };
+
+      const pieRawSql: ExternalDashboardTile = {
+        name: 'Pie Raw SQL',
+        x: 12,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'pie',
+          connectionId,
+          sqlTemplate,
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Raw SQL Chart Types',
+          tiles: [lineRawSql, barRawSql, tableRawSql, numberRawSql, pieRawSql],
+          tags: ['raw-sql-test'],
+        })
+        .expect(200);
+
+      expect(omit(response.body.data.tiles[0], ['id'])).toEqual(lineRawSql);
+      expect(omit(response.body.data.tiles[1], ['id'])).toEqual(barRawSql);
+      expect(omit(response.body.data.tiles[2], ['id'])).toEqual(tableRawSql);
+      expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberRawSql);
+      expect(omit(response.body.data.tiles[4], ['id'])).toEqual(pieRawSql);
+    });
+
     it('should return 400 when source IDs do not exist', async () => {
       const nonExistentSourceId = new ObjectId().toString();
       const mockDashboard = createMockDashboard(nonExistentSourceId);
@@ -2317,6 +2417,43 @@ describe('External API v2 Dashboards - new format', () => {
 
       expect(response.body).toEqual({
         message: `Could not find the following source IDs: ${nonExistentSourceId}`,
+      });
+    });
+
+    it('should return 400 when connection ID does not belong to the team', async () => {
+      const otherTeamConnection = await Connection.create({
+        team: new ObjectId(),
+        name: 'Other Team Connection',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const otherConnectionId = otherTeamConnection._id.toString();
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with Foreign Connection',
+          tiles: [
+            {
+              name: 'Raw SQL Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                configType: 'sql',
+                displayType: 'line',
+                connectionId: otherConnectionId,
+                sqlTemplate: 'SELECT count() FROM otel_logs WHERE {timeFilter}',
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following connection IDs: ${otherConnectionId}`,
       });
     });
 
@@ -2961,6 +3098,124 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    it('can round-trip all raw SQL chart config types', async () => {
+      const connectionId = connection._id.toString();
+      const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
+
+      const lineRawSql: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Line Raw SQL',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'line',
+          connectionId,
+          sqlTemplate,
+          compareToPreviousPeriod: true,
+          fillNulls: true,
+          alignDateRangeToGranularity: true,
+          numberFormat: { output: 'number', mantissa: 2 },
+        },
+      };
+
+      const barRawSql: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Bar Raw SQL',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'stacked_bar',
+          connectionId,
+          sqlTemplate,
+          fillNulls: false,
+          alignDateRangeToGranularity: false,
+          numberFormat: { output: 'byte', decimalBytes: true },
+        },
+      };
+
+      const tableRawSql: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Table Raw SQL',
+        x: 0,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate,
+          numberFormat: { output: 'percent', mantissa: 1 },
+        },
+      };
+
+      const numberRawSql: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Number Raw SQL',
+        x: 6,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'number',
+          connectionId,
+          sqlTemplate,
+          numberFormat: { output: 'currency', currencySymbol: '$' },
+        },
+      };
+
+      const pieRawSql: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Pie Raw SQL',
+        x: 12,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'pie',
+          connectionId,
+          sqlTemplate,
+        },
+      };
+
+      const initialDashboard = await createTestDashboard();
+
+      const response = await authRequest(
+        'put',
+        `${BASE_URL}/${initialDashboard._id}`,
+      )
+        .send({
+          name: 'Dashboard with Raw SQL Chart Types',
+          tiles: [lineRawSql, barRawSql, tableRawSql, numberRawSql, pieRawSql],
+          tags: ['raw-sql-test'],
+        })
+        .expect(200);
+
+      expect(omit(response.body.data.tiles[0], ['id'])).toEqual(
+        omit(lineRawSql, ['id']),
+      );
+      expect(omit(response.body.data.tiles[1], ['id'])).toEqual(
+        omit(barRawSql, ['id']),
+      );
+      expect(omit(response.body.data.tiles[2], ['id'])).toEqual(
+        omit(tableRawSql, ['id']),
+      );
+      expect(omit(response.body.data.tiles[3], ['id'])).toEqual(
+        omit(numberRawSql, ['id']),
+      );
+      expect(omit(response.body.data.tiles[4], ['id'])).toEqual(
+        omit(pieRawSql, ['id']),
+      );
+    });
+
     it('should return 400 when source IDs do not exist', async () => {
       const dashboard = await createTestDashboard();
       const nonExistentSourceId = new ObjectId().toString();
@@ -2975,6 +3230,229 @@ describe('External API v2 Dashboards - new format', () => {
       expect(response.body).toEqual({
         message: `Could not find the following source IDs: ${nonExistentSourceId}`,
       });
+    });
+
+    it('should return 400 when connection ID does not belong to the team', async () => {
+      const dashboard = await createTestDashboard();
+      const otherTeamConnection = await Connection.create({
+        team: new ObjectId(),
+        name: 'Other Team Connection',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const otherConnectionId = otherTeamConnection._id.toString();
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard with Foreign Connection',
+          tiles: [
+            {
+              id: new ObjectId().toString(),
+              name: 'Raw SQL Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                configType: 'sql',
+                displayType: 'line',
+                connectionId: otherConnectionId,
+                sqlTemplate: 'SELECT count() FROM otel_logs WHERE {timeFilter}',
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        message: `Could not find the following connection IDs: ${otherConnectionId}`,
+      });
+    });
+
+    it('should delete alert when tile is updated from builder to raw SQL config', async () => {
+      const tileId = new ObjectId().toString();
+      const dashboard = await createTestDashboard({
+        tiles: [
+          {
+            id: tileId,
+            name: 'Builder Tile',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              displayType: 'line',
+              source: traceSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: '',
+                },
+              ],
+              where: '',
+              whereLanguage: 'lucene',
+              granularity: 'auto',
+              implicitColumnExpression: 'Body',
+              filters: [],
+            },
+          },
+        ],
+      });
+
+      const webhook = await Webhook.create({
+        name: 'Test Webhook',
+        service: WebhookService.Slack,
+        url: 'https://hooks.slack.com/test',
+        team: team._id,
+      });
+
+      // Create a standalone alert for the builder tile
+      const alert = await Alert.create({
+        team: team._id,
+        dashboard: dashboard._id,
+        tileId,
+        source: AlertSource.TILE,
+        threshold: 100,
+        interval: '1h',
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+      });
+
+      expect(await Alert.findById(alert._id)).not.toBeNull();
+
+      // Update the tile to raw SQL config (same tile ID)
+      await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard',
+          tags: [],
+          tiles: [
+            {
+              id: tileId,
+              name: 'Raw SQL Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                configType: 'sql',
+                displayType: 'line',
+                connectionId: connection._id.toString(),
+                sqlTemplate: 'SELECT count() FROM otel_logs WHERE {timeFilter}',
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(await Alert.findById(alert._id)).toBeNull();
+    });
+
+    it('should delete alert when a tile with an alert is removed from the dashboard', async () => {
+      const keepTileId = new ObjectId().toString();
+      const removeTileId = new ObjectId().toString();
+      const dashboard = await createTestDashboard({
+        tiles: [
+          {
+            id: keepTileId,
+            name: 'Keep Tile',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              displayType: 'line',
+              source: traceSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: '',
+                },
+              ],
+              where: '',
+              whereLanguage: 'lucene',
+              granularity: 'auto',
+              implicitColumnExpression: 'Body',
+              filters: [],
+            },
+          },
+          {
+            id: removeTileId,
+            name: 'Remove Tile',
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              displayType: 'line',
+              source: traceSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: '',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: '',
+                },
+              ],
+              where: '',
+              whereLanguage: 'lucene',
+              granularity: 'auto',
+              implicitColumnExpression: 'Body',
+              filters: [],
+            },
+          },
+        ],
+      });
+
+      const webhook = await Webhook.create({
+        name: 'Test Webhook',
+        service: WebhookService.Slack,
+        url: 'https://hooks.slack.com/test',
+        team: team._id,
+      });
+
+      const alert = await Alert.create({
+        team: team._id,
+        dashboard: dashboard._id,
+        tileId: removeTileId,
+        source: AlertSource.TILE,
+        threshold: 100,
+        interval: '1h',
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+      });
+
+      expect(await Alert.findById(alert._id)).not.toBeNull();
+
+      // Update the dashboard, omitting the tile that had an alert
+      await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard',
+          tags: [],
+          tiles: [
+            {
+              id: keepTileId,
+              name: 'Keep Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'line',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count', where: '' }],
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(await Alert.findById(alert._id)).toBeNull();
     });
   });
 

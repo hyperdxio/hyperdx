@@ -1,9 +1,20 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import cx from 'classnames';
+import { Flex, Kbd, Text } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { useDrag } from '@/hooks/useDrag';
+import { useStableCallback } from '@/hooks/useStableCallback';
+
 import useResizable from '../../hooks/useResizable';
-import { useDrag, usePrevious } from '../../utils';
+import { usePrevious } from '../../utils';
 
 import {
   TimelineChartRowEvents,
@@ -35,16 +46,11 @@ type Cursor = {
 type TimelineChartProps = {
   rows: Row[];
   cursors?: Cursor[];
-  scale?: number;
   rowHeight: number;
-  onMouseMove?: (ts: number) => void;
-  onClick?: (ts: number) => void;
   onEventClick?: (e: Row) => void;
   labelWidth: number;
   className?: string;
   style?: any;
-  setScale?: (cb: (scale: number) => number) => void;
-  scaleWithScroll?: boolean;
   initialScrollRowIndex?: number;
 };
 
@@ -52,18 +58,16 @@ export const TimelineChart = memo(function ({
   rows,
   cursors,
   rowHeight,
-  onMouseMove,
   onEventClick,
   labelWidth: initialLabelWidth,
   className,
   style,
-  onClick,
-  scale = 1,
-  setScale,
   initialScrollRowIndex,
-  scaleWithScroll = false,
 }: TimelineChartProps) {
+  const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState(0);
+  const [cursorXPerc, setCursorXPerc] = useState(0);
+
   const prevScale = usePrevious(scale);
   const initialWidthPercent = (initialLabelWidth / window.innerWidth) * 100;
   const { size: labelWidthPercent, startResize } = useResizable(
@@ -74,49 +78,8 @@ export const TimelineChart = memo(function ({
   const labelWidth = (labelWidthPercent / 100) * window.innerWidth;
 
   const timelineRef = useRef<HTMLDivElement>(null);
-  const onMouseEvent = (
-    e: { clientX: number; clientY: number },
-    cb: typeof onClick | typeof onMouseMove,
-  ) => {
-    if (timelineRef.current != null && cb != null) {
-      const timelineContainer = timelineRef.current;
-      const rect = timelineContainer.getBoundingClientRect();
 
-      const x = e.clientX - rect.left;
-
-      // Remove label width from calculations
-      // Use clientWidth as that removes scroll bars
-      const xPerc =
-        (x - labelWidth) / (timelineContainer.clientWidth - labelWidth);
-      cb(Math.max((offset / 100 + xPerc / scale) * maxVal));
-    }
-  };
-
-  const useDragOptions: Parameters<typeof useDrag>[1] = useMemo(
-    () => ({
-      onDrag: e => {
-        setOffset(v =>
-          Math.min(
-            Math.max(v - e.movementX * (0.125 / scale), 0),
-            100 - 100 / scale,
-          ),
-        );
-      },
-    }),
-    [scale, setOffset],
-  );
-  useDrag(timelineRef, useDragOptions);
-
-  const [cursorXPerc, setCursorXPerc] = useState(0);
-
-  const onWheel = (e: WheelEvent) => {
-    if (scaleWithScroll) {
-      e.preventDefault();
-      setScale?.(v => Math.max(v - e.deltaY * 0.001, 1));
-    }
-  };
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (prevScale != null && prevScale != scale) {
       setOffset(offset => {
         const newScale = scale;
@@ -135,18 +98,61 @@ export const TimelineChart = memo(function ({
     }
   }, [scale, prevScale, cursorXPerc]);
 
+  const onDragMove = useStableCallback(({ movementX }: PointerEvent) => {
+    setOffset(v =>
+      Math.min(Math.max(v - movementX * (0.125 / scale), 0), 100 - 100 / scale),
+    );
+  });
+
+  const dragHandlers = useMemo(
+    () => ({
+      onDragStart: () => {
+        if (timelineRef.current) {
+          timelineRef.current.style.userSelect = 'none';
+        }
+      },
+
+      onDragEnd: () => {
+        if (timelineRef.current) {
+          timelineRef.current.style.userSelect = 'auto';
+        }
+      },
+
+      onDragMove,
+    }),
+    [onDragMove],
+  );
+
+  const onPointerDown = useDrag(dragHandlers);
+
+  const onWheel = useStableCallback((e: WheelEvent) => {
+    const { deltaX, deltaY, metaKey, ctrlKey } = e;
+
+    if (metaKey || ctrlKey) {
+      e.preventDefault();
+      setScale(v => Math.max(v + -deltaY * 0.01, 1));
+    }
+
+    if (deltaX !== 0) {
+      e.preventDefault();
+    }
+
+    setOffset(v =>
+      Math.min(Math.max(v + deltaX * (0.1 / scale), 0), 100 - 100 / scale),
+    );
+  });
+
   useEffect(() => {
     const element = timelineRef.current;
+
     if (element != null) {
-      element.addEventListener('wheel', onWheel, {
-        passive: false,
-      });
+      element.addEventListener('wheel', onWheel, { passive: false });
 
       return () => {
         element.removeEventListener('wheel', onWheel);
       };
     }
-  });
+  }, [onWheel]);
 
   const maxVal = useMemo(() => {
     let max = 0;
@@ -183,115 +189,119 @@ export const TimelineChart = memo(function ({
   }, [initialScrollRowIndex, initialScrolled, rowVirtualizer]);
 
   return (
-    <div
-      style={{ position: 'relative', ...style }}
-      className={className}
-      ref={timelineRef}
-      onClick={e => {
-        onMouseEvent(e, onClick);
-      }}
-      onMouseMove={e => {
-        onMouseEvent(e, onMouseMove);
-      }}
-    >
-      {(cursors ?? ([] as const)).map(cursor => {
-        const xPerc = (cursor.start / maxVal - offset / 100) * scale;
-        return (
-          <TimelineCursor
-            key={cursor.id}
-            xPerc={xPerc}
-            height={timelineRef.current?.getBoundingClientRect().height ?? 300}
-            labelWidth={labelWidth}
-            color={cursor.color}
-          />
-        );
-      })}
-      <TimelineMouseCursor
-        containerRef={timelineRef}
-        maxVal={maxVal}
-        height={timelineRef.current?.getBoundingClientRect().height ?? 300}
-        labelWidth={labelWidth}
-        scale={scale}
-        offset={offset}
-        xPerc={cursorXPerc}
-        setXPerc={setCursorXPerc}
-      />
-      <TimelineXAxis
-        maxVal={maxVal}
-        height={timelineRef.current?.getBoundingClientRect().height ?? 300}
-        labelWidth={labelWidth}
-        scale={scale}
-        offset={offset}
-      />
-
+    <>
+      <Flex justify="end" mb="sm">
+        <Text>
+          <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
+        </Text>
+      </Flex>
       <div
         style={{
-          height: `${rowVirtualizer.getTotalSize() + TIMELINE_AXIS_HEIGHT}px`,
-          width: '100%',
           position: 'relative',
+          overscrollBehaviorX: 'contain',
+          ...style,
         }}
+        className={className}
+        ref={timelineRef}
+        onPointerDown={onPointerDown}
       >
+        {(cursors ?? ([] as const)).map(cursor => {
+          const xPerc = (cursor.start / maxVal - offset / 100) * scale;
+          return (
+            <TimelineCursor
+              key={cursor.id}
+              xPerc={xPerc}
+              height={
+                timelineRef.current?.getBoundingClientRect().height ?? 300
+              }
+              labelWidth={labelWidth}
+              color={cursor.color}
+            />
+          );
+        })}
+        <TimelineMouseCursor
+          containerRef={timelineRef}
+          maxVal={maxVal}
+          height={timelineRef.current?.getBoundingClientRect().height ?? 300}
+          labelWidth={labelWidth}
+          scale={scale}
+          offset={offset}
+          xPerc={cursorXPerc}
+          setXPerc={setCursorXPerc}
+        />
+        <TimelineXAxis
+          maxVal={maxVal}
+          height={timelineRef.current?.getBoundingClientRect().height ?? 300}
+          labelWidth={labelWidth}
+          scale={scale}
+          offset={offset}
+        />
+
         <div
           style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
+            height: `${rowVirtualizer.getTotalSize() + TIMELINE_AXIS_HEIGHT}px`,
             width: '100%',
-            transform: `translateY(${items?.[0]?.start ?? 0}px)`,
+            position: 'relative',
           }}
         >
-          {rowVirtualizer.getVirtualItems().map(virtualRow => {
-            const row = rows[virtualRow.index];
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              transform: `translateY(${items?.[0]?.start ?? 0}px)`,
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map(virtualRow => {
+              const row = rows[virtualRow.index];
 
-            return (
-              <div
-                onClick={() => onEventClick?.(row)}
-                key={virtualRow.index}
-                data-index={virtualRow.index}
-                ref={rowVirtualizer.measureElement}
-                className={`${cx(
-                  'd-flex align-items-center overflow-hidden',
-                  row.className,
-                  styles.timelineRow,
-                  row.isActive && styles.timelineRowActive,
-                )}`}
-                style={row.style}
-              >
+              return (
                 <div
-                  className={styles.labelContainer}
-                  style={{
-                    width: labelWidth,
-                    minWidth: labelWidth,
-                  }}
+                  onClick={() => onEventClick?.(row)}
+                  key={virtualRow.index}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
+                  className={`${cx(
+                    'd-flex align-items-center overflow-hidden',
+                    row.className,
+                    styles.timelineRow,
+                    row.isActive && styles.timelineRowActive,
+                  )}`}
+                  style={row.style}
                 >
-                  {row.label}
                   <div
-                    className={resizeStyles.resizeHandle}
-                    onMouseDown={startResize}
-                    style={{ backgroundColor: 'var(--color-bg-neutral)' }}
+                    className={styles.labelContainer}
+                    style={{
+                      width: labelWidth,
+                      minWidth: labelWidth,
+                    }}
+                  >
+                    {row.label}
+                    <div
+                      className={resizeStyles.resizeHandle}
+                      onMouseDown={startResize}
+                      onPointerDown={e => {
+                        // so it doesn't trigger drag start in useDrag
+                        e.stopPropagation();
+                      }}
+                      style={{ backgroundColor: 'var(--color-bg-neutral)' }}
+                    />
+                  </div>
+                  <TimelineChartRowEvents
+                    events={row.events}
+                    height={rowHeight}
+                    maxVal={maxVal}
+                    scale={scale}
+                    offset={offset}
                   />
                 </div>
-                <TimelineChartRowEvents
-                  events={row.events}
-                  height={rowHeight}
-                  maxVal={maxVal}
-                  eventStyles={(event: TTimelineEvent) => ({
-                    borderRadius: 2,
-                    fontSize: rowHeight * 0.5,
-                    backgroundColor: event.isError
-                      ? 'var(--color-bg-danger)'
-                      : 'var(--color-bg-inverted)',
-                    color: 'var(--color-text-inverted)',
-                  })}
-                  scale={scale}
-                  offset={offset}
-                />
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 });
 

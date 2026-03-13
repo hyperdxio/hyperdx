@@ -150,6 +150,7 @@ function formatExternalWebhook(
  *       properties:
  *         data:
  *           type: array
+ *           description: List of webhook objects.
  *           items:
  *             $ref: '#/components/schemas/Webhook'
  */

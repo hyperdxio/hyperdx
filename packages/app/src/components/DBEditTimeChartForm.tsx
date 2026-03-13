@@ -3,6 +3,7 @@ import {
   Control,
   Controller,
   FieldErrors,
+  Path,
   useFieldArray,
   useForm,
   UseFormClearErrors,
@@ -41,6 +42,7 @@ import {
   Divider,
   Flex,
   Group,
+  List,
   Menu,
   Paper,
   SegmentedControl,
@@ -51,6 +53,7 @@ import {
   Textarea,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import {
   IconArrowDown,
   IconArrowUp,
@@ -67,6 +70,7 @@ import {
   IconPlayerPlay,
   IconTable,
   IconTrash,
+  IconX,
 } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
@@ -86,7 +90,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
-import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import { GranularityPickerControlled } from '@/GranularityPicker';
@@ -124,8 +128,8 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
-  getSeriesFieldPath,
-  validateMetricNames,
+  isRawSqlDisplayType,
+  validateChartForm,
 } from './ChartEditor/utils';
 import { ErrorBoundary } from './Error/ErrorBoundary';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
@@ -187,17 +191,17 @@ function ChartSeriesEditorComponent({
   errors,
   clearErrors,
 }: {
-  control: Control<any>;
+  control: Control<ChartEditorFormState>;
   databaseName: string;
   dateRange?: DateRange['dateRange'];
   connectionId?: string;
   index: number;
-  namePrefix: string;
+  namePrefix: `series.${number}.`;
   parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
   onSwapSeries: (from: number, to: number) => void;
   onSubmit: () => void;
-  setValue: UseFormSetValue<any>;
+  setValue: UseFormSetValue<ChartEditorFormState>;
   showGroupBy: boolean;
   showHaving: boolean;
   tableName: string;
@@ -374,9 +378,7 @@ function ChartSeriesEditorComponent({
               metricSource={tableSource}
               data-testid="metric-name-selector"
               error={errors?.metricName?.message}
-              onFocus={() =>
-                clearErrors(getSeriesFieldPath(namePrefix, 'metricName'))
-              }
+              onFocus={() => clearErrors(`${namePrefix}metricName`)}
             />
             {metricType === 'gauge' && (
               <Flex justify="end">
@@ -480,7 +482,7 @@ function ChartSeriesEditorComponent({
           </div>
         )}
       </Flex>
-      {tableSource?.kind === SourceKind.Metric && metricName && (
+      {tableSource?.kind === SourceKind.Metric && metricName && metricType && (
         <MetricAttributeHelperPanel
           databaseName={databaseName}
           metricType={metricType}
@@ -498,6 +500,23 @@ function ChartSeriesEditorComponent({
   );
 }
 const ChartSeriesEditor = ChartSeriesEditorComponent;
+
+export const ErrorNotificationMessage = ({
+  errors,
+}: {
+  errors: { path: Path<ChartEditorFormState>; message: string }[];
+}) => {
+  return (
+    <List
+      size="sm"
+      icon={<IconX size={14} style={{ verticalAlign: 'middle' }} />}
+    >
+      {errors.map(({ message }, index) => (
+        <List.Item key={index}>{message}</List.Item>
+      ))}
+    </List>
+  );
+};
 
 const zSavedChartConfig = z
   .object({
@@ -601,7 +620,7 @@ export default function EditTimeChartForm({
     : undefined;
 
   const isRawSqlInput =
-    configType === 'sql' && displayType === DisplayType.Table;
+    configType === 'sql' && isRawSqlDisplayType(displayType);
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -694,7 +713,7 @@ export default function EditTimeChartForm({
   );
 
   const dbTimeChartConfig = useMemo(() => {
-    if (!queriedConfig || !isBuilderChartConfig(queriedConfig)) {
+    if (!queriedConfig) {
       return undefined;
     }
 
@@ -715,17 +734,16 @@ export default function EditTimeChartForm({
   const onSubmit = useCallback(() => {
     handleSubmit(form => {
       const isRawSqlChart =
-        form.configType === 'sql' && form.displayType === DisplayType.Table;
+        form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
 
-      if (
-        !isRawSqlChart &&
-        validateMetricNames(
-          tableSource,
-          form.series,
-          form.displayType,
-          setError,
-        )
-      ) {
+      const errors = validateChartForm(form, tableSource, setError);
+      if (errors.length > 0) {
+        notifications.show({
+          id: 'chart-error',
+          title: 'Invalid Chart',
+          message: <ErrorNotificationMessage errors={errors} />,
+          color: 'red',
+        });
         return;
       }
 
@@ -798,19 +816,14 @@ export default function EditTimeChartForm({
 
   const handleSave = useCallback(
     (form: ChartEditorFormState) => {
-      const isRawSqlChart =
-        form.configType === 'sql' && form.displayType === DisplayType.Table;
-
-      // Validate metric sources have metric names selected
-      if (
-        !isRawSqlChart &&
-        validateMetricNames(
-          tableSource,
-          form.series,
-          form.displayType,
-          setError,
-        )
-      ) {
+      const errors = validateChartForm(form, tableSource, setError);
+      if (errors.length > 0) {
+        notifications.show({
+          id: 'chart-error',
+          title: 'Invalid Chart',
+          message: <ErrorNotificationMessage errors={errors} />,
+          color: 'red',
+        });
         return;
       }
 
@@ -898,6 +911,7 @@ export default function EditTimeChartForm({
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setQueriedConfig((config: ChartConfigWithDateRange | undefined) => {
       if (config == null) {
         return config;
@@ -1097,7 +1111,7 @@ export default function EditTimeChartForm({
             placeholder="My Chart Name"
             data-testid="chart-name-input"
           />
-          {displayType === DisplayType.Table && (
+          {isRawSqlDisplayType(displayType) && (
             <Controller
               control={control}
               name="configType"
@@ -1359,7 +1373,7 @@ export default function EditTimeChartForm({
             )}
           </>
         )}
-        {alert && (
+        {alert && !isRawSqlInput && (
           <Paper my="sm">
             <Stack gap="xs" data-testid="alert-details">
               <Paper px="md" py="sm" radius="xs">
@@ -1569,32 +1583,29 @@ export default function EditTimeChartForm({
                 thresholdType: alert.thresholdType,
               })
             }
+            errorVariant="inline"
             showMVOptimizationIndicator={false}
           />
         </div>
       )}
-      {queryReady && dbTimeChartConfig != null && activeTab === 'pie' && (
+      {queryReady && queriedConfig != null && activeTab === 'pie' && (
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBPieChart
-            config={dbTimeChartConfig}
+            config={queriedConfig}
             showMVOptimizationIndicator={false}
+            errorVariant="inline"
           />
         </div>
       )}
-      {queryReady &&
-        queriedConfig != null &&
-        isBuilderChartConfig(queriedConfig) &&
-        activeTab === 'number' && (
-          <div
-            className="flex-grow-1 d-flex flex-column"
-            style={{ height: 400 }}
-          >
-            <DBNumberChart
-              config={queriedConfig}
-              showMVOptimizationIndicator={false}
-            />
-          </div>
-        )}
+      {queryReady && queriedConfig != null && activeTab === 'number' && (
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBNumberChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+            errorVariant="inline"
+          />
+        </div>
+      )}
       {queryReady &&
         tableSource &&
         queriedConfig != null &&
@@ -1679,7 +1690,10 @@ export default function EditTimeChartForm({
               </Accordion.Control>
               <Accordion.Panel>
                 {queryReady && chartConfigForExplanations != null && (
-                  <ChartSQLPreview config={chartConfigForExplanations} />
+                  <ChartSQLPreview
+                    config={chartConfigForExplanations}
+                    enableCopy
+                  />
                 )}
               </Accordion.Panel>
             </Accordion.Item>
@@ -1720,7 +1734,7 @@ function seriesToFilters(select: SelectList): Filter[] {
         return null;
       }
     })
-    .filter(Boolean) as Filter[];
+    .filter(f => f != null);
 
   return filters;
 }

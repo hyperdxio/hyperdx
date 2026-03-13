@@ -6,7 +6,3 @@ export {
   default as SearchWhereInput,
   type SearchWhereInputProps,
 } from './SearchWhereInput';
-export {
-  default as SQLInlineEditor,
-  SQLInlineEditorControlled,
-} from './SQLInlineEditor';

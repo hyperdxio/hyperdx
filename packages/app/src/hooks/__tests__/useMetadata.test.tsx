@@ -1,7 +1,9 @@
 import React from 'react';
 import * as metadataModule from '@hyperdx/app/src/metadata';
+import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import {
+  Field,
   Metadata,
   MetadataCache,
 } from '@hyperdx/common-utils/dist/core/metadata';
@@ -9,11 +11,13 @@ import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/type
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
+import api from '@/api';
 import { useSources } from '@/source';
 
 import {
   deduplicate2dArray,
   useGetKeyValues,
+  useMultipleAllFields,
   useMultipleGetKeyValues,
 } from '../useMetadata';
 
@@ -269,6 +273,136 @@ describe('useGetKeyValues', () => {
       jest.spyOn(mockMetadata, 'getKeyValuesWithMVs'),
     ).not.toHaveBeenCalled();
     await waitFor(() => expect(result.current.isLoading).toBe(true));
+  });
+});
+
+describe('useMultipleAllFields', () => {
+  let queryClient: QueryClient;
+  let wrapper: React.ComponentType<{ children: any }>;
+  let mockMetadata: Metadata;
+
+  const fieldsA: Field[] = [
+    { path: ['col_a'], type: 'string', jsType: JSDataType.String },
+    { path: ['col_shared'], type: 'number', jsType: JSDataType.Number },
+  ];
+
+  const fieldsB: Field[] = [
+    { path: ['col_b'], type: 'string', jsType: JSDataType.String },
+    { path: ['col_shared'], type: 'number', jsType: JSDataType.Number },
+  ];
+
+  const tcA = {
+    databaseName: 'db',
+    tableName: 'table_a',
+    connectionId: 'conn1',
+  };
+
+  const tcB = {
+    databaseName: 'db',
+    tableName: 'table_b',
+    connectionId: 'conn1',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockMetadata = new Metadata({} as ClickhouseClient, {} as MetadataCache);
+    jest.spyOn(metadataModule, 'getMetadata').mockReturnValue(mockMetadata);
+    jest.spyOn(api, 'useMe').mockReturnValue({
+      data: { team: {} },
+      isFetched: true,
+    } as any);
+
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    wrapper = ({ children }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+  });
+
+  it('should return fields from successful connections and empty array for failed ones', async () => {
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValueOnce(fieldsA)
+      .mockRejectedValueOnce(new Error('connection refused'));
+
+    const { result } = renderHook(() => useMultipleAllFields([tcA, tcB]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // Should contain only fieldsA since fieldsB failed
+    expect(result.current.data).toEqual(fieldsA);
+  });
+
+  it('should deduplicate fields across successful connections', async () => {
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValueOnce(fieldsA)
+      .mockResolvedValueOnce(fieldsB);
+
+    const { result } = renderHook(() => useMultipleAllFields([tcA, tcB]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // col_shared appears in both but should be deduplicated
+    expect(result.current.data).toEqual([
+      { path: ['col_a'], type: 'string', jsType: JSDataType.String },
+      { path: ['col_shared'], type: 'number', jsType: JSDataType.Number },
+      { path: ['col_b'], type: 'string', jsType: JSDataType.String },
+    ]);
+  });
+
+  it('should return empty array when all connections fail', async () => {
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockRejectedValueOnce(new Error('fail 1'))
+      .mockRejectedValueOnce(new Error('fail 2'));
+
+    const { result } = renderHook(() => useMultipleAllFields([tcA, tcB]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toEqual([]);
+  });
+
+  it('should log a warning for each failed connection', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValueOnce(fieldsA)
+      .mockRejectedValueOnce(new Error('timeout'));
+
+    const { result } = renderHook(() => useMultipleAllFields([tcA, tcB]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Failed to fetch fields for table connection',
+      expect.any(Error),
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it('should skip deduplication for a single connection', async () => {
+    jest.spyOn(mockMetadata, 'getAllFields').mockResolvedValueOnce(fieldsA);
+
+    const { result } = renderHook(() => useMultipleAllFields([tcA]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toEqual(fieldsA);
   });
 });
 

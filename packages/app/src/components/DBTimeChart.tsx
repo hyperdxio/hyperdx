@@ -1,39 +1,35 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { add, differenceInSeconds } from 'date-fns';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  convertGranularityToSeconds,
+  getAlignedDateRange,
+} from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isBuilderChartConfig,
+  isRawSqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import {
-  Button,
-  Code,
   Divider,
   Group,
-  Modal,
   Popover,
   Portal,
   Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import {
-  IconArrowsDiagonal,
-  IconChartBar,
-  IconChartLine,
-  IconSearch,
-} from '@tabler/icons-react';
+import { IconChartBar, IconChartLine, IconSearch } from '@tabler/icons-react';
 
 import api from '@/api';
 import {
   AGG_FNS,
   buildEventsSearchUrl,
   ChartKeyJoiner,
-  convertGranularityToSeconds,
   convertToTimeChartConfig,
   formatResponseForTimeChart,
   getPreviousDateRange,
@@ -47,10 +43,12 @@ import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanati
 import { useSource } from '@/source';
 
 import ChartContainer from './charts/ChartContainer';
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-import { SQLPreview } from './ChartSQLPreview';
 
 type ActiveClickPayload = {
   x: number;
@@ -200,7 +198,7 @@ function ActiveTimeTooltip({
 }
 
 type DBTimeChartComponentProps = {
-  config: BuilderChartConfigWithDateRange;
+  config: ChartConfigWithDateRange;
   disableQueryChunking?: boolean;
   disableDrillDown?: boolean;
   enableParallelQueries?: boolean;
@@ -221,6 +219,7 @@ type DBTimeChartComponentProps = {
   toolbarSuffix?: React.ReactNode[];
   showMVOptimizationIndicator?: boolean;
   showDateRangeIndicator?: boolean;
+  errorVariant?: ChartErrorStateVariant;
 };
 
 function DBTimeChartComponent({
@@ -243,8 +242,8 @@ function DBTimeChartComponent({
   toolbarSuffix,
   showMVOptimizationIndicator = true,
   showDateRangeIndicator = true,
+  errorVariant,
 }: DBTimeChartComponentProps) {
-  const [isErrorExpanded, errorExpansion] = useDisclosure(false);
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
   );
@@ -292,8 +291,12 @@ function DBTimeChartComponent({
     [config],
   );
 
+  // Determine whether the config can be optimized with an MV, to determine whether
+  // to show the MV optimization indicator and date range indicator in the toolbar
+  const builderQueriedConfig: BuilderChartConfigWithDateRange | undefined =
+    isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined;
   const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(queriedConfig);
+    useMVOptimizationExplanation(builderQueriedConfig);
 
   const { data: me, isLoading: isLoadingMe } = api.useMe();
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
@@ -321,14 +324,14 @@ function DBTimeChartComponent({
         ? getPreviousDateRange(originalDateRange)
         : getAlignedDateRange(
             getPreviousDateRange(originalDateRange),
-            queriedConfig.granularity,
+            granularity,
           );
 
     return {
       ...queriedConfig,
       dateRange: previousPeriodDateRange,
     };
-  }, [queriedConfig, originalDateRange]);
+  }, [queriedConfig, originalDateRange, granularity]);
 
   const previousPeriodOffsetSeconds = useMemo(() => {
     return config.compareToPreviousPeriod
@@ -351,21 +354,19 @@ function DBTimeChartComponent({
       enableQueryChunking: true,
     });
 
-  useEffect(() => {
-    if (!isError && isErrorExpanded) {
-      errorExpansion.close();
-    }
-  }, [isError, isErrorExpanded, errorExpansion]);
-
   const isLoadingOrPlaceholder =
     isLoading ||
     isPreviousPeriodLoading ||
     !data?.isComplete ||
     (config.compareToPreviousPeriod && !previousPeriodData?.isComplete) ||
     isPlaceholderData;
-  const { data: source } = useSource({ id: sourceId || config.source });
+
+  const { data: source } = useSource({
+    id: sourceId || (isBuilderChartConfig(config) ? config.source : undefined),
+  });
 
   const {
+    error: resultFormattingError,
     graphResults,
     timestampColumn,
     groupColumns,
@@ -374,6 +375,7 @@ function DBTimeChartComponent({
     lineData,
   } = useMemo(() => {
     const defaultResponse = {
+      error: null,
       graphResults: [],
       timestampColumn: undefined,
       lineData: [],
@@ -387,7 +389,7 @@ function DBTimeChartComponent({
     }
 
     try {
-      return formatResponseForTimeChart({
+      const formatResult = formatResponseForTimeChart({
         currentPeriodResponse: data,
         previousPeriodResponse: config.compareToPreviousPeriod
           ? previousPeriodData
@@ -399,9 +401,16 @@ function DBTimeChartComponent({
         hiddenSeries,
         previousPeriodOffsetSeconds,
       });
-    } catch (e) {
+      return {
+        ...defaultResponse,
+        ...formatResult,
+      };
+    } catch (e: unknown) {
       console.error(e);
-      return defaultResponse;
+      return {
+        ...defaultResponse,
+        error: e,
+      };
     }
   }, [
     data,
@@ -467,7 +476,12 @@ function DBTimeChartComponent({
 
   const buildSearchUrl = useCallback(
     (seriesKey?: string, seriesValue?: number) => {
-      if (clickedActiveLabelDate == null || source == null) {
+      // Raw SQL charts are not supported for drill-down as we don't know the source which is being used.
+      if (
+        clickedActiveLabelDate == null ||
+        source == null ||
+        isRawSqlChartConfig(config)
+      ) {
         return null;
       }
 
@@ -593,11 +607,11 @@ function DBTimeChartComponent({
       allToolbarItems.push(...toolbarPrefix);
     }
 
-    if (source && showMVOptimizationIndicator) {
+    if (source && showMVOptimizationIndicator && builderQueriedConfig) {
       allToolbarItems.push(
         <MVOptimizationIndicator
           key="db-time-chart-mv-indicator"
-          config={queriedConfig}
+          config={builderQueriedConfig}
           source={source}
           variant="icon"
         />,
@@ -658,6 +672,7 @@ function DBTimeChartComponent({
 
     return allToolbarItems;
   }, [
+    builderQueriedConfig,
     config,
     displayType,
     handleSetDisplayType,
@@ -678,48 +693,16 @@ function DBTimeChartComponent({
           Loading Chart Data...
         </div>
       ) : isError ? (
-        <div className="h-100 w-100 d-flex g-1 flex-column align-items-center justify-content-center text-muted overflow-auto">
-          <Text ta="center" size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
-          </Text>
-          <Button
-            className="mx-auto"
-            variant="danger"
-            onClick={() => errorExpansion.open()}
-          >
-            <Group gap="xxs">
-              <IconArrowsDiagonal size={16} />
-              See Error Details
-            </Group>
-          </Button>
-          <Modal
-            opened={isErrorExpanded}
-            onClose={() => errorExpansion.close()}
-            title="Error Details"
-          >
-            <Group align="start">
-              <Text size="sm" ta="center">
-                Error Message:
-              </Text>
-              <Code
-                block
-                style={{
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
-                {error.message}
-              </Code>
-              {error instanceof ClickHouseQueryError && (
-                <>
-                  <Text my="sm" size="sm" ta="center">
-                    Sent Query:
-                  </Text>
-                  <SQLPreview data={error?.query} />
-                </>
-              )}
-            </Group>
-          </Modal>
-        </div>
+        <ChartErrorState error={error} variant={errorVariant} />
+      ) : resultFormattingError ? (
+        <ChartErrorState
+          variant={errorVariant}
+          error={
+            resultFormattingError instanceof Error
+              ? resultFormattingError
+              : new Error(String(resultFormattingError))
+          }
+        />
       ) : graphResults.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           No data found within time range.

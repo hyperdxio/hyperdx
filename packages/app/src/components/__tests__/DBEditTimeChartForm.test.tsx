@@ -130,7 +130,7 @@ jest.mock('../MaterializedViews/MVOptimizationIndicator', () => ({
   default: () => <div>MV Indicator</div>,
 }));
 
-jest.mock('../SearchInput/SQLInlineEditor', () => ({
+jest.mock('../SQLEditor/SQLInlineEditor', () => ({
   SQLInlineEditorControlled: () => <div>SQL Editor</div>,
 }));
 
@@ -195,7 +195,7 @@ describe('DBEditTimeChartForm - Metric Name Validation', () => {
     await waitFor(() => {
       const errorMessage = screen.getByTestId('metric-name-error');
       expect(errorMessage).toBeInTheDocument();
-      expect(errorMessage).toHaveTextContent('Please select a metric name');
+      expect(errorMessage).toHaveTextContent('Metric is required');
     });
 
     // Verify that the metric name select has aria-invalid attribute
@@ -371,7 +371,7 @@ describe('DBEditTimeChartForm - Metric Name Validation', () => {
     await waitFor(() => {
       const errorMessage = screen.getByTestId('metric-name-error');
       expect(errorMessage).toBeInTheDocument();
-      expect(errorMessage).toHaveTextContent('Please select a metric name');
+      expect(errorMessage).toHaveTextContent('Metric is required');
     });
   });
 });
@@ -405,7 +405,7 @@ describe('DBEditTimeChartForm - Save Button Metric Name Validation', () => {
     await waitFor(() => {
       const errorMessage = screen.getByTestId('metric-name-error');
       expect(errorMessage).toBeInTheDocument();
-      expect(errorMessage).toHaveTextContent('Please select a metric name');
+      expect(errorMessage).toHaveTextContent('Metric is required');
     });
 
     // Verify that onSave was not called
