@@ -59,7 +59,7 @@ export function useMetadataWithSettings() {
   useEffect(() => {
     if (me?.team?.metadataMaxRowsToRead && !settingsApplied.current) {
       metadata.setClickHouseSettings({
-        max_rows_to_read: me.team.metadataMaxRowsToRead,
+        max_rows_to_read: String(me.team.metadataMaxRowsToRead),
       });
       settingsApplied.current = true;
     }
