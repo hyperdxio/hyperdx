@@ -232,6 +232,7 @@ const opt: uPlot.Options = {
     },
     {
       ...axis,
+      size: 60, // fixed width so labels like "600ms" and "100µs" fit
     },
   ],
   series: [
