@@ -3,6 +3,28 @@ BUILD_PLATFORMS = linux/arm64,linux/amd64
 
 include .env
 
+# ---------------------------------------------------------------------------
+# Multi-agent / worktree isolation
+# ---------------------------------------------------------------------------
+# Compute a deterministic port offset (0-99) from the working directory name
+# so that multiple worktrees can run integration tests in parallel without
+# port conflicts.  Override HDX_CI_SLOT manually if you need a specific slot.
+#
+# Port mapping (base + slot):
+#   ClickHouse HTTP : 18123 + slot
+#   MongoDB         : 39999 + slot
+#   API test server : 19000 + slot
+#   OpAMP           : 14320 + slot
+# ---------------------------------------------------------------------------
+HDX_CI_SLOT      ?= $(shell printf '%s' "$(notdir $(CURDIR))" | cksum | awk '{print $$1 % 100}')
+HDX_CI_PROJECT   := int-$(HDX_CI_SLOT)
+HDX_CI_CH_PORT   := $(shell echo $$((18123 + $(HDX_CI_SLOT))))
+HDX_CI_MONGO_PORT:= $(shell echo $$((39999 + $(HDX_CI_SLOT))))
+HDX_CI_API_PORT  := $(shell echo $$((19000 + $(HDX_CI_SLOT))))
+HDX_CI_OPAMP_PORT:= $(shell echo $$((14320 + $(HDX_CI_SLOT))))
+
+export HDX_CI_CH_PORT HDX_CI_MONGO_PORT HDX_CI_API_PORT HDX_CI_OPAMP_PORT
+
 .PHONY: all
 all: install-tools
 
@@ -38,26 +60,28 @@ ci-lint:
 .PHONY: dev-int-build
 dev-int-build:
 	npx nx run-many -t ci:build
-	docker compose -p int -f ./docker-compose.ci.yml build
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml build
 
 .PHONY: dev-int
 dev-int:
-	docker compose -p int -f ./docker-compose.ci.yml up -d
+	@echo "Using CI slot $(HDX_CI_SLOT) (project=$(HDX_CI_PROJECT) ch=$(HDX_CI_CH_PORT) mongo=$(HDX_CI_MONGO_PORT) api=$(HDX_CI_API_PORT))"
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
 	npx nx run @hyperdx/api:dev:int $(FILE); ret=$$?; \
-	docker compose -p int -f ./docker-compose.ci.yml down; \
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down; \
 	exit $$ret
 
 .PHONY: dev-int-common-utils
 dev-int-common-utils:
-	docker compose -p int -f ./docker-compose.ci.yml up -d
+	@echo "Using CI slot $(HDX_CI_SLOT) (project=$(HDX_CI_PROJECT) ch=$(HDX_CI_CH_PORT) mongo=$(HDX_CI_MONGO_PORT))"
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
 	npx nx run @hyperdx/common-utils:dev:int $(FILE)
-	docker compose -p int -f ./docker-compose.ci.yml down
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down
 
 .PHONY: ci-int
 ci-int:
-	docker compose -p int -f ./docker-compose.ci.yml up -d --quiet-pull
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d --quiet-pull
 	npx nx run-many -t ci:int --parallel=false
-	docker compose -p int -f ./docker-compose.ci.yml down
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down
 
 .PHONY: dev-unit
 dev-unit:
