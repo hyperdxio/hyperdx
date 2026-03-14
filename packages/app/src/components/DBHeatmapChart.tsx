@@ -329,8 +329,11 @@ function HeatmapContainer({
   // When valueExpression is an aggregate like count(), we need to use a CTE to calculate the heatmap
   const isAggregateExpression = isAggregateFunction(valueExpression);
 
-  // Use quantile-based range (p0.1–p99.9) to avoid extreme outliers
-  // stretching the axis and compressing all meaningful data.
+  // Use quantile-based range to avoid extreme outliers stretching the axis.
+  // Log scale uses wider quantiles (p1–p99) because tiny near-zero outliers
+  // create huge empty gaps at the bottom of the log axis.
+  const qLo = scaleType === 'log' ? 0.01 : 0.001;
+  const qHi = scaleType === 'log' ? 0.99 : 0.999;
   const minMaxConfig: BuilderChartConfigWithDateRange = isAggregateExpression
     ? {
         ...config,
@@ -340,7 +343,7 @@ function HeatmapContainer({
         select: [
           {
             aggFn: 'quantile' as const,
-            level: 0.001,
+            level: qLo,
             aggCondition: `value_calc >= 0`,
             aggConditionLanguage: 'sql',
             valueExpression: 'value_calc',
@@ -348,7 +351,7 @@ function HeatmapContainer({
           },
           {
             aggFn: 'quantile' as const,
-            level: 0.999,
+            level: qHi,
             valueExpression: 'value_calc',
             alias: 'max',
           },
@@ -373,7 +376,7 @@ function HeatmapContainer({
         select: [
           {
             aggFn: 'quantile' as const,
-            level: 0.001,
+            level: qLo,
             valueExpression,
             aggCondition: `${valueExpression} >= 0`,
             aggConditionLanguage: 'sql',
@@ -381,7 +384,7 @@ function HeatmapContainer({
           },
           {
             aggFn: 'quantile' as const,
-            level: 0.999,
+            level: qHi,
             valueExpression,
             aggCondition: '',
             alias: 'max',
@@ -404,9 +407,11 @@ function HeatmapContainer({
   const min = Number.parseFloat(minMaxData?.data?.[0]?.['min'] ?? '0');
   const max = Number.parseFloat(minMaxData?.data?.[0]?.['max'] ?? '0');
 
-  // Ensure min > 0 for log scale (log(0) is undefined)
+  // Ensure min > 0 for log scale (log(0) is undefined).
+  // Cap the range to ~4 orders of magnitude so the axis isn't dominated
+  // by a long empty tail of near-zero outliers.
   const effectiveMin =
-    scaleType === 'log' ? Math.max(min, max * 1e-6 || 1e-6) : min;
+    scaleType === 'log' ? Math.max(min, max * 1e-4 || 1e-4) : min;
 
   // For log scale: bucket by log(value) to get log-spaced boundaries
   // For linear scale: bucket by raw value (original behavior)
@@ -477,7 +482,7 @@ function HeatmapContainer({
 
   const { data, isLoading, error } = useQueriedChartConfig(bucketConfig, {
     queryKey: ['heatmap_bucket', bucketConfig],
-    enabled: !!minMaxData && bucketConfig != null,
+    enabled: !!minMaxData && bucketConfig != null && max > effectiveMin,
   });
 
   const generatedTsBuckets = timeBucketByGranularity(
@@ -998,11 +1003,20 @@ function Heatmap({
           }}
           onClick={e => {
             e.stopPropagation();
+            // y-values are stored in log space for log scale; convert back
+            const yMin =
+              scaleType === 'log'
+                ? Math.exp(selectingInfo.yMin)
+                : selectingInfo.yMin;
+            const yMax =
+              scaleType === 'log'
+                ? Math.exp(selectingInfo.yMax)
+                : selectingInfo.yMax;
             onFilter?.(
               selectingInfo.xMin / 1000,
               selectingInfo.xMax / 1000,
-              selectingInfo.yMin,
-              selectingInfo.yMax,
+              yMin,
+              yMax,
             );
           }}
           role="button"
@@ -1010,11 +1024,19 @@ function Heatmap({
           onKeyDown={e => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
+              const yMin =
+                scaleType === 'log'
+                  ? Math.exp(selectingInfo.yMin)
+                  : selectingInfo.yMin;
+              const yMax =
+                scaleType === 'log'
+                  ? Math.exp(selectingInfo.yMax)
+                  : selectingInfo.yMax;
               onFilter?.(
                 selectingInfo.xMin / 1000,
                 selectingInfo.xMax / 1000,
-                selectingInfo.yMin,
-                selectingInfo.yMax,
+                yMin,
+                yMax,
               );
             }
           }}
