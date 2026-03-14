@@ -798,14 +798,32 @@ function Heatmap({
       // y-values are stored in log space for log scale; exponentiate back
       // to the actual value before formatting.
       const actualValue = scaleType === 'log' ? Math.exp(value) : value;
-      // Use enough decimal places so small values don't all round to "0 ms"
-      const abs = Math.abs(actualValue);
-      const mantissa = abs === 0 || abs >= 1 ? 0 : abs >= 0.01 ? 2 : 3;
+
+      if (numberFormat?.unit === 'ms') {
+        // Auto-scale duration: ms → s → min, picking the most compact unit
+        const abs = Math.abs(actualValue);
+        if (abs >= 60_000) {
+          const v = actualValue / 60_000;
+          return `${Number.isInteger(v) ? v : v.toFixed(1)}m`;
+        }
+        if (abs >= 1_000) {
+          const v = actualValue / 1_000;
+          return `${Number.isInteger(v) ? v : v.toFixed(1)}s`;
+        }
+        if (abs >= 1) {
+          return `${Math.round(actualValue)}ms`;
+        }
+        if (abs >= 0.001) {
+          return `${+(actualValue * 1_000).toPrecision(2)}µs`;
+        }
+        return `${actualValue.toPrecision(2)}ms`;
+      }
+
       return numberFormat
         ? formatNumber(actualValue, {
             ...numberFormat,
-            average: abs >= 1,
-            mantissa,
+            average: true,
+            mantissa: Math.abs(actualValue) >= 1 ? 0 : 2,
           })
         : new Intl.NumberFormat('en-US', {
             notation: 'compact',
