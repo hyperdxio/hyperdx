@@ -383,7 +383,7 @@ export default function DBDeltaChart({
   // chart row + pagination aren't pushed out of the overflow:hidden container.
   const hasDivider =
     visibleProperties.length > 0 && hiddenProperties.length > 0;
-  const dividerHeight = hasDivider ? 30 : 0;
+  const dividerHeight = hasDivider ? 46 : 0;
   const rows = Math.max(
     1,
     Math.floor(
