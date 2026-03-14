@@ -68,7 +68,7 @@ export function DBSearchHeatmapChart({
     <Flex
       direction="column"
       w="100%"
-      style={{ overflow: 'visible' }}
+      style={{ overflow: 'hidden', height: '100%' }}
       ref={setContainer}
     >
       <Box px="sm" pt="xs" mb={0}>
@@ -139,19 +139,23 @@ export function DBSearchHeatmapChart({
           }}
         />
       </div>
-      <DBDeltaChart
-        config={{
-          ...chartConfig,
-          with: undefined,
-        }}
-        valueExpr={fields.value}
-        xMin={fields.xMin}
-        xMax={fields.xMax}
-        yMin={fields.yMin}
-        yMax={fields.yMax}
-        onAddFilter={onAddFilter ? handleAddFilterAndClearSelection : undefined}
-        spanIdExpression={source.spanIdExpression}
-      />
+      <Box style={{ flex: 1, minHeight: 0 }}>
+        <DBDeltaChart
+          config={{
+            ...chartConfig,
+            with: undefined,
+          }}
+          valueExpr={fields.value}
+          xMin={fields.xMin}
+          xMax={fields.xMax}
+          yMin={fields.yMin}
+          yMax={fields.yMax}
+          onAddFilter={
+            onAddFilter ? handleAddFilterAndClearSelection : undefined
+          }
+          spanIdExpression={source.spanIdExpression}
+        />
+      </Box>
     </Flex>
   );
 }
