@@ -10,7 +10,16 @@ import {
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Code, Divider, Group, Modal, Text } from '@mantine/core';
+import {
+  Box,
+  Button,
+  Code,
+  Divider,
+  Flex,
+  Group,
+  Modal,
+  Text,
+} from '@mantine/core';
 import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { IconArrowsDiagonal } from '@tabler/icons-react';
 
