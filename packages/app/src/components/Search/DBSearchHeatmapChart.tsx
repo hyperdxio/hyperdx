@@ -120,7 +120,6 @@ export function DBSearchHeatmapChart({
                 valueExpression: '',
               },
             ],
-            orderBy: undefined,
             granularity: 'auto',
             displayType: DisplayType.StackedBar,
           }}
