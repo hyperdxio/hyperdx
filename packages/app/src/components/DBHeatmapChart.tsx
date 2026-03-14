@@ -827,6 +827,48 @@ function Heatmap({
                 values: (u, vals) => {
                   return vals.map(tickFormatter);
                 },
+                // For log scale, place ticks at powers of 10 (0.01, 0.1, 1,
+                // 10, 100…) so labels are clean round numbers instead of
+                // arbitrary positions in log-space.
+                ...(scaleType === 'log'
+                  ? {
+                      splits: (u: uPlot) => {
+                        const [yMin, yMax] =
+                          u.scales.y!.min != null
+                            ? [u.scales.y!.min, u.scales.y!.max!]
+                            : [0, 1];
+                        // yMin/yMax are in log-space (natural log)
+                        const realMin = Math.exp(yMin);
+                        const realMax = Math.exp(yMax);
+                        const splits: number[] = [];
+                        // Generate powers of 10 within range
+                        const startExp = Math.floor(Math.log10(realMin));
+                        const endExp = Math.ceil(Math.log10(realMax));
+                        for (let e = startExp; e <= endExp; e++) {
+                          const v = Math.pow(10, e);
+                          const logV = Math.log(v);
+                          if (logV >= yMin && logV <= yMax) {
+                            splits.push(logV);
+                          }
+                        }
+                        // If too few splits, add intermediate values (×3)
+                        if (splits.length < 3) {
+                          for (let e = startExp; e <= endExp; e++) {
+                            for (const mult of [1, 3]) {
+                              const v = mult * Math.pow(10, e);
+                              const logV = Math.log(v);
+                              if (logV >= yMin && logV <= yMax) {
+                                splits.push(logV);
+                              }
+                            }
+                          }
+                          // Deduplicate and sort
+                          return [...new Set(splits)].sort((a, b) => a - b);
+                        }
+                        return splits;
+                      },
+                    }
+                  : {}),
               },
             ],
           }
@@ -917,7 +959,7 @@ function Heatmap({
         },
       ],
     };
-  }, [width, height, tickFormatter]);
+  }, [width, height, tickFormatter, scaleType]);
 
   return (
     <div
