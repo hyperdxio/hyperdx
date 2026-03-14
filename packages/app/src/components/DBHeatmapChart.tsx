@@ -488,11 +488,20 @@ function HeatmapContainer({
 
   const timestampColumn = inferTimestampColumn(data?.meta ?? []);
 
-  // Compute the y-axis value for a given bucket index
+  // Compute the y-axis value for a given bucket index.
+  // For log scale we store values in log space so that bins are uniformly
+  // spaced on the linear uPlot y-axis.  The heatmapPaths renderer assumes
+  // uniform increments (yBinIncr = ys[1] - ys[0]) to compute tile height;
+  // with actual log-spaced values the first increment is tiny relative to the
+  // full range and tiles render at ~0px height (invisible).
   const bucketToYValue = (j: number) => {
     if (scaleType === 'log' && effectiveMin > 0 && max > effectiveMin) {
-      // Log-spaced: min * (max/min)^(j/nBuckets)
-      return effectiveMin * Math.pow(max / effectiveMin, j / nBuckets);
+      // Return the natural-log of the actual bucket boundary so that the
+      // y-values are uniformly spaced.  Tick labels are exponentiated back
+      // via the tickFormatter below.
+      const actualValue =
+        effectiveMin * Math.pow(max / effectiveMin, j / nBuckets);
+      return Math.log(actualValue);
     }
     // Linear: min + j * step
     return effectiveMin + j * ((max - effectiveMin) / nBuckets);
@@ -612,6 +621,7 @@ function HeatmapContainer({
             data={[time, bucket, count]}
             numberFormat={config.numberFormat}
             onFilter={onFilter}
+            scaleType={scaleType}
           />
           <ColorLegend />
         </>
@@ -725,10 +735,12 @@ function Heatmap({
   data,
   numberFormat,
   onFilter,
+  scaleType = 'linear',
 }: {
   data: Mode2DataArray;
   numberFormat?: NumberFormat;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
+  scaleType?: HeatmapScaleType;
 }) {
   const [selectingInfo, setSelectingInfo] = useState<
     | {
@@ -768,9 +780,12 @@ function Heatmap({
   const { ref, width, height } = useElementSize();
 
   const tickFormatter = useCallback(
-    (value: number) =>
-      numberFormat
-        ? formatNumber(value, {
+    (value: number) => {
+      // y-values are stored in log space for log scale; exponentiate back
+      // to the actual value before formatting.
+      const actualValue = scaleType === 'log' ? Math.exp(value) : value;
+      return numberFormat
+        ? formatNumber(actualValue, {
             ...numberFormat,
             average: true,
             mantissa: 0,
@@ -779,8 +794,9 @@ function Heatmap({
         : new Intl.NumberFormat('en-US', {
             notation: 'compact',
             compactDisplay: 'short',
-          }).format(value),
-    [numberFormat],
+          }).format(actualValue);
+    },
+    [numberFormat, scaleType],
   );
 
   const options: uPlot.Options = useMemo(() => {
