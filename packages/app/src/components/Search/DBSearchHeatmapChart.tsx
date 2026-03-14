@@ -12,7 +12,7 @@ import {
   DisplayType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Flex } from '@mantine/core';
+import { Box, Flex, SegmentedControl } from '@mantine/core';
 import { Button } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
@@ -21,7 +21,7 @@ import { getDurationMsExpression } from '@/source';
 
 import type { AddFilterFn } from '../DBDeltaChart';
 import DBDeltaChart from '../DBDeltaChart';
-import DBHeatmapChart from '../DBHeatmapChart';
+import DBHeatmapChart, { type HeatmapScaleType } from '../DBHeatmapChart';
 
 const Schema = z.object({
   value: z.string().trim().min(1),
@@ -49,6 +49,7 @@ export function DBSearchHeatmapChart({
     yMax: parseAsFloat,
   });
   const [container, setContainer] = useState<HTMLElement | null>(null);
+  const [scaleType, setScaleType] = useState<HeatmapScaleType>('log');
 
   // After applying a filter, clear the heatmap selection so the delta chart
   // resets instead of staying in comparison mode.
@@ -70,20 +71,34 @@ export function DBSearchHeatmapChart({
       ref={setContainer}
     >
       <Box px="sm" pt="xs" mb={0}>
-        <DBSearchHeatmapForm
-          connection={tcFromSource(source)}
-          defaultValues={{
-            value: fields.value,
-            count: fields.count,
-          }}
-          parentRef={container}
-          onSubmit={data => {
-            setFields({
-              value: data.value,
-              count: data.count,
-            });
-          }}
-        />
+        <Flex align="flex-end" gap="xs">
+          <Box style={{ flex: 1 }}>
+            <DBSearchHeatmapForm
+              connection={tcFromSource(source)}
+              defaultValues={{
+                value: fields.value,
+                count: fields.count,
+              }}
+              parentRef={container}
+              onSubmit={data => {
+                setFields({
+                  value: data.value,
+                  count: data.count,
+                });
+              }}
+            />
+          </Box>
+          <SegmentedControl
+            size="xs"
+            mb="xs"
+            value={scaleType}
+            onChange={v => setScaleType(v as HeatmapScaleType)}
+            data={[
+              { label: 'Log', value: 'log' },
+              { label: 'Linear', value: 'linear' },
+            ]}
+          />
+        </Flex>
       </Box>
       <div
         style={{
@@ -107,6 +122,7 @@ export function DBSearchHeatmapChart({
             displayType: DisplayType.Heatmap,
           }}
           enabled={isReady}
+          scaleType={scaleType}
           onFilter={(xMin, xMax, yMin, yMax) => {
             // Simply store the coordinates - DBDeltaChart will handle the logic
             setFields({
