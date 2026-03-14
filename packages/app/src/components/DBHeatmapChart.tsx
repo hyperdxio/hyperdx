@@ -130,47 +130,33 @@ function heatmapPaths(opts: {
   };
 }
 
-// viridis(10)
+// Viridis-inspired palette — fully opaque for dark and light mode compatibility
 const palette = [
-  'rgba(253, 231, 37, 1.0)', // #fde725
-  'rgba(181, 222, 43, 0.92)', // #b5de2b
-  'rgba(110, 206, 88, 0.9)', // #6ece58
-  'rgba(53, 183, 121, 0.8)', // #35b779
-  'rgba(31, 158, 137, 0.8)', // #1f9e89
-  'rgba(38, 130, 142, 0.7)', // #26828e
-  'rgba(49, 104, 142, 0.7)', // #31688e
-  'rgba(62, 73, 137, 0.7)', // #3e4989
-  // 'rgba(72, 40, 120, 0.5)', // #482878
-  // 'rgba(68, 1, 84, 0.4)', // #440154
-  'hsla(259, 35%, 25%, 0.7)',
-  // 'rgba(255, 0, 0, 1)', // #482878
-  // 'rgba(255, 0, 255, 1)', // #482878
-].reverse();
+  '#440154', // dark purple (low)
+  '#3e4989',
+  '#31688e',
+  '#26828e',
+  '#1f9e89',
+  '#35b779',
+  '#6ece58',
+  '#b5de2b',
+  '#fde725', // yellow (high)
+];
 
 const countsToFills = (u: uPlot, seriesIdx: number) => {
   // mode 2 data format is not supported in types properly
   const counts = u.data[seriesIdx][2] as unknown as number[];
 
-  // TODO: integrate 1e-9 hideThreshold?
-  const hideThreshold = 0;
-
-  let minCount = Infinity;
-  let maxCount = -Infinity;
+  let maxCount = 0;
 
   for (let i = 0; i < counts.length; i++) {
-    if (counts[i] > hideThreshold) {
-      minCount = Math.min(minCount, counts[i]);
-      maxCount = Math.max(maxCount, counts[i]);
+    if (counts[i] > maxCount) {
+      maxCount = counts[i];
     }
   }
 
-  // Normalize values
-  const tFn = (x: number) => Math.log(x) / Math.log(20);
-
-  // Floor to at least 1 count difference to prevent NaN
-  const logRange = tFn(maxCount) - tFn(minCount);
-
   const paletteSize = palette.length;
+  const sqrtMax = Math.sqrt(maxCount);
 
   const indexedFills = Array(counts.length);
 
@@ -182,10 +168,7 @@ const countsToFills = (u: uPlot, seriesIdx: number) => {
             Math.min(
               paletteSize - 1,
               Math.floor(
-                Math.max(
-                  paletteSize * (tFn(counts[i]) - tFn(minCount)),
-                  1e-32, // Prevent NaN when divided by 0, bias towards +Inf
-                ) / logRange,
+                (Math.sqrt(counts[i]) / (sqrtMax || 1)) * (paletteSize - 1),
               ),
             ),
             0,
@@ -280,6 +263,35 @@ type HeatmapChartConfig = {
   with?: BuilderChartConfigWithDateRange['with'];
 };
 
+function ColorLegend() {
+  return (
+    <Flex align="center" gap={4} px="sm" pb={2}>
+      <Text size="10px" c="dimmed">
+        Low
+      </Text>
+      <div
+        style={{
+          display: 'flex',
+          height: 8,
+          flex: 1,
+          maxWidth: 120,
+          borderRadius: 2,
+          overflow: 'hidden',
+        }}
+      >
+        {palette.map((color, i) => (
+          <div key={i} style={{ flex: 1, background: color }} />
+        ))}
+      </div>
+      <Text size="10px" c="dimmed">
+        High
+      </Text>
+    </Flex>
+  );
+}
+
+export type HeatmapScaleType = 'log' | 'linear';
+
 function HeatmapContainer({
   config,
   enabled = true,
@@ -287,6 +299,7 @@ function HeatmapContainer({
   title,
   toolbarPrefix,
   toolbarSuffix,
+  scaleType = 'log',
 }: {
   config: HeatmapChartConfig;
   enabled?: boolean;
@@ -294,6 +307,7 @@ function HeatmapContainer({
   title?: React.ReactNode;
   toolbarPrefix?: React.ReactNode[];
   toolbarSuffix?: React.ReactNode[];
+  scaleType?: HeatmapScaleType;
 }) {
   const dateRange = config.dateRange;
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
@@ -306,6 +320,8 @@ function HeatmapContainer({
   // When valueExpression is an aggregate like count(), we need to use a CTE to calculate the heatmap
   const isAggregateExpression = isAggregateFunction(valueExpression);
 
+  // Use quantile-based range (p0.1–p99.9) to avoid extreme outliers
+  // stretching the axis and compressing all meaningful data.
   const minMaxConfig: BuilderChartConfigWithDateRange = isAggregateExpression
     ? {
         ...config,
@@ -314,15 +330,16 @@ function HeatmapContainer({
         granularity: undefined,
         select: [
           {
-            aggFn: 'min',
-            // TODO: Select if we can be negative
+            aggFn: 'quantile' as const,
+            level: 0.001,
             aggCondition: `value_calc >= 0`,
             aggConditionLanguage: 'sql',
             valueExpression: 'value_calc',
             alias: 'min',
           },
           {
-            aggFn: 'max',
+            aggFn: 'quantile' as const,
+            level: 0.999,
             valueExpression: 'value_calc',
             alias: 'max',
           },
@@ -346,14 +363,20 @@ function HeatmapContainer({
         granularity: undefined,
         select: [
           {
-            aggFn: 'min',
+            aggFn: 'quantile' as const,
+            level: 0.001,
             valueExpression,
-            // TODO: Select if we can be negative
             aggCondition: `${valueExpression} >= 0`,
             aggConditionLanguage: 'sql',
             alias: 'min',
           },
-          { aggFn: 'max', valueExpression, aggCondition: '', alias: 'max' },
+          {
+            aggFn: 'quantile' as const,
+            level: 0.999,
+            valueExpression,
+            aggCondition: '',
+            alias: 'max',
+          },
         ],
       };
 
@@ -368,9 +391,24 @@ function HeatmapContainer({
 
   const [errorModal, errorModalControls] = useDisclosure();
 
-  // UInt64 are returned as strings
-  const min = Number.parseInt(minMaxData?.data?.[0]?.['min'] ?? '0', 10);
-  const max = Number.parseInt(minMaxData?.data?.[0]?.['max'] ?? '0', 10);
+  // UInt64 are returned as strings; quantile returns floats
+  const min = Number.parseFloat(minMaxData?.data?.[0]?.['min'] ?? '0');
+  const max = Number.parseFloat(minMaxData?.data?.[0]?.['max'] ?? '0');
+
+  // Ensure min > 0 for log scale (log(0) is undefined)
+  const effectiveMin =
+    scaleType === 'log' ? Math.max(min, max * 1e-6 || 1e-6) : min;
+
+  // For log scale: bucket by log(value) to get log-spaced boundaries
+  // For linear scale: bucket by raw value (original behavior)
+  const bucketExprAgg =
+    scaleType === 'log'
+      ? `widthBucket(log(greatest(value_calc, ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
+      : `widthBucket(value_calc, ${effectiveMin}, ${max}, ${nBuckets})`;
+  const bucketExprDirect =
+    scaleType === 'log'
+      ? `widthBucket(log(greatest(${valueExpression}, ${effectiveMin})), log(${effectiveMin}), log(${max}), ${nBuckets})`
+      : `widthBucket(${valueExpression}, ${effectiveMin}, ${max}, ${nBuckets})`;
 
   const bucketConfig: BuilderChartConfigWithDateRange = isAggregateExpression
     ? {
@@ -384,7 +422,7 @@ function HeatmapContainer({
         ],
         groupBy: [
           {
-            valueExpression: `widthBucket(value_calc, ${min}, ${max}, ${nBuckets})`,
+            valueExpression: bucketExprAgg,
             alias: 'x_bucket',
           },
         ],
@@ -420,7 +458,7 @@ function HeatmapContainer({
         ],
         groupBy: [
           {
-            valueExpression: `widthBucket(${valueExpression}, ${min}, ${max}, ${nBuckets})`,
+            valueExpression: bucketExprDirect,
             alias: 'x_bucket',
           },
         ],
@@ -441,6 +479,16 @@ function HeatmapContainer({
 
   const timestampColumn = inferTimestampColumn(data?.meta ?? []);
 
+  // Compute the y-axis value for a given bucket index
+  const bucketToYValue = (j: number) => {
+    if (scaleType === 'log' && effectiveMin > 0 && max > effectiveMin) {
+      // Log-spaced: min * (max/min)^(j/nBuckets)
+      return effectiveMin * Math.pow(max / effectiveMin, j / nBuckets);
+    }
+    // Linear: min + j * step
+    return effectiveMin + j * ((max - effectiveMin) / nBuckets);
+  };
+
   const time: number[] = []; // x values
   const bucket: number[] = []; // y value series 1
   const count: number[] = []; // y value series 2
@@ -452,7 +500,6 @@ function HeatmapContainer({
 
       // CH widthBucket will return buckets from 0 to nBuckets + 1
       for (let j = 0; j <= nBuckets + 1; j++) {
-        // const resultIndex = i * nBuckets + j;
         const row = data?.data?.[dataIndex];
 
         if (
@@ -461,13 +508,13 @@ function HeatmapContainer({
           row['x_bucket'] == j
         ) {
           time.push(new Date(row[timestampColumn.name]).getTime());
-          bucket.push(min + row['x_bucket'] * ((max - min) / nBuckets));
+          bucket.push(bucketToYValue(row['x_bucket']));
           count.push(Number.parseInt(row['count'], 10)); // UInt64 returns as string
 
           dataIndex++;
         } else {
           time.push(generatedTs);
-          bucket.push(min + j * ((max - min) / nBuckets));
+          bucket.push(bucketToYValue(j));
           count.push(0);
         }
       }
@@ -550,12 +597,15 @@ function HeatmapContainer({
           criteria.
         </Text>
       ) : (
-        <Heatmap
-          key={JSON.stringify(config)}
-          data={[time, bucket, count]}
-          numberFormat={config.numberFormat}
-          onFilter={onFilter}
-        />
+        <>
+          <Heatmap
+            key={JSON.stringify(config)}
+            data={[time, bucket, count]}
+            numberFormat={config.numberFormat}
+            onFilter={onFilter}
+          />
+          <ColorLegend />
+        </>
       )}
     </ChartContainer>
   );
