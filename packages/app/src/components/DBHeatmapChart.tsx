@@ -339,11 +339,12 @@ function HeatmapContainer({
   // When valueExpression is an aggregate like count(), we need to use a CTE to calculate the heatmap
   const isAggregateExpression = isAggregateFunction(valueExpression);
 
-  // Use quantile-based range to avoid extreme outliers stretching the axis.
-  // Log scale uses wider quantiles (p1–p99) because tiny near-zero outliers
-  // create huge empty gaps at the bottom of the log axis.
+  // Use quantile-based lower bound to avoid near-zero outliers stretching
+  // the log axis.  For the upper bound, use actual max() so that latency
+  // spikes (typically <1% of spans) remain visible — log scale already
+  // handles wide ranges naturally.  Future: #1914 adds overflow-bucket
+  // indicators for smarter range clamping without hiding spikes.
   const qLo = scaleType === 'log' ? 0.01 : 0.001;
-  const qHi = scaleType === 'log' ? 0.99 : 0.999;
   const minMaxConfig: BuilderChartConfigWithDateRange = isAggregateExpression
     ? {
         ...config,
@@ -360,8 +361,7 @@ function HeatmapContainer({
             alias: 'min',
           },
           {
-            aggFn: 'quantile' as const,
-            level: qHi,
+            aggFn: 'max' as const,
             valueExpression: 'value_calc',
             alias: 'max',
           },
@@ -393,10 +393,8 @@ function HeatmapContainer({
             alias: 'min',
           },
           {
-            aggFn: 'quantile' as const,
-            level: qHi,
+            aggFn: 'max' as const,
             valueExpression,
-            aggCondition: '',
             alias: 'max',
           },
         ],
