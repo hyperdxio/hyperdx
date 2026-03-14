@@ -632,19 +632,15 @@ export async function timeFilterExpr({
           ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: endTime }})${toStartOf.formattedRemainingArgs})`
           : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
 
+      // toStartOf* filters must stay inclusive — strict < on a rounded value drops a whole interval
+      const startOp = dateRangeStartInclusive || toStartOf ? '>=' : '>';
+      const endOp = dateRangeEndInclusive || toStartOf ? '<=' : '<';
+
       // If it's a date type
       if (columnMeta?.type === 'Date') {
-        return chSql`(${unsafeTimestampValueExpression} ${
-          dateRangeStartInclusive ? '>=' : '>'
-        } toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${
-          dateRangeEndInclusive ? '<=' : '<'
-        } toDate(${endTimeCond}))`;
+        return chSql`(${unsafeTimestampValueExpression} ${startOp} toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${endOp} toDate(${endTimeCond}))`;
       } else {
-        return chSql`(${unsafeTimestampValueExpression} ${
-          dateRangeStartInclusive ? '>=' : '>'
-        } ${startTimeCond} AND ${unsafeTimestampValueExpression} ${
-          dateRangeEndInclusive ? '<=' : '<'
-        } ${endTimeCond})`;
+        return chSql`(${unsafeTimestampValueExpression} ${startOp} ${startTimeCond} AND ${unsafeTimestampValueExpression} ${endOp} ${endTimeCond})`;
       }
     }),
   );
