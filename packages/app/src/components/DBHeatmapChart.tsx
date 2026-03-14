@@ -798,11 +798,14 @@ function Heatmap({
       // y-values are stored in log space for log scale; exponentiate back
       // to the actual value before formatting.
       const actualValue = scaleType === 'log' ? Math.exp(value) : value;
+      // Use enough decimal places so small values don't all round to "0 ms"
+      const abs = Math.abs(actualValue);
+      const mantissa = abs === 0 || abs >= 1 ? 0 : abs >= 0.01 ? 2 : 3;
       return numberFormat
         ? formatNumber(actualValue, {
             ...numberFormat,
-            average: true,
-            mantissa: 0,
+            average: abs >= 1,
+            mantissa,
           })
         : new Intl.NumberFormat('en-US', {
             notation: 'compact',
