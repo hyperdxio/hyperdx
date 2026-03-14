@@ -635,7 +635,21 @@ function HeatmapContainer({
             key={JSON.stringify(config)}
             data={[time, bucket, count]}
             numberFormat={config.numberFormat}
-            onFilter={onFilter}
+            onFilter={
+              onFilter
+                ? (xMin, xMax, yMin, yMax) => {
+                    // In log mode, the bottom bucket collects all values
+                    // clamped by greatest(value, effectiveMin).  If the
+                    // selection touches that bucket, widen yMin to 0 so
+                    // the downstream SQL filter captures all those spans.
+                    const adjustedYMin =
+                      scaleType === 'log' && yMin <= effectiveMin * 1.1
+                        ? 0
+                        : yMin;
+                    onFilter(xMin, xMax, adjustedYMin, yMax);
+                  }
+                : undefined
+            }
             scaleType={scaleType}
           />
           <ColorLegend />
