@@ -378,10 +378,16 @@ export default function DBDeltaChart({
     1,
     Math.floor((containerWidth + CHART_GAP) / (CHART_WIDTH + CHART_GAP)),
   );
+  // The "Lower-priority fields" divider (~30px) may appear between visible
+  // and hidden sections on the same page.  Reserve space for it so the last
+  // chart row + pagination aren't pushed out of the overflow:hidden container.
+  const hasDivider =
+    visibleProperties.length > 0 && hiddenProperties.length > 0;
+  const dividerHeight = hasDivider ? 30 : 0;
   const rows = Math.max(
     1,
     Math.floor(
-      (containerHeight - PAGINATION_HEIGHT + CHART_GAP) /
+      (containerHeight - PAGINATION_HEIGHT - dividerHeight + CHART_GAP) /
         (CHART_HEIGHT + CHART_GAP),
     ),
   );
