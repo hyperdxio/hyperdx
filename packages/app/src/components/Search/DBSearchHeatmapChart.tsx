@@ -16,6 +16,7 @@ import { Box, Flex, SegmentedControl } from '@mantine/core';
 import { Button } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
+import { MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { getDurationMsExpression } from '@/source';
 
@@ -120,6 +121,10 @@ export function DBSearchHeatmapChart({
             ],
             granularity: 'auto',
             displayType: DisplayType.Heatmap,
+            numberFormat:
+              fields.value === getDurationMsExpression(source)
+                ? MS_NUMBER_FORMAT
+                : undefined,
           }}
           enabled={isReady}
           scaleType={scaleType}
