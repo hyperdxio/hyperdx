@@ -103,8 +103,8 @@ export function DBSearchHeatmapChart({
       </Box>
       <div
         style={{
-          minHeight: 210,
-          maxHeight: 210,
+          minHeight: 310,
+          maxHeight: 310,
           width: '100%',
           position: 'relative',
         }}
