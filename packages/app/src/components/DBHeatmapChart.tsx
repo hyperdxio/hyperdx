@@ -154,34 +154,43 @@ const palette = [
 
 const countsToFills = (u: uPlot, seriesIdx: number) => {
   // mode 2 data format is not supported in types properly
-  const counts = u.data[seriesIdx][2] as unknown as number[];
+  const [, , counts] = u.data[seriesIdx] as unknown as [
+    number[],
+    number[],
+    number[],
+  ];
+  const dlen = counts.length;
 
-  let maxCount = 0;
-
-  for (let i = 0; i < counts.length; i++) {
-    if (counts[i] > maxCount) {
-      maxCount = counts[i];
-    }
-  }
+  // Detect y-bin count from data layout (same logic as heatmapPaths)
+  const ys = (u.data[seriesIdx] as unknown as number[][])[1];
+  const yBinQty = dlen - ys.lastIndexOf(ys[0]);
 
   const paletteSize = palette.length;
-  const sqrtMax = Math.sqrt(maxCount);
+  const indexedFills = Array(dlen);
 
-  const indexedFills = Array(counts.length);
-
-  for (let i = 0; i < counts.length; i++) {
-    indexedFills[i] =
-      counts[i] === 0
-        ? -1
-        : Math.max(
-            Math.min(
-              paletteSize - 1,
-              Math.floor(
-                (Math.sqrt(counts[i]) / (sqrtMax || 1)) * (paletteSize - 1),
+  // Normalize per time column so color variation shows within each vertical
+  // slice.  Without this, a single global max washes out all other columns.
+  for (let col = 0; col < dlen; col += yBinQty) {
+    let colMax = 0;
+    for (let row = 0; row < yBinQty; row++) {
+      if (counts[col + row] > colMax) colMax = counts[col + row];
+    }
+    const sqrtMax = Math.sqrt(colMax);
+    for (let row = 0; row < yBinQty; row++) {
+      const i = col + row;
+      indexedFills[i] =
+        counts[i] === 0
+          ? -1
+          : Math.max(
+              Math.min(
+                paletteSize - 1,
+                Math.floor(
+                  (Math.sqrt(counts[i]) / (sqrtMax || 1)) * (paletteSize - 1),
+                ),
               ),
-            ),
-            0,
-          );
+              0,
+            );
+    }
   }
 
   return indexedFills;
@@ -794,7 +803,6 @@ function Heatmap({
             ...numberFormat,
             average: true,
             mantissa: 0,
-            unit: undefined,
           })
         : new Intl.NumberFormat('en-US', {
             notation: 'compact',
