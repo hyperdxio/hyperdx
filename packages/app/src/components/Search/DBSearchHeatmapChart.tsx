@@ -68,7 +68,7 @@ export function DBSearchHeatmapChart({
     <Flex
       direction="column"
       w="100%"
-      style={{ overflow: 'hidden' }}
+      style={{ overflow: 'visible' }}
       ref={setContainer}
     >
       <Box px="sm" pt="xs" mb={0}>
