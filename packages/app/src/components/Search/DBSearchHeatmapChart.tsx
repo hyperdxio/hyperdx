@@ -17,7 +17,6 @@ import { Button } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
 import { MS_NUMBER_FORMAT } from '@/ChartUtils';
-import { DBTimeChart } from '@/components/DBTimeChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { getDurationMsExpression } from '@/source';
 
@@ -102,38 +101,10 @@ export function DBSearchHeatmapChart({
           />
         </Flex>
       </Box>
-      <Box
-        style={{
-          height: 60,
-          minHeight: 60,
-          maxHeight: 60,
-          width: '100%',
-        }}
-      >
-        <DBTimeChart
-          config={{
-            ...chartConfig,
-            select: [
-              {
-                aggFn: 'count' as const,
-                aggCondition: '',
-                valueExpression: '',
-              },
-            ],
-            granularity: 'auto',
-            displayType: DisplayType.StackedBar,
-          }}
-          enabled={isReady}
-          showLegend={false}
-          showDisplaySwitcher={false}
-          showMVOptimizationIndicator={false}
-          showDateRangeIndicator={false}
-        />
-      </Box>
       <div
         style={{
-          minHeight: 200,
-          maxHeight: 200,
+          minHeight: 260,
+          maxHeight: 260,
           width: '100%',
           position: 'relative',
         }}
