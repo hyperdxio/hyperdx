@@ -232,13 +232,26 @@ export const AppNavHelpMenu = ({
             >
               Discord Community
             </Menu.Item>
-            <Menu.Item
-              data-testid="setup-instructions-menu-item"
-              leftSection={<IconBulb size={16} />}
-              onClick={onAddDataClick}
-            >
-              Setup Instructions
-            </Menu.Item>
+            {IS_LOCAL_MODE ? (
+              <Menu.Item
+                data-testid="setup-instructions-menu-item"
+                leftSection={<IconBulb size={16} />}
+                onClick={onAddDataClick}
+              >
+                Setup Instructions
+              </Menu.Item>
+            ) : (
+              <Menu.Item
+                data-testid="setup-instructions-menu-item"
+                leftSection={<IconBulb size={16} />}
+                href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
+                component="a"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Setup Instructions
+              </Menu.Item>
+            )}
           </Menu.Dropdown>
         </Menu>
       </Paper>
