@@ -144,6 +144,24 @@ function retrieveColumnValue(column: string, row: Row): any {
   return accessor(row, column);
 }
 
+function getResolvedColumnSize(
+  column: string,
+  opts: {
+    aliasMap?: Record<string, string>;
+    columnTypeMap: Map<string, { _type: JSDataType | null }>;
+    logLevelColumn?: string;
+    columnSizeStorage: Record<string, number>;
+  },
+): number {
+  const columnId = opts.aliasMap?.[column] ? `"${column}"` : column;
+  const stored = opts.columnSizeStorage[columnId];
+  if (stored != null) return stored;
+  const jsType = opts.columnTypeMap.get(column)?._type;
+  if (jsType === JSDataType.Date) return 170;
+  if (column === opts.logLevelColumn) return 115;
+  return 160;
+}
+
 function inferLogLevelColumn(rows: Record<string, any>[]) {
   const MAX_ROWS_TO_INSPECT = 100;
   const levelCounts: Record<string, number> = {};
@@ -503,35 +521,37 @@ export const RawLogTable = memo(
       debounceMs: 300,
     });
 
+    const columnSizeOpts = useMemo(
+      () => ({ aliasMap, columnTypeMap, logLevelColumn, columnSizeStorage }),
+      [aliasMap, columnTypeMap, logLevelColumn, columnSizeStorage],
+    );
+
     const lastColumnWidth = useMemo(() => {
       if (displayedColumns.length === 0) return MIN_LAST_COLUMN_WIDTH;
+
+      const lastCol = displayedColumns[displayedColumns.length - 1];
+      const lastColId = columnSizeOpts.aliasMap?.[lastCol]
+        ? `"${lastCol}"`
+        : lastCol;
+      const storedLast = columnSizeOpts.columnSizeStorage[lastColId];
+
+      if (storedLast != null) {
+        return Math.max(MIN_LAST_COLUMN_WIDTH, storedLast);
+      }
+
       const expandWidth = showExpandButton ? 32 : 0;
       const nonLastSum = displayedColumns
         .slice(0, -1)
-        .reduce((total, column) => {
-          const columnId = aliasMap?.[column] ? `"${column}"` : column;
-          const jsColumnType = columnTypeMap.get(column)?._type;
-          const isDate = jsColumnType === JSDataType.Date;
-          const isMaybeSeverityText = column === logLevelColumn;
-          return (
-            total +
-            (columnSizeStorage[columnId] ??
-              (isDate ? 170 : isMaybeSeverityText ? 115 : 160))
-          );
-        }, 0);
+        .reduce(
+          (total, column) =>
+            total + getResolvedColumnSize(column, columnSizeOpts),
+          0,
+        );
       return Math.max(
         MIN_LAST_COLUMN_WIDTH,
         containerWidth - nonLastSum - expandWidth,
       );
-    }, [
-      displayedColumns,
-      columnSizeStorage,
-      columnTypeMap,
-      logLevelColumn,
-      showExpandButton,
-      containerWidth,
-      aliasMap,
-    ]);
+    }, [displayedColumns, columnSizeOpts, showExpandButton, containerWidth]);
 
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
@@ -547,7 +567,6 @@ export const RawLogTable = memo(
         ...(displayedColumns.map((column, i) => {
           const jsColumnType = columnTypeMap.get(column)?._type;
           const isDate = jsColumnType === JSDataType.Date;
-          const isMaybeSeverityText = column === logLevelColumn;
           return {
             meta: {
               column,
@@ -624,8 +643,7 @@ export const RawLogTable = memo(
             size:
               i === displayedColumns.length - 1
                 ? lastColumnWidth
-                : (columnSizeStorage[column] ??
-                  (isDate ? 170 : isMaybeSeverityText ? 115 : 160)),
+                : getResolvedColumnSize(column, columnSizeOpts),
           };
         }) as ColumnDef<any>[]),
       ],
@@ -633,7 +651,7 @@ export const RawLogTable = memo(
         isUTC,
         highlightedLineId,
         displayedColumns,
-        columnSizeStorage,
+        columnSizeOpts,
         columnNameMap,
         columnTypeMap,
         logLevelColumn,
@@ -738,26 +756,14 @@ export const RawLogTable = memo(
       return (
         expandWidth +
         displayedColumns.reduce((total, column, i) => {
-          if (i === displayedColumns.length - 1)
-            return total + MIN_LAST_COLUMN_WIDTH;
-          const columnId = aliasMap?.[column] ? `"${column}"` : column;
-          const jsColumnType = columnTypeMap.get(column)?._type;
-          const isDate = jsColumnType === JSDataType.Date;
-          const isMaybeSeverityText = column === logLevelColumn;
-          const size =
-            columnSizeStorage[columnId] ??
-            (isDate ? 170 : isMaybeSeverityText ? 115 : 160);
+          const size = getResolvedColumnSize(column, columnSizeOpts);
+          if (i === displayedColumns.length - 1) {
+            return total + Math.max(MIN_LAST_COLUMN_WIDTH, size);
+          }
           return total + size;
         }, 0)
       );
-    }, [
-      displayedColumns,
-      columnSizeStorage,
-      columnTypeMap,
-      logLevelColumn,
-      showExpandButton,
-      aliasMap,
-    ]);
+    }, [displayedColumns, columnSizeOpts, showExpandButton]);
 
     const { rows: _rows } = table.getRowModel();
 
