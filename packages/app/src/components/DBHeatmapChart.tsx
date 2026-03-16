@@ -1064,7 +1064,8 @@ function Heatmap({
             className="px-2 py-1 fs-8"
             style={{
               position: 'absolute',
-              top: highlightedPoint.yCoord + 5,
+              // Clamp so the tooltip stays within the chart container
+              top: Math.min(highlightedPoint.yCoord + 5, height - 90),
               ...(highlightedPoint.xCoord > width / 2
                 ? {
                     right: width - highlightedPoint.xCoord + 10,
