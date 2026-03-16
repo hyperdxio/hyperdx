@@ -785,9 +785,9 @@ export enum SourceKind {
 // TABLE SOURCE FORM VALIDATION
 // --------------------------
 
-const QuerySettingsSchema = z.array(
-  z.object({ setting: z.string().min(1), value: z.string().min(1) }),
-);
+const QuerySettingsSchema = z
+  .array(z.object({ setting: z.string().min(1), value: z.string().min(1) }))
+  .max(10);
 
 export type QuerySettings = z.infer<typeof QuerySettingsSchema>;
 
