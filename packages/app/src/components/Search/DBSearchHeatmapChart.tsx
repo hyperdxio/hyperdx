@@ -12,9 +12,20 @@ import {
   DisplayType,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Flex, SegmentedControl } from '@mantine/core';
-import { Button } from '@mantine/core';
-import { IconPlayerPlay } from '@tabler/icons-react';
+import {
+  ActionIcon,
+  Box,
+  Button,
+  Divider,
+  Drawer,
+  Flex,
+  Group,
+  SegmentedControl,
+  Stack,
+  Tooltip,
+} from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { IconPlayerPlay, IconSettings } from '@tabler/icons-react';
 
 import { MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
@@ -51,6 +62,7 @@ export function DBSearchHeatmapChart({
   });
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [scaleType, setScaleType] = useState<HeatmapScaleType>('log');
+  const [settingsOpened, settingsHandlers] = useDisclosure(false);
 
   // After applying a filter, clear the heatmap selection so the delta chart
   // resets instead of staying in comparison mode.
@@ -72,26 +84,9 @@ export function DBSearchHeatmapChart({
       ref={setContainer}
     >
       <Box px="sm" pt="xs" mb={0}>
-        <Flex align="flex-end" gap="xs">
-          <Box style={{ flex: 1 }}>
-            <DBSearchHeatmapForm
-              connection={tcFromSource(source)}
-              defaultValues={{
-                value: fields.value,
-                count: fields.count,
-              }}
-              parentRef={container}
-              onSubmit={data => {
-                setFields({
-                  value: data.value,
-                  count: data.count,
-                });
-              }}
-            />
-          </Box>
+        <Flex align="center" gap="xs" mb="xs">
           <SegmentedControl
             size="xs"
-            mb="xs"
             value={scaleType}
             onChange={v => setScaleType(v as HeatmapScaleType)}
             data={[
@@ -99,8 +94,34 @@ export function DBSearchHeatmapChart({
               { label: 'Linear', value: 'linear' },
             ]}
           />
+          <Tooltip label="Heatmap settings">
+            <ActionIcon
+              variant="subtle"
+              size="sm"
+              onClick={settingsHandlers.open}
+            >
+              <IconSettings size={16} />
+            </ActionIcon>
+          </Tooltip>
         </Flex>
       </Box>
+      <HeatmapSettingsDrawer
+        opened={settingsOpened}
+        onClose={settingsHandlers.close}
+        connection={tcFromSource(source)}
+        parentRef={container}
+        defaultValues={{
+          value: fields.value,
+          count: fields.count,
+        }}
+        onSubmit={data => {
+          setFields({
+            value: data.value,
+            count: data.count,
+          });
+          settingsHandlers.close();
+        }}
+      />
       <div
         style={{
           minHeight: 260,
@@ -160,12 +181,16 @@ export function DBSearchHeatmapChart({
   );
 }
 
-function DBSearchHeatmapForm({
+function HeatmapSettingsDrawer({
+  opened,
+  onClose,
   connection,
-  defaultValues,
   parentRef,
+  defaultValues,
   onSubmit,
 }: {
+  opened: boolean;
+  onClose: () => void;
   connection: TableConnection;
   parentRef?: HTMLElement | null;
   defaultValues: z.infer<typeof Schema>;
@@ -176,51 +201,66 @@ function DBSearchHeatmapForm({
     defaultValues,
   });
 
+  const handleClose = useCallback(() => {
+    form.reset(defaultValues);
+    onClose();
+  }, [onClose, form, defaultValues]);
+
   return (
-    <form
-      onSubmit={form.handleSubmit(onSubmit)}
-      style={{ position: 'relative' }}
+    <Drawer
+      title="Heatmap Settings"
+      opened={opened}
+      onClose={handleClose}
+      position="right"
+      size="sm"
     >
-      <Flex m="0" mb="xs" align="stretch" gap="xs">
-        <SQLInlineEditorControlled
-          parentRef={parentRef}
-          tableConnection={connection}
-          control={form.control}
-          name="value"
-          size="xs"
-          tooltipText="Controls the Y axis range and scale — defines the metric plotted vertically."
-          placeholder="SQL expression"
-          language="sql"
-          onSubmit={form.handleSubmit(onSubmit)}
-          label="Value"
-          error={form.formState.errors.value?.message}
-          rules={{ required: true }}
-        />
+      <form onSubmit={form.handleSubmit(onSubmit)}>
+        <Stack gap="md">
+          <SQLInlineEditorControlled
+            parentRef={parentRef}
+            tableConnection={connection}
+            control={form.control}
+            name="value"
+            size="xs"
+            tooltipText="Controls the Y axis range and scale — defines the metric plotted vertically."
+            placeholder="SQL expression"
+            language="sql"
+            onSubmit={form.handleSubmit(onSubmit)}
+            label="Value"
+            error={form.formState.errors.value?.message}
+            rules={{ required: true }}
+          />
 
-        <SQLInlineEditorControlled
-          parentRef={parentRef}
-          tableConnection={connection}
-          control={form.control}
-          name="count"
-          placeholder="SQL expression"
-          language="sql"
-          size="xs"
-          tooltipText="Controls the color intensity (Z axis) — shows how frequently or strongly each value occurs."
-          onSubmit={form.handleSubmit(onSubmit)}
-          label="Count"
-          error={form.formState.errors.count?.message}
-          rules={{ required: true }}
-        />
+          <SQLInlineEditorControlled
+            parentRef={parentRef}
+            tableConnection={connection}
+            control={form.control}
+            name="count"
+            placeholder="SQL expression"
+            language="sql"
+            size="xs"
+            tooltipText="Controls the color intensity (Z axis) — shows how frequently or strongly each value occurs."
+            onSubmit={form.handleSubmit(onSubmit)}
+            label="Count"
+            error={form.formState.errors.count?.message}
+            rules={{ required: true }}
+          />
 
-        <Button
-          variant="secondary"
-          type="submit"
-          size="xs"
-          leftSection={<IconPlayerPlay size={16} />}
-        >
-          Run
-        </Button>
-      </Flex>
-    </form>
+          <Divider />
+          <Group gap="xs" justify="flex-end">
+            <Button variant="secondary" onClick={handleClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              type="submit"
+              leftSection={<IconPlayerPlay size={16} />}
+            >
+              Apply
+            </Button>
+          </Group>
+        </Stack>
+      </form>
+    </Drawer>
   );
 }
