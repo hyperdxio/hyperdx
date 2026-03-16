@@ -228,7 +228,7 @@ export default function TeamMembersSection() {
             <Table.Tbody>
               {!isLoadingMembers &&
                 Array.isArray(members?.data) &&
-                members?.data.map((member: any) => (
+                members?.data.map(member => (
                   <Table.Tr key={member.email}>
                     <Table.Td>
                       <div>
@@ -284,8 +284,8 @@ export default function TeamMembersSection() {
                   </Table.Tr>
                 ))}
               {!isLoadingInvitations &&
-                Array.isArray(invitations.data) &&
-                invitations.data.map((invitation: any) => (
+                Array.isArray(invitations?.data) &&
+                invitations.data.map(invitation => (
                   <Table.Tr key={invitation.email} className="mt-2">
                     <Table.Td>
                       <span className="text-white fw-bold fs-7">

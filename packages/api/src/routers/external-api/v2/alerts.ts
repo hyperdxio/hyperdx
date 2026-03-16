@@ -26,6 +26,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       properties:
  *         message:
  *           type: string
+ *           description: Human-readable error message.
  *     AlertInterval:
  *       type: string
  *       enum: [1m, 5m, 15m, 30m, 1h, 6h, 12h, 1d]
@@ -70,6 +71,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       properties:
  *         type:
  *           $ref: '#/components/schemas/AlertChannelType'
+ *           description: Channel type. Must be "webhook" for webhook alerts.
  *         webhookId:
  *           type: string
  *           description: Webhook destination ID.
@@ -108,6 +110,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: 100
  *         interval:
  *           $ref: '#/components/schemas/AlertInterval'
+ *           description: Evaluation interval for the alert.
  *           example: "1h"
  *         scheduleOffsetMinutes:
  *           type: integer
@@ -123,9 +126,11 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           example: "2026-02-08T10:00:00.000Z"
  *         source:
  *           $ref: '#/components/schemas/AlertSource'
+ *           description: Alert source type (tile-based or saved search).
  *           example: "tile"
  *         thresholdType:
  *           $ref: '#/components/schemas/AlertThresholdType'
+ *           description: Threshold comparison direction.
  *           example: "above"
  *         channel:
  *           $ref: '#/components/schemas/AlertChannel'
@@ -152,6 +157,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *               example: "65f5e4a3b9e77c001a123456"
  *             state:
  *               $ref: '#/components/schemas/AlertState'
+ *               description: Current alert state.
  *               example: "ALERT"
  *             teamId:
  *               type: string
@@ -199,12 +205,14 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       properties:
  *         data:
  *           $ref: '#/components/schemas/AlertResponse'
+ *           description: The alert object.
  *
  *     AlertsListResponse:
  *       type: object
  *       properties:
  *         data:
  *           type: array
+ *           description: List of alert objects.
  *           items:
  *             $ref: '#/components/schemas/AlertResponse'
  *

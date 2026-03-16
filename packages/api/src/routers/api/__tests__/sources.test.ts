@@ -89,6 +89,131 @@ describe('sources router', () => {
       .expect(400);
   });
 
+  describe('querySettings validation', () => {
+    it('POST / - accepts and persists valid querySettings', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const querySettings = [
+        { setting: 'max_execution_time', value: '60' },
+        { setting: 'max_memory_usage', value: '10000000000' },
+      ];
+
+      const response = await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, querySettings })
+        .expect(200);
+
+      expect(response.body.querySettings).toEqual(querySettings);
+
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(1);
+      expect(sources[0]?.querySettings).toEqual(querySettings);
+    });
+
+    it('POST / - accepts querySettings at the limit of 10 items', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const querySettings = Array.from({ length: 10 }, (_, i) => ({
+        setting: `setting_${i}`,
+        value: `value_${i}`,
+      }));
+
+      const response = await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, querySettings })
+        .expect(200);
+
+      expect(response.body.querySettings).toHaveLength(10);
+
+      const sources = await Source.find({}).lean();
+      expect(sources[0]?.querySettings).toHaveLength(10);
+    });
+
+    it('POST / - rejects querySettings exceeding the limit of 10', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const querySettings = Array.from({ length: 11 }, (_, i) => ({
+        setting: `setting_${i}`,
+        value: `value_${i}`,
+      }));
+
+      const response = await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, querySettings });
+
+      expect(response.status).toBe(400);
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(0);
+    });
+
+    it('POST / - returns 400 when querySettings item has empty setting or value', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/sources')
+        .send({
+          ...MOCK_SOURCE,
+          querySettings: [{ setting: '', value: 'x' }],
+        })
+        .expect(400);
+
+      await agent
+        .post('/sources')
+        .send({
+          ...MOCK_SOURCE,
+          querySettings: [{ setting: 'x', value: '' }],
+        })
+        .expect(400);
+    });
+
+    it('PUT /:id - accepts and persists valid querySettings', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+      });
+
+      const querySettings = [{ setting: 'max_execution_time', value: '120' }];
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          ...MOCK_SOURCE,
+          id: source._id.toString(),
+          querySettings,
+        })
+        .expect(200);
+
+      const updated = await Source.findById(source._id).lean();
+      expect(updated?.querySettings).toEqual(querySettings);
+    });
+
+    it('PUT /:id - rejects querySettings exceeding the limit of 10', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+      });
+
+      const querySettings = Array.from({ length: 11 }, (_, i) => ({
+        setting: `setting_${i}`,
+        value: `value_${i}`,
+      }));
+
+      const response = await agent.put(`/sources/${source._id}`).send({
+        ...MOCK_SOURCE,
+        id: source._id.toString(),
+        querySettings,
+      });
+
+      expect(response.status).toBe(400);
+      const updated = await Source.findById(source._id).lean();
+      expect(updated?.querySettings).toEqual([]); // defaults to [] when source created
+    });
+  });
+
   it('PUT /:id - updates an existing source', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
