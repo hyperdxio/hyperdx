@@ -128,8 +128,8 @@ const extractAttributeKeys = (
 
 interface MetricResourceAttrsProps {
   databaseName: string;
-  metricType: string;
-  metricName: string;
+  metricType?: string;
+  metricName?: string;
   tableSource: TSource | undefined;
   isSql: boolean;
 }
@@ -155,6 +155,7 @@ export const useFetchMetricResourceAttrs = ({
     databaseName &&
       tableName &&
       metricType &&
+      metricName &&
       tableSource &&
       tableSource?.kind === SourceKind.Metric,
   );
@@ -162,7 +163,7 @@ export const useFetchMetricResourceAttrs = ({
   return useQuery({
     queryKey: ['metric-attributes', metricType, metricName, isSql, tableSource],
     queryFn: async ({ signal }) => {
-      if (!shouldFetch) {
+      if (!shouldFetch || !metricName) {
         return [];
       }
 

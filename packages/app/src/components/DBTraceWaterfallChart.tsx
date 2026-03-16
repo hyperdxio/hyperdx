@@ -913,7 +913,7 @@ export function DBTraceWaterfallChartContainer({
           )}
         </span>
       </Group>
-      {!isFetching && !error && (
+      {!isFetching && !error && highlightedAttributeValues?.length > 0 && (
         <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
       )}
       <div
@@ -952,7 +952,6 @@ export function DBTraceWaterfallChartContainer({
                 overflowY: 'auto',
                 maxHeight: `${heightPx}px`,
               }}
-              scale={1}
               rowHeight={22}
               labelWidth={300}
               onEventClick={(event: {
