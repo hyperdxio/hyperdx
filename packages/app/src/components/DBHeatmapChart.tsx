@@ -1057,7 +1057,7 @@ function Heatmap({
               width: highlightedPoint.xSize,
               height: highlightedPoint.ySize,
               pointerEvents: 'none',
-              background: 'rgba(255, 255, 255, 0.8)',
+              background: 'var(--mantine-color-default-hover)',
             }}
           />
           <div
@@ -1078,9 +1078,9 @@ function Heatmap({
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap' as const,
               backdropFilter: 'blur(8px)',
-              backgroundColor: 'rgba(26, 29, 35, 0.75)',
-              border: '1px solid #5F6776',
-              borderRadius: 2,
+              backgroundColor: 'var(--mantine-color-body)',
+              border: '1px solid var(--mantine-color-default-border)',
+              borderRadius: 4,
               pointerEvents: 'none',
             }}
           >
@@ -1109,9 +1109,9 @@ function Heatmap({
           className="px-2 py-1 fs-8"
           style={{
             backdropFilter: 'blur(4px)',
-            backgroundColor: 'rgba(26, 29, 35, 0.4)',
-            border: '1px solid #5F6776',
-            borderRadius: 2,
+            backgroundColor: 'var(--mantine-color-body)',
+            border: '1px solid var(--mantine-color-default-border)',
+            borderRadius: 4,
             position: 'absolute',
             bottom: height - selectingInfo?.top + 4,
             left: selectingInfo?.left,
