@@ -3,7 +3,7 @@ import CopyToClipboard from 'react-copy-to-clipboard';
 import { sql } from '@codemirror/lang-sql';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
-import { Button, Paper } from '@mantine/core';
+import { Button, Paper, Text } from '@mantine/core';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
 import CodeMirror, { EditorView } from '@uiw/react-codemirror';
 
@@ -96,7 +96,7 @@ export default function ChartSQLPreview({
   config: ChartConfigWithOptDateRange;
   enableCopy?: boolean;
 }) {
-  const { data } = useRenderedSqlChartConfig(config);
+  const { data, error, isLoading } = useRenderedSqlChartConfig(config);
 
   return (
     <Paper
@@ -106,7 +106,17 @@ export default function ChartSQLPreview({
       style={{ overflow: 'hidden' }}
       p="xs"
     >
-      <SQLPreview data={data} formatData={false} enableCopy={enableCopy} />
+      {isLoading ? (
+        <Text className="text-muted" size="xs">
+          Loading query preview...
+        </Text>
+      ) : error ? (
+        <Text className="text-danger" size="xs">
+          Unable to format query. {error.message}
+        </Text>
+      ) : (
+        <SQLPreview data={data} formatData={false} enableCopy={enableCopy} />
+      )}
     </Paper>
   );
 }

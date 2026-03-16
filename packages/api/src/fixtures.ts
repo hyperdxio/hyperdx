@@ -418,8 +418,7 @@ export function buildMetricSeries({
   }));
 }
 
-export const randomMongoId = () =>
-  Math.floor(Math.random() * 1000000000000).toString();
+export const randomMongoId = () => new mongoose.Types.ObjectId().toHexString();
 
 export const makeTile = (opts?: {
   id?: string;
