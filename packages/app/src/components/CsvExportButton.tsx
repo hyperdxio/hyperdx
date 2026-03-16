@@ -23,7 +23,6 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
   onExportStart,
   onExportComplete,
   onExportError,
-  ...props
 }) => {
   const { CSVDownloader } = useCSVDownloader();
 
@@ -49,7 +48,6 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
         className={className}
         title={disabled ? 'Export disabled' : 'No data to export'}
         style={{ opacity: 0.5, cursor: 'not-allowed', display: 'flex' }}
-        {...props}
       >
         {children}
       </div>
@@ -57,32 +55,30 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
   }
 
   return (
-    <CSVDownloader
-      data={data}
-      filename={filename}
-      config={{
-        quotes: true,
-        quoteChar: '"',
-        escapeChar: '"',
-        delimiter: ',',
-        header: true,
-      }}
-      className={className}
-      title={title}
-      style={{
-        color: 'inherit',
-        textDecoration: 'none',
-        background: 'none',
-        border: 'none',
-        padding: 0,
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-      }}
-      onClick={handleClick}
-      {...props}
-    >
-      {children}
-    </CSVDownloader>
+    <div onClick={handleClick} title={title} className={className}>
+      <CSVDownloader
+        data={data}
+        filename={filename}
+        config={{
+          quotes: true,
+          quoteChar: '"',
+          escapeChar: '"',
+          delimiter: ',',
+          header: true,
+        }}
+        style={{
+          color: 'inherit',
+          textDecoration: 'none',
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+        }}
+      >
+        {children}
+      </CSVDownloader>
+    </div>
   );
 };
