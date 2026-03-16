@@ -1,59 +1,110 @@
-# AGENTS.md - HyperDX Agentic Coding Guide
+# HyperDX Development Guide
 
-## Project Overview
+## What is HyperDX?
 
-HyperDX is an observability platform (logs, metrics, traces, session replays)
-built on ClickHouse + OpenTelemetry. Yarn 4.5.1 monorepo with three packages:
+HyperDX is an observability platform that helps engineers search, visualize, and
+monitor logs, metrics, traces, and session replays. It's built on ClickHouse for
+blazing-fast queries and supports OpenTelemetry natively.
 
-- `packages/app` - Next.js frontend (Mantine UI, TanStack Query, Jotai)
-- `packages/api` - Express backend (Node.js 22+, MongoDB, ClickHouse)
-- `packages/common-utils` - Shared TypeScript utilities (query parsing,
-  validation)
+**Core value**: Unified observability with ClickHouse performance,
+schema-agnostic design, and correlation across all telemetry types in one place.
 
-Read `agent_docs/` for detailed architecture, tech stack, and code style docs
-before making changes.
+## Architecture (WHAT)
 
-## Build / Lint / Test Commands
+This is a **monorepo** with three main packages:
 
-### Setup
+- `packages/app` - Next.js frontend (TypeScript, Mantine UI, TanStack Query)
+- `packages/api` - Express backend (Node.js 22+, MongoDB for metadata,
+  ClickHouse for telemetry)
+- `packages/common-utils` - Shared TypeScript utilities for query parsing and
+  validation
+
+**Data flow**: Apps → OpenTelemetry Collector → ClickHouse (telemetry data) /
+MongoDB (configuration/metadata)
+
+## Development Setup (HOW)
 
 ```bash
-yarn setup          # Install deps + husky hooks
+yarn setup          # Install dependencies
 yarn dev            # Start full stack (Docker + local services)
 ```
 
-### Lint & Type Check (run before every PR)
+The project uses **Yarn 4.5.1** workspaces. Docker Compose manages ClickHouse,
+MongoDB, and the OTel Collector.
+
+## Working on the Codebase (HOW)
+
+**Before starting a task**, read relevant documentation from the `agent_docs/`
+directory:
+
+- `agent_docs/architecture.md` - Detailed architecture patterns and data models
+- `agent_docs/tech_stack.md` - Technology stack details and component patterns
+- `agent_docs/development.md` - Development workflows, testing, and common tasks
+- `agent_docs/code_style.md` - Code patterns and best practices (read only when
+  actively coding)
+
+**Tools handle formatting and linting automatically** via pre-commit hooks.
+Focus on implementation; don't manually format code.
+
+## Key Principles
+
+1. **Multi-tenancy**: All data is scoped to `Team` - ensure proper filtering
+2. **Type safety**: Use TypeScript strictly; Zod schemas for validation
+3. **Existing patterns**: Follow established patterns in the codebase - explore
+   similar files before implementing
+4. **Component size**: Keep files under 300 lines; break down large components
+5. **UI Components**: Use custom Button/ActionIcon variants (`primary`,
+   `secondary`, `danger`) - see `agent_docs/code_style.md` for required patterns
+6. **Testing**: Tests live in `__tests__/` directories; use Jest for
+   unit/integration tests
+
+## Running Tests
+
+Each package has different test commands available:
+
+**packages/app** (unit tests only):
+
+```bash
+cd packages/app
+yarn ci:unit           # Run unit tests
+yarn dev:unit          # Watch mode for unit tests
+yarn test:e2e          # Run end-to-end tests
+yarn test:e2e:ci       # Run end-to-end tests in CI
+```
+
+**packages/api** (integration tests only):
+
+```bash
+make dev-int-build                  # Build dependencies (run once before tests)
+make dev-int FILE=<TEST_FILE_NAME>  # Spins up Docker services and runs tests.
+                                    # Ctrl-C to stop and wait for all services to tear down.
+```
+
+**packages/common-utils** (both unit and integration tests):
+
+```bash
+cd packages/common-utils
+yarn ci:unit           # Run unit tests
+yarn dev:unit          # Watch mode for unit tests
+yarn ci:int            # Run integration tests
+yarn dev:int           # Watch mode for integration tests
+```
+
+To run a specific test file or pattern:
+
+```bash
+yarn ci:unit <path/to/test.ts>                           # Run specific test file
+yarn ci:unit --testNamePattern="test name pattern"       # Run tests matching pattern
+```
+
+**Lint & type check across all packages:**
 
 ```bash
 make ci-lint        # Lint + TypeScript check across all packages
-# Per-package:
-cd packages/app && yarn ci:lint
-cd packages/api && yarn ci:lint
-cd packages/common-utils && yarn ci:lint
+make ci-unit        # Unit tests across all packages
 ```
 
-### Unit Tests
-
-```bash
-make ci-unit                                    # All packages
-cd packages/app && yarn ci:unit                 # App only
-cd packages/common-utils && yarn ci:unit        # Common-utils only
-# Single file:
-cd packages/app && yarn ci:unit path/to/test.ts
-cd packages/common-utils && yarn ci:unit path/to/test.ts
-# Pattern match:
-cd packages/app && yarn ci:unit --testNamePattern="pattern"
-```
-
-### Integration Tests (API + common-utils, requires Docker)
-
-```bash
-make dev-int-build                              # Build deps (run once)
-make dev-int FILE=<TEST_FILE_NAME>              # API integration test (single file)
-make dev-int-common-utils FILE=<TEST_FILE_NAME> # Common-utils integration test
-```
-
-### E2E Tests (Playwright)
+**E2E tests (Playwright):**
 
 ```bash
 ./scripts/test-e2e.sh                                       # All E2E
@@ -61,134 +112,43 @@ make dev-int-common-utils FILE=<TEST_FILE_NAME> # Common-utils integration test
 ./scripts/test-e2e.sh --quiet <file> --grep "\"<pattern>\""  # Pattern match
 ```
 
-## Code Style
+## Important Context
 
-### Formatting (auto-enforced by pre-commit hooks)
-
-- **Prettier**: 80 char width, 2-space indent, single quotes, trailing commas,
-  no parens on single arrow params
-- **ESLint**: Flat config per package. `simple-import-sort` enforced
-- **Pre-commit**: Husky + lint-staged runs Prettier + ESLint on staged files.
-  Never use `--no-verify`
-- If hooks fail, run `npx lint-staged` manually before committing
-
-### Import Order (enforced by `simple-import-sort`)
-
-```tsx
-// 1. React/Next/third-party libraries
-import React from 'react';
-import { useRouter } from 'next/router';
-import { Button } from '@mantine/core';
-// 2. Internal @/ aliases
-import { api } from '@/api';
-// 3. Parent imports
-import { util } from '../utils';
-// 4. Sibling/index imports
-import { Component } from './Component';
-// 5. Style imports
-import styles from './styles.module.scss';
-```
-
-### TypeScript
-
-- Avoid `any` (eslint warns on `no-explicit-any` in most packages)
-- Use Zod schemas for runtime validation
-- Prefix unused vars/args with `_` (e.g., `_unused`)
-- `strict: true` in tsconfig; target ES2022
-- Define interfaces for component props and data structures
-
-### Naming Conventions
-
-- Files: descriptive names following package conventions; no
-  "temp"/"v2"/"refactored" suffixes
-- React: functional components with hooks only, no class components
-- Tests: co-located in `__tests__/` directories
-
-### Error Handling
-
-- Use `console.warn()` and `console.error()` only (`console.log` is banned via
-  `no-console` rule)
-- Implement error boundaries for React components
-- Server-side: always validate and sanitize on the backend
-- Multi-tenancy: all data access MUST filter by team context
-
-### React / Frontend Patterns
-
-- State: Jotai (client), TanStack Query (server), URL params (filters)
-- Icons: `@tabler/icons-react` only (no `bi-` icons)
-- Use `react-hook-form` with `@hookform/resolvers` for forms; `no-use-watch`
-  rule enforced
-- `react-hooks/exhaustive-deps` is set to error
-- Max 300 lines per file; split large components
-
-### Button & ActionIcon Variants (REQUIRED - ESLint-enforced)
-
-Only use these custom variants for `Button` and `ActionIcon`:
-
-```tsx
-<Button variant="primary">Save</Button>      // Primary actions
-<Button variant="secondary">Cancel</Button>  // Secondary actions
-<Button variant="danger">Delete</Button>     // Destructive actions
-<ActionIcon variant="primary" />
-<ActionIcon variant="secondary" />
-<ActionIcon variant="danger" />
-```
-
-**Forbidden**: `variant="light"`, `"filled"`, `"outline"`, `"default"` on
-Button/ActionIcon. (`variant="filled"` is fine on form inputs like Select,
-TextInput.) Icon-only buttons must use `ActionIcon`, not `Button` wrapping an
-icon.
-
-### Backend Patterns
-
-- Express routers in `packages/api/src/routers/`, controllers in `controllers/`
-- MongoDB models in `packages/api/src/models/` with Mongoose; team-scoped
-- ClickHouse queries built via `common-utils` helpers
-- Authentication: Passport.js with team-based access control
-
-## Git Conventions
-
-- **Pre-commit hooks must pass**. Do not skip with `--no-verify`. If hooks fail
-  (e.g. husky not set up in a worktree), run `npx lint-staged` manually before
-  committing to ensure lint and formatting checks pass
-- Use the git author's default profile; do not add `Co-Authored-By` trailers
-- Branch naming: prefix with your username (e.g., `warren/HDX-3588-feature`)
-- Conventional commits: `feat:`, `fix:`, `chore:`, `refactor:`, `docs:`
-- Reference Linear tickets when applicable
+- **Authentication**: Passport.js with team-based access control
+- **State management**: Jotai (client), TanStack Query (server), URL params
+  (filters)
+- **UI library**: Mantine components are the standard (not custom UI)
+- **Database patterns**: MongoDB for metadata with Mongoose, ClickHouse for
+  telemetry queries
 
 ## GitHub Action Workflow (when invoked via @claude)
 
-1. **Before writing code**, post a comment outlining your implementation plan
-   (which files, approach, trade-offs). Use `gh issue comment` or
-   `gh pr comment`
-2. **After code changes**, run in order and fix failures before opening a PR:
+When working on issues or PRs through the GitHub Action:
+
+1. **Before writing any code**, post a comment outlining your implementation
+   plan — which files you'll change, what approach you'll take, and any
+   trade-offs or risks. Use `gh issue comment` for issues or `gh pr comment` for
+   PRs.
+
+2. **After making any code changes**, always run these in order and fix any
+   failures before opening a PR:
+
    - `make ci-lint` — lint + TypeScript type check
    - `make ci-unit` — unit tests
-3. Write a clear PR description explaining what changed and why
 
-## CI Checklist (before opening PRs)
+3. Write a clear PR description explaining what changed and why.
 
-1. `make ci-lint` - must pass
-2. `make ci-unit` - must pass
-3. Write a clear PR description explaining what changed and why
+## Git Commits
 
-## Cursor Rules
+When committing code, use the git author's default profile (name and email from
+git config). Do not add `Co-Authored-By` trailers.
 
-- Playwright E2E tests follow conventions in
-  `.claude/skills/playwright/SKILL.md`
-- Run E2E via: `./scripts/test-e2e.sh --quiet <file> [--grep "\"<pattern>\""]`
+**Pre-commit hooks must pass before committing.** Do not use `--no-verify` to
+skip hooks. If the pre-commit hook fails (e.g. due to husky not being set up in
+a worktree), run `npx lint-staged` manually before committing to ensure lint and
+formatting checks pass. Fix any issues before creating the commit.
 
-## Key File Locations
+---
 
-| Area                | Path                                     |
-| ------------------- | ---------------------------------------- |
-| API routes          | `packages/api/src/routers/`              |
-| API controllers     | `packages/api/src/controllers/`          |
-| MongoDB models      | `packages/api/src/models/`               |
-| Frontend pages      | `packages/app/pages/`                    |
-| Frontend components | `packages/app/src/`                      |
-| Shared utils        | `packages/common-utils/src/`             |
-| Mantine theme       | `packages/app/src/theme/mantineTheme.ts` |
-| API config          | `packages/api/src/config.ts`             |
-| Docker dev          | `docker-compose.dev.yml`                 |
-| Agent docs          | `agent_docs/`                            |
+_Need more details? Check the `agent_docs/` directory or ask which documentation
+to read._
