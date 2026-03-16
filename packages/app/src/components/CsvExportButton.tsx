@@ -1,5 +1,5 @@
-import React from 'react';
-import { useCSVDownloader } from 'react-papaparse';
+import React, { useCallback } from 'react';
+import Papa from 'papaparse';
 
 interface CsvExportButtonProps {
   data: Record<string, any>[];
@@ -24,9 +24,7 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
   onExportComplete,
   onExportError,
 }) => {
-  const { CSVDownloader } = useCSVDownloader();
-
-  const handleClick = () => {
+  const handleClick = useCallback(() => {
     try {
       if (data.length === 0) {
         onExportError?.(new Error('No data to export'));
@@ -34,13 +32,33 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
       }
 
       onExportStart?.();
+
+      const csv = Papa.unparse(data, {
+        quotes: true,
+        quoteChar: '"',
+        escapeChar: '"',
+        delimiter: ',',
+        header: true,
+      });
+      const blob = new Blob([`\ufeff${csv}`], {
+        type: 'text/csv;charset=utf-8;',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
       onExportComplete?.();
     } catch (error) {
       onExportError?.(
         error instanceof Error ? error : new Error('Export failed'),
       );
     }
-  };
+  }, [data, filename, onExportStart, onExportComplete, onExportError]);
 
   if (disabled || data.length === 0) {
     return (
@@ -55,30 +73,23 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
   }
 
   return (
-    <div onClick={handleClick} title={title} className={className}>
-      <CSVDownloader
-        data={data}
-        filename={filename}
-        config={{
-          quotes: true,
-          quoteChar: '"',
-          escapeChar: '"',
-          delimiter: ',',
-          header: true,
-        }}
-        style={{
-          color: 'inherit',
-          textDecoration: 'none',
-          background: 'none',
-          border: 'none',
-          padding: 0,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-        }}
-      >
-        {children}
-      </CSVDownloader>
-    </div>
+    <button
+      type="button"
+      onClick={handleClick}
+      title={title}
+      className={className}
+      style={{
+        color: 'inherit',
+        textDecoration: 'none',
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+      }}
+    >
+      {children}
+    </button>
   );
 };
