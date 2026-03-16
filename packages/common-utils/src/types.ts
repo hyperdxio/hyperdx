@@ -574,11 +574,16 @@ const BuilderChartConfigSchema = z.intersection(
 
 export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
 
-/** Schema describing Raw SQL chart configs */
-const RawSqlChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
+/** Base schema for Raw SQL chart configs */
+const RawSqlBaseChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   configType: z.literal('sql'),
   sqlTemplate: z.string(),
   connection: z.string(),
+});
+
+/** Schema describing Raw SQL chart configs with runtime-only fields */
+const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
+  filters: z.array(FilterSchema).optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
@@ -655,7 +660,7 @@ export type BuilderSavedChartConfig = z.infer<
   typeof BuilderSavedChartConfigSchema
 >;
 
-const RawSqlSavedChartConfigSchema = RawSqlChartConfigSchema.extend({
+const RawSqlSavedChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
   name: z.string().optional(),
 });
 

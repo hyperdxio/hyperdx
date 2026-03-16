@@ -12,7 +12,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { formatRelative } from 'date-fns';
 import produce from 'immer';
-import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
+import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
@@ -21,6 +21,7 @@ import { convertToDashboardTemplate } from '@hyperdx/common-utils/dist/core/util
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -67,6 +68,7 @@ import {
   IconTrash,
   IconUpload,
   IconX,
+  IconZoomExclamation,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -209,7 +211,7 @@ const Tile = forwardRef(
 
     useEffect(() => {
       if (isRawSqlSavedChartConfig(chart.config)) {
-        setQueriedConfig({ ...chart.config, dateRange, granularity });
+        setQueriedConfig({ ...chart.config, dateRange, granularity, filters });
         return;
       }
 
@@ -271,6 +273,28 @@ const Tile = forwardRef(
       }
       return tooltip;
     }, [alert]);
+
+    const skippingLuceneFilterIcon = useMemo(() => {
+      const isSkippingLuceneGlobalFilter =
+        !!queriedConfig &&
+        isRawSqlChartConfig(queriedConfig) &&
+        queriedConfig.sqlTemplate.includes('$__filters') &&
+        queriedConfig.filters?.some(
+          f => f.type === 'lucene' && !!f.condition.trim(),
+        );
+
+      if (!isSkippingLuceneGlobalFilter) return null;
+
+      return (
+        <Tooltip
+          multiline
+          maw={500}
+          label="Lucene-based filter cannot be applied to this SQL-based chart"
+        >
+          <IconZoomExclamation size={16} color="var(--color-text-danger)" />
+        </Tooltip>
+      );
+    }, [queriedConfig]);
 
     const hoverToolbar = useMemo(() => {
       return (
@@ -369,7 +393,9 @@ const Tile = forwardRef(
     // Render chart content (used in both tile and fullscreen views)
     const renderChartContent = useCallback(
       (hideToolbar: boolean = false, isFullscreenView: boolean = false) => {
-        const toolbar = hideToolbar ? [] : [hoverToolbar];
+        const toolbar = hideToolbar
+          ? [skippingLuceneFilterIcon]
+          : [hoverToolbar, skippingLuceneFilterIcon];
         const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
 
         // Markdown charts may not have queriedConfig, if config.source is not set
@@ -504,6 +530,7 @@ const Tile = forwardRef(
         onUpdateChart,
         source,
         dateRange,
+        skippingLuceneFilterIcon,
       ],
     );
 

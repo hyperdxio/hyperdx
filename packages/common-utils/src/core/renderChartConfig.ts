@@ -1409,7 +1409,7 @@ export function renderRawSqlChartConfig(
 ): ChSql {
   const displayType = chartConfig.displayType ?? DisplayType.Table;
 
-  const sqlWithMacrosReplaced = replaceMacros(chartConfig.sqlTemplate);
+  const sqlWithMacrosReplaced = replaceMacros(chartConfig);
 
   // eslint-disable-next-line security/detect-object-injection
   const queryParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
