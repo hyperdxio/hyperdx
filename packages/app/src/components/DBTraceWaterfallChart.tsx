@@ -20,9 +20,7 @@ import {
   Code,
   Divider,
   Group,
-  Kbd,
   Text,
-  Tooltip,
 } from '@mantine/core';
 import {
   IconChevronDown,
@@ -688,18 +686,26 @@ export function DBTraceWaterfallChartContainer({
 
       setCollapsedIds(prev => {
         const newSet = new Set(prev);
-        if (newSet.has(id)) {
+        const isCollapsed = newSet.has(id);
+
+        if (isCollapsed) {
           newSet.delete(id);
         } else {
           newSet.add(id);
-          if (event.altKey) {
-            const node = nodesMap.get(id);
+        }
 
-            if (node?.children?.length) {
-              getDescendantIds(node).forEach(descId => newSet.add(descId));
+        if (event.altKey) {
+          const node = nodesMap.get(id);
+          if (node?.children?.length) {
+            const descendantIds = getDescendantIds(node);
+            if (isCollapsed) {
+              descendantIds.forEach(descId => newSet.delete(descId));
+            } else {
+              descendantIds.forEach(descId => newSet.add(descId));
             }
           }
         }
+
         return newSet;
       });
     },
@@ -811,41 +817,30 @@ export function DBTraceWaterfallChartContainer({
                   ></div>
                 ))}
 
-                <Tooltip
-                  disabled={!result.children.length}
-                  openDelay={500}
-                  label={
-                    <>
-                      <Kbd>⌥/Alt</Kbd> + <Kbd>click</Kbd> to collapse children
-                    </>
+                <Center
+                  style={{
+                    opacity: result.children.length > 0 ? 1 : 0,
+                  }}
+                  onClick={
+                    result.children.length > 0
+                      ? e => {
+                          toggleCollapse(id, e);
+                        }
+                      : undefined
                   }
-                  withArrow
                 >
-                  <Center
-                    style={{
-                      opacity: result.children.length > 0 ? 1 : 0,
-                    }}
-                    onClick={
-                      result.children.length > 0
-                        ? e => {
-                            toggleCollapse(id, e);
-                          }
-                        : undefined
-                    }
-                  >
-                    {collapsedIds.has(id) ? (
-                      <IconChevronRight
-                        size={16}
-                        className="me-1 text-muted-hover"
-                      />
-                    ) : (
-                      <IconChevronDown
-                        size={16}
-                        className="me-1 text-muted-hover"
-                      />
-                    )}{' '}
-                  </Center>
-                </Tooltip>
+                  {collapsedIds.has(id) ? (
+                    <IconChevronRight
+                      size={16}
+                      className="me-1 text-muted-hover"
+                    />
+                  ) : (
+                    <IconChevronDown
+                      size={16}
+                      className="me-1 text-muted-hover"
+                    />
+                  )}{' '}
+                </Center>
 
                 {!isFilterActive && (
                   <Text span size="xxs" me="xs" pt="2px">
