@@ -1,5 +1,5 @@
 ---
-"@hyperdx/app": patch
+"@hyperdx/api": patch
 ---
 
 fix: query settings length validation
