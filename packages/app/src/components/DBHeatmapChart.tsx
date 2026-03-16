@@ -139,17 +139,18 @@ function heatmapPaths(opts: {
   };
 }
 
-// Viridis-inspired palette — fully opaque for dark and light mode compatibility
+// Theme-neutral palette — the lowest bucket must be visible on both dark
+// and light backgrounds.  Viridis dark purple (#440154) disappeared against
+// dark themes.  This warm ramp starts at a medium-bright blue that has
+// enough luminance for dark bg and enough saturation for light bg.
 const palette = [
-  '#440154', // dark purple (low)
-  '#3e4989',
-  '#31688e',
-  '#26828e',
-  '#1f9e89',
-  '#35b779',
-  '#6ece58',
-  '#b5de2b',
-  '#fde725', // yellow (high)
+  '#2a7fb5', // steel blue (low)
+  '#3da88e', // teal
+  '#6cba5f', // green
+  '#b5cc3a', // lime
+  '#e8b418', // amber
+  '#f07c12', // orange
+  '#e8423f', // warm red (high)
 ];
 
 const countsToFills = (u: uPlot, seriesIdx: number) => {
