@@ -4,10 +4,13 @@ import {
   TableConnection,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
+import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
 import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Box, Button, Group, Stack, Text } from '@mantine/core';
 
 import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
+import { type SQLCompletion } from '@/components/SQLEditor/utils';
 import useResizable from '@/hooks/useResizable';
 import { useSources } from '@/source';
 import { getAllMetricTables } from '@/utils';
@@ -50,6 +53,29 @@ export default function RawSqlChartEditor({
   }, [connection, setValue, source, sources]);
 
   const placeholderSQl = SQL_PLACEHOLDERS[displayType ?? DisplayType.Table];
+
+  const additionalCompletions: SQLCompletion[] = useMemo(() => {
+    const effectiveDisplayType = displayType ?? DisplayType.Table;
+    const params = QUERY_PARAMS_BY_DISPLAY_TYPE[effectiveDisplayType];
+
+    const paramCompletions: SQLCompletion[] = params.map(({ name, type }) => ({
+      label: `{${name}:${type}}`,
+      apply: `{${name}:${type}`, // Omit the closing } because the editor will have added it when the user types {
+      detail: 'param',
+      type: 'variable',
+    }));
+
+    const macroCompletions: SQLCompletion[] = MACRO_SUGGESTIONS.map(
+      ({ name, argCount }) => ({
+        label: `$__${name}`,
+        apply: argCount > 0 ? `$__${name}(` : `$__${name}`,
+        detail: 'macro',
+        type: 'function',
+      }),
+    );
+
+    return [...paramCompletions, ...macroCompletions];
+  }, [displayType]);
 
   const tableConnections: TableConnection[] = useMemo(() => {
     if (!sources) return [];
@@ -97,6 +123,7 @@ export default function RawSqlChartEditor({
           enableLineWrapping
           placeholder={placeholderSQl}
           tableConnections={tableConnections}
+          additionalCompletions={additionalCompletions}
         />
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
