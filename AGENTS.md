@@ -107,7 +107,11 @@ make ci-unit        # Unit tests across all packages
 **E2E tests (Playwright):**
 
 ```bash
-./scripts/test-e2e.sh                                       # All E2E
+# First-time setup (install Chromium browser):
+cd packages/app && yarn playwright install chromium
+
+# Run tests:
+./scripts/test-e2e.sh                                       # All E2E (full-stack)
 ./scripts/test-e2e.sh --quiet <file>                        # Single file
 ./scripts/test-e2e.sh --quiet <file> --grep "\"<pattern>\""  # Pattern match
 ```
