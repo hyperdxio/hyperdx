@@ -27,7 +27,6 @@ import {
 } from '@tabler/icons-react';
 
 import { IS_LOCAL_MODE } from '@/config';
-import InstallInstructionModal from '@/InstallInstructionsModal';
 
 import styles from './AppNav.module.scss';
 
@@ -168,19 +167,8 @@ export const AppNavUserMenu = ({
   );
 };
 
-export const AppNavHelpMenu = ({
-  version,
-  onAddDataClick,
-}: {
-  version?: string;
-  onAddDataClick?: () => void;
-}) => {
+export const AppNavHelpMenu = ({ version }: { version?: string }) => {
   const { isCollapsed } = React.useContext(AppNavContext);
-
-  const [
-    installModalOpen,
-    { close: closeInstallModal, open: _openInstallModal },
-  ] = useDisclosure(false);
 
   return (
     <>
@@ -235,17 +223,16 @@ export const AppNavHelpMenu = ({
             <Menu.Item
               data-testid="setup-instructions-menu-item"
               leftSection={<IconBulb size={16} />}
-              onClick={onAddDataClick}
+              href="https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started"
+              component="a"
+              target="_blank"
+              rel="noopener noreferrer"
             >
               Setup Instructions
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
       </Paper>
-      <InstallInstructionModal
-        show={installModalOpen}
-        onHide={closeInstallModal}
-      />
     </>
   );
 };
