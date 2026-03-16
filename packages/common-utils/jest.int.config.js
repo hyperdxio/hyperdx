@@ -1,6 +1,6 @@
 /** @type {import('ts-jest/dist/types').InitialOptionsTsJest} */
 module.exports = {
-  setupFiles: ['dotenv/config'],
+  setupFiles: ['dotenv-expand/config'],
   preset: 'ts-jest',
   testEnvironment: 'node',
   setupFilesAfterEnv: ['<rootDir>/../jest.setup.ts'],
