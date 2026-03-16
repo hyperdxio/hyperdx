@@ -19,6 +19,7 @@ import {
   Group,
   Modal,
   Text,
+  useMantineColorScheme,
 } from '@mantine/core';
 import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { IconArrowsDiagonal } from '@tabler/icons-react';
@@ -139,63 +140,75 @@ function heatmapPaths(opts: {
   };
 }
 
-// Theme-neutral palette — the lowest bucket must be visible on both dark
-// and light backgrounds.  Viridis dark purple (#440154) disappeared against
-// dark themes.  This warm ramp starts at a medium-bright blue that has
-// enough luminance for dark bg and enough saturation for light bg.
-const palette = [
-  '#2a7fb5', // steel blue (low)
-  '#3da88e', // teal
-  '#6cba5f', // green
-  '#b5cc3a', // lime
-  '#e8b418', // amber
-  '#f07c12', // orange
-  '#e8423f', // warm red (high)
+// Theme-specific palettes.  Red is deliberately avoided at the high end so
+// it can be reserved for error overlays in the future.
+// Dark theme: starts at a luminant indigo visible on dark bg, ends at bright amber.
+// Light theme: starts at a saturated medium blue visible on white, ends at deep orange.
+const darkPalette = [
+  '#7b6cf6', // indigo (low)
+  '#5a9cf6', // sky blue
+  '#38c9a0', // teal
+  '#6cd44a', // green
+  '#c4d629', // lime
+  '#f0c528', // gold
+  '#f5a623', // amber (high)
+];
+const lightPalette = [
+  '#2a6fb5', // medium blue (low)
+  '#2a96a8', // teal
+  '#33a85e', // green
+  '#7db832', // lime
+  '#c4a820', // dark gold
+  '#e08a17', // orange
+  '#d46a12', // deep orange (high)
 ];
 
-const countsToFills = (u: uPlot, seriesIdx: number) => {
-  // mode 2 data format is not supported in types properly
-  const counts = u.data[seriesIdx][2] as unknown as number[];
-  const dlen = counts.length;
+function makeCountsToFills(colors: string[]) {
+  return (u: uPlot, seriesIdx: number) => {
+    // mode 2 data format is not supported in types properly
+    const counts = u.data[seriesIdx][2] as unknown as number[];
+    const dlen = counts.length;
 
-  // Collect non-zero counts and sort to find a robust normalization ceiling.
-  // Using p95 instead of max prevents a single hot cell from washing out the
-  // rest of the chart, while still preserving cross-column comparability.
-  const nonZero: number[] = [];
-  for (let i = 0; i < dlen; i++) {
-    if (counts[i] > 0) nonZero.push(counts[i]);
-  }
-  nonZero.sort((a, b) => a - b);
+    // Collect non-zero counts and sort to find a robust normalization ceiling.
+    // Using p95 instead of max prevents a single hot cell from washing out the
+    // rest of the chart, while still preserving cross-column comparability.
+    const nonZero: number[] = [];
+    for (let i = 0; i < dlen; i++) {
+      if (counts[i] > 0) nonZero.push(counts[i]);
+    }
+    nonZero.sort((a, b) => a - b);
 
-  const paletteSize = palette.length;
-  const indexedFills = Array(dlen);
+    const paletteSize = colors.length;
+    const indexedFills = Array(dlen);
 
-  if (nonZero.length === 0) {
-    indexedFills.fill(-1);
-    return indexedFills;
-  }
+    if (nonZero.length === 0) {
+      indexedFills.fill(-1);
+      return indexedFills;
+    }
 
-  const p95Idx = Math.floor(nonZero.length * 0.95);
-  const p95 = nonZero[p95Idx] ?? nonZero[nonZero.length - 1];
-  const sqrtCeiling = Math.sqrt(p95);
+    const p95Idx = Math.floor(nonZero.length * 0.95);
+    const p95 = nonZero[p95Idx] ?? nonZero[nonZero.length - 1];
+    const sqrtCeiling = Math.sqrt(p95);
 
-  for (let i = 0; i < dlen; i++) {
-    indexedFills[i] =
-      counts[i] === 0
-        ? -1
-        : Math.max(
-            Math.min(
-              paletteSize - 1,
-              Math.floor(
-                (Math.sqrt(counts[i]) / (sqrtCeiling || 1)) * (paletteSize - 1),
+    for (let i = 0; i < dlen; i++) {
+      indexedFills[i] =
+        counts[i] === 0
+          ? -1
+          : Math.max(
+              Math.min(
+                paletteSize - 1,
+                Math.floor(
+                  (Math.sqrt(counts[i]) / (sqrtCeiling || 1)) *
+                    (paletteSize - 1),
+                ),
               ),
-            ),
-            0,
-          );
-  }
+              0,
+            );
+    }
 
-  return indexedFills;
-};
+    return indexedFills;
+  };
+}
 
 const axis: uPlot.Axis = {
   stroke: 'rgba(102,102,102,1)', // color of the axis line
@@ -240,14 +253,8 @@ const opt: uPlot.Options = {
     {},
     {
       label: 'Latency',
-      paths: heatmapPaths({
-        disp: {
-          fill: {
-            lookup: palette,
-            values: countsToFills,
-          },
-        },
-      }),
+      // paths and fill colors are set dynamically per theme in the
+      // Heatmap component's useMemo — see buildSeriesForPalette().
       facets: [
         {
           scale: 'x',
@@ -262,6 +269,20 @@ const opt: uPlot.Options = {
     },
   ],
 };
+
+/** Build the series[1] overrides for a given palette. */
+function buildSeriesForPalette(colors: string[]): Partial<uPlot.Series> {
+  return {
+    paths: heatmapPaths({
+      disp: {
+        fill: {
+          lookup: colors,
+          values: makeCountsToFills(colors),
+        },
+      },
+    }),
+  };
+}
 
 type HeatmapChartConfig = {
   displayType: DisplayType.Heatmap;
@@ -283,7 +304,7 @@ type HeatmapChartConfig = {
   with?: BuilderChartConfigWithDateRange['with'];
 };
 
-function ColorLegend() {
+function ColorLegend({ colors }: { colors: string[] }) {
   return (
     <Flex align="center" gap={4} px="sm" pb={2}>
       <Text size="10px" c="dimmed">
@@ -299,7 +320,7 @@ function ColorLegend() {
           overflow: 'hidden',
         }}
       >
-        {palette.map((color, i) => (
+        {colors.map((color: string, i: number) => (
           <div key={i} style={{ flex: 1, background: color }} />
         ))}
       </div>
@@ -331,6 +352,9 @@ function HeatmapContainer({
 }) {
   const dateRange = config.dateRange;
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
+
+  const { colorScheme } = useMantineColorScheme();
+  const palette = colorScheme === 'light' ? lightPalette : darkPalette;
 
   const nBuckets = 80;
 
@@ -650,8 +674,9 @@ function HeatmapContainer({
                 : undefined
             }
             scaleType={scaleType}
+            palette={palette}
           />
-          <ColorLegend />
+          <ColorLegend colors={palette} />
         </>
       )}
     </ChartContainer>
@@ -764,11 +789,13 @@ function Heatmap({
   numberFormat,
   onFilter,
   scaleType = 'linear',
+  palette,
 }: {
   data: Mode2DataArray;
   numberFormat?: NumberFormat;
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
   scaleType?: HeatmapScaleType;
+  palette: string[];
 }) {
   const [selectingInfo, setSelectingInfo] = useState<
     | {
@@ -848,8 +875,10 @@ function Heatmap({
   );
 
   const options: uPlot.Options = useMemo(() => {
+    const themedSeries = buildSeriesForPalette(palette);
     return {
       ...opt,
+      series: [opt.series[0], { ...opt.series[1], ...themedSeries }],
       ...(opt != null && opt.axes != null
         ? {
             axes: [
@@ -991,7 +1020,7 @@ function Heatmap({
         },
       ],
     };
-  }, [width, height, tickFormatter, scaleType]);
+  }, [width, height, tickFormatter, scaleType, palette]);
 
   return (
     <div
