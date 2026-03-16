@@ -85,7 +85,11 @@ import useRowWhere, {
 } from '@/hooks/useRowWhere';
 import { useTableSearch } from '@/hooks/useTableSearch';
 import { useSource } from '@/source';
-import { UNDEFINED_WIDTH } from '@/tableUtils';
+import {
+  MIN_COLUMN_WIDTH,
+  MIN_LAST_COLUMN_WIDTH,
+  UNDEFINED_WIDTH,
+} from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import {
@@ -138,6 +142,24 @@ const getRowId = (row: Record<string, any>): string =>
 function retrieveColumnValue(column: string, row: Row): any {
   const accessor = ACCESSOR_MAP[column] ?? ACCESSOR_MAP.default;
   return accessor(row, column);
+}
+
+function getResolvedColumnSize(
+  column: string,
+  opts: {
+    aliasMap?: Record<string, string>;
+    columnTypeMap: Map<string, { _type: JSDataType | null }>;
+    logLevelColumn?: string;
+    columnSizeStorage: Record<string, number>;
+  },
+): number {
+  const columnId = opts.aliasMap?.[column] ? `"${column}"` : column;
+  const stored = opts.columnSizeStorage[columnId];
+  if (stored != null) return stored;
+  const jsType = opts.columnTypeMap.get(column)?._type;
+  if (jsType === JSDataType.Date) return 170;
+  if (column === opts.logLevelColumn) return 115;
+  return 160;
 }
 
 function inferLogLevelColumn(rows: Record<string, any>[]) {
@@ -442,6 +464,19 @@ export const RawLogTable = memo(
       [],
     );
 
+    const [containerWidth, setContainerWidth] = useState(0);
+    useEffect(() => {
+      if (!tableContainerRef) return;
+      setContainerWidth(tableContainerRef.clientWidth);
+      const observer = new ResizeObserver(entries => {
+        for (const entry of entries) {
+          setContainerWidth(entry.contentRect.width);
+        }
+      });
+      observer.observe(tableContainerRef);
+      return () => observer.disconnect();
+    }, [tableContainerRef]);
+
     // Get the alias map from the config so we resolve correct column ids
     const { data: aliasMap } = useAliasMapFromChartConfig(config);
 
@@ -486,6 +521,38 @@ export const RawLogTable = memo(
       debounceMs: 300,
     });
 
+    const columnSizeOpts = useMemo(
+      () => ({ aliasMap, columnTypeMap, logLevelColumn, columnSizeStorage }),
+      [aliasMap, columnTypeMap, logLevelColumn, columnSizeStorage],
+    );
+
+    const lastColumnWidth = useMemo(() => {
+      if (displayedColumns.length === 0) return MIN_LAST_COLUMN_WIDTH;
+
+      const lastCol = displayedColumns[displayedColumns.length - 1];
+      const lastColId = columnSizeOpts.aliasMap?.[lastCol]
+        ? `"${lastCol}"`
+        : lastCol;
+      const storedLast = columnSizeOpts.columnSizeStorage[lastColId];
+
+      if (storedLast != null) {
+        return Math.max(MIN_LAST_COLUMN_WIDTH, storedLast);
+      }
+
+      const expandWidth = showExpandButton ? 32 : 0;
+      const nonLastSum = displayedColumns
+        .slice(0, -1)
+        .reduce(
+          (total, column) =>
+            total + getResolvedColumnSize(column, columnSizeOpts),
+          0,
+        );
+      return Math.max(
+        MIN_LAST_COLUMN_WIDTH,
+        containerWidth - nonLastSum - expandWidth,
+      );
+    }, [displayedColumns, columnSizeOpts, showExpandButton, containerWidth]);
+
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
         ...(showExpandButton
@@ -500,7 +567,6 @@ export const RawLogTable = memo(
         ...(displayedColumns.map((column, i) => {
           const jsColumnType = columnTypeMap.get(column)?._type;
           const isDate = jsColumnType === JSDataType.Date;
-          const isMaybeSeverityText = column === logLevelColumn;
           return {
             meta: {
               column,
@@ -576,9 +642,8 @@ export const RawLogTable = memo(
             },
             size:
               i === displayedColumns.length - 1
-                ? UNDEFINED_WIDTH // last column is always whatever is left
-                : (columnSizeStorage[column] ??
-                  (isDate ? 170 : isMaybeSeverityText ? 115 : 160)),
+                ? lastColumnWidth
+                : getResolvedColumnSize(column, columnSizeOpts),
           };
         }) as ColumnDef<any>[]),
       ],
@@ -586,7 +651,7 @@ export const RawLogTable = memo(
         isUTC,
         highlightedLineId,
         displayedColumns,
-        columnSizeStorage,
+        columnSizeOpts,
         columnNameMap,
         columnTypeMap,
         logLevelColumn,
@@ -594,6 +659,7 @@ export const RawLogTable = memo(
         toggleRowExpansion,
         showExpandButton,
         aliasMap,
+        lastColumnWidth,
         tableSearch.searchQuery,
         tableSearch.matchIndices,
         tableSearch.currentMatchIndex,
@@ -651,6 +717,9 @@ export const RawLogTable = memo(
         state: {
           sorting: sortOrder ?? [],
         },
+        defaultColumn: {
+          minSize: MIN_COLUMN_WIDTH,
+        },
         enableColumnResizing: true,
         columnResizeMode: 'onChange' as ColumnResizeMode,
       } satisfies TableOptions<any>;
@@ -677,6 +746,24 @@ export const RawLogTable = memo(
     ]);
 
     const table = useReactTable(reactTableProps);
+
+    // Sum actual column widths to derive a pixel min-width for the table.
+    // This enables horizontal scrolling when the viewport is narrower than
+    // the total column widths.
+    const tableMinWidth = useMemo(() => {
+      const EXPAND_COLUMN_SIZE = 32;
+      const expandWidth = showExpandButton ? EXPAND_COLUMN_SIZE : 0;
+      return (
+        expandWidth +
+        displayedColumns.reduce((total, column, i) => {
+          const size = getResolvedColumnSize(column, columnSizeOpts);
+          if (i === displayedColumns.length - 1) {
+            return total + Math.max(MIN_LAST_COLUMN_WIDTH, size);
+          }
+          return total + size;
+        }, 0)
+      );
+    }, [displayedColumns, columnSizeOpts, showExpandButton]);
 
     const { rows: _rows } = table.getRowModel();
 
@@ -862,7 +949,7 @@ export const RawLogTable = memo(
           />
           <div
             data-testid="search-results-table"
-            className={cx('overflow-auto h-100 fs-8', styles.tableWrapper, {
+            className={cx(styles.tableWrapper, {
               [styles.muted]: variant === 'muted',
             })}
             onScroll={e => {
@@ -884,7 +971,11 @@ export const RawLogTable = memo(
                 config={config}
               />
             )}
-            <table className={cx('w-100', styles.table)} id={tableId}>
+            <table
+              className={styles.table}
+              style={{ minWidth: tableMinWidth }}
+              id={tableId}
+            >
               <thead className={styles.tableHead}>
                 {displayedColumns.length > 0 &&
                   table.getHeaderGroups().map(headerGroup => (
@@ -909,12 +1000,18 @@ export const RawLogTable = memo(
                                 : undefined
                             }
                             lastItemButtons={
-                              <Group gap={8} mr={8}>
+                              <Group
+                                gap={8}
+                                mr={8}
+                                wrap="nowrap"
+                                align="center"
+                              >
                                 {tableId &&
                                   Object.keys(columnSizeStorage).length > 0 && (
                                     <UnstyledButton
                                       onClick={() => setColumnSizeStorage({})}
                                       title="Reset Column Widths"
+                                      display="flex"
                                     >
                                       <MantineTooltip label="Reset Column Widths">
                                         <IconRotateClockwise size={16} />
@@ -926,6 +1023,7 @@ export const RawLogTable = memo(
                                     onClick={() => handleSqlModalOpen(true)}
                                     title="Show Generated SQL"
                                     tabIndex={0}
+                                    display="flex"
                                   >
                                     <MantineTooltip label="Show Generated SQL">
                                       <IconCode size={16} />
@@ -937,6 +1035,7 @@ export const RawLogTable = memo(
                                     setWrapLinesEnabled(prev => !prev)
                                   }
                                   title={`${wrapLinesEnabled ? 'Disable' : 'Enable'}  Wrap Lines`}
+                                  display="flex"
                                 >
                                   <MantineTooltip
                                     label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} Wrap Lines`}
@@ -964,6 +1063,7 @@ export const RawLogTable = memo(
                                   <UnstyledButton
                                     onClick={() => onSettingsClick()}
                                     title="Settings"
+                                    display="flex"
                                   >
                                     <MantineTooltip label="Settings">
                                       <IconSettings size={16} />
@@ -1049,12 +1149,16 @@ export const RawLogTable = memo(
                                     style={{
                                       width:
                                         columnSize === UNDEFINED_WIDTH
-                                          ? 'auto'
+                                          ? 0
                                           : `${columnSize}px`,
                                       flex:
                                         columnSize === UNDEFINED_WIDTH
-                                          ? '1'
+                                          ? '1 1 0'
                                           : 'none',
+                                      minWidth:
+                                        columnSize === UNDEFINED_WIDTH
+                                          ? MIN_LAST_COLUMN_WIDTH
+                                          : undefined,
                                     }}
                                   >
                                     <div className={styles.fieldTextContainer}>
