@@ -1,19 +1,13 @@
 import cx from 'classnames';
-import { Button, Group, Text } from '@mantine/core';
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconGripVertical,
-  IconX,
-} from '@tabler/icons-react';
+import { Group, Text, UnstyledButton } from '@mantine/core';
+import { IconArrowDown, IconArrowUp, IconX } from '@tabler/icons-react';
 import { flexRender, Header } from '@tanstack/react-table';
 
 import { UNDEFINED_WIDTH } from '@/tableUtils';
 
 import { DBRowTableIconButton } from './DBRowTableIconButton';
 
-import logTableStyles from '../../../styles/LogTable.module.scss';
-import styles from '../Table.module.scss';
+import headerStyles from './TableHeader.module.scss';
 
 export default function TableHeader({
   isLast,
@@ -30,13 +24,12 @@ export default function TableHeader({
   return (
     <th
       className={cx('overflow-hidden', {
-        [logTableStyles.headerCellWithAction]: !!onRemoveColumn,
+        [headerStyles.headerCellWithAction]: !!onRemoveColumn,
       })}
       key={header.id}
       colSpan={header.colSpan}
       style={{
         width: header.getSize() === UNDEFINED_WIDTH ? '100%' : header.getSize(),
-        // Allow unknown width columns to shrink to 0
         minWidth: header.getSize() === UNDEFINED_WIDTH ? 0 : header.getSize(),
         textAlign: 'left',
       }}
@@ -47,14 +40,10 @@ export default function TableHeader({
             {flexRender(header.column.columnDef.header, header.getContext())}
           </Text>
         ) : (
-          <Button
-            size="xxs"
-            p={1}
-            variant="subtle"
-            color="gray"
+          <UnstyledButton
+            className={headerStyles.sortButton}
             onClick={header.column.getToggleSortingHandler()}
             flex="1"
-            justify="space-between"
             data-testid="raw-log-table-sort-button"
           >
             <>
@@ -86,12 +75,12 @@ export default function TableHeader({
                 </div>
               )}
             </>
-          </Button>
+          </UnstyledButton>
         )}
 
         <Group gap={0} wrap="nowrap" align="center">
           {onRemoveColumn && (
-            <div className={logTableStyles.headerRemoveButton}>
+            <div className={headerStyles.headerRemoveButton}>
               <DBRowTableIconButton
                 onClick={onRemoveColumn}
                 title="Remove column"
@@ -102,22 +91,17 @@ export default function TableHeader({
               </DBRowTableIconButton>
             </div>
           )}
-          {header.column.getCanResize() && !isLast && (
+          {isLast && (
+            <Group gap={2} wrap="nowrap" align="center">
+              {lastItemButtons}
+            </Group>
+          )}
+          {header.column.getCanResize() && (
             <div
               onMouseDown={header.getResizeHandler()}
               onTouchStart={header.getResizeHandler()}
-              className={cx(
-                `resizer ${styles.cursorColResize}`,
-                header.column.getIsResizing() && 'isResizing',
-              )}
-            >
-              <IconGripVertical size={12} />
-            </div>
-          )}
-          {isLast && (
-            <Group gap={2} wrap="nowrap">
-              {lastItemButtons}
-            </Group>
+              className={headerStyles.resizer}
+            />
           )}
         </Group>
       </Group>

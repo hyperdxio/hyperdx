@@ -10,6 +10,7 @@ import {
   AlertIntervalSchema,
   AlertSource,
   AlertThresholdType,
+  Filter,
   scheduleStartAtSchema,
   SearchCondition,
   SearchConditionLanguage,
@@ -75,6 +76,7 @@ const AlertForm = ({
   sourceId,
   where,
   whereLanguage,
+  filters,
   select,
   defaultValues,
   loading,
@@ -87,6 +89,7 @@ const AlertForm = ({
   sourceId?: string | null;
   where?: SearchCondition | null;
   whereLanguage?: SearchConditionLanguage | null;
+  filters?: Filter[] | null;
   select?: string | null;
   defaultValues?: null | AlertWithCreatedBy;
   loading?: boolean;
@@ -247,6 +250,7 @@ const AlertForm = ({
                 source={source}
                 where={where}
                 whereLanguage={whereLanguage}
+                filters={filters}
                 select={select}
                 interval={interval}
                 groupBy={groupByValue}
@@ -490,6 +494,7 @@ export const DBSearchPageAlertModal = ({
           sourceId={searchedConfig?.source}
           where={searchedConfig?.where}
           whereLanguage={searchedConfig?.whereLanguage}
+          filters={searchedConfig?.filters}
           select={searchedConfig?.select}
           defaultValues={
             activeIndex === 'stage'
