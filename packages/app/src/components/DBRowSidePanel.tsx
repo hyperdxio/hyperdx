@@ -491,7 +491,12 @@ export default function DBRowSidePanelErrorBoundary({
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
-  const initialWidth = 100;
+  const isTraceSource = source.kind === 'trace';
+  const initialWidth = isTraceSource
+    ? 100
+    : typeof window !== 'undefined'
+      ? (600 / window.innerWidth) * 100
+      : 35;
   const { size, startResize } = useResizable(initialWidth);
 
   // Keep track of sub-drawers so we can disable closing this root drawer
@@ -524,7 +529,7 @@ export default function DBRowSidePanelErrorBoundary({
     <Drawer
       opened={rowId != null}
       withCloseButton={false}
-      withOverlay={!isNestedPanel}
+      withOverlay={false}
       onClose={() => {
         if (!subDrawerOpen) {
           _onClose();
