@@ -59,8 +59,10 @@ function ParamSnippet({
 
 export function RawSqlChartInstructions({
   displayType,
+  isDashboardForm,
 }: {
   displayType: DisplayType;
+  isDashboardForm: boolean;
 }) {
   const [helpOpened, setHelpOpened] = useAtom(helpOpenedAtom);
   const toggleHelp = () => setHelpOpened(v => !v);
@@ -110,7 +112,7 @@ export function RawSqlChartInstructions({
               <List.Item>
                 <ParamSnippet
                   value={`$__filters`}
-                  description="Applies the selected dashboard filter conditions to the chart"
+                  description="Applies the selected dashboard filter conditions to the chart (Source must be selected)"
                 />
               </List.Item>
               <List.Item>

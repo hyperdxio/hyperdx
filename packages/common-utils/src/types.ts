@@ -579,11 +579,16 @@ const RawSqlBaseChartConfigSchema = SharedChartDisplaySettingsSchema.extend({
   configType: z.literal('sql'),
   sqlTemplate: z.string(),
   connection: z.string(),
+  source: z.string().optional(),
 });
 
 /** Schema describing Raw SQL chart configs with runtime-only fields */
 const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
   filters: z.array(FilterSchema).optional(),
+  from: z
+    .object({ databaseName: z.string(), tableName: z.string() })
+    .optional(),
+  implicitColumnExpression: z.string().optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;

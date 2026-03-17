@@ -12,6 +12,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { formatRelative } from 'date-fns';
 import produce from 'immer';
+import { pick } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
@@ -204,14 +205,30 @@ const Tile = forwardRef(
     >(undefined);
 
     const { data: source } = useSource({
-      id: isBuilderSavedChartConfig(chart.config)
-        ? chart.config.source
-        : undefined,
+      id: chart.config.source,
     });
 
     useEffect(() => {
       if (isRawSqlSavedChartConfig(chart.config)) {
-        setQueriedConfig({ ...chart.config, dateRange, granularity, filters });
+        // Some raw SQL charts don't have a source
+        if (!chart.config.source) {
+          setQueriedConfig({
+            ...chart.config,
+            dateRange,
+            granularity,
+            filters,
+          });
+        } else if (source != null) {
+          setQueriedConfig({
+            ...chart.config,
+            // Populate these two columns from the source to support Lucene-based filters
+            ...pick(source, ['implicitColumnExpression', 'from']),
+            dateRange,
+            granularity,
+            filters,
+          });
+        }
+
         return;
       }
 
@@ -274,27 +291,34 @@ const Tile = forwardRef(
       return tooltip;
     }, [alert]);
 
-    const skippingLuceneFilterIcon = useMemo(() => {
-      const isSkippingLuceneGlobalFilter =
-        !!queriedConfig &&
-        isRawSqlChartConfig(queriedConfig) &&
-        queriedConfig.sqlTemplate.includes('$__filters') &&
-        queriedConfig.filters?.some(
-          f => f.type === 'lucene' && !!f.condition.trim(),
-        );
+    const filterWarning = useMemo(() => {
+      const doFiltersExist = !!filters?.filter(
+        f => (f.type === 'lucene' || f.type === 'sql') && f.condition.trim(),
+      )?.length;
 
-      if (!isSkippingLuceneGlobalFilter) return null;
+      if (
+        !doFiltersExist ||
+        !queriedConfig ||
+        !isRawSqlChartConfig(queriedConfig)
+      )
+        return null;
+
+      const isMissingSourceForFiltering = !queriedConfig.source;
+      const isMissingFiltersMacro =
+        !queriedConfig.sqlTemplate.includes('$__filters');
+
+      if (!isMissingSourceForFiltering && !isMissingFiltersMacro) return null;
+
+      const message = isMissingFiltersMacro
+        ? 'Filters are not applied because the SQL does not include the required $__filters macro'
+        : 'Filters are not applied because no Source is set for this chart';
 
       return (
-        <Tooltip
-          multiline
-          maw={500}
-          label="Lucene-based filter cannot be applied to this SQL-based chart"
-        >
+        <Tooltip multiline maw={500} label={message} key="filter-warning">
           <IconZoomExclamation size={16} color="var(--color-text-danger)" />
         </Tooltip>
       );
-    }, [queriedConfig]);
+    }, [filters, queriedConfig]);
 
     const hoverToolbar = useMemo(() => {
       return (
@@ -394,8 +418,8 @@ const Tile = forwardRef(
     const renderChartContent = useCallback(
       (hideToolbar: boolean = false, isFullscreenView: boolean = false) => {
         const toolbar = hideToolbar
-          ? [skippingLuceneFilterIcon]
-          : [hoverToolbar, skippingLuceneFilterIcon];
+          ? [filterWarning]
+          : [hoverToolbar, filterWarning];
         const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
 
         // Markdown charts may not have queriedConfig, if config.source is not set
@@ -416,11 +440,7 @@ const Tile = forwardRef(
                 key={`${keyPrefix}-${chart.id}`}
                 title={title}
                 toolbarPrefix={toolbar}
-                sourceId={
-                  isBuilderSavedChartConfig(chart.config)
-                    ? chart.config.source
-                    : undefined
-                }
+                sourceId={chart.config.source}
                 showDisplaySwitcher={true}
                 config={queriedConfig}
                 onTimeRangeSelect={onTimeRangeSelect}
@@ -530,7 +550,7 @@ const Tile = forwardRef(
         onUpdateChart,
         source,
         dateRange,
-        skippingLuceneFilterIcon,
+        filterWarning,
       ],
     );
 
@@ -654,6 +674,7 @@ const EditTileModal = ({
             }}
             onClose={handleClose}
             onDirtyChange={setHasUnsavedChanges}
+            isDashboardForm
           />
         </ZIndexContext.Provider>
       )}

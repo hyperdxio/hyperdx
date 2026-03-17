@@ -280,7 +280,7 @@ export function useQueriedChartConfig(
     });
 
   const { data: source, isLoading: isSourceLoading } = useSource({
-    id: builderConfig?.source,
+    id: config.source,
   });
 
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
@@ -374,7 +374,7 @@ export function useRenderedSqlChartConfig(
     });
 
   const { data: source, isLoading: isSourceLoading } = useSource({
-    id: builderConfig?.source,
+    id: config.source,
   });
 
   const query = useQuery({

@@ -1687,6 +1687,8 @@ describe('renderChartConfig', () => {
             'SELECT * FROM logs WHERE $__timeFilter(ts) AND $__filters',
           connection: 'conn-1',
           dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: 'logs' },
           filters: [
             { type: 'sql', condition: "ServiceName = 'api'" },
             { type: 'sql_ast', operator: '>', left: 'duration', right: '100' },
@@ -1696,7 +1698,7 @@ describe('renderChartConfig', () => {
         undefined,
       );
       expect(result.sql).toContain(
-        "AND (ServiceName = 'api') AND (duration > 100)",
+        "AND ((ServiceName = 'api') AND (duration > 100))",
       );
     });
 
@@ -1707,6 +1709,94 @@ describe('renderChartConfig', () => {
           sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
           connection: 'conn-1',
           dateRange: [start, end],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE (1=1 /** no filters applied */)',
+      );
+    });
+
+    it('replaces $__filters with 1 = 1 when source and from are defined but filters is empty', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: 'logs' },
+          filters: [],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        'SELECT * FROM logs WHERE (1=1 /** no filters applied */)',
+      );
+    });
+
+    it('renders lucene filters to SQL in $__filters when source is specified', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: 'logs' },
+          implicitColumnExpression: 'Body',
+          filters: [{ type: 'lucene', condition: 'ServiceName:api' }],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        "SELECT * FROM logs WHERE (((ServiceName ILIKE '%api%')))",
+      );
+    });
+
+    it('renders mixed lucene and sql filters in $__filters', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: 'logs' },
+          implicitColumnExpression: 'Body',
+          filters: [
+            { type: 'lucene', condition: 'ServiceName:api' },
+            { type: 'sql', condition: 'duration > 100' },
+          ],
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        "SELECT * FROM logs WHERE (((ServiceName ILIKE '%api%')) AND (duration > 100))",
+      );
+    });
+
+    it('skips filters without source metadata (no from)', async () => {
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          filters: [
+            { type: 'lucene', condition: 'ServiceName:api' },
+            { type: 'sql', condition: 'duration > 100' },
+          ],
         },
         mockMetadata,
         undefined,

@@ -542,6 +542,7 @@ export default function EditTimeChartForm({
   onDirtyChange,
   'data-testid': dataTestId,
   submitRef,
+  isDashboardForm = false,
 }: {
   dashboardId?: string;
   chartConfig: SavedChartConfig;
@@ -557,6 +558,7 @@ export default function EditTimeChartForm({
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   'data-testid'?: string;
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
+  isDashboardForm?: boolean;
 }) {
   const formValue: ChartEditorFormState = useMemo(
     () => convertSavedChartConfigToFormState(chartConfig),
@@ -1155,6 +1157,7 @@ export default function EditTimeChartForm({
             control={control}
             setValue={setValue}
             onOpenDisplaySettings={openDisplaySettings}
+            isDashboardForm={isDashboardForm}
           />
         ) : (
           <>

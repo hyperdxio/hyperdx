@@ -1,6 +1,5 @@
 import { splitAndTrimWithBracket } from './core/utils';
 import { renderQueryParam } from './rawSqlParams';
-import type { Filter, RawSqlChartConfig } from './types';
 
 function expectArgs(macroName: string, args: string[], expected: number) {
   if (args.length !== expected) {
@@ -124,27 +123,6 @@ const MACROS: Macro[] = [
   },
 ];
 
-/** Renders a Filter[] array into a raw SQL condition string */
-export function renderFiltersToSql(filters: Filter[]): string {
-  const conditions = filters
-    .map(filter => {
-      if (filter.type === 'sql_ast') {
-        return `(${filter.left} ${filter.operator} ${filter.right})`;
-      } else if (filter.type === 'sql') {
-        return filter.condition ? `(${filter.condition})` : '';
-      }
-      // lucene filters are not supported in raw SQL charts
-      return '';
-    })
-    .filter(Boolean);
-
-  return conditions.join(' AND ') || '(1=1 /** no filters applied */)';
-}
-
-export type MacroContext = {
-  filtersSQL?: string;
-};
-
 /** Macro metadata for autocomplete suggestions */
 export const MACRO_SUGGESTIONS = [
   ...MACROS.map(({ name, argCount }) => ({ name, argCount })),
@@ -206,13 +184,18 @@ function findMacros(input: string, name: string): MacroMatch[] {
   return matches;
 }
 
-export function replaceMacros(chartConfig: RawSqlChartConfig): string {
+const NO_FILTERS = '(1=1 /** no filters applied */)';
+
+export function replaceMacros(
+  sqlTemplate: string,
+  filtersSQL?: string,
+): string {
   const allMacros: Macro[] = [
     ...MACROS,
     {
       name: 'filters',
       argCount: 0,
-      replace: () => renderFiltersToSql(chartConfig.filters ?? []),
+      replace: () => filtersSQL || NO_FILTERS,
     },
   ];
 
@@ -220,7 +203,7 @@ export function replaceMacros(chartConfig: RawSqlChartConfig): string {
     (m1, m2) => m2.name.length - m1.name.length,
   );
 
-  let sql = chartConfig.sqlTemplate;
+  let sql = sqlTemplate;
   for (const macro of sortedMacros) {
     const matches = findMacros(sql, macro.name);
 
