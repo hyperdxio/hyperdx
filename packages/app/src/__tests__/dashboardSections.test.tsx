@@ -1,12 +1,12 @@
 import {
+  DashboardContainerSchema,
   DashboardSchema,
-  DashboardSectionSchema,
   TileSchema,
 } from '@hyperdx/common-utils/dist/types';
 
-describe('DashboardSection schema', () => {
+describe('DashboardContainer schema', () => {
   it('validates a valid section', () => {
-    const result = DashboardSectionSchema.safeParse({
+    const result = DashboardContainerSchema.safeParse({
       id: 'section-1',
       title: 'Infrastructure',
       collapsed: false,
@@ -15,7 +15,7 @@ describe('DashboardSection schema', () => {
   });
 
   it('validates a collapsed section', () => {
-    const result = DashboardSectionSchema.safeParse({
+    const result = DashboardContainerSchema.safeParse({
       id: 'section-2',
       title: 'Database Metrics',
       collapsed: true,
@@ -24,7 +24,7 @@ describe('DashboardSection schema', () => {
   });
 
   it('rejects a section missing required fields', () => {
-    const result = DashboardSectionSchema.safeParse({
+    const result = DashboardContainerSchema.safeParse({
       id: 'section-3',
       // missing title and collapsed
     });
@@ -33,14 +33,14 @@ describe('DashboardSection schema', () => {
 
   it('rejects a section with empty id or title', () => {
     expect(
-      DashboardSectionSchema.safeParse({
+      DashboardContainerSchema.safeParse({
         id: '',
         title: 'Valid',
         collapsed: false,
       }).success,
     ).toBe(false);
     expect(
-      DashboardSectionSchema.safeParse({
+      DashboardContainerSchema.safeParse({
         id: 'valid',
         title: '',
         collapsed: false,
@@ -49,7 +49,7 @@ describe('DashboardSection schema', () => {
   });
 });
 
-describe('Tile schema with sectionId', () => {
+describe('Tile schema with containerId', () => {
   const baseTile = {
     id: 'tile-1',
     x: 0,
@@ -70,22 +70,22 @@ describe('Tile schema with sectionId', () => {
     },
   };
 
-  it('validates a tile without sectionId (backward compatible)', () => {
+  it('validates a tile without containerId (backward compatible)', () => {
     const result = TileSchema.safeParse(baseTile);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.sectionId).toBeUndefined();
+      expect(result.data.containerId).toBeUndefined();
     }
   });
 
-  it('validates a tile with sectionId', () => {
+  it('validates a tile with containerId', () => {
     const result = TileSchema.safeParse({
       ...baseTile,
-      sectionId: 'section-1',
+      containerId: 'section-1',
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.sectionId).toBe('section-1');
+      expect(result.data.containerId).toBe('section-1');
     }
   });
 });
@@ -102,25 +102,25 @@ describe('Dashboard schema with sections', () => {
     const result = DashboardSchema.safeParse(baseDashboard);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.sections).toBeUndefined();
+      expect(result.data.containers).toBeUndefined();
     }
   });
 
   it('validates a dashboard with empty sections array', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
-      sections: [],
+      containers: [],
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.sections).toEqual([]);
+      expect(result.data.containers).toEqual([]);
     }
   });
 
   it('rejects duplicate section IDs', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
-      sections: [
+      containers: [
         { id: 's1', title: 'Section A', collapsed: false },
         { id: 's1', title: 'Section B', collapsed: true },
       ],
@@ -131,16 +131,16 @@ describe('Dashboard schema with sections', () => {
   it('validates a dashboard with sections', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
-      sections: [
+      containers: [
         { id: 's1', title: 'Infrastructure', collapsed: false },
         { id: 's2', title: 'Application', collapsed: true },
       ],
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.sections).toHaveLength(2);
-      expect(result.data.sections![0].collapsed).toBe(false);
-      expect(result.data.sections![1].collapsed).toBe(true);
+      expect(result.data.containers).toHaveLength(2);
+      expect(result.data.containers![0].collapsed).toBe(false);
+      expect(result.data.containers![1].collapsed).toBe(true);
     }
   });
 
@@ -151,7 +151,7 @@ describe('Dashboard schema with sections', () => {
       y: 0,
       w: 8,
       h: 10,
-      sectionId: 's1',
+      containerId: 's1',
       config: {
         source: 'source-1',
         select: [
@@ -169,19 +169,19 @@ describe('Dashboard schema with sections', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
       tiles: [tile],
-      sections: [{ id: 's1', title: 'Infrastructure', collapsed: false }],
+      containers: [{ id: 's1', title: 'Infrastructure', collapsed: false }],
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.tiles[0].sectionId).toBe('s1');
-      expect(result.data.sections![0].title).toBe('Infrastructure');
+      expect(result.data.tiles[0].containerId).toBe('s1');
+      expect(result.data.containers![0].title).toBe('Infrastructure');
     }
   });
 });
 
 describe('section tile grouping logic', () => {
   // Test the grouping logic used in DBDashboardPage
-  type SimpleTile = { id: string; sectionId?: string };
+  type SimpleTile = { id: string; containerId?: string };
   type SimpleSection = { id: string; title: string; collapsed: boolean };
 
   function groupTilesBySection(tiles: SimpleTile[], sections: SimpleSection[]) {
@@ -189,12 +189,12 @@ describe('section tile grouping logic', () => {
     for (const section of sections) {
       bySectionId.set(
         section.id,
-        tiles.filter(t => t.sectionId === section.id),
+        tiles.filter(t => t.containerId === section.id),
       );
     }
-    // Orphaned tiles (sectionId not matching any section) fall back to ungrouped
+    // Orphaned tiles (containerId not matching any section) fall back to ungrouped
     const ungrouped = tiles.filter(
-      t => !t.sectionId || !bySectionId.has(t.sectionId),
+      t => !t.containerId || !bySectionId.has(t.containerId),
     );
     return { ungrouped, bySectionId };
   }
@@ -208,9 +208,9 @@ describe('section tile grouping logic', () => {
 
   it('groups tiles by section correctly', () => {
     const tiles: SimpleTile[] = [
-      { id: 'a', sectionId: 's1' },
-      { id: 'b', sectionId: 's2' },
-      { id: 'c', sectionId: 's1' },
+      { id: 'a', containerId: 's1' },
+      { id: 'b', containerId: 's2' },
+      { id: 'c', containerId: 's1' },
       { id: 'd' }, // ungrouped
     ];
     const sections: SimpleSection[] = [
@@ -225,7 +225,7 @@ describe('section tile grouping logic', () => {
   });
 
   it('handles sections with no tiles', () => {
-    const tiles: SimpleTile[] = [{ id: 'a', sectionId: 's1' }];
+    const tiles: SimpleTile[] = [{ id: 'a', containerId: 's1' }];
     const sections: SimpleSection[] = [
       { id: 's1', title: 'Has tiles', collapsed: false },
       { id: 's2', title: 'Empty', collapsed: false },
@@ -237,8 +237,8 @@ describe('section tile grouping logic', () => {
 
   it('filters visible tiles correctly for lazy loading', () => {
     const tiles: SimpleTile[] = [
-      { id: 'a', sectionId: 's1' },
-      { id: 'b', sectionId: 's2' },
+      { id: 'a', containerId: 's1' },
+      { id: 'b', containerId: 's2' },
       { id: 'c' },
     ];
     const sections: SimpleSection[] = [
@@ -250,7 +250,7 @@ describe('section tile grouping logic', () => {
       sections.filter(s => s.collapsed).map(s => s.id),
     );
     const visibleTiles = tiles.filter(
-      t => !t.sectionId || !collapsedIds.has(t.sectionId),
+      t => !t.containerId || !collapsedIds.has(t.containerId),
     );
 
     expect(visibleTiles).toHaveLength(2);
@@ -258,10 +258,10 @@ describe('section tile grouping logic', () => {
     // Tile 'b' is in collapsed section s2 and should not be rendered
   });
 
-  it('treats tiles with non-existent sectionId as ungrouped', () => {
+  it('treats tiles with non-existent containerId as ungrouped', () => {
     const tiles: SimpleTile[] = [
-      { id: 'a', sectionId: 's1' },
-      { id: 'b', sectionId: 'deleted-section' },
+      { id: 'a', containerId: 's1' },
+      { id: 'b', containerId: 'deleted-section' },
       { id: 'c' },
     ];
     const sections: SimpleSection[] = [
@@ -276,51 +276,51 @@ describe('section tile grouping logic', () => {
 });
 
 describe('section authoring operations', () => {
-  type SimpleTile = { id: string; sectionId?: string };
+  type SimpleTile = { id: string; containerId?: string };
   type SimpleSection = { id: string; title: string; collapsed: boolean };
   type SimpleDashboard = {
     tiles: SimpleTile[];
-    sections?: SimpleSection[];
+    containers?: SimpleSection[];
   };
 
   function addSection(dashboard: SimpleDashboard, section: SimpleSection) {
-    const sections = [...(dashboard.sections ?? []), section];
-    return { ...dashboard, sections };
+    const containers = [...(dashboard.containers ?? []), section];
+    return { ...dashboard, containers };
   }
 
   function renameSection(
     dashboard: SimpleDashboard,
-    sectionId: string,
+    containerId: string,
     newTitle: string,
   ) {
     const trimmed = newTitle.trim();
     if (!trimmed) return dashboard;
     return {
       ...dashboard,
-      sections: dashboard.sections?.map(s =>
-        s.id === sectionId ? { ...s, title: trimmed } : s,
+      containers: dashboard.containers?.map(s =>
+        s.id === containerId ? { ...s, title: trimmed } : s,
       ),
     };
   }
 
-  function deleteSection(dashboard: SimpleDashboard, sectionId: string) {
+  function deleteSection(dashboard: SimpleDashboard, containerId: string) {
     return {
       ...dashboard,
-      sections: dashboard.sections?.filter(s => s.id !== sectionId),
+      containers: dashboard.containers?.filter(s => s.id !== containerId),
       tiles: dashboard.tiles.map(t =>
-        t.sectionId === sectionId ? { ...t, sectionId: undefined } : t,
+        t.containerId === containerId ? { ...t, containerId: undefined } : t,
       ),
     };
   }
 
   function toggleSectionCollapsed(
     dashboard: SimpleDashboard,
-    sectionId: string,
+    containerId: string,
   ) {
     return {
       ...dashboard,
-      sections: dashboard.sections?.map(s =>
-        s.id === sectionId ? { ...s, collapsed: !s.collapsed } : s,
+      containers: dashboard.containers?.map(s =>
+        s.id === containerId ? { ...s, collapsed: !s.collapsed } : s,
       ),
     };
   }
@@ -328,12 +328,12 @@ describe('section authoring operations', () => {
   function moveTileToSection(
     dashboard: SimpleDashboard,
     tileId: string,
-    sectionId: string | undefined,
+    containerId: string | undefined,
   ) {
     return {
       ...dashboard,
       tiles: dashboard.tiles.map(t =>
-        t.id === tileId ? { ...t, sectionId } : t,
+        t.id === tileId ? { ...t, containerId } : t,
       ),
     };
   }
@@ -346,8 +346,8 @@ describe('section authoring operations', () => {
         title: 'New Section',
         collapsed: false,
       });
-      expect(result.sections).toHaveLength(1);
-      expect(result.sections![0]).toEqual({
+      expect(result.containers).toHaveLength(1);
+      expect(result.containers![0]).toEqual({
         id: 's1',
         title: 'New Section',
         collapsed: false,
@@ -357,15 +357,15 @@ describe('section authoring operations', () => {
     it('appends to existing sections', () => {
       const dashboard: SimpleDashboard = {
         tiles: [],
-        sections: [{ id: 's1', title: 'First', collapsed: false }],
+        containers: [{ id: 's1', title: 'First', collapsed: false }],
       };
       const result = addSection(dashboard, {
         id: 's2',
         title: 'Second',
         collapsed: false,
       });
-      expect(result.sections).toHaveLength(2);
-      expect(result.sections![1].id).toBe('s2');
+      expect(result.containers).toHaveLength(2);
+      expect(result.containers![1].id).toBe('s2');
     });
   });
 
@@ -373,41 +373,41 @@ describe('section authoring operations', () => {
     it('renames a section', () => {
       const dashboard: SimpleDashboard = {
         tiles: [],
-        sections: [{ id: 's1', title: 'Old Name', collapsed: false }],
+        containers: [{ id: 's1', title: 'Old Name', collapsed: false }],
       };
       const result = renameSection(dashboard, 's1', 'New Name');
-      expect(result.sections![0].title).toBe('New Name');
+      expect(result.containers![0].title).toBe('New Name');
     });
 
     it('trims whitespace from new title', () => {
       const dashboard: SimpleDashboard = {
         tiles: [],
-        sections: [{ id: 's1', title: 'Old', collapsed: false }],
+        containers: [{ id: 's1', title: 'Old', collapsed: false }],
       };
       const result = renameSection(dashboard, 's1', '  Trimmed  ');
-      expect(result.sections![0].title).toBe('Trimmed');
+      expect(result.containers![0].title).toBe('Trimmed');
     });
 
     it('rejects empty title', () => {
       const dashboard: SimpleDashboard = {
         tiles: [],
-        sections: [{ id: 's1', title: 'Keep Me', collapsed: false }],
+        containers: [{ id: 's1', title: 'Keep Me', collapsed: false }],
       };
       const result = renameSection(dashboard, 's1', '   ');
-      expect(result.sections![0].title).toBe('Keep Me');
+      expect(result.containers![0].title).toBe('Keep Me');
     });
 
     it('does not affect other sections', () => {
       const dashboard: SimpleDashboard = {
         tiles: [],
-        sections: [
+        containers: [
           { id: 's1', title: 'One', collapsed: false },
           { id: 's2', title: 'Two', collapsed: true },
         ],
       };
       const result = renameSection(dashboard, 's1', 'Updated');
-      expect(result.sections![0].title).toBe('Updated');
-      expect(result.sections![1].title).toBe('Two');
+      expect(result.containers![0].title).toBe('Updated');
+      expect(result.containers![1].title).toBe('Two');
     });
   });
 
@@ -415,45 +415,45 @@ describe('section authoring operations', () => {
     it('removes the section', () => {
       const dashboard: SimpleDashboard = {
         tiles: [],
-        sections: [
+        containers: [
           { id: 's1', title: 'Keep', collapsed: false },
           { id: 's2', title: 'Delete Me', collapsed: false },
         ],
       };
       const result = deleteSection(dashboard, 's2');
-      expect(result.sections).toHaveLength(1);
-      expect(result.sections![0].id).toBe('s1');
+      expect(result.containers).toHaveLength(1);
+      expect(result.containers![0].id).toBe('s1');
     });
 
     it('ungroups child tiles when section is deleted', () => {
       const dashboard: SimpleDashboard = {
         tiles: [
-          { id: 'a', sectionId: 's1' },
-          { id: 'b', sectionId: 's1' },
-          { id: 'c', sectionId: 's2' },
+          { id: 'a', containerId: 's1' },
+          { id: 'b', containerId: 's1' },
+          { id: 'c', containerId: 's2' },
           { id: 'd' },
         ],
-        sections: [
+        containers: [
           { id: 's1', title: 'Delete Me', collapsed: false },
           { id: 's2', title: 'Keep', collapsed: false },
         ],
       };
       const result = deleteSection(dashboard, 's1');
-      expect(result.sections).toHaveLength(1);
-      expect(result.tiles.find(t => t.id === 'a')?.sectionId).toBeUndefined();
-      expect(result.tiles.find(t => t.id === 'b')?.sectionId).toBeUndefined();
-      expect(result.tiles.find(t => t.id === 'c')?.sectionId).toBe('s2');
-      expect(result.tiles.find(t => t.id === 'd')?.sectionId).toBeUndefined();
+      expect(result.containers).toHaveLength(1);
+      expect(result.tiles.find(t => t.id === 'a')?.containerId).toBeUndefined();
+      expect(result.tiles.find(t => t.id === 'b')?.containerId).toBeUndefined();
+      expect(result.tiles.find(t => t.id === 'c')?.containerId).toBe('s2');
+      expect(result.tiles.find(t => t.id === 'd')?.containerId).toBeUndefined();
     });
 
     it('handles deleting the last section', () => {
       const dashboard: SimpleDashboard = {
-        tiles: [{ id: 'a', sectionId: 's1' }],
-        sections: [{ id: 's1', title: 'Only One', collapsed: false }],
+        tiles: [{ id: 'a', containerId: 's1' }],
+        containers: [{ id: 's1', title: 'Only One', collapsed: false }],
       };
       const result = deleteSection(dashboard, 's1');
-      expect(result.sections).toHaveLength(0);
-      expect(result.tiles[0].sectionId).toBeUndefined();
+      expect(result.containers).toHaveLength(0);
+      expect(result.tiles[0].containerId).toBeUndefined();
     });
   });
 
@@ -461,19 +461,19 @@ describe('section authoring operations', () => {
     it('toggles collapsed from false to true', () => {
       const dashboard: SimpleDashboard = {
         tiles: [],
-        sections: [{ id: 's1', title: 'Test', collapsed: false }],
+        containers: [{ id: 's1', title: 'Test', collapsed: false }],
       };
       const result = toggleSectionCollapsed(dashboard, 's1');
-      expect(result.sections![0].collapsed).toBe(true);
+      expect(result.containers![0].collapsed).toBe(true);
     });
 
     it('toggles collapsed from true to false', () => {
       const dashboard: SimpleDashboard = {
         tiles: [],
-        sections: [{ id: 's1', title: 'Test', collapsed: true }],
+        containers: [{ id: 's1', title: 'Test', collapsed: true }],
       };
       const result = toggleSectionCollapsed(dashboard, 's1');
-      expect(result.sections![0].collapsed).toBe(false);
+      expect(result.containers![0].collapsed).toBe(false);
     });
   });
 
@@ -481,32 +481,32 @@ describe('section authoring operations', () => {
     it('assigns a tile to a section', () => {
       const dashboard: SimpleDashboard = {
         tiles: [{ id: 'a' }, { id: 'b' }],
-        sections: [{ id: 's1', title: 'Target', collapsed: false }],
+        containers: [{ id: 's1', title: 'Target', collapsed: false }],
       };
       const result = moveTileToSection(dashboard, 'a', 's1');
-      expect(result.tiles.find(t => t.id === 'a')?.sectionId).toBe('s1');
-      expect(result.tiles.find(t => t.id === 'b')?.sectionId).toBeUndefined();
+      expect(result.tiles.find(t => t.id === 'a')?.containerId).toBe('s1');
+      expect(result.tiles.find(t => t.id === 'b')?.containerId).toBeUndefined();
     });
 
     it('moves a tile between sections', () => {
       const dashboard: SimpleDashboard = {
-        tiles: [{ id: 'a', sectionId: 's1' }],
-        sections: [
+        tiles: [{ id: 'a', containerId: 's1' }],
+        containers: [
           { id: 's1', title: 'From', collapsed: false },
           { id: 's2', title: 'To', collapsed: false },
         ],
       };
       const result = moveTileToSection(dashboard, 'a', 's2');
-      expect(result.tiles[0].sectionId).toBe('s2');
+      expect(result.tiles[0].containerId).toBe('s2');
     });
 
     it('ungroups a tile from a section', () => {
       const dashboard: SimpleDashboard = {
-        tiles: [{ id: 'a', sectionId: 's1' }],
-        sections: [{ id: 's1', title: 'Source', collapsed: false }],
+        tiles: [{ id: 'a', containerId: 's1' }],
+        containers: [{ id: 's1', title: 'Source', collapsed: false }],
       };
       const result = moveTileToSection(dashboard, 'a', undefined);
-      expect(result.tiles[0].sectionId).toBeUndefined();
+      expect(result.tiles[0].containerId).toBeUndefined();
     });
   });
 });

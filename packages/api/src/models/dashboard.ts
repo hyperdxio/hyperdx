@@ -29,7 +29,7 @@ export default mongoose.model<IDashboard>(
       savedQuery: { type: String, required: false },
       savedQueryLanguage: { type: String, required: false },
       savedFilterValues: { type: mongoose.Schema.Types.Array, required: false },
-      sections: { type: mongoose.Schema.Types.Array, required: false },
+      containers: { type: mongoose.Schema.Types.Array, required: false },
     },
     {
       timestamps: true,

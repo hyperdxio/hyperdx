@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react';
-import { DashboardSection } from '@hyperdx/common-utils/dist/types';
+import { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Flex, Input, Menu, Text } from '@mantine/core';
 import {
   IconChevronRight,
   IconDotsVertical,
   IconEye,
   IconEyeOff,
-  IconPencil,
+  IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
 
@@ -17,19 +17,22 @@ export default function SectionHeader({
   onRename,
   onDelete,
   onToggleDefaultCollapsed,
+  onAddTile,
 }: {
-  section: DashboardSection;
+  section: DashboardContainer;
   tileCount: number;
   onToggle: () => void;
   onRename?: (newTitle: string) => void;
   onDelete?: () => void;
   onToggleDefaultCollapsed?: () => void;
+  onAddTile?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(section.title);
+  const [hovered, setHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const hasEditControls = onRename || onDelete || onToggleDefaultCollapsed;
+  const hasMenuControls = onDelete || onToggleDefaultCollapsed;
 
   const handleSaveRename = () => {
     const trimmed = editedTitle.trim();
@@ -41,12 +44,21 @@ export default function SectionHeader({
     setEditing(false);
   };
 
+  const handleTitleClick = (e: React.MouseEvent) => {
+    if (!onRename) return;
+    e.stopPropagation();
+    setEditedTitle(section.title);
+    setEditing(true);
+  };
+
   return (
     <Flex
       align="center"
       gap="xs"
       px="sm"
       py={4}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         cursor: 'pointer',
         borderBottom: '1px solid var(--mantine-color-dark-4)',
@@ -109,7 +121,13 @@ export default function SectionHeader({
           </form>
         ) : (
           <>
-            <Text size="sm" fw={500} truncate>
+            <Text
+              size="sm"
+              fw={500}
+              truncate
+              onClick={onRename ? handleTitleClick : undefined}
+              style={onRename ? { cursor: 'text' } : undefined}
+            >
               {section.title}
             </Text>
             {section.collapsed && tileCount > 0 && (
@@ -120,7 +138,21 @@ export default function SectionHeader({
           </>
         )}
       </Flex>
-      {hasEditControls && !editing && (
+      {onAddTile && !editing && hovered && (
+        <ActionIcon
+          variant="subtle"
+          size="xs"
+          onClick={e => {
+            e.stopPropagation();
+            onAddTile();
+          }}
+          title="Add tile to section"
+          data-testid={`section-add-tile-${section.id}`}
+        >
+          <IconPlus size={14} />
+        </ActionIcon>
+      )}
+      {hasMenuControls && !editing && hovered && (
         <Menu width={200} position="bottom-end">
           <Menu.Target>
             <ActionIcon
@@ -133,17 +165,6 @@ export default function SectionHeader({
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown>
-            {onRename && (
-              <Menu.Item
-                leftSection={<IconPencil size={14} />}
-                onClick={() => {
-                  setEditedTitle(section.title);
-                  setEditing(true);
-                }}
-              >
-                Rename
-              </Menu.Item>
-            )}
             {onToggleDefaultCollapsed && (
               <Menu.Item
                 leftSection={

@@ -26,8 +26,8 @@ import {
 import {
   AlertState,
   ChartConfigWithDateRange,
+  DashboardContainer,
   DashboardFilter,
-  DashboardSection,
   DisplayType,
   Filter,
   SearchCondition,
@@ -61,7 +61,7 @@ import {
   IconDotsVertical,
   IconDownload,
   IconFilterEdit,
-  IconFolders,
+  IconLayoutList,
   IconPencil,
   IconPlayerPlay,
   IconRefresh,
@@ -150,7 +150,7 @@ const Tile = forwardRef(
       onDeleteClick,
       onUpdateChart,
       onMoveToSection,
-      sections: availableSections,
+      containers: availableSections,
       granularity,
       onTimeRangeSelect,
       filters,
@@ -171,8 +171,8 @@ const Tile = forwardRef(
       onAddAlertClick?: () => void;
       onDeleteClick: () => void;
       onUpdateChart?: (chart: Tile) => void;
-      onMoveToSection?: (sectionId: string | undefined) => void;
-      sections?: DashboardSection[];
+      onMoveToSection?: (containerId: string | undefined) => void;
+      containers?: DashboardContainer[];
       onSettled?: () => void;
       granularity: SQLInterval | undefined;
       onTimeRangeSelect: (start: Date, end: Date) => void;
@@ -340,15 +340,6 @@ const Tile = forwardRef(
           >
             <IconPencil size={14} />
           </ActionIcon>
-          <ActionIcon
-            data-testid={`tile-delete-button-${chart.id}`}
-            variant="subtle"
-            size="sm"
-            onClick={onDeleteClick}
-            title="Delete"
-          >
-            <IconTrash size={14} />
-          </ActionIcon>
           {onMoveToSection &&
             availableSections &&
             availableSections.length > 0 && (
@@ -360,18 +351,18 @@ const Tile = forwardRef(
                     size="sm"
                     title="Move to Section"
                   >
-                    <IconFolders size={14} />
+                    <IconLayoutList size={14} />
                   </ActionIcon>
                 </Menu.Target>
                 <Menu.Dropdown>
                   <Menu.Label>Move to Section</Menu.Label>
-                  {chart.sectionId && (
+                  {chart.containerId && (
                     <Menu.Item onClick={() => onMoveToSection(undefined)}>
                       (Ungrouped)
                     </Menu.Item>
                   )}
                   {availableSections
-                    .filter(s => s.id !== chart.sectionId)
+                    .filter(s => s.id !== chart.containerId)
                     .map(s => (
                       <Menu.Item
                         key={s.id}
@@ -383,6 +374,15 @@ const Tile = forwardRef(
                 </Menu.Dropdown>
               </Menu>
             )}
+          <ActionIcon
+            data-testid={`tile-delete-button-${chart.id}`}
+            variant="subtle"
+            size="sm"
+            onClick={onDeleteClick}
+            title="Delete"
+          >
+            <IconTrash size={14} />
+          </ActionIcon>
         </Flex>
       );
     }, [
@@ -392,7 +392,7 @@ const Tile = forwardRef(
       availableSections,
       chart.config.displayType,
       chart.id,
-      chart.sectionId,
+      chart.containerId,
       hovered,
       onDeleteClick,
       onDuplicateClick,
@@ -1042,7 +1042,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
   const [editedTile, setEditedTile] = useState<undefined | Tile>();
 
-  const onAddTile = () => {
+  const onAddTile = (containerId?: string) => {
     setEditedTile({
       id: makeId(),
       x: 0,
@@ -1053,25 +1053,26 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         ...DEFAULT_CHART_CONFIG,
         source: sources?.[0]?.id ?? '',
       },
+      ...(containerId ? { containerId } : {}),
     });
   };
 
   const sections = useMemo(
-    () => dashboard?.sections ?? [],
-    [dashboard?.sections],
+    () => dashboard?.containers ?? [],
+    [dashboard?.containers],
   );
   const hasSections = sections.length > 0;
   const allTiles = useMemo(() => dashboard?.tiles ?? [], [dashboard?.tiles]);
 
   const handleMoveTileToSection = useCallback(
-    (tileId: string, sectionId: string | undefined) => {
+    (tileId: string, containerId: string | undefined) => {
       if (!dashboard) return;
       setDashboard(
         produce(dashboard, draft => {
           const tile = draft.tiles.find(t => t.id === tileId);
           if (tile) {
-            if (sectionId) tile.sectionId = sectionId;
-            else delete tile.sectionId;
+            if (containerId) tile.containerId = containerId;
+            else delete tile.containerId;
           }
         }),
       );
@@ -1163,9 +1164,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             });
           }
         }}
-        sections={sections}
-        onMoveToSection={sectionId =>
-          handleMoveTileToSection(chart.id, sectionId)
+        containers={sections}
+        onMoveToSection={containerId =>
+          handleMoveTileToSection(chart.id, containerId)
         }
       />
     ),
@@ -1219,11 +1220,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   // (same pattern as tile drag/resize). This matches Grafana and Kibana
   // behavior where collapsed state is saved with the dashboard for all viewers.
   const handleToggleSection = useCallback(
-    (sectionId: string) => {
+    (containerId: string) => {
       if (!dashboard) return;
       setDashboard(
         produce(dashboard, draft => {
-          const section = draft.sections?.find(s => s.id === sectionId);
+          const section = draft.containers?.find(s => s.id === containerId);
           if (section) section.collapsed = !section.collapsed;
         }),
       );
@@ -1235,9 +1236,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     if (!dashboard) return;
     setDashboard(
       produce(dashboard, draft => {
-        if (!draft.sections) draft.sections = [];
-        draft.sections.push({
+        if (!draft.containers) draft.containers = [];
+        draft.containers.push({
           id: makeId(),
+          type: 'section',
           title: 'New Section',
           collapsed: false,
         });
@@ -1246,11 +1248,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   }, [dashboard, setDashboard]);
 
   const handleRenameSection = useCallback(
-    (sectionId: string, newTitle: string) => {
+    (containerId: string, newTitle: string) => {
       if (!dashboard || !newTitle.trim()) return;
       setDashboard(
         produce(dashboard, draft => {
-          const section = draft.sections?.find(s => s.id === sectionId);
+          const section = draft.containers?.find(s => s.id === containerId);
           if (section) section.title = newTitle.trim();
         }),
       );
@@ -1259,13 +1261,15 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   const handleDeleteSection = useCallback(
-    (sectionId: string) => {
+    (containerId: string) => {
       if (!dashboard) return;
       setDashboard(
         produce(dashboard, draft => {
-          draft.sections = draft.sections?.filter(s => s.id !== sectionId);
+          draft.containers = draft.containers?.filter(
+            s => s.id !== containerId,
+          );
           for (const tile of draft.tiles) {
-            if (tile.sectionId === sectionId) delete tile.sectionId;
+            if (tile.containerId === containerId) delete tile.containerId;
           }
         }),
       );
@@ -1273,14 +1277,14 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard, setDashboard],
   );
 
-  // Group tiles by section; orphaned tiles (sectionId not matching any
+  // Group tiles by section; orphaned tiles (containerId not matching any
   // section) fall back to ungrouped to avoid silently hiding them.
-  const tilesBySectionId = useMemo(() => {
+  const tilesByContainerId = useMemo(() => {
     const map = new Map<string, Tile[]>();
     for (const section of sections) {
       map.set(
         section.id,
-        allTiles.filter(t => t.sectionId === section.id),
+        allTiles.filter(t => t.containerId === section.id),
       );
     }
     return map;
@@ -1290,10 +1294,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     () =>
       hasSections
         ? allTiles.filter(
-            t => !t.sectionId || !tilesBySectionId.has(t.sectionId),
+            t => !t.containerId || !tilesByContainerId.has(t.containerId),
           )
         : allTiles,
-    [hasSections, allTiles, tilesBySectionId],
+    [hasSections, allTiles, tilesByContainerId],
   );
 
   const onUngroupedLayoutChange = useMemo(
@@ -1304,11 +1308,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const sectionLayoutChangeHandlers = useMemo(() => {
     const map = new Map<string, (newLayout: RGL.Layout[]) => void>();
     for (const section of sections) {
-      const tiles = tilesBySectionId.get(section.id) ?? [];
+      const tiles = tilesByContainerId.get(section.id) ?? [];
       map.set(section.id, makeOnLayoutChange(tiles));
     }
     return map;
-  }, [sections, tilesBySectionId, makeOnLayoutChange]);
+  }, [sections, tilesByContainerId, makeOnLayoutChange]);
 
   const deleteDashboard = useDeleteDashboard();
 
@@ -1502,6 +1506,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                 >
                   {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
                 </Menu.Item>
+                <Menu.Item
+                  data-testid="add-new-section-button"
+                  leftSection={<IconLayoutList size={16} />}
+                  onClick={handleAddSection}
+                >
+                  Add Section
+                </Menu.Item>
                 <Menu.Divider />
                 <Menu.Item
                   data-testid="save-default-query-filters-menu-item"
@@ -1657,7 +1668,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                   </ReactGridLayout>
                 )}
                 {sections.map(section => {
-                  const sectionTiles = tilesBySectionId.get(section.id) ?? [];
+                  const sectionTiles = tilesByContainerId.get(section.id) ?? [];
                   return (
                     <div key={section.id}>
                       <SectionHeader
@@ -1671,6 +1682,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                         onToggleDefaultCollapsed={() =>
                           handleToggleSection(section.id)
                         }
+                        onAddTile={() => onAddTile(section.id)}
                       />
                       {!section.collapsed && sectionTiles.length > 0 && (
                         <ReactGridLayout
@@ -1703,26 +1715,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </ErrorBoundary>
         ) : null}
       </Box>
-      <Flex gap="sm" mt="sm">
-        <Button
-          data-testid="add-new-tile-button"
-          variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
-          fw={400}
-          onClick={onAddTile}
-          style={{ flex: 1 }}
-        >
-          + Add New Tile
-        </Button>
-        <Button
-          data-testid="add-new-section-button"
-          variant="secondary"
-          fw={400}
-          onClick={handleAddSection}
-          style={{ flex: 1 }}
-        >
-          + Add Section
-        </Button>
-      </Flex>
+      <Button
+        data-testid="add-new-tile-button"
+        variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
+        mt="sm"
+        fw={400}
+        onClick={onAddTile}
+        w="100%"
+      >
+        + Add New Tile
+      </Button>
       <DashboardFiltersModal
         opened={showFiltersModal}
         onClose={() => setShowFiltersModal(false)}

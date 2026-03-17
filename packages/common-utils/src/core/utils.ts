@@ -513,8 +513,8 @@ export function convertToDashboardTemplate(
     }
   }
 
-  if (input.sections) {
-    output.sections = structuredClone(input.sections);
+  if (input.containers) {
+    output.containers = structuredClone(input.containers);
   }
 
   return output;
@@ -552,8 +552,8 @@ export function convertToDashboardDocument(
     }
   }
 
-  if (input.sections) {
-    output.sections = structuredClone(input.sections);
+  if (input.containers) {
+    output.containers = structuredClone(input.containers);
   }
 
   return output;
