@@ -139,6 +139,22 @@ $transition-slow: 0.2s ease;
 
 .footer {
   flex-shrink: 0;
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: linear-gradient(
+      to top,
+      var(--color-bg-sidenav) 0%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
 }
 
 /* Navigation Links */
