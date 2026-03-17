@@ -369,7 +369,7 @@ describe('Heatmap bucket boundary algorithm', () => {
       // effectiveMin should cap near-zero values (max * 1e-4)
       expect(result.effectiveMin).toBeGreaterThan(0.001);
       // Near-zero outliers go to bucket 0 (underflow)
-      expect(result.bucketCounts[0]).toBeGreaterThanOrEqual(0);
+      expect(result.bucketCounts[0]).toBeGreaterThan(0);
     });
   });
 
