@@ -306,7 +306,12 @@ type HeatmapChartConfig = {
 
 export function ColorLegend({ colors }: { colors: string[] }) {
   return (
-    <Flex align="center" gap={4} role="img" aria-label="Color scale: low to high count">
+    <Flex
+      align="center"
+      gap={4}
+      role="img"
+      aria-label="Color scale: low to high count"
+    >
       <Text size="10px" c="dimmed">
         Low
       </Text>
