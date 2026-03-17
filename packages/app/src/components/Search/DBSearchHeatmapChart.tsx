@@ -71,7 +71,9 @@ export function DBSearchHeatmapChart({
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const scaleType = (fields.scaleType ?? 'log') as HeatmapScaleType;
   const setScaleType = useCallback(
-    (v: HeatmapScaleType) => setFields({ scaleType: v }),
+    (v: HeatmapScaleType) => {
+      void setFields({ scaleType: v });
+    },
     [setFields],
   );
   const [settingsOpened, settingsHandlers] = useDisclosure(false);
