@@ -159,9 +159,6 @@ export function DBSearchHeatmapChart({
           settingsHandlers.close();
         }}
       />
-      <Box px="sm" py={2}>
-        <ColorLegend colors={palette} />
-      </Box>
       <Box style={{ flex: 1, minHeight: 0 }}>
         <DBDeltaChart
           config={{
@@ -177,6 +174,7 @@ export function DBSearchHeatmapChart({
             onAddFilter ? handleAddFilterAndClearSelection : undefined
           }
           spanIdExpression={source.spanIdExpression}
+          legendPrefix={<ColorLegend colors={palette} />}
         />
       </Box>
     </Flex>

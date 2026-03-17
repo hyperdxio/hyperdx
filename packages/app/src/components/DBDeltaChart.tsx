@@ -53,6 +53,7 @@ export default function DBDeltaChart({
   yMax: rawYMax,
   onAddFilter,
   spanIdExpression,
+  legendPrefix,
 }: {
   config: BuilderChartConfigWithDateRange;
   valueExpr: string;
@@ -62,6 +63,7 @@ export default function DBDeltaChart({
   yMax?: number | null;
   onAddFilter?: AddFilterFn;
   spanIdExpression?: string;
+  legendPrefix?: React.ReactNode;
 }) {
   // Derive whether a heatmap selection exists from nullable props
   const hasSelection =
@@ -475,6 +477,7 @@ export default function DBDeltaChart({
     >
       {/* Legend */}
       <Flex gap="md" align="center" mb="xs" wrap="wrap">
+        {legendPrefix}
         {hasSelection ? (
           <>
             <Flex align="center" gap={4}>
