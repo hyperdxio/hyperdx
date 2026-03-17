@@ -2,7 +2,7 @@ import {
   AssistantLineTableConfigSchema,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import { APICallError, generateObject } from 'ai';
+import { APICallError, generateText, Output } from 'ai';
 import express from 'express';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
@@ -93,15 +93,17 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
       logger.info(prompt);
 
       try {
-        const result = await generateObject({
+        const result = await generateText({
           model,
-          schema: AssistantLineTableConfigSchema,
+          output: Output.object({
+            schema: AssistantLineTableConfigSchema,
+          }),
           experimental_telemetry: { isEnabled: true },
           prompt,
         });
 
         const chartConfig = getChartConfigFromResolvedConfig(
-          result.object,
+          result.output,
           source,
         );
 

@@ -251,6 +251,407 @@ describe('Single Invocation Alert Test', () => {
     expect(messageBody).toContain('isLive=false');
   });
 
+  it('should include saved search filters in alert ClickHouse query', async () => {
+    jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+    const team = await createTeam({ name: 'Test Team' });
+
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Test Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+
+    const source = await Source.create({
+      kind: 'log',
+      team: team._id,
+      from: {
+        databaseName: 'default',
+        tableName: 'otel_logs',
+      },
+      timestampValueExpression: 'Timestamp',
+      connection: connection.id,
+      name: 'Test Logs',
+    });
+
+    // Create saved search with a lucene filter that restricts to ServiceName = "web"
+    const savedSearch = await new SavedSearch({
+      team: team._id,
+      name: 'Filtered Error Logs',
+      select: 'Body',
+      where: '',
+      whereLanguage: 'lucene',
+      orderBy: 'Timestamp',
+      source: source.id,
+      tags: ['test'],
+      filters: [
+        {
+          type: 'lucene',
+          condition: 'ServiceName:"web"',
+        },
+      ],
+    }).save();
+
+    const webhook = await new Webhook({
+      team: team._id,
+      service: 'slack',
+      url: 'https://hooks.slack.com/services/test-filters',
+      name: 'Test Webhook',
+    }).save();
+
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.SAVED_SEARCH,
+        channel: {
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+        },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        savedSearchId: savedSearch.id,
+        name: 'Filtered Alert',
+      },
+      mockUserId,
+    );
+
+    const now = new Date('2023-11-16T22:12:00.000Z');
+    const eventTime = new Date(now.getTime() - ms('3m'));
+
+    // Insert logs: 2 from "web" service, 2 from "api" service
+    // Only "web" logs should be counted due to the filter
+    await bulkInsertLogs([
+      {
+        ServiceName: 'web',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'Web error 1',
+      },
+      {
+        ServiceName: 'web',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'Web error 2',
+      },
+      {
+        ServiceName: 'api',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'API error 1',
+      },
+      {
+        ServiceName: 'api',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'API error 2',
+      },
+    ]);
+
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
+      'team',
+      'savedSearch',
+    ]);
+
+    const details: any = {
+      alert: enhancedAlert,
+      source,
+      conn: connection,
+      taskType: AlertTaskType.SAVED_SEARCH,
+      savedSearch,
+      previousMap: new Map(),
+    };
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+      new Map([[webhook.id.toString(), webhook]]),
+    );
+
+    // Alert should fire because 2 "web" logs exceed threshold of 1
+    expect((await Alert.findById(enhancedAlert.id))!.state).toBe('ALERT');
+
+    const alertHistories = await AlertHistory.find({
+      alert: alert.id,
+    }).sort({ createdAt: 1 });
+
+    expect(alertHistories.length).toBe(1);
+    expect(alertHistories[0].state).toBe('ALERT');
+    // Should count only 2 "web" logs, not all 4 logs
+    expect(alertHistories[0].lastValues[0].count).toBe(2);
+  });
+
+  it('should not trigger alert when filters exclude all matching logs', async () => {
+    jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+    const team = await createTeam({ name: 'Test Team' });
+
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Test Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+
+    const source = await Source.create({
+      kind: 'log',
+      team: team._id,
+      from: {
+        databaseName: 'default',
+        tableName: 'otel_logs',
+      },
+      timestampValueExpression: 'Timestamp',
+      connection: connection.id,
+      name: 'Test Logs',
+    });
+
+    // Create saved search with a filter for a service that has no logs
+    const savedSearch = await new SavedSearch({
+      team: team._id,
+      name: 'No Match Filter',
+      select: 'Body',
+      where: '',
+      whereLanguage: 'lucene',
+      orderBy: 'Timestamp',
+      source: source.id,
+      tags: ['test'],
+      filters: [
+        {
+          type: 'lucene',
+          condition: 'ServiceName:"nonexistent-service"',
+        },
+      ],
+    }).save();
+
+    const webhook = await new Webhook({
+      team: team._id,
+      service: 'slack',
+      url: 'https://hooks.slack.com/services/test-no-match',
+      name: 'Test Webhook',
+    }).save();
+
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.SAVED_SEARCH,
+        channel: {
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+        },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 1,
+        savedSearchId: savedSearch.id,
+        name: 'No Match Alert',
+      },
+      mockUserId,
+    );
+
+    const now = new Date('2023-11-16T22:12:00.000Z');
+    const eventTime = new Date(now.getTime() - ms('3m'));
+
+    // Insert logs that DON'T match the filter
+    await bulkInsertLogs([
+      {
+        ServiceName: 'api',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'API error',
+      },
+      {
+        ServiceName: 'web',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'Web error',
+      },
+    ]);
+
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
+      'team',
+      'savedSearch',
+    ]);
+
+    const details: any = {
+      alert: enhancedAlert,
+      source,
+      conn: connection,
+      taskType: AlertTaskType.SAVED_SEARCH,
+      savedSearch,
+      previousMap: new Map(),
+    };
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+      new Map([[webhook.id.toString(), webhook]]),
+    );
+
+    // Alert should NOT fire because filter excludes all logs
+    expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
+
+    // No webhook notification should be sent
+    expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+  });
+
+  it('should apply both where clause and filters together in alert query', async () => {
+    jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+
+    const team = await createTeam({ name: 'Test Team' });
+
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Test Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+
+    const source = await Source.create({
+      kind: 'log',
+      team: team._id,
+      from: {
+        databaseName: 'default',
+        tableName: 'otel_logs',
+      },
+      timestampValueExpression: 'Timestamp',
+      connection: connection.id,
+      name: 'Test Logs',
+    });
+
+    // Create saved search with BOTH a where clause and a filter
+    // where: only errors, filter: only "web" service
+    const savedSearch = await new SavedSearch({
+      team: team._id,
+      name: 'Where + Filter Search',
+      select: 'Body',
+      where: 'SeverityText: "error"',
+      whereLanguage: 'lucene',
+      orderBy: 'Timestamp',
+      source: source.id,
+      tags: ['test'],
+      filters: [
+        {
+          type: 'lucene',
+          condition: 'ServiceName:"web"',
+        },
+      ],
+    }).save();
+
+    const webhook = await new Webhook({
+      team: team._id,
+      service: 'slack',
+      url: 'https://hooks.slack.com/services/test-combined',
+      name: 'Test Webhook',
+    }).save();
+
+    const mockUserId = new mongoose.Types.ObjectId();
+    const alert = await createAlert(
+      team._id,
+      {
+        source: AlertSource.SAVED_SEARCH,
+        channel: {
+          type: 'webhook',
+          webhookId: webhook._id.toString(),
+        },
+        interval: '5m',
+        thresholdType: AlertThresholdType.ABOVE,
+        threshold: 2,
+        savedSearchId: savedSearch.id,
+        name: 'Combined Alert',
+      },
+      mockUserId,
+    );
+
+    const now = new Date('2023-11-16T22:12:00.000Z');
+    const eventTime = new Date(now.getTime() - ms('3m'));
+
+    // Insert mix of logs:
+    // - 1 web error (matches both where + filter)
+    // - 1 web info (matches filter but NOT where)
+    // - 2 api errors (matches where but NOT filter)
+    // Only the 1 web error matches both conditions, which is < threshold of 2
+    await bulkInsertLogs([
+      {
+        ServiceName: 'web',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'Web error',
+      },
+      {
+        ServiceName: 'web',
+        Timestamp: eventTime,
+        SeverityText: 'info',
+        Body: 'Web info',
+      },
+      {
+        ServiceName: 'api',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'API error 1',
+      },
+      {
+        ServiceName: 'api',
+        Timestamp: eventTime,
+        SeverityText: 'error',
+        Body: 'API error 2',
+      },
+    ]);
+
+    const enhancedAlert: any = await Alert.findById(alert.id).populate([
+      'team',
+      'savedSearch',
+    ]);
+
+    const details: any = {
+      alert: enhancedAlert,
+      source,
+      conn: connection,
+      taskType: AlertTaskType.SAVED_SEARCH,
+      savedSearch,
+      previousMap: new Map(),
+    };
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+
+    await processAlert(
+      now,
+      details,
+      clickhouseClient,
+      connection.id,
+      alertProvider,
+      new Map([[webhook.id.toString(), webhook]]),
+    );
+
+    // Alert should NOT fire: only 1 web error matches both conditions,
+    // which is below threshold of 2 (ABOVE uses >=)
+    expect((await Alert.findById(enhancedAlert.id))!.state).toBe('OK');
+    expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+  });
+
   it('should use correct tile name in alert title when alerting tile is not first', async () => {
     // Mock slack webhook to avoid external calls
     jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);

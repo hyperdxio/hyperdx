@@ -447,6 +447,7 @@ const getChartConfigFromAlert = (
       ],
       where: savedSearch.where,
       whereLanguage: savedSearch.whereLanguage,
+      filters: savedSearch.filters?.map(f => ({ ...f })),
       groupBy: alert.groupBy,
       implicitColumnExpression:
         source.kind === SourceKind.Log || source.kind === SourceKind.Trace

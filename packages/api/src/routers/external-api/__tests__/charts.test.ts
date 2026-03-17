@@ -18,7 +18,10 @@ import Connection from '../../../models/connection';
 import { ISource, Source } from '../../../models/source';
 
 // Default time range for tests (1 hour)
-const DEFAULT_END_TIME = Date.now();
+// Floor to minute so all derived timestamps (including test data inserted at
+// `now` and `now + 1000`) always fall within the same 1-minute ClickHouse time
+// bucket, preventing flaky results when timestamps straddle a minute boundary.
+const DEFAULT_END_TIME = Math.floor(Date.now() / 60000) * 60000;
 const DEFAULT_START_TIME = DEFAULT_END_TIME - 3600 * 1000;
 
 // Helper to create standard series request payload

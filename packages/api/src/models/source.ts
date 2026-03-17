@@ -3,6 +3,7 @@ import {
   LogSourceSchema,
   MetricsDataType,
   MetricSourceSchema,
+  QuerySettings,
   SessionSourceSchema,
   SourceKind,
   TraceSourceSchema,
@@ -37,6 +38,27 @@ export type ISource = z.infer<typeof ISourceSchema>;
 
 export type SourceDocument = mongoose.HydratedDocument<ISource>;
 
+const maxLength =
+  (max: number) =>
+  <T>({ length }: Array<T>) =>
+    length <= max;
+
+const QuerySetting = new Schema<QuerySettings[number]>(
+  {
+    setting: {
+      type: String,
+      required: true,
+      minlength: 1,
+    },
+    value: {
+      type: String,
+      required: true,
+      minlength: 1,
+    },
+  },
+  { _id: false },
+);
+
 // --------------------------
 // Base schema (common fields shared by all source kinds)
 // --------------------------
@@ -68,13 +90,11 @@ const sourceBaseSchema = new Schema<MongooseSourceBase>(
     },
     timestampValueExpression: String,
     querySettings: {
-      type: [
-        {
-          setting: { type: String, required: true, minlength: 1 },
-          value: { type: String, required: true, minlength: 1 },
-        },
-      ],
-      maxlength: 10,
+      type: [QuerySetting],
+      validate: {
+        validator: maxLength(10),
+        message: '{PATH} exceeds the limit of 10',
+      },
     },
   },
   {

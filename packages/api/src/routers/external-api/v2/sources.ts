@@ -222,17 +222,23 @@ function formatExternalSource(source: SourceDocument) {
  *       properties:
  *         id:
  *           type: string
+ *           description: Unique source ID.
  *         name:
  *           type: string
+ *           description: Display name for the source.
  *         kind:
  *           type: string
  *           enum: [log]
+ *           description: Source kind discriminator. Must be "log" for log sources.
  *         connection:
  *           type: string
+ *           description: ID of the ClickHouse connection used by this source.
  *         from:
  *           $ref: '#/components/schemas/SourceFrom'
+ *           description: Database and table location of the source data.
  *         querySettings:
  *           type: array
+ *           description: Optional ClickHouse query settings applied when querying this source.
  *           items:
  *             $ref: '#/components/schemas/QuerySetting'
  *           nullable: true
@@ -244,18 +250,23 @@ function formatExternalSource(source: SourceDocument) {
  *           description: DateTime column or expression that is part of your table's primary key.
  *         serviceNameExpression:
  *           type: string
+ *           description: Expression to extract the service name from log rows.
  *           nullable: true
  *         severityTextExpression:
  *           type: string
+ *           description: Expression to extract the severity/log level text.
  *           nullable: true
  *         bodyExpression:
  *           type: string
+ *           description: Expression to extract the log message body.
  *           nullable: true
  *         eventAttributesExpression:
  *           type: string
+ *           description: Expression to extract event-level attributes.
  *           nullable: true
  *         resourceAttributesExpression:
  *           type: string
+ *           description: Expression to extract resource-level attributes.
  *           nullable: true
  *         displayedTimestampValueExpression:
  *           type: string
@@ -271,9 +282,11 @@ function formatExternalSource(source: SourceDocument) {
  *           nullable: true
  *         traceIdExpression:
  *           type: string
+ *           description: Expression to extract the trace ID for correlating logs with traces.
  *           nullable: true
  *         spanIdExpression:
  *           type: string
+ *           description: Expression to extract the span ID for correlating logs with traces.
  *           nullable: true
  *         implicitColumnExpression:
  *           type: string
@@ -316,17 +329,23 @@ function formatExternalSource(source: SourceDocument) {
  *       properties:
  *         id:
  *           type: string
+ *           description: Unique source ID.
  *         name:
  *           type: string
+ *           description: Display name for the source.
  *         kind:
  *           type: string
  *           enum: [trace]
+ *           description: Source kind discriminator. Must be "trace" for trace sources.
  *         connection:
  *           type: string
+ *           description: ID of the ClickHouse connection used by this source.
  *         from:
  *           $ref: '#/components/schemas/SourceFrom'
+ *           description: Database and table location of the source data.
  *         querySettings:
  *           type: array
+ *           description: Optional ClickHouse query settings applied when querying this source.
  *           items:
  *             $ref: '#/components/schemas/QuerySetting'
  *           nullable: true
@@ -339,21 +358,28 @@ function formatExternalSource(source: SourceDocument) {
  *           description: DateTime column or expression defines the start of the span
  *         durationExpression:
  *           type: string
+ *           description: Expression to extract span duration.
  *         durationPrecision:
  *           type: integer
  *           minimum: 0
  *           maximum: 9
  *           default: 3
+ *           description: Number of decimal digits in the duration value (e.g., 3 for milliseconds, 6 for microseconds, 9 for nanoseconds).
  *         traceIdExpression:
  *           type: string
+ *           description: Expression to extract the trace ID.
  *         spanIdExpression:
  *           type: string
+ *           description: Expression to extract the span ID.
  *         parentSpanIdExpression:
  *           type: string
+ *           description: Expression to extract the parent span ID.
  *         spanNameExpression:
  *           type: string
+ *           description: Expression to extract the span name.
  *         spanKindExpression:
  *           type: string
+ *           description: Expression to extract the span kind (e.g., client, server, internal).
  *         logSourceId:
  *           type: string
  *           description: HyperDX Source for logs associated with traces. Optional
@@ -368,18 +394,23 @@ function formatExternalSource(source: SourceDocument) {
  *           nullable: true
  *         statusCodeExpression:
  *           type: string
+ *           description: Expression to extract the span status code.
  *           nullable: true
  *         statusMessageExpression:
  *           type: string
+ *           description: Expression to extract the span status message.
  *           nullable: true
  *         serviceNameExpression:
  *           type: string
+ *           description: Expression to extract the service name from trace rows.
  *           nullable: true
  *         resourceAttributesExpression:
  *           type: string
+ *           description: Expression to extract resource-level attributes.
  *           nullable: true
  *         eventAttributesExpression:
  *           type: string
+ *           description: Expression to extract event-level attributes.
  *           nullable: true
  *         spanEventsValueExpression:
  *           type: string
@@ -421,22 +452,29 @@ function formatExternalSource(source: SourceDocument) {
  *       properties:
  *         id:
  *           type: string
+ *           description: Unique source ID.
  *         name:
  *           type: string
+ *           description: Display name for the source.
  *         kind:
  *           type: string
  *           enum: [metric]
+ *           description: Source kind discriminator. Must be "metric" for metric sources.
  *         connection:
  *           type: string
+ *           description: ID of the ClickHouse connection used by this source.
  *         from:
  *           $ref: '#/components/schemas/MetricSourceFrom'
+ *           description: Database and optional table location of the metric source data.
  *         querySettings:
  *           type: array
+ *           description: Optional ClickHouse query settings applied when querying this source.
  *           items:
  *             $ref: '#/components/schemas/QuerySetting'
  *           nullable: true
  *         metricTables:
  *           $ref: '#/components/schemas/MetricTables'
+ *           description: Mapping of metric data types to their respective table names.
  *         timestampValueExpression:
  *           type: string
  *           description: DateTime column or expression that is part of your table's primary key.
@@ -459,17 +497,23 @@ function formatExternalSource(source: SourceDocument) {
  *       properties:
  *         id:
  *           type: string
+ *           description: Unique source ID.
  *         name:
  *           type: string
+ *           description: Display name for the source.
  *         kind:
  *           type: string
  *           enum: [session]
+ *           description: Source kind discriminator. Must be "session" for session sources.
  *         connection:
  *           type: string
+ *           description: ID of the ClickHouse connection used by this source.
  *         from:
  *           $ref: '#/components/schemas/SourceFrom'
+ *           description: Database and table location of the source data.
  *         querySettings:
  *           type: array
+ *           description: Optional ClickHouse query settings applied when querying this source.
  *           items:
  *             $ref: '#/components/schemas/QuerySetting'
  *           nullable: true
@@ -498,6 +542,7 @@ function formatExternalSource(source: SourceDocument) {
  *       properties:
  *         data:
  *           type: array
+ *           description: List of source objects.
  *           items:
  *             $ref: '#/components/schemas/Source'
  */

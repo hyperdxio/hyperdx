@@ -495,7 +495,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   });
 
   test('should save and restore query and filter values', {}, async () => {
-    const testQuery = 'level:error';
+    const testQuery = 'SeverityText:error';
     let dashboardUrl: string;
 
     await test.step('Create dashboard with chart', async () => {
@@ -510,6 +510,28 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       // Save dashboard URL for later
       dashboardUrl = dashboardPage.page.url();
+    });
+
+    await test.step('Add ServiceName filter to dashboard', async () => {
+      await dashboardPage.openEditFiltersModal();
+      await expect(dashboardPage.emptyFiltersList).toBeVisible();
+
+      await dashboardPage.addFilterToDashboard(
+        'Service',
+        DEFAULT_LOGS_SOURCE_NAME,
+        'ServiceName',
+      );
+
+      await expect(dashboardPage.getFilterItemByName('Service')).toBeVisible();
+      await dashboardPage.closeFiltersModal();
+    });
+
+    await test.step('Select a filter value', async () => {
+      await dashboardPage.clickFilterOption('Service', 'accounting');
+
+      // Verify the filter is applied
+      const filterSelect = dashboardPage.getFilterSelectByName('Service');
+      await expect(filterSelect).toHaveValue('accounting');
     });
 
     await test.step('Enter query in search bar', async () => {
@@ -533,7 +555,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await expect(dashboardPage.page).toHaveURL(/.*\/search/);
     });
 
-    await test.step('Return to dashboard and verify query restored', async () => {
+    await test.step('Return to dashboard and verify query and filters are restored', async () => {
       await dashboardPage.page.goto(dashboardUrl);
 
       // Wait for dashboard controls to load
@@ -555,6 +577,10 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       // Verify saved query still loads
       const searchInput = dashboardPage.searchInput;
       await expect(searchInput).toHaveValue(testQuery);
+
+      // Verify the saved filter value is populated
+      const filterSelect = dashboardPage.getFilterSelectByName('Service');
+      await expect(filterSelect).toHaveValue('accounting');
     });
   });
 
@@ -614,6 +640,140 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
     },
   );
+
+  test.describe('Raw SQL Dashboard Tiles', () => {
+    const LINE_SQL = `SELECT toStartOfInterval(TimestampTime, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ts ORDER BY ts ASC`;
+
+    const TABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName LIMIT 200`;
+
+    const NUMBER_SQL = `SELECT 1234 FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})`;
+
+    const PIE_SQL = `SELECT ServiceName, count() FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName`;
+
+    test.beforeEach(async () => {
+      await dashboardPage.createNewDashboard();
+    });
+
+    test('Line chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Line ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Line chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(LINE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the line chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(
+          tile.locator('.recharts-responsive-container'),
+        ).toBeVisible({ timeout: 15000 });
+      });
+    });
+
+    test('Table chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Table ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Table chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(TABLE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery(false);
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the table chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+      });
+    });
+
+    test('Number chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Number ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Number chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Number);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(NUMBER_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery(false);
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the number chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(tile).toContainText('1234');
+      });
+    });
+
+    test('Pie chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Pie ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Pie chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Pie);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(PIE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the pie chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(
+          tile.locator('.recharts-responsive-container'),
+        ).toBeVisible({ timeout: 15000 });
+      });
+    });
+  });
 
   test(
     'should clear saved query when WHERE input is cleared and saved',

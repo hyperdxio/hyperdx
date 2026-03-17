@@ -16,8 +16,8 @@ export interface MetricMetadata {
 
 interface MetricMetadataProps {
   databaseName: string;
-  metricType: string;
-  metricName: string;
+  metricType?: string;
+  metricName?: string;
   tableSource: TMetricSource | undefined;
 }
 
@@ -48,7 +48,7 @@ export const useFetchMetricMetadata = ({
   return useQuery({
     queryKey: ['metric-metadata', databaseName, metricType, metricName],
     queryFn: async ({ signal }) => {
-      if (!shouldFetch) {
+      if (!shouldFetch || !metricName) {
         return null;
       }
 

@@ -600,7 +600,7 @@ export default function DBRowSidePanelErrorBoundary({
       styles={{
         body: {
           padding: '0',
-          height: '100vh',
+          height: '100%',
         },
       }}
       zIndex={drawerZIndex}
