@@ -117,6 +117,7 @@
 
   /* Borders & Dividers */
   --color-border: var(--click-global-color-stroke-default);
+  --color-border-emphasis: var(--mantine-color-dark-4);
   --color-border-muted: var(--click-global-color-stroke-default);
 
   /* Text - Using Click UI tokens */
@@ -313,6 +314,7 @@
 
   /* Borders & Dividers */
   --color-border: var(--click-global-color-stroke-default);
+  --color-border-emphasis: var(--mantine-color-dark-1);
   --color-border-muted: rgb(0 0 0 / 8%);
 
   /* Text - Using Click UI tokens */

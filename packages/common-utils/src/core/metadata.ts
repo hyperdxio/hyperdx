@@ -20,7 +20,7 @@ import type {
 } from '@/types';
 
 import { optimizeGetKeyValuesCalls } from './materializedViews';
-import { objectHash } from './utils';
+import { getLocalTableFromDistributedTable, objectHash } from './utils';
 
 // If filters initially are taking too long to load, decrease this number.
 // Between 1e6 - 5e6 is a good range.
@@ -77,18 +77,27 @@ export type TableMetadata = {
   database: string;
   name: string;
   uuid: string;
+  /** Note: This will contain the engine of the local table, when the table is Distributed */
   engine: string;
   is_temporary: number;
   data_paths: string[];
   metadata_path: string;
   metadata_modification_time: string;
   metadata_version: number;
+  /** Note: This may be a Distributed table. Use create_local_table_query for the local table's DDL. */
   create_table_query: string;
+  /** DDL for the local (non-distributed) table, when the table is Distributed */
+  create_local_table_query?: string;
+  /** Note: This will contain the engine_full of the local table, when the table is Distributed */
   engine_full: string;
   as_select: string;
+  /** Note: This will contain the partition_key of the local table, when the table is Distributed */
   partition_key: string;
+  /** Note: This will contain the sorting_key of the local table, when the table is Distributed */
   sorting_key: string;
+  /** Note: This will contain the primary_key of the local table, when the table is Distributed */
   primary_key: string;
+  /** Note: This will contain the sampling_key of the local table, when the table is Distributed */
   sampling_key: string;
   storage_policy: string;
   total_rows: string;
@@ -600,12 +609,55 @@ export class Metadata {
     tableName: string;
     connectionId: string;
   }) {
-    const tableMetadata = await this.queryTableMetadata({
+    let tableMetadata = await this.queryTableMetadata({
       cache: this.cache,
       database: databaseName,
       table: tableName,
       connectionId,
     });
+
+    // For Distributed tables, fetch metadata of the underlying local table to get correct partition key, sorting key, etc.
+    if (tableMetadata.engine === 'Distributed') {
+      try {
+        const { database, table } =
+          getLocalTableFromDistributedTable(tableMetadata) ?? {};
+
+        if (!database || !table) {
+          throw new Error(
+            `Could not parse underlying local table from Distributed table metadata: ${tableMetadata.create_table_query}`,
+          );
+        }
+
+        const localTableMetadata = await this.queryTableMetadata({
+          cache: this.cache,
+          database,
+          table,
+          connectionId,
+        });
+
+        // Override Distributed table metadata with local table metadata where relevant
+        tableMetadata = {
+          ...tableMetadata,
+          ...pick(localTableMetadata, [
+            // Distributed tables have these, but we make use of the
+            // underlying local table's engine value for optimizations instead.
+            'engine',
+            'engine_full',
+            // Distributed tables never have these, so we'll use the local table's
+            'partition_key',
+            'sorting_key',
+            'primary_key',
+            'sampling_key',
+          ]),
+          create_local_table_query: localTableMetadata.create_table_query,
+        };
+      } catch (e) {
+        console.error(
+          'Failed to fetch underlying table metadata for Distributed table, using Distributed table metadata as fallback',
+          e,
+        );
+      }
+    }
 
     // partition_key which includes parenthesis, unlike other keys such as 'primary_key' or 'sorting_key'
     if (
@@ -714,6 +766,38 @@ export class Metadata {
     return this.cache.getOrFetch<SkipIndexMetadata[]>(
       `${connectionId}.${databaseName}.${tableName}.skipIndices`,
       async () => {
+        const tableMetadata = await this.queryTableMetadata({
+          cache: this.cache,
+          database: databaseName,
+          table: tableName,
+          connectionId,
+        });
+
+        let localDatabase = databaseName;
+        let localTable = tableName;
+
+        // For Distributed tables, fetch skip indices on the underlying local table.
+        if (tableMetadata.engine === 'Distributed') {
+          try {
+            const { database, table } =
+              getLocalTableFromDistributedTable(tableMetadata) ?? {};
+
+            if (!database || !table) {
+              throw new Error(
+                `Could not parse local table from Distributed table metadata: ${tableMetadata.create_table_query}`,
+              );
+            }
+
+            localDatabase = database;
+            localTable = table;
+          } catch (e) {
+            console.error(
+              'Failed to get local table name for Distributed table, using Distributed table as fallback',
+              e,
+            );
+          }
+        }
+
         const sql = chSql`
           SELECT
             name,
@@ -722,21 +806,27 @@ export class Metadata {
             expr as expression,
             granularity
           FROM system.data_skipping_indices
-          WHERE database = ${{ String: databaseName }}
-            AND table = ${{ String: tableName }}
+          WHERE database = ${{ String: localDatabase }}
+            AND table = ${{ String: localTable }}
         `;
 
         try {
-          const json = await this.clickhouseClient
+          const data = await this.clickhouseClient
             .query<'JSON'>({
               connectionId,
               query: sql.sql,
               query_params: sql.params,
               clickhouse_settings: this.getClickHouseSettings(),
             })
-            .then(res => res.json<SkipIndexMetadata>());
+            .then(res => res.json<SkipIndexMetadata>())
+            .then(d => {
+              return d.data.map(row => ({
+                ...row,
+                granularity: Number(row.granularity), // granularity comes back as string, convert to number for easier usage
+              }));
+            });
 
-          return json.data;
+          return data;
         } catch (e) {
           // Don't retry permissions errors, just silently return empty array
           if (
