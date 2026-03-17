@@ -91,7 +91,7 @@ type AppliedConfig = AppliedConfigParams & {
 
 const MAX_NUM_SERIES = HARD_LINES_LIMIT;
 
-function buildInFilterCondition(
+export function buildInFilterCondition(
   columnExpression: string,
   value: string,
 ): string {
