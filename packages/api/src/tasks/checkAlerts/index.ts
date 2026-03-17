@@ -976,10 +976,8 @@ export const getPreviousAlertHistories = async (
             createdAt: { $lte: now },
           },
         },
-        // Sort by alert and createdAt to leverage the index
-        // This ensures we can use the compound index efficiently
         {
-          $sort: { alert: 1, createdAt: -1 },
+          $sort: { alert: 1, group: 1, createdAt: -1 },
         },
         // Group by alert ID AND group (if present), taking the first (latest) document for each combination
         {
