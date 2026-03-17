@@ -14,7 +14,18 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box, Drawer, Flex, Stack } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Drawer,
+  Flex,
+  Group,
+  Stack,
+  Text,
+  Tooltip,
+} from '@mantine/core';
+import { IconArrowLeft } from '@tabler/icons-react';
 
 import DBRowSidePanelHeader, {
   BreadcrumbNavigationCallback,
@@ -32,7 +43,7 @@ import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
 import ContextSubpanel from './ContextSidePanel';
-import { RowDataPanel, useRowData } from './DBRowDataPanel';
+import { ROW_DATA_ALIASES, RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
 import DBTracePanel from './DBTracePanel';
@@ -268,6 +279,41 @@ const DBRowSidePanel = ({
     }
   }, [normalizedRow]);
 
+  const durationMs = normalizedRow?.[ROW_DATA_ALIASES.DURATION_MS];
+  const spanKind = normalizedRow?.[ROW_DATA_ALIASES.SPAN_KIND];
+  const serviceName = normalizedRow?.[ROW_DATA_ALIASES.SERVICE_NAME];
+  const statusCode = normalizedRow?.[ROW_DATA_ALIASES.SEVERITY_TEXT];
+
+  const formattedDuration = useMemo(() => {
+    if (durationMs == null || isNaN(Number(durationMs))) return undefined;
+    const ms = Number(durationMs);
+    if (ms < 1) return `${(ms * 1000).toFixed(0)}µs`;
+    if (ms < 1000) return `${ms.toFixed(2)}ms`;
+    return `${(ms / 1000).toFixed(2)}s`;
+  }, [durationMs]);
+
+  const spanKindLabel = useMemo(() => {
+    if (spanKind == null) return undefined;
+    const kindMap: Record<string, string> = {
+      '1': 'Internal',
+      '2': 'Server',
+      '3': 'Client',
+      '4': 'Producer',
+      '5': 'Consumer',
+      Internal: 'Internal',
+      Server: 'Server',
+      Client: 'Client',
+      Producer: 'Producer',
+      Consumer: 'Consumer',
+      SPAN_KIND_INTERNAL: 'Internal',
+      SPAN_KIND_SERVER: 'Server',
+      SPAN_KIND_CLIENT: 'Client',
+      SPAN_KIND_PRODUCER: 'Producer',
+      SPAN_KIND_CONSUMER: 'Consumer',
+    };
+    return kindMap[String(spanKind)] ?? String(spanKind);
+  }, [spanKind]);
+
   if (isRowLoading) {
     return <div className={styles.loadingState}>Loading...</div>;
   }
@@ -278,24 +324,96 @@ const DBRowSidePanel = ({
 
   return (
     <>
-      <Box p="sm">
-        <DBRowSidePanelHeader
-          date={timestampDate}
-          attributes={highlightedAttributeValues}
-          mainContent={mainContent}
-          mainContentHeader={mainContentColumn}
-          severityText={severityText}
-          breadcrumbPath={breadcrumbPath}
-          onBreadcrumbClick={handleBreadcrumbClick}
-        />
-      </Box>
-      {/* <SidePanelHeader
-                logData={logData}
-                generateShareUrl={generateShareUrl}
-                onPropertyAddClick={onPropertyAddClick}
-                generateSearchUrl={generateSearchUrl}
-                onClose={_onClose}
-              /> */}
+      {isTraceSource ? (
+        <Box px="sm" pt="sm" pb="xs">
+          <Flex align="center" justify="space-between" mb={8}>
+            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+              <Tooltip label="Close" position="bottom">
+                <ActionIcon
+                  variant="secondary"
+                  size="sm"
+                  onClick={onClose}
+                  aria-label="Back"
+                >
+                  <IconArrowLeft size={16} />
+                </ActionIcon>
+              </Tooltip>
+              <Text size="sm" fw={600} truncate="end" style={{ minWidth: 0 }}>
+                Trace: {mainContent || 'Unknown'}
+              </Text>
+            </Group>
+          </Flex>
+          <Group gap="xs" wrap="wrap">
+            {serviceName && (
+              <Group gap={4}>
+                <Text size="xs" c="dimmed">
+                  ServiceName
+                </Text>
+                <Text size="xs" fw={500}>
+                  {serviceName}
+                </Text>
+              </Group>
+            )}
+            {serviceName && formattedDuration && (
+              <Text size="xs" c="dimmed">
+                ·
+              </Text>
+            )}
+            {formattedDuration && (
+              <Group gap={4}>
+                <Text size="xs" c="dimmed">
+                  Duration:
+                </Text>
+                <Text size="xs" fw={500}>
+                  {formattedDuration}
+                </Text>
+              </Group>
+            )}
+            {(serviceName || formattedDuration) && statusCode && (
+              <Text size="xs" c="dimmed">
+                ·
+              </Text>
+            )}
+            {statusCode && (
+              <Group gap={4}>
+                <Text size="xs" c="dimmed">
+                  Status:
+                </Text>
+                <Text
+                  size="xs"
+                  fw={500}
+                  c={
+                    statusCode === 'Error'
+                      ? 'red'
+                      : statusCode === 'Ok'
+                        ? 'green'
+                        : undefined
+                  }
+                >
+                  {statusCode}
+                </Text>
+              </Group>
+            )}
+            {spanKindLabel && (
+              <Badge size="sm" variant="light" radius="sm">
+                {spanKindLabel}
+              </Badge>
+            )}
+          </Group>
+        </Box>
+      ) : (
+        <Box p="sm">
+          <DBRowSidePanelHeader
+            date={timestampDate}
+            attributes={highlightedAttributeValues}
+            mainContent={mainContent}
+            mainContentHeader={mainContentColumn}
+            severityText={severityText}
+            breadcrumbPath={breadcrumbPath}
+            onBreadcrumbClick={handleBreadcrumbClick}
+          />
+        </Box>
+      )}
       <TabBar
         data-testid="side-panel-tabs"
         className="fs-8 mt-2"
