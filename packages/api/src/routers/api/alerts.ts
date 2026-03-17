@@ -31,6 +31,7 @@ router.get('/', async (req, res: AlertsExpRes, next) => {
       alerts.map(async alert => {
         const history = await getRecentAlertHistories({
           alertId: new ObjectId(alert._id),
+          interval: alert.interval,
           limit: 20,
         });
 
