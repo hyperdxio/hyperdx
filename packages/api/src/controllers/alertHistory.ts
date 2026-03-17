@@ -1,3 +1,7 @@
+import {
+  ALERT_INTERVAL_TO_MINUTES,
+  AlertInterval,
+} from '@hyperdx/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 
 import { AlertState } from '@/models/alert';
@@ -16,19 +20,23 @@ type GroupedAlertHistory = {
  */
 export async function getRecentAlertHistories({
   alertId,
+  interval,
   limit,
 }: {
   alertId: ObjectId;
+  interval: AlertInterval;
   limit: number;
 }): Promise<Omit<IAlertHistory, 'alert'>[]> {
+  const lookbackMs = limit * ALERT_INTERVAL_TO_MINUTES[interval] * 60 * 1000;
+
   const groupedHistories = await AlertHistory.aggregate<GroupedAlertHistory>([
-    // Filter for the specific alert
     {
       $match: {
         alert: new ObjectId(alertId),
+        createdAt: { $gte: new Date(Date.now() - lookbackMs) },
       },
     },
-    // Group documents by createdAt
+    { $sort: { createdAt: -1 } },
     {
       $group: {
         _id: '$createdAt',
@@ -43,7 +51,6 @@ export async function getRecentAlertHistories({
         },
       },
     },
-    // Take the `createdAtLimit` most recent groups
     {
       $sort: {
         _id: -1,

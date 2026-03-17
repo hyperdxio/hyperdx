@@ -18,6 +18,7 @@ import {
   formatDate,
   getAlignedDateRange,
   getFirstOrderingItem,
+  getLocalTableFromDistributedTable,
   isFirstOrderByAscending,
   isJsonExpression,
   isTimestampExpressionInFirstOrderBy,
@@ -1910,6 +1911,69 @@ describe('utils', () => {
       expect(result).toHaveLength(2);
       expect(result![0].name).toBe('body');
       expect(result![1].name).toBe('service');
+    });
+  });
+
+  describe('getLocalTableFromDistributedTable', () => {
+    const makeMetadata = (engineFull: string) =>
+      ({ engine_full: engineFull }) as any;
+
+    it('parses a simple Distributed engine_full', () => {
+      const result = getLocalTableFromDistributedTable(
+        makeMetadata("Distributed('default', 'mydb', 'local_table', rand())"),
+      );
+      expect(result).toEqual({ database: 'mydb', table: 'local_table' });
+    });
+
+    it('parses without a sharding key', () => {
+      const result = getLocalTableFromDistributedTable(
+        makeMetadata("Distributed('cluster', 'db', 'tbl')"),
+      );
+      expect(result).toEqual({ database: 'db', table: 'tbl' });
+    });
+
+    it('handles double-quoted identifiers', () => {
+      const result = getLocalTableFromDistributedTable(
+        makeMetadata('Distributed("cluster", "my_database", "my_table")'),
+      );
+      expect(result).toEqual({ database: 'my_database', table: 'my_table' });
+    });
+
+    it('handles backtick-quoted identifiers', () => {
+      const result = getLocalTableFromDistributedTable(
+        makeMetadata("Distributed('cluster', `mydb`, `local_tbl`, rand())"),
+      );
+      expect(result).toEqual({ database: 'mydb', table: 'local_tbl' });
+    });
+
+    it('handles unquoted identifiers', () => {
+      const result = getLocalTableFromDistributedTable(
+        makeMetadata('Distributed(cluster, mydb, local_tbl, rand())'),
+      );
+      expect(result).toEqual({ database: 'mydb', table: 'local_tbl' });
+    });
+
+    it('returns undefined when engine_full has fewer than 3 args', () => {
+      const result = getLocalTableFromDistributedTable(
+        makeMetadata("Distributed('cluster', 'db')"),
+      );
+      expect(result).toBeUndefined();
+    });
+
+    it('returns undefined when engine_full does not match Distributed pattern', () => {
+      const result = getLocalTableFromDistributedTable(
+        makeMetadata('MergeTree() ORDER BY id'),
+      );
+      expect(result).toBeUndefined();
+    });
+
+    it('handles a complex sharding expression with nested parentheses', () => {
+      const result = getLocalTableFromDistributedTable(
+        makeMetadata(
+          "Distributed('cluster', 'db', 'tbl', sipHash64(UserID, EventDate))",
+        ),
+      );
+      expect(result).toEqual({ database: 'db', table: 'tbl' });
     });
   });
 });

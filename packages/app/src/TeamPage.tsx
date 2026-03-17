@@ -33,7 +33,7 @@ import {
 import { ConnectionForm } from '@/components/ConnectionForm';
 import SelectControlled from '@/components/SelectControlled';
 import { SourcesList } from '@/components/Sources/SourcesList';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_CLICKHOUSE_BUILD, IS_LOCAL_MODE } from '@/config';
 
 import { PageHeader } from './components/PageHeader';
 import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
@@ -125,7 +125,9 @@ function ConnectionsSection() {
               connection={{
                 id: 'new',
                 name: 'My New Connection',
-                host: 'http://localhost:8123',
+                host: IS_CLICKHOUSE_BUILD
+                  ? window.location.origin
+                  : 'http://localhost:8123',
                 username: 'default',
                 password: '',
               }}

@@ -1,6 +1,6 @@
 import { DisplayType } from '@/types';
 
-import { renderRawSqlChartConfig } from '../rawSqlParams';
+import { renderRawSqlChartConfig } from '../core/renderChartConfig';
 
 describe('renderRawSqlChartConfig', () => {
   describe('DisplayType.Table', () => {

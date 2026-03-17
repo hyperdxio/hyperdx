@@ -138,15 +138,23 @@ $transition-slow: 0.2s ease;
 }
 
 .footer {
-  position: absolute;
-  bottom: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    to top,
-    var(--color-bg-sidenav) 50%,
-    transparent 100%
-  );
-  padding-top: 40px;
+  flex-shrink: 0;
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: linear-gradient(
+      to top,
+      var(--color-bg-sidenav) 0%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
 }
 
 /* Navigation Links */
@@ -345,7 +353,6 @@ $transition-slow: 0.2s ease;
 /* User Menu */
 
 .userMenu {
-  pointer-events: all;
   cursor: pointer;
   margin: $spacing-sm;
   padding: $spacing-xs $spacing-sm;
@@ -401,7 +408,6 @@ $transition-slow: 0.2s ease;
 .helpButton {
   @include flex-center;
 
-  pointer-events: all;
   cursor: pointer;
   margin: 0 $spacing-sm $spacing-sm;
   width: $help-button-size;
@@ -440,7 +446,7 @@ $transition-slow: 0.2s ease;
   padding-right: $spacing-md;
   margin-bottom: $spacing-sm;
   margin-top: $spacing-lg;
-  padding-bottom: 80px;
+  padding-bottom: $spacing-sm;
 }
 
 /* Scrollbar Customization */

@@ -990,21 +990,19 @@ export const getPreviousAlertHistories = async (
     50,
   );
 
+  const lookbackDate = new Date(now.getTime() - ms('7d'));
+
   const resultChunks = await Promise.all(
     chunkedIds.map(async ids =>
       AlertHistory.aggregate<AggregatedAlertHistory>([
-        // Filter for the given alerts, and only entries created before "now"
-        // This uses the compound index { alert: 1, createdAt: -1 }
         {
           $match: {
             alert: { $in: ids },
-            createdAt: { $lte: now },
+            createdAt: { $lte: now, $gte: lookbackDate },
           },
         },
-        // Sort by alert and createdAt to leverage the index
-        // This ensures we can use the compound index efficiently
         {
-          $sort: { alert: 1, createdAt: -1 },
+          $sort: { alert: 1, group: 1, createdAt: -1 },
         },
         // Group by alert ID AND group (if present), taking the first (latest) document for each combination
         {

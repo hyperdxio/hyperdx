@@ -5,7 +5,15 @@ import {
   TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Modal, Paper, Tabs, Text, TextProps, Tooltip } from '@mantine/core';
+import {
+  Modal,
+  Paper,
+  Stack,
+  Tabs,
+  Text,
+  TextProps,
+  Tooltip,
+} from '@mantine/core';
 import { IconCode, IconRefresh } from '@tabler/icons-react';
 
 import { useTableMetadata } from '@/hooks/useMetadata';
@@ -86,11 +94,30 @@ const TableSchemaPreview = ({
           <IconRefresh className="spin-animate" />
         </div>
       ) : (
-        <SQLPreview
-          data={data?.create_table_query ?? 'Schema is not available'}
-          enableCopy={!!data?.create_table_query}
-          copyButtonSize="xs"
-        />
+        <Stack gap="sm">
+          {data?.create_local_table_query && (
+            <Text size="xs" fw={600} c="dimmed">
+              Distributed Table
+            </Text>
+          )}
+          <SQLPreview
+            data={data?.create_table_query ?? 'Schema is not available'}
+            enableCopy={!!data?.create_table_query}
+            copyButtonSize="xs"
+          />
+          {data?.create_local_table_query && (
+            <>
+              <Text size="xs" fw={600} c="dimmed">
+                Local Table
+              </Text>
+              <SQLPreview
+                data={data.create_local_table_query}
+                enableCopy
+                copyButtonSize="xs"
+              />
+            </>
+          )}
+        </Stack>
       )}
     </Paper>
   );

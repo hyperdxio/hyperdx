@@ -16,8 +16,9 @@ import {
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import { isBuilderChartConfig, isRawSqlChartConfig } from '@/guards';
+import { replaceMacros } from '@/macros';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
-import { renderRawSqlChartConfig } from '@/rawSqlParams';
+import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
 import {
   AggregateFunction,
   AggregateFunctionWithCombinators,
@@ -29,6 +30,7 @@ import {
   ChSqlSchema,
   CteChartConfig,
   DateRange,
+  DisplayType,
   MetricsDataType,
   QuerySettings,
   RawSqlChartConfig,
@@ -1415,6 +1417,24 @@ async function translateMetricChartConfig(
   }
 
   throw new Error(`no query support for metric type=${metricType}`);
+}
+
+export function renderRawSqlChartConfig(
+  chartConfig: RawSqlChartConfig & Partial<DateRange>,
+): ChSql {
+  const displayType = chartConfig.displayType ?? DisplayType.Table;
+
+  const sqlWithMacrosReplaced = replaceMacros(chartConfig.sqlTemplate);
+
+  // eslint-disable-next-line security/detect-object-injection
+  const queryParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
+
+  return {
+    sql: sqlWithMacrosReplaced,
+    params: Object.fromEntries(
+      queryParams.map(param => [param.name, param.get(chartConfig)]),
+    ),
+  };
 }
 
 export async function renderChartConfig(
