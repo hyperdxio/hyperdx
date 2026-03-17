@@ -641,6 +641,140 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     },
   );
 
+  test.describe('Raw SQL Dashboard Tiles', () => {
+    const LINE_SQL = `SELECT toStartOfInterval(TimestampTime, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ts ORDER BY ts ASC`;
+
+    const TABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName LIMIT 200`;
+
+    const NUMBER_SQL = `SELECT 1234 FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})`;
+
+    const PIE_SQL = `SELECT ServiceName, count() FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName`;
+
+    test.beforeEach(async () => {
+      await dashboardPage.createNewDashboard();
+    });
+
+    test('Line chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Line ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Line chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(LINE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the line chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(
+          tile.locator('.recharts-responsive-container'),
+        ).toBeVisible({ timeout: 15000 });
+      });
+    });
+
+    test('Table chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Table ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Table chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(TABLE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery(false);
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the table chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+      });
+    });
+
+    test('Number chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Number ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Number chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Number);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(NUMBER_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery(false);
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the number chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(tile).toContainText('1234');
+      });
+    });
+
+    test('Pie chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Pie ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Pie chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Pie);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.typeSqlQuery(PIE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the pie chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(
+          tile.locator('.recharts-responsive-container'),
+        ).toBeVisible({ timeout: 15000 });
+      });
+    });
+  });
+
   test(
     'should clear saved query when WHERE input is cleared and saved',
     {},

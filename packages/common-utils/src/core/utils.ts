@@ -513,6 +513,10 @@ export function convertToDashboardTemplate(
     }
   }
 
+  if (input.sections) {
+    output.sections = structuredClone(input.sections);
+  }
+
   return output;
 }
 
@@ -546,6 +550,10 @@ export function convertToDashboardDocument(
     for (const filter of input.filters) {
       output.filters.push(convertToFilterDocument(filter));
     }
+  }
+
+  if (input.sections) {
+    output.sections = structuredClone(input.sections);
   }
 
   return output;

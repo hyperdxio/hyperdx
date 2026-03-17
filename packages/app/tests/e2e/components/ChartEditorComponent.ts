@@ -132,13 +132,39 @@ export class ChartEditorComponent {
   /**
    * Run the query and wait for it to complete
    */
-  async runQuery() {
+  async runQuery(waitForRecharts: boolean = true) {
     await this.runQueryButton.click();
-    // need to wait for the recharts graph to render
-    await this.page
-      .locator('.recharts-responsive-container')
-      .first()
-      .waitFor({ state: 'visible', timeout: 10000 });
+    if (waitForRecharts) {
+      // need to wait for the recharts graph to render
+      await this.page
+        .locator('.recharts-responsive-container')
+        .first()
+        .waitFor({ state: 'visible', timeout: 10000 });
+    }
+  }
+
+  /**
+   * Switch the chart editor from Builder to SQL mode.
+   */
+  async switchToSqlMode() {
+    const sqlLabel = this.page.locator(
+      '.mantine-SegmentedControl-label:has-text("SQL")',
+    );
+    await sqlLabel.waitFor({ state: 'visible', timeout: 5000 });
+    await sqlLabel.click();
+  }
+
+  /**
+   * Type a SQL query into the CodeMirror SQL editor.
+   * Call switchToSqlMode() first to make the SQL editor visible.
+   */
+  async typeSqlQuery(sql: string) {
+    // Target the cm-content (editable area) inside the SQL template editor.
+    // Use first() because the "Generated SQL" accordion may add another
+    // cm-editor further down the DOM.
+    const sqlContent = this.page.locator('.cm-editor .cm-content').first();
+    await sqlContent.click();
+    await this.page.keyboard.type(sql);
   }
 
   /**
