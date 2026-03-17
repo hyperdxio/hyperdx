@@ -186,7 +186,7 @@ function makeCountsToFills(colors: string[]) {
       return indexedFills;
     }
 
-    const p95Idx = Math.floor(nonZero.length * 0.95);
+    const p95Idx = Math.floor((nonZero.length - 1) * 0.95);
     const p95 = nonZero[p95Idx] ?? nonZero[nonZero.length - 1];
     const sqrtCeiling = Math.sqrt(p95);
 
@@ -668,6 +668,8 @@ function HeatmapContainer({
                   // clamped by greatest(value, effectiveMin).  If the
                   // selection touches that bucket, widen yMin to 0 so
                   // the downstream SQL filter captures all those spans.
+                  // The 1.1× threshold adds 10% headroom to account for
+                  // floating-point rounding in the bucket boundary.
                   const adjustedYMin =
                     scaleType === 'log' && yMin <= effectiveMin * 1.1
                       ? 0
