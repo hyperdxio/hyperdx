@@ -733,63 +733,71 @@ export default function EditTimeChartForm({
   const [saveToDashboardModalOpen, setSaveToDashboardModalOpen] =
     useState(false);
 
-  const onSubmit = useCallback(() => {
-    handleSubmit(form => {
-      const isRawSqlChart =
-        form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
+  const onSubmit = useCallback(
+    (suppressErrorNotification: boolean = false) => {
+      handleSubmit(form => {
+        const isRawSqlChart =
+          form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
 
-      const errors = validateChartForm(form, tableSource, setError);
-      if (errors.length > 0) {
-        notifications.show({
-          id: 'chart-error',
-          title: 'Invalid Chart',
-          message: <ErrorNotificationMessage errors={errors} />,
-          color: 'red',
-        });
-        return;
-      }
+        const errors = validateChartForm(form, tableSource, setError);
+        if (errors.length > 0) {
+          if (!suppressErrorNotification) {
+            notifications.show({
+              id: 'chart-error',
+              title: 'Invalid Chart',
+              message: <ErrorNotificationMessage errors={errors} />,
+              color: 'red',
+            });
+          }
+          return;
+        }
 
-      const savedConfig = convertFormStateToSavedChartConfig(form, tableSource);
-      const queriedConfig = convertFormStateToChartConfig(
-        form,
-        dateRange,
-        tableSource,
-      );
-
-      if (savedConfig && queriedConfig) {
-        const normalizedSavedConfig = isRawSqlSavedChartConfig(savedConfig)
-          ? savedConfig
-          : {
-              ...savedConfig,
-              alert: normalizeNoOpAlertScheduleFields(
-                savedConfig.alert,
-                chartConfigAlert,
-                {
-                  preserveExplicitScheduleOffsetMinutes:
-                    dirtyFields.alert?.scheduleOffsetMinutes === true,
-                  preserveExplicitScheduleStartAt:
-                    dirtyFields.alert?.scheduleStartAt === true,
-                },
-              ),
-            };
-        setChartConfig?.(normalizedSavedConfig);
-        setQueriedConfigAndSource(
-          queriedConfig,
-          isRawSqlChart ? undefined : tableSource,
+        const savedConfig = convertFormStateToSavedChartConfig(
+          form,
+          tableSource,
         );
-      }
-    })();
-  }, [
-    chartConfigAlert,
-    dirtyFields.alert?.scheduleOffsetMinutes,
-    dirtyFields.alert?.scheduleStartAt,
-    handleSubmit,
-    setChartConfig,
-    setQueriedConfigAndSource,
-    tableSource,
-    dateRange,
-    setError,
-  ]);
+        const queriedConfig = convertFormStateToChartConfig(
+          form,
+          dateRange,
+          tableSource,
+        );
+
+        if (savedConfig && queriedConfig) {
+          const normalizedSavedConfig = isRawSqlSavedChartConfig(savedConfig)
+            ? savedConfig
+            : {
+                ...savedConfig,
+                alert: normalizeNoOpAlertScheduleFields(
+                  savedConfig.alert,
+                  chartConfigAlert,
+                  {
+                    preserveExplicitScheduleOffsetMinutes:
+                      dirtyFields.alert?.scheduleOffsetMinutes === true,
+                    preserveExplicitScheduleStartAt:
+                      dirtyFields.alert?.scheduleStartAt === true,
+                  },
+                ),
+              };
+          setChartConfig?.(normalizedSavedConfig);
+          setQueriedConfigAndSource(
+            queriedConfig,
+            isRawSqlChart ? undefined : tableSource,
+          );
+        }
+      })();
+    },
+    [
+      chartConfigAlert,
+      dirtyFields.alert?.scheduleOffsetMinutes,
+      dirtyFields.alert?.scheduleStartAt,
+      handleSubmit,
+      setChartConfig,
+      setQueriedConfigAndSource,
+      tableSource,
+      dateRange,
+      setError,
+    ],
+  );
 
   const onTableSortingChange = useCallback(
     (sortState: SortingState | null) => {
@@ -906,7 +914,8 @@ export default function EditTimeChartForm({
 
       // Don't auto-submit when config type changes, to avoid clearing form state (like source)
       if (displayTypeChanged) {
-        onSubmit();
+        // true = Suppress error notification (because we're auto-submitting)
+        onSubmit(true);
       }
     }
   }, [displayType, select, setValue, onSubmit, configType]);
@@ -1515,7 +1524,7 @@ export default function EditTimeChartForm({
                 data-testid="chart-run-query-button"
                 variant="primary"
                 type="submit"
-                onClick={onSubmit}
+                onClick={() => onSubmit()}
                 leftSection={<IconPlayerPlay size={16} />}
                 style={{ flexShrink: 0 }}
               >
