@@ -620,6 +620,7 @@ describe('sources router', () => {
       // NOTE: Mongoose discriminator toJSON does NOT strip cross-kind fields.
       // Unknown fields stored in MongoDB are still included in toJSON() output.
       const hydrated = await Source.findById(result.insertedId);
+      // @ts-expect-error toJSON has differing type signatures depending on the source, but it's fine at runtime
       const json = hydrated?.toJSON({ getters: true });
       expect(json).toHaveProperty('metricTables');
     });

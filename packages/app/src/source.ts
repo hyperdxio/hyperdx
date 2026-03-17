@@ -1,3 +1,4 @@
+import React from 'react';
 import pick from 'lodash/pick';
 import objectHash from 'object-hash';
 import {
@@ -11,6 +12,7 @@ import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   MetricsDataType,
   SourceKind,
+  SourceSchema,
   TLogSource,
   TMetricSource,
   TSessionSource,
@@ -18,6 +20,7 @@ import {
   TSourceNoId,
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
+import { notifications } from '@mantine/notifications';
 import {
   useMutation,
   useQuery,
@@ -95,7 +98,34 @@ export function useSources() {
         return localSources.getAll();
       }
       const rawSources = await hdxServer('sources').json<TSource[]>();
-      return rawSources.map(addDefaultsToSource);
+      const sources = rawSources.map(addDefaultsToSource);
+
+      sources.forEach(source => {
+        const result = SourceSchema.safeParse(source);
+        if (!result.success) {
+          const fields = result.error.issues
+            .map(issue => issue.path.join('.'))
+            .join(', ');
+          notifications.show({
+            color: 'yellow',
+            title: `Source "${source.name}" has validation issues`,
+            message: React.createElement(
+              React.Fragment,
+              null,
+              fields ? `Fields: ${fields}. ` : '',
+              React.createElement(
+                'a',
+                { href: '/team#sources' },
+                'Edit sources',
+              ),
+              ' to ensure compatibility.',
+            ),
+            autoClose: false,
+          });
+        }
+      });
+
+      return sources;
     },
   });
 }
