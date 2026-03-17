@@ -1109,7 +1109,12 @@ function Heatmap({
             border: '1px solid var(--mantine-color-default-border)',
             borderRadius: 4,
             position: 'absolute',
-            bottom: height - selectingInfo?.top + 4,
+            // Place above the selection; if too close to the top, flip below
+            ...(selectingInfo?.top > 30
+              ? { bottom: height - selectingInfo?.top + 4 }
+              : {
+                  top: selectingInfo?.top + (selectingInfo?.height ?? 0) + 4,
+                }),
             left: selectingInfo?.left,
           }}
           onClick={e => {
