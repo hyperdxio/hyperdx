@@ -6,6 +6,7 @@ import {
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Anchor,
   Code,
   Collapse,
   Group,
@@ -97,7 +98,7 @@ export function RawSqlChartInstructions({
             <Text size="xs" fw="bold">
               The following parameters can be referenced in this chart's SQL:
             </Text>
-            <List size="xs" withPadding spacing={3} mb="xs">
+            <List size="xs" withPadding spacing={3}>
               {availableParams.map(({ name, type, description }) => (
                 <List.Item key={name}>
                   <ParamSnippet
@@ -140,6 +141,16 @@ export function RawSqlChartInstructions({
               <Code fz="xs" block>
                 {QUERY_PARAM_EXAMPLES[displayType]}
               </Code>
+              <Text size="xs" mt="xs">
+                Macros from the{' '}
+                <Anchor
+                  href="https://github.com/grafana/clickhouse-datasource?tab=readme-ov-file#macros"
+                  target="_blank"
+                >
+                  ClickHouse Datasource Grafana Plugin
+                </Anchor>{' '}
+                may also be used.
+              </Text>
             </div>
           </Stack>
         </Collapse>

@@ -110,18 +110,7 @@ export const QUERY_PARAM_EXAMPLES: Record<DisplayType, string> = {
   [DisplayType.Markdown]: '',
 };
 
-export function renderRawSqlChartConfig(
-  chartConfig: RawSqlChartConfig & Partial<DateRange>,
-): ChSql {
-  const displayType = chartConfig.displayType ?? DisplayType.Table;
-
+export function renderQueryParam(name: keyof typeof QUERY_PARAMS): string {
   // eslint-disable-next-line security/detect-object-injection
-  const queryParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
-
-  return {
-    sql: chartConfig.sqlTemplate ?? '',
-    params: Object.fromEntries(
-      queryParams.map(param => [param.name, param.get(chartConfig)]),
-    ),
-  };
+  return `{${QUERY_PARAMS[name].name}:${QUERY_PARAMS[name].type}}`;
 }
