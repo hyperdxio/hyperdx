@@ -476,8 +476,16 @@ export default function DBDeltaChart({
       }}
     >
       {/* Legend */}
-      <Flex gap="md" align="center" mb="xs" wrap="wrap">
+      <Flex gap="md" align="center" mt={2} mb="xs" wrap="wrap">
         {legendPrefix}
+        {legendPrefix && (
+          <Box
+            h={12}
+            style={{
+              borderLeft: '1px solid var(--mantine-color-default-border)',
+            }}
+          />
+        )}
         {hasSelection ? (
           <>
             <Flex align="center" gap={4}>
