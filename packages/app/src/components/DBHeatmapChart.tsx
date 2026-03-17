@@ -306,16 +306,15 @@ type HeatmapChartConfig = {
 
 function ColorLegend({ colors }: { colors: string[] }) {
   return (
-    <Flex align="center" gap={4} px="sm" pb={2}>
+    <Flex align="center" gap={4}>
       <Text size="10px" c="dimmed">
         Low
       </Text>
       <div
         style={{
           display: 'flex',
+          width: 80,
           height: 8,
-          flex: 1,
-          maxWidth: 120,
           borderRadius: 2,
           overflow: 'hidden',
         }}
