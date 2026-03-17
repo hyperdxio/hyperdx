@@ -691,7 +691,7 @@ export type Tile = z.infer<typeof TileSchema>;
 
 export const DashboardContainerSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['section']).default('section'),
+  type: z.enum(['section']),
   title: z.string().min(1),
   collapsed: z.boolean(),
 });
