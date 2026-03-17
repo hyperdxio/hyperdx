@@ -61,7 +61,6 @@ export function DBSearchHeatmapChart({
   const [fields, setFields] = useQueryStates({
     value: parseAsString.withDefault(getDurationMsExpression(source)),
     count: parseAsString.withDefault('count()'),
-    scaleType: parseAsString.withDefault('log'),
     // Heatmap selection coordinates
     xMin: parseAsFloat,
     xMax: parseAsFloat,
@@ -69,13 +68,7 @@ export function DBSearchHeatmapChart({
     yMax: parseAsFloat,
   });
   const [container, setContainer] = useState<HTMLElement | null>(null);
-  const scaleType = (fields.scaleType ?? 'log') as HeatmapScaleType;
-  const setScaleType = useCallback(
-    (v: HeatmapScaleType) => {
-      void setFields({ scaleType: v });
-    },
-    [setFields],
-  );
+  const [scaleType, setScaleType] = useState<HeatmapScaleType>('log');
   const [settingsOpened, settingsHandlers] = useDisclosure(false);
   const { colorScheme } = useMantineColorScheme();
   const palette = colorScheme === 'light' ? lightPalette : darkPalette;
