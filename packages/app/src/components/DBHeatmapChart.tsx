@@ -144,7 +144,7 @@ function heatmapPaths(opts: {
 // it can be reserved for error overlays in the future.
 // Dark theme: starts at a luminant indigo visible on dark bg, ends at bright amber.
 // Light theme: starts at a saturated medium blue visible on white, ends at deep orange.
-const darkPalette = [
+export const darkPalette = [
   '#7b6cf6', // indigo (low)
   '#5a9cf6', // sky blue
   '#38c9a0', // teal
@@ -153,7 +153,7 @@ const darkPalette = [
   '#f0c528', // gold
   '#f5a623', // amber (high)
 ];
-const lightPalette = [
+export const lightPalette = [
   '#2a6fb5', // medium blue (low)
   '#2a96a8', // teal
   '#33a85e', // green
@@ -304,7 +304,7 @@ type HeatmapChartConfig = {
   with?: BuilderChartConfigWithDateRange['with'];
 };
 
-function ColorLegend({ colors }: { colors: string[] }) {
+export function ColorLegend({ colors }: { colors: string[] }) {
   return (
     <Flex align="center" gap={4}>
       <Text size="10px" c="dimmed">
@@ -652,45 +652,28 @@ function HeatmapContainer({
           criteria.
         </Text>
       ) : (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-          <Heatmap
-            key={JSON.stringify(config)}
-            data={[time, bucket, count]}
-            numberFormat={config.numberFormat}
-            onFilter={
-              onFilter
-                ? (xMin, xMax, yMin, yMax) => {
-                    // In log mode, the bottom bucket collects all values
-                    // clamped by greatest(value, effectiveMin).  If the
-                    // selection touches that bucket, widen yMin to 0 so
-                    // the downstream SQL filter captures all those spans.
-                    const adjustedYMin =
-                      scaleType === 'log' && yMin <= effectiveMin * 1.1
-                        ? 0
-                        : yMin;
-                    onFilter(xMin, xMax, adjustedYMin, yMax);
-                  }
-                : undefined
-            }
-            scaleType={scaleType}
-            palette={palette}
-          />
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 46,
-              left: 64,
-              zIndex: 1,
-              pointerEvents: 'none',
-              background: 'var(--mantine-color-body)',
-              borderRadius: 4,
-              padding: '2px 4px',
-              opacity: 0.85,
-            }}
-          >
-            <ColorLegend colors={palette} />
-          </div>
-        </div>
+        <Heatmap
+          key={JSON.stringify(config)}
+          data={[time, bucket, count]}
+          numberFormat={config.numberFormat}
+          onFilter={
+            onFilter
+              ? (xMin, xMax, yMin, yMax) => {
+                  // In log mode, the bottom bucket collects all values
+                  // clamped by greatest(value, effectiveMin).  If the
+                  // selection touches that bucket, widen yMin to 0 so
+                  // the downstream SQL filter captures all those spans.
+                  const adjustedYMin =
+                    scaleType === 'log' && yMin <= effectiveMin * 1.1
+                      ? 0
+                      : yMin;
+                  onFilter(xMin, xMax, adjustedYMin, yMax);
+                }
+              : undefined
+          }
+          scaleType={scaleType}
+          palette={palette}
+        />
       )}
     </ChartContainer>
   );

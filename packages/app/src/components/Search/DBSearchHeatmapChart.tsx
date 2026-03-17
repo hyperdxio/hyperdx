@@ -24,6 +24,7 @@ import {
   Stack,
   Text,
   Tooltip,
+  useMantineColorScheme,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconPlayerPlay, IconSettings } from '@tabler/icons-react';
@@ -34,7 +35,12 @@ import { getDurationMsExpression } from '@/source';
 
 import type { AddFilterFn } from '../DBDeltaChart';
 import DBDeltaChart from '../DBDeltaChart';
-import DBHeatmapChart, { type HeatmapScaleType } from '../DBHeatmapChart';
+import DBHeatmapChart, {
+  ColorLegend,
+  darkPalette,
+  type HeatmapScaleType,
+  lightPalette,
+} from '../DBHeatmapChart';
 
 const Schema = z.object({
   value: z.string().trim().min(1),
@@ -64,6 +70,8 @@ export function DBSearchHeatmapChart({
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [scaleType, setScaleType] = useState<HeatmapScaleType>('log');
   const [settingsOpened, settingsHandlers] = useDisclosure(false);
+  const { colorScheme } = useMantineColorScheme();
+  const palette = colorScheme === 'light' ? lightPalette : darkPalette;
 
   // After applying a filter, clear the heatmap selection so the delta chart
   // resets instead of staying in comparison mode.
@@ -151,6 +159,9 @@ export function DBSearchHeatmapChart({
           settingsHandlers.close();
         }}
       />
+      <Box px="sm" py={2}>
+        <ColorLegend colors={palette} />
+      </Box>
       <Box style={{ flex: 1, minHeight: 0 }}>
         <DBDeltaChart
           config={{
