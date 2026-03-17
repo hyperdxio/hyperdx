@@ -679,10 +679,14 @@ function HeatmapContainer({
           <div
             style={{
               position: 'absolute',
-              bottom: 24,
-              left: 60,
+              bottom: 46,
+              left: 64,
               zIndex: 1,
               pointerEvents: 'none',
+              background: 'var(--mantine-color-body)',
+              borderRadius: 4,
+              padding: '2px 4px',
+              opacity: 0.85,
             }}
           >
             <ColorLegend colors={palette} />
