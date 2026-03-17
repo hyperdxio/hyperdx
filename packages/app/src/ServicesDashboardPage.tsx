@@ -8,6 +8,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
+import SqlString from 'sqlstring';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -112,7 +113,10 @@ function getScopedFilters({
   if (appliedConfig.service) {
     filters.push({
       type: 'sql',
-      condition: `${expressions.service} IN ('${appliedConfig.service}')`,
+      condition: SqlString.format('? IN (?)', [
+        SqlString.raw(expressions.service),
+        appliedConfig.service,
+      ]),
     });
   }
   if (includeNonEmptyEndpointFilter) {
