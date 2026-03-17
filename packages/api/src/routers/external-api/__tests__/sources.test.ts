@@ -530,6 +530,92 @@ describe('External API v2 Sources', () => {
       expect(response.body.data[0].id).toBe(validSource._id.toString());
     });
   });
+
+  describe('backward compatibility with legacy flat-model documents', () => {
+    const BASE_URL = '/api/v2/sources';
+
+    it('returns legacy Session source without timestampValueExpression using default TimestampTime', async () => {
+      // Legacy Session sources were created before timestampValueExpression was
+      // required. applyLegacyDefaults() backfills 'TimestampTime' before
+      // SourceSchema.safeParse(), so these sources still appear in the response.
+      await Source.collection.insertOne({
+        kind: SourceKind.Session,
+        name: 'Legacy Session',
+        team: team._id,
+        connection: connection._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: 'otel_sessions' },
+        traceSourceId: 'some-trace-source-id',
+        // timestampValueExpression intentionally omitted
+      });
+
+      const response = await authRequest('get', BASE_URL).expect(200);
+
+      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data[0].kind).toBe(SourceKind.Session);
+      // Default is applied at read time, not persisted to the database
+      expect(response.body.data[0].timestampValueExpression).toBe(
+        'TimestampTime',
+      );
+    });
+
+    it('returns Trace source with logSourceId: null (Zod optional accepts null)', async () => {
+      // Old schema had logSourceId: z.string().optional().nullable()
+      // New schema removed .nullable() — however, Zod's optional() in
+      // discriminatedUnion context still accepts null values (they pass
+      // safeParse). This means logSourceId: null is NOT a breaking change.
+      await Source.collection.insertOne({
+        kind: SourceKind.Trace,
+        name: 'Trace with null logSourceId',
+        team: team._id,
+        connection: connection._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: 'otel_traces' },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: '*',
+        durationExpression: 'Duration',
+        durationPrecision: 3,
+        traceIdExpression: 'TraceId',
+        spanIdExpression: 'SpanId',
+        parentSpanIdExpression: 'ParentSpanId',
+        spanNameExpression: 'SpanName',
+        spanKindExpression: 'SpanKind',
+        logSourceId: null,
+      });
+
+      const response = await authRequest('get', BASE_URL).expect(200);
+
+      // Source IS returned — logSourceId: null passes Zod safeParse
+      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data[0].kind).toBe(SourceKind.Trace);
+      expect(response.body.data[0].logSourceId).toBeNull();
+    });
+
+    it('strips cross-kind fields from legacy flat-model Log source via SourceSchema.safeParse', async () => {
+      // The external API runs SourceSchema.safeParse() which DOES strip
+      // unknown/cross-kind fields (unlike Mongoose toJSON which keeps them).
+      // This is the key difference between internal and external APIs.
+      await Source.collection.insertOne({
+        kind: SourceKind.Log,
+        name: 'Flat Model Log',
+        team: team._id,
+        connection: connection._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Body',
+        // Cross-kind fields from old flat model
+        metricTables: { gauge: 'otel_metrics_gauge' },
+        durationExpression: 'Duration',
+      });
+
+      const response = await authRequest('get', BASE_URL).expect(200);
+
+      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data[0].kind).toBe(SourceKind.Log);
+      expect(response.body.data[0].defaultTableSelectExpression).toBe('Body');
+      // Cross-kind fields ARE stripped by SourceSchema.safeParse in the external API
+      expect(response.body.data[0]).not.toHaveProperty('metricTables');
+      expect(response.body.data[0]).not.toHaveProperty('durationExpression');
+    });
+  });
 });
 
 describe('External API v2 Sources Mapping', () => {
