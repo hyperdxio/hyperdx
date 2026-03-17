@@ -1679,9 +1679,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
                           handleRenameSection(section.id, newTitle)
                         }
                         onDelete={() => handleDeleteSection(section.id)}
-                        onToggleDefaultCollapsed={() =>
-                          handleToggleSection(section.id)
-                        }
                         onAddTile={() => onAddTile(section.id)}
                       />
                       {!section.collapsed && sectionTiles.length > 0 && (

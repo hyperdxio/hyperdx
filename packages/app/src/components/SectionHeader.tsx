@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Flex, Input, Menu, Text } from '@mantine/core';
 import {
@@ -16,7 +16,6 @@ export default function SectionHeader({
   onToggle,
   onRename,
   onDelete,
-  onToggleDefaultCollapsed,
   onAddTile,
 }: {
   section: DashboardContainer;
@@ -24,15 +23,13 @@ export default function SectionHeader({
   onToggle: () => void;
   onRename?: (newTitle: string) => void;
   onDelete?: () => void;
-  onToggleDefaultCollapsed?: () => void;
   onAddTile?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(section.title);
   const [hovered, setHovered] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const hasMenuControls = onDelete || onToggleDefaultCollapsed;
+  const hasMenuControls = onDelete != null;
 
   const handleSaveRename = () => {
     const trimmed = editedTitle.trim();
@@ -60,7 +57,6 @@ export default function SectionHeader({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        cursor: 'pointer',
         borderBottom: '1px solid var(--mantine-color-dark-4)',
         userSelect: 'none',
       }}
@@ -69,7 +65,7 @@ export default function SectionHeader({
       <Flex
         align="center"
         gap="xs"
-        style={{ flex: 1, minWidth: 0 }}
+        style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
         onClick={editing ? undefined : onToggle}
         onKeyDown={
           editing
@@ -104,7 +100,6 @@ export default function SectionHeader({
             onClick={e => e.stopPropagation()}
           >
             <Input
-              ref={inputRef}
               size="xs"
               value={editedTitle}
               onChange={e => setEditedTitle(e.currentTarget.value)}
@@ -165,22 +160,18 @@ export default function SectionHeader({
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown>
-            {onToggleDefaultCollapsed && (
-              <Menu.Item
-                leftSection={
-                  section.collapsed ? (
-                    <IconEye size={14} />
-                  ) : (
-                    <IconEyeOff size={14} />
-                  )
-                }
-                onClick={onToggleDefaultCollapsed}
-              >
-                {section.collapsed
-                  ? 'Expand by Default'
-                  : 'Collapse by Default'}
-              </Menu.Item>
-            )}
+            <Menu.Item
+              leftSection={
+                section.collapsed ? (
+                  <IconEye size={14} />
+                ) : (
+                  <IconEyeOff size={14} />
+                )
+              }
+              onClick={onToggle}
+            >
+              {section.collapsed ? 'Expand by Default' : 'Collapse by Default'}
+            </Menu.Item>
             {onDelete && (
               <>
                 <Menu.Divider />
