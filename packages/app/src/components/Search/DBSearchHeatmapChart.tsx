@@ -22,6 +22,7 @@ import {
   Group,
   SegmentedControl,
   Stack,
+  Text,
   Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -83,45 +84,6 @@ export function DBSearchHeatmapChart({
       style={{ overflow: 'hidden', height: '100%' }}
       ref={setContainer}
     >
-      <Box px="sm" pt="xs" mb={0}>
-        <Flex align="center" gap="xs" mb="xs">
-          <SegmentedControl
-            size="xs"
-            value={scaleType}
-            onChange={v => setScaleType(v as HeatmapScaleType)}
-            data={[
-              { label: 'Log', value: 'log' },
-              { label: 'Linear', value: 'linear' },
-            ]}
-          />
-          <Tooltip label="Heatmap settings">
-            <ActionIcon
-              variant="subtle"
-              size="sm"
-              onClick={settingsHandlers.open}
-            >
-              <IconSettings size={16} />
-            </ActionIcon>
-          </Tooltip>
-        </Flex>
-      </Box>
-      <HeatmapSettingsDrawer
-        opened={settingsOpened}
-        onClose={settingsHandlers.close}
-        connection={tcFromSource(source)}
-        parentRef={container}
-        defaultValues={{
-          value: fields.value,
-          count: fields.count,
-        }}
-        onSubmit={data => {
-          setFields({
-            value: data.value,
-            count: data.count,
-          });
-          settingsHandlers.close();
-        }}
-      />
       <div
         style={{
           minHeight: 260,
@@ -150,16 +112,45 @@ export function DBSearchHeatmapChart({
           enabled={isReady}
           scaleType={scaleType}
           onFilter={(xMin, xMax, yMin, yMax) => {
-            // Simply store the coordinates - DBDeltaChart will handle the logic
-            setFields({
-              xMin,
-              xMax,
-              yMin,
-              yMax,
-            });
+            setFields({ xMin, xMax, yMin, yMax });
           }}
         />
+        {/* Gear icon overlaid on chart top-right */}
+        <Tooltip label="Heatmap settings">
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            onClick={settingsHandlers.open}
+            style={{
+              position: 'absolute',
+              top: 4,
+              right: 4,
+              zIndex: 2,
+            }}
+          >
+            <IconSettings size={16} />
+          </ActionIcon>
+        </Tooltip>
       </div>
+      <HeatmapSettingsDrawer
+        opened={settingsOpened}
+        onClose={settingsHandlers.close}
+        connection={tcFromSource(source)}
+        parentRef={container}
+        defaultValues={{
+          value: fields.value,
+          count: fields.count,
+        }}
+        scaleType={scaleType}
+        onScaleTypeChange={setScaleType}
+        onSubmit={data => {
+          setFields({
+            value: data.value,
+            count: data.count,
+          });
+          settingsHandlers.close();
+        }}
+      />
       <Box style={{ flex: 1, minHeight: 0 }}>
         <DBDeltaChart
           config={{
@@ -187,6 +178,8 @@ function HeatmapSettingsDrawer({
   connection,
   parentRef,
   defaultValues,
+  scaleType,
+  onScaleTypeChange,
   onSubmit,
 }: {
   opened: boolean;
@@ -194,6 +187,8 @@ function HeatmapSettingsDrawer({
   connection: TableConnection;
   parentRef?: HTMLElement | null;
   defaultValues: z.infer<typeof Schema>;
+  scaleType: HeatmapScaleType;
+  onScaleTypeChange: (v: HeatmapScaleType) => void;
   onSubmit: (v: z.infer<typeof Schema>) => void;
 }) {
   const form = useForm({
@@ -216,6 +211,23 @@ function HeatmapSettingsDrawer({
     >
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <Stack gap="md">
+          <Box>
+            <Text size="sm" fw={500} mb={4}>
+              Scale
+            </Text>
+            <SegmentedControl
+              size="xs"
+              value={scaleType}
+              onChange={v => onScaleTypeChange(v as HeatmapScaleType)}
+              data={[
+                { label: 'Log', value: 'log' },
+                { label: 'Linear', value: 'linear' },
+              ]}
+            />
+          </Box>
+
+          <Divider />
+
           <SQLInlineEditorControlled
             parentRef={parentRef}
             tableConnection={connection}

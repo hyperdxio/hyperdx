@@ -653,7 +653,7 @@ function HeatmapContainer({
           criteria.
         </Text>
       ) : (
-        <>
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
           <Heatmap
             key={JSON.stringify(config)}
             data={[time, bucket, count]}
@@ -676,8 +676,18 @@ function HeatmapContainer({
             scaleType={scaleType}
             palette={palette}
           />
-          <ColorLegend colors={palette} />
-        </>
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 24,
+              left: 60,
+              zIndex: 1,
+              pointerEvents: 'none',
+            }}
+          >
+            <ColorLegend colors={palette} />
+          </div>
+        </div>
       )}
     </ChartContainer>
   );
