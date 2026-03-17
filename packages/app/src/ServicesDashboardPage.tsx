@@ -8,6 +8,7 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
+import SqlString from 'sqlstring';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -68,7 +69,6 @@ import {
 } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
-import { buildInFilterCondition } from '@/utils/sqlFilters';
 
 import DisplaySwitcher from './components/charts/DisplaySwitcher';
 import usePresetDashboardFilters from './hooks/usePresetDashboardFilters';
@@ -90,6 +90,13 @@ type AppliedConfig = AppliedConfigParams & {
 };
 
 const MAX_NUM_SERIES = HARD_LINES_LIMIT;
+
+function buildInFilterCondition(
+  columnExpression: string,
+  value: string,
+): string {
+  return SqlString.format('? IN (?)', [SqlString.raw(columnExpression), value]);
+}
 
 function getScopedFilters({
   appliedConfig,
