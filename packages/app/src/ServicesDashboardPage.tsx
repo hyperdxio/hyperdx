@@ -8,7 +8,6 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
-import SqlString from 'sqlstring';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -69,6 +68,7 @@ import {
 } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { buildInFilterCondition } from '@/utils/sqlFilters';
 
 import DisplaySwitcher from './components/charts/DisplaySwitcher';
 import usePresetDashboardFilters from './hooks/usePresetDashboardFilters';
@@ -113,10 +113,10 @@ function getScopedFilters({
   if (appliedConfig.service) {
     filters.push({
       type: 'sql',
-      condition: SqlString.format('? IN (?)', [
-        SqlString.raw(expressions.service),
+      condition: buildInFilterCondition(
+        expressions.service,
         appliedConfig.service,
-      ]),
+      ),
     });
   }
   if (includeNonEmptyEndpointFilter) {
