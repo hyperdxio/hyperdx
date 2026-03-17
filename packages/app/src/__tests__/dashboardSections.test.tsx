@@ -136,7 +136,12 @@ describe('Dashboard schema with sections', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
       containers: [
-        { id: 's1', type: 'section', title: 'Infrastructure', collapsed: false },
+        {
+          id: 's1',
+          type: 'section',
+          title: 'Infrastructure',
+          collapsed: false,
+        },
         { id: 's2', type: 'section', title: 'Application', collapsed: true },
       ],
     });
@@ -173,7 +178,14 @@ describe('Dashboard schema with sections', () => {
     const result = DashboardSchema.safeParse({
       ...baseDashboard,
       tiles: [tile],
-      containers: [{ id: 's1', type: 'section', title: 'Infrastructure', collapsed: false }],
+      containers: [
+        {
+          id: 's1',
+          type: 'section',
+          title: 'Infrastructure',
+          collapsed: false,
+        },
+      ],
     });
     expect(result.success).toBe(true);
     if (result.success) {
