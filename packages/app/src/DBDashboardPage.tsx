@@ -1720,7 +1720,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
         mt="sm"
         fw={400}
-        onClick={onAddTile}
+        onClick={() => onAddTile()}
         w="100%"
       >
         + Add New Tile
