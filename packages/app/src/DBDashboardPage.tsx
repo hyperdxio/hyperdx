@@ -75,6 +75,7 @@ import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
+import SectionHeader from '@/components/SectionHeader';
 import { TimePicker } from '@/components/TimePicker';
 import {
   Dashboard,
@@ -94,7 +95,7 @@ import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useBrandDisplayName } from './theme/ThemeProvider';
-import { parseAsStringEncoded } from './utils/queryParsers';
+import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
 import { buildTableRowSearchUrl, DEFAULT_CHART_CONFIG } from './ChartUtils';
 import { useConnections } from './connection';
 import { useDashboard } from './dashboard';
@@ -119,6 +120,16 @@ import 'react-resizable/css/styles.css';
 const makeId = () => Math.floor(100000000 * Math.random()).toString(36);
 
 const ReactGridLayout = WidthProvider(RGL);
+
+const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
+  i: chart.id,
+  x: chart.x,
+  y: chart.y,
+  w: chart.w,
+  h: chart.h,
+  minH: 1,
+  minW: 1,
+});
 
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
@@ -420,24 +431,22 @@ const Tile = forwardRef(
                 />
               </Box>
             )}
-            {queriedConfig?.displayType === DisplayType.Number &&
-              isBuilderChartConfig(queriedConfig) && (
-                <DBNumberChart
-                  key={`${keyPrefix}-${chart.id}`}
-                  title={title}
-                  toolbarPrefix={toolbar}
-                  config={queriedConfig}
-                />
-              )}
-            {queriedConfig?.displayType === DisplayType.Pie &&
-              isBuilderChartConfig(queriedConfig) && (
-                <DBPieChart
-                  key={`${keyPrefix}-${chart.id}`}
-                  title={title}
-                  toolbarPrefix={toolbar}
-                  config={queriedConfig}
-                />
-              )}
+            {queriedConfig?.displayType === DisplayType.Number && (
+              <DBNumberChart
+                key={`${keyPrefix}-${chart.id}`}
+                title={title}
+                toolbarPrefix={toolbar}
+                config={queriedConfig}
+              />
+            )}
+            {queriedConfig?.displayType === DisplayType.Pie && (
+              <DBPieChart
+                key={`${keyPrefix}-${chart.id}`}
+                title={title}
+                toolbarPrefix={toolbar}
+                config={queriedConfig}
+              />
+            )}
             {effectiveMarkdownConfig?.displayType === DisplayType.Markdown &&
               'markdown' in effectiveMarkdownConfig && (
                 <HDXMarkdownChart
@@ -775,7 +784,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     whereLanguageParser,
   );
   // Get raw filter queries from URL (not processed by hook)
-  const [rawFilterQueries] = useQueryState('filters', parseAsJson<Filter[]>());
+  const [rawFilterQueries] = useQueryState(
+    'filters',
+    parseAsJsonEncoded<Filter[]>(),
+  );
 
   // Track if we've initialized query for this dashboard
   const initializedDashboard = useRef<string>(undefined);
@@ -1001,116 +1013,99 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     });
   };
 
-  const layout = (dashboard?.tiles ?? []).map(chart => {
-    return {
-      i: chart.id,
-      x: chart.x,
-      y: chart.y,
-      w: chart.w,
-      h: chart.h,
-      minH: 1,
-      minW: 1,
-    };
-  });
+  const sections = useMemo(
+    () => dashboard?.sections ?? [],
+    [dashboard?.sections],
+  );
+  const hasSections = sections.length > 0;
+  const allTiles = useMemo(() => dashboard?.tiles ?? [], [dashboard?.tiles]);
 
-  const tiles = useMemo(
-    () =>
-      (dashboard?.tiles ?? []).map(chart => {
-        return (
-          <Tile
-            key={chart.id}
-            chart={chart}
-            dateRange={searchedTimeRange}
-            onEditClick={() => setEditedTile(chart)}
-            granularity={
-              isRefreshEnabled
-                ? granularityOverride
-                : (granularity ?? undefined)
+  const renderTileComponent = useCallback(
+    (chart: Tile) => (
+      <Tile
+        key={chart.id}
+        chart={chart}
+        dateRange={searchedTimeRange}
+        onEditClick={() => setEditedTile(chart)}
+        granularity={
+          isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
+        }
+        filters={[
+          {
+            type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+            condition: where,
+          },
+          ...(filterQueries ?? []),
+        ]}
+        onTimeRangeSelect={onTimeRangeSelect}
+        isHighlighted={highlightedTileId === chart.id}
+        onUpdateChart={newChart => {
+          if (!dashboard) return;
+          setDashboard(
+            produce(dashboard, draft => {
+              const chartIndex = draft.tiles.findIndex(c => c.id === chart.id);
+              if (chartIndex === -1) return;
+              draft.tiles[chartIndex] = newChart;
+            }),
+          );
+        }}
+        onDuplicateClick={async () => {
+          if (dashboard != null) {
+            if (
+              !(await confirm(
+                <>
+                  Duplicate {'"'}
+                  <Text component="span" fw={700}>
+                    {chart.config.name}
+                  </Text>
+                  {'"'}?
+                </>,
+                'Duplicate',
+              ))
+            ) {
+              return;
             }
-            filters={[
-              {
-                type: whereLanguage === 'sql' ? 'sql' : 'lucene',
-                condition: where,
-              },
-              ...(filterQueries ?? []),
-            ]}
-            onTimeRangeSelect={onTimeRangeSelect}
-            isHighlighted={highlightedTileId === chart.id}
-            onUpdateChart={newChart => {
-              if (!dashboard) {
-                return;
-              }
-              setDashboard(
-                produce(dashboard, draft => {
-                  const chartIndex = draft.tiles.findIndex(
-                    c => c.id === chart.id,
-                  );
-                  if (chartIndex === -1) {
-                    return;
-                  }
-                  draft.tiles[chartIndex] = newChart;
-                }),
-              );
-            }}
-            onDuplicateClick={async () => {
-              if (dashboard != null) {
-                if (
-                  !(await confirm(
-                    <>
-                      Duplicate {'"'}
-                      <Text component="span" fw={700}>
-                        {chart.config.name}
-                      </Text>
-                      {'"'}?
-                    </>,
-                    'Duplicate',
-                  ))
-                ) {
-                  return;
-                }
-                setDashboard({
-                  ...dashboard,
-                  tiles: [
-                    ...dashboard.tiles,
-                    {
-                      ...chart,
-                      id: makeId(),
-                      config: {
-                        ...chart.config,
-                        // Don't duplicate any alerts that may be set on the original tile
-                        alert: undefined,
-                      },
-                    },
-                  ],
-                });
-              }
-            }}
-            onDeleteClick={async () => {
-              if (dashboard != null) {
-                if (
-                  !(await confirm(
-                    <>
-                      Delete{' '}
-                      <Text component="span" fw={700}>
-                        {chart.config.name}
-                      </Text>
-                      ?
-                    </>,
-                    'Delete',
-                    { variant: 'danger' },
-                  ))
-                ) {
-                  return;
-                }
-                setDashboard({
-                  ...dashboard,
-                  tiles: dashboard.tiles.filter(c => c.id !== chart.id),
-                });
-              }
-            }}
-          />
-        );
-      }),
+            setDashboard({
+              ...dashboard,
+              tiles: [
+                ...dashboard.tiles,
+                {
+                  ...chart,
+                  id: makeId(),
+                  config: {
+                    ...chart.config,
+                    alert: undefined,
+                  },
+                },
+              ],
+            });
+          }
+        }}
+        onDeleteClick={async () => {
+          if (dashboard != null) {
+            if (
+              !(await confirm(
+                <>
+                  Delete{' '}
+                  <Text component="span" fw={700}>
+                    {chart.config.name}
+                  </Text>
+                  ?
+                </>,
+                'Delete',
+                { variant: 'danger' },
+              ))
+            ) {
+              return;
+            }
+            setDashboard({
+              ...dashboard,
+              tiles: dashboard.tiles.filter(c => c.id !== chart.id),
+            });
+          }
+        }}
+      />
+    ),
     [
       dashboard,
       searchedTimeRange,
@@ -1126,6 +1121,87 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       filterQueries,
     ],
   );
+
+  const makeOnLayoutChange = useCallback(
+    (gridTiles: Tile[]) => (newLayout: RGL.Layout[]) => {
+      if (!dashboard) return;
+      const currentLayout = gridTiles.map(tileToLayoutItem);
+      let hasDiff = false;
+      if (newLayout.length !== currentLayout.length) {
+        hasDiff = true;
+      } else {
+        for (const curr of newLayout) {
+          const old = currentLayout.find(l => l.i === curr.i);
+          if (
+            old?.x !== curr.x ||
+            old?.y !== curr.y ||
+            old?.h !== curr.h ||
+            old?.w !== curr.w
+          ) {
+            hasDiff = true;
+            break;
+          }
+        }
+      }
+      if (hasDiff) {
+        setDashboard(produce(dashboard, updateLayout(newLayout)));
+      }
+    },
+    [dashboard, setDashboard],
+  );
+
+  // Intentionally persists collapsed state to the server via setDashboard
+  // (same pattern as tile drag/resize). This matches Grafana and Kibana
+  // behavior where collapsed state is saved with the dashboard for all viewers.
+  const handleToggleSection = useCallback(
+    (sectionId: string) => {
+      if (!dashboard) return;
+      setDashboard(
+        produce(dashboard, draft => {
+          const section = draft.sections?.find(s => s.id === sectionId);
+          if (section) section.collapsed = !section.collapsed;
+        }),
+      );
+    },
+    [dashboard, setDashboard],
+  );
+
+  // Group tiles by section; orphaned tiles (sectionId not matching any
+  // section) fall back to ungrouped to avoid silently hiding them.
+  const tilesBySectionId = useMemo(() => {
+    const map = new Map<string, Tile[]>();
+    for (const section of sections) {
+      map.set(
+        section.id,
+        allTiles.filter(t => t.sectionId === section.id),
+      );
+    }
+    return map;
+  }, [sections, allTiles]);
+
+  const ungroupedTiles = useMemo(
+    () =>
+      hasSections
+        ? allTiles.filter(
+            t => !t.sectionId || !tilesBySectionId.has(t.sectionId),
+          )
+        : allTiles,
+    [hasSections, allTiles, tilesBySectionId],
+  );
+
+  const onUngroupedLayoutChange = useMemo(
+    () => makeOnLayoutChange(ungroupedTiles),
+    [makeOnLayoutChange, ungroupedTiles],
+  );
+
+  const sectionLayoutChangeHandlers = useMemo(() => {
+    const map = new Map<string, (newLayout: RGL.Layout[]) => void>();
+    for (const section of sections) {
+      const tiles = tilesBySectionId.get(section.id) ?? [];
+      map.set(section.id, makeOnLayoutChange(tiles));
+    }
+    return map;
+  }, [sections, tilesBySectionId, makeOnLayoutChange]);
 
   const deleteDashboard = useDeleteDashboard();
 
@@ -1460,44 +1536,56 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               </div>
             }
           >
-            <ReactGridLayout
-              layout={layout}
-              containerPadding={[0, 0]}
-              onLayoutChange={newLayout => {
-                // compare x, y, h, w between newLayout and layout to see if anything has changed
-                // if so, update the dashboard
-                // this will prevent spurious updates to the dashboard,
-                // that messes with router/URL state due to
-                // qparam being used to store dashboard state
-                // also it reduced network requests
-                let hasDiff = false;
-                if (newLayout.length !== layout.length) {
-                  hasDiff = true;
-                } else {
-                  for (let i = 0; i < newLayout.length; i++) {
-                    const curr = newLayout[i];
-                    const oldLayout = layout.find(l => l.i === curr.i);
-                    if (
-                      oldLayout?.x !== curr.x ||
-                      oldLayout?.y !== curr.y ||
-                      oldLayout?.h !== curr.h ||
-                      oldLayout?.w !== curr.w
-                    ) {
-                      hasDiff = true;
-                      break;
-                    }
-                  }
-                }
-
-                if (hasDiff) {
-                  setDashboard(produce(dashboard, updateLayout(newLayout)));
-                }
-              }}
-              cols={24}
-              rowHeight={32}
-            >
-              {tiles}
-            </ReactGridLayout>
+            {hasSections ? (
+              <>
+                {ungroupedTiles.length > 0 && (
+                  <ReactGridLayout
+                    layout={ungroupedTiles.map(tileToLayoutItem)}
+                    containerPadding={[0, 0]}
+                    onLayoutChange={onUngroupedLayoutChange}
+                    cols={24}
+                    rowHeight={32}
+                  >
+                    {ungroupedTiles.map(renderTileComponent)}
+                  </ReactGridLayout>
+                )}
+                {sections.map(section => {
+                  const sectionTiles = tilesBySectionId.get(section.id) ?? [];
+                  return (
+                    <div key={section.id}>
+                      <SectionHeader
+                        section={section}
+                        tileCount={sectionTiles.length}
+                        onToggle={() => handleToggleSection(section.id)}
+                      />
+                      {!section.collapsed && sectionTiles.length > 0 && (
+                        <ReactGridLayout
+                          layout={sectionTiles.map(tileToLayoutItem)}
+                          containerPadding={[0, 0]}
+                          onLayoutChange={sectionLayoutChangeHandlers.get(
+                            section.id,
+                          )}
+                          cols={24}
+                          rowHeight={32}
+                        >
+                          {sectionTiles.map(renderTileComponent)}
+                        </ReactGridLayout>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            ) : (
+              <ReactGridLayout
+                layout={ungroupedTiles.map(tileToLayoutItem)}
+                containerPadding={[0, 0]}
+                onLayoutChange={onUngroupedLayoutChange}
+                cols={24}
+                rowHeight={32}
+              >
+                {ungroupedTiles.map(renderTileComponent)}
+              </ReactGridLayout>
+            )}
           </ErrorBoundary>
         ) : null}
       </Box>

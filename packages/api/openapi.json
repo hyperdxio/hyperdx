@@ -34,7 +34,8 @@
         "type": "object",
         "properties": {
           "message": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable error message."
           }
         }
       },
@@ -114,7 +115,8 @@
         ],
         "properties": {
           "type": {
-            "$ref": "#/components/schemas/AlertChannelType"
+            "$ref": "#/components/schemas/AlertChannelType",
+            "description": "Channel type. Must be \"webhook\" for webhook alerts."
           },
           "webhookId": {
             "type": "string",
@@ -144,7 +146,7 @@
           },
           "tileId": {
             "type": "string",
-            "description": "Tile ID for tile-based alerts.",
+            "description": "Tile ID for tile-based alerts. May not be a Raw-SQL-based tile.",
             "nullable": true,
             "example": "65f5e4a3b9e77c001a901234"
           },
@@ -167,6 +169,7 @@
           },
           "interval": {
             "$ref": "#/components/schemas/AlertInterval",
+            "description": "Evaluation interval for the alert.",
             "example": "1h"
           },
           "scheduleOffsetMinutes": {
@@ -185,10 +188,12 @@
           },
           "source": {
             "$ref": "#/components/schemas/AlertSource",
+            "description": "Alert source type (tile-based or saved search).",
             "example": "tile"
           },
           "thresholdType": {
             "$ref": "#/components/schemas/AlertThresholdType",
+            "description": "Threshold comparison direction.",
             "example": "above"
           },
           "channel": {
@@ -224,6 +229,7 @@
               },
               "state": {
                 "$ref": "#/components/schemas/AlertState",
+                "description": "Current alert state.",
                 "example": "ALERT"
               },
               "teamId": {
@@ -290,7 +296,8 @@
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/AlertResponse"
+            "$ref": "#/components/schemas/AlertResponse",
+            "description": "The alert object."
           }
         }
       },
@@ -299,6 +306,7 @@
         "properties": {
           "data": {
             "type": "array",
+            "description": "List of alert objects.",
             "items": {
               "$ref": "#/components/schemas/AlertResponse"
             }
@@ -533,7 +541,8 @@
             "enum": [
               "sql"
             ],
-            "default": "sql"
+            "default": "sql",
+            "description": "Filter type. Currently only \"sql\" is supported."
           },
           "condition": {
             "type": "string",
@@ -551,7 +560,7 @@
           "summary",
           "exponential histogram"
         ],
-        "description": "Metric data type for metrics data sources."
+        "description": "Metric data type, only for metrics data sources."
       },
       "TimeSeriesDisplayType": {
         "type": "string",
@@ -584,6 +593,7 @@
         "properties": {
           "output": {
             "$ref": "#/components/schemas/NumberFormatOutput",
+            "description": "Output format applied to the number.",
             "example": "number"
           },
           "mantissa": {
@@ -639,6 +649,7 @@
             "enum": [
               "time"
             ],
+            "description": "Series type discriminator. Must be \"time\" for time-series charts.",
             "example": "time"
           },
           "sourceId": {
@@ -660,7 +671,7 @@
           },
           "field": {
             "type": "string",
-            "description": "Field/property name to aggregate (required for most aggregation functions except count)",
+            "description": "Column or expression to aggregate (required for most aggregation functions except count)",
             "example": "duration"
           },
           "alias": {
@@ -690,10 +701,12 @@
             ]
           },
           "numberFormat": {
-            "$ref": "#/components/schemas/NumberFormat"
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
           },
           "metricDataType": {
             "$ref": "#/components/schemas/MetricDataType",
+            "description": "Metric data type, only for metrics data sources.",
             "example": "sum"
           },
           "metricName": {
@@ -724,6 +737,7 @@
             "enum": [
               "table"
             ],
+            "description": "Series type discriminator. Must be \"table\" for table charts.",
             "example": "table"
           },
           "sourceId": {
@@ -745,18 +759,22 @@
           },
           "field": {
             "type": "string",
+            "description": "Column or expression to aggregate (required for most aggregation functions except count)",
             "example": "duration"
           },
           "alias": {
             "type": "string",
+            "description": "Display name for the series",
             "example": "Total Count"
           },
           "where": {
             "type": "string",
+            "description": "Filter query for the data (syntax depends on whereLanguage)",
             "example": "level:error"
           },
           "whereLanguage": {
             "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Query language for the where clause",
             "example": "lucene"
           },
           "groupBy": {
@@ -765,6 +783,7 @@
               "type": "string"
             },
             "maxItems": 10,
+            "description": "Fields to group results by (creates separate rows for each group)",
             "example": [
               "errorType"
             ]
@@ -775,11 +794,12 @@
             "example": "desc"
           },
           "numberFormat": {
-            "$ref": "#/components/schemas/NumberFormat"
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
           },
           "metricDataType": {
             "$ref": "#/components/schemas/MetricDataType",
-            "description": "Metric data type for metrics data sources",
+            "description": "Metric data type, only for metrics data sources.",
             "example": "sum"
           },
           "metricName": {
@@ -804,6 +824,7 @@
             "enum": [
               "number"
             ],
+            "description": "Series type discriminator. Must be \"number\" for single-value number charts.",
             "example": "number"
           },
           "sourceId": {
@@ -825,29 +846,36 @@
           },
           "field": {
             "type": "string",
+            "description": "Column or expression to aggregate (required for most aggregation functions except count)",
             "example": "duration"
           },
           "alias": {
             "type": "string",
+            "description": "Display name for the series in the chart",
             "example": "Total Requests"
           },
           "where": {
             "type": "string",
+            "description": "Filter query for the data (syntax depends on whereLanguage)",
             "example": "service:api"
           },
           "whereLanguage": {
             "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Query language for the where clause",
             "example": "lucene"
           },
           "numberFormat": {
-            "$ref": "#/components/schemas/NumberFormat"
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
           },
           "metricDataType": {
             "$ref": "#/components/schemas/MetricDataType",
+            "description": "Metric data type, only for metrics data sources.",
             "example": "sum"
           },
           "metricName": {
             "type": "string",
+            "description": "Metric name for metrics data sources.",
             "example": "http.server.duration"
           }
         }
@@ -867,6 +895,7 @@
             "enum": [
               "search"
             ],
+            "description": "Series type discriminator. Must be \"search\" for search/log viewer charts.",
             "example": "search"
           },
           "sourceId": {
@@ -910,10 +939,12 @@
             "enum": [
               "markdown"
             ],
+            "description": "Series type discriminator. Must be \"markdown\" for markdown text widgets.",
             "example": "markdown"
           },
           "content": {
             "type": "string",
+            "description": "Markdown content to render inside the widget.",
             "example": "# Dashboard Title\n\nThis is a markdown widget.",
             "maxLength": 100000
           }
@@ -973,7 +1004,8 @@
             "example": "Request Duration"
           },
           "level": {
-            "$ref": "#/components/schemas/QuantileLevel"
+            "$ref": "#/components/schemas/QuantileLevel",
+            "description": "Percentile level; only valid when aggFn is \"quantile\"."
           },
           "where": {
             "type": "string",
@@ -983,7 +1015,8 @@
             "example": "service:api"
           },
           "whereLanguage": {
-            "$ref": "#/components/schemas/QueryLanguage"
+            "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Query language for the where clause."
           },
           "metricName": {
             "type": "string",
@@ -1002,20 +1035,21 @@
           }
         }
       },
-      "LineChartConfig": {
+      "LineBuilderChartConfig": {
         "type": "object",
         "required": [
           "displayType",
           "sourceId",
           "select"
         ],
-        "description": "Configuration for a line time-series chart.",
+        "description": "Builder configuration for a line time-series chart.",
         "properties": {
           "displayType": {
             "type": "string",
             "enum": [
               "line"
             ],
+            "description": "Display type discriminator. Must be \"line\" for line charts.",
             "example": "line"
           },
           "sourceId": {
@@ -1054,7 +1088,8 @@
             "default": true
           },
           "numberFormat": {
-            "$ref": "#/components/schemas/NumberFormat"
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
           },
           "compareToPreviousPeriod": {
             "type": "boolean",
@@ -1063,20 +1098,21 @@
           }
         }
       },
-      "BarChartConfig": {
+      "BarBuilderChartConfig": {
         "type": "object",
         "required": [
           "displayType",
           "sourceId",
           "select"
         ],
-        "description": "Configuration for a stacked-bar time-series chart.",
+        "description": "Builder configuration for a stacked-bar time-series chart.",
         "properties": {
           "displayType": {
             "type": "string",
             "enum": [
               "stacked_bar"
             ],
+            "description": "Display type discriminator. Must be \"stacked_bar\" for stacked-bar charts.",
             "example": "stacked_bar"
           },
           "sourceId": {
@@ -1115,24 +1151,26 @@
             "default": true
           },
           "numberFormat": {
-            "$ref": "#/components/schemas/NumberFormat"
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
           }
         }
       },
-      "TableChartConfig": {
+      "TableBuilderChartConfig": {
         "type": "object",
         "required": [
           "displayType",
           "sourceId",
           "select"
         ],
-        "description": "Configuration for a table aggregation chart.",
+        "description": "Builder configuration for a table aggregation chart.",
         "properties": {
           "displayType": {
             "type": "string",
             "enum": [
               "table"
             ],
+            "description": "Display type discriminator. Must be \"table\" for table charts.",
             "example": "table"
           },
           "sourceId": {
@@ -1173,24 +1211,26 @@
             "example": false
           },
           "numberFormat": {
-            "$ref": "#/components/schemas/NumberFormat"
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
           }
         }
       },
-      "NumberChartConfig": {
+      "NumberBuilderChartConfig": {
         "type": "object",
         "required": [
           "displayType",
           "sourceId",
           "select"
         ],
-        "description": "Configuration for a single big-number chart.",
+        "description": "Builder configuration for a single big-number chart.",
         "properties": {
           "displayType": {
             "type": "string",
             "enum": [
               "number"
             ],
+            "description": "Display type discriminator. Must be \"number\" for single big-number charts.",
             "example": "number"
           },
           "sourceId": {
@@ -1208,24 +1248,26 @@
             }
           },
           "numberFormat": {
-            "$ref": "#/components/schemas/NumberFormat"
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
           }
         }
       },
-      "PieChartConfig": {
+      "PieBuilderChartConfig": {
         "type": "object",
         "required": [
           "displayType",
           "sourceId",
           "select"
         ],
-        "description": "Configuration for a pie chart tile. Each slice represents one group value.",
+        "description": "Builder configuration for a pie chart tile. Each slice represents one group value.",
         "properties": {
           "displayType": {
             "type": "string",
             "enum": [
               "pie"
             ],
+            "description": "Display type discriminator. Must be \"pie\" for pie charts.",
             "example": "pie"
           },
           "sourceId": {
@@ -1249,7 +1291,8 @@
             "example": "service"
           },
           "numberFormat": {
-            "$ref": "#/components/schemas/NumberFormat"
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
           }
         }
       },
@@ -1268,6 +1311,7 @@
             "enum": [
               "search"
             ],
+            "description": "Display type discriminator. Must be \"search\" for search/log viewer tiles.",
             "example": "search"
           },
           "sourceId": {
@@ -1289,7 +1333,8 @@
             "example": "level:error"
           },
           "whereLanguage": {
-            "$ref": "#/components/schemas/QueryLanguage"
+            "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Query language for the where clause."
           }
         }
       },
@@ -1305,6 +1350,7 @@
             "enum": [
               "markdown"
             ],
+            "description": "Display type discriminator. Must be \"markdown\" for markdown text tiles.",
             "example": "markdown"
           },
           "markdown": {
@@ -1315,8 +1361,272 @@
           }
         }
       },
+      "RawSqlChartConfigBase": {
+        "type": "object",
+        "required": [
+          "configType",
+          "connectionId",
+          "sqlTemplate"
+        ],
+        "description": "Shared fields for Raw SQL chart configs. Set configType to \"sql\" and provide connectionId + sqlTemplate instead of sourceId + select.",
+        "properties": {
+          "configType": {
+            "type": "string",
+            "enum": [
+              "sql"
+            ],
+            "description": "Must be \"sql\" to use the Raw SQL chart config variant.",
+            "example": "sql"
+          },
+          "connectionId": {
+            "type": "string",
+            "description": "ID of the ClickHouse connection to execute the query against.",
+            "example": "65f5e4a3b9e77c001a567890"
+          },
+          "sqlTemplate": {
+            "type": "string",
+            "maxLength": 100000,
+            "description": "SQL query template to execute. Supports HyperDX template variables.",
+            "example": "SELECT count() FROM otel_logs WHERE timestamp > now() - INTERVAL 1 HOUR"
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
+          }
+        }
+      },
+      "LineRawSqlChartConfig": {
+        "description": "Raw SQL configuration for a line time-series chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RawSqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "line"
+                ],
+                "description": "Display as a line time-series chart.",
+                "example": "line"
+              },
+              "compareToPreviousPeriod": {
+                "type": "boolean",
+                "description": "Overlay the equivalent previous time period for comparison.",
+                "default": false
+              },
+              "fillNulls": {
+                "type": "boolean",
+                "description": "Fill missing time buckets with zero instead of leaving gaps.",
+                "default": true
+              },
+              "alignDateRangeToGranularity": {
+                "type": "boolean",
+                "description": "Expand date range boundaries to the query granularity interval.",
+                "default": true
+              }
+            }
+          }
+        ]
+      },
+      "BarRawSqlChartConfig": {
+        "description": "Raw SQL configuration for a stacked-bar time-series chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RawSqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "stacked_bar"
+                ],
+                "description": "Display as a stacked-bar time-series chart.",
+                "example": "stacked_bar"
+              },
+              "fillNulls": {
+                "type": "boolean",
+                "description": "Fill missing time buckets with zero instead of leaving gaps.",
+                "default": true
+              },
+              "alignDateRangeToGranularity": {
+                "type": "boolean",
+                "description": "Expand date range boundaries to the query granularity interval.",
+                "default": true
+              }
+            }
+          }
+        ]
+      },
+      "TableRawSqlChartConfig": {
+        "description": "Raw SQL configuration for a table chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RawSqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "table"
+                ],
+                "description": "Display as a table chart.",
+                "example": "table"
+              }
+            }
+          }
+        ]
+      },
+      "NumberRawSqlChartConfig": {
+        "description": "Raw SQL configuration for a single big-number chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RawSqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "number"
+                ],
+                "description": "Display as a single big-number chart.",
+                "example": "number"
+              }
+            }
+          }
+        ]
+      },
+      "PieRawSqlChartConfig": {
+        "description": "Raw SQL configuration for a pie chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RawSqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "pie"
+                ],
+                "description": "Display as a pie chart.",
+                "example": "pie"
+              }
+            }
+          }
+        ]
+      },
+      "LineChartConfig": {
+        "description": "Line chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/LineBuilderChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/LineRawSqlChartConfig"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "configType",
+          "mapping": {
+            "sql": "#/components/schemas/LineRawSqlChartConfig"
+          }
+        }
+      },
+      "BarChartConfig": {
+        "description": "Stacked-bar chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/BarBuilderChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/BarRawSqlChartConfig"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "configType",
+          "mapping": {
+            "sql": "#/components/schemas/BarRawSqlChartConfig"
+          }
+        }
+      },
+      "TableChartConfig": {
+        "description": "Table chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TableBuilderChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/TableRawSqlChartConfig"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "configType",
+          "mapping": {
+            "sql": "#/components/schemas/TableRawSqlChartConfig"
+          }
+        }
+      },
+      "NumberChartConfig": {
+        "description": "Single big-number chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/NumberBuilderChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/NumberRawSqlChartConfig"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "configType",
+          "mapping": {
+            "sql": "#/components/schemas/NumberRawSqlChartConfig"
+          }
+        }
+      },
+      "PieChartConfig": {
+        "description": "Pie chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PieBuilderChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/PieRawSqlChartConfig"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "configType",
+          "mapping": {
+            "sql": "#/components/schemas/PieRawSqlChartConfig"
+          }
+        }
+      },
       "TileConfig": {
-        "description": "Tile chart configuration. The displayType field determines which variant is used.\n",
+        "description": "Tile chart configuration. displayType is the primary discriminant and determines which variant group applies. For displayTypes that support both builder and Raw SQL modes (line, stacked_bar, table, number, pie), configType is the secondary discriminant: omit it for the builder variant or set it to \"sql\" for the Raw SQL variant. The search and markdown displayTypes only have a builder variant.\n",
         "oneOf": [
           {
             "$ref": "#/components/schemas/LineChartConfig"
@@ -1416,6 +1726,7 @@
               "id": {
                 "type": "string",
                 "maxLength": 36,
+                "description": "Unique tile ID assigned by the server.",
                 "example": "65f5e4a3b9e77c001a901234"
               }
             }
@@ -1470,7 +1781,8 @@
             "type": "string",
             "enum": [
               "QUERY_EXPRESSION"
-            ]
+            ],
+            "description": "Filter type. Must be \"QUERY_EXPRESSION\"."
           },
           "name": {
             "type": "string",
@@ -1592,16 +1904,19 @@
           "name": {
             "type": "string",
             "maxLength": 1024,
+            "description": "Dashboard name.",
             "example": "New Dashboard"
           },
           "tiles": {
             "type": "array",
+            "description": "List of tiles/charts to include in the dashboard.",
             "items": {
               "$ref": "#/components/schemas/TileInput"
             }
           },
           "tags": {
             "type": "array",
+            "description": "Tags for organizing and filtering dashboards.",
             "items": {
               "type": "string",
               "maxLength": 32
@@ -1650,6 +1965,7 @@
           "name": {
             "type": "string",
             "maxLength": 1024,
+            "description": "Dashboard name.",
             "example": "Updated Dashboard Name"
           },
           "tiles": {
@@ -1661,6 +1977,7 @@
           },
           "tags": {
             "type": "array",
+            "description": "Tags for organizing and filtering dashboards.",
             "items": {
               "type": "string",
               "maxLength": 32
@@ -1711,7 +2028,8 @@
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/DashboardResponse"
+            "$ref": "#/components/schemas/DashboardResponse",
+            "description": "The dashboard object."
           }
         }
       },
@@ -1720,6 +2038,7 @@
         "properties": {
           "data": {
             "type": "array",
+            "description": "List of dashboard objects.",
             "items": {
               "$ref": "#/components/schemas/DashboardResponse"
             }
@@ -1933,25 +2252,31 @@
         ],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique source ID."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name for the source."
           },
           "kind": {
             "type": "string",
             "enum": [
               "log"
-            ]
+            ],
+            "description": "Source kind discriminator. Must be \"log\" for log sources."
           },
           "connection": {
-            "type": "string"
+            "type": "string",
+            "description": "ID of the ClickHouse connection used by this source."
           },
           "from": {
-            "$ref": "#/components/schemas/SourceFrom"
+            "$ref": "#/components/schemas/SourceFrom",
+            "description": "Database and table location of the source data."
           },
           "querySettings": {
             "type": "array",
+            "description": "Optional ClickHouse query settings applied when querying this source.",
             "items": {
               "$ref": "#/components/schemas/QuerySetting"
             },
@@ -1967,22 +2292,27 @@
           },
           "serviceNameExpression": {
             "type": "string",
+            "description": "Expression to extract the service name from log rows.",
             "nullable": true
           },
           "severityTextExpression": {
             "type": "string",
+            "description": "Expression to extract the severity/log level text.",
             "nullable": true
           },
           "bodyExpression": {
             "type": "string",
+            "description": "Expression to extract the log message body.",
             "nullable": true
           },
           "eventAttributesExpression": {
             "type": "string",
+            "description": "Expression to extract event-level attributes.",
             "nullable": true
           },
           "resourceAttributesExpression": {
             "type": "string",
+            "description": "Expression to extract resource-level attributes.",
             "nullable": true
           },
           "displayedTimestampValueExpression": {
@@ -2002,10 +2332,12 @@
           },
           "traceIdExpression": {
             "type": "string",
+            "description": "Expression to extract the trace ID for correlating logs with traces.",
             "nullable": true
           },
           "spanIdExpression": {
             "type": "string",
+            "description": "Expression to extract the span ID for correlating logs with traces.",
             "nullable": true
           },
           "implicitColumnExpression": {
@@ -2058,25 +2390,31 @@
         ],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique source ID."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name for the source."
           },
           "kind": {
             "type": "string",
             "enum": [
               "trace"
-            ]
+            ],
+            "description": "Source kind discriminator. Must be \"trace\" for trace sources."
           },
           "connection": {
-            "type": "string"
+            "type": "string",
+            "description": "ID of the ClickHouse connection used by this source."
           },
           "from": {
-            "$ref": "#/components/schemas/SourceFrom"
+            "$ref": "#/components/schemas/SourceFrom",
+            "description": "Database and table location of the source data."
           },
           "querySettings": {
             "type": "array",
+            "description": "Optional ClickHouse query settings applied when querying this source.",
             "items": {
               "$ref": "#/components/schemas/QuerySetting"
             },
@@ -2092,28 +2430,35 @@
             "description": "DateTime column or expression defines the start of the span"
           },
           "durationExpression": {
-            "type": "string"
+            "type": "string",
+            "description": "Expression to extract span duration."
           },
           "durationPrecision": {
             "type": "integer",
             "minimum": 0,
             "maximum": 9,
-            "default": 3
+            "default": 3,
+            "description": "Number of decimal digits in the duration value (e.g., 3 for milliseconds, 6 for microseconds, 9 for nanoseconds)."
           },
           "traceIdExpression": {
-            "type": "string"
+            "type": "string",
+            "description": "Expression to extract the trace ID."
           },
           "spanIdExpression": {
-            "type": "string"
+            "type": "string",
+            "description": "Expression to extract the span ID."
           },
           "parentSpanIdExpression": {
-            "type": "string"
+            "type": "string",
+            "description": "Expression to extract the parent span ID."
           },
           "spanNameExpression": {
-            "type": "string"
+            "type": "string",
+            "description": "Expression to extract the span name."
           },
           "spanKindExpression": {
-            "type": "string"
+            "type": "string",
+            "description": "Expression to extract the span kind (e.g., client, server, internal)."
           },
           "logSourceId": {
             "type": "string",
@@ -2132,22 +2477,27 @@
           },
           "statusCodeExpression": {
             "type": "string",
+            "description": "Expression to extract the span status code.",
             "nullable": true
           },
           "statusMessageExpression": {
             "type": "string",
+            "description": "Expression to extract the span status message.",
             "nullable": true
           },
           "serviceNameExpression": {
             "type": "string",
+            "description": "Expression to extract the service name from trace rows.",
             "nullable": true
           },
           "resourceAttributesExpression": {
             "type": "string",
+            "description": "Expression to extract resource-level attributes.",
             "nullable": true
           },
           "eventAttributesExpression": {
             "type": "string",
+            "description": "Expression to extract event-level attributes.",
             "nullable": true
           },
           "spanEventsValueExpression": {
@@ -2200,32 +2550,39 @@
         ],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique source ID."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name for the source."
           },
           "kind": {
             "type": "string",
             "enum": [
               "metric"
-            ]
+            ],
+            "description": "Source kind discriminator. Must be \"metric\" for metric sources."
           },
           "connection": {
-            "type": "string"
+            "type": "string",
+            "description": "ID of the ClickHouse connection used by this source."
           },
           "from": {
-            "$ref": "#/components/schemas/MetricSourceFrom"
+            "$ref": "#/components/schemas/MetricSourceFrom",
+            "description": "Database and optional table location of the metric source data."
           },
           "querySettings": {
             "type": "array",
+            "description": "Optional ClickHouse query settings applied when querying this source.",
             "items": {
               "$ref": "#/components/schemas/QuerySetting"
             },
             "nullable": true
           },
           "metricTables": {
-            "$ref": "#/components/schemas/MetricTables"
+            "$ref": "#/components/schemas/MetricTables",
+            "description": "Mapping of metric data types to their respective table names."
           },
           "timestampValueExpression": {
             "type": "string",
@@ -2254,25 +2611,31 @@
         ],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique source ID."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name for the source."
           },
           "kind": {
             "type": "string",
             "enum": [
               "session"
-            ]
+            ],
+            "description": "Source kind discriminator. Must be \"session\" for session sources."
           },
           "connection": {
-            "type": "string"
+            "type": "string",
+            "description": "ID of the ClickHouse connection used by this source."
           },
           "from": {
-            "$ref": "#/components/schemas/SourceFrom"
+            "$ref": "#/components/schemas/SourceFrom",
+            "description": "Database and table location of the source data."
           },
           "querySettings": {
             "type": "array",
+            "description": "Optional ClickHouse query settings applied when querying this source.",
             "items": {
               "$ref": "#/components/schemas/QuerySetting"
             },
@@ -2319,6 +2682,7 @@
         "properties": {
           "data": {
             "type": "array",
+            "description": "List of source objects.",
             "items": {
               "$ref": "#/components/schemas/Source"
             }
@@ -2493,6 +2857,7 @@
         "properties": {
           "data": {
             "type": "array",
+            "description": "List of webhook objects.",
             "items": {
               "$ref": "#/components/schemas/Webhook"
             }

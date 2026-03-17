@@ -2,6 +2,7 @@ import { createNativeClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   BuilderSavedChartConfig,
   DisplayType,
+  RawSqlSavedChartConfig,
   SavedChartConfig,
   Tile,
 } from '@hyperdx/common-utils/dist/types';
@@ -417,8 +418,7 @@ export function buildMetricSeries({
   }));
 }
 
-export const randomMongoId = () =>
-  Math.floor(Math.random() * 1000000000000).toString();
+export const randomMongoId = () => new mongoose.Types.ObjectId().toHexString();
 
 export const makeTile = (opts?: {
   id?: string;
@@ -499,6 +499,20 @@ export const makeExternalTile = (opts?: {
       },
     ],
   },
+});
+
+export const makeRawSqlTile = (opts?: { id?: string }): Tile => ({
+  id: opts?.id ?? randomMongoId(),
+  x: 1,
+  y: 1,
+  w: 1,
+  h: 1,
+  config: {
+    configType: 'sql',
+    displayType: DisplayType.Line,
+    sqlTemplate: 'SELECT 1',
+    connection: 'test-connection',
+  } satisfies RawSqlSavedChartConfig,
 });
 
 export const makeAlertInput = ({

@@ -4,4 +4,4 @@
 "@hyperdx/app": patch
 ---
 
-feat: Add RawSqlChartConfig types for SQL-based Table
+feat: Support raw sql number charts and pie charts

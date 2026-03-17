@@ -20,7 +20,7 @@ import {
   InputControlled,
   PasswordInputControlled,
 } from '@/components/InputControlled';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_CLICKHOUSE_BUILD, IS_LOCAL_MODE } from '@/config';
 import {
   useCreateConnection,
   useDeleteConnection,
@@ -243,7 +243,11 @@ export function ConnectionForm({
             data-testid="connection-host-input"
             name="host"
             control={control}
-            placeholder="http://localhost:8123"
+            placeholder={
+              IS_CLICKHOUSE_BUILD
+                ? window.location.origin
+                : 'http://localhost:8123'
+            }
             rules={{ required: 'Host is required' }}
           />
         </Box>

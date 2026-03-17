@@ -59,7 +59,7 @@ export function useMetadataWithSettings() {
   useEffect(() => {
     if (me?.team?.metadataMaxRowsToRead && !settingsApplied.current) {
       metadata.setClickHouseSettings({
-        max_rows_to_read: me.team.metadataMaxRowsToRead,
+        max_rows_to_read: String(me.team.metadataMaxRowsToRead),
       });
       settingsApplied.current = true;
     }
@@ -137,9 +137,20 @@ export function useMultipleAllFields(
         return [];
       }
 
-      const fields2d = await Promise.all(
+      const promiseResults = await Promise.allSettled(
         tableConnections.map(tc => metadata.getAllFields(tc)),
       );
+
+      const fields2d: Field[][] = promiseResults.map(result => {
+        if (result.status === 'rejected') {
+          console.warn(
+            'Failed to fetch fields for table connection',
+            result.reason,
+          );
+          return [];
+        }
+        return result.value;
+      });
 
       // skip deduplication if not needed
       if (fields2d.length === 1) return fields2d[0];

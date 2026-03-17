@@ -1,3 +1,4 @@
+import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { sign, verify } from 'jsonwebtoken';
 import { groupBy } from 'lodash';
 import ms from 'ms';
@@ -74,8 +75,14 @@ export const validateAlertInput = async (
       throw new Api400Error('Dashboard not found');
     }
 
-    if (dashboard.tiles.find(tile => tile.id === alertInput.tileId) == null) {
+    const tile = dashboard.tiles.find(tile => tile.id === alertInput.tileId);
+
+    if (tile == null) {
       throw new Api400Error('Tile not found');
+    }
+
+    if (tile.config != null && isRawSqlSavedChartConfig(tile.config)) {
+      throw new Api400Error('Cannot create an alert on a raw SQL tile');
     }
   }
 

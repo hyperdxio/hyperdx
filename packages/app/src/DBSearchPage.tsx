@@ -85,11 +85,11 @@ import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
-import { SQLInlineEditorControlled } from '@/components/SearchInput/SQLInlineEditor';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
@@ -1812,7 +1812,7 @@ function DBSearchPage() {
               </ErrorBoundary>
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
-                  <Flex direction="column" w="100%" gap="0px" mih="0">
+                  <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
                     <Box className={searchPageStyles.searchStatsContainer}>
                       <Group justify="space-between" style={{ width: '100%' }}>
                         <SearchTotalCountChart
@@ -1877,7 +1877,7 @@ function DBSearchPage() {
                 />
               )}
               {analysisMode === 'results' && (
-                <Flex direction="column" mih="0">
+                <Flex direction="column" mih="0" miw={0}>
                   {chartConfig && histogramTimeChartConfig && (
                     <>
                       <Box className={searchPageStyles.searchStatsContainer}>

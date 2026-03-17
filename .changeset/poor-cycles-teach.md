@@ -4,4 +4,4 @@
 "@hyperdx/app": patch
 ---
 
-feat: Add custom ORDER BY expression for Log and Trace sources
+feat: Support fetching table metadata for Distributed tables

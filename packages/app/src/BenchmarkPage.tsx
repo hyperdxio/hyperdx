@@ -22,11 +22,11 @@ import {
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { useClickhouseClient } from '@/clickhouse';
+import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
 
 import { ConnectionSelectControlled } from './components/ConnectionSelect';
 import DBTableChart from './components/DBTableChart';
 import { DBTimeChart } from './components/DBTimeChart';
-import { SQLEditorControlled } from './components/SQLEditor';
 
 function useBenchmarkQueryIds({
   queries,

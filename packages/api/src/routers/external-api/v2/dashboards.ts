@@ -1,3 +1,4 @@
+import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { uniq } from 'lodash';
@@ -5,6 +6,8 @@ import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
+import { deleteDashboardAlerts } from '@/controllers/alerts';
+import { getConnectionsByTeam } from '@/controllers/connection';
 import { deleteDashboard } from '@/controllers/dashboard';
 import { getSources } from '@/controllers/sources';
 import Dashboard from '@/models/dashboard';
@@ -13,6 +16,7 @@ import {
   translateExternalChartToTileConfig,
   translateExternalFilterToFilter,
 } from '@/utils/externalApi';
+import logger from '@/utils/logger';
 import {
   ExternalDashboardFilter,
   externalDashboardFilterSchema,
@@ -29,6 +33,7 @@ import {
   convertToExternalDashboard,
   convertToInternalTileConfig,
   isConfigTile,
+  isRawSqlExternalTileConfig,
   isSeriesTile,
 } from './utils/dashboards';
 
@@ -67,6 +72,31 @@ async function getMissingSources(
     existingSources.map(source => source._id.toString()),
   );
   return [...sourceIds].filter(sourceId => !existingSourceIds.has(sourceId));
+}
+
+/** Returns an array of connection IDs that are referenced in the tiles but do not belong to the team */
+async function getMissingConnections(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const connectionIds = new Set<string>();
+
+  for (const tile of tiles) {
+    if (isConfigTile(tile) && isRawSqlExternalTileConfig(tile.config)) {
+      connectionIds.add(tile.config.connectionId);
+    }
+  }
+
+  if (connectionIds.size === 0) return [];
+
+  const existingConnections = await getConnectionsByTeam(team.toString());
+  const existingConnectionIds = new Set(
+    existingConnections.map(connection => connection._id.toString()),
+  );
+
+  return [...connectionIds].filter(
+    connectionId => !existingConnectionIds.has(connectionId),
+  );
 }
 
 type SavedQueryLanguage = z.infer<typeof whereLanguageSchema>;
@@ -149,6 +179,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           type: string
  *           enum: [sql]
  *           default: sql
+ *           description: Filter type. Currently only "sql" is supported.
  *         condition:
  *           type: string
  *           description: SQL filter condition. For example use expressions in the form "column IN ('value')".
@@ -156,7 +187,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *     MetricDataType:
  *       type: string
  *       enum: [sum, gauge, histogram, summary, exponential histogram]
- *       description: Metric data type for metrics data sources.
+ *       description: Metric data type, only for metrics data sources.
  *     TimeSeriesDisplayType:
  *       type: string
  *       enum: [stacked_bar, line]
@@ -174,6 +205,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *       properties:
  *         output:
  *           $ref: '#/components/schemas/NumberFormatOutput'
+ *           description: Output format applied to the number.
  *           example: "number"
  *         mantissa:
  *           type: integer
@@ -217,6 +249,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [time]
+ *           description: Series type discriminator. Must be "time" for time-series charts.
  *           example: "time"
  *         sourceId:
  *           type: string
@@ -234,7 +267,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: 0.95
  *         field:
  *           type: string
- *           description: Field/property name to aggregate (required for most aggregation functions except count)
+ *           description: Column or expression to aggregate (required for most aggregation functions except count)
  *           example: "duration"
  *         alias:
  *           type: string
@@ -257,8 +290,10 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: ["host"]
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *         metricDataType:
  *           $ref: '#/components/schemas/MetricDataType'
+ *           description: Metric data type, only for metrics data sources.
  *           example: "sum"
  *         metricName:
  *           type: string
@@ -282,6 +317,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [table]
+ *           description: Series type discriminator. Must be "table" for table charts.
  *           example: "table"
  *         sourceId:
  *           type: string
@@ -299,21 +335,26 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: 0.95
  *         field:
  *           type: string
+ *           description: Column or expression to aggregate (required for most aggregation functions except count)
  *           example: "duration"
  *         alias:
  *           type: string
+ *           description: Display name for the series
  *           example: "Total Count"
  *         where:
  *           type: string
+ *           description: Filter query for the data (syntax depends on whereLanguage)
  *           example: "level:error"
  *         whereLanguage:
  *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause
  *           example: "lucene"
  *         groupBy:
  *           type: array
  *           items:
  *             type: string
  *           maxItems: 10
+ *           description: Fields to group results by (creates separate rows for each group)
  *           example: ["errorType"]
  *         sortOrder:
  *           $ref: '#/components/schemas/SortOrder'
@@ -321,9 +362,10 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: "desc"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *         metricDataType:
  *           $ref: '#/components/schemas/MetricDataType'
- *           description: Metric data type for metrics data sources
+ *           description: Metric data type, only for metrics data sources.
  *           example: "sum"
  *         metricName:
  *           type: string
@@ -342,6 +384,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [number]
+ *           description: Series type discriminator. Must be "number" for single-value number charts.
  *           example: "number"
  *         sourceId:
  *           type: string
@@ -359,23 +402,30 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: 0.95
  *         field:
  *           type: string
+ *           description: Column or expression to aggregate (required for most aggregation functions except count)
  *           example: "duration"
  *         alias:
  *           type: string
+ *           description: Display name for the series in the chart
  *           example: "Total Requests"
  *         where:
  *           type: string
+ *           description: Filter query for the data (syntax depends on whereLanguage)
  *           example: "service:api"
  *         whereLanguage:
  *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause
  *           example: "lucene"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *         metricDataType:
  *           $ref: '#/components/schemas/MetricDataType'
+ *           description: Metric data type, only for metrics data sources.
  *           example: "sum"
  *         metricName:
  *           type: string
+ *           description: Metric name for metrics data sources.
  *           example: "http.server.duration"
  *
  *     SearchChartSeries:
@@ -390,6 +440,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [search]
+ *           description: Series type discriminator. Must be "search" for search/log viewer charts.
  *           example: "search"
  *         sourceId:
  *           type: string
@@ -419,9 +470,11 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [markdown]
+ *           description: Series type discriminator. Must be "markdown" for markdown text widgets.
  *           example: "markdown"
  *         content:
  *           type: string
+ *           description: Markdown content to render inside the widget.
  *           example: "# Dashboard Title\n\nThis is a markdown widget."
  *           maxLength: 100000
  *
@@ -469,6 +522,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: "Request Duration"
  *         level:
  *           $ref: '#/components/schemas/QuantileLevel'
+ *           description: Percentile level; only valid when aggFn is "quantile".
  *         where:
  *           type: string
  *           maxLength: 10000
@@ -477,6 +531,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: "service:api"
  *         whereLanguage:
  *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
  *         metricName:
  *           type: string
  *           description: Name of the metric to aggregate; only applicable when the source is a metrics source.
@@ -488,17 +543,18 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           enum: [delta]
  *           description: Optional period aggregation function for Gauge metrics (e.g., compute the delta over the period).
  *
- *     LineChartConfig:
+ *     LineBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a line time-series chart.
+ *       description: Builder configuration for a line time-series chart.
  *       properties:
  *         displayType:
  *           type: string
  *           enum: [line]
+ *           description: Display type discriminator. Must be "line" for line charts.
  *           example: "line"
  *         sourceId:
  *           type: string
@@ -532,22 +588,24 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           default: true
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *         compareToPreviousPeriod:
  *           type: boolean
  *           description: Overlay the equivalent previous time period for comparison.
  *           default: false
  *
- *     BarChartConfig:
+ *     BarBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a stacked-bar time-series chart.
+ *       description: Builder configuration for a stacked-bar time-series chart.
  *       properties:
  *         displayType:
  *           type: string
  *           enum: [stacked_bar]
+ *           description: Display type discriminator. Must be "stacked_bar" for stacked-bar charts.
  *           example: "stacked_bar"
  *         sourceId:
  *           type: string
@@ -581,18 +639,20 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           default: true
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *
- *     TableChartConfig:
+ *     TableBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a table aggregation chart.
+ *       description: Builder configuration for a table aggregation chart.
  *       properties:
  *         displayType:
  *           type: string
  *           enum: [table]
+ *           description: Display type discriminator. Must be "table" for table charts.
  *           example: "table"
  *         sourceId:
  *           type: string
@@ -628,18 +688,20 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: false
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *
- *     NumberChartConfig:
+ *     NumberBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a single big-number chart.
+ *       description: Builder configuration for a single big-number chart.
  *       properties:
  *         displayType:
  *           type: string
  *           enum: [number]
+ *           description: Display type discriminator. Must be "number" for single big-number charts.
  *           example: "number"
  *         sourceId:
  *           type: string
@@ -654,18 +716,20 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *             $ref: '#/components/schemas/SelectItem'
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *
- *     PieChartConfig:
+ *     PieBuilderChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
- *       description: Configuration for a pie chart tile. Each slice represents one group value.
+ *       description: Builder configuration for a pie chart tile. Each slice represents one group value.
  *       properties:
  *         displayType:
  *           type: string
  *           enum: [pie]
+ *           description: Display type discriminator. Must be "pie" for pie charts.
  *           example: "pie"
  *         sourceId:
  *           type: string
@@ -685,6 +749,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: "service"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
  *
  *     SearchChartConfig:
  *       type: object
@@ -698,6 +763,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         displayType:
  *           type: string
  *           enum: [search]
+ *           description: Display type discriminator. Must be "search" for search/log viewer tiles.
  *           example: "search"
  *         sourceId:
  *           type: string
@@ -716,6 +782,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           example: "level:error"
  *         whereLanguage:
  *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
  *
  *     MarkdownChartConfig:
  *       type: object
@@ -726,6 +793,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         displayType:
  *           type: string
  *           enum: [markdown]
+ *           description: Display type discriminator. Must be "markdown" for markdown text tiles.
  *           example: "markdown"
  *         markdown:
  *           type: string
@@ -733,10 +801,195 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           description: Markdown content to render inside the tile.
  *           example: "# Dashboard Title\n\nThis is a markdown widget."
  *
+ *     RawSqlChartConfigBase:
+ *       type: object
+ *       required:
+ *         - configType
+ *         - connectionId
+ *         - sqlTemplate
+ *       description: Shared fields for Raw SQL chart configs. Set configType to "sql" and provide connectionId + sqlTemplate instead of sourceId + select.
+ *       properties:
+ *         configType:
+ *           type: string
+ *           enum: [sql]
+ *           description: Must be "sql" to use the Raw SQL chart config variant.
+ *           example: "sql"
+ *         connectionId:
+ *           type: string
+ *           description: ID of the ClickHouse connection to execute the query against.
+ *           example: "65f5e4a3b9e77c001a567890"
+ *         sqlTemplate:
+ *           type: string
+ *           maxLength: 100000
+ *           description: SQL query template to execute. Supports HyperDX template variables.
+ *           example: "SELECT count() FROM otel_logs WHERE timestamp > now() - INTERVAL 1 HOUR"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
+ *
+ *     LineRawSqlChartConfig:
+ *       description: Raw SQL configuration for a line time-series chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [line]
+ *               description: Display as a line time-series chart.
+ *               example: "line"
+ *             compareToPreviousPeriod:
+ *               type: boolean
+ *               description: Overlay the equivalent previous time period for comparison.
+ *               default: false
+ *             fillNulls:
+ *               type: boolean
+ *               description: Fill missing time buckets with zero instead of leaving gaps.
+ *               default: true
+ *             alignDateRangeToGranularity:
+ *               type: boolean
+ *               description: Expand date range boundaries to the query granularity interval.
+ *               default: true
+ *
+ *     BarRawSqlChartConfig:
+ *       description: Raw SQL configuration for a stacked-bar time-series chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [stacked_bar]
+ *               description: Display as a stacked-bar time-series chart.
+ *               example: "stacked_bar"
+ *             fillNulls:
+ *               type: boolean
+ *               description: Fill missing time buckets with zero instead of leaving gaps.
+ *               default: true
+ *             alignDateRangeToGranularity:
+ *               type: boolean
+ *               description: Expand date range boundaries to the query granularity interval.
+ *               default: true
+ *
+ *     TableRawSqlChartConfig:
+ *       description: Raw SQL configuration for a table chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [table]
+ *               description: Display as a table chart.
+ *               example: "table"
+ *
+ *     NumberRawSqlChartConfig:
+ *       description: Raw SQL configuration for a single big-number chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [number]
+ *               description: Display as a single big-number chart.
+ *               example: "number"
+ *
+ *     PieRawSqlChartConfig:
+ *       description: Raw SQL configuration for a pie chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [pie]
+ *               description: Display as a pie chart.
+ *               example: "pie"
+ *
+ *     LineChartConfig:
+ *       description: >
+ *         Line chart. Omit configType for the builder variant (requires sourceId
+ *         and select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/LineBuilderChartConfig'
+ *         - $ref: '#/components/schemas/LineRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/LineRawSqlChartConfig'
+ *
+ *     BarChartConfig:
+ *       description: >
+ *         Stacked-bar chart. Omit configType for the builder variant (requires
+ *         sourceId and select). Set configType to "sql" for the Raw SQL variant
+ *         (requires connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/BarBuilderChartConfig'
+ *         - $ref: '#/components/schemas/BarRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/BarRawSqlChartConfig'
+ *
+ *     TableChartConfig:
+ *       description: >
+ *         Table chart. Omit configType for the builder variant (requires sourceId
+ *         and select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/TableBuilderChartConfig'
+ *         - $ref: '#/components/schemas/TableRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/TableRawSqlChartConfig'
+ *
+ *     NumberChartConfig:
+ *       description: >
+ *         Single big-number chart. Omit configType for the builder variant
+ *         (requires sourceId and select). Set configType to "sql" for the Raw
+ *         SQL variant (requires connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/NumberBuilderChartConfig'
+ *         - $ref: '#/components/schemas/NumberRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/NumberRawSqlChartConfig'
+ *
+ *     PieChartConfig:
+ *       description: >
+ *         Pie chart. Omit configType for the builder variant (requires sourceId
+ *         and select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/PieBuilderChartConfig'
+ *         - $ref: '#/components/schemas/PieRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/PieRawSqlChartConfig'
+ *
  *     TileConfig:
  *       description: >
- *         Tile chart configuration. The displayType field determines which
- *         variant is used.
+ *         Tile chart configuration. displayType is the primary discriminant and
+ *         determines which variant group applies. For displayTypes that support
+ *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie),
+ *         configType is the secondary discriminant: omit it for the builder
+ *         variant or set it to "sql" for the Raw SQL variant. The search and
+ *         markdown displayTypes only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
@@ -807,6 +1060,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *             id:
  *               type: string
  *               maxLength: 36
+ *               description: Unique tile ID assigned by the server.
  *               example: "65f5e4a3b9e77c001a901234"
  *
  *     TileInput:
@@ -850,6 +1104,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         type:
  *           type: string
  *           enum: [QUERY_EXPRESSION]
+ *           description: Filter type. Must be "QUERY_EXPRESSION".
  *         name:
  *           type: string
  *           minLength: 1
@@ -934,13 +1189,16 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         name:
  *           type: string
  *           maxLength: 1024
+ *           description: Dashboard name.
  *           example: "New Dashboard"
  *         tiles:
  *           type: array
+ *           description: List of tiles/charts to include in the dashboard.
  *           items:
  *             $ref: '#/components/schemas/TileInput'
  *         tags:
  *           type: array
+ *           description: Tags for organizing and filtering dashboards.
  *           items:
  *             type: string
  *             maxLength: 32
@@ -977,6 +1235,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *         name:
  *           type: string
  *           maxLength: 1024
+ *           description: Dashboard name.
  *           example: "Updated Dashboard Name"
  *         tiles:
  *           type: array
@@ -985,6 +1244,7 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           description: Full list of tiles for the dashboard. Existing tiles are matched by ID; tiles with an ID that does not match an existing tile will be assigned a new generated ID.
  *         tags:
  *           type: array
+ *           description: Tags for organizing and filtering dashboards.
  *           items:
  *             type: string
  *             maxLength: 32
@@ -1021,12 +1281,14 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *       properties:
  *         data:
  *           $ref: '#/components/schemas/DashboardResponse'
+ *           description: The dashboard object.
  *
  *     DashboardsListResponse:
  *       type: object
  *       properties:
  *         data:
  *           type: array
+ *           description: List of dashboard objects.
  *           items:
  *             $ref: '#/components/schemas/DashboardResponse'
  */
@@ -1407,10 +1669,20 @@ router.post(
         savedFilterValues,
       } = req.body;
 
-      const missingSources = await getMissingSources(teamId, tiles, filters);
+      const [missingSources, missingConnections] = await Promise.all([
+        getMissingSources(teamId, tiles, filters),
+        getMissingConnections(teamId, tiles),
+      ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (missingConnections.length > 0) {
+        return res.status(400).json({
+          message: `Could not find the following connection IDs: ${missingConnections.join(
             ', ',
           )}`,
         });
@@ -1630,10 +1902,20 @@ router.put(
         savedFilterValues,
       } = req.body ?? {};
 
-      const missingSources = await getMissingSources(teamId, tiles, filters);
+      const [missingSources, missingConnections] = await Promise.all([
+        getMissingSources(teamId, tiles, filters),
+        getMissingConnections(teamId, tiles),
+      ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (missingConnections.length > 0) {
+        return res.status(400).json({
+          message: `Could not find the following connection IDs: ${missingConnections.join(
             ', ',
           )}`,
         });
@@ -1700,6 +1982,22 @@ router.put(
 
       if (updatedDashboard == null) {
         return res.sendStatus(404);
+      }
+
+      // Delete alerts for tiles that are now raw SQL (unsupported) or were removed
+      const newTileIdSet = new Set(internalTiles.map(t => t.id));
+      const tileIdsToDeleteAlerts = [
+        ...internalTiles
+          .filter(tile => isRawSqlSavedChartConfig(tile.config))
+          .map(tile => tile.id),
+        ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
+      ];
+      if (tileIdsToDeleteAlerts.length > 0) {
+        logger.info(
+          { dashboardId, teamId, tileIds: tileIdsToDeleteAlerts },
+          `Deleting alerts for tiles with unsupported config or removed tiles`,
+        );
+        await deleteDashboardAlerts(dashboardId, teamId, tileIdsToDeleteAlerts);
       }
 
       res.json({

@@ -207,6 +207,13 @@ export type ExternalDashboardSelectItem = z.infer<
   typeof externalDashboardSelectItemSchema
 >;
 
+const externalDashboardRawSqlChartConfigBaseSchema = z.object({
+  configType: z.literal('sql'),
+  connectionId: objectIdSchema,
+  sqlTemplate: z.string().max(100000),
+  numberFormat: NumberFormatSchema.optional(),
+});
+
 const externalDashboardTimeChartConfigSchema = z.object({
   sourceId: objectIdSchema,
   select: z.array(externalDashboardSelectItemSchema).min(1).max(20),
@@ -223,9 +230,24 @@ const externalDashboardLineChartConfigSchema =
     compareToPreviousPeriod: z.boolean().optional(),
   });
 
+const externalDashboardLineRawSqlChartConfigSchema =
+  externalDashboardRawSqlChartConfigBaseSchema.extend({
+    displayType: z.literal('line'),
+    compareToPreviousPeriod: z.boolean().optional(),
+    fillNulls: z.boolean().optional(),
+    alignDateRangeToGranularity: z.boolean().optional(),
+  });
+
 const externalDashboardBarChartConfigSchema =
   externalDashboardTimeChartConfigSchema.extend({
     displayType: z.literal('stacked_bar'),
+  });
+
+const externalDashboardBarRawSqlChartConfigSchema =
+  externalDashboardRawSqlChartConfigBaseSchema.extend({
+    displayType: z.literal('stacked_bar'),
+    fillNulls: z.boolean().optional(),
+    alignDateRangeToGranularity: z.boolean().optional(),
   });
 
 const externalDashboardTableChartConfigSchema = z.object({
@@ -238,6 +260,21 @@ const externalDashboardTableChartConfigSchema = z.object({
   asRatio: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
 });
+
+const externalDashboardTableRawSqlChartConfigSchema =
+  externalDashboardRawSqlChartConfigBaseSchema.extend({
+    displayType: z.literal('table'),
+  });
+
+const externalDashboardNumberRawSqlChartConfigSchema =
+  externalDashboardRawSqlChartConfigBaseSchema.extend({
+    displayType: z.literal('number'),
+  });
+
+const externalDashboardPieRawSqlChartConfigSchema =
+  externalDashboardRawSqlChartConfigBaseSchema.extend({
+    displayType: z.literal('pie'),
+  });
 
 const externalDashboardNumberChartConfigSchema = z.object({
   displayType: z.literal('number'),
@@ -267,8 +304,9 @@ const externalDashboardMarkdownChartConfigSchema = z.object({
   markdown: z.string().max(50000).optional(),
 });
 
-export const externalDashboardTileConfigSchema = z
-  .discriminatedUnion('displayType', [
+const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
+  'displayType',
+  [
     externalDashboardLineChartConfigSchema,
     externalDashboardBarChartConfigSchema,
     externalDashboardTableChartConfigSchema,
@@ -276,8 +314,52 @@ export const externalDashboardTileConfigSchema = z
     externalDashboardPieChartConfigSchema,
     externalDashboardMarkdownChartConfigSchema,
     externalDashboardSearchChartConfigSchema,
-  ])
+  ],
+);
+
+export type ExternalDashboardBuilderTileConfig = z.infer<
+  typeof externalDashboardBuilderTileConfigSchema
+>;
+
+const externalDashboardRawSqlTileConfigSchema = z.discriminatedUnion(
+  'displayType',
+  [
+    externalDashboardLineRawSqlChartConfigSchema,
+    externalDashboardBarRawSqlChartConfigSchema,
+    externalDashboardTableRawSqlChartConfigSchema,
+    externalDashboardNumberRawSqlChartConfigSchema,
+    externalDashboardPieRawSqlChartConfigSchema,
+  ],
+);
+
+export type ExternalDashboardRawSqlTileConfig = z.infer<
+  typeof externalDashboardRawSqlTileConfigSchema
+>;
+
+export const externalDashboardTileConfigSchema = z
+  .custom<
+    ExternalDashboardRawSqlTileConfig | ExternalDashboardBuilderTileConfig
+  >()
   .superRefine((data, ctx) => {
+    // Route to the correct sub-schema based on configType so Zod's
+    // discriminatedUnion can produce targeted field-level errors rather
+    // than a generic union failure.
+    const schema =
+      data !== null &&
+      typeof data === 'object' &&
+      'configType' in data &&
+      data.configType === 'sql'
+        ? externalDashboardRawSqlTileConfigSchema
+        : externalDashboardBuilderTileConfigSchema;
+
+    const result = schema.safeParse(data);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        ctx.addIssue(issue);
+      }
+      return;
+    }
+
     if (
       'asRatio' in data &&
       data.asRatio &&
@@ -288,6 +370,19 @@ export const externalDashboardTileConfigSchema = z
         message: 'asRatio can only be used with exactly two select items',
       });
     }
+  })
+  .transform(data => {
+    // Re-parse through the appropriate sub-schema to strip unknown fields.
+    // Safe to call .parse() here — superRefine already validated the data,
+    // so this is guaranteed to succeed.
+    const schema =
+      data !== null &&
+      typeof data === 'object' &&
+      'configType' in data &&
+      data.configType === 'sql'
+        ? externalDashboardRawSqlTileConfigSchema
+        : externalDashboardBuilderTileConfigSchema;
+    return schema.parse(data);
   });
 
 export type ExternalDashboardTileConfig = z.infer<

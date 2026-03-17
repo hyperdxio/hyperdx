@@ -6,6 +6,7 @@ import {
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Anchor,
   Code,
   Collapse,
   Group,
@@ -22,6 +23,8 @@ import {
   IconChevronRight,
   IconCopy,
 } from '@tabler/icons-react';
+
+import { DISPLAY_TYPE_INSTRUCTIONS } from './constants';
 
 const helpOpenedAtom = atom(true);
 
@@ -62,6 +65,7 @@ export function RawSqlChartInstructions({
   const [helpOpened, setHelpOpened] = useAtom(helpOpenedAtom);
   const toggleHelp = () => setHelpOpened(v => !v);
   const availableParams = QUERY_PARAMS_BY_DISPLAY_TYPE[displayType];
+  const exampleClipboard = useClipboard({ timeout: 1500 });
 
   return (
     <Paper
@@ -89,54 +93,12 @@ export function RawSqlChartInstructions({
         </Group>
         <Collapse in={helpOpened}>
           <Stack gap={6} pl="xs" pt="md">
-            {(displayType === DisplayType.Line ||
-              displayType === DisplayType.StackedBar) && (
-              <>
-                <Text size="xs" fw="bold">
-                  Result columns are plotted as follows:
-                </Text>
-                <List size="xs" withPadding spacing={3} mb="xs">
-                  <List.Item>
-                    <Text span size="xs" fw={600}>
-                      Timestamp
-                    </Text>
-                    <Text span size="xs">
-                      {' '}
-                      — The first <Code fz="xs">Date</Code> or{' '}
-                      <Code fz="xs">DateTime</Code> column.
-                    </Text>
-                  </List.Item>
-                  <List.Item>
-                    <Text span size="xs" fw={600}>
-                      Series Value
-                    </Text>
-                    <Text span size="xs">
-                      {' '}
-                      — Each numeric column will be plotted as a separate
-                      series. These columns are generally aggregate function
-                      values.
-                    </Text>
-                  </List.Item>
-                  <List.Item>
-                    <Text span size="xs" fw={600}>
-                      Group Names
-                    </Text>
-                    <Text span size="xs">
-                      {' '}
-                      (optional) — Any string, map, or array type result column
-                      will be treated as a group column. Result rows with
-                      different group column values will be plotted as separate
-                      series.
-                    </Text>
-                  </List.Item>
-                </List>
-              </>
-            )}
+            {DISPLAY_TYPE_INSTRUCTIONS[displayType]}
 
             <Text size="xs" fw="bold">
               The following parameters can be referenced in this chart's SQL:
             </Text>
-            <List size="xs" withPadding spacing={3} mb="xs">
+            <List size="xs" withPadding spacing={3}>
               {availableParams.map(({ name, type, description }) => (
                 <List.Item key={name}>
                   <ParamSnippet
@@ -150,9 +112,46 @@ export function RawSqlChartInstructions({
             <Text size="xs" fw="bold">
               Example:
             </Text>
-            <Code fz="xs" block>
-              {QUERY_PARAM_EXAMPLES[displayType]}
-            </Code>
+            <div style={{ position: 'relative' }}>
+              <Tooltip
+                label={exampleClipboard.copied ? 'Copied!' : 'Copy'}
+                withArrow
+              >
+                <ActionIcon
+                  variant="subtle"
+                  size="xs"
+                  color={exampleClipboard.copied ? 'green' : 'gray'}
+                  onClick={() =>
+                    exampleClipboard.copy(QUERY_PARAM_EXAMPLES[displayType])
+                  }
+                  style={{
+                    position: 'absolute',
+                    top: 4,
+                    right: 4,
+                    zIndex: 1,
+                  }}
+                >
+                  {exampleClipboard.copied ? (
+                    <IconCheck size={10} />
+                  ) : (
+                    <IconCopy size={10} />
+                  )}
+                </ActionIcon>
+              </Tooltip>
+              <Code fz="xs" block>
+                {QUERY_PARAM_EXAMPLES[displayType]}
+              </Code>
+              <Text size="xs" mt="xs">
+                Macros from the{' '}
+                <Anchor
+                  href="https://github.com/grafana/clickhouse-datasource?tab=readme-ov-file#macros"
+                  target="_blank"
+                >
+                  ClickHouse Datasource Grafana Plugin
+                </Anchor>{' '}
+                may also be used.
+              </Text>
+            </div>
           </Stack>
         </Collapse>
       </Stack>

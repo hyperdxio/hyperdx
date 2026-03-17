@@ -250,20 +250,22 @@ export enum WebhookService {
   IncidentIO = 'incidentio',
 }
 
-// Base webhook interface (matches backend IWebhook but with JSON-serialized types)
+// Base webhook schema (matches backend IWebhook but with JSON-serialized types)
 // When making changes here, consider if they need to be made to the external API schema as well (packages/api/src/utils/zod.ts).
-export interface IWebhook {
-  _id: string;
-  createdAt: string;
-  name: string;
-  service: WebhookService;
-  updatedAt: string;
-  url?: string;
-  description?: string;
-  queryParams?: Record<string, string>;
-  headers?: Record<string, string>;
-  body?: string;
-}
+export const WebhookSchema = z.object({
+  _id: z.string(),
+  createdAt: z.string(),
+  name: z.string(),
+  service: z.nativeEnum(WebhookService),
+  updatedAt: z.string(),
+  url: z.string().optional(),
+  description: z.string().optional(),
+  queryParams: z.record(z.string(), z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  body: z.string().optional(),
+});
+
+export type IWebhook = z.infer<typeof WebhookSchema>;
 
 // Webhook API response type (excludes team field for security)
 export type WebhookApiData = Omit<IWebhook, 'team'>;
@@ -434,12 +436,14 @@ export const AlertSchema = z.union([
 
 export type Alert = z.infer<typeof AlertSchema>;
 
-export type AlertHistory = {
-  counts: number;
-  createdAt: string;
-  lastValues: { startTime: string; count: number }[];
-  state: AlertState;
-};
+export const AlertHistorySchema = z.object({
+  counts: z.number(),
+  createdAt: z.string(),
+  lastValues: z.array(z.object({ startTime: z.string(), count: z.number() })),
+  state: z.nativeEnum(AlertState),
+});
+
+export type AlertHistory = z.infer<typeof AlertHistorySchema>;
 
 // --------------------------
 // FILTERS
@@ -673,6 +677,7 @@ export const TileSchema = z.object({
   w: z.number(),
   h: z.number(),
   config: SavedChartConfigSchema,
+  sectionId: z.string().optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
@@ -683,6 +688,14 @@ export const TileTemplateSchema = TileSchema.extend({
 });
 
 export type Tile = z.infer<typeof TileSchema>;
+
+export const DashboardSectionSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  collapsed: z.boolean(),
+});
+
+export type DashboardSection = z.infer<typeof DashboardSectionSchema>;
 
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
@@ -716,6 +729,16 @@ export const DashboardSchema = z.object({
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
   savedFilterValues: z.array(FilterSchema).optional(),
+  sections: z
+    .array(DashboardSectionSchema)
+    .refine(
+      sections => {
+        const ids = sections.map(s => s.id);
+        return new Set(ids).size === ids.length;
+      },
+      { message: 'Section IDs must be unique' },
+    )
+    .optional(),
 });
 export const DashboardWithoutIdSchema = DashboardSchema.omit({ id: true });
 export type DashboardWithoutId = z.infer<typeof DashboardWithoutIdSchema>;
@@ -781,9 +804,9 @@ export enum SourceKind {
 // TABLE SOURCE FORM VALIDATION
 // --------------------------
 
-const QuerySettingsSchema = z.array(
-  z.object({ setting: z.string().min(1), value: z.string().min(1) }),
-);
+const QuerySettingsSchema = z
+  .array(z.object({ setting: z.string().min(1), value: z.string().min(1) }))
+  .max(10);
 
 export type QuerySettings = z.infer<typeof QuerySettingsSchema>;
 
@@ -1119,3 +1142,200 @@ export const AssistantResponseConfig = z.discriminatedUnion('displayType', [
 export type AssistantResponseConfigSchema = z.infer<
   typeof AssistantResponseConfig
 >;
+
+// --------------------------
+// API RESPONSE SCHEMAS
+// --------------------------
+
+// Alerts
+export const AlertsPageItemSchema = z.object({
+  _id: z.string(),
+  interval: AlertIntervalSchema,
+  scheduleOffsetMinutes: z.number().optional(),
+  scheduleStartAt: z.union([z.string(), z.date()]).nullish(),
+  threshold: z.number(),
+  thresholdType: z.nativeEnum(AlertThresholdType),
+  channel: z.object({ type: z.string().optional() }),
+  state: z.nativeEnum(AlertState).optional(),
+  source: z.nativeEnum(AlertSource).optional(),
+  dashboardId: z.string().optional(),
+  savedSearchId: z.string().optional(),
+  tileId: z.string().optional(),
+  name: z.string().nullish(),
+  message: z.string().nullish(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  history: z.array(AlertHistorySchema),
+  dashboard: z
+    .object({
+      _id: z.string(),
+      name: z.string(),
+      updatedAt: z.string(),
+      tags: z.array(z.string()),
+      tiles: z.array(
+        z.object({
+          id: z.string(),
+          config: z.object({ name: z.string().optional() }),
+        }),
+      ),
+    })
+    .optional(),
+  savedSearch: z
+    .object({
+      _id: z.string(),
+      createdAt: z.string(),
+      name: z.string(),
+      updatedAt: z.string(),
+      tags: z.array(z.string()),
+    })
+    .optional(),
+  createdBy: z
+    .object({
+      email: z.string(),
+      name: z.string().optional(),
+    })
+    .optional(),
+  silenced: z
+    .object({
+      by: z.string(),
+      at: z.string(),
+      until: z.string(),
+    })
+    .optional(),
+});
+
+export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;
+
+export const AlertsApiResponseSchema = z.object({
+  data: z.array(AlertsPageItemSchema),
+});
+
+export type AlertsApiResponse = z.infer<typeof AlertsApiResponseSchema>;
+
+// Webhooks
+export const WebhooksApiResponseSchema = z.object({
+  data: z.array(WebhookSchema),
+});
+
+export type WebhooksApiResponse = z.infer<typeof WebhooksApiResponseSchema>;
+
+export const WebhookCreateApiResponseSchema = z.object({
+  data: WebhookSchema,
+});
+
+export type WebhookCreateApiResponse = z.infer<
+  typeof WebhookCreateApiResponseSchema
+>;
+
+export const WebhookUpdateApiResponseSchema = z.object({
+  data: WebhookSchema,
+});
+
+export type WebhookUpdateApiResponse = z.infer<
+  typeof WebhookUpdateApiResponseSchema
+>;
+
+export const WebhookTestApiResponseSchema = z.object({
+  message: z.string(),
+});
+
+export type WebhookTestApiResponse = z.infer<
+  typeof WebhookTestApiResponseSchema
+>;
+
+// Team
+export const TeamApiResponseSchema = z.object({
+  _id: z.string(),
+  allowedAuthMethods: z.array(z.literal('password')).optional(),
+  apiKey: z.string(),
+  name: z.string(),
+  createdAt: z.string(),
+});
+
+export type TeamApiResponse = z.infer<typeof TeamApiResponseSchema>;
+
+export const TeamMemberSchema = z.object({
+  _id: z.string(),
+  email: z.string(),
+  name: z.string().optional(),
+  hasPasswordAuth: z.boolean(),
+  isCurrentUser: z.boolean(),
+  groupName: z.string().optional(),
+});
+
+export type TeamMember = z.infer<typeof TeamMemberSchema>;
+
+export const TeamMembersApiResponseSchema = z.object({
+  data: z.array(TeamMemberSchema),
+});
+
+export type TeamMembersApiResponse = z.infer<
+  typeof TeamMembersApiResponseSchema
+>;
+
+export const TeamInvitationSchema = z.object({
+  _id: z.string(),
+  createdAt: z.string(),
+  email: z.string(),
+  name: z.string().optional(),
+  url: z.string(),
+});
+
+export type TeamInvitation = z.infer<typeof TeamInvitationSchema>;
+
+export const TeamInvitationsApiResponseSchema = z.object({
+  data: z.array(TeamInvitationSchema),
+});
+
+export type TeamInvitationsApiResponse = z.infer<
+  typeof TeamInvitationsApiResponseSchema
+>;
+
+export const TeamTagsApiResponseSchema = z.object({
+  data: z.array(z.string()),
+});
+
+export type TeamTagsApiResponse = z.infer<typeof TeamTagsApiResponseSchema>;
+
+export const UpdateClickHouseSettingsApiResponseSchema =
+  TeamClickHouseSettingsSchema.partial();
+
+export type UpdateClickHouseSettingsApiResponse = z.infer<
+  typeof UpdateClickHouseSettingsApiResponseSchema
+>;
+
+export const RotateApiKeyApiResponseSchema = z.object({
+  newApiKey: z.string(),
+});
+
+export type RotateApiKeyApiResponse = z.infer<
+  typeof RotateApiKeyApiResponseSchema
+>;
+
+// Installation
+export const InstallationApiResponseSchema = z.object({
+  isTeamExisting: z.boolean(),
+});
+
+export type InstallationApiResponse = z.infer<
+  typeof InstallationApiResponseSchema
+>;
+
+// Me
+export const MeApiResponseSchema = z.object({
+  accessKey: z.string(),
+  createdAt: z.string(),
+  email: z.string(),
+  id: z.string(),
+  name: z.string(),
+  team: TeamSchema.pick({
+    id: true,
+    name: true,
+    allowedAuthMethods: true,
+    apiKey: true,
+  }).merge(TeamClickHouseSettingsSchema),
+  usageStatsEnabled: z.boolean(),
+  aiAssistantEnabled: z.boolean(),
+});
+
+export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
