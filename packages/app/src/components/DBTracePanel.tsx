@@ -176,190 +176,182 @@ export default function DBTracePanel({
   return (
     <div
       data-testid={dataTestId}
-      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+      style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%' }}
     >
-      <Flex align="center" justify="space-between" mb="sm">
-        <Flex align="center">
-          <Text size="xs" me="xs">
-            {parentSourceData?.traceIdExpression}:{' '}
-            {traceId || 'No trace id found for event'}
-          </Text>
-          {traceId != null && (
-            <Button
-              variant="subtle"
-              size="xs"
-              onClick={() => setShowTraceIdInput(v => !v)}
-            >
-              <IconPencil size={14} />
-            </Button>
-          )}
-        </Flex>
-        <Group gap="sm">
-          <Text size="sm">
-            {parentSourceData?.kind === SourceKind.Log
-              ? 'Trace Source'
-              : 'Correlated Log Source'}
-          </Text>
-          <SourceSelectControlled control={control} name="source" size="xs" />
-        </Group>
-      </Flex>
-      {(showTraceIdInput || !traceId) && parentSourceId != null && (
-        <Stack gap="xs">
-          <Text size="xs">Trace ID Expression</Text>
+      {/* Left column: Trace ID header + Waterfall chart */}
+      <div
+        style={{
+          flex: eventRowWhere ? `0 0 ${100 - rightPanelSize}%` : '1 1 100%',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          minWidth: 0,
+        }}
+      >
+        <Flex align="center" justify="space-between" mb="sm">
           <Flex align="center">
-            <SQLInlineEditorControlled
-              tableConnection={tcFromSource(parentSourceData)}
-              name="traceIdExpression"
-              placeholder="Log Trace ID Column (ex. trace_id)"
-              control={traceIdControl}
-              size="xs"
-              parentRef={typeof document !== 'undefined' ? document.body : null}
-            />
-            <Button
-              ms="sm"
-              variant="primary"
-              onClick={traceIdHandleSubmit(({ traceIdExpression }) => {
-                if (parentSourceData != null) {
-                  updateTableSource({
-                    source: {
-                      ...parentSourceData,
-                      traceIdExpression,
-                    },
-                  });
-                }
-              })}
-              size="xs"
-            >
-              Save
-            </Button>
-            <Button
-              ms="sm"
-              variant="secondary"
-              onClick={() => setShowTraceIdInput(false)}
-              size="xs"
-            >
-              Cancel
-            </Button>
+            <Text size="xs" me="xs">
+              {parentSourceData?.traceIdExpression}:{' '}
+              {traceId || 'No trace id found for event'}
+            </Text>
+            {traceId != null && (
+              <Button
+                variant="subtle"
+                size="xs"
+                onClick={() => setShowTraceIdInput(v => !v)}
+              >
+                <IconPencil size={14} />
+              </Button>
+            )}
           </Flex>
-        </Stack>
-      )}
-      <Divider my="sm" />
-
-      {traceSourceData?.kind === SourceKind.Trace && traceId && (
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          {/* Left column: Waterfall chart */}
-          <div
-            style={{
-              flex: eventRowWhere ? `0 0 ${100 - rightPanelSize}%` : '1 1 100%',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              minWidth: 0,
-            }}
-          >
-            <DBTraceWaterfallChartContainer
-              traceTableSource={traceSourceData}
-              logTableSource={logSourceData}
-              traceId={traceId}
-              dateRange={dateRange}
-              focusDate={focusDate}
-              highlightedRowWhere={eventRowWhere?.id}
-              onClick={setEventRowWhere}
-              initialRowHighlightHint={initialRowHighlightHint}
-            />
-          </div>
-
-          {/* Resize handle */}
-          {eventRowWhere != null && (
-            <Box
-              className={resizeStyles.resizeHandleInline}
-              onMouseDown={startHorizontalResize}
-            />
-          )}
-
-          {/* Right column: Span details */}
-          {eventRowWhere != null && (
-            <div
-              style={{
-                flex: `0 0 ${rightPanelSize}%`,
-                overflow: 'auto',
-                minWidth: 0,
-                borderLeft: '1px solid var(--color-border)',
-                paddingLeft: 12,
-              }}
-            >
-              <Text size="sm" mb="xs" fw={600}>
-                Span Details
-              </Text>
-              <TabBar
-                className="fs-8"
-                items={[
-                  {
-                    text: 'Overview',
-                    value: SpanDetailTab.Overview,
-                  },
-                  {
-                    text: 'Column Values',
-                    value: SpanDetailTab.Parsed,
-                  },
-                  ...(hasSelectedSpanK8sContext
-                    ? [
-                        {
-                          text: 'Infrastructure',
-                          value: SpanDetailTab.Infrastructure,
-                        },
-                      ]
-                    : []),
-                ]}
-                activeItem={displayedTab}
-                onClick={(v: any) => setDisplayedTab(v)}
+          <Group gap="sm">
+            <Text size="sm">
+              {parentSourceData?.kind === SourceKind.Log
+                ? 'Trace Source'
+                : 'Correlated Log Source'}
+            </Text>
+            <SourceSelectControlled control={control} name="source" size="xs" />
+          </Group>
+        </Flex>
+        {(showTraceIdInput || !traceId) && parentSourceId != null && (
+          <Stack gap="xs">
+            <Text size="xs">Trace ID Expression</Text>
+            <Flex align="center">
+              <SQLInlineEditorControlled
+                tableConnection={tcFromSource(parentSourceData)}
+                name="traceIdExpression"
+                placeholder="Log Trace ID Column (ex. trace_id)"
+                control={traceIdControl}
+                size="xs"
+                parentRef={
+                  typeof document !== 'undefined' ? document.body : null
+                }
               />
-              {displayedTab === SpanDetailTab.Overview &&
-                selectedSpanSource && (
-                  <RowOverviewPanel
-                    source={selectedSpanSource}
-                    rowId={eventRowWhere.id}
-                    aliasWith={eventRowWhere.aliasWith}
-                  />
-                )}
-              {displayedTab === SpanDetailTab.Parsed && selectedSpanSource && (
-                <RowDataPanel
-                  source={selectedSpanSource}
-                  rowId={eventRowWhere.id}
-                  aliasWith={eventRowWhere.aliasWith}
-                />
-              )}
-              {displayedTab === SpanDetailTab.Infrastructure &&
-                hasSelectedSpanK8sContext &&
-                selectedSpanSource && (
-                  <Box style={{ overflowY: 'auto' }}>
-                    <DBInfraPanel
-                      source={selectedSpanSource}
-                      rowData={selectedSpanNormalizedRow}
-                      rowId={eventRowWhere.id}
-                    />
-                  </Box>
-                )}
-            </div>
-          )}
+              <Button
+                ms="sm"
+                variant="primary"
+                onClick={traceIdHandleSubmit(({ traceIdExpression }) => {
+                  if (parentSourceData != null) {
+                    updateTableSource({
+                      source: {
+                        ...parentSourceData,
+                        traceIdExpression,
+                      },
+                    });
+                  }
+                })}
+                size="xs"
+              >
+                Save
+              </Button>
+              <Button
+                ms="sm"
+                variant="secondary"
+                onClick={() => setShowTraceIdInput(false)}
+                size="xs"
+              >
+                Cancel
+              </Button>
+            </Flex>
+          </Stack>
+        )}
+        <Divider my="sm" />
 
-          {/* Placeholder when no span selected */}
-          {eventRowWhere == null && (
-            <Paper
-              shadow="xs"
-              p="xl"
-              style={{
-                position: 'absolute',
-                bottom: 16,
-                left: '50%',
-                transform: 'translateX(-50%)',
-              }}
-            >
+        {traceSourceData?.kind === SourceKind.Trace && traceId && (
+          <DBTraceWaterfallChartContainer
+            traceTableSource={traceSourceData}
+            logTableSource={logSourceData}
+            traceId={traceId}
+            dateRange={dateRange}
+            focusDate={focusDate}
+            highlightedRowWhere={eventRowWhere?.id}
+            onClick={setEventRowWhere}
+            initialRowHighlightHint={initialRowHighlightHint}
+          />
+        )}
+
+        {/* Placeholder when no span selected */}
+        {traceSourceData?.kind === SourceKind.Trace &&
+          traceId &&
+          eventRowWhere == null && (
+            <Paper shadow="xs" p="xl" mt="md" style={{ alignSelf: 'center' }}>
               <Center>
                 <Text size="sm">Select a span to view details.</Text>
               </Center>
             </Paper>
           )}
+      </div>
+
+      {/* Resize handle */}
+      {eventRowWhere != null && (
+        <Box
+          className={resizeStyles.resizeHandleInline}
+          onMouseDown={startHorizontalResize}
+        />
+      )}
+
+      {/* Right column: Span details */}
+      {eventRowWhere != null && (
+        <div
+          style={{
+            flex: `0 0 ${rightPanelSize}%`,
+            overflow: 'auto',
+            minWidth: 0,
+            borderLeft: '1px solid var(--color-border)',
+            paddingLeft: 12,
+          }}
+        >
+          <Text size="sm" mb="xs" fw={600}>
+            Span Details
+          </Text>
+          <TabBar
+            className="fs-8"
+            items={[
+              {
+                text: 'Overview',
+                value: SpanDetailTab.Overview,
+              },
+              {
+                text: 'Column Values',
+                value: SpanDetailTab.Parsed,
+              },
+              ...(hasSelectedSpanK8sContext
+                ? [
+                    {
+                      text: 'Infrastructure',
+                      value: SpanDetailTab.Infrastructure,
+                    },
+                  ]
+                : []),
+            ]}
+            activeItem={displayedTab}
+            onClick={(v: any) => setDisplayedTab(v)}
+          />
+          {displayedTab === SpanDetailTab.Overview && selectedSpanSource && (
+            <RowOverviewPanel
+              source={selectedSpanSource}
+              rowId={eventRowWhere.id}
+              aliasWith={eventRowWhere.aliasWith}
+            />
+          )}
+          {displayedTab === SpanDetailTab.Parsed && selectedSpanSource && (
+            <RowDataPanel
+              source={selectedSpanSource}
+              rowId={eventRowWhere.id}
+              aliasWith={eventRowWhere.aliasWith}
+            />
+          )}
+          {displayedTab === SpanDetailTab.Infrastructure &&
+            hasSelectedSpanK8sContext &&
+            selectedSpanSource && (
+              <Box style={{ overflowY: 'auto' }}>
+                <DBInfraPanel
+                  source={selectedSpanSource}
+                  rowData={selectedSpanNormalizedRow}
+                  rowId={eventRowWhere.id}
+                />
+              </Box>
+            )}
         </div>
       )}
     </div>
