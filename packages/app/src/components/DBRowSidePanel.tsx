@@ -32,7 +32,6 @@ import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
 import ContextSubpanel from './ContextSidePanel';
-import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
@@ -79,7 +78,6 @@ enum Tab {
   ServiceMap = 'serviceMap',
   Context = 'context',
   Replay = 'replay',
-  Infrastructure = 'infrastructure',
 }
 
 type DBRowSidePanelProps = {
@@ -154,12 +152,13 @@ const DBRowSidePanel = ({
     return false;
   }, [source.eventAttributesExpression, source.resourceAttributesExpression]);
 
-  const defaultTab =
-    source.kind === 'trace'
-      ? Tab.Trace
-      : hasOverviewPanel
-        ? Tab.Overview
-        : Tab.Parsed;
+  const isTraceSource = source.kind === 'trace';
+
+  const defaultTab = isTraceSource
+    ? Tab.Trace
+    : hasOverviewPanel
+      ? Tab.Overview
+      : Tab.Parsed;
 
   const [queryTab, setQueryTab] = useQueryState(
     'sidePanelTab',
@@ -259,23 +258,6 @@ const DBRowSidePanel = ({
     enabled: rowId != null,
   });
 
-  const hasK8sContext = useMemo(() => {
-    try {
-      if (!source?.resourceAttributesExpression || !normalizedRow) {
-        return false;
-      }
-
-      const resourceAttrs = normalizedRow['__hdx_resource_attributes'];
-      return (
-        resourceAttrs?.['k8s.pod.uid'] != null ||
-        resourceAttrs?.['k8s.node.name'] != null
-      );
-    } catch (e) {
-      console.error(e);
-      return false;
-    }
-  }, [source, normalizedRow]);
-
   const initialRowHighlightHint = useMemo(() => {
     if (normalizedRow) {
       return {
@@ -318,7 +300,7 @@ const DBRowSidePanel = ({
         data-testid="side-panel-tabs"
         className="fs-8 mt-2"
         items={[
-          ...(hasOverviewPanel
+          ...(!isTraceSource && hasOverviewPanel
             ? [
                 {
                   text: 'Overview',
@@ -326,10 +308,14 @@ const DBRowSidePanel = ({
                 },
               ]
             : []),
-          {
-            text: 'Column Values',
-            value: Tab.Parsed,
-          },
+          ...(!isTraceSource
+            ? [
+                {
+                  text: 'Column Values',
+                  value: Tab.Parsed,
+                },
+              ]
+            : []),
           {
             text: 'Trace',
             value: Tab.Trace,
@@ -351,14 +337,6 @@ const DBRowSidePanel = ({
                 {
                   text: 'Session Replay',
                   value: Tab.Replay,
-                },
-              ]
-            : []),
-          ...(hasK8sContext
-            ? [
-                {
-                  text: 'Infrastructure',
-                  value: Tab.Infrastructure,
                 },
               ]
             : []),
@@ -397,10 +375,11 @@ const DBRowSidePanel = ({
             </div>
           )}
         >
-          <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
+          <Box p="sm" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
             <DBTracePanel
               data-testid="side-panel-tab-trace"
               parentSourceId={source.id}
+              parentSource={source}
               childSourceId={childSourceId}
               traceId={traceId}
               dateRange={oneHourRange}
@@ -495,27 +474,6 @@ const DBRowSidePanel = ({
           </div>
         </ErrorBoundary>
       )}
-      {displayedTab === Tab.Infrastructure && (
-        <ErrorBoundary
-          onError={err => {
-            console.error(err);
-          }}
-          fallbackRender={() => (
-            <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-              An error occurred while rendering this event.
-            </div>
-          )}
-        >
-          <Box style={{ overflowY: 'auto' }} p="sm" h="100%">
-            <DBInfraPanel
-              data-testid="side-panel-tab-infrastructure"
-              source={source}
-              rowData={normalizedRow}
-              rowId={rowId}
-            />
-          </Box>
-        </ErrorBoundary>
-      )}
       <LogSidePanelKbdShortcuts />
     </>
   );
@@ -533,7 +491,7 @@ export default function DBRowSidePanelErrorBoundary({
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
-  const initialWidth = 80;
+  const initialWidth = 100;
   const { size, startResize } = useResizable(initialWidth);
 
   // Keep track of sub-drawers so we can disable closing this root drawer

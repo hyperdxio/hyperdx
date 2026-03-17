@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import {
+  Box,
   Button,
   Center,
   Divider,
@@ -17,14 +18,18 @@ import { IconPencil } from '@tabler/icons-react';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
-import { RowDataPanel } from './DBRowDataPanel';
+import DBInfraPanel from './DBInfraPanel';
+import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import { SourceSelectControlled } from './SourceSelect';
+
+import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
 const eventRowWhereParser = parseAsJsonEncoded<{
   id: string;
@@ -32,9 +37,10 @@ const eventRowWhereParser = parseAsJsonEncoded<{
   aliasWith: WithClause[];
 }>();
 
-enum Tab {
+enum SpanDetailTab {
   Overview = 'overview',
   Parsed = 'parsed',
+  Infrastructure = 'infrastructure',
 }
 
 export default function DBTracePanel({
@@ -43,17 +49,16 @@ export default function DBTracePanel({
   dateRange,
   focusDate,
   parentSourceId,
+  parentSource,
   initialRowHighlightHint,
   'data-testid': dataTestId,
 }: {
   parentSourceId?: string | null;
   childSourceId?: string | null;
+  parentSource?: TSource;
   traceId?: string;
   dateRange: [Date, Date];
   focusDate: Date;
-  // Passed in from side panel to try to identify which
-  // span in the chart to highlight first without constructing
-  // a full row where clause
   initialRowHighlightHint?: {
     timestamp: string;
     spanId: string;
@@ -124,16 +129,55 @@ export default function DBTracePanel({
   const [showTraceIdInput, setShowTraceIdInput] = useState(false);
 
   // Reset highlighted row when trace ID changes
-  // otherwise we'll show stale span details
   useEffect(() => {
     return () => {
       setEventRowWhere(null);
     };
   }, [traceId, setEventRowWhere]);
 
-  const [displayedTab, setDisplayedTab] = useState<Tab>(Tab.Overview);
+  const [displayedTab, setDisplayedTab] = useState<SpanDetailTab>(
+    SpanDetailTab.Overview,
+  );
+
+  const { size: rightPanelSize, startResize: startHorizontalResize } =
+    useResizable(40, 'right');
+
+  const selectedSpanSource = useMemo(() => {
+    if (!eventRowWhere) return null;
+    if (eventRowWhere.type === SourceKind.Log && logSourceData) {
+      return logSourceData;
+    }
+    return traceSourceData;
+  }, [eventRowWhere, logSourceData, traceSourceData]);
+
+  const { data: selectedSpanRowData } = useRowData({
+    source: selectedSpanSource ?? ({} as TSource),
+    rowId: eventRowWhere?.id,
+    aliasWith: eventRowWhere?.aliasWith,
+  });
+
+  const selectedSpanNormalizedRow = selectedSpanRowData?.data?.[0];
+
+  const hasSelectedSpanK8sContext = useMemo(() => {
+    try {
+      if (!selectedSpanSource?.resourceAttributesExpression) return false;
+      if (!selectedSpanNormalizedRow) return false;
+      const resourceAttrs =
+        selectedSpanNormalizedRow['__hdx_resource_attributes'];
+      return (
+        resourceAttrs?.['k8s.pod.uid'] != null ||
+        resourceAttrs?.['k8s.node.name'] != null
+      );
+    } catch {
+      return false;
+    }
+  }, [selectedSpanSource, selectedSpanNormalizedRow]);
+
   return (
-    <div data-testid={dataTestId}>
+    <div
+      data-testid={dataTestId}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+    >
       <Flex align="center" justify="space-between" mb="sm">
         <Flex align="center">
           <Text size="xs" me="xs">
@@ -200,68 +244,123 @@ export default function DBTracePanel({
         </Stack>
       )}
       <Divider my="sm" />
+
       {traceSourceData?.kind === SourceKind.Trace && traceId && (
-        <DBTraceWaterfallChartContainer
-          traceTableSource={traceSourceData}
-          logTableSource={logSourceData}
-          traceId={traceId}
-          dateRange={dateRange}
-          focusDate={focusDate}
-          highlightedRowWhere={eventRowWhere?.id}
-          onClick={setEventRowWhere}
-          initialRowHighlightHint={initialRowHighlightHint}
-        />
-      )}
-      {traceSourceData != null && eventRowWhere != null && (
-        <>
-          <Text size="sm" my="sm">
-            Event Details
-          </Text>
-          <TabBar
-            className="fs-8 mt-2"
-            items={[
-              {
-                text: 'Overview',
-                value: Tab.Overview,
-              },
-              {
-                text: 'Column Values',
-                value: Tab.Parsed,
-              },
-            ]}
-            activeItem={displayedTab}
-            onClick={(v: any) => setDisplayedTab(v)}
-          />
-          {displayedTab === Tab.Overview && (
-            <RowOverviewPanel
-              source={
-                eventRowWhere?.type === SourceKind.Log && logSourceData
-                  ? logSourceData
-                  : traceSourceData
-              }
-              rowId={eventRowWhere?.id}
-              aliasWith={eventRowWhere?.aliasWith}
+        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+          {/* Left column: Waterfall chart */}
+          <div
+            style={{
+              flex: eventRowWhere ? `0 0 ${100 - rightPanelSize}%` : '1 1 100%',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              minWidth: 0,
+            }}
+          >
+            <DBTraceWaterfallChartContainer
+              traceTableSource={traceSourceData}
+              logTableSource={logSourceData}
+              traceId={traceId}
+              dateRange={dateRange}
+              focusDate={focusDate}
+              highlightedRowWhere={eventRowWhere?.id}
+              onClick={setEventRowWhere}
+              initialRowHighlightHint={initialRowHighlightHint}
+            />
+          </div>
+
+          {/* Resize handle */}
+          {eventRowWhere != null && (
+            <Box
+              className={resizeStyles.resizeHandleInline}
+              onMouseDown={startHorizontalResize}
             />
           )}
-          {displayedTab === Tab.Parsed && (
-            <RowDataPanel
-              source={
-                eventRowWhere?.type === SourceKind.Log && logSourceData
-                  ? logSourceData
-                  : traceSourceData
-              }
-              rowId={eventRowWhere?.id}
-              aliasWith={eventRowWhere?.aliasWith}
-            />
+
+          {/* Right column: Span details */}
+          {eventRowWhere != null && (
+            <div
+              style={{
+                flex: `0 0 ${rightPanelSize}%`,
+                overflow: 'auto',
+                minWidth: 0,
+                borderLeft: '1px solid var(--color-border)',
+                paddingLeft: 12,
+              }}
+            >
+              <Text size="sm" mb="xs" fw={600}>
+                Span Details
+              </Text>
+              <TabBar
+                className="fs-8"
+                items={[
+                  {
+                    text: 'Overview',
+                    value: SpanDetailTab.Overview,
+                  },
+                  {
+                    text: 'Column Values',
+                    value: SpanDetailTab.Parsed,
+                  },
+                  ...(hasSelectedSpanK8sContext
+                    ? [
+                        {
+                          text: 'Infrastructure',
+                          value: SpanDetailTab.Infrastructure,
+                        },
+                      ]
+                    : []),
+                ]}
+                activeItem={displayedTab}
+                onClick={(v: any) => setDisplayedTab(v)}
+              />
+              {displayedTab === SpanDetailTab.Overview &&
+                selectedSpanSource && (
+                  <RowOverviewPanel
+                    source={selectedSpanSource}
+                    rowId={eventRowWhere.id}
+                    aliasWith={eventRowWhere.aliasWith}
+                  />
+                )}
+              {displayedTab === SpanDetailTab.Parsed && selectedSpanSource && (
+                <RowDataPanel
+                  source={selectedSpanSource}
+                  rowId={eventRowWhere.id}
+                  aliasWith={eventRowWhere.aliasWith}
+                />
+              )}
+              {displayedTab === SpanDetailTab.Infrastructure &&
+                hasSelectedSpanK8sContext &&
+                selectedSpanSource && (
+                  <Box style={{ overflowY: 'auto' }}>
+                    <DBInfraPanel
+                      source={selectedSpanSource}
+                      rowData={selectedSpanNormalizedRow}
+                      rowId={eventRowWhere.id}
+                    />
+                  </Box>
+                )}
+            </div>
           )}
-        </>
-      )}
-      {traceSourceData != null && !eventRowWhere && traceId && (
-        <Paper shadow="xs" p="xl" mt="md">
-          <Center mih={100}>
-            <Text size="sm">Please select a span above to view details.</Text>
-          </Center>
-        </Paper>
+
+          {/* Placeholder when no span selected */}
+          {eventRowWhere == null && (
+            <Paper
+              shadow="xs"
+              p="xl"
+              style={{
+                position: 'absolute',
+                bottom: 16,
+                left: '50%',
+                transform: 'translateX(-50%)',
+              }}
+            >
+              <Center>
+                <Text size="sm">Select a span to view details.</Text>
+              </Center>
+            </Paper>
+          )}
+        </div>
       )}
     </div>
   );
