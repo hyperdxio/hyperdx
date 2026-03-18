@@ -890,10 +890,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         </ScrollArea>
 
         <div className={styles.footer} style={{ width: navWidth }}>
-          <AppNavHelpMenu
-            version={APP_VERSION}
-            onAddDataClick={openInstallInstructions}
-          />
+          <AppNavHelpMenu version={APP_VERSION} />
           {IS_LOCAL_MODE && !isCollapsed && (
             <Link
               href="/careers"

@@ -53,6 +53,7 @@ export default function DBDeltaChart({
   yMax: rawYMax,
   onAddFilter,
   spanIdExpression,
+  legendPrefix,
 }: {
   config: BuilderChartConfigWithDateRange;
   valueExpr: string;
@@ -62,6 +63,7 @@ export default function DBDeltaChart({
   yMax?: number | null;
   onAddFilter?: AddFilterFn;
   spanIdExpression?: string;
+  legendPrefix?: React.ReactNode;
 }) {
   // Derive whether a heatmap selection exists from nullable props
   const hasSelection =
@@ -378,10 +380,16 @@ export default function DBDeltaChart({
     1,
     Math.floor((containerWidth + CHART_GAP) / (CHART_WIDTH + CHART_GAP)),
   );
+  // The "Lower-priority fields" divider (~30px) may appear between visible
+  // and hidden sections on the same page.  Reserve space for it so the last
+  // chart row + pagination aren't pushed out of the overflow:hidden container.
+  const hasDivider =
+    visibleProperties.length > 0 && hiddenProperties.length > 0;
+  const dividerHeight = hasDivider ? 30 : 0;
   const rows = Math.max(
     1,
     Math.floor(
-      (containerHeight - PAGINATION_HEIGHT + CHART_GAP) /
+      (containerHeight - PAGINATION_HEIGHT - dividerHeight + CHART_GAP) /
         (CHART_HEIGHT + CHART_GAP),
     ),
   );
@@ -468,7 +476,16 @@ export default function DBDeltaChart({
       }}
     >
       {/* Legend */}
-      <Flex gap="md" align="center" mb="xs" wrap="wrap">
+      <Flex gap="md" align="center" mt={2} mb="xs" wrap="wrap">
+        {legendPrefix}
+        {legendPrefix && (
+          <Box
+            h={12}
+            style={{
+              borderLeft: '1px solid var(--mantine-color-default-border)',
+            }}
+          />
+        )}
         {hasSelection ? (
           <>
             <Flex align="center" gap={4}>

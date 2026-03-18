@@ -362,7 +362,7 @@ function DBTimeChartComponent({
     isPlaceholderData;
 
   const { data: source } = useSource({
-    id: sourceId || (isBuilderChartConfig(config) ? config.source : undefined),
+    id: sourceId || config.source,
   });
 
   const {
