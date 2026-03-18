@@ -81,9 +81,9 @@ describe('replaceMacros', () => {
   });
 
   it('should replace multiple macros in one query', () => {
-    const sql =
-      'SELECT $__timeInterval(ts), count() FROM t WHERE $__timeFilter(ts) GROUP BY 1';
-    const result = replaceMacros(sql);
+    const result = replaceMacros(
+      'SELECT $__timeInterval(ts), count() FROM t WHERE $__timeFilter(ts) GROUP BY 1',
+    );
     expect(result).toContain('toStartOfInterval');
     expect(result).toContain(
       'ts >= toDateTime(fromUnixTimestamp64Milli({startDateMilliseconds:Int64}))',
@@ -99,6 +99,26 @@ describe('replaceMacros', () => {
   it('should throw on missing close bracket', () => {
     expect(() => replaceMacros('$__timeFilter(col')).toThrow(
       'Failed to parse macro arguments',
+    );
+  });
+
+  it('should replace $__filters with provided filtersSQL', () => {
+    const result = replaceMacros(
+      'WHERE $__filters',
+      "(col = 'val') AND (x > 1)",
+    );
+    expect(result).toBe("WHERE (col = 'val') AND (x > 1)");
+  });
+
+  it('should replace $__filters with fallback when no filtersSQL provided', () => {
+    expect(replaceMacros('WHERE $__filters')).toBe(
+      'WHERE (1=1 /** no filters applied */)',
+    );
+  });
+
+  it('should replace $__filters with fallback when filtersSQL is empty', () => {
+    expect(replaceMacros('WHERE $__filters', '')).toBe(
+      'WHERE (1=1 /** no filters applied */)',
     );
   });
 });

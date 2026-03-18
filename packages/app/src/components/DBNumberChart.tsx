@@ -87,7 +87,7 @@ export default function DBNumberChart({
   const formattedValue = formatNumber(value as number, config.numberFormat);
 
   const { data: source } = useSource({
-    id: isBuilderChartConfig(config) ? config.source : undefined,
+    id: config.source,
   });
 
   const toolbarItemsMemo = useMemo(() => {
