@@ -53,7 +53,7 @@ async function getMissingSources(
         }
       }
     } else if (isConfigTile(tile)) {
-      if ('sourceId' in tile.config) {
+      if ('sourceId' in tile.config && tile.config.sourceId) {
         sourceIds.add(tile.config.sourceId);
       }
     }
@@ -97,6 +97,30 @@ async function getMissingConnections(
   return [...connectionIds].filter(
     connectionId => !existingConnectionIds.has(connectionId),
   );
+}
+
+async function getSourceConnectionMismatches(
+  team: string | mongoose.Types.ObjectId,
+  tiles: ExternalDashboardTileWithId[],
+): Promise<string[]> {
+  const existingSources = await getSources(team.toString());
+  const sourceById = new Map(existingSources.map(s => [s._id.toString(), s]));
+
+  const sourcesWithInvalidConnections: string[] = [];
+  for (const tile of tiles) {
+    if (
+      isConfigTile(tile) &&
+      isRawSqlExternalTileConfig(tile.config) &&
+      tile.config.sourceId
+    ) {
+      const source = sourceById.get(tile.config.sourceId);
+      if (source && source.connection.toString() !== tile.config.connectionId) {
+        sourcesWithInvalidConnections.push(tile.config.sourceId);
+      }
+    }
+  }
+
+  return sourcesWithInvalidConnections;
 }
 
 type SavedQueryLanguage = z.infer<typeof whereLanguageSchema>;
@@ -823,6 +847,10 @@ const updateDashboardBodySchema = buildDashboardBodySchema(
  *           maxLength: 100000
  *           description: SQL query template to execute. Supports HyperDX template variables.
  *           example: "SELECT count() FROM otel_logs WHERE timestamp > now() - INTERVAL 1 HOUR"
+ *         sourceId:
+ *           type: string
+ *           description: Optional ID of the data source associated with this Raw SQL chart. Used for applying dashboard filters.
+ *           example: "65f5e4a3b9e77c001a567890"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -1669,10 +1697,12 @@ router.post(
         savedFilterValues,
       } = req.body;
 
-      const [missingSources, missingConnections] = await Promise.all([
-        getMissingSources(teamId, tiles, filters),
-        getMissingConnections(teamId, tiles),
-      ]);
+      const [missingSources, missingConnections, sourceConnectionMismatches] =
+        await Promise.all([
+          getMissingSources(teamId, tiles, filters),
+          getMissingConnections(teamId, tiles),
+          getSourceConnectionMismatches(teamId, tiles),
+        ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -1683,6 +1713,13 @@ router.post(
       if (missingConnections.length > 0) {
         return res.status(400).json({
           message: `Could not find the following connection IDs: ${missingConnections.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (sourceConnectionMismatches.length > 0) {
+        return res.status(400).json({
+          message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
             ', ',
           )}`,
         });
@@ -1902,10 +1939,12 @@ router.put(
         savedFilterValues,
       } = req.body ?? {};
 
-      const [missingSources, missingConnections] = await Promise.all([
-        getMissingSources(teamId, tiles, filters),
-        getMissingConnections(teamId, tiles),
-      ]);
+      const [missingSources, missingConnections, sourceConnectionMismatches] =
+        await Promise.all([
+          getMissingSources(teamId, tiles, filters),
+          getMissingConnections(teamId, tiles),
+          getSourceConnectionMismatches(teamId, tiles),
+        ]);
       if (missingSources.length > 0) {
         return res.status(400).json({
           message: `Could not find the following source IDs: ${missingSources.join(
@@ -1916,6 +1955,13 @@ router.put(
       if (missingConnections.length > 0) {
         return res.status(400).json({
           message: `Could not find the following connection IDs: ${missingConnections.join(
+            ', ',
+          )}`,
+        });
+      }
+      if (sourceConnectionMismatches.length > 0) {
+        return res.status(400).json({
+          message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
             ', ',
           )}`,
         });
