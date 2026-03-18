@@ -1,10 +1,6 @@
 import { calculateInterval, renderMs } from '../utils';
 
 describe('renderMs', () => {
-  it('returns "0ms" for 0', () => {
-    expect(renderMs(0)).toBe('0ms');
-  });
-
   it('formats sub-second values as ms', () => {
     expect(renderMs(500)).toBe('500ms');
     expect(renderMs(999)).toBe('999ms');
@@ -24,6 +20,26 @@ describe('renderMs', () => {
   it('formats fractional seconds with three decimals', () => {
     expect(renderMs(1500)).toBe('1.500s');
     expect(renderMs(1234.567)).toBe('1.235s');
+  });
+
+  it('returns "0µs" for 0', () => {
+    expect(renderMs(0)).toBe('0µs');
+  });
+
+  it('formats sub-millisecond values as µs', () => {
+    expect(renderMs(0.001)).toBe('1µs');
+    expect(renderMs(0.5)).toBe('500µs');
+    expect(renderMs(0.999)).toBe('999µs');
+  });
+
+  it('rounds sub-millisecond values to nearest µs', () => {
+    expect(renderMs(0.0005)).toBe('1µs');
+    expect(renderMs(0.9994)).toBe('999µs');
+  });
+
+  it('falls through to ms when µs rounds to 1000', () => {
+    // 0.9995ms rounds to 1000µs, so it should render as 1ms instead
+    expect(renderMs(0.9995)).toBe('1ms');
   });
 });
 
