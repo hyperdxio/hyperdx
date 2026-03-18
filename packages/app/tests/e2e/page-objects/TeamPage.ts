@@ -57,7 +57,10 @@ export class TeamPage {
     this.page = page;
     this.pageContainer = page.getByTestId('team-page');
     this.dataTabButton = page.getByRole('tab', { name: 'Data', exact: true });
-    this.teamTabButton = page.getByRole('tab', { name: 'Team', exact: true });
+    this.teamTabButton = page.getByRole('tab', {
+      name: 'Members',
+      exact: true,
+    });
     this.accessTabButton = page.getByRole('tab', {
       name: 'Access',
       exact: true,
@@ -67,7 +70,7 @@ export class TeamPage {
       exact: true,
     });
     this.advancedTabButton = page.getByRole('tab', {
-      name: 'Advanced',
+      name: 'Query Settings',
       exact: true,
     });
 

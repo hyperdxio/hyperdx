@@ -49,7 +49,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
         teamPage.teamName.getByText('Team Name', { exact: true }),
       ).toBeVisible();
       await expect(
-        teamPage.members.getByText('Team', { exact: true }),
+        teamPage.members.getByText('Team Members', { exact: true }),
       ).toBeVisible();
     });
 
