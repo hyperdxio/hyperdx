@@ -13,10 +13,10 @@ const renderAppNavUserMenu = (userName?: string) => {
 
 describe('AppNavUserMenu', () => {
   it('renders initials for multi-word names with extra whitespace', () => {
-    renderAppNavUserMenu('  Ernest   Iliiasov  ');
+    renderAppNavUserMenu('  Ada   Lovelace  ');
 
-    expect(screen.getByText('EI')).toBeInTheDocument();
-    expect(screen.getByText(/Ernest\s+Iliiasov/)).toBeInTheDocument();
+    expect(screen.getByText('AL')).toBeInTheDocument();
+    expect(screen.getByText(/Ada\s+Lovelace/)).toBeInTheDocument();
   });
 
   it('falls back to the default user label for blank names', () => {
