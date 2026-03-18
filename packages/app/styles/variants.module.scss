@@ -1,0 +1,21 @@
+.actionIconLink:hover {
+  --ai-color: var(--color-text);
+}
+
+.buttonLink {
+  &:disabled,
+  &[data-disabled] {
+    background-color: transparent !important;
+    border: none !important;
+    opacity: 0.5;
+  }
+}
+
+.actionIconLink {
+  &:disabled,
+  &[data-disabled] {
+    background-color: transparent !important;
+    border: none !important;
+    opacity: 0.5;
+  }
+}
