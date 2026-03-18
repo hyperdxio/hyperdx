@@ -28,7 +28,9 @@ export default function SectionHeader({
   const [editing, setEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(section.title);
   const [hovered, setHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
+  const showControls = hovered || menuOpen;
   const hasMenuControls = onDelete != null;
 
   const handleSaveRename = () => {
@@ -133,7 +135,7 @@ export default function SectionHeader({
           </>
         )}
       </Flex>
-      {onAddTile && !editing && hovered && (
+      {onAddTile && !editing && showControls && (
         <ActionIcon
           variant="subtle"
           size="xs"
@@ -147,8 +149,8 @@ export default function SectionHeader({
           <IconPlus size={14} />
         </ActionIcon>
       )}
-      {hasMenuControls && !editing && hovered && (
-        <Menu width={200} position="bottom-end">
+      {hasMenuControls && !editing && showControls && (
+        <Menu width={200} position="bottom-end" onChange={setMenuOpen}>
           <Menu.Target>
             <ActionIcon
               variant="subtle"
