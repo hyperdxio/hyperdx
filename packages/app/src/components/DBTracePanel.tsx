@@ -176,16 +176,23 @@ export default function DBTracePanel({
   return (
     <div
       data-testid={dataTestId}
-      style={{ display: 'flex', flex: 1, minHeight: 0, height: '100%' }}
+      style={{
+        display: 'flex',
+        flex: 1,
+        minHeight: 0,
+        minWidth: 0,
+        height: '100%',
+      }}
     >
       {/* Left column: Trace ID header + Waterfall chart */}
       <div
         style={{
-          flex: eventRowWhere ? `0 0 ${100 - rightPanelSize}%` : '1 1 100%',
+          flex: eventRowWhere ? `${100 - rightPanelSize} 1 0` : '1 1 100%',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
           minWidth: 0,
+          padding: 'var(--mantine-spacing-sm)',
         }}
       >
         <Flex align="center" justify="space-between" mb="sm">
@@ -294,11 +301,12 @@ export default function DBTracePanel({
       {eventRowWhere != null && (
         <div
           style={{
-            flex: `0 0 ${rightPanelSize}%`,
+            flex: `${rightPanelSize} 1 0`,
             overflow: 'auto',
             minWidth: 0,
             borderLeft: '1px solid var(--color-border)',
             paddingLeft: 12,
+            padding: 'var(--mantine-spacing-sm)',
           }}
         >
           <TabBar

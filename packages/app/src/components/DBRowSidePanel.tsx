@@ -594,18 +594,16 @@ const DBRowSidePanel = ({
             </div>
           )}
         >
-          <Box p="sm" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-            <DBTracePanel
-              data-testid="side-panel-tab-trace"
-              parentSourceId={source.id}
-              parentSource={source}
-              childSourceId={childSourceId}
-              traceId={traceId}
-              dateRange={oneHourRange}
-              focusDate={focusDate}
-              initialRowHighlightHint={initialRowHighlightHint}
-            />
-          </Box>
+          <DBTracePanel
+            data-testid="side-panel-tab-trace"
+            parentSourceId={source.id}
+            parentSource={source}
+            childSourceId={childSourceId}
+            traceId={traceId}
+            dateRange={oneHourRange}
+            focusDate={focusDate}
+            initialRowHighlightHint={initialRowHighlightHint}
+          />
         </ErrorBoundary>
       )}
       {displayedTab === Tab.ServiceMap && enableServiceMap && (
