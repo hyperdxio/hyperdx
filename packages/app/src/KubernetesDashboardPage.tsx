@@ -8,6 +8,8 @@ import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  isLogSource,
+  isMetricSource,
   SourceKind,
   TLogSource,
   TMetricSource,
@@ -971,7 +973,7 @@ export const resolveSourceIds = (
     const foundSource = findSource(sources, { id: _logSourceId });
     const connection = foundSource?.connection;
     const correlatedMetricSourceId =
-      foundSource && 'metricSourceId' in foundSource
+      foundSource && isLogSource(foundSource)
         ? foundSource.metricSourceId
         : undefined;
     const metricSourceId =
@@ -987,7 +989,7 @@ export const resolveSourceIds = (
     const foundSource = findSource(sources, { id: _metricSourceId });
     const connection = foundSource?.connection;
     const correlatedLogSourceId =
-      foundSource && 'logSourceId' in foundSource
+      foundSource && isMetricSource(foundSource)
         ? foundSource.logSourceId
         : undefined;
     const logSourceId =
@@ -1052,7 +1054,7 @@ function KubernetesDashboardPage() {
     kind: SourceKind.Log,
   });
   const { data: metricSource } = useSource({
-    id: logSourceId,
+    id: metricSourceId,
     kind: SourceKind.Metric,
   });
 
@@ -1095,7 +1097,7 @@ function KubernetesDashboardPage() {
     if (watchedLogSourceId && sources) {
       const logSource = findSource(sources, { id: watchedLogSourceId });
       const logSourceMetricSourceId =
-        logSource && 'metricSourceId' in logSource
+        logSource && isLogSource(logSource)
           ? logSource.metricSourceId
           : undefined;
       const correlatedMetricSource = logSourceMetricSourceId
@@ -1141,7 +1143,7 @@ function KubernetesDashboardPage() {
     if (watchedMetricSourceId && sources) {
       const metricSource = findSource(sources, { id: watchedMetricSourceId });
       const metricSourceLogSourceId =
-        metricSource && 'logSourceId' in metricSource
+        metricSource && isMetricSource(metricSource)
           ? metricSource.logSourceId
           : undefined;
       const correlatedLogSource = metricSourceLogSourceId
