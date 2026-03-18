@@ -276,7 +276,6 @@ export const makeTheme = ({
           baseVars['--button-bg'] = 'transparent';
           baseVars['--button-hover'] = 'transparent';
           baseVars['--button-color'] = 'var(--color-text-secondary)';
-          baseVars['--button-color-hover'] = 'var(--color-text)';
           baseVars['--button-bd'] = 'none';
           baseVars['--button-padding-x'] = '0';
         }

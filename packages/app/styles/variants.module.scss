@@ -1,21 +1,24 @@
-.actionIconLink:hover {
+// Hover: brighten text to full contrast.
+// Both Button and ActionIcon use SCSS for hover color because
+// Mantine only provides --button-color-hover (no ActionIcon equivalent).
+// Using SCSS for both keeps the approach consistent.
+.buttonLink:hover:not(:disabled, [data-disabled]) {
+  --button-color: var(--color-text);
+}
+
+.actionIconLink:hover:not(:disabled, [data-disabled]) {
   --ai-color: var(--color-text);
 }
 
-.buttonLink {
-  &:disabled,
-  &[data-disabled] {
-    background-color: transparent !important;
-    border: none !important;
-    opacity: 0.5;
-  }
-}
-
+// Disabled: override Mantine's built-in disabled background.
+// !important is required because Mantine applies disabled styles
+// via high-specificity internal selectors that CSS modules cannot beat.
+.buttonLink,
 .actionIconLink {
   &:disabled,
   &[data-disabled] {
     background-color: transparent !important;
     border: none !important;
-    opacity: 0.5;
+    opacity: 0.4;
   }
 }
