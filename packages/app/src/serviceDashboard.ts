@@ -1,11 +1,7 @@
 import { useMemo } from 'react';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  SourceKind,
-  TSource,
-  TTraceSource,
-} from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import { useColumns, useJsonColumns } from './hooks/useMetadata';
 
@@ -205,7 +201,7 @@ export function getExpressions(
 export function useServiceDashboardExpressions({
   source,
 }: {
-  source: TSource | undefined;
+  source: TTraceSource | undefined;
 }) {
   const tableConnection = useMemo(() => tcFromSource(source), [source]);
 

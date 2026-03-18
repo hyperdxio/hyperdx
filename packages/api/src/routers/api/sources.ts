@@ -1,5 +1,4 @@
 import {
-  SourceKind,
   SourceSchema,
   SourceSchemaNoId,
 } from '@hyperdx/common-utils/dist/types';
@@ -46,8 +45,8 @@ router.post(
 
       const source = await createSource(teamId.toString(), {
         ...req.body,
-        team: teamId,
-      } as any);
+        team: teamId.toJSON(),
+      });
 
       res.json(source);
     } catch (e) {
@@ -70,8 +69,8 @@ router.put(
 
       const source = await updateSource(teamId.toString(), req.params.id, {
         ...req.body,
-        team: teamId,
-      } as any);
+        team: teamId.toJSON(),
+      });
 
       if (!source) {
         res.status(404).send('Source not found');

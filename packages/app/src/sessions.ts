@@ -7,8 +7,8 @@ import {
   DateRange,
   SearchCondition,
   SearchConditionLanguage,
-  SourceKind,
-  TSource,
+  TSessionSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
@@ -44,8 +44,8 @@ export function useSessions(
     where,
     whereLanguage,
   }: {
-    traceSource?: TSource;
-    sessionSource?: TSource;
+    traceSource?: TTraceSource;
+    sessionSource?: TSessionSource;
     dateRange: DateRange['dateRange'];
     where?: SearchCondition;
     whereLanguage?: SearchConditionLanguage;
@@ -82,8 +82,7 @@ export function useSessions(
         !traceSource ||
         !sessionSource ||
         !getTraceSourceFieldExpression ||
-        !getSessionsSourceFieldExpression ||
-        traceSource.kind !== SourceKind.Trace
+        !getSessionsSourceFieldExpression
       ) {
         return [];
       }
@@ -174,9 +173,8 @@ export function useSessions(
             select: [
               {
                 valueExpression: `DISTINCT ${getSessionsSourceFieldExpression(
-                  ('resourceAttributesExpression' in sessionSource
-                    ? sessionSource.resourceAttributesExpression
-                    : undefined) ?? 'ResourceAttributes',
+                  sessionSource.resourceAttributesExpression ??
+                    'ResourceAttributes',
                   'rum.sessionId',
                 )}`,
                 alias: 'sessionId',
@@ -185,18 +183,13 @@ export function useSessions(
             from: sessionSource.from,
             dateRange,
             where: `${getSessionsSourceFieldExpression(
-              ('resourceAttributesExpression' in sessionSource
-                ? sessionSource.resourceAttributesExpression
-                : undefined) ?? 'ResourceAttributes',
+              sessionSource.resourceAttributesExpression ??
+                'ResourceAttributes',
               'rum.sessionId',
             )} IN (SELECT sessions.sessionId FROM ${SESSIONS_CTE_NAME})`,
             whereLanguage: 'sql',
             timestampValueExpression: sessionSource.timestampValueExpression,
-            implicitColumnExpression:
-              sessionSource.kind === SourceKind.Log ||
-              sessionSource.kind === SourceKind.Trace
-                ? sessionSource.implicitColumnExpression
-                : undefined,
+            implicitColumnExpression: undefined,
             connection: sessionSource.connection,
           },
           metadata,

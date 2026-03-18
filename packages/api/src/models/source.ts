@@ -35,6 +35,7 @@ export const ISourceSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 export type ISource = z.infer<typeof ISourceSchema>;
+export type ISourceInput = z.input<typeof ISourceSchema>;
 
 export type SourceDocument = mongoose.HydratedDocument<ISource>;
 
@@ -116,11 +117,10 @@ export const Source = SourceModel as unknown as mongoose.Model<ISource>;
 // --------------------------
 // Log discriminator
 // --------------------------
-export const LogSource = Source.discriminator<
-  Extract<ISource, { kind: SourceKind.Log }>
->(
+type ILogSource = Extract<ISource, { kind: SourceKind.Log }>;
+export const LogSource = Source.discriminator<ILogSource>(
   SourceKind.Log,
-  new Schema({
+  new Schema<ILogSource>({
     defaultTableSelectExpression: String,
     serviceNameExpression: String,
     severityTextExpression: String,
@@ -151,11 +151,10 @@ export const LogSource = Source.discriminator<
 // --------------------------
 // Trace discriminator
 // --------------------------
-export const TraceSource = Source.discriminator<
-  Extract<ISource, { kind: SourceKind.Trace }>
->(
+type ITraceSource = Extract<ISource, { kind: SourceKind.Trace }>;
+export const TraceSource = Source.discriminator<ITraceSource>(
   SourceKind.Trace,
-  new Schema({
+  new Schema<ITraceSource>({
     defaultTableSelectExpression: String,
     durationExpression: String,
     durationPrecision: Number,
@@ -191,11 +190,10 @@ export const TraceSource = Source.discriminator<
 // --------------------------
 // Session discriminator
 // --------------------------
-export const SessionSource = Source.discriminator<
-  Extract<ISource, { kind: SourceKind.Session }>
->(
+type ISessionSource = Extract<ISource, { kind: SourceKind.Session }>;
+export const SessionSource = Source.discriminator<ISessionSource>(
   SourceKind.Session,
-  new Schema({
+  new Schema<Extract<ISource, { kind: SourceKind.Session }>>({
     traceSourceId: String,
     resourceAttributesExpression: String,
   }),
@@ -204,11 +202,10 @@ export const SessionSource = Source.discriminator<
 // --------------------------
 // Metric discriminator
 // --------------------------
-export const MetricSource = Source.discriminator<
-  Extract<ISource, { kind: SourceKind.Metric }>
->(
+type IMetricSource = Extract<ISource, { kind: SourceKind.Metric }>;
+export const MetricSource = Source.discriminator<IMetricSource>(
   SourceKind.Metric,
-  new Schema({
+  new Schema<Extract<ISource, { kind: SourceKind.Metric }>>({
     metricTables: {
       type: {
         [MetricsDataType.Gauge]: String,

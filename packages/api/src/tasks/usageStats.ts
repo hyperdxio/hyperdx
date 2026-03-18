@@ -35,9 +35,7 @@ function extractTableNames(source: SourceDocument): string[] {
   const tables: string[] = [];
   if (source.kind === SourceKind.Metric) {
     // Cast to TMetricSource to access metricTables after kind narrowing
-    const metricSource = source.toJSON({
-      getters: true,
-    }) as unknown as TMetricSource;
+    const metricSource = source;
     for (const key of Object.values(MetricsDataType)) {
       const metricTable = metricSource.metricTables?.[key];
       if (!metricTable) continue;

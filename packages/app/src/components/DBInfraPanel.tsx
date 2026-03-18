@@ -216,7 +216,7 @@ export default ({
       : undefined;
   const { data: metricSource } = useSource({
     id: metricSourceId,
-    kind: SourceKind.Metric,
+    kinds: [SourceKind.Metric],
   });
 
   const podUid = rowData?.__hdx_resource_attributes['k8s.pod.uid'];

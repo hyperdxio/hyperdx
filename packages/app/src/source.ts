@@ -78,6 +78,8 @@ export function getEventBody(eventModel: TSource) {
   return multiExpr.length === 1 ? expression : multiExpr[0];
 }
 
+// This function is for supporting legacy sources, which did not require this field.
+// Will be defaulted to `TimestampTime` when queried, if undefined.
 function addDefaultsToSource(source: TSource): TSource {
   if (source.kind === SourceKind.Session) {
     return {
@@ -132,17 +134,17 @@ export function useSources() {
 
 export function useSource<K extends SourceKind>(opts: {
   id?: string | null;
-  kind: K;
+  kinds: K[];
 }): UseQueryResult<Extract<TSource, { kind: K }> | undefined>;
 export function useSource(opts: {
   id?: string | null;
 }): UseQueryResult<TSource | undefined>;
 export function useSource({
   id,
-  kind,
+  kinds,
 }: {
   id?: string | null;
-  kind?: SourceKind;
+  kinds?: SourceKind[];
 }) {
   return useQuery({
     queryKey: ['sources'],
@@ -155,7 +157,8 @@ export function useSource({
     },
     select: (data: TSource[]) => {
       const source = data.find(s => s.id === id);
-      if (source && kind && source.kind !== kind) return undefined;
+      if (source && kinds?.length && !kinds.includes(source.kind))
+        return undefined;
       return source;
     },
     enabled: id != null,

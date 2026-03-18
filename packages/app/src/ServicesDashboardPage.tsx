@@ -150,7 +150,10 @@ function ServiceSelectControlled({
   dateRange: [Date, Date];
   onCreate?: () => void;
 } & UseControllerProps<any>) {
-  const { data: source } = useSource({ id: sourceId });
+  const { data: source } = useSource({
+    id: sourceId,
+    kinds: [SourceKind.Trace],
+  });
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const queriedConfig = {
@@ -352,7 +355,10 @@ function HttpTab({
   searchedTimeRange: [Date, Date];
   appliedConfig: AppliedConfig;
 }) {
-  const { data: source } = useSource({ id: appliedConfig.source });
+  const { data: source } = useSource({
+    id: appliedConfig.source,
+    kinds: [SourceKind.Trace],
+  });
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const [reqChartType, setReqChartType] = useQueryState(
@@ -850,7 +856,10 @@ function DatabaseTab({
   searchedTimeRange: [Date, Date];
   appliedConfig: AppliedConfig;
 }) {
-  const { data: source } = useSource({ id: appliedConfig.source });
+  const { data: source } = useSource({
+    id: appliedConfig.source,
+    kinds: [SourceKind.Trace],
+  });
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const [chartType, setChartType] = useState<'table' | 'list'>('list');
@@ -1326,7 +1335,10 @@ function ErrorsTab({
   searchedTimeRange: [Date, Date];
   appliedConfig: AppliedConfig;
 }) {
-  const { data: source } = useSource({ id: appliedConfig.source });
+  const { data: source } = useSource({
+    id: appliedConfig.source,
+    kinds: [SourceKind.Trace],
+  });
   const { expressions } = useServiceDashboardExpressions({ source });
 
   return (

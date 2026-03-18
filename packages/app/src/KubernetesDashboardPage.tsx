@@ -1051,11 +1051,11 @@ function KubernetesDashboardPage() {
 
   const { data: logSource } = useSource({
     id: logSourceId,
-    kind: SourceKind.Log,
+    kinds: [SourceKind.Log],
   });
   const { data: metricSource } = useSource({
     id: metricSourceId,
-    kind: SourceKind.Metric,
+    kinds: [SourceKind.Metric],
   });
 
   const { control } = useForm({

@@ -74,7 +74,7 @@ export type RowSidePanelContextProps = {
   dbSqlRowTableConfig?: BuilderChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
-  source?: TSource;
+  source?: TLogSource | TTraceSource;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});

@@ -18,6 +18,7 @@ import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   MetricsDataType,
   SourceKind,
+  SourceSchema,
   SourceSchemaNoId,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -1625,7 +1626,6 @@ export function SessionTableModelForm({ control }: TableModelProps) {
   const connectionId = useWatch({ control, name: 'connection' });
   const tableName = useWatch({ control, name: 'from.tableName' });
 
-  // TODO(AVK): Figure out table validation
   return (
     <>
       <Stack gap="sm">
@@ -2083,7 +2083,7 @@ export function TableSourceForm({
       }
 
       createSource.mutate(
-        { source: data },
+        { source: parseResult.data },
         {
           onSuccess: async newSource => {
             // Handle bidirectional linking for new sources
@@ -2148,13 +2148,13 @@ export function TableSourceForm({
   const _onSave = useCallback(() => {
     clearErrors();
     handleSubmit(data => {
-      const parseResult = SourceSchemaNoId.safeParse(data);
+      const parseResult = SourceSchema.safeParse(data);
       if (parseResult.error) {
         handleError(parseResult.error, 'save');
         return;
       }
       updateSource.mutate(
-        { source: data },
+        { source: parseResult.data },
         {
           onSuccess: () => {
             onSave?.();

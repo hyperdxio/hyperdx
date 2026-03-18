@@ -1,7 +1,7 @@
 import { SourceKind, SourceSchema } from '@hyperdx/common-utils/dist/types';
 
 import {
-  ISource,
+  ISourceInput,
   LogSource,
   MetricSource,
   SessionSource,
@@ -42,7 +42,7 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends T
 
 export function createSource(
   team: string,
-  source: DistributiveOmit<ISource, 'id'>,
+  source: DistributiveOmit<ISourceInput, 'id'>,
 ) {
   // @ts-expect-error The create method has incompatible type signatures but is actually safe
   return getModelForKind(source.kind)?.create({ ...source, team });
@@ -51,7 +51,7 @@ export function createSource(
 export async function updateSource(
   team: string,
   sourceId: string,
-  source: Omit<ISource, 'id'>,
+  source: DistributiveOmit<ISourceInput, 'id'>,
 ) {
   const existing = await Source.findOne({ _id: sourceId, team });
   if (!existing) return null;

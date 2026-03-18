@@ -664,6 +664,7 @@ function useSearchedConfigToChartConfig(
 ) {
   const { data: sourceObj, isLoading } = useSource({
     id: source,
+    kinds: [SourceKind.Log, SourceKind.Trace],
   });
   const defaultOrderBy = useDefaultOrderBy(source);
 
@@ -674,10 +675,7 @@ function useSearchedConfigToChartConfig(
           select:
             select ||
             defaultSearchConfig?.select ||
-            (isLogSource(sourceObj) || isTraceSource(sourceObj)
-              ? sourceObj.defaultTableSelectExpression
-              : '') ||
-            '',
+            sourceObj.defaultTableSelectExpression,
           from: sourceObj.from,
           source: sourceObj.id,
           ...(isLogSource(sourceObj) && sourceObj.tableFilterExpression != null
@@ -695,10 +693,7 @@ function useSearchedConfigToChartConfig(
           where: where ?? '',
           whereLanguage: whereLanguage ?? 'sql',
           timestampValueExpression: sourceObj.timestampValueExpression,
-          implicitColumnExpression:
-            isLogSource(sourceObj) || isTraceSource(sourceObj)
-              ? sourceObj.implicitColumnExpression
-              : undefined,
+          implicitColumnExpression: sourceObj.implicitColumnExpression,
           connection: sourceObj.connection,
           displayType: DisplayType.Search,
           orderBy: orderBy || defaultSearchConfig?.orderBy || defaultOrderBy,
@@ -791,23 +786,21 @@ function optimizeDefaultOrderBy(
 }
 
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
-  const { data: source } = useSource({ id: sourceID });
+  const { data: source } = useSource({
+    id: sourceID,
+    kinds: [SourceKind.Log, SourceKind.Trace],
+  });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
   // When source changes, make sure select and orderby fields are set to default
   return useMemo(() => {
     // If no source, return undefined so that the orderBy is not set incorrectly
     if (!source) return undefined;
-    const trimmedOrderBy =
-      isLogSource(source) || isTraceSource(source)
-        ? source.orderByExpression?.trim()
-        : undefined;
+    const trimmedOrderBy = source.orderByExpression?.trim();
     if (trimmedOrderBy) return trimmedOrderBy;
     return optimizeDefaultOrderBy(
       source?.timestampValueExpression ?? '',
-      isLogSource(source) || isTraceSource(source)
-        ? source.displayedTimestampValueExpression
-        : undefined,
+      source.displayedTimestampValueExpression,
       tableMetadata?.sorting_key,
     );
   }, [source, tableMetadata]);
@@ -846,6 +839,7 @@ function DBSearchPage() {
   );
   const { data: searchedSource } = useSource({
     id: searchedConfig.source,
+    kinds: [SourceKind.Log, SourceKind.Trace],
   });
 
   const [analysisMode, setAnalysisMode] = useQueryState(

@@ -20,7 +20,10 @@ export const useSessionId = ({
   dateRange: [Date, Date];
   enabled?: boolean;
 }) => {
-  const { data: source } = useSource({ id: sourceId, kind: SourceKind.Trace });
+  const { data: source } = useSource({
+    id: sourceId,
+    kinds: [SourceKind.Trace],
+  });
 
   const { getFieldExpression } = useFieldExpressionGenerator(source);
 
@@ -101,14 +104,14 @@ export const DBSessionPanel = ({
 }) => {
   const { data: traceSource } = useSource({
     id: traceSourceId,
-    kind: SourceKind.Trace,
+    kinds: [SourceKind.Trace],
   });
   const { data: sessionSource, isLoading: isSessionSourceLoading } = useSource({
     id:
       traceSource && isTraceSource(traceSource)
         ? traceSource.sessionSourceId
         : undefined,
-    kind: SourceKind.Session,
+    kinds: [SourceKind.Session],
   });
 
   if (!traceSource || (!sessionSource && isSessionSourceLoading)) {
@@ -125,9 +128,7 @@ export const DBSessionPanel = ({
           <strong>{traceSource?.name}</strong> source to include the correlated
           session source.
         </div>
-      ) : rumSessionId &&
-        traceSource &&
-        sessionSource.kind === SourceKind.Session ? (
+      ) : rumSessionId && traceSource ? (
         <SessionSubpanel
           start={dateRange[0]}
           end={dateRange[1]}

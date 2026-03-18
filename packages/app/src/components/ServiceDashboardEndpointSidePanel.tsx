@@ -34,8 +34,10 @@ export default function ServiceDashboardEndpointSidePanel({
   service?: string;
   searchedTimeRange: [Date, Date];
 }) {
-  const { data: _source } = useSource({ id: sourceId });
-  const source = _source?.kind === SourceKind.Trace ? _source : undefined;
+  const { data: source } = useSource({
+    id: sourceId,
+    kinds: [SourceKind.Trace],
+  });
   const { expressions } = useServiceDashboardExpressions({ source });
 
   const [endpoint, setEndpoint] = useQueryState('endpoint', parseAsString);
