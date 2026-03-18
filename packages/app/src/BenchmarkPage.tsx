@@ -212,13 +212,16 @@ function BenchmarkPage() {
   // Hack to get time range
   useEffect(() => {
     if (_queries.length > 0 && _connections.length > 0) {
+      // eslint-disable-next-line no-restricted-syntax
       setStartTime(new Date(Date.now() - 1000));
     }
   }, [_queries, _connections]);
+
   useEffect(() => {
     if (queryIds != null && queryIds[0] != null) {
       setEndTime(
         new Date(
+          // eslint-disable-next-line no-restricted-syntax
           Date.now() - 1000 * 9, // minus hard-coded flush interval
         ),
       );
